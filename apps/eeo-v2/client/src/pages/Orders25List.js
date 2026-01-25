@@ -2139,7 +2139,7 @@ const ExpandedContent = styled.div`
 const ExpandedGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
 
   /* První řádek: 4 karty (Základní, Finanční, Odpovědné, Workflow) */
   /* Každá karta zabere 1 sloupec = 25% šířky */
@@ -2163,8 +2163,8 @@ const ExpandedGrid = styled.div`
 // Třísloupcový layout: Dodavatel | Položky+Faktury | Přílohy
 const ThreeColumnLayout = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr; /* 33/33/33 layout */
-  gap: 1rem;
+  grid-template-columns: minmax(200px, 0.8fr) 1.1fr 1.1fr; /* Dodavatel užší, položky+faktury a přílohy širší */
+  gap: 0.75rem;
   grid-column: 1 / -1; /* Zabere celou šířku gridu */
 
   @media (max-width: 1400px) {
@@ -2191,7 +2191,7 @@ const SupplierColumn = styled.div`
 const MiddleColumn = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
 `;
 
 const AttachmentsColumn = styled.div`
@@ -7113,8 +7113,11 @@ const Orders25List = () => {
               lineHeight: '1.3',
               maxWidth: '300px',
               overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              wordBreak: 'break-word'
             }}>
               {globalFilter
                 ? highlightText(row.original.predmet, globalFilter)
@@ -7224,7 +7227,7 @@ const Orders25List = () => {
         return (
           <div style={{
             textAlign: 'left',
-            whiteSpace: 'normal',
+            whiteSpace: 'nowrap',
             lineHeight: '1.3'
           }}
           title={financovaniText !== '---' ? financovaniText : ''}
@@ -7621,14 +7624,14 @@ const Orders25List = () => {
         const adresaText = order.dodavatel_adresa || '';
 
         return (
-          <div style={{ lineHeight: '1.4', whiteSpace: 'nowrap' }}>
+          <div style={{ lineHeight: '1.4' }}>
             {/* Řádek 1: Název dodavatele */}
-            <div style={{ fontWeight: 500 }}>
+            <div style={{ fontWeight: 500, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
               {order.dodavatel_nazev}
             </div>
             {/* Řádek 2: Adresa (menší písmo) */}
             {adresaText && (
-              <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+              <div style={{ fontSize: '0.85em', color: '#6b7280', wordBreak: 'break-word' }}>
                 {adresaText}
               </div>
             )}
@@ -7640,7 +7643,7 @@ const Orders25List = () => {
             )}
             {/* Řádek 4: Email | Telefon */}
             {kontaktText && (
-              <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+              <div style={{ fontSize: '0.85em', color: '#6b7280', wordBreak: 'break-all' }}>
                 {kontaktText}
               </div>
             )}
@@ -12876,7 +12879,7 @@ const Orders25List = () => {
 
                 <InfoRow>
                   <InfoLabel>Název:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 600 }}>
+                  <InfoValue style={{ fontWeight: 600, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                     {highlightSearchText(order.dodavatel_nazev || '---', globalFilter)}
                   </InfoValue>
                 </InfoRow>
@@ -13561,19 +13564,53 @@ const Orders25List = () => {
                           title={`Stáhnout: ${priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`}`}
                         >
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <AttachmentName style={{ fontWeight: 500 }}>
-                              {highlightSearchText(priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`, globalFilter)}
-                            </AttachmentName>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <AttachmentName style={{ fontWeight: 500 }}>
+                                {highlightSearchText(priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`, globalFilter)}
+                                {priloha.velikost && (
+                                  <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: '4px' }}>
+                                    ({Math.round(priloha.velikost / 1024)} KB)
+                                  </span>
+                                )}
+                              </AttachmentName>
+                              {priloha.typ_prilohy && (
+                                <span style={{ 
+                                  display: 'inline-block',
+                                  padding: '0.2rem 0.6rem',
+                                  borderRadius: '12px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 600,
+                                  background: '#dbeafe',
+                                  color: '#1e40af'
+                                }}>
+                                  {(() => {
+                                    const typeMap = {
+                                      'FAKTURA': 'FAKTURA',
+                                      'ISDOC': 'ISDOC',
+                                      'PRILOHA': 'PŘÍLOHA',
+                                      'SMLOUVA': 'SMLOUVA',
+                                      'IMPORT': 'IMPORT',
+                                      'CENOVA_NABIDKA': 'CENOVÁ NABÍDKA',
+                                      'DODACI_LIST': 'DODACÍ LIST',
+                                      'PROFORMA': 'PROFORMA',
+                                      'OBJEDNAVKA': 'OBJEDNÁVKA',
+                                      'OBJEDNAVKA_ZAKAZNIKA': 'OBJEDNÁVKA ZÁKAZNÍKA',
+                                      'SPECIFIKACE': 'SPECIFIKACE',
+                                      'PROTOKOL': 'PROTOKOL',
+                                      'CERTIFIKAT': 'CERTIFIKÁT',
+                                      'JINE': 'JINÉ',
+                                      'JINA': 'JINÁ'
+                                    };
+                                    return typeMap[priloha.typ_prilohy] || priloha.typ_prilohy;
+                                  })()}
+                                </span>
+                              )}
+                            </div>
                             <div style={{ fontSize: '0.8em', color: '#94a3b8' }}>
                               {priloha.dt_nahrano && formatDateOnly(priloha.dt_nahrano)}
                               {priloha.popis && <> • {highlightSearchText(priloha.popis, globalFilter)}</>}
                             </div>
                           </div>
-                          {priloha.velikost && (
-                            <AttachmentSize>
-                              ({Math.round(priloha.velikost / 1024)} KB)
-                            </AttachmentSize>
-                          )}
                           <FontAwesomeIcon
                             icon={faDownload}
                             style={{
@@ -13662,50 +13699,107 @@ const Orders25List = () => {
                       Přílohy faktur ({faktury.reduce((sum, f) => sum + ((f.prilohy && f.prilohy.length) || 0), 0)})
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {faktury.map((faktura, fIndex) => {
                         const fakturaPrilohy = faktura.prilohy || [];
                         if (!fakturaPrilohy.length) return null;
 
-                        return fakturaPrilohy.map((priloha, pIndex) => {
-                          // ✅ Přidej faktura_id do přílohy pro správný download
-                          const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
-                          
-                          return (
-                            <AttachmentItem 
-                              key={`${fIndex}-${pIndex}`}
-                              onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
-                              style={{ cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%23059669%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer" }}
-                              title={`Stáhnout: ${priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument'} [${faktura.cislo_faktury || `Faktura ${fIndex + 1}`}]`}
-                            >
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <AttachmentName style={{ fontWeight: 500 }}>
-                                {highlightSearchText(priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument', globalFilter)}
-                                <span style={{ color: '#047857', fontWeight: 600, marginLeft: '6px' }}>
-                                  [{faktura.cislo_faktury || `Faktura ${fIndex + 1}`}]
-                                </span>
-                              </AttachmentName>
-                              {priloha.popis && (
-                                <div style={{ fontSize: '0.8em', color: '#94a3b8' }}>
-                                  {highlightSearchText(priloha.popis, globalFilter)}
-                                </div>
-                              )}
+                        return (
+                          <div key={fIndex} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {/* Nadpis faktury */}
+                            <div style={{
+                              fontWeight: 600,
+                              fontSize: '0.85em',
+                              color: '#047857',
+                              marginBottom: '2px',
+                              paddingLeft: '4px'
+                            }}>
+                              Faktura {faktura.cislo_faktury || faktura.fa_cislo_vema || `#${fIndex + 1}`}
                             </div>
-                            {priloha.velikost_souboru_b && (
-                              <AttachmentSize>
-                                ({Math.round(priloha.velikost_souboru_b / 1024)} KB)
-                              </AttachmentSize>
-                            )}
-                            <FontAwesomeIcon
-                              icon={faDownload}
-                              style={{
-                                color: '#059669',
-                                marginLeft: '8px'
-                              }}
-                            />
-                            </AttachmentItem>
-                          );
-                        });
+
+                            {/* Přílohy faktury - s levým borderem */}
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                              paddingLeft: '12px',
+                              borderLeft: '3px solid #10b981'
+                            }}>
+                            {fakturaPrilohy.map((priloha, pIndex) => {
+                              // ✅ Přidej faktura_id do přílohy pro správný download
+                              const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
+                              
+                              return (
+                                <AttachmentItem 
+                                  key={pIndex}
+                                  onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
+                                  style={{ 
+                                    cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%23059669%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer"
+                                  }}
+                                  title={`Stáhnout: ${priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument'}`}
+                                >
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <AttachmentName style={{ fontWeight: 500 }}>
+                                      {highlightSearchText(priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument', globalFilter)}
+                                      {priloha.velikost_souboru_b && (
+                                        <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: '4px' }}>
+                                          ({Math.round(priloha.velikost_souboru_b / 1024)} KB)
+                                        </span>
+                                      )}
+                                    </AttachmentName>
+                                    {priloha.typ_prilohy && (
+                                      <span style={{ 
+                                        display: 'inline-block',
+                                        padding: '0.2rem 0.6rem',
+                                        borderRadius: '12px',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 600,
+                                        background: '#d1fae5',
+                                        color: '#065f46'
+                                      }}>
+                                        {(() => {
+                                          const typeMap = {
+                                            'FAKTURA': 'FAKTURA',
+                                            'ISDOC': 'ISDOC',
+                                            'PRILOHA': 'PŘÍLOHA',
+                                            'SMLOUVA': 'SMLOUVA',
+                                            'IMPORT': 'IMPORT',
+                                            'CENOVA_NABIDKA': 'CENOVÁ NABÍDKA',
+                                            'DODACI_LIST': 'DODACÍ LIST',
+                                            'PROFORMA': 'PROFORMA',
+                                            'OBJEDNAVKA': 'OBJEDNÁVKA',
+                                            'OBJEDNAVKA_ZAKAZNIKA': 'OBJEDNÁVKA ZÁKAZNÍKA',
+                                            'SPECIFIKACE': 'SPECIFIKACE',
+                                            'PROTOKOL': 'PROTOKOL',
+                                            'CERTIFIKAT': 'CERTIFIKÁT',
+                                            'JINE': 'JINÉ',
+                                            'JINA': 'JINÁ'
+                                          };
+                                          return typeMap[priloha.typ_prilohy] || priloha.typ_prilohy;
+                                        })()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {priloha.popis && (
+                                    <div style={{ fontSize: '0.8em', color: '#94a3b8' }}>
+                                      {highlightSearchText(priloha.popis, globalFilter)}
+                                    </div>
+                                  )}
+                                </div>
+                                <FontAwesomeIcon
+                                  icon={faDownload}
+                                  style={{
+                                    color: '#059669',
+                                    marginLeft: '8px'
+                                  }}
+                                />
+                                </AttachmentItem>
+                              );
+                            })}
+                            </div>
+                          </div>
+                        );
                       })}
                     </div>
                   </div>
