@@ -529,8 +529,13 @@ function handle_global_settings_get_single($db, $token_user_id, $key) {
  * GET /maintenance-status
  * Kontrola údržbového režimu - dostupné i bez autentizace
  */
-function handle_maintenance_status_check($db) {
+function handle_maintenance_status_check($config) {
     try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+        
         $settingsModel = new GlobalSettingsModel($db);
         $maintenanceMode = $settingsModel->getSetting('maintenance_mode');
         
@@ -554,7 +559,14 @@ function handle_maintenance_status_check($db) {
  * POST /maintenance-message
  * Načte údržbovou zprávu - dostupné pro přihlášené uživatele
  */
-function handle_maintenance_message($input, $db) {
+function handle_maintenance_message($input, $config) {
+    // Připojení k databázi
+    $db = get_db($config);
+    if (!$db) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
+        return;
+    }
     // Autentizace - pouze ověří že je přihlášený
     $username = isset($input['username']) ? $input['username'] : '';
     $token = isset($input['token']) ? $input['token'] : '';

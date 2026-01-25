@@ -2402,9 +2402,10 @@ const AttachmentItem = styled.div`
   background: white;
   border-radius: 4px;
   font-size: 0.85em;
+  transition: background 0.15s ease;
 
   &:hover {
-    background: #f8fafc;
+    background: #e0f2fe !important;
   }
 `;
 
@@ -9982,8 +9983,20 @@ const Orders25List = () => {
 
       orderUpdate.stav_workflow_kod = JSON.stringify(newWorkflowStates);
 
-      // Zavolej API pro update
-      await updateOrderV2(orderToApprove.id, orderUpdate, token, username);
+      // 🚀 OPTIMISTICKÝ UPDATE - okamžitě zobraz změnu před DB reloadem
+      setOrders(prev => prev.map(o => {
+        if (o.id === orderToApprove.id) {
+          return {
+            ...o,
+            stav_workflow_kod: newWorkflowStates,
+            stav_objednavky: orderUpdate.stav_objednavky,
+            schvaleni_komentar: orderUpdate.schvaleni_komentar,
+            dt_schvaleni: orderUpdate.dt_schvaleni,
+            schvalil_uzivatel_id: orderUpdate.schvalil_uzivatel_id
+          };
+        }
+        return o;
+      }));
 
       // Zavři dialog
       setShowApprovalDialog(false);
@@ -9991,7 +10004,7 @@ const Orders25List = () => {
       setApprovalComment('');
       setApprovalCommentError('');
 
-      // Zobraz bohatší úspěšnou zprávu s detaily
+      // Zobraz úspěšnou zprávu
       const currentUser = users[currentUserId];
       const userName = currentUser ? `${currentUser.jmeno} ${currentUser.prijmeni}` : 'Váš účet';
       
@@ -10002,23 +10015,27 @@ const Orders25List = () => {
       };
       showToast(actionMessages[action], { type: 'success' });
 
-      // Zvýrazni objednávku (stejně jako při ukládání z formuláře)
+      // Zvýrazni objednávku
       setHighlightOrderId(orderToApprove.id);
 
-      // 🔔 TRIGGER NOTIFICATION - Pošli notifikaci podle akce
+      // 🔥 API CALL na pozadí (nedočkáme se ho)
+      updateOrderV2(orderToApprove.id, orderUpdate, token, username).catch(apiError => {
+        console.error('API update failed:', apiError);
+        showToast('Změna byla zobrazena, ale mohlo dojít k chybě na serveru. Obnovte stránku.', { type: 'warning' });
+      });
+
+      // 🔔 TRIGGER NOTIFICATION na pozadí
       try {
         const eventTypeMap = {
           approve: 'ORDER_APPROVED',
           reject: 'ORDER_REJECTED', 
-          postpone: 'ORDER_PENDING_APPROVAL' // Odložení = stále čeká na schválení
+          postpone: 'ORDER_PENDING_APPROVAL'
         };
         
         const eventType = eventTypeMap[action];
         if (eventType) {
-          console.log(`🔔 Triggering notification: ${eventType} for order ${orderToApprove.id}`);
-          
           const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-          await fetch(`${baseURL}notifications/trigger`, {
+          fetch(`${baseURL}notifications/trigger`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -10029,24 +10046,28 @@ const Orders25List = () => {
               trigger_user_id: currentUserId,
               debug: false
             })
-          });
-          
-          console.log(`✅ Notification triggered successfully: ${eventType}`);
+          }).catch(err => console.error('Notification error:', err));
         }
       } catch (notifError) {
         console.error('❌ Failed to trigger notification:', notifError);
-        // Nekritická chyba - pokračuj normálně
       }
 
-      // Obnov seznam objednávek (tiše na pozadí bez loading gate)
-      ordersCacheService.invalidate(user_id);
-      await loadData(true, true); // forceRefresh=true, silent=true
-
-      // Reset progress bar po dokončení
-      setTimeout(() => setProgress?.(0), 300);
-
-      // ⚠️ Border zůstane až do příštího refresh (libovolným způsobem)
-      // highlightOrderId se vynuluje automaticky při příštím loadData()
+      // ⚡ RYCHLÝ REFRESH - pouze té konkrétní objednávky z DB (na pozadí)
+      setTimeout(async () => {
+        try {
+          const result = await getOrderV2(orderToApprove.id, token, username, true, 0);
+          
+          if (result?.data) {
+            setOrders(prev => prev.map(o => 
+              o.id === orderToApprove.id ? { ...o, ...result.data } : o
+            ));
+            ordersCacheService.invalidate(user_id);
+          }
+        } catch (refreshError) {
+          console.error('Background refresh failed:', refreshError);
+          // Není kritické - optimistický update už proběhl
+        }
+      }, 500); // Po 500ms obnov tu konkrétní objednávku z DB
 
     } catch (error) {
       console.error('Chyba při zpracování schválení:', error);
@@ -13519,7 +13540,12 @@ const Orders25List = () => {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {prilohy.slice(0, 10).map((priloha, index) => (
-                        <AttachmentItem key={index}>
+                        <AttachmentItem 
+                          key={index}
+                          onClick={() => handleDownloadAttachment(priloha, order.id)}
+                          style={{ cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%233b82f6%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer" }}
+                          title={`Stáhnout: ${priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`}`}
+                        >
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <AttachmentName style={{ fontWeight: 500 }}>
                               {highlightSearchText(priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`, globalFilter)}
@@ -13538,11 +13564,8 @@ const Orders25List = () => {
                             icon={faDownload}
                             style={{
                               color: '#3b82f6',
-                              cursor: 'pointer',
                               marginLeft: '8px'
                             }}
-                            title="Stáhnout přílohu"
-                            onClick={() => handleDownloadAttachment(priloha, order.id)}
                           />
                         </AttachmentItem>
                       ))}
@@ -13578,7 +13601,12 @@ const Orders25List = () => {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {dodatecneDokumenty.map((dokument, index) => (
-                        <AttachmentItem key={index}>
+                        <AttachmentItem 
+                          key={index}
+                          onClick={() => handleDownloadAttachment(dokument, order.id)}
+                          style={{ cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%237c3aed%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer" }}
+                          title={`Stáhnout: ${dokument.nazev_souboru || dokument.nazev || `Dokument ${index + 1}`}`}
+                        >
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <AttachmentName style={{ fontWeight: 500 }}>
                               {highlightSearchText(dokument.nazev_souboru || dokument.nazev || `Dokument ${index + 1}`, globalFilter)}
@@ -13597,11 +13625,8 @@ const Orders25List = () => {
                             icon={faDownload}
                             style={{
                               color: '#7c3aed',
-                              cursor: 'pointer',
                               marginLeft: '8px'
                             }}
-                            title="Stáhnout dokument"
-                            onClick={() => handleDownloadAttachment(dokument, order.id)}
                           />
                         </AttachmentItem>
                       ))}
@@ -13633,7 +13658,12 @@ const Orders25List = () => {
                           const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
                           
                           return (
-                            <AttachmentItem key={`${fIndex}-${pIndex}`}>
+                            <AttachmentItem 
+                              key={`${fIndex}-${pIndex}`}
+                              onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
+                              style={{ cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%23059669%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer" }}
+                              title={`Stáhnout: ${priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument'} [${faktura.cislo_faktury || `Faktura ${fIndex + 1}`}]`}
+                            >
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <AttachmentName style={{ fontWeight: 500 }}>
                                 {highlightSearchText(priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument', globalFilter)}
@@ -13656,11 +13686,8 @@ const Orders25List = () => {
                               icon={faDownload}
                               style={{
                                 color: '#059669',
-                                cursor: 'pointer',
                                 marginLeft: '8px'
                               }}
-                              title="Stáhnout přílohu"
-                              onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
                             />
                             </AttachmentItem>
                           );

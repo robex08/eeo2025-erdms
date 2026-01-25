@@ -1295,7 +1295,7 @@ switch ($endpoint) {
     case 'maintenance-status':
         require_once __DIR__ . '/v2025.03_25/lib/globalSettingsHandlers.php';
         if ($request_method === 'GET') {
-            handle_maintenance_status_check($pdo);
+            handle_maintenance_status_check($config);
         } else {
             http_response_code(405);
             echo json_encode(array('error' => 'Method not allowed'));
@@ -1305,7 +1305,7 @@ switch ($endpoint) {
     case 'maintenance-message':
         require_once __DIR__ . '/v2025.03_25/lib/globalSettingsHandlers.php';
         if ($request_method === 'POST') {
-            handle_maintenance_message($input, $pdo);
+            handle_maintenance_message($input, $config);
         } else {
             http_response_code(405);
             echo json_encode(array('error' => 'Method not allowed'));

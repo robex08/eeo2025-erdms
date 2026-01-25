@@ -5951,6 +5951,7 @@ function handle_order_v2_lock($input, $config, $queries, $order_id) {
             ':user_id' => $current_user_id
         ]);
         
+        http_response_code(200);
         echo json_encode([
             'status' => 'ok',
             'message' => 'Objednávka zamčena pro editaci',
@@ -5998,8 +5999,26 @@ function handle_order_v2_unlock($input, $config, $queries, $order_id) {
             return;
         }
         
+        // Normalizace zamek_uzivatel_id (NULL nebo 0 = nezamčeno)
+        $locked_by = (int)$order['zamek_uzivatel_id'];
+        
+        // Pokud je objednávka nezamčená, můžeme rovnou vrátit success (idempotence)
+        if (!$locked_by) {
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'ok',
+                'message' => 'Objednávka nebyla zamčená',
+                'data' => [
+                    'order_id' => $order_id,
+                    'was_locked' => false,
+                    'unlocked_at' => date('Y-m-d H:i:s')
+                ]
+            ]);
+            return;
+        }
+        
         // Může odemknout pouze ten, kdo zamkl, nebo admin
-        if ($order['zamek_uzivatel_id'] && $order['zamek_uzivatel_id'] != $current_user_id && !$token_data['is_admin']) {
+        if ($locked_by != $current_user_id && !$token_data['is_admin']) {
             http_response_code(403);
             echo json_encode([
                 'status' => 'error',
@@ -6012,11 +6031,13 @@ function handle_order_v2_unlock($input, $config, $queries, $order_id) {
         $unlock_stmt = $db->prepare(unlockOrderQuery());
         $unlock_stmt->execute([':id' => $order_id]);
         
+        http_response_code(200);
         echo json_encode([
             'status' => 'ok',
             'message' => 'Objednávka odemčena',
             'data' => [
                 'order_id' => $order_id,
+                'was_locked' => true,
                 'unlocked_at' => date('Y-m-d H:i:s')
             ]
         ]);

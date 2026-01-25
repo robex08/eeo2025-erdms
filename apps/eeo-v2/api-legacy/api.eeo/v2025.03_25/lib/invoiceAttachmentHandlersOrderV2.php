@@ -68,15 +68,16 @@ function checkAttachmentEditPermission($user_data, $attachment, $invoice = null)
         );
     }
     
-    // 2. ADMINI mají vždy plná práva
+    // 2. ADMINI a INVOICE_MANAGE mají vždy plná práva
     $is_admin = in_array('SUPERADMIN', $user_data['roles']) || 
-                in_array('ADMINISTRATOR', $user_data['roles']);
+                in_array('ADMINISTRATOR', $user_data['roles']) ||
+                in_array('INVOICE_MANAGE', $user_data['roles']);
     
     if ($is_admin) {
         return array(
             'can_edit' => true,
             'can_delete' => true,
-            'reason' => 'admin_role'
+            'reason' => 'admin_or_invoice_manage_role'
         );
     }
     
@@ -821,6 +822,53 @@ function handle_order_v2_update_invoice_attachment($input, $config, $queries) {
         if (!$db) {
             http_response_code(500);
             echo json_encode(array('success' => false, 'error' => 'Chyba připojení k databázi'));
+            return;
+        }
+        
+        // Získat údaje uživatele včetně rolí
+        $user_data = getUserDataForAttachmentPermissions($username, $db);
+        if (!$user_data) {
+            http_response_code(404);
+            echo json_encode(array('success' => false, 'error' => 'Uživatel nenalezen'));
+            return;
+        }
+        
+        // Načíst přílohu pro kontrolu oprávnění
+        $sql = "SELECT fp.id, fp.nahrano_uzivatel_id,
+                       u.usek_id as uploader_usek_id,
+                       f.id as faktura_id, f.fa_stav,
+                       CASE WHEN FIND_IN_SET('DOKONCENO', REPLACE(o.stav_workflow_kod, '[', '')) > 0 
+                            THEN 'DOKONCENO' 
+                            ELSE 'AKTIVNI' END as invoice_stav
+                FROM `25a_faktury_prilohy` fp
+                LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
+                LEFT JOIN `25a_objednavky_faktury` f ON fp.faktura_id = f.id
+                LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+                WHERE fp.id = ? AND fp.faktura_id = ? LIMIT 1";
+        $stmt = $db->prepare($sql);
+        $stmt->execute(array($attachment_id, $invoice_id));
+        $attachment = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$attachment) {
+            http_response_code(404);
+            echo json_encode(array(
+                'success' => false,
+                'error' => 'Příloha nenalezena'
+            ));
+            return;
+        }
+        
+        // Kontrola oprávnění pro editaci přílohy
+        $invoice_for_check = array('stav' => $attachment['invoice_stav']);
+        $permissions = checkAttachmentEditPermission($user_data, $attachment, $invoice_for_check);
+        
+        if (!$permissions['can_edit']) {
+            http_response_code(403);
+            echo json_encode(array(
+                'success' => false,
+                'error' => 'Nemáte oprávnění upravit tuto přílohu',
+                'reason' => $permissions['reason']
+            ));
             return;
         }
 
