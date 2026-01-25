@@ -1409,8 +1409,8 @@ const getDefaultSettings = (hasPermission, userDetail) => {
     auto_sbalit_zamcene_sekce: true,
     
     // Předvolby pro OrderForm25
-    vychozi_garant_id: null,  // Výchozí garant pro nové objednávky
-    vychozi_prikazce_id: null, // Výchozí příkazce pro nové objednávky
+    vychozi_garant_id: '', // Výchozí garant pro nové objednávky (prázdný string místo null)
+    vychozi_prikazce_id: '', // Výchozí příkazce pro nové objednávky (prázdný string místo null)
     
     // Výchozí rok a období
     vychozi_rok: 'current',
@@ -1442,6 +1442,12 @@ const getDefaultSettings = (hasPermission, userDetail) => {
     
     // Export nastavení
     export_pokladna_format: 'xlsx',
+    
+    // CSV Export nastavení - oddělovače
+    exportCsvDelimiter: 'semicolon', // 'semicolon', 'tab', 'pipe', 'custom'
+    exportCsvCustomDelimiter: '', // Vlastní oddělovač (max 3 znaky)
+    exportCsvListDelimiter: 'pipe', // 'pipe', 'comma', 'semicolon', 'custom'
+    exportCsvListCustomDelimiter: '', // Vlastní oddělovač pro seznamy (max 3 znaky)
     
     // Export CSV sloupce - optimalizovaná verze podle DB 25a_objednavky
     export_csv_sloupce: {
@@ -3877,7 +3883,7 @@ const ProfilePage = () => {
                       <CustomSelect
                         icon={<User size={16} />}
                         value={userSettings.vychozi_garant_id || ''}
-                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_garant_id', value: e.target.value || null } })}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_garant_id', value: e.target.value || '' } })}
                         options={[
                           { value: '', label: '-- Žádný (nevybírat automaticky) --' },
                           ...activeUsers.map(u => ({
@@ -3910,7 +3916,7 @@ const ProfilePage = () => {
                       <CustomSelect
                         icon={<User size={16} />}
                         value={userSettings.vychozi_prikazce_id || ''}
-                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_prikazce_id', value: e.target.value || null } })}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_prikazce_id', value: e.target.value || '' } })}
                         options={[
                           { value: '', label: '-- Žádný (nevybírat automaticky) --' },
                           ...approvers.map(u => ({
@@ -3945,7 +3951,7 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Layout size={16} />}
-                        value={userSettings.vychozi_sekce_po_prihlaseni}
+                        value={userSettings.vychozi_sekce_po_prihlaseni || 'orders'}
                         onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_sekce_po_prihlaseni', value: e.target.value } })}
                         options={MENU_TAB_OPTIONS}
                         placeholder="Vyberte sekci..."
@@ -3972,7 +3978,7 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <MultiSelectLocal
                         field="vychozi_filtry_stavu_objednavek"
-                        value={userSettings.vychozi_filtry_stavu_objednavek}
+                        value={userSettings.vychozi_filtry_stavu_objednavek || []}
                         onChange={(newValue) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_filtry_stavu_objednavek', value: newValue } })}
                         options={orderStatesList.map(status => ({
                           value: status.nazev_stavu || status.nazev || status.kod_stavu,
@@ -4002,7 +4008,7 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Calendar size={16} />}
-                        value={userSettings.vychozi_rok}
+                        value={userSettings.vychozi_rok || 'current'}
                         onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_rok', value: e.target.value } })}
                         options={YEAR_OPTIONS}
                         placeholder="Vyberte rok..."
@@ -4029,7 +4035,7 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Calendar size={16} />}
-                        value={userSettings.vychozi_obdobi}
+                        value={userSettings.vychozi_obdobi || 'last-quarter'}
                         onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_obdobi', value: e.target.value } })}
                         options={PERIOD_OPTIONS}
                         placeholder="Vyberte období..."
@@ -5288,7 +5294,7 @@ const ProfilePage = () => {
                         </span>
                         <input
                           type="text"
-                          value={userSettings.exportCsvCustomDelimiter}
+                          value={userSettings.exportCsvCustomDelimiter || ''}
                           onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvCustomDelimiter', value: e.target.value.slice(0, 3) } })}
                           disabled={userSettings.exportCsvDelimiter !== 'custom'}
                           placeholder="Zadejte znak..."
@@ -5414,7 +5420,7 @@ const ProfilePage = () => {
                         </span>
                         <input
                           type="text"
-                          value={userSettings.exportCsvListCustomDelimiter}
+                          value={userSettings.exportCsvListCustomDelimiter || ''}
                           onChange={(e) => {
                             const newValue = e.target.value.slice(0, 3);
                             // Kontrola kolize s hlavním oddělovačem
@@ -5458,7 +5464,7 @@ const ProfilePage = () => {
                     </SettingLabel>
                     <CustomSelect
                       icon={<Download size={16} />}
-                      value={userSettings.export_pokladna_format}
+                      value={userSettings.export_pokladna_format || 'xlsx'}
                       onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'export_pokladna_format', value: e.target.value } })}
                       options={EXPORT_FORMAT_OPTIONS}
                       placeholder="Vyberte formát..."
