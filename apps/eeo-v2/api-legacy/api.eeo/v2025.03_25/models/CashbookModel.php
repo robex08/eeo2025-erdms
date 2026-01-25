@@ -66,6 +66,17 @@ class CashbookModel {
         $params = array();
         
         // Aplikovat filtry
+        
+        // ✅ NOVÝ: Filtr podle seznamu pokladen (pro zobrazení knih uživatele)
+        if (!empty($filters['pokladna_ids']) && is_array($filters['pokladna_ids'])) {
+            $placeholders = implode(',', array_fill(0, count($filters['pokladna_ids']), '?'));
+            $sql .= " AND kb.pokladna_id IN (" . $placeholders . ")";
+            foreach ($filters['pokladna_ids'] as $pokladnaId) {
+                $params[] = $pokladnaId;
+            }
+        }
+        
+        // ✅ Zachováno pro zpětnou kompatibilitu (admin může filtrovat podle konkrétního uživatele)
         if (!empty($filters['uzivatel_id'])) {
             $sql .= " AND kb.uzivatel_id = ?";
             $params[] = $filters['uzivatel_id'];
@@ -171,7 +182,20 @@ class CashbookModel {
     }
     
     /**
-     * Získat knihu podle uživatele, roku a měsíce
+     * Získat knihu podle pokladny, roku a měsíce
+     * ✅ SPRÁVNĚ: JEDNA společná kniha pro celou pokladnu, ne pro každého uživatele!
+     */
+    public function getBookByPeriod($pokladnaId, $year, $month) {
+        $stmt = $this->db->prepare("
+            SELECT * FROM " . TBL_POKLADNI_KNIHY . " 
+            WHERE pokladna_id = ? AND rok = ? AND mesic = ?
+        ");
+        $stmt->execute(array($pokladnaId, $year, $month));
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * @deprecated NEPOUŽÍVAT! Vytvářelo to duplicitní knihy pro každého uživatele
      */
     public function getBookByUserPeriod($userId, $year, $month) {
         $stmt = $this->db->prepare("

@@ -21,13 +21,9 @@ api2.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    console.log('🔴 API Error:', error.response?.status, originalRequest?.url);
-
     // Pokud je to 401, uživatel musí být odhlášen
     if (error.response?.status === 401 && !originalRequest?._logout_triggered) {
       originalRequest._logout_triggered = true;
-      
-      console.log('🚪 Token expired or invalid - triggering logout');
       
       // Trigger authError event pro logout
       if (typeof window !== 'undefined') {

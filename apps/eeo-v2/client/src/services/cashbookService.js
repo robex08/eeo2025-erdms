@@ -121,6 +121,28 @@ const cashbookAPI = {
   },
 
   /**
+   * 📚 Načíst knihy pro konkrétní pokladnu (nová logika: jedna kniha = všichni uživatelé)
+   * @param {number} pokladnaId - ID pokladny
+   * @param {number} rok - Rok (např. 2026)
+   * @param {number} mesic - Měsíc (1-12)
+   * @returns {Promise<Object>} Response s polem books
+   */
+  listBooksForCashbox: async (pokladnaId, rok, mesic) => {
+    try {
+      const auth = await getAuthData();
+      const response = await api2.post('cashbook-list', {
+        ...auth,
+        pokladna_ids: [pokladnaId],  // Backend nyní filtruje podle pokladna_id místo uzivatel_id
+        rok,
+        mesic
+      });
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'načítání knihy pokladny');
+    }
+  },
+
+  /**
    * 2️⃣ Získání detailu knihy včetně položek
    * @param {number} bookId - ID knihy
    * @param {boolean} forceRecalc - Vynutit přepočet převodu z předchozího měsíce
@@ -133,16 +155,6 @@ const cashbookAPI = {
         ...auth,
         book_id: bookId,
         force_recalc: forceRecalc ? 1 : 0  // ✅ Říct backendu, aby přepočítal převod
-      });
-      
-      // 🔥 DEBUG: Výpis RAW dat z BE
-      console.log('📦 RAW BE Response (cashbook-get) for book_id=' + bookId + ':', {
-        status: response.data.status,
-        hasData: !!response.data.data,
-        book: response.data.data?.book,
-        entriesCount: response.data.data?.entries?.length || 0,
-        entries: response.data.data?.entries,
-        FULL_RESPONSE: response.data
       });
       
       return response.data;

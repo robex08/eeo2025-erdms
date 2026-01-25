@@ -17,7 +17,9 @@ import {
   faCalendarDay,
   faLock,
   faLockOpen,
-  faExclamationTriangle
+  faExclamationTriangle,
+  faBolt,
+  faUser
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -650,6 +652,7 @@ const TableContainer = styled.div`
 const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 
   th, td {
     padding: 0.75rem;
@@ -762,6 +765,16 @@ const Table = styled.table`
     font-size: 0.875rem;
     color: #6b7280;
     text-align: left;
+  }
+
+  .author-cell {
+    width: 50px;
+    min-width: 50px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #4b5563;
+    font-family: monospace;
   }
 
   .actions-cell {
@@ -997,6 +1010,30 @@ const CashBookPage = () => {
   const { user, token, hasPermission, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
+  /**
+   * Vytvoří iniciály z jména autora (PříjmeníJméno → iniciály)
+   * Podporuje české znaky (ě,š,č,ř,ž,ý,á,í,é,ú,ů,ď,ť,ň)
+   * @param {string} fullName - Celé jméno ve formátu "Jméno Příjmení" nebo "Příjmení Jméno"
+   * @returns {string} Iniciály ve formátu "PP" (2 písmena)
+   */
+  const getAuthorInitials = (fullName) => {
+    if (!fullName || fullName.trim() === '') return '??';
+    
+    const names = fullName.trim().split(/\s+/);
+    if (names.length === 0) return '??';
+    
+    // Backend vrací "Jméno Příjmení" → potřebujeme "PříjmeníJméno"
+    // Takže pro "Robert Holovský" chceme "HR" (Holovský Robert)
+    let firstName = names[0];
+    let lastName = names.length > 1 ? names[names.length - 1] : '';
+    
+    // První písmeno příjmení + první písmeno jména
+    const initial1 = lastName.charAt(0).toUpperCase();
+    const initial2 = firstName.charAt(0).toUpperCase();
+    
+    return initial1 && initial2 ? `${initial1}${initial2}` : (initial1 || initial2 || '??');
+  };
+
   // 🆕 Načíst poslední výběr období z localStorage (hlavně pro adminy)
   const loadSavedPeriod = () => {
     try {
@@ -1211,6 +1248,7 @@ const CashBookPage = () => {
       lpCode: hasDetails ? '' : (dbEntry.lp_kod || ''), // Master LP kod jen pokud NENÍ multi-LP
       note: dbEntry.poznamka || '',
       isEditing: false,
+      created_by_name: dbEntry.created_by_name || dbEntry.vytvoril_jmeno || '',  // 🆕 Jméno autora
 
       // 🆕 MULTI-LP support
       detailItems: detailItems.map(item => ({
@@ -1273,112 +1311,76 @@ const CashBookPage = () => {
     }
 
     try {
-      // ✅ "u pokladen platí, že všichni vidí vše" = načíst položky VŠECH uživatelů v pokladně
+      // ✅ NOVÁ LOGIKA: "jedna pokladna = jedna kniha pro všechny uživatele"
       const cisloPokladny = mainAssignment.cislo_pokladny;
       const pokladnaId = mainAssignment.pokladna_id;
       
-      // 1. Najít všechny uživatele přiřazené k této pokladně (podle ČÍSLA pokladny)
-      const usersInCashbox = allAssignments.filter(a => a.cislo_pokladny === cisloPokladny);
+      console.log('🔍 Načítám knihu pro pokladnu', { cisloPokladny, pokladnaId, rok: currentYear, mesic: currentMonth });
       
-      if (usersInCashbox.length === 0) {
-        console.warn('⚠️ Žádní uživatelé v pokladně', { cisloPokladny, pokladnaId });
+      // 1. Načíst knihu pro tuto pokladnu (backend vrátí jednu sdílenou knihu)
+      const booksResult = await cashbookAPI.listBooksForCashbox(pokladnaId, currentYear, currentMonth);
+      
+      if (booksResult.status !== 'ok' || !booksResult.data?.books || booksResult.data.books.length === 0) {
+        console.warn('⚠️ Žádná kniha pro pokladnu', { cisloPokladny, pokladnaId });
+        
+        // Pokud kniha neexistuje, zkusit vytvořit novou
+        // createBook(prirazeniPokladnyId, rok, mesic, uzivatelId)
+        const createResult = await cashbookAPI.createBook(
+          mainAssignment.id,     // prirazeni_id z 25a_pokladny_uzivatele
+          currentYear,
+          currentMonth,
+          userDetail.id          // uzivatel_id (ten kdo vytváří)
+        );
+        if (createResult.status === 'ok' && createResult.data?.book) {
+          const newBook = createResult.data.book;
+          console.log('✅ Vytvořena nová kniha', newBook);
+          
+          setCurrentBookId(newBook.id);
+          setCurrentBookData(newBook);
+          setLpKodPovinny(newBook.pokladna_lp_kod_povinny === 1 || newBook.pokladna_lp_kod_povinny === '1');
+          setBookStatus(newBook.stav_knihy || 'aktivni');
+          setCarryOverAmount(parseFloat(newBook.prevod_z_predchoziho || 0));
+          
+          return { book: newBook, entries: [] };
+        }
+        
         return { book: null, entries: [] };
       }
       
-      // 2. Načíst knihy pro všechny uživatele
-      let allBooks = [];
-      for (const userAssignment of usersInCashbox) {
-        const userId = userAssignment.uzivatel_id;
-        if (!userId) continue;
-        
-        const booksResult = await cashbookAPI.listBooks(userId, currentYear, currentMonth);
-        if (booksResult.status === 'ok' && booksResult.data?.books?.length > 0) {
-          // ✅ FIX: Filtrovat jen knihy pro TUTO pokladnu (podle cislo_pokladny)
-          const booksForThisCashbox = booksResult.data.books.filter(b => 
-            b.cislo_pokladny === cisloPokladny || b.pokladna_id === pokladnaId
-          );
-          allBooks.push(...booksForThisCashbox);
-        }
+      // 2. Použít první (a jedinou) knihu
+      const mainBook = booksResult.data.books[0];
+      console.log('📖 Načtena kniha', mainBook);
+
+      setCurrentBookId(mainBook.id);
+      setCurrentBookData(mainBook);
+      setLpKodPovinny(mainBook.pokladna_lp_kod_povinny === 1 || mainBook.pokladna_lp_kod_povinny === '1');
+      setBookStatus(mainBook.stav_knihy || 'aktivni');
+      setCarryOverAmount(parseFloat(mainBook.prevod_z_predchoziho || 0));
+      
+      // 3. Načíst položky z knihy
+      const bookDetail = await cashbookAPI.getBook(mainBook.id, true);
+      if (bookDetail.status !== 'ok' || !bookDetail.data?.entries) {
+        console.warn('⚠️ Nelze načíst položky knihy');
+        return { book: mainBook, entries: [] };
       }
       
-      if (allBooks.length > 0) {
-        // Použít první knihu jako "hlavní" pro metadata
-        const mainBook = allBooks[0];
-
-        setCurrentBookId(mainBook.id);
-        setCurrentBookData(mainBook);
-        setLpKodPovinny(mainBook.pokladna_lp_kod_povinny === 1 || mainBook.pokladna_lp_kod_povinny === '1');
-        setBookStatus(mainBook.stav_knihy || 'aktivni');
-        setCarryOverAmount(parseFloat(mainBook.prevod_z_predchoziho || 0));
-
-        // 3. Načíst položky ze VŠECH knih (všech uživatelů)
-        const allEntries = [];
-        for (const book of allBooks) {
-          const bookDetail = await cashbookAPI.getBook(book.id, true);
-          if (bookDetail.status === 'ok' && bookDetail.data?.entries) {
-            allEntries.push(...bookDetail.data.entries);
-          }
+      const allEntries = bookDetail.data.entries;
+      
+      // Seřadit položky chronologicky
+      allEntries.sort((a, b) => {
+        const dateA = new Date(a.datum_zapisu || a.datum);
+        const dateB = new Date(b.datum_zapisu || b.datum);
+        if (dateA.getTime() !== dateB.getTime()) {
+          return dateA - dateB;
         }
-        
-        // Seřadit všechny položky chronologicky
-        allEntries.sort((a, b) => {
-          const dateA = new Date(a.datum_zapisu || a.datum);
-          const dateB = new Date(b.datum_zapisu || b.datum);
-          if (dateA.getTime() !== dateB.getTime()) {
-            return dateA - dateB;
-          }
-          return (a.poradi_radku || 0) - (b.poradi_radku || 0);
-        });
-
-        const transformedEntries = allEntries.map(transformDBEntryToFrontend);
-        return { book: mainBook, entries: transformedEntries };
-      } else {
-        // 4. Žádné knihy neexistují - vytvořit pro aktuálního/hlavního uživatele
-        const targetUserId = mainAssignment.uzivatel_id || userDetail.id;
-        
-        if (mainAssignment?.id) {
-          const createResult = await cashbookAPI.createBook(
-            mainAssignment.id,
-            currentYear,
-            currentMonth,
-            targetUserId
-          );
-
-          if (createResult.status === 'ok') {
-            // ✅ Backend vrací jen book_id (ne celý objekt)
-            const bookId = createResult.data?.book_id || createResult.data?.id;
-
-            if (bookId) {
-              // Načíst kompletní knihu z DB (včetně prevod_z_predchoziho s force_recalc)
-              const bookDetail = await cashbookAPI.getBook(bookId, true);
-
-              if (bookDetail.status === 'ok') {
-                const newBook = bookDetail.data?.book || bookDetail.data;
-
-                setCurrentBookId(bookId);
-                setCurrentBookData(newBook); // 🆕 Uložit celý objekt knihy
-                setLpKodPovinny(newBook.pokladna_lp_kod_povinny === 1 || newBook.pokladna_lp_kod_povinny === '1'); // 🆕 LP kód povinnost
-                setBookStatus(newBook.stav_knihy || 'aktivni');
-                setCarryOverAmount(parseFloat(newBook.prevod_z_predchoziho || 0));
-
-                const transformedEntries = (bookDetail.data?.entries || []).map(transformDBEntryToFrontend);
-                return { book: newBook, entries: transformedEntries };
-              }
-            }
-          }
-
-          // Pokud se sem dostaneme, něco se nepovedlo
-          const errorMsg = createResult.message || createResult.error || 'Backend nevrátil book_id';
-          throw new Error('Nepodařilo se vytvořit knihu: ' + errorMsg);
-        } else {
-          // ❌ Uživatel nemá přiřazení pokladny - zobrazit chybu
-          console.warn('⛔ Uživatel nemá přiřazení k žádné pokladně', { mainAssignment, userDetail });
-          throw new Error('NO_ASSIGNMENT');
-        }
-      }
+        return (a.poradi_radku || 0) - (b.poradi_radku || 0);
+      });
+      
+      const transformedEntries = allEntries.map(transformDBEntryToFrontend);
+      return { book: mainBook, entries: transformedEntries };
     } catch (error) {
-      console.error('❌ Chyba při zajištění existence knihy:', error);
-
+      console.error('❌ Chyba v ensureBookExists:', error);
+      
       // ✅ Speciální zpracování chyb s nastavením accessError místo jen toastu
       if (error.message === 'NO_ASSIGNMENT') {
         setAccessError({
@@ -4214,7 +4216,14 @@ const CashBookPage = () => {
               <th className="balance-cell">Zůstatek<br/>(Kč)</th>
               <th className="lp-code-cell">LP kód</th>
               <th className="note-cell">Poznámka</th>
-              {canActuallyEdit && <th className="actions-cell">Akce</th>}
+              <th className="author-cell" title="Autor">
+                <FontAwesomeIcon icon={faUser} />
+              </th>
+              {canActuallyEdit && (
+                <th className="actions-cell" title="Akce">
+                  <FontAwesomeIcon icon={faBolt} style={{ color: '#fbbf24' }} />
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -4508,6 +4517,10 @@ const CashBookPage = () => {
                   ) : (
                     entry.note
                   )}
+                </td>
+
+                <td className="author-cell" title={entry.created_by_name || 'Neznámý'}>
+                  {getAuthorInitials(entry.created_by_name)}
                 </td>
 
                 {canActuallyEdit && (
