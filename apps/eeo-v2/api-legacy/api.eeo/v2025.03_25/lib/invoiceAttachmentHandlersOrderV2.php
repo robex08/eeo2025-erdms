@@ -485,6 +485,12 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         
         $priloha_id = (int)$db->lastInsertId();
         
+        // 🆕 Načíst údaje o uživateli pro response (stejně jako v LIST endpointu)
+        $user_info_sql = "SELECT username, jmeno, prijmeni, usek_id FROM `25_uzivatele` WHERE id = ?";
+        $user_info_stmt = $db->prepare($user_info_sql);
+        $user_info_stmt->execute(array($user_id));
+        $user_info = $user_info_stmt->fetch(PDO::FETCH_ASSOC);
+        
         // Vrátit response
         http_response_code(200);
         echo json_encode(array(
@@ -501,7 +507,14 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
                 'velikost_souboru_b' => $file_size,
                 'je_isdoc' => $je_isdoc,
                 'nahrano_uzivatel_id' => $user_id,
-                'dt_vytvoreni' => date('Y-m-d H:i:s')
+                'dt_vytvoreni' => date('Y-m-d H:i:s'),
+                // 🆕 Přidat uživatelské údaje pro frontend (stejně jako v LIST)
+                'nahrano_uzivatel' => array(
+                    'id' => $user_id,
+                    'username' => $user_info ? $user_info['username'] : null,
+                    'jmeno' => $user_info ? $user_info['jmeno'] : null,
+                    'prijmeni' => $user_info ? $user_info['prijmeni'] : null
+                )
             )
         ));
 

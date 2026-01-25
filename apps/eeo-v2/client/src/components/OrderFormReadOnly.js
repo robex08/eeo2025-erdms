@@ -5,7 +5,7 @@
  * Včetně svinovacích sekcí a stejného pořadí jako OrderForm25
  */
 
-import React, { useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useImperativeHandle, forwardRef, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -16,6 +16,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { formatDateOnly } from '../utils/format';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2';
+import { getTypyPriloh25 } from '../services/api25orders';
 
 // ===================================================================
 // STYLED COMPONENTS - Zkopírované z OrderForm25
@@ -415,6 +416,54 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
     dokonceni: false,
     prilohy: false
   });
+
+  // 🔄 Dynamické načtení typů příloh z DB
+  const [attachmentTypes, setAttachmentTypes] = useState([]);
+  
+  useEffect(() => {
+    const loadAttachmentTypes = async () => {
+      if (!token || !username) return;
+      
+      try {
+        const types = await getTypyPriloh25({ token, username, aktivni: 1 });
+        setAttachmentTypes(types);
+      } catch (error) {
+        console.error('Chyba při načítání typů příloh:', error);
+      }
+    };
+    
+    loadAttachmentTypes();
+  }, [token, username]);
+
+  // 🎭 Helper: Získání badge podle typu přílohy z DB
+  const getTypeBadge = (typ) => {
+    // Najít název z načtených typů
+    const typeInfo = attachmentTypes.find(t => t.kod === typ || t.value === typ);
+    const label = typeInfo ? (typeInfo.nazev || typeInfo.label) : typ;
+    
+    // Barevné schéma podle kategorie
+    const colorSchemes = {
+      'FAKTURA': { bg: '#dbeafe', color: '#1e40af' },
+      'ISDOC': { bg: '#e0e7ff', color: '#4338ca' },
+      'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8' },
+      'SMLOUVA': { bg: '#fef3c7', color: '#92400e' },
+      'OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46' },
+      'POTVRZENA_OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46' },
+      'PODKLADY': { bg: '#e0e7ff', color: '#4338ca' },
+      'CENOVA_NABIDKA': { bg: '#fef3c7', color: '#92400e' },
+      'DODACI_LIST': { bg: '#dbeafe', color: '#1e40af' },
+      'PROFORMA': { bg: '#e0e7ff', color: '#4338ca' },
+      'IMPORT': { bg: '#fce7f3', color: '#9f1239' },
+    };
+    
+    const colors = colorSchemes[typ] || { bg: '#f1f5f9', color: '#475569' };
+    
+    return (
+      <Badge $bg={colors.bg} $color={colors.color}>
+        {label}
+      </Badge>
+    );
+  };
 
   const toggleSection = (section) => {
     setCollapsed(prev => {
@@ -1525,24 +1574,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                           return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
                         };
 
-                        const getTypeBadge = (typ) => {
-                          const typeMap = {
-                            'FAKTURA': { bg: '#dbeafe', color: '#1e40af', label: 'Faktura' },
-                            'ISDOC': { bg: '#e0e7ff', color: '#4338ca', label: 'ISDOC' },
-                            'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8', label: 'Příloha' },
-                            'SMLOUVA': { bg: '#fef3c7', color: '#92400e', label: 'Smlouva' },
-                            'IMPORT': { bg: '#fce7f3', color: '#9f1239', label: 'Import' },
-                            'JINE': { bg: '#f1f5f9', color: '#475569', label: 'Jiné' },
-                            'JINA': { bg: '#f1f5f9', color: '#475569', label: 'Jiná' }
-                          };
-                          const config = typeMap[typ] || typeMap['JINA'];
-                          return (
-                            <Badge $bg={config.bg} $color={config.color}>
-                              {config.label}
-                            </Badge>
-                          );
-                        };
-
                         const handleDownload = async () => {
                           try {
                             const blob = await downloadInvoiceAttachment(faktura.id, priloha.id, username, token);
@@ -2123,25 +2154,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     const sizes = ['B', 'KB', 'MB', 'GB'];
                     const i = Math.floor(Math.log(bytes) / Math.log(k));
                     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-                  };
-
-                  const getTypeBadge = (typ) => {
-                    const typeMap = {
-                      'FAKTURA': { bg: '#dbeafe', color: '#1e40af', label: 'Faktura' },
-                      'ISDOC': { bg: '#e0e7ff', color: '#4338ca', label: 'ISDOC' },
-                      'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8', label: 'Příloha' },
-                      'SMLOUVA': { bg: '#fef3c7', color: '#92400e', label: 'Smlouva' },
-                      'OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46', label: 'Objednávka' },
-                      'IMPORT': { bg: '#fce7f3', color: '#9f1239', label: 'Import' },
-                      'JINE': { bg: '#f1f5f9', color: '#475569', label: 'Jiné' },
-                      'JINA': { bg: '#f1f5f9', color: '#475569', label: 'Jiná' }
-                    };
-                    const config = typeMap[typ] || typeMap['JINA'];
-                    return (
-                      <Badge $bg={config.bg} $color={config.color}>
-                        {config.label}
-                      </Badge>
-                    );
                   };
 
                   const handleDownload = async () => {
