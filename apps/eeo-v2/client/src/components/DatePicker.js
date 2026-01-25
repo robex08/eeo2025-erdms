@@ -306,9 +306,11 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   
   // Synchronizovat inputValue s value při změně value zvenčí
   useEffect(() => {
-    if (inputValue === '') {
-      // Neměnit inputValue pokud uživatel právě píše
-      setInputValue(value ? formatDisplayDate(value) : '');
+    // ✅ OPRAVA: Vždy aktualizovat inputValue když se změní value (i když uživatel nepíše)
+    const formattedValue = value ? formatDisplayDate(value) : '';
+    // Aktualizovat pouze pokud se liší od aktuální hodnoty (zabránit zbytečným rerenderům)
+    if (inputValue !== formattedValue) {
+      setInputValue(formattedValue);
     }
   }, [value]);
   
