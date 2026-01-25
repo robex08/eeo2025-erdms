@@ -60,6 +60,7 @@ function handle_cashbook_list_post($config, $input) {
         // Načíst filtry z inputu
         $filters = array(
             'uzivatel_id' => isset($input['uzivatel_id']) ? $input['uzivatel_id'] : null,
+            'pokladna_ids' => isset($input['pokladna_ids']) ? $input['pokladna_ids'] : null,
             'rok' => isset($input['rok']) ? $input['rok'] : null,
             'mesic' => isset($input['mesic']) ? $input['mesic'] : null,
             'uzavrena' => isset($input['uzavrena']) ? $input['uzavrena'] : null,
@@ -70,8 +71,8 @@ function handle_cashbook_list_post($config, $input) {
         // ✅ OPRAVA: Načíst pokladny uživatele místo filtru podle uzivatel_id
         $permissions = new CashbookPermissions($userData, $db);
         
-        // Pokud není explicitně zadán filtr, zobrazit knihy VŠECH pokladen uživatele
-        if (empty($filters['uzivatel_id'])) {
+        // Pokud není explicitně zadán filtr pokladen ANI uživatele, načíst VŠECHNY pokladny uživatele
+        if (empty($filters['pokladna_ids']) && empty($filters['uzivatel_id'])) {
             // Načíst všechny pokladny, ke kterým má uživatel přístup
             $stmt = $db->prepare("
                 SELECT DISTINCT pokladna_id 

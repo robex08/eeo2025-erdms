@@ -253,9 +253,8 @@ class CashbookModel {
         
         // 🆕 AUTOMATICKÝ VÝPOČET PŘEVODU Z PŘEDCHOZÍHO MĚSÍCE
         $prevodZPredchoziho = 0.00;
-        if ($pokladnaId && isset($data['uzivatel_id']) && isset($data['rok']) && isset($data['mesic'])) {
+        if ($pokladnaId && isset($data['rok']) && isset($data['mesic'])) {
             $prevodZPredchoziho = $this->getPreviousMonthBalance(
-                $data['uzivatel_id'], 
                 $pokladnaId, 
                 $data['rok'], 
                 $data['mesic']
@@ -442,8 +441,13 @@ class CashbookModel {
     /**
      * Získat koncový stav z předchozího měsíce
      * Pro automatický převod do nového měsíce
+     * 
+     * @param int $pokladnaId ID pokladny
+     * @param int $year Rok
+     * @param int $month Měsíc (1-12)
+     * @return float Koncový stav předchozího měsíce
      */
-    public function getPreviousMonthBalance($userId, $pokladnaId, $year, $month) {
+    public function getPreviousMonthBalance($pokladnaId, $year, $month) {
         // 🆕 SPECIÁLNÍ LOGIKA PRO LEDEN - kontrola pocatecni_stav_rok
         if ($month === 1) {
             // Načíst nastavení pokladny
@@ -471,13 +475,12 @@ class CashbookModel {
         $stmt = $this->db->prepare("
             SELECT koncovy_stav 
             FROM " . TBL_POKLADNI_KNIHY . " 
-            WHERE uzivatel_id = ? 
-              AND pokladna_id = ?
+            WHERE pokladna_id = ?
               AND rok = ? 
               AND mesic = ?
             LIMIT 1
         ");
-        $stmt->execute(array($userId, $pokladnaId, $prevYear, $prevMonth));
+        $stmt->execute(array($pokladnaId, $prevYear, $prevMonth));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($result) {

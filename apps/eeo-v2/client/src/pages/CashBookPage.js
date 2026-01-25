@@ -1377,6 +1377,14 @@ const CashBookPage = () => {
       });
       
       const transformedEntries = allEntries.map(transformDBEntryToFrontend);
+      
+      console.log('✅ ensureBookExists vrací:', { 
+        bookId: mainBook.id, 
+        entriesCount: transformedEntries.length,
+        prevod: mainBook.prevod_z_predchoziho,
+        stav: mainBook.stav_knihy
+      });
+      
       return { book: mainBook, entries: transformedEntries };
     } catch (error) {
       console.error('❌ Chyba v ensureBookExists:', error);
@@ -1520,6 +1528,12 @@ const CashBookPage = () => {
     }
 
     const loadDataFromDB = async () => {
+      console.log('🔄 loadDataFromDB START', { 
+        assignmentId: mainAssignment?.id, 
+        cisloPokladny: mainAssignment?.cislo_pokladny,
+        pokladnaId: mainAssignment?.pokladna_id
+      });
+      
       try {
         // Reset error state při úspěšném načtení
         setAccessError(null);
@@ -1566,6 +1580,13 @@ const CashBookPage = () => {
         const currentAssignmentId = mainAssignment?.id;
         const isCashboxChange = prevAssignmentIdRef.current !== null && 
                                 prevAssignmentIdRef.current !== currentAssignmentId;
+        
+        console.log('🔍 Detekce změny pokladny:', { 
+          prev: prevAssignmentIdRef.current, 
+          current: currentAssignmentId, 
+          isCashboxChange,
+          isPageReload
+        });
         
         // Aktualizovat ref pro příští kontrolu
         prevAssignmentIdRef.current = currentAssignmentId;
@@ -1618,10 +1639,13 @@ const CashBookPage = () => {
         }
         // 🎯 PRAVIDLO 1B: Pokud uživatel/admin změnil pokladnu, VŽDY načíst z DB
         else if (isCashboxChange) {
+          console.log('🔄 Detekována změna pokladny → force reload z DB, entries:', entries.length);
           setCashBookEntries(entries);
-          if (entries.length > 0 && isOwnCashbox) {
+          // Pro vlastní pokladny uložit do localStorage, pro cizí NE
+          if (isOwnCashbox && entries.length > 0) {
             saveToLocalStorage(entries, book.stav_knihy, parseFloat(book.prevod_z_predchoziho || 0));
           } else {
+            // Vyčistit localStorage (mohlo tam být z předchozí pokladny)
             localStorage.removeItem(STORAGE_KEY);
           }
           setLastSyncTimestamp(new Date().toISOString());
@@ -1993,6 +2017,7 @@ const CashBookPage = () => {
               
               // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
               if (!selectedAssignment) {
+                console.log('🗑️ Cached pokladna není dostupná, čistím cache');
                 localStorage.removeItem('cashbook_selector_cashbox');
               }
             }
@@ -2571,12 +2596,12 @@ const CashBookPage = () => {
       return; // Stejná pokladna, nic nedělat
     }
 
-    // 1️⃣ VYČISTIT CACHE STARÉ POKLADNY (pokud existuje)
+    // 1️⃣ VYČISTIT CACHE STARÉ POKLADNY
     if (mainAssignment?.id) {
       clearCashbookCacheForAssignment(mainAssignment.id);
     }
 
-    // 2️⃣ VYČISTIT MEMORY CACHE (React state)
+    // 2️⃣ VYČISTIT STATE
     setCashBookEntries([]);
     setCurrentBookId(null);
     setCurrentBookData(null);
@@ -2588,7 +2613,7 @@ const CashBookPage = () => {
     // 3️⃣ NASTAVIT NOVOU POKLADNU
     setMainAssignment(newAssignment);
 
-    // 4️⃣ ULOŽIT VÝBĚR DO SELECTOR CACHE (jen pro obnovení selectu)
+    // 4️⃣ ULOŽIT VÝBĚR DO CACHE
     try {
       const saveData = {
         id: newAssignment.id,
@@ -2599,9 +2624,6 @@ const CashBookPage = () => {
     } catch (err) {
       console.error('❌ Chyba při ukládání selector cache:', err);
     }
-
-    // 5️⃣ FORCE RELOAD Z DB - data se načtou v useEffect sledující mainAssignment
-    // UseEffect automaticky zavolá loadBookData() který načte VŽDY Z DB (ne z cache)
     
     showToast(
       `Přepnuto na pokladnu ${newAssignment.cislo_pokladny} - ${newAssignment.nazev_pracoviste || newAssignment.nazev}`, 
