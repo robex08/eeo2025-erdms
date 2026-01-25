@@ -101,10 +101,10 @@ function handle_cashbook_list_post($config, $input) {
         // 🆕 AUTOMATICKÁ OPRAVA NULOVÝCH PŘEVODŮ V SEZNAMU
         foreach ($result['books'] as &$book) {
             if ((floatval($book['prevod_z_predchoziho']) == 0 || $book['prevod_z_predchoziho'] === null) 
-                && $book['pokladna_id'] && $book['uzivatel_id']) {
+                && $book['pokladna_id']) {
                 
+                // ✅ OPRAVENO: getPreviousMonthBalance má 3 parametry (pokladnaId, year, month)
                 $prevTransfer = $bookModel->getPreviousMonthBalance(
-                    $book['uzivatel_id'], 
                     $book['pokladna_id'], 
                     $book['rok'], 
                     $book['mesic']
@@ -1006,8 +1006,6 @@ function handle_cashbook_entry_delete_post($config, $input) {
             $service = new CashbookService($db);
             $service->deleteEntry($input['entry_id'], $userData['id']);
             
-            error_log("✓ Entry deleted successfully");
-            
             // 🆕 KASKÁDOVÝ PŘEPOČET: Smazání položky mění koncový stav → přepočítat následující měsíce
             if ($book['pokladna_id'] && $book['uzivatel_id']) {
                 $bookModel->recalculateFollowingMonths(
@@ -1029,10 +1027,8 @@ function handle_cashbook_entry_delete_post($config, $input) {
         
     } catch (Exception $e) {
         error_log("handle_cashbook_entry_delete_post error: " . $e->getMessage());
-        error_log("Stack trace: " . $e->getTraceAsString());
         
-        // DEBUG: Vracíme detailní chybu včetně souboru a řádku
-        return api_error(500, 'Chyba při mazání: ' . $e->getMessage() . ' (soubor: ' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+        return api_error(500, 'Chyba při mazání položky');
     }
 }
 
@@ -1252,25 +1248,18 @@ function handle_cashbook_force_renumber_post($config, $input) {
  */
 function handle_cashbook_lp_summary_post($config, $input) {
     try {
-        error_log("🔍 [CASHBOOK-LP] START - " . date('Y-m-d H:i:s'));
         
         // ✅ OrderV2 Standard: Ověření tokenu z body parametrů
         if (empty($input['username']) || empty($input['token'])) {
-            error_log("❌ [CASHBOOK-LP] Missing username or token");
             return api_error(401, 'Chybí username nebo token');
         }
-        
-        error_log("🔍 [CASHBOOK-LP] Username: {$input['username']}, Token preview: " . substr($input['token'], 0, 20) . "...");
         
         // ✅ OrderV2 Standard: verify_token_v2 BEZ předání $db (nechť si vytvoří vlastní připojení)
         $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
-            error_log("❌ [CASHBOOK-LP] verify_token_v2 FAILED for user: {$input['username']}");
             return api_error(401, 'Neplatný token');
         }
-        
-        error_log("✅ [CASHBOOK-LP] Token verified for user_id: {$userData['id']}, username: {$userData['username']}");
         
         // DB připojení až po autentizaci
         $db = get_db($config);

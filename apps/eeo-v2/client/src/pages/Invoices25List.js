@@ -1539,6 +1539,15 @@ const Invoices25List = () => {
   // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
   const isAdmin = hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR'));
   
+  // Check if user can control invoices (KONTROLOR_FAKTUR role)
+  const canControlInvoices = React.useMemo(() => {
+    return hasPermission && (
+      hasPermission('SUPERADMIN') || 
+      hasPermission('ADMINISTRATOR') || 
+      hasPermission('KONTROLOR_FAKTUR')
+    );
+  }, [hasPermission]);
+  
   // Dashboard statistiky (z BE - celkové součty podle filtru, NE jen aktuální stránka!)
   const [stats, setStats] = useState({
     total: 0,           // Celkový počet faktur (všechny stránky)
@@ -4204,6 +4213,7 @@ const Invoices25List = () => {
                       <input
                         type="checkbox"
                         checked={invoiceChecks[invoice.id]?.kontrola?.kontrolovano || false}
+                        disabled={!canControlInvoices}
                         onChange={async (e) => {
                           e.stopPropagation();
                           const newState = e.target.checked;
@@ -4221,6 +4231,13 @@ const Invoices25List = () => {
                               username
                             );
                             setInvoiceChecks(prev => ({...prev, ...response.data}));
+                            
+                            // 📊 Decentní update statistiky kontrolovaných faktur
+                            setStats(prevStats => ({
+                              ...prevStats,
+                              kontrolovano: prevStats.kontrolovano + (newState ? 1 : -1)
+                            }));
+                            
                             showToast(
                               newState 
                                 ? '✅ Faktura označena jako zkontrolovaná' 
@@ -4233,15 +4250,16 @@ const Invoices25List = () => {
                           }
                         }}
                         style={{
-                          cursor: 'pointer',
+                          cursor: canControlInvoices ? 'pointer' : 'not-allowed',
                           width: '18px',
                           height: '18px',
-                          accentColor: '#10b981'
+                          accentColor: '#10b981',
+                          opacity: canControlInvoices ? 1 : 0.5
                         }}
                         title={
                           invoiceChecks[invoice.id]?.kontrola?.kontrolovano
-                            ? `Zkontroloval: ${invoiceChecks[invoice.id]?.kontrola?.kontroloval_cele_jmeno || invoiceChecks[invoice.id]?.kontrola?.kontroloval_username}\n${invoiceChecks[invoice.id]?.kontrola?.dt_kontroly}`
-                            : 'Klikněte pro označení jako zkontrolováno'
+                            ? `✅ Zkontrolováno\nKontroloval: ${invoiceChecks[invoice.id]?.kontrola?.kontroloval_cele_jmeno || invoiceChecks[invoice.id]?.kontrola?.kontroloval_username}\n${invoiceChecks[invoice.id]?.kontrola?.dt_kontroly}`
+                            : '⚪ Nezkontrolováno'
                         }
                       />
                     </TableCell>
