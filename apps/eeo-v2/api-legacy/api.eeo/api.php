@@ -4,6 +4,9 @@
 define('IS_DEV_ENV', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
 define('ENV_NAME', IS_DEV_ENV ? 'DEV' : 'PROD');
 
+// Include custom debug logger (funguje v DEV i PROD, ale loguje pouze v DEV)
+require_once __DIR__ . '/debug_logger.php';
+
 // ============ ERROR LOGGING SETUP ============
 if (IS_DEV_ENV) {
     // 🐛 DEV - Debug režim s podrobným logováním
@@ -12,9 +15,6 @@ if (IS_DEV_ENV) {
     ini_set('log_errors', 1);
     ini_set('error_log', '/var/www/erdms-dev/logs/php-error.log');
     error_reporting(E_ALL);  // Všechny chyby včetně notices, warnings
-    
-    // Include custom debug logger (obchází nefunkční error_log v PHP 8.4 FPM)
-    require_once __DIR__ . '/debug_logger.php';
 } else {
     // PROD - Standard error reporting
     ini_set('display_errors', 0);
