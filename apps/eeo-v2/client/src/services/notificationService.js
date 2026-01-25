@@ -520,13 +520,10 @@ class NotificationService {
         from,  // SUBMITTER recipients (zelená šablona)
         to     // APPROVER recipients (červená/oranžová šablona)
       };
-      
-      console.log('Dual notification payload:', { fromCount: from.length, toCount: to.length, strediska: payload.strediska_names.length, urgent: payload.is_urgent });
 
       // Volat backend API pro dual-template odeslání
       const response = await api.post('/notifications/send-dual', payload);
 
-      console.log('sendOrderApprovalNotifications SUCCESS:', response);
       return response;
 
     } catch (error) {

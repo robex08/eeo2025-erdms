@@ -86,13 +86,12 @@ class CashbookPermissions {
     /**
      * Kontrola, zda má uživatel oprávnění číst pokladní knihu
      * 
-     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_knihy.uzivatel_id)
-     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * ✅ OPRAVENO: Primární kontrola podle přiřazení k pokladně, ne podle uzivatel_id v knize
+     * 
+     * @param int|null $pokladnaId ID pokladny (pro kontrolu přiřazení)
      * @return bool True pokud má oprávnění
      */
-    public function canReadCashbook($cashbookUserId, $pokladnaId = null) {
-        // 🔥 Normalizace ID na int pro robustní porovnání
-        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
+    public function canReadCashbook($pokladnaId = null) {
         $currentUserId = intval($this->user['id']);
         
         // Super admin může vše
@@ -110,16 +109,17 @@ class CashbookPermissions {
             return true;
         }
         
-        // 🔥 FIX: CASH_BOOK_READ_OWN - POUZE když JE specifikován cashbookUserId
-        // Když je null, znamená to check "může číst VŠECHNY knihy?" → READ_OWN to NEUMÍ
+        // ✅ CASH_BOOK_READ_OWN - může číst knihy svých pokladen
         if ($this->hasPermission('CASH_BOOK_READ_OWN')) {
-            // Pouze pokud JE specifikován owner a je to ten samý uživatel
-            if ($cashbookUserId !== null && $cashbookUserId === $currentUserId) {
+            // Pokud není specifikována pokladna, obecně má právo číst (své pokladny)
+            if ($pokladnaId === null) {
                 return true;
             }
+            // Pokud je specifikována, zkontrolovat přiřazení
+            return $this->isOwnCashbox($pokladnaId);
         }
         
-        // Uživatel bez globálních práv může číst knihy z pokladen, ke kterým je přiřazen
+        // ✅ Uživatel bez práv může číst jen knihy pokladen, ke kterým je přiřazen
         if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
             return true;
         }
@@ -128,29 +128,25 @@ class CashbookPermissions {
     }
     
     /**
-     * Kontrola, zda může editovat
+     * Kontrola, zda může editovat pokladní knihu
      * 
-     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_pokladni_knihy.uzivatel_id)
-     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * ✅ OPRAVENO: Kontrola podle přiřazení k pokladně
+     * 
+     * @param int|null $pokladnaId ID pokladny
      * @return bool True pokud má oprávnění
      */
-    public function canEditCashbook($cashbookUserId, $pokladnaId = null) {
-        // 🔥 Normalizace ID na int
-        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
-        $currentUserId = intval($this->user['id']);
-        
+    public function canEditCashbook($pokladnaId = null) {
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_EDIT_ALL')) return true;
         
-        // 🔥 FIX: EDIT_OWN - pokud není specifikován cashbookUserId (null), nebo je to stejný uživatel
+        // ✅ EDIT_OWN - může editovat knihy svých pokladen
         if ($this->hasPermission('CASH_BOOK_EDIT_OWN')) {
-            if ($cashbookUserId === null || $cashbookUserId === $currentUserId) {
-                return true;
-            }
+            if ($pokladnaId === null) return true;
+            return $this->isOwnCashbox($pokladnaId);
         }
         
-        // Uživatel bez globálních práv může editovat knihy z pokladen, ke kterým je přiřazen
+        // ✅ Uživatel bez práv může editovat jen knihy pokladen, ke kterým je přiřazen
         if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
             return true;
         }
@@ -159,29 +155,25 @@ class CashbookPermissions {
     }
     
     /**
-     * Kontrola, zda může mazat
+     * Kontrola, zda může mazat pokladní knihu
      * 
-     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_pokladni_knihy.uzivatel_id)
-     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * ✅ OPRAVENO: Kontrola podle přiřazení k pokladně
+     * 
+     * @param int|null $pokladnaId ID pokladny
      * @return bool True pokud má oprávnění
      */
-    public function canDeleteCashbook($cashbookUserId, $pokladnaId = null) {
-        // 🔥 Normalizace ID na int
-        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
-        $currentUserId = intval($this->user['id']);
-        
+    public function canDeleteCashbook($pokladnaId = null) {
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_DELETE_ALL')) return true;
         
-        // 🔥 FIX: DELETE_OWN - pokud není specifikován cashbookUserId (null), nebo je to stejný uživatel
+        // ✅ DELETE_OWN - může mazat knihy svých pokladen
         if ($this->hasPermission('CASH_BOOK_DELETE_OWN')) {
-            if ($cashbookUserId === null || $cashbookUserId === $currentUserId) {
-                return true;
-            }
+            if ($pokladnaId === null) return true;
+            return $this->isOwnCashbox($pokladnaId);
         }
         
-        // Uživatel bez globálních práv může mazat knihy z pokladen, ke kterým je přiřazen
+        // ✅ Uživatel bez práv může mazat jen knihy pokladen, ke kterým je přiřazen
         if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
             return true;
         }
