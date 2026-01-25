@@ -67,20 +67,30 @@ function handle_cashbook_list_post($config, $input) {
             'limit' => isset($input['limit']) ? $input['limit'] : 50
         );
         
-        // Kontrola oprávnění
+        // ✅ OPRAVA: Načíst pokladny uživatele místo filtru podle uzivatel_id
         $permissions = new CashbookPermissions($userData, $db);
         
-        // Pokud uživatel nemá oprávnění READ_ALL, může vidět pouze vlastní knihy
-        if (!$permissions->canReadCashbook(null)) {
-            // Nemá ani OWN oprávnění
-            if (!$permissions->canReadCashbook($userData['id'])) {
-                return api_error(403, 'Nedostatečná oprávnění');
+        // Pokud není explicitně zadán filtr, zobrazit knihy VŠECH pokladen uživatele
+        if (empty($filters['uzivatel_id'])) {
+            // Načíst všechny pokladny, ke kterým má uživatel přístup
+            $stmt = $db->prepare("
+                SELECT DISTINCT pokladna_id 
+                FROM " . TBL_POKLADNY_UZIVATELE . " 
+                WHERE uzivatel_id = ? 
+                  AND (platne_do IS NULL OR platne_do >= CURDATE())
+            ");
+            $stmt->execute(array($userData['id']));
+            $userPokladny = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            if (empty($userPokladny)) {
+                // Uživatel nemá přístup k žádné pokladně
+                return api_ok(array('books' => array(), 'pagination' => array(
+                    'current_page' => 1, 'per_page' => 50, 'total_records' => 0, 'total_pages' => 0
+                )));
             }
-            // Omezit na vlastní knihy
-            $filters['uzivatel_id'] = $userData['id'];
-        } elseif (empty($filters['uzivatel_id'])) {
-            // Pokud má READ_ALL, ale není specifikován uzivatel_id, zobrazit vlastní
-            $filters['uzivatel_id'] = $userData['id'];
+            
+            // Filtrovat podle pokladen uživatele
+            $filters['pokladna_ids'] = $userPokladny;
         }
         
         // Načíst knihy
@@ -153,9 +163,9 @@ function handle_cashbook_get_post($config, $input) {
             return api_error(404, 'Pokladní kniha nenalezena');
         }
         
-        // Kontrola oprávnění - předat i pokladna_id pro kontrolu přiřazení
+        // Kontrola oprávnění - předat pokladna_id pro kontrolu přiřazení
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canReadCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
+        if (!$permissions->canReadCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -339,12 +349,13 @@ function handle_cashbook_create_post($config, $input) {
             }
         }
         
-        // Kontrola, zda kniha pro dané období již neexistuje
+        // ✅ SPRÁVNĚ: Kontrola, zda kniha pro danou POKLADNU a období již neexistuje
+        // JEDNA společná kniha pro celou pokladnu!
         $bookModel = new CashbookModel($db);
-        $existing = $bookModel->getBookByUserPeriod($data['uzivatel_id'], $data['rok'], $data['mesic']);
+        $existing = $bookModel->getBookByPeriod($data['pokladna_id'], $data['rok'], $data['mesic']);
         
         if ($existing) {
-            return api_error(400, 'Pokladní kniha pro toto období již existuje');
+            return api_error(400, 'Pokladní kniha pro pokladnu č.' . $data['cislo_pokladny'] . ' v tomto období již existuje');
         }
         
         // Vytvořit knihu
@@ -413,7 +424,7 @@ function handle_cashbook_update_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -673,7 +684,7 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(403, 'Nedostatečná oprávnění pro vytváření položek');
         }
         
-        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění pro editaci této knihy');
         }
         
@@ -835,7 +846,7 @@ function handle_cashbook_entry_update_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -1066,7 +1077,7 @@ function handle_cashbook_entry_restore_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -1130,7 +1141,7 @@ function handle_cashbook_audit_log_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canReadCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
+        if (!$permissions->canReadCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         

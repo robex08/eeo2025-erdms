@@ -787,23 +787,17 @@ function Orders25ListV3() {
 
   // Handler pro akce v tabulce
   const handleActionClick = (action, order) => {
-    console.log('🎯 Action clicked:', action, order);
-    
     switch (action) {
       case 'edit':
-        console.log('→ Editace objednávky', order.id);
         handleEditOrder(order);
         break;
       case 'create-invoice':
-        console.log('→ Evidovat fakturu k objednávce', order.id);
         handleCreateInvoice(order);
         break;
       case 'export':
-        console.log('→ Generovat DOCX objednávky', order.id);
         handleExportOrder(order);
         break;
       case 'delete':
-        console.log('→ Smazat objednávku', order.id);
         handleDeleteOrder(order);
         break;
       default:
@@ -822,7 +816,6 @@ function Orders25ListV3() {
       : `Opravdu chcete DEAKTIVOVAT objednávku ${order.cislo_objednavky}?\n\nObjednávka bude skryta, ale data zůstanou v systému.`;
     
     if (window.confirm(confirmMessage)) {
-      console.log(`🗑️ ${deleteType}:`, order.id);
       // TODO: Implementovat API volání pro delete/deactivate
       // if (isHardDelete) {
       //   await deleteOrder(order.id, 'hard');
