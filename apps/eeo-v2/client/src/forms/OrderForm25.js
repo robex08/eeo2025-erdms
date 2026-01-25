@@ -24658,27 +24658,32 @@ function OrderForm25() {
                               )}
 
                               {/* 📎 PŘÍLOHY FAKTURY - Kompaktní komponenta s API validací */}
-                              <InvoiceAttachmentsCompact
-                                key={`invoice-attachments-${index}-${formData.id}`}
-                                fakturaId={faktura.id}
-                                objednavkaId={formData.id}
-                                fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
-                                readOnly={!!faktura.vecna_spravnost_potvrzeno || currentPhase >= 8}
-                                onISDOCParsed={handleISDOCParsed}
-                                formData={formData}
-                                faktura={faktura}
-                                validateInvoiceForAttachments={validateInvoiceForAttachments}
-                                allUsers={allUsers}
-                                attachments={faktura.attachments || []}
-                                onAttachmentsChange={(newAttachments) => {
-                                  handleInvoiceAttachmentsChange(faktura.id, newAttachments);
-                                }}
-                                onAttachmentUploaded={(uploadedAttachment) => {
-                                  // 💾 Po uploadu přílohy
-                                  handleInvoiceAttachmentUploaded(faktura.id, uploadedAttachment);
-                                }}
-                                onCreateInvoiceInDB={handleCreateInvoiceInDB}
-                              />
+                              {(() => {
+                                const isReadOnly = !!faktura.vecna_spravnost_potvrzeno || currentPhase >= 8;
+                                return (
+                                  <InvoiceAttachmentsCompact
+                                    key={`invoice-attachments-${index}-${formData.id}`}
+                                    fakturaId={faktura.id}
+                                    objednavkaId={formData.id}
+                                    fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
+                                    readOnly={isReadOnly}
+                                    onISDOCParsed={handleISDOCParsed}
+                                    formData={formData}
+                                    faktura={faktura}
+                                    validateInvoiceForAttachments={validateInvoiceForAttachments}
+                                    allUsers={allUsers}
+                                    attachments={faktura.attachments || []}
+                                    onAttachmentsChange={(newAttachments) => {
+                                      handleInvoiceAttachmentsChange(faktura.id, newAttachments);
+                                    }}
+                                    onAttachmentUploaded={(uploadedAttachment) => {
+                                      // 💾 Po uploadu přílohy
+                                      handleInvoiceAttachmentUploaded(faktura.id, uploadedAttachment);
+                                    }}
+                                    onCreateInvoiceInDB={handleCreateInvoiceInDB}
+                                  />
+                                );
+                              })()}
 
                               {/* Faktury se ukládají automaticky s objednávkou - tlačítko "Uložit fakturu" odstraněno */}
 
