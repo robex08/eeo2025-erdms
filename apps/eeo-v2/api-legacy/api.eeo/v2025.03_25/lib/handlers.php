@@ -41,32 +41,23 @@ function api_error($httpCode, $message, $code = null, $extra = array()) {
 // Funkce pro ověření tokenu - optimalizováno pro reuse DB spojení
 function verify_token($token, $db = null) {
     if (!$token) {
-        error_log("❌ verify_token: Token is empty");
         return false;
     }
     
     $decoded = base64_decode($token);
     if (!$decoded) {
-        error_log("❌ verify_token: Cannot decode token");
         return false;
     }
     
     $parts = explode('|', $decoded);
     if (count($parts) !== 2) {
-        error_log("❌ verify_token: Invalid token format (expected 2 parts, got " . count($parts) . ")");
         return false;
     }
     
     list($username, $timestamp) = $parts;
     
-    $now = time();
-    $token_age = $now - $timestamp;
-    
-    error_log("🔍 verify_token: username=$username, timestamp=$timestamp, now=$now, age={$token_age}s (" . round($token_age/3600, 2) . "h)");
-    
     // Kontrola, zda token není starší než 24 hodin
     if (time() - $timestamp > 86400) {
-        error_log("❌ verify_token: Token EXPIRED (age={$token_age}s > 86400s)");
         return false;
     }
     
@@ -88,11 +79,8 @@ function verify_token($token, $db = null) {
         $user = $stmt->fetch();
         
         if (!$user) {
-            error_log("❌ verify_token: User not found or inactive: $username");
             return false;
         }
-        
-        error_log("✅ verify_token: SUCCESS for user_id={$user['id']}, username=$username");
         
         return array('id' => (int)$user['id'], 'username' => $username);
     } catch (Exception $e) {
@@ -111,29 +99,20 @@ function verify_token($token, $db = null) {
  * @return array|false User data array or false on failure
  */
 function verify_token_v2($username, $token, $db = null) {
-    error_log("🔍 verify_token_v2: START - request_username=$username");
-    
     if (!$token || !$username) {
-        error_log("❌ verify_token_v2: Missing token or username");
         return false;
     }
     
     // First verify token structure and expiry
     $token_data = verify_token($token, $db);
     if (!$token_data) {
-        error_log("❌ verify_token_v2: verify_token() returned FALSE");
         return false;
     }
-    
-    error_log("🔍 verify_token_v2: verify_token() SUCCESS - token_username={$token_data['username']}, token_user_id={$token_data['id']}");
     
     // Additional check: verify username matches token username
     if ($token_data['username'] !== $username) {
-        error_log("❌ verify_token_v2: Username mismatch - token_username={$token_data['username']}, request_username=$username");
         return false;
     }
-    
-    error_log("✅ verify_token_v2: Username match OK");
     
     // V2: Přidat informaci o roli uživatele (pro admin bypass)
     // ✅ NOVÝ SYSTÉM: Kontrola přes 25_uzivatele_role + 25_role
@@ -162,10 +141,6 @@ function verify_token_v2($username, $token, $db = null) {
         // Admin může být SUPERADMIN nebo ADMINISTRATOR
         $token_data['is_admin'] = !empty(array_intersect($roles, array('SUPERADMIN', 'ADMINISTRATOR')));
         $token_data['roles'] = $roles; // ✅ Přidat pole rolí do výstupu
-        
-        // DEBUG log
-        $roles_str = !empty($roles) ? implode(', ', $roles) : 'ŽÁDNÉ ROLE';
-        error_log("🔍 verify_token_v2: user_id={$token_data['id']}, roles={$roles_str}, is_admin=" . ($token_data['is_admin'] ? 'TRUE' : 'FALSE'));
         
     } catch (Exception $e) {
         error_log("verify_token_v2: Error loading role - " . $e->getMessage());
@@ -1052,9 +1027,6 @@ function handle_react_action($input, $config, $queries) {
 
 // Send notification email via API (requires token)
 function handle_notify_email($input, $config, $queries) {
-    // DEBUG: Log vše co přijde z frontendu
-    error_log("📧 NOTIFY EMAIL REQUEST: " . json_encode($input));
-    
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
@@ -1117,11 +1089,6 @@ function handle_notify_email($input, $config, $queries) {
 function handle_notifications_send_dual($input, $config, $queries) {
     set_time_limit(30); // Max 30 sekund
     
-    // AGRESIVNÍ LOGGING - zajistit, že se zobrazí
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "📧📧 DUAL NOTIFICATION CALLED\n", FILE_APPEND);
-    error_log("📧📧 DUAL NOTIFICATION REQUEST: " . json_encode($input));
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "Input: " . json_encode($input) . "\n", FILE_APPEND);
-    
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
@@ -1129,13 +1096,11 @@ function handle_notifications_send_dual($input, $config, $queries) {
     try {
         $token_data = verify_token($token);
     } catch (Exception $e) {
-        error_log("📧 TOKEN VERIFICATION ERROR: " . $e->getMessage());
         api_error(401, 'Chyba ověření tokenu: ' . $e->getMessage(), 'TOKEN_ERROR');
         return;
     }
     
     if (!$token_data || ($username && $token_data['username'] !== $username)) {
-        error_log("📧 TOKEN VERIFICATION FAILED!");
         api_error(401, 'Neplatný token', 'UNAUTHORIZED');
         return;
     }
@@ -1145,26 +1110,16 @@ function handle_notifications_send_dual($input, $config, $queries) {
     $has_to = !empty($input['to']) && is_array($input['to']);
     
     if (empty($input['order_id']) || (!$has_from && !$has_to)) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ VALIDATION FAILED\n", FILE_APPEND);
         api_error(400, 'Chybí povinné parametry (order_id, from nebo to)', 'MISSING_FIELDS');
         return;
     }
     
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Validation OK (from: " . ($has_from ? count($input['from']) : 0) . ", to: " . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
-    
     require_once __DIR__ . '/email-template-helper.php';
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ email-template-helper loaded\n", FILE_APPEND);
-    
     require_once __DIR__ . '/mail.php';
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ mail.php loaded\n", FILE_APPEND);
     
     try {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔌 Connecting to DB...\n", FILE_APPEND);
         $db = get_db($config);
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ DB connection OK\n", FILE_APPEND);
-        error_log("📧 DB connection OK");
     } catch (Exception $e) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ DB ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         error_log("📧 DB CONNECTION ERROR: " . $e->getMessage());
         api_error(500, 'Chyba připojení k DB: ' . $e->getMessage(), 'DB_ERROR');
         return;
@@ -1172,27 +1127,19 @@ function handle_notifications_send_dual($input, $config, $queries) {
     
     // Načtení šablony z DB (typ = ORDER_PENDING_APPROVAL)
     try {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
         $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = 'ORDER_PENDING_APPROVAL' AND aktivni = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);
-        error_log("📧 Template query executed");
     } catch (Exception $e) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         error_log("📧 TEMPLATE QUERY ERROR: " . $e->getMessage());
         api_error(500, 'Chyba při načítání šablony: ' . $e->getMessage(), 'QUERY_ERROR');
         return;
     }
     
     if (!$template) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ Template NOT FOUND\n", FILE_APPEND);
         api_error(404, 'Šablona notifikace nenalezena nebo není aktivní', 'TEMPLATE_NOT_FOUND');
         return;
     }
-    
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template OK: {$template['name']}\n", FILE_APPEND);
-    error_log("📧 Načtena šablona: {$template['name']} (ID: {$template['id']})");
     
     // Sestavení STŘEDISEK (spojit názvy čárkou - frontend už poslal převedené názvy)
     $strediska_display = 'Neuvedeno';
@@ -1267,8 +1214,6 @@ function handle_notifications_send_dual($input, $config, $queries) {
         'financovani_poznamka' => $financovani_poznamka,  // Poznámka samostatně
         'max_price_formatted' => $input['max_price']
     ];
-    
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Order data from FE (strediska: $strediska_display, financovani: $financovani_full)\n", FILE_APPEND);
     
     $results = [];
     $sent_count = 0;

@@ -440,7 +440,6 @@ function handle_cashbook_update_post($config, $input) {
                     $book['rok'],
                     $book['mesic']
                 );
-                error_log("Kaskádový přepočet: aktualizováno $updatedMonths následujících měsíců");
             }
             
             // Audit log
@@ -713,10 +712,7 @@ function handle_cashbook_entry_create_post($config, $input) {
                 return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
             }
             
-            // Varování logovat (ne blokovat)
-            if (!empty($validation['warnings'])) {
-                error_log("LP warnings: " . implode(', ', $validation['warnings']));
-            }
+            // Varování jsou součástí response
             
             // 🔧 Vygenerovat číslo dokladu a pořadové číslo
             require_once __DIR__ . '/../services/DocumentNumberService.php';
@@ -878,9 +874,7 @@ function handle_cashbook_entry_update_post($config, $input) {
                 return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
             }
             
-            if (!empty($validation['warnings'])) {
-                error_log("LP warnings: " . implode(', ', $validation['warnings']));
-            }
+            // Varování jsou součástí response
             
             // ✅ FIX: Pokud je detail_items prázdné, NEMĚNIT částku - použít původní z payloadu
             // Prázdné detail_items = "smazat rozpad LP", ale zachovat původní částku
@@ -952,44 +946,30 @@ function handle_cashbook_entry_update_post($config, $input) {
  */
 function handle_cashbook_entry_delete_post($config, $input) {
     try {
-        error_log("🔍 cashbook-entry-delete START");
-        error_log("  - entry_id: " . ($input['entry_id'] ?? 'MISSING'));
-        error_log("  - username: " . ($input['username'] ?? 'MISSING'));
-        
         // Ověření tokenu
         if (empty($input['username']) || empty($input['token'])) {
-            error_log("❌ Missing username or token");
             return api_error(401, 'Chybí username nebo token');
         }
         
         if (empty($input['entry_id'])) {
-            error_log("❌ Missing entry_id");
             return api_error(400, 'Chybí entry_id');
         }
         
         $db = get_db($config);
-        error_log("✓ DB connection OK");
         
         $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
-            error_log("❌ Invalid token for user: " . $input['username']);
             return api_error(401, 'Neplatný token');
         }
-        
-        error_log("✓ Token verified - user_id: " . $userData['id']);
-        error_log("✓ Token verified - user_id: " . $userData['id']);
         
         // Načíst položku
         $entryModel = new CashbookEntryModel($db);
         $entry = $entryModel->getEntryById($input['entry_id']);
         
         if (!$entry) {
-            error_log("❌ Entry not found: " . $input['entry_id']);
             return api_error(404, 'Položka nenalezena');
         }
-        
-        error_log("✓ Entry loaded - kniha_id: " . $entry['pokladni_kniha_id']);
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -1001,16 +981,11 @@ function handle_cashbook_entry_delete_post($config, $input) {
             exit;
         }
         
-        error_log("✓ Book loaded - stav: " . $book['stav_knihy']);
-        
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
         if (!$permissions->canDeleteEntry($book['uzivatel_id'])) {
-            error_log("❌ Permission denied for user_id: " . $userData['id']);
             return api_error(403, 'Nedostatečná oprávnění pro mazání');
         }
-        
-        error_log("✓ Permissions OK - starting delete");
         
         // Smazat
         $db->beginTransaction();
