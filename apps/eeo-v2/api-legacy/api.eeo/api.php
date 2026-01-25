@@ -3933,6 +3933,8 @@ switch ($endpoint) {
         
         // POST /api.eeo/cashbook-lp-summary - přehled čerpání LP kódů (včetně multi-LP)
         if ($endpoint === 'cashbook-lp-summary') {
+            error_log("🔵 API.PHP: cashbook-lp-summary REQUEST - method=$request_method");
+            error_log("🔵 API.PHP: INPUT DATA: " . json_encode($input));
             if ($request_method === 'POST') {
                 handle_cashbook_lp_summary_post($config, $input);
             } else {

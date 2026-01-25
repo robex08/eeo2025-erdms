@@ -1525,6 +1525,7 @@ const ColumnClearButton = styled.button`
 
 const ColumnFilterInput = styled.input`
   width: 100%;
+  max-width: ${props => props.type === 'number' ? '120px' : '100%'};
   padding: 0.5rem 2rem 0.5rem 2rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
@@ -6814,7 +6815,7 @@ const Orders25List = () => {
           </ExpandButton>
         </div>
       ),
-      size: 50,
+      size: 35,
       meta: {
         align: 'center'
       }
@@ -6939,7 +6940,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 60,
+      size: 45,
       meta: {
         align: 'center'
       }
@@ -7021,7 +7022,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 120
+      size: 90
     },
     {
       accessorKey: 'cislo_objednavky',
@@ -7123,7 +7124,7 @@ const Orders25List = () => {
           )}
         </div>
       ),
-      size: 180
+      size: 140
     },
     {
       accessorKey: 'zpusob_financovani',
@@ -7253,7 +7254,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 120
+      size: 100
     },
     {
       accessorKey: 'objednatel_garant',
@@ -7419,7 +7420,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 180
+      size: 130
     },
     {
       accessorKey: 'prikazce_schvalovatel',
@@ -7565,7 +7566,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 180
+      size: 130
     },
     {
       accessorKey: 'dodavatel_nazev',
@@ -7646,7 +7647,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 220
+      size: 160
     },
     {
       accessorKey: 'stav_objednavky',
@@ -7775,7 +7776,8 @@ const Orders25List = () => {
             </StatusBadge>
           </div>
         );
-      }
+      },
+      size: 120
     },
     {
       accessorKey: 'stav_registru',
@@ -7914,7 +7916,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 150
+      size: 120
     },
     {
       accessorKey: 'max_cena_s_dph',
@@ -7989,7 +7991,11 @@ const Orders25List = () => {
             {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
-      }
+      },
+      minSize: 85,
+      size: 100,
+      maxSize: 130,
+      enableResizing: true
     },
     {
       accessorKey: 'cena_s_dph',
@@ -8067,7 +8073,11 @@ const Orders25List = () => {
             {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
-      }
+      },
+      minSize: 85,
+      size: 100,
+      maxSize: 130,
+      enableResizing: true
     },
     {
       accessorKey: 'faktury_celkova_castka_s_dph',
@@ -8123,7 +8133,11 @@ const Orders25List = () => {
             {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
-      }
+      },
+      minSize: 85,
+      size: 100,
+      maxSize: 130,
+      enableResizing: true
     },
     {
       id: 'actions',
@@ -8226,9 +8240,9 @@ const Orders25List = () => {
           </ActionMenu>
         );
       },
-      size: 120,
-      minSize: 120,
-      maxSize: 140
+      size: 100,
+      minSize: 100,
+      maxSize: 120
     }
   ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName, hasPermission, columnFilters]);
   // 🔥 CRITICAL: Removed currentPageIndex, pageSize from deps
