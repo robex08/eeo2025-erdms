@@ -1973,27 +1973,24 @@ const CashBookPage = () => {
         // 3️⃣ Vybrat správnou pokladnu (localStorage → hlavní → první)
         let selectedAssignment = null;
 
-        // Admin NIKDY nepoužívá cache - vždy začíná na první/hlavní pokladně
-        // Běžný user používá cache pro pohodlí
-        if (!canSeeAllCashboxes) {
-          // Zkusit localStorage (pouze pro běžné uživatele)
-          try {
-            const saved = localStorage.getItem('cashbook_selector_cashbox');
-            if (saved) {
-              const savedData = JSON.parse(saved);
-              selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
-              
-              // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
-              if (!selectedAssignment) {
-                localStorage.removeItem('cashbook_selector_cashbox');
-              }
+        // 🆕 Zkusit localStorage (pro všechny uživatele včetně adminů)
+        try {
+          const saved = localStorage.getItem('cashbook_selector_cashbox');
+          if (saved) {
+            const savedData = JSON.parse(saved);
+            selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
+            
+            // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
+            if (!selectedAssignment) {
+              localStorage.removeItem('cashbook_selector_cashbox');
             }
-          } catch (err) {
-            // Tichá chyba
           }
+        } catch (err) {
+          // Tichá chyba
+          console.warn('⚠️ Chyba při načítání uložené pokladny:', err);
         }
 
-        // Fallback na hlavní nebo první (pro admina VŽDY, pro usera když není cache)
+        // Fallback na hlavní nebo první (když není cache nebo cache je neplatná)
         if (!selectedAssignment) {
           const main = allAvailableAssignments.find(a => a.je_hlavni === 1);
           selectedAssignment = main || allAvailableAssignments[0];
@@ -3514,7 +3511,11 @@ const CashBookPage = () => {
         const sortedEntries = [...entries].sort((a, b) => {
           const dateA = new Date(a.datum_zapisu);
           const dateB = new Date(b.datum_zapisu);
-          return dateA - dateB;
+          if (dateA.getTime() !== dateB.getTime()) {
+            return dateA - dateB;
+          }
+          // Při stejném datu seřadit podle ID
+          return (a.id || 0) - (b.id || 0);
         });
 
         // Přečíslovat entries
