@@ -1137,22 +1137,18 @@ function handle_cashbox_unassign_user_post($config, $input) {
             return api_error(400, 'Chybí prirazeni_id');
         }
         
-        error_log("UNASSIGN USER: prirazeni_id={$input['prirazeni_id']}, username={$input['username']}");
-        
         $db = get_db($config);
         
         // ✅ OPRAVA: správné pořadí parametrů (username, token, db)
         $userData = verify_token_v2($input['username'], $input['token'], $db);
         
         if (!$userData) {
-            error_log("UNASSIGN USER: Token verification failed");
             return api_error(401, 'Neplatný token');
         }
         
         // Kontrola oprávnění - pouze CASH_BOOK_MANAGE
         $permissions = new CashbookPermissions($userData, $db);
         if (!$permissions->canManageCashbooks()) {
-            error_log("UNASSIGN USER: Permission denied");
             return api_error(403, 'Nedostatečná oprávnění - vyžadováno CASH_BOOK_MANAGE');
         }
         
@@ -1163,17 +1159,12 @@ function handle_cashbox_unassign_user_post($config, $input) {
         $prirazeni = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$prirazeni) {
-            error_log("UNASSIGN USER: Assignment ID {$input['prirazeni_id']} not found");
             return api_error(404, 'Přiřazení nenalezeno');
         }
-        
-        error_log("UNASSIGN USER: Found assignment - pokladna_id={$prirazeni['pokladna_id']}, uzivatel_id={$prirazeni['uzivatel_id']}, current platne_do={$prirazeni['platne_do']}");
         
         // ✅ HARD DELETE - skutečné smazání záznamu
         // (soft delete by byl UPDATE platne_do)
         $sqlDelete = "DELETE FROM " . TBL_POKLADNY_UZIVATELE . " WHERE id = ?";
-        
-        error_log("UNASSIGN USER: SQL DELETE - id={$input['prirazeni_id']}");
         
         $stmt = $db->prepare($sqlDelete);
         $success = $stmt->execute(array($input['prirazeni_id']));
@@ -1316,6 +1307,11 @@ function handle_cashbox_sync_users_post($config, $input) {
         
         if (!isset($input['uzivatele']) || !is_array($input['uzivatele'])) {
             return api_error(400, 'Chybí seznam uživatelů (uzivatele pole)');
+        }
+        
+        // ✅ VALIDACE: Pokladna musí mít alespoň jednoho uživatele
+        if (empty($input['uzivatele'])) {
+            return api_error(400, 'Pokladna musí mít alespoň jednoho přiřazeného uživatele');
         }
         
         $db = get_db($config);
