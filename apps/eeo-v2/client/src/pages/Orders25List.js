@@ -4264,7 +4264,26 @@ const Orders25List = () => {
   const [error, setError] = useState(null);
   const [users, setUsers] = useState({});
 
-  // 🔥 CRITICAL PERFORMANCE: Ref pro users - předchází re-renderingu columns useMemo
+  // � Dynamické načtení typů příloh z DB
+  const [attachmentTypes, setAttachmentTypes] = useState([]);
+  
+  useEffect(() => {
+    const loadAttachmentTypes = async () => {
+      if (!token || !username) return;
+      
+      try {
+        const { getTypyPriloh25 } = await import('../services/api25orders');
+        const types = await getTypyPriloh25({ token, username, aktivni: 1 });
+        setAttachmentTypes(types);
+      } catch (error) {
+        console.error('Chyba při načítání typů příloh:', error);
+      }
+    };
+    
+    loadAttachmentTypes();
+  }, [token, username]);
+
+  // �🔥 CRITICAL PERFORMANCE: Ref pro users - předchází re-renderingu columns useMemo
   // Když se users objekt změní (loadData), columns by se přepočítávaly → celá tabulka re-render!
   const usersRef = useRef(users);
 
@@ -11656,6 +11675,17 @@ const Orders25List = () => {
 
     return (
       <ExpandedContent $order={order} $showRowHighlighting={showRowHighlighting}>
+        {(() => {
+          // Helper: Získání názvu typu přílohy z DB
+          const getAttachmentTypeLabel = (typ) => {
+            const typeInfo = attachmentTypes.find(t => t.kod === typ || t.value === typ);
+            return typeInfo ? (typeInfo.nazev || typeInfo.label) : typ;
+          };
+          
+          window._getAttachmentTypeLabel = getAttachmentTypeLabel;
+          return null;
+        })()}
+        
         <ExpandedGrid>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -13583,26 +13613,7 @@ const Orders25List = () => {
                                   background: '#dbeafe',
                                   color: '#1e40af'
                                 }}>
-                                  {(() => {
-                                    const typeMap = {
-                                      'FAKTURA': 'FAKTURA',
-                                      'ISDOC': 'ISDOC',
-                                      'PRILOHA': 'PŘÍLOHA',
-                                      'SMLOUVA': 'SMLOUVA',
-                                      'IMPORT': 'IMPORT',
-                                      'CENOVA_NABIDKA': 'CENOVÁ NABÍDKA',
-                                      'DODACI_LIST': 'DODACÍ LIST',
-                                      'PROFORMA': 'PROFORMA',
-                                      'OBJEDNAVKA': 'OBJEDNÁVKA',
-                                      'OBJEDNAVKA_ZAKAZNIKA': 'OBJEDNÁVKA ZÁKAZNÍKA',
-                                      'SPECIFIKACE': 'SPECIFIKACE',
-                                      'PROTOKOL': 'PROTOKOL',
-                                      'CERTIFIKAT': 'CERTIFIKÁT',
-                                      'JINE': 'JINÉ',
-                                      'JINA': 'JINÁ'
-                                    };
-                                    return typeMap[priloha.typ_prilohy] || priloha.typ_prilohy;
-                                  })()}
+                                  {window._getAttachmentTypeLabel(priloha.typ_prilohy).toUpperCase()}
                                 </span>
                               )}
                             </div>
@@ -13758,26 +13769,7 @@ const Orders25List = () => {
                                         background: '#d1fae5',
                                         color: '#065f46'
                                       }}>
-                                        {(() => {
-                                          const typeMap = {
-                                            'FAKTURA': 'FAKTURA',
-                                            'ISDOC': 'ISDOC',
-                                            'PRILOHA': 'PŘÍLOHA',
-                                            'SMLOUVA': 'SMLOUVA',
-                                            'IMPORT': 'IMPORT',
-                                            'CENOVA_NABIDKA': 'CENOVÁ NABÍDKA',
-                                            'DODACI_LIST': 'DODACÍ LIST',
-                                            'PROFORMA': 'PROFORMA',
-                                            'OBJEDNAVKA': 'OBJEDNÁVKA',
-                                            'OBJEDNAVKA_ZAKAZNIKA': 'OBJEDNÁVKA ZÁKAZNÍKA',
-                                            'SPECIFIKACE': 'SPECIFIKACE',
-                                            'PROTOKOL': 'PROTOKOL',
-                                            'CERTIFIKAT': 'CERTIFIKÁT',
-                                            'JINE': 'JINÉ',
-                                            'JINA': 'JINÁ'
-                                          };
-                                          return typeMap[priloha.typ_prilohy] || priloha.typ_prilohy;
-                                        })()}
+                                        {window._getAttachmentTypeLabel(priloha.typ_prilohy).toUpperCase()}
                                       </span>
                                     )}
                                   </div>
