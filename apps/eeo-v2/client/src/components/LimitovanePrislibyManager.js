@@ -2374,18 +2374,42 @@ const CashbookLPSummary = () => {
     setLoading(true);
     try {
       const cashbookAPI = (await import('../services/cashbookService')).default;
-      const result = await cashbookAPI.getLPSummary(userDetail.id, selectedYear);
+      // ✅ Použít správnou funkci pro načtení auth dat
+      const { loadAuthData } = await import('../utils/authStorage');
+      
+      const authData = {
+        username: user?.username || userDetail?.username,
+        token: await loadAuthData.token()
+      };
+      
+      console.log('🔍 LPSummary auth:', { 
+        hasToken: !!authData.token, 
+        username: authData.username 
+      });
+      
+      const result = await cashbookAPI.getLPSummary(userDetail.id, selectedYear, authData);
       
       if (result.status === 'ok') {
         setLpSummary(result.data.lp_summary || []);
       }
     } catch (error) {
       console.error('❌ Chyba při načítání LP summary:', error);
-      showToast('Chyba při načítání přehledu LP z pokladny', 'error');
+      
+      // ⚠️ Rozlišit typy chyb - NEvolat logout pokud jde jen o chybějící auth data
+      if (error.isAuthError && (error.httpStatus === 401 || error.httpStatus === 403)) {
+        // Skutečný HTTP auth error - tohle by mělo způsobit logout (ale TO udělá axios interceptor)
+        showToast('Vaše přihlášení vypršelo. Obnovte stránku.', 'error');
+      } else if (error.isAuthDataMissing) {
+        // Chybějící auth data z úložiště - NEodhlašovat, jen informovat
+        showToast('Nelze načíst autentizační data. Zkuste obnovit stránku.', 'warning');
+      } else {
+        // Jiná chyba
+        showToast('Chyba při načítání přehledu LP z pokladny', 'error');
+      }
     } finally {
       setLoading(false);
     }
-  }, [userDetail, selectedYear, showToast]);
+  }, [userDetail, selectedYear, showToast, user]);
   
   useEffect(() => {
     loadLPSummary();

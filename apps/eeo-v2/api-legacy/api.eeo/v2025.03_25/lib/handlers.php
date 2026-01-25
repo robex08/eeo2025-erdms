@@ -40,18 +40,35 @@ function api_error($httpCode, $message, $code = null, $extra = array()) {
 
 // Funkce pro ověření tokenu - optimalizováno pro reuse DB spojení
 function verify_token($token, $db = null) {
-    if (!$token) return false;
+    if (!$token) {
+        error_log("❌ verify_token: Token is empty");
+        return false;
+    }
     
     $decoded = base64_decode($token);
-    if (!$decoded) return false;
+    if (!$decoded) {
+        error_log("❌ verify_token: Cannot decode token");
+        return false;
+    }
     
     $parts = explode('|', $decoded);
-    if (count($parts) !== 2) return false;
+    if (count($parts) !== 2) {
+        error_log("❌ verify_token: Invalid token format (expected 2 parts, got " . count($parts) . ")");
+        return false;
+    }
     
     list($username, $timestamp) = $parts;
     
+    $now = time();
+    $token_age = $now - $timestamp;
+    
+    error_log("🔍 verify_token: username=$username, timestamp=$timestamp, now=$now, age={$token_age}s (" . round($token_age/3600, 2) . "h)");
+    
     // Kontrola, zda token není starší než 24 hodin
-    if (time() - $timestamp > 86400) return false;
+    if (time() - $timestamp > 86400) {
+        error_log("❌ verify_token: Token EXPIRED (age={$token_age}s > 86400s)");
+        return false;
+    }
     
     // Ověření, že uživatel existuje a je aktivní
     try {
@@ -70,13 +87,16 @@ function verify_token($token, $db = null) {
         $stmt->execute(array($username));
         $user = $stmt->fetch();
         
-        // DEBUG: Log pro debugging
-        error_log("verify_token debug - username: $username, user found: " . ($user ? 'YES' : 'NO'));
+        if (!$user) {
+            error_log("❌ verify_token: User not found or inactive: $username");
+            return false;
+        }
         
-        if (!$user) return false;
+        error_log("✅ verify_token: SUCCESS for user_id={$user['id']}, username=$username");
         
         return array('id' => (int)$user['id'], 'username' => $username);
     } catch (Exception $e) {
+        error_log("❌ verify_token: Exception: " . $e->getMessage());
         return false;
     }
 }
@@ -91,17 +111,29 @@ function verify_token($token, $db = null) {
  * @return array|false User data array or false on failure
  */
 function verify_token_v2($username, $token, $db = null) {
-    if (!$token || !$username) return false;
+    error_log("🔍 verify_token_v2: START - request_username=$username");
+    
+    if (!$token || !$username) {
+        error_log("❌ verify_token_v2: Missing token or username");
+        return false;
+    }
     
     // First verify token structure and expiry
     $token_data = verify_token($token, $db);
-    if (!$token_data) return false;
+    if (!$token_data) {
+        error_log("❌ verify_token_v2: verify_token() returned FALSE");
+        return false;
+    }
+    
+    error_log("🔍 verify_token_v2: verify_token() SUCCESS - token_username={$token_data['username']}, token_user_id={$token_data['id']}");
     
     // Additional check: verify username matches token username
     if ($token_data['username'] !== $username) {
-        error_log("verify_token_v2: Username mismatch - token: {$token_data['username']}, request: {$username}");
+        error_log("❌ verify_token_v2: Username mismatch - token_username={$token_data['username']}, request_username=$username");
         return false;
     }
+    
+    error_log("✅ verify_token_v2: Username match OK");
     
     // V2: Přidat informaci o roli uživatele (pro admin bypass)
     // ✅ NOVÝ SYSTÉM: Kontrola přes 25_uzivatele_role + 25_role
@@ -696,23 +728,31 @@ function handle_user_active($input, $config, $queries) {
 }
 
 function handle_user_update_activity($input, $config, $queries) {
-    // Ověření tokenu
+    // Ověření tokenu - ✅ POUŽÍVÁ verify_token_v2 (jednotné s ostatními endpointy)
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     
-    $token_data = verify_token($token);
-    if (!$token_data) {
+    if (empty($request_username) || empty($token)) {
         http_response_code(401);
-        echo json_encode(array('err' => 'Neplatný token', 'status' => 'error', 'message' => 'Token vypršel'));
+        echo json_encode(array('err' => 'Chybí username nebo token', 'status' => 'error', 'message' => 'Token vypršel'));
         exit;
     }
     
-    // Pro update aktivity použijeme ID z tokenu (přihlášený uživatel)
-    $user_id = $token_data['id'];
-    $username = $token_data['username'];
-    
     try {
         $db = get_db($config);
+        
+        // ✅ verify_token_v2 - jednotná verifikace pro všechny endpointy
+        $token_data = verify_token_v2($request_username, $token, $db);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(array('err' => 'Neplatný token', 'status' => 'error', 'message' => 'Token vypršel'));
+            exit;
+        }
+        
+        // Pro update aktivity použijeme ID z tokenu (přihlášený uživatel)
+        $user_id = $token_data['id'];
+        $username = $token_data['username'];
         
         // Nejdřív zkontroluj, že uživatel existuje
         $checkStmt = $db->prepare("SELECT id, username, aktivni FROM " . TBL_UZIVATELE . " WHERE id = :id");

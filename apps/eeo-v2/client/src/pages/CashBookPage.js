@@ -1120,12 +1120,15 @@ const CashBookPage = () => {
 
   // ✅ OPRAVA: LocalStorage klíč musí být v useMemo aby se aktualizoval když přijde userDetail
   // 🆕 OPRAVA 2: Klíč musí zahrnovat i mainAssignment.id, aby admin měl oddělené cache pro každou pokladnu
+  // 🆕 OPRAVA 3: Klíč musí používat STEJNÉ userId jako ensureBookExists() (targetUserId)
+  //             Tzn. pro admina načítajícího pokladnu jiného uživatele = userId toho uživatele
   const STORAGE_KEY = useMemo(() => {
-    const userId = userDetail?.id || 'default';
+    // ✅ Stejná logika jako v ensureBookExists(): mainAssignment.uzivatel_id || userDetail.id
+    const targetUserId = mainAssignment?.uzivatel_id || userDetail?.id || 'default';
     const assignmentId = mainAssignment?.id || 'noassignment';
-    const key = `cashbook_${userId}_${assignmentId}_${currentYear}_${currentMonth}`;
+    const key = `cashbook_${targetUserId}_${assignmentId}_${currentYear}_${currentMonth}`;
     return key;
-  }, [userDetail?.id, mainAssignment?.id, currentYear, currentMonth]);
+  }, [userDetail?.id, mainAssignment?.id, mainAssignment?.uzivatel_id, currentYear, currentMonth]);
 
   // 🧹 CLEANUP při unmount - vymazat localStorage cache
   useEffect(() => {
@@ -1262,45 +1265,83 @@ const CashBookPage = () => {
    */
   const ensureBookExists = useCallback(async () => {
     if (!mainAssignment?.id || !userDetail?.id) {
+      console.warn('⚠️ ensureBookExists: Chybí mainAssignment nebo userDetail', { 
+        hasMainAssignment: !!mainAssignment?.id, 
+        hasUserDetail: !!userDetail?.id 
+      });
       return null;
     }
 
     try {
-      // ✅ FIX: Když admin přepne na jinou pokladnu, načíst knihy pro UŽIVATELE TÉ POKLADNY
-      const targetUserId = mainAssignment.uzivatel_id || userDetail.id;
-
-      // 1. Zkusit načíst existující knihu
-      const booksResult = await cashbookAPI.listBooks(targetUserId, currentYear, currentMonth);
-
-      if (booksResult.status === 'ok' && booksResult.data?.books?.length > 0) {
-        const book = booksResult.data.books[0];
-
-        setCurrentBookId(book.id);
-        setCurrentBookData(book); // 🆕 Uložit celý objekt knihy
-        setLpKodPovinny(book.pokladna_lp_kod_povinny === 1 || book.pokladna_lp_kod_povinny === '1'); // 🆕 LP kód povinnost
-        setBookStatus(book.stav_knihy || 'aktivni');
-        setCarryOverAmount(parseFloat(book.prevod_z_predchoziho || 0));
-
-        // Načíst detaily knihy včetně položek (s force_recalc pro aktuální převod)
-        const bookDetail = await cashbookAPI.getBook(book.id, true);
-
-        if (bookDetail.status === 'ok' && bookDetail.data?.entries) {
-          // Transformovat entries do frontend formátu
-          const transformedEntries = bookDetail.data.entries.map(transformDBEntryToFrontend);
-          return { book, entries: transformedEntries };
+      // ✅ "u pokladen platí, že všichni vidí vše" = načíst položky VŠECH uživatelů v pokladně
+      const cisloPokladny = mainAssignment.cislo_pokladny;
+      const pokladnaId = mainAssignment.pokladna_id;
+      
+      // 1. Najít všechny uživatele přiřazené k této pokladně (podle ČÍSLA pokladny)
+      const usersInCashbox = allAssignments.filter(a => a.cislo_pokladny === cisloPokladny);
+      
+      if (usersInCashbox.length === 0) {
+        console.warn('⚠️ Žádní uživatelé v pokladně', { cisloPokladny, pokladnaId });
+        return { book: null, entries: [] };
+      }
+      
+      // 2. Načíst knihy pro všechny uživatele
+      let allBooks = [];
+      for (const userAssignment of usersInCashbox) {
+        const userId = userAssignment.uzivatel_id;
+        if (!userId) continue;
+        
+        const booksResult = await cashbookAPI.listBooks(userId, currentYear, currentMonth);
+        if (booksResult.status === 'ok' && booksResult.data?.books?.length > 0) {
+          // ✅ FIX: Filtrovat jen knihy pro TUTO pokladnu (podle cislo_pokladny)
+          const booksForThisCashbox = booksResult.data.books.filter(b => 
+            b.cislo_pokladny === cisloPokladny || b.pokladna_id === pokladnaId
+          );
+          allBooks.push(...booksForThisCashbox);
         }
+      }
+      
+      if (allBooks.length > 0) {
+        // Použít první knihu jako "hlavní" pro metadata
+        const mainBook = allBooks[0];
 
-        return { book, entries: [] };
+        setCurrentBookId(mainBook.id);
+        setCurrentBookData(mainBook);
+        setLpKodPovinny(mainBook.pokladna_lp_kod_povinny === 1 || mainBook.pokladna_lp_kod_povinny === '1');
+        setBookStatus(mainBook.stav_knihy || 'aktivni');
+        setCarryOverAmount(parseFloat(mainBook.prevod_z_predchoziho || 0));
+
+        // 3. Načíst položky ze VŠECH knih (všech uživatelů)
+        const allEntries = [];
+        for (const book of allBooks) {
+          const bookDetail = await cashbookAPI.getBook(book.id, true);
+          if (bookDetail.status === 'ok' && bookDetail.data?.entries) {
+            allEntries.push(...bookDetail.data.entries);
+          }
+        }
+        
+        // Seřadit všechny položky chronologicky
+        allEntries.sort((a, b) => {
+          const dateA = new Date(a.datum_zapisu || a.datum);
+          const dateB = new Date(b.datum_zapisu || b.datum);
+          if (dateA.getTime() !== dateB.getTime()) {
+            return dateA - dateB;
+          }
+          return (a.poradi_radku || 0) - (b.poradi_radku || 0);
+        });
+
+        const transformedEntries = allEntries.map(transformDBEntryToFrontend);
+        return { book: mainBook, entries: transformedEntries };
       } else {
-        // 2. Kniha neexistuje - zkusit vytvořit
-        // ✅ Pokud má uživatel přiřazení (mainAssignment.id existuje), vytvoř knihu
+        // 4. Žádné knihy neexistují - vytvořit pro aktuálního/hlavního uživatele
+        const targetUserId = mainAssignment.uzivatel_id || userDetail.id;
+        
         if (mainAssignment?.id) {
-
           const createResult = await cashbookAPI.createBook(
-            mainAssignment.id,  // prirazeni_pokladny_id
+            mainAssignment.id,
             currentYear,
             currentMonth,
-            targetUserId        // uzivatel_id
+            targetUserId
           );
 
           if (createResult.status === 'ok') {
@@ -1558,11 +1599,15 @@ const CashBookPage = () => {
         // localStorage slouží POUZE jako dočasný offline backup
         // Po F5 nebo změně uživatele se VŽDY načte čerstvá data z DB
 
+        // 🔍 KONTROLA: Je přihlášený uživatel majitelem této pokladny?
+        const targetUserId = mainAssignment?.uzivatel_id || userDetail?.id;
+        const isOwnCashbox = targetUserId === userDetail?.id;
+
         // 🎯 PRAVIDLO 1: Pokud je page reload (F5), VŽDY ignorovat localStorage
         if (isPageReload) {
           // F5 → načíst jen z DB, smazat starý localStorage
           setCashBookEntries(entries);
-          if (entries.length > 0) {
+          if (entries.length > 0 && isOwnCashbox) {
             saveToLocalStorage(entries, book.stav_knihy, parseFloat(book.prevod_z_predchoziho || 0));
           } else {
             localStorage.removeItem(STORAGE_KEY);
@@ -1571,13 +1616,19 @@ const CashBookPage = () => {
         }
         // 🎯 PRAVIDLO 1B: Pokud uživatel/admin změnil pokladnu, VŽDY načíst z DB
         else if (isCashboxChange) {
-          console.log('✅ Změna pokladny detekovaná → FORCE RELOAD Z DB (ignorován localStorage)');
           setCashBookEntries(entries);
-          if (entries.length > 0) {
+          if (entries.length > 0 && isOwnCashbox) {
             saveToLocalStorage(entries, book.stav_knihy, parseFloat(book.prevod_z_predchoziho || 0));
           } else {
             localStorage.removeItem(STORAGE_KEY);
           }
+          setLastSyncTimestamp(new Date().toISOString());
+        }
+        // 🎯 PRAVIDLO 1C: Admin prohlíží cizí pokladnu → VŽDY jen DB, NIKDY localStorage
+        else if (!isOwnCashbox) {
+          console.log('👁️ Admin prohlíží cizí pokladnu → pouze DB data (localStorage ignorován)');
+          setCashBookEntries(entries);
+          // Nesynchronizovat do localStorage (není to adminova pokladna)
           setLastSyncTimestamp(new Date().toISOString());
         }
         // 🎯 PRAVIDLO 2: Pokud DB má novější data než localStorage (timestamp check)
@@ -1594,23 +1645,14 @@ const CashBookPage = () => {
           saveToLocalStorage(entries, book.stav_knihy, parseFloat(book.prevod_z_predchoziho || 0));
           setLastSyncTimestamp(new Date().toISOString());
         }
-        // 🎯 PRAVIDLO 4: DB je prázdná, ale localStorage má unsyncnutá data
-        else if (entries.length === 0 && localEntries.length > 0) {
-          // Pouze pokud localStorage patří TÉTO pokladně a TOMUTO uživateli
-          const isValidCache = STORAGE_KEY.includes(`_${mainAssignment.id}_`) &&
-                              STORAGE_KEY.includes(`_${userDetail.id}_`);
-
-          if (isValidCache) {
-            // Offline režim - použít lokální data a pokusit se sync
-            setCashBookEntries(localEntries);
-            syncLocalChangesToDB(localEntries, book.id);
-          } else {
-            // Cache je pro jinou pokladnu/uživatele → smazat a začít čistě
-            setCashBookEntries([]);
-            localStorage.removeItem(STORAGE_KEY);
-          }
+        // 🎯 PRAVIDLO 4: DB je prázdná, ale localStorage má unsyncnutá data (POUZE pro vlastní pokladny)
+        else if (entries.length === 0 && localEntries.length > 0 && isOwnCashbox) {
+          // Offline režim - použít lokální data a pokusit se sync
+          console.log('📦 Načítám unsyncnutá data z localStorage pro vlastní pokladnu');
+          setCashBookEntries(localEntries);
+          syncLocalChangesToDB(localEntries, book.id);
         }
-        // � PRAVIDLO 4: Ani DB ani localStorage nemá data → prázdný start
+        // 🎯 PRAVIDLO 5: Ani DB ani localStorage nemá data → prázdný start
         else {
           setCashBookEntries([]);
           localStorage.removeItem(STORAGE_KEY);
@@ -1629,7 +1671,9 @@ const CashBookPage = () => {
       // Načíst konečný zůstatek z předchozího měsíce (pro výpočet carryOver pokud není uložený)
       const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
       const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-      const prevStorageKey = `cashbook_${userDetail.id}_${prevYear}_${prevMonth}`;
+      // ✅ FIX: Klíč musí obsahovat targetUserId (stejně jako STORAGE_KEY)
+      const targetUserId = mainAssignment?.uzivatel_id || userDetail?.id || 'default';
+      const prevStorageKey = `cashbook_${targetUserId}_${mainAssignment?.id || 'noassignment'}_${prevYear}_${prevMonth}`;
 
       let calculatedCarryOver = 0;
       const prevMonthData = localStorage.getItem(prevStorageKey);
@@ -1935,23 +1979,27 @@ const CashBookPage = () => {
         // 3️⃣ Vybrat správnou pokladnu (localStorage → hlavní → první)
         let selectedAssignment = null;
 
-        // Zkusit localStorage
-        try {
-          const saved = localStorage.getItem('cashbook_selector_cashbox');
-          if (saved) {
-            const savedData = JSON.parse(saved);
-            selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
-            
-            // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
-            if (!selectedAssignment) {
-              localStorage.removeItem('cashbook_selector_cashbox');
+        // Admin NIKDY nepoužívá cache - vždy začíná na první/hlavní pokladně
+        // Běžný user používá cache pro pohodlí
+        if (!canSeeAllCashboxes) {
+          // Zkusit localStorage (pouze pro běžné uživatele)
+          try {
+            const saved = localStorage.getItem('cashbook_selector_cashbox');
+            if (saved) {
+              const savedData = JSON.parse(saved);
+              selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
+              
+              // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
+              if (!selectedAssignment) {
+                localStorage.removeItem('cashbook_selector_cashbox');
+              }
             }
+          } catch (err) {
+            // Tichá chyba
           }
-        } catch (err) {
-          // Tichá chyba
         }
 
-        // Fallback na hlavní nebo první
+        // Fallback na hlavní nebo první (pro admina VŽDY, pro usera když není cache)
         if (!selectedAssignment) {
           const main = allAvailableAssignments.find(a => a.je_hlavni === 1);
           selectedAssignment = main || allAvailableAssignments[0];

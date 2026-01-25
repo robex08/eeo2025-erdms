@@ -3,38 +3,36 @@ import axios from 'axios';
 import MD5 from 'crypto-js/md5';
 
 // Axios instance for API2
-const api2 = axios.create({
+export const api2 = axios.create({
   baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 'Content-Type': 'application/json' }
 });
 
-// Response interceptor to handle token expiration
+// 🔧 Separátní axios instance BEZ interceptoru pro token refresh operace
+// Musí být bez interceptoru aby se zabránilo circular dependency
+const api2NoInterceptor = axios.create({
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
+  headers: { 'Content-Type': 'application/json' }
+});
+
+// ✅ Response interceptor - logout při 401
 api2.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // 🔐 401 Unauthorized - token expired → logout
-    if (error.response?.status === 401) {
-      // Don't show auth error toast for login endpoint - let the login form handle it
-      const isLoginRequest = error.config?.url?.includes('user/login');
+  async (error) => {
+    const originalRequest = error.config;
 
-      if (!isLoginRequest && typeof window !== 'undefined') {
+    console.log('🔴 API Error:', error.response?.status, originalRequest?.url);
+
+    // Pokud je to 401, uživatel musí být odhlášen
+    if (error.response?.status === 401 && !originalRequest?._logout_triggered) {
+      originalRequest._logout_triggered = true;
+      
+      console.log('🚪 Token expired or invalid - triggering logout');
+      
+      // Trigger authError event pro logout
+      if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
-    }
-    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, jen vrátit error
-
-    // Check for HTML response (login page instead of JSON)
-    const responseText = error.response?.data || '';
-    if (typeof responseText === 'string' && responseText.includes('<!doctype')) {
-      // Don't show auth error toast for login endpoint - let the login form handle it
-      const isLoginRequest = error.config?.url?.includes('user/login');
-
-      if (!isLoginRequest && typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.' }
         });
         window.dispatchEvent(event);
       }
@@ -43,6 +41,14 @@ api2.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// ⚠️ DEPRECATED: Starý response interceptor odstraněn
+// Nyní používáme setupAxiosInterceptors z axiosInterceptors.js
+// Který automaticky:
+// - Kontroluje expiraci tokenu před každým requestem
+// - Obnovuje token pokud je blízko expiraci
+// - Retry failed requests po refresh tokenu
+// - Graceful handling 401/403 s prodlevou před odhlášením
 
 // Simple in-memory cache for orders list (per username+params)
 // Each entry: { ts: <Date.now()>, data: [...] }
@@ -3207,10 +3213,12 @@ export async function fetchActiveUsersWithStats({ token, username }) {
  * - Pokud je token blízko vypršení (zbývá < 2h), backend automaticky vygeneruje new_token
  * - new_token je vrácen v response a frontend ho automaticky uloží
  * - Uživatel NENÍ odhlášen, pokračuje transparentně v práci
+ * 
+ * ⚠️ POUŽÍVÁ api2NoInterceptor aby se zabránilo circular dependency při token refresh
  */
 export async function updateUserActivity({ token, username }) {
   try {
-    const response = await api2.post('user/update-activity', {
+    const response = await api2NoInterceptor.post('user/update-activity', {
       username,
       token
     });

@@ -44,12 +44,18 @@ function handle_cashbook_list_post($config, $input) {
             return api_error(401, 'Chybí username nebo token');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst filtry z inputu
         $filters = array(
@@ -126,12 +132,18 @@ function handle_cashbook_get_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -281,12 +293,18 @@ function handle_cashbook_create_post($config, $input) {
             return api_error(401, 'Chybí username nebo token');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Validace dat nejdříve (potřebujeme pokladna_id)
         $validator = new CashbookValidator();
@@ -372,12 +390,18 @@ function handle_cashbook_update_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -454,12 +478,18 @@ function handle_cashbook_close_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -532,12 +562,18 @@ function handle_cashbook_reopen_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -611,12 +647,18 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -770,12 +812,18 @@ function handle_cashbook_entry_update_post($config, $input) {
             return api_error(400, 'Chybí entry_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst položku
         $entryModel = new CashbookEntryModel($db);
@@ -922,7 +970,7 @@ function handle_cashbook_entry_delete_post($config, $input) {
         $db = get_db($config);
         error_log("✓ DB connection OK");
         
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             error_log("❌ Invalid token for user: " . $input['username']);
@@ -1016,12 +1064,18 @@ function handle_cashbook_entry_restore_post($config, $input) {
             return api_error(400, 'Chybí entry_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst položku
         $entryModel = new CashbookEntryModel($db);
@@ -1078,12 +1132,18 @@ function handle_cashbook_audit_log_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -1144,12 +1204,18 @@ function handle_cashbook_force_renumber_post($config, $input) {
             return api_error(400, 'Chybí year');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // ⚠️ KRITICKÁ KONTROLA - pouze admin s CASH_BOOK_MANAGE
         $permissions = new CashbookPermissions($userData, $db);
@@ -1199,17 +1265,28 @@ function handle_cashbook_force_renumber_post($config, $input) {
  */
 function handle_cashbook_lp_summary_post($config, $input) {
     try {
-        // Ověření tokenu
+        error_log("🔍 [CASHBOOK-LP] START - " . date('Y-m-d H:i:s'));
+        
+        // ✅ OrderV2 Standard: Ověření tokenu z body parametrů
         if (empty($input['username']) || empty($input['token'])) {
+            error_log("❌ [CASHBOOK-LP] Missing username or token");
             return api_error(401, 'Chybí username nebo token');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        error_log("🔍 [CASHBOOK-LP] Username: {$input['username']}, Token preview: " . substr($input['token'], 0, 20) . "...");
+        
+        // ✅ OrderV2 Standard: verify_token_v2 BEZ předání $db (nechť si vytvoří vlastní připojení)
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
+            error_log("❌ [CASHBOOK-LP] verify_token_v2 FAILED for user: {$input['username']}");
             return api_error(401, 'Neplatný token');
         }
+        
+        error_log("✅ [CASHBOOK-LP] Token verified for user_id: {$userData['id']}, username: {$userData['username']}");
+        
+        // DB připojení až po autentizaci
+        $db = get_db($config);
         
         // Parametry
         $year = isset($input['year']) ? intval($input['year']) : intval(date('Y'));
@@ -1276,7 +1353,7 @@ function handle_cashbook_lp_summary_post($config, $input) {
  */
 function handle_cashbook_lp_detail_post($config, $input) {
     try {
-        // Ověření tokenu
+        // ✅ OrderV2 Standard: Ověření tokenu z body parametrů
         if (empty($input['username']) || empty($input['token'])) {
             return api_error(401, 'Chybí username nebo token');
         }
@@ -1285,12 +1362,15 @@ function handle_cashbook_lp_detail_post($config, $input) {
             return api_error(400, 'Chybí lp_kod');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        // ✅ OrderV2 Standard: verify_token_v2 BEZ předání $db
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+        $db = get_db($config);
         
         // Parametry
         $lpKod = $input['lp_kod'];

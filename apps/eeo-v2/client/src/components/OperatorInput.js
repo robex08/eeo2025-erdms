@@ -95,6 +95,7 @@ const Wrapper = styled.div`
   position: relative;
   overflow: hidden;
   width: 100%;
+  max-width: 180px; /* Omezit maximální šířku pro úsporu místa */
 
   &:focus-within {
     border-color: #3b82f6;
