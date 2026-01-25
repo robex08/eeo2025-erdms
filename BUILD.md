@@ -88,19 +88,64 @@ npm start
 ✅ SPRÁVNĚ: REACT_APP_API_BASE_URL=https://erdms.zachranka.cz/api
 ```
 
+## � KRITICKÉ UPOZORNĚNÍ - DEPLOYMENT CHECKLIST 🚨
+
+### ⚠️ PŘED KAŽDÝM PRODUCTION DEPLOYEM ZKONTROLUJ:
+
+**🔴 PHP Utility Functions:**
+1. **debug_logger.php MUSÍ být includnutý GLOBÁLNĚ** (ne pouze v DEV větvi)
+   ```php
+   // ✅ SPRÁVNĚ - debug_logger.php includnutý před IF podmínkou
+   require_once __DIR__ . '/debug_logger.php';
+   
+   if (IS_DEV_ENV) {
+       // DEV konfigurace
+   } else {
+       // PROD konfigurace
+   }
+   
+   // ❌ ŠPATNĚ - debug_logger.php pouze v DEV větvi
+   if (IS_DEV_ENV) {
+       require_once __DIR__ . '/debug_logger.php';  // Fatal error v PROD!
+   }
+   ```
+
+2. **Důvod:** Pokud je `debug_log()` volána v kódu (invoiceHandlers.php, notes_handlers.php atd.), 
+   ale `debug_logger.php` není includnutý v PROD → **Fatal error: Call to undefined function**
+
+3. **Řešení:** Utility funkce s interním DEV/PROD checkem VŽDY includovat globálně.
+   Funkce sama kontroluje `IS_DEV_ENV` a v PROD nedělá nic (graceful no-op).
+
+**📍 Soubory k ověření před deployem:**
+- `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/api.php` (řádky 1-30)
+- Zkontroluj že `require_once __DIR__ . '/debug_logger.php';` je PŘED `if (IS_DEV_ENV)`
+
+**🧪 Pre-deployment test:**
+```bash
+# Test že funkce je definována i v PROD kontextu
+php -r "define('IS_DEV_ENV', false); require '/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/debug_logger.php'; debug_log('test'); echo 'OK';"
+```
+
+**💡 Naučená lekce (25.1.2026):**
+Deploy v2.19 selhal kvůli debug_log() byla volána v kódu, ale debug_logger.php byl 
+includnutý pouze v `if (IS_DEV_ENV)` bloku → 500 error na všech complex endpoints 
+(cashbox, invoices, dictionaries, todonotes).
+
+---
+
 ## 🚀 Quick Start
 
 ```bash
 # Dashboard build a deploy
 ./build-dashboard.sh --dev --deploy
 
-# EEO v2 frontend + backend (verze 2.13.0)
+# EEO v2 frontend + backend (verze 2.19)
 ./build-eeo-v2.sh --dev --all --deploy
 
 # Všechny aplikace najednou
 ./build-all.sh --dev --deploy
 
-# Production build (verze 2.13.0)
+# Production build (verze 2.19)
 ./build-dashboard.sh --prod --deploy
 ```
 
