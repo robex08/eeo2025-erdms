@@ -2382,11 +2382,6 @@ const CashbookLPSummary = () => {
         token: await loadAuthData.token()
       };
       
-      console.log('🔍 LPSummary auth:', { 
-        hasToken: !!authData.token, 
-        username: authData.username 
-      });
-      
       const result = await cashbookAPI.getLPSummary(userDetail.id, selectedYear, authData);
       
       if (result.status === 'ok') {

@@ -29,26 +29,16 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
     const now = Date.now();
     // Prevence příliš častých volání (min 10 sekund mezi voláními)
     if (lastActivityRef.current && (now - lastActivityRef.current) < 10000) {
-      console.log('⏭️ Skipping activity update - too soon (< 10s)');
       return;
     }
 
     lastActivityRef.current = now;
 
-    console.log('📡 Updating user activity...', { username, time: new Date().toISOString() });
-
     try {
       const result = await updateUserActivity({ token, username });
       
-      console.log('✅ Activity updated:', { 
-        success: result?.success, 
-        hasNewToken: !!result?.new_token,
-        timestamp: result?.timestamp 
-      });
-      
       // ✅ TOKEN AUTO-REFRESH: Pokud backend vrátil new_token, aktualizuj ho
       if (result && result.new_token && onTokenRefresh) {
-        console.log('🔄 New token received, refreshing...');
         onTokenRefresh(result.new_token);
       }
     } catch (error) {
@@ -64,8 +54,6 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
 
   useEffect(() => {
     if (!token || !username) return;
-
-    console.log('🎬 useUserActivity mounted - starting activity tracking', { username });
 
     // Okamžitý update při mount (simulace login/refresh)
     updateActivity();
