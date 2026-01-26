@@ -350,7 +350,11 @@ const InvoiceStatusSelect = ({
 
   // Získat konfiguraci aktuálního stavu
   const activeStateConfig = INVOICE_STATES[currentStatus] || INVOICE_STATES.ZAEVIDOVANA;
-  const isFinalState = ['ZAPLACENO', 'K_ZAPLACENI', 'STORNO', 'DOKONCENA'].includes(currentStatus);
+  // ⚠️ Finální stavy (nezobrazovat "po splatnosti"):
+  // - ZAPLACENO, DOKONCENA = faktura je vyřízená
+  // - STORNO = faktura je zrušená, už se neřeší
+  // ✅ K_ZAPLACENI NENÍ finální stav! Znamená "čeká na zaplacení" a MŮŽE být po splatnosti!
+  const isFinalState = ['ZAPLACENO', 'DOKONCENA', 'STORNO'].includes(currentStatus);
 
   // Výpočet rozdílu dní do/po splatnosti
   const getDaysDiff = () => {
@@ -364,7 +368,7 @@ const InvoiceStatusSelect = ({
   };
 
   const daysDiff = getDaysDiff();
-  const isOverdue = !isFinalState && daysDiff < 0; // Je po splatnosti a není zaplacena/storno
+  const isOverdue = !isFinalState && daysDiff < 0; // Je po splatnosti a není zaplacena/dokončena/storno
 
   // Určení vzhledu
   let displayColor = activeStateConfig.color;
@@ -372,13 +376,44 @@ const InvoiceStatusSelect = ({
   let displayLabel = activeStateConfig.label;
   let overdueBadge = null;
   let tooltipText = `Stav: ${activeStateConfig.label}`;
+  let iconColor = 'inherit';
+  let badgeColor = { bg: '#fee2e2', text: '#991b1b', border: '#fecaca' };
 
   if (dueDate && !isFinalState) {
     if (isOverdue) {
-      // PO SPLATNOSTI - zčervenáme
-      displayColor = 'background-color: #fef2f2; color: #991b1b; border-color: #fecaca;';
+      // PO SPLATNOSTI - rozlišit závažnost intenzitou POZADÍ (text stejný)
+      if (currentStatus === 'ZAEVIDOVANA') {
+        // 🔴 KRITICKÉ: Nová faktura už po splatnosti - NEJTMAVŠÍ pozadí, světle žlutý text
+        displayColor = 'background-color: #7f1d1d; color: #fef08a; border-color: #991b1b;';
+        iconColor = '#fef08a';
+        badgeColor = { bg: '#991b1b', text: '#fef08a', border: '#7f1d1d' };
+        tooltipText += `\n⚠️ KRITICKÉ: ${Math.abs(daysDiff)} dní po splatnosti! (faktura teprve zaevidována)`;
+      } else if (currentStatus === 'PREDANA_PO') {
+        // 🔴 KRITICKÉ: Předána PO a po splatnosti - světlejší než ZAEVIDOVANA
+        displayColor = 'background-color: #b91c1c; color: #ffffff; border-color: #dc2626;';
+        iconColor = '#ffffff';
+        badgeColor = { bg: '#dc2626', text: '#ffffff', border: '#b91c1c' };
+        tooltipText += `\n⚠️ KRITICKÉ: ${Math.abs(daysDiff)} dní po splatnosti! (předána PO)`;
+      } else if (currentStatus === 'K_ZAPLACENI') {
+        // 🟢 NEJMÉNĚ KRITICKÉ: K zaplacení - NEJSVĚTLEJŠÍ pozadí (jen čeká na platbu)
+        displayColor = 'background-color: #fef2f2; color: #991b1b; border-color: #fecaca;';
+        iconColor = '#991b1b';
+        badgeColor = { bg: '#fee2e2', text: '#991b1b', border: '#fecaca' };
+        tooltipText += `\n⚠️ POZOR: ${Math.abs(daysDiff)} dní po splatnosti! (připraveno k platbě)`;
+      } else if (currentStatus === 'VECNA_SPRAVNOST') {
+        // 🟡 MÍRNĚJŠÍ: Věcná správnost provedena - lehce tmavší pozadí než K_ZAPLACENI
+        displayColor = 'background-color: #fee2e2; color: #991b1b; border-color: #fca5a5;';
+        iconColor = '#991b1b';
+        badgeColor = { bg: '#fecaca', text: '#991b1b', border: '#f87171' };
+        tooltipText += `\n⚠️ POZOR: ${Math.abs(daysDiff)} dní po splatnosti! (věcná správnost potvrzena)`;
+      } else {
+        // 🟠 STŘEDNÍ: Ostatní stavy (V_RESENI, atd.) - střední pozadí
+        displayColor = 'background-color: #fecaca; color: #991b1b; border-color: #fca5a5;';
+        iconColor = '#991b1b';
+        badgeColor = { bg: '#fee2e2', text: '#991b1b', border: '#fecaca' };
+        tooltipText += `\n⚠️ POZOR: ${Math.abs(daysDiff)} dní po splatnosti!`;
+      }
       overdueBadge = `${Math.abs(daysDiff)} d. po`;
-      tooltipText += `\nPOZOR: ${Math.abs(daysDiff)} dní po splatnosti!`;
     } else {
       // V BUDOUCNU - info v tooltipu
       tooltipText += `\nSplatnost za ${daysDiff} dní (${new Date(dueDate).toLocaleDateString('cs-CZ')})`;
@@ -410,10 +445,14 @@ const InvoiceStatusSelect = ({
           $disabled={disabled}
         >
           <ButtonContent>
-            <DisplayIcon size={16} style={{ flexShrink: 0, color: isOverdue ? '#991b1b' : 'inherit' }} />
+            <DisplayIcon size={16} style={{ flexShrink: 0, color: iconColor }} />
             <ButtonLabel>{displayLabel}</ButtonLabel>
             {overdueBadge && (
-              <OverdueBadge>{overdueBadge}</OverdueBadge>
+              <OverdueBadge style={{ 
+                backgroundColor: badgeColor.bg, 
+                color: badgeColor.text, 
+                borderColor: badgeColor.border 
+              }}>{overdueBadge}</OverdueBadge>
             )}
           </ButtonContent>
           <ChevronDown 

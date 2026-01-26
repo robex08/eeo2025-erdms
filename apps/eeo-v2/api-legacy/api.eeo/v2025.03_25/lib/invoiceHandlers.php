@@ -1667,10 +1667,13 @@ function handle_invoices25_list($input, $config, $queries) {
                         $where_conditions[] = '(f.fa_zaplacena = 1 OR f.stav IN ("ZAPLACENO", "DOKONCENA"))';
                         break;
                     case 'unpaid':
-                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
+                        // ⚠️ Faktury BEZ data splatnosti (IS NULL) patří také do "nezaplaceno"
+                        // ⚠️ STORNO faktury se nezobrazují (jsou zrušené)
+                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
                         break;
                     case 'overdue':
-                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND f.fa_datum_splatnosti < CURDATE()';
+                        // ⚠️ K_ZAPLACENI může být po splatnosti! Pouze ZAPLACENO, DOKONCENA a STORNO jsou výjimky.
+                        $where_conditions[] = '(f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE()';
                         break;
                 }
             }
@@ -1780,13 +1783,16 @@ function handle_invoices25_list($input, $config, $queries) {
                     break;
                     
                 case 'unpaid':
-                    // Nezaplaceno (ještě NEpřekročily splatnost a nejsou DOKONCENA)
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND f.fa_datum_splatnosti >= CURDATE()';
+                    // Nezaplaceno (ještě NEpřekročily splatnost a nejsou DOKONCENA/STORNO)
+                    // ⚠️ Faktury BEZ data splatnosti (IS NULL) patří také do "nezaplaceno"
+                    // ⚠️ STORNO faktury se nezobrazují (jsou zrušené)
+                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
                     break;
                     
                 case 'overdue':
-                    // Po splatnosti (nezaplacené, nejsou DOKONCENA a překročily splatnost)
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND f.fa_datum_splatnosti < CURDATE()';
+                    // Po splatnosti (nezaplacené, nejsou DOKONCENA/ZAPLACENO/STORNO a překročily splatnost)
+                    // ⚠️ K_ZAPLACENI může být po splatnosti! Pouze ZAPLACENO, DOKONCENA a STORNO jsou výjimky.
+                    $where_conditions[] = '(f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE()';
                     break;
                     
                 case 'without_order':
@@ -1883,10 +1889,10 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(f.fa_castka), 0) as celkem_castka,
             COUNT(CASE WHEN f.fa_zaplacena = 1 OR f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN 1 END) as pocet_zaplaceno,
             COALESCE(SUM(CASE WHEN f.fa_zaplacena = 1 OR f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as celkem_zaplaceno,
-            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') THEN 1 END) as pocet_nezaplaceno,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
-            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
+            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') THEN 1 END) as pocet_nezaplaceno,
+            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
+            COUNT(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
+            COALESCE(SUM(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
             COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN 1 END) as pocet_moje_faktury,
             COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,

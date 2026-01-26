@@ -147,6 +147,7 @@ function validateAndParseOrderItems($input) {
             }
             
             // Pokud není zadána cena s DPH, vypočítáme ji
+            // ✅ Bezpečné pro DPH 0%: (1 + 0/100) = 1, tedy cena_s_dph = cena_bez_dph
             if ($validatedItem['cena_s_dph'] <= 0 && $validatedItem['cena_bez_dph'] > 0) {
                 $validatedItem['cena_s_dph'] = $validatedItem['cena_bez_dph'] * (1 + $validatedItem['sazba_dph'] / 100);
             }

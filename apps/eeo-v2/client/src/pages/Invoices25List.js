@@ -2127,12 +2127,20 @@ const Invoices25List = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    // 1️⃣ Pokud je ZAPLACENÁ (fa_zaplacena = 1) nebo DOKONČENÁ (stav = 'DOKONCENA') → ZAPLACENO
+    // 1️⃣ Pokud je ZAPLACENÁ (fa_zaplacena = 1) nebo DOKONČENÁ (stav = 'DOKONCENA'/'ZAPLACENO') → ZAPLACENO
     if (invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true || invoice.stav === 'DOKONCENA' || invoice.stav === 'ZAPLACENO') {
       return 'paid';
     }
     
-    // 2️⃣ Pokud NENÍ zaplacená/dokončená a má datum splatnosti → kontrola po splatnosti
+    // 🚫 Pokud je STORNO → vrátit 'paid' (aby se nepočítala do "po splatnosti" ani "nezaplaceno")
+    // Stornované faktury jsou zrušené a neřeší se
+    if (invoice.stav === 'STORNO') {
+      return 'paid'; // Technicky není 'paid', ale nechceme ji v overdue/unpaid
+    }
+    
+    // 2️⃣ Pokud má datum splatnosti → kontrola po splatnosti
+    // ⚠️ DŮLEŽITÉ: Stav K_ZAPLACENI je PŘED zaplacením, takže MŮŽE být po splatnosti!
+    // Pouze stavy ZAPLACENO, DOKONCENA a STORNO se NIKDY nepočítají jako "po splatnosti"
     if (invoice.fa_datum_splatnosti) {
       const splatnost = new Date(invoice.fa_datum_splatnosti);
       splatnost.setHours(0, 0, 0, 0);
@@ -2256,22 +2264,27 @@ const Invoices25List = () => {
       
       // Částka - operátor-based filtr (=, <, >)
       // Format: "=5000" nebo ">1000" nebo "<500"
+      // POZOR: Pokud je jen operátor bez čísla (např. ">"), ignoruj (neparsuj)
       if (debouncedColumnFilters.castka && debouncedColumnFilters.castka.trim()) {
         const castkaTrimmed = debouncedColumnFilters.castka.trim();
         const match = castkaTrimmed.match(/^([=<>])(.+)$/);
         
-        if (match) {
+        if (match && match[2]) { // ✅ Kontrola že existuje číslo za operátorem
           const operator = match[1];
-          const amount = parseFloat(match[2].replace(/\s/g, '').replace(/,/g, ''));
+          const amountStr = match[2].replace(/\s/g, '').replace(/,/g, '');
           
-          if (!isNaN(amount)) {
-            // Přeložit operátor na API parametry
-            if (operator === '=') {
-              apiParams.castka_eq = amount;
-            } else if (operator === '<') {
-              apiParams.castka_lt = amount;
-            } else if (operator === '>') {
-              apiParams.castka_gt = amount;
+          if (amountStr) { // ✅ Kontrola že není prázdný string
+            const amount = parseFloat(amountStr);
+            
+            if (!isNaN(amount) && amount > 0) { // ✅ Kontrola že je to platné číslo větší než 0
+              // Přeložit operátor na API parametry
+              if (operator === '=') {
+                apiParams.castka_eq = amount;
+              } else if (operator === '<') {
+                apiParams.castka_lt = amount;
+              } else if (operator === '>') {
+                apiParams.castka_gt = amount;
+              }
             }
           }
         }
