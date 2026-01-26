@@ -5,6 +5,8 @@
 
 import React from 'react';
 import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faTimes } from '@fortawesome/free-solid-svg-icons';
 
 const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearButton, onClear }) => {
   // Rozdělit value na operátor a číslo
@@ -23,9 +25,10 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
   const { operator, number } = parseValue(value);
 
   const handleOperatorChange = (newOperator) => {
-    // Pokud není číslo, vrať prázdný string (zobraz všechno)
+    // Pokud není číslo, neposílej prázdný string - zachovej operátor
     if (!number || number.trim() === '') {
-      onChange('');
+      // Vrať jen operátor bez čísla - tím se filtr neaktivuje, ale uživatel vidí vybraný operátor
+      onChange(newOperator);
     } else {
       // DŮLEŽITÉ: Odstranit mezery před odesláním do API
       const valueWithoutSpaces = number.replace(/\s/g, '');
@@ -38,9 +41,9 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
     // Povolit pouze číslice, mezery a případně desetinnou tečku/čárku
     const cleanValue = rawValue.replace(/[^\d\s,.]/g, '');
     
-    // Pokud je číslo prázdné, vrať prázdný string (zobraz všechno)
+    // Pokud je číslo prázdné, vrať jen operátor (bez čísla se filtr neaktivuje)
     if (!cleanValue || cleanValue.trim() === '') {
-      onChange('');
+      onChange(operator);
     } else {
       // DŮLEŽITÉ: Odstranit mezery před odesláním do API
       const valueWithoutSpaces = cleanValue.replace(/\s/g, '');
@@ -67,19 +70,18 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
         <option value=">">&gt;</option>
       </OperatorSelect>
       <Separator>|</Separator>
-      {clearButton && value ? (
-        <ClearButton onClick={onClear} title="Vymazat filtr">
-          ×
-        </ClearButton>
-      ) : (
-        icon && <IconWrapper>{icon}</IconWrapper>
-      )}
       <NumberInput
         type="text"
         placeholder={placeholder}
         value={formatNumberWithSpaces(number)}
         onChange={handleNumberChange}
+        $hasValue={!!(number && number.trim())}
       />
+      {number && number.trim() && clearButton && onClear && (
+        <ClearButton onClick={onClear} title="Vymazat filtr">
+          <FontAwesomeIcon icon={faTimes} style={{ width: '10px', height: '10px' }} />
+        </ClearButton>
+      )}
     </Wrapper>
   );
 };
@@ -93,7 +95,7 @@ const Wrapper = styled.div`
   background: white;
   transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* Změna z hidden na visible pro clear button */
   width: 100%;
   max-width: 180px; /* Omezit maximální šířku pro úsporu místa */
 
@@ -143,22 +145,25 @@ const IconWrapper = styled.div`
 const ClearButton = styled.button`
   position: absolute;
   right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: #9ca3af;
   cursor: pointer;
-  padding: 0;
-  font-size: 0.875rem;
-  font-weight: bold;
-  width: 16px;
-  height: 16px;
+  padding: 0.15rem;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: color 0.2s ease;
-  
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 1;
+
   &:hover {
-    color: #dc2626;
+    color: #6b7280;
   }
 `;
 

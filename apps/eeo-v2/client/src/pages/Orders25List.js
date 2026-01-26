@@ -6640,15 +6640,17 @@ const Orders25List = () => {
   const highlightText = useCallback((text, searchTerm) => {
     if (!text || !searchTerm || typeof text !== 'string') return text;
 
-    const normalizedText = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const normalizedSearch = searchTerm.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // Normalizace - odstranění diakritiky pro porovnání
+    const normalizedText = removeDiacritics(text.toLowerCase());
+    const normalizedSearch = removeDiacritics(searchTerm.toLowerCase());
 
     const index = normalizedText.indexOf(normalizedSearch);
     if (index === -1) return text;
 
+    // Zvýraznění textu s diakritikou
     const beforeMatch = text.substring(0, index);
-    const match = text.substring(index, index + searchTerm.length);
-    const afterMatch = text.substring(index + searchTerm.length);
+    const match = text.substring(index, index + normalizedSearch.length);
+    const afterMatch = text.substring(index + normalizedSearch.length);
 
     return (
       <>
@@ -6660,6 +6662,17 @@ const Orders25List = () => {
       </>
     );
   }, []);
+
+  // 🎨 Helper pro zvýraznění textu podle globálního nebo sloupcového filtru
+  const highlightTextWithFilters = useCallback((text, columnKey) => {
+    if (!text || typeof text !== 'string') return text;
+    
+    // Priorita: sloupcový filtr (localColumnFilters pro okamžitý feedback) > globální filtr
+    const columnFilterValue = localColumnFilters[columnKey];
+    const searchTerm = columnFilterValue || globalFilter;
+    
+    return searchTerm ? highlightText(text, searchTerm) : text;
+  }, [localColumnFilters, globalFilter, highlightText]);
 
   // 🔥 CRITICAL PERFORMANCE: Forward declaration for action click handler
   // Defined here (before columns) to avoid "Cannot access before initialization" error
@@ -7107,10 +7120,7 @@ const Orders25List = () => {
                 ⚠
               </span>
             )}
-            {globalFilter
-              ? highlightText(row.original.cislo_objednavky || '---', globalFilter)
-              : (row.original.cislo_objednavky || '---')
-            }
+            {highlightTextWithFilters(row.original.cislo_objednavky || '---', 'cislo_objednavky')}
             {row.original.id && !row.original.isDraft && !row.original.je_koncept && (
               <sup style={{
                 fontSize: '0.6rem',
@@ -7138,10 +7148,7 @@ const Orders25List = () => {
               textOverflow: 'ellipsis',
               wordBreak: 'break-word'
             }}>
-              {globalFilter
-                ? highlightText(row.original.predmet, globalFilter)
-                : row.original.predmet
-              }
+              {highlightTextWithFilters(row.original.predmet, 'predmet')}
             </div>
           )}
         </div>
@@ -7646,24 +7653,24 @@ const Orders25List = () => {
           <div style={{ lineHeight: '1.4' }}>
             {/* Řádek 1: Název dodavatele */}
             <div style={{ fontWeight: 500, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-              {order.dodavatel_nazev}
+              {highlightTextWithFilters(order.dodavatel_nazev, 'dodavatel_nazev')}
             </div>
             {/* Řádek 2: Adresa (menší písmo) */}
             {adresaText && (
               <div style={{ fontSize: '0.85em', color: '#6b7280', wordBreak: 'break-word' }}>
-                {adresaText}
+                {highlightTextWithFilters(adresaText, 'dodavatel_nazev')}
               </div>
             )}
             {/* Řádek 3: IČO (menší písmo) */}
             {order.dodavatel_ico && (
               <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
-                IČO: {order.dodavatel_ico}
+                IČO: {highlightTextWithFilters(order.dodavatel_ico, 'dodavatel_nazev')}
               </div>
             )}
             {/* Řádek 4: Email | Telefon */}
             {kontaktText && (
               <div style={{ fontSize: '0.85em', color: '#6b7280', wordBreak: 'break-all' }}>
-                {kontaktText}
+                {highlightTextWithFilters(kontaktText, 'dodavatel_nazev')}
               </div>
             )}
           </div>
@@ -9158,8 +9165,11 @@ const Orders25List = () => {
   // Handlers
   const handleExportDocument = async (order) => {
     try {
-      // ✅ Předej enriched data přímo do dialogu (už jsou v order objektu!)
-      setDocxModalOrder(order);
+      // 🔄 KRITICKÁ OPRAVA: Načti detail objednávky s enriched daty (účastníci workflow - garant, příkazce, schvalovatel, atd.)
+      const enrichedOrder = await getOrderV2(order.id, token, username, true, 0);
+      
+      // ✅ Předej enriched data do dialogu (teď už máme garanta, příkazce, schvalovatele s cele_jmeno)
+      setDocxModalOrder(enrichedOrder);
       setDocxModalOpen(true);
 
     } catch (error) {
@@ -17262,6 +17272,12 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                           header.column.columnDef.accessorKey === 'cena_s_dph' ? 'Cena s DPH' :
                           'Cena FA s DPH'
                         }
+                        clearButton={true}
+                        onClear={() => {
+                          const newFilters = { ...localColumnFilters };
+                          newFilters[header.column.columnDef.accessorKey] = '';
+                          setColumnFiltersDebounced(newFilters);
+                        }}
                       />
                     </div>
                   ) : (
@@ -19234,6 +19250,12 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                               header.column.columnDef.accessorKey === 'cena_s_dph' ? 'Cena s DPH' :
                               'Cena FA s DPH'
                             }
+                            clearButton={true}
+                            onClear={() => {
+                              const newFilters = { ...localColumnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = '';
+                              setColumnFiltersDebounced(newFilters);
+                            }}
                           />
                         </div>
                       ) : (
