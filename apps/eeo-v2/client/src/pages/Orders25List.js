@@ -1905,17 +1905,23 @@ const TableHead = styled.thead`
 
 const TableRow = styled.tr`
   /* Základní pozadí řádku podle priority:
-     1. KONCEPTY V EDITACI - nejvyšší priorita - oranžové zvýraznění
-     2. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
-     3. STRIPING - jednoduché střídání bílé/šedé (pokud highlighting vypnuto)
+     1. NEAKTIVNÍ OBJEDNÁVKY - nejvyšší priorita - šedé, přeškrtnuté
+     2. KONCEPTY V EDITACI - druhá nejvyšší priorita - oranžové zvýraznění
+     3. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
+     4. STRIPING - jednoduché střídání bílé/šedé (pokud highlighting vypnuto)
   */
   background: ${props => {
-    // 1. KONCEPTY V EDITACI - NEJVYŠŠÍ PRIORITA - vždy viditelné
+    // 1. NEAKTIVNÍ OBJEDNÁVKY - jen šedé pozadí, přeškrtnutí se dělá v CSS níže
+    if (props.$isInactive) {
+      return '#f8f9fa';
+    }
+
+    // 2. KONCEPTY V EDITACI - DRUHÁ NEJVYŠŠÍ PRIORITA - vždy viditelné
     if (props.$isDraft || props.$hasLocalChanges) {
       return 'linear-gradient(135deg, #ea580c 0%, #f97316 30%, #ea580c 70%, #dc2626 100%)';
     }
 
-    // 2. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
+    // 3. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
     if (props.$showHighlighting && props.$order) {
       const bgColor = getRowBackgroundColor(props.$order);
       if (bgColor && bgColor !== 'transparent') {
@@ -1923,9 +1929,47 @@ const TableRow = styled.tr`
       }
     }
 
-    // 2. DEFAULT - čistě bílé pozadí
+    // 4. DEFAULT - čistě bílé pozadí
     return 'white';
   }};
+
+  /* Speciální efekty pro NEAKTIVNÍ OBJEDNÁVKY - přeškrtnuté jako u faktur */
+  ${props => props.$isInactive ? `
+    opacity: 0.6;
+    position: relative;
+    text-decoration: line-through;
+    background: #f8f9fa !important;
+
+    /* Šedé písmo pro neaktivní */
+    color: #6c757d !important;
+
+    /* Všechny vnořené elementy */
+    & * {
+      color: #6c757d !important;
+      text-decoration: line-through;
+    }
+
+    & div, & span, & sup, & sub, & small, & strong {
+      color: #6c757d !important;
+    }
+
+    /* Ikony a SVG */
+    & .fa, & svg, & [class*="fa-"] {
+      color: #6c757d !important;
+    }
+
+    /* Disabled tlačítka */
+    & button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Hover efekt */
+    &:hover {
+      opacity: 0.75;
+      background: #e9ecef !important;
+    }
+  ` : ''}
 
   /* Speciální efekty pro KONCEPTY V EDITACI - jen světlejší pozadí */
   ${props => (props.$isDraft || props.$hasLocalChanges) ? `
@@ -2659,9 +2703,9 @@ const ActionMenuButton = styled.button`
   padding: 0.375rem;
   border: none;
   background: transparent;
-  cursor: pointer;
+  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
   border-radius: 4px;
-  color: #64748b;
+  color: ${props => props.$disabled ? '#94a3b8' : '#64748b'};
   font-size: 0.8rem;
   transition: all 0.2s ease;
   display: flex;
@@ -2669,6 +2713,7 @@ const ActionMenuButton = styled.button`
   justify-content: center;
   min-width: 28px;
   min-height: 28px;
+  opacity: ${props => props.$disabled ? '0.4' : '1'};
 
   /* Prevence blikání ikon */
   svg {
@@ -2681,43 +2726,29 @@ const ActionMenuButton = styled.button`
     color: #1e293b;
   }
 
-  &.edit:hover:not(:disabled):not([disabled]) {
-    color: #3b82f6;
-    background: #eff6ff;
+  &.edit:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#3b82f6'};
+    background: ${props => props.$disabled ? 'transparent' : '#eff6ff'};
   }
 
-  &.export-document:hover:not(:disabled):not([disabled]) {
-    color: #059669;
-    background: #ecfdf5;
+  &.export-document:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#059669'};
+    background: ${props => props.$disabled ? 'transparent' : '#ecfdf5'};
   }
 
-  &.delete:hover:not(:disabled):not([disabled]) {
-    color: #dc2626;
-    background: #fef2f2;
+  &.delete:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#dc2626'};
+    background: ${props => props.$disabled ? 'transparent' : '#fef2f2'};
   }
 
-  &.create-invoice:hover:not(:disabled):not([disabled]) {
-    color: #0891b2;
-    background: #ecfeff;
+  &.create-invoice:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#0891b2'};
+    background: ${props => props.$disabled ? 'transparent' : '#ecfeff'};
   }
 
-  &.financial-control:hover:not(:disabled):not([disabled]) {
-    color: #7c3aed;
-    background: #f5f3ff;
-  }
-
-  /* Disabled stav */
-  &:disabled,
-  &[disabled] {
-    opacity: 0.7;
-    cursor: not-allowed !important;
-    color: #94a3b8;
-    pointer-events: auto;
-    
-    &:hover {
-      background: transparent;
-      color: #94a3b8;
-    }
+  &.financial-control:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#7c3aed'};
+    background: ${props => props.$disabled ? 'transparent' : '#f5f3ff'};
   }
 `;
 
@@ -4479,6 +4510,7 @@ const Orders25List = () => {
   const [currentDraftData, setCurrentDraftData] = useState(null); // Data draftu pro zobrazení v modalu
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState('soft'); // 🔧 Typ mazání: 'soft', 'hard', 'restore'
   const [showArchivedWarningModal, setShowArchivedWarningModal] = useState(false);
   const [showArchivedWithDraftWarningModal, setShowArchivedWithDraftWarningModal] = useState(false); // Kombinovaný modal
 
@@ -5545,7 +5577,7 @@ const Orders25List = () => {
   }, [orders, users]); // prepareDropdownLists vynecháno - stabilní díky useCallback s [users]
 
   // Load data
-  const loadData = useCallback(async (forceRefresh = false, silent = false) => {
+  const loadData = useCallback(async (forceRefresh = false, silent = false, overrideShowOnlyInactive = null) => {
     if (!token || !user?.username) return;
 
     //  CACHE: Start měření doby načítání
@@ -5577,6 +5609,9 @@ const Orders25List = () => {
       const canViewAllOrders = currentPermissions.canViewAll;
       const hasOnlyOwnPermissions = currentPermissions.hasOnlyOwn;
 
+      // 🔧 Použij override hodnotu pokud je poskytnutá, jinak state
+      const effectiveShowOnlyInactive = overrideShowOnlyInactive !== null ? overrideShowOnlyInactive : showOnlyInactive;
+
       // MIGRACE: Fetch funkce pro V2 API
       const fetchFunction = async () => {
         const filters = {
@@ -5584,7 +5619,7 @@ const Orders25List = () => {
           ...(showArchived && { archivovano: 1 }),
           // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních objednávek (aktivni = 0)
           // Pouze pokud je uživatel ADMIN a checkbox je zaškrtnutý
-          ...(isAdmin && showOnlyInactive && { show_only_inactive: 1 })
+          ...(isAdmin && effectiveShowOnlyInactive && { show_only_inactive: 1 })
         };
 
         setApiTestData(prev => ({
@@ -5624,7 +5659,8 @@ const Orders25List = () => {
             {
               ...dateRange,
               viewAll: canViewAllOrders,
-              showArchived: showArchived
+              showArchived: showArchived,
+              showOnlyInactive: effectiveShowOnlyInactive // 🔧 Klíč cache musí zahrnovat i tento filtr
             }
           )
         : await ordersCacheService.getOrders(
@@ -5633,7 +5669,8 @@ const Orders25List = () => {
             {
               ...dateRange,
               viewAll: canViewAllOrders,
-              showArchived: showArchived
+              showArchived: showArchived,
+              showOnlyInactive: effectiveShowOnlyInactive // 🔧 Klíč cache musí zahrnovat i tento filtr
             }
           );
 
@@ -6157,7 +6194,9 @@ const Orders25List = () => {
         // Chrome violation fixed: Increased debounce to 1000ms to prevent handler violations
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          loadData();
+          // ✅ FIX: Zachovat aktuální showOnlyInactive při BT reload
+          // ⚠️ SECURITY: Pokud není admin, vždy použít false (checkbox není viditelný)
+          loadData(true, false, isAdmin ? showOnlyInactive : false);
           debounceTimer = null;
         }, 1000); // 1000ms debounce (zvýšeno pro performance)
       }
@@ -6167,7 +6206,7 @@ const Orders25List = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       cleanup();
     };
-  }, [loadData]);
+  }, [loadData, showOnlyInactive, isAdmin]);
 
   // Registrace callback pro getCurrentFilters - používá background task před API voláním
   useEffect(() => {
@@ -6213,6 +6252,11 @@ const Orders25List = () => {
         filters.archivovano = 1;
       }
 
+      // 🔧 ADMIN FEATURE: Jen neaktivní objednávky (aktivni = 0)
+      if (isAdmin && showOnlyInactive) {
+        filters.show_only_inactive = 1;
+      }
+
       return filters;
     };
 
@@ -6221,7 +6265,7 @@ const Orders25List = () => {
     return () => {
       bgTasksContext.registerGetCurrentFiltersCallback?.(null);
     };
-  }, [bgTasksContext, selectedYear, selectedMonth, showArchived]);
+  }, [bgTasksContext, selectedYear, selectedMonth, showArchived, isAdmin, showOnlyInactive]);
 
   // Registrace callback pro background refresh objednávek
   // ✅ Background refresh FUNGUJE pro všechny uživatele
@@ -6748,6 +6792,13 @@ const Orders25List = () => {
   const handleActionClick = useCallback((e) => {
     const button = e.target.closest('button[data-action]');
     if (!button) return;
+    
+    // 🔧 KRITICKÉ: Kontrola disabled stavu pomocí data-disabled atributu
+    if (button.dataset.disabled === 'true') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
 
     const action = button.dataset.action;
     const orderIndex = parseInt(button.dataset.orderIndex, 10); // Local index in current page
@@ -8256,6 +8307,8 @@ const Orders25List = () => {
         // 🔥 PERFORMANCE: Use refs to avoid columns re-render when pagination changes
         const orderIndex = row.index; // LOCAL index in current page
         const orderId = row.original.id; // Actual order ID from database
+        // 🔧 Backend VŽDY posílá aktivni jako integer 0 nebo 1 (nikdy string nebo boolean)
+        const isInactive = row.original.aktivni === 0;
         return (
           <ActionMenu onClick={handleActionClick}>
             {/* 1⃣ EDIT */}
@@ -8264,14 +8317,17 @@ const Orders25List = () => {
               data-action="edit"
               data-order-index={orderIndex}
               data-order-id={orderId}
+              data-disabled={isInactive || !canEdit(row.original) ? 'true' : undefined}
+              $disabled={isInactive || !canEdit(row.original)}
               title={
-                row.original.isDraft
+                isInactive
+                  ? "Neaktivní objednávka - nelze editovat"
+                  : row.original.isDraft
                   ? "Vrátit se ke konceptu objednávky"
                   : row.original.hasLocalDraftChanges
                     ? "Pokračovat v editaci"
                     : "Editovat"
               }
-              disabled={!canEdit(row.original)}
             >
               <FontAwesomeIcon icon={faEdit} />
             </ActionMenuButton>
@@ -8281,12 +8337,17 @@ const Orders25List = () => {
               data-action="create-invoice"
               data-order-index={orderIndex}
               data-order-id={orderId}
-              title={row.original.hasLocalDraftChanges 
-                ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro evidování faktury' 
-                : (!canCreateInvoice(row.original) 
-                  ? 'Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
-                  : 'Evidovat fakturu k této objednávce')}
-              disabled={row.original.hasLocalDraftChanges || !canCreateInvoice(row.original)}
+              data-disabled={isInactive || row.original.hasLocalDraftChanges || !canCreateInvoice(row.original) ? 'true' : undefined}
+              $disabled={isInactive || row.original.hasLocalDraftChanges || !canCreateInvoice(row.original)}
+              title={
+                isInactive
+                  ? "Neaktivní objednávka - nelze evidovat fakturu"
+                  : row.original.hasLocalDraftChanges 
+                  ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro evidování faktury' 
+                  : (!canCreateInvoice(row.original) 
+                    ? 'Evidování faktury je dostupné pouze ve stavech: Fakturace, Věcná správnost, Zkontrolována' 
+                    : 'Evidovat fakturu k této objednávce')
+              }
             >
               <FontAwesomeIcon icon={faFileInvoice} />
             </ActionMenuButton>
@@ -8296,12 +8357,17 @@ const Orders25List = () => {
               data-action="export"
               data-order-index={orderIndex}
               data-order-id={orderId}
-              title={row.original.hasLocalDraftChanges 
-                ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro generování DOCX' 
-                : (!canExportDocument(row.original) 
-                  ? 'Generování DOCX je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
-                  : 'Generovat DOCX')}
-              disabled={row.original.hasLocalDraftChanges || !canExportDocument(row.original)}
+              data-disabled={isInactive || row.original.hasLocalDraftChanges || !canExportDocument(row.original) ? 'true' : undefined}
+              $disabled={isInactive || row.original.hasLocalDraftChanges || !canExportDocument(row.original)}
+              title={
+                isInactive
+                  ? "Neaktivní objednávka - nelze generovat DOCX"
+                  : row.original.hasLocalDraftChanges 
+                  ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro generování DOCX' 
+                  : (!canExportDocument(row.original) 
+                    ? 'Generování DOCX je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
+                    : 'Generovat DOCX')
+              }
             >
               <FontAwesomeIcon icon={faFileWord} />
             </ActionMenuButton>
@@ -8311,22 +8377,27 @@ const Orders25List = () => {
               data-action="financial-control"
               data-order-index={orderIndex}
               data-order-id={orderId}
-              title={getOrderSystemStatus(row.original) !== 'DOKONCENA' 
-                ? 'Finanční kontrola je dostupná pouze pro objednávky ve stavu DOKONČENA'
-                : 'Generovat finanční kontrolu (PDF/tisk)'
+              data-disabled={isInactive || getOrderSystemStatus(row.original) !== 'DOKONCENA' ? 'true' : undefined}
+              $disabled={isInactive || getOrderSystemStatus(row.original) !== 'DOKONCENA'}
+              title={
+                isInactive
+                  ? "Neaktivní objednávka - nelze generovat finanční kontrolu"
+                  : getOrderSystemStatus(row.original) !== 'DOKONCENA' 
+                  ? 'Finanční kontrola je dostupná pouze pro objednávky ve stavu DOKONČENA'
+                  : 'Generovat finanční kontrolu (PDF/tisk)'
               }
-              disabled={getOrderSystemStatus(row.original) !== 'DOKONCENA'}
             >
               <FontAwesomeIcon icon={faListCheck} />
             </ActionMenuButton>
-            {/* 5⃣ SMAZAT - zobrazit pouze pokud má uživatel právo smazat TUTO objednávku */}
+            {/* 5⃣ SMAZAT/OBNOVIT - VŽDY AKTIVNÍ (i pro neaktivní objednávky) */}
             {canDelete(row.original) && (
               <ActionMenuButton
                 className="delete"
                 data-action="delete"
                 data-order-index={orderIndex}
                 data-order-id={orderId}
-                title="Smazat"
+                $disabled={false}
+                title={isInactive && isAdmin ? "Obnovit nebo úplně smazat neaktivní objednávku" : "Smazat objednávku"}
               >
                 <FontAwesomeIcon icon={faTrash} />
               </ActionMenuButton>
@@ -9143,21 +9214,11 @@ const Orders25List = () => {
     
     if (!hasInvoicePermission) return false;
 
-    // ✅ KROK 2: POVOLENÉ STAVY: Od ROZPRACOVANA až do DOKONCENA
-    // FÁZE 3-8 dle WorkflowManager
+    // ✅ KROK 2: POVOLENÉ STAVY: POUZE Fakturace, Věcná kontrola, Zkontrolováno
     const allowedStates = [
-      'ROZPRACOVANA',     // ✅ FÁZE 3 - začalo se vyplňovat
-      'ODESLANA',         // ✅ FÁZE 4 - objednávka byla odeslána
-      'ODESLANO',         // ✅ FÁZE 4 - alternativní označení
-      'POTVRZENA',        // ✅ FÁZE 4 - dodavatel potvrdil
-      'UVEREJNIT',        // ✅ FÁZE 5 - čeká na zveřejnění
-      'NEUVEREJNIT',      // ✅ FÁZE 6 - nezveřejněno v registru, ale platná obj.
-      'UVEREJNENA',       // ✅ FÁZE 6 - zveřejněno v registru
       'FAKTURACE',        // ✅ FÁZE 6 - probíhá fakturace
       'VECNA_SPRAVNOST',  // ✅ FÁZE 7 - kontrola věcné správnosti
-      'ZKONTROLOVANA',    // ✅ FÁZE 8 - zkontrolována
-      'DOKONCENA',        // ✅ FÁZE 8 - dokončeno
-      'CEKA_SE'           // ✅ Speciální stav - čeká se na dodavatele
+      'ZKONTROLOVANA'     // ✅ FÁZE 8 - zkontrolována
     ];
 
     // ❌ NEPLATNÉ STAVY (stornované/zamítnuté)
@@ -10196,9 +10257,19 @@ const Orders25List = () => {
       showToast('Nemáte oprávnění smazat tuto objednávku', { type: 'warning' });
       return;
     }
+    
+    // 🔧 Nastavit výchozí delete type podle stavu objednávky
+    if (order.aktivni === 0 && isAdmin) {
+      // Neaktivní objednávka + admin = možnost restore nebo hard delete
+      setDeleteType('restore'); // Výchozí: obnovit
+    } else {
+      // Aktivní objednávka = soft delete
+      setDeleteType('soft');
+    }
+    
     setOrderToDelete(order);
     setShowDeleteConfirmModal(true);
-  }, [canDelete, showToast]);
+  }, [canDelete, showToast, isAdmin]);
   
   // Handler: Evidovat fakturu
   const handleCreateInvoice = useCallback((order) => {
@@ -16651,13 +16722,37 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
       {/* Filters */}
       {showFiltersPanel && (
-      <FiltersPanel>
-        <FiltersHeader>
+        <FiltersPanel>
+          <FiltersHeader>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <FontAwesomeIcon icon={faFilter} style={{ color: '#3b82f6' }} />
             Filtry a vyhledávání
           </h3>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {/* 🔧 ADMIN: Checkbox pro zobrazení POUZE neaktivních objednávek */}
+            {isAdmin && (
+              <AdminCheckboxWrapper title="Zobrazit pouze neaktivní (smazané) objednávky - viditelné pouze pro administrátory">
+                <input
+                  type="checkbox"
+                  checked={showOnlyInactive}
+                  onChange={async (e) => {
+                    const newValue = e.target.checked;
+                    setRowSelection({});
+                    
+                    // 🔧 KRITICKÉ: Okamžitě vymazat cache a nastavit novou hodnotu
+                    ordersCacheService.invalidate(null);
+                    setShowOnlyInactive(newValue);
+                    
+                    // 🔧 KRITICKÉ: Předat novou hodnotu přímo do loadData pomocí override parametru
+                    // Jinak by loadData použil starou hodnotu ze state (closure)
+                    await loadData(true, false, newValue);
+                  }}
+                />
+                <FontAwesomeIcon icon={faEyeSlash} />
+                <span>Pouze neaktivní</span>
+              </AdminCheckboxWrapper>
+            )}
+
             <SmartTooltip text="Vymazat všechny filtry a zobrazit všechny objednávky" icon="warning" preferredPosition="bottom">
               <ActionButton onClick={clearFilters} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
                 <FontAwesomeIcon icon={faEraser} />
@@ -16726,26 +16821,6 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
             </SmartTooltip>
           </div>
         </FiltersHeader>
-
-        {/* 🔧 ADMIN: Checkbox pro zobrazení POUZE neaktivních objednávek */}
-        {isAdmin && (
-          <div style={{ marginBottom: '1rem' }}>
-            <AdminCheckboxWrapper title="Zobrazit pouze neaktivní (smazané) objednávky - viditelné pouze pro administrátory">
-              <input
-                type="checkbox"
-                checked={showOnlyInactive}
-                onChange={(e) => {
-                  const newValue = e.target.checked;
-                  setShowOnlyInactive(newValue);
-                  // Reset pagination when toggling
-                  setRowSelection({});
-                }}
-              />
-              <FontAwesomeIcon icon={faEyeSlash} />
-              <span>Pouze neaktivní</span>
-            </AdminCheckboxWrapper>
-          </div>
-        )}
 
         <FilterGroup>
           <FilterLabel>
@@ -17125,7 +17200,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
           </FiltersGrid>
         )}
-      </FiltersPanel>
+        </FiltersPanel>
       )}
 
       {/* Table */}
@@ -17452,7 +17527,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   $hasLocalChanges={row.original.hasLocalDraftChanges || false}
                   $showHighlighting={showRowHighlighting}
                   $isHighlighted={highlightOrderId && (row.original.id === highlightOrderId || row.original.cislo_objednavky === highlightOrderId)}
-                  $inactive={row.original.aktivni === 0 || row.original.aktivni === false}
+                  $isInactive={row.original.aktivni === 0}
                   onContextMenu={handleTableContextMenu}
                   onDoubleClick={() => {
                     if (canEdit(row.original)) {
@@ -17461,10 +17536,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   }}
                   data-order-id={row.original.cislo_objednavky || row.original.id}
                   data-order-index={index + (currentPageIndex * pageSize)}
-                  data-inactive={row.original.aktivni === 0 || row.original.aktivni === false ? 'true' : undefined}
+                  data-inactive={row.original.aktivni === 0 ? 'true' : undefined}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id} className={row.original.aktivni === 0 || row.original.aktivni === false ? 'inactive-content' : ''}>
+                    <TableCell key={cell.id} className={row.original.aktivni === 0 ? 'inactive-content' : ''}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -17473,11 +17548,11 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <TableRow
                     $order={row.original}
                     $showHighlighting={showRowHighlighting}
-                    $inactive={row.original.aktivni === 0 || row.original.aktivni === false}
+                    $isInactive={row.original.aktivni === 0}
                     onContextMenu={handleTableContextMenu}
                     data-order-id={row.original.cislo_objednavky || row.original.id}
                     data-order-index={index + (currentPageIndex * pageSize)}
-                    data-inactive={row.original.aktivni === 0 || row.original.aktivni === false ? 'true' : undefined}
+                    data-inactive={row.original.aktivni === 0 ? 'true' : undefined}
                   >
                     <TableCell colSpan={columns.length} style={{ padding: 0, borderBottom: '1px solid #000' }}>
                       {renderExpandedContent(row.original)}
@@ -17780,59 +17855,145 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         isOpen={showDeleteConfirmModal}
         onClose={handleDeleteCancel}
         onConfirm={() => {
-          // 🔄 Pokud je objednávka neaktivní (aktivni=0) a uživatel je admin, výchozí je RESTORE
-          if (orderToDelete && !orderToDelete.aktivni && isAdmin) {
+          // 🔄 Rozlišení mezi restore, hard delete a soft delete podle deleteType
+          if (deleteType === 'restore') {
             handleDeleteConfirm('restore');
-          } else if (hasPermission('ADMINI')) {
-            handleDeleteConfirm('hard'); // Administrátor (role ADMINI) - smazat úplně
+          } else if (deleteType === 'hard') {
+            handleDeleteConfirm('hard');
           } else {
-            handleDeleteConfirm('soft'); // Běžný uživatel - označit neaktivní
+            handleDeleteConfirm('soft');
           }
         }}
-        title={orderToDelete && !orderToDelete.aktivni && isAdmin ? "Obnovení objednávky" : "Smazání objednávky"}
-        icon={orderToDelete && !orderToDelete.aktivni && isAdmin ? faCheckCircle : faTrash}
-        variant={orderToDelete && !orderToDelete.aktivni && isAdmin ? "success" : "danger"}
+        title={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? "Obnovení objednávky" : "Úplné smazání objednávky")
+            : "Smazání objednávky"
+        }
+        icon={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? faCheckCircle : faTrash)
+            : faTrash
+        }
+        variant={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? "success" : "danger")
+            : "danger"
+        }
         confirmText={
           orderToDelete && !orderToDelete.aktivni && isAdmin 
-            ? '✅ Obnovit objednávku'
+            ? (deleteType === 'restore' ? '✅ Obnovit objednávku' : '⚠️ Smazat úplně')
             : hasPermission('ADMINI') 
               ? 'Smazat úplně' 
               : 'Označit neaktivní'
         }
         cancelText="Zrušit"
+        key={deleteType + (orderToDelete?.aktivni ? '-active' : '-inactive')}
       >
         {orderToDelete && !orderToDelete.aktivni && isAdmin ? (
-          /* NEAKTIVNÍ OBJEDNÁVKA - Možnost obnovení */
+          /* NEAKTIVNÍ OBJEDNÁVKA - Možnost obnovení nebo hard delete */
           <>
             <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
-              Objednávka <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong> je neaktivní (smazaná).
+              Co chcete udělat s neaktivní objednávkou <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>?
             </p>
             <div style={{
-              background: '#f0fdf4',
-              border: '2px solid #10b981',
+              background: '#f8fafc',
+              border: '2px solid #cbd5e1',
               borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1rem'
+              padding: '1rem'
             }}>
-              <h4 style={{ margin: '0 0 0.75rem 0', color: '#166534' }}>
-                🔄 Obnovení objednávky
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                🔧 Vyberte akci:
               </h4>
-              <p style={{ margin: 0, color: '#166534', fontSize: '0.95rem' }}>
-                Objednávka bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
-              </p>
-            </div>
-            {hasPermission('ADMINI') && (
-              <div style={{
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: '6px',
-                padding: '0.75rem',
-                fontSize: '0.85rem',
-                color: '#991b1b'
-              }}>
-                <strong>Alternativa:</strong> Pokud chcete objednávku smazat natrvalo, zavřete tento dialog a použijte kontextovou nabídku (pravé tlačítko myši) a zvolte "Smazat úplně".
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* OBNOVA */}
+                <label 
+                  onClick={() => setDeleteType('restore')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'restore' ? '#10b981' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'restore' ? '#f0fdf4' : 'white',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="deleteType"
+                    value="restore"
+                    checked={deleteType === 'restore'}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setDeleteType('restore');
+                    }}
+                    style={{ marginTop: '0.25rem', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      marginBottom: '0.25rem', 
+                      color: deleteType === 'restore' ? '#166534' : '#475569' 
+                    }}>
+                      🔄 Obnovit objednávku
+                    </div>
+                    <div style={{ 
+                      fontSize: '0.85rem', 
+                      color: deleteType === 'restore' ? '#166534' : '#64748b',
+                      lineHeight: '1.4'
+                    }}>
+                      Objednávka bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
+                    </div>
+                  </div>
+                </label>
+
+                {/* HARD DELETE */}
+                <label 
+                  onClick={() => setDeleteType('hard')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'hard' ? '#ef4444' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="deleteType"
+                    value="hard"
+                    checked={deleteType === 'hard'}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setDeleteType('hard');
+                    }}
+                    style={{ marginTop: '0.25rem', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      marginBottom: '0.25rem', 
+                      color: deleteType === 'hard' ? '#dc2626' : '#475569' 
+                    }}>
+                      ⚠️ Smazat úplně (HARD DELETE)
+                    </div>
+                    <div style={{ 
+                      fontSize: '0.85rem', 
+                      color: deleteType === 'hard' ? '#dc2626' : '#64748b',
+                      lineHeight: '1.4'
+                    }}>
+                      Objednávka bude <strong>fyzicky smazána z databáze</strong> včetně všech položek a příloh. Tuto akci nelze vrátit zpět!
+                    </div>
+                  </div>
+                </label>
               </div>
-            )}
+            </div>
           </>
         ) : (
           /* AKTIVNÍ OBJEDNÁVKA - Možnosti smazání */
