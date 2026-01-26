@@ -662,6 +662,7 @@ export async function updateOrderV2(orderId, orderData, token, username) {
  * @param {number} orderId - ID objednávky
  * @param {string} token - Auth token
  * @param {string} username - Username
+ * @param {boolean} [hardDelete=false] - Pokud true, provede hard delete (nenávratné)
  * @returns {Promise<Object>} Result
  */
 export async function deleteOrderV2(orderId, token, username, hardDelete = false) {
@@ -674,6 +675,43 @@ export async function deleteOrderV2(orderId, token, username, hardDelete = false
     });
 
     const result = validateAPIResponse(response, 'deleteOrderV2');
+
+    return result;
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * RESTORE Order (obnovit neaktivní objednávku)
+ * 
+ * ⚠️ Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
+ * 
+ * @param {number} orderId - ID objednávky k obnovení
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Result
+ * 
+ * @example
+ * await restoreOrderV2(123, token, username);
+ */
+export async function restoreOrderV2(orderId, token, username) {
+  if (!token || !username) {
+    throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
+  }
+
+  if (!orderId) {
+    throw new Error('Chybí ID objednávky.');
+  }
+
+  try {
+    const response = await apiOrderV2.post(`/order-v2/${orderId}/restore`, {
+      token,
+      username
+    });
+
+    const result = validateAPIResponse(response, 'restoreOrderV2');
 
     return result;
 
@@ -1289,6 +1327,7 @@ export default {
   createOrderV2,
   updateOrderV2,
   deleteOrderV2,
+  restoreOrderV2,
   listOrdersV2,
   getNextOrderNumberV2,
   checkOrderNumberV2,
