@@ -203,8 +203,8 @@ npm run build
 ### Klíčové body logiky:
 
 1. **Faktura je "ZAPLACENA"** pokud:
-   - `fa_zaplacena = 1` NEBO
    - `stav IN ('ZAPLACENO', 'DOKONCENA')`
+   - ⚠️ **Sloupec `fa_zaplacena` se IGNORUJE!** Rozhoduje pouze workflow stav!
 
 2. **Faktura je "PO SPLATNOSTI"** pokud:
    - `(fa_zaplacena = 0 OR fa_zaplacena IS NULL)` A
