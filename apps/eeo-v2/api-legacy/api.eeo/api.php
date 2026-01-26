@@ -354,6 +354,13 @@ if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
     }
 }
 
+error_log("DEBUG API: endpoint='$endpoint', method='$request_method', uri='$request_uri'");
+
+// 🔧 DEBUG: Log endpoint for DELETE troubleshooting
+if (strpos($endpoint, 'delete') !== false || strpos($endpoint, 'restore') !== false) {
+    error_log("API.PHP DEBUG - Endpoint: '$endpoint' | Method: $request_method | URI: $request_uri");
+}
+
 // === VERSION ENDPOINT - GET /api.eeo/version (no auth required) ===
 if ($endpoint === 'version') {
     if ($request_method === 'GET') {
@@ -3256,6 +3263,35 @@ switch ($endpoint) {
             break;
         }
         
+        // DELETE /api.eeo/order-v2/{id}/delete - smazani objednavky (MUST BE BEFORE generic /{id} route!)
+        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/delete$/', $endpoint, $matches)) {
+            // Support both numeric and string IDs
+            $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
+            
+            if ($request_method === 'POST' || $request_method === 'DELETE') {
+                handle_order_v2_delete($input, $config, $queries);
+                exit; // ✅ FIX: exit místo break v default bloku
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+                exit;
+            }
+        }
+        
+        // POST /api.eeo/order-v2/{id}/restore - obnoveni smazane objednavky (aktivni=0 -> aktivni=1)
+        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/restore$/', $endpoint, $matches)) {
+            $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_restore($input, $config, $queries);
+                exit; // ✅ FIX: exit místo break
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+                exit;
+            }
+        }
+        
         // POST /api.eeo/order-v2/{id} - nacte objednavku podle ID (GET deprecated)
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)$/', $endpoint, $matches)) {
             // Support both numeric and string IDs
@@ -3332,20 +3368,6 @@ switch ($endpoint) {
                     'deprecated' => 'GET support removed. Migrate to POST.',
                     'allowed_methods' => ['POST']
                 ));
-            } else {
-                http_response_code(405);
-                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
-            }
-            break;
-        }
-        
-        // DELETE /api.eeo/order-v2/{id}/delete - smazani objednavky  
-        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/delete$/', $endpoint, $matches)) {
-            // Support both numeric and string IDs
-            $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
-            
-            if ($request_method === 'POST' || $request_method === 'DELETE') {
-                handle_order_v2_delete($input, $config, $queries);
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
