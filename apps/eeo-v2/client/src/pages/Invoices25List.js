@@ -1554,10 +1554,12 @@ const Invoices25List = () => {
     paid: 0,            // Počet zaplacených
     unpaid: 0,          // Počet nezaplacených
     overdue: 0,         // Počet po splatnosti
+    withinDue: 0,       // Počet ve splatnosti (nezaplacené, ale ne po splatnosti)
     totalAmount: 0,     // Celková částka (všechny)
     paidAmount: 0,      // Částka zaplacených
     unpaidAmount: 0,    // Částka nezaplacených
     overdueAmount: 0,   // Částka po splatnosti
+    withinDueAmount: 0, // Částka ve splatnosti
     withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
     myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
     kontrolovano: 0     // Zkontrolované faktury (kontrola_radku)
@@ -2127,8 +2129,9 @@ const Invoices25List = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    // 1️⃣ Pokud je ZAPLACENÁ (fa_zaplacena = 1) nebo DOKONČENÁ (stav = 'DOKONCENA'/'ZAPLACENO') → ZAPLACENO
-    if (invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true || invoice.stav === 'DOKONCENA' || invoice.stav === 'ZAPLACENO') {
+    // 1️⃣ Pokud má stav ZAPLACENO nebo DOKONCENA → ZAPLACENO
+    // ⚠️ DŮLEŽITÉ: fa_zaplacena ignorujeme! Rozhoduje pouze workflow stav!
+    if (invoice.stav === 'ZAPLACENO' || invoice.stav === 'DOKONCENA') {
       return 'paid';
     }
     
@@ -2454,15 +2457,31 @@ const Invoices25List = () => {
       if (response.statistiky) {
         // BE vrací kompletní statistiky za celý filtr
         
+        // 🐛 DEBUG: Co backend vrací
+        console.log('📊 Backend statistiky:', {
+          pocet_nezaplaceno: response.statistiky.pocet_nezaplaceno,
+          pocet_po_splatnosti: response.statistiky.pocet_po_splatnosti,
+          pocet_ve_splatnosti: response.statistiky.pocet_ve_splatnosti,
+          pocet_storno: response.statistiky.pocet_storno,
+          pocet_vecna_spravnost: response.statistiky.pocet_vecna_spravnost,
+          full_statistiky: response.statistiky
+        });
+        
         setStats({
           total: response.pagination?.total || 0,
           paid: response.statistiky.pocet_zaplaceno || 0,
           unpaid: response.statistiky.pocet_nezaplaceno || 0,
           overdue: response.statistiky.pocet_po_splatnosti || 0,
+          withinDue: response.statistiky.pocet_ve_splatnosti || 0,
+          storno: response.statistiky.pocet_storno || 0,
+          vecnaSpravnost: response.statistiky.pocet_vecna_spravnost || 0,
           totalAmount: parseFloat(response.statistiky.celkem_castka) || 0,
           paidAmount: parseFloat(response.statistiky.celkem_zaplaceno) || 0,
           unpaidAmount: parseFloat(response.statistiky.celkem_nezaplaceno) || 0,
           overdueAmount: parseFloat(response.statistiky.celkem_po_splatnosti) || 0,
+          withinDueAmount: parseFloat(response.statistiky.celkem_ve_splatnosti) || 0,
+          stornoAmount: parseFloat(response.statistiky.celkem_storno) || 0,
+          vecnaSpravnostAmount: parseFloat(response.statistiky.celkem_vecna_spravnost) || 0,
           myInvoices: response.statistiky.pocet_moje_faktury || 0,
           // ✅ Nové statistiky z BE
           withOrder: response.statistiky.pocet_s_objednavkou || 0,
@@ -3417,6 +3436,22 @@ const Invoices25List = () => {
               <StatLabel>Všechny faktury {selectedYear}</StatLabel>
             </DashboardCard>
 
+            {/* Věcná správnost */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('vecna_spravnost')}
+              $isActive={activeFilterStatus === 'vecna_spravnost'}
+              $color="#3b82f6"
+            >
+              <StatHeader>
+                <StatLabel>Věcná správnost</StatLabel>
+                <StatIcon $color="#3b82f6">
+                  <FontAwesomeIcon icon={faCheckSquare} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.vecnaSpravnost}</StatValue>
+              <StatLabel>Ve věcné kontrole</StatLabel>
+            </DashboardCard>
+
             {/* Zaplaceno */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('paid')}
@@ -3449,6 +3484,22 @@ const Invoices25List = () => {
               <StatLabel>Čekající na platbu</StatLabel>
             </DashboardCard>
 
+            {/* Ve splatnosti */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('within_due')}
+              $isActive={activeFilterStatus === 'within_due'}
+              $color="#10b981"
+            >
+              <StatHeader>
+                <StatLabel>Ve splatnosti</StatLabel>
+                <StatIcon $color="#10b981">
+                  <FontAwesomeIcon icon={faCheckCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withinDue}</StatValue>
+              <StatLabel>Nezaplacené ve lhůtě</StatLabel>
+            </DashboardCard>
+
             {/* Po splatnosti */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('overdue')}
@@ -3463,6 +3514,22 @@ const Invoices25List = () => {
               </StatHeader>
               <StatValue>{stats.overdue}</StatValue>
               <StatLabel>Překročená splatnost</StatLabel>
+            </DashboardCard>
+
+            {/* Storno */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('storno')}
+              $isActive={activeFilterStatus === 'storno'}
+              $color="#64748b"
+            >
+              <StatHeader>
+                <StatLabel>Storno</StatLabel>
+                <StatIcon $color="#64748b">
+                  <FontAwesomeIcon icon={faTimesCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.storno}</StatValue>
+              <StatLabel>Stornované faktury</StatLabel>
             </DashboardCard>
 
             {/* Faktury bez objednávky */}
