@@ -2457,16 +2457,6 @@ const Invoices25List = () => {
       if (response.statistiky) {
         // BE vrací kompletní statistiky za celý filtr
         
-        // 🐛 DEBUG: Co backend vrací
-        console.log('📊 Backend statistiky:', {
-          pocet_nezaplaceno: response.statistiky.pocet_nezaplaceno,
-          pocet_po_splatnosti: response.statistiky.pocet_po_splatnosti,
-          pocet_ve_splatnosti: response.statistiky.pocet_ve_splatnosti,
-          pocet_storno: response.statistiky.pocet_storno,
-          pocet_vecna_spravnost: response.statistiky.pocet_vecna_spravnost,
-          full_statistiky: response.statistiky
-        });
-        
         setStats({
           total: response.pagination?.total || 0,
           paid: response.statistiky.pocet_zaplaceno || 0,

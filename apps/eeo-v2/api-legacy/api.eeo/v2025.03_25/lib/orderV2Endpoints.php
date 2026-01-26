@@ -353,11 +353,22 @@ function handle_order_v2_list($input, $config, $queries) {
         // Základní WHERE podmínka
         $whereConditions = array();
         
-        // Filter: aktivni objednávky (vždy)
-        $whereConditions[] = "o.aktivni = 1";
-        
         // 🔥 KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
         $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        
+        // 🔧 ADMIN FEATURE: Filter pro zobrazení POUZE neaktivních objednávek (aktivni = 0)
+        // Pouze pro ADMIN uživatele
+        $showOnlyInactive = isset($input['show_only_inactive']) && $input['show_only_inactive'] == 1;
+        
+        if ($isAdminByRole && $showOnlyInactive) {
+            // ADMIN chce vidět POUZE smazané objednávky (aktivni = 0)
+            $whereConditions[] = "o.aktivni = 0";
+            error_log("Order V2 LIST: ADMIN filter - showing ONLY inactive orders (aktivni = 0)");
+        } else {
+            // Standardní filtr - pouze aktivní objednávky (aktivni = 1)
+            $whereConditions[] = "o.aktivni = 1";
+            error_log("Order V2 LIST: Standard filter - showing only active orders (aktivni = 1)");
+        }
         
         // 🔐 PERMISSIONS: Načtení ORDER_* permissions pro detailní kontrolu
         $hasOrderManage = in_array('ORDER_MANAGE', $user_permissions);
@@ -1809,6 +1820,7 @@ function handle_order_v2_delete($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    $hard_delete = isset($input['hard_delete']) && $input['hard_delete'] === true;
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
@@ -1817,6 +1829,15 @@ function handle_order_v2_delete($input, $config, $queries) {
         return;
     }
     
+    // 🔒 HARD DELETE - pouze admin
+    if ($hard_delete) {
+        $isAdmin = isset($auth_result['is_admin']) && $auth_result['is_admin'];
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k trvalému smazání objednávky'));
+            return;
+        }
+    }
     
     if ($order_id <= 0) {
         http_response_code(400);
@@ -1828,8 +1849,8 @@ function handle_order_v2_delete($input, $config, $queries) {
         $handler = new OrderV2Handler($config);
         $current_user_id = $auth_result['id'];
         
-        // Ověř že objednávka existuje
-        $existingOrder = $handler->getOrderById($order_id, $current_user_id);
+        // Ověř že objednávka existuje (includeArchived=true aby fungovalo i na neaktivní objednávky)
+        $existingOrder = $handler->getOrderById($order_id, $current_user_id, true);
         if (!$existingOrder) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
@@ -1847,28 +1868,123 @@ function handle_order_v2_delete($input, $config, $queries) {
             return;
         }
         
-        // Soft delete - nastavíme aktivni = 0
-        $sql = "UPDATE " . get_orders_table_name() . " 
-                SET aktivni = 0, dt_aktualizace = :dt_aktualizace 
-                WHERE id = :id";
-        
         $db = get_db($config);
         TimezoneHelper::setMysqlTimezone($db);
-        $stmt = $db->prepare($sql);
-        $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
-        $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
-        $stmt->execute();
         
-        echo json_encode(array(
-            'status' => 'ok',
-            'message' => 'Objednávka byla úspěšně smazána',
-            'meta' => array(
-                'version' => 'v2',
-                'deleted_id' => $order_id,
-                'soft_delete' => true,
-                'timestamp' => TimezoneHelper::getApiTimestamp()
-            )
-        ));
+        if ($hard_delete) {
+            // HARD DELETE - fyzické smazání z databáze (pouze admin)
+            // ⚠️ MUSÍ se provádět v pořadí kvůli FK constraints!
+            
+            $db->beginTransaction();
+            try {
+                // 1. Odpojit faktury od objednávky (faktury zůstávají, jen se odpojí)
+                // Faktury jsou samostatné entity a nesmí se mazat!
+                $stmt = $db->prepare("UPDATE " . TBL_FAKTURY . " SET objednavka_id = NULL WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $detachedInvoices = $stmt->rowCount();
+                
+                // 2. Načíst přílohy objednávky před smazáním (pro mazání souborů z disku)
+                $stmt = $db->prepare("SELECT id, systemova_cesta FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // 3. Smazat fyzické soubory příloh z disku
+                $deletedFiles = 0;
+                $failedFiles = 0;
+                $missingFiles = 0;
+                $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
+                $basePath = '';
+                if (isset($uploadConfig['root_path']) && !empty($uploadConfig['root_path'])) {
+                    $basePath = $uploadConfig['root_path'];
+                } else {
+                    // Fallback z environment
+                    require_once __DIR__ . '/environment-utils.php';
+                    $basePath = get_upload_root_path();
+                }
+                
+                foreach ($attachments as $att) {
+                    $fullPath = $att['systemova_cesta'];
+                    // Pokud není absolutní cesta, doplň base path
+                    if (strpos($fullPath, '/') !== 0) {
+                        $fullPath = rtrim($basePath, '/') . '/' . ltrim($fullPath, '/');
+                    }
+                    
+                    if (file_exists($fullPath)) {
+                        if (@unlink($fullPath)) {
+                            $deletedFiles++;
+                        } else {
+                            $failedFiles++;
+                            error_log("HARD DELETE: Nepodařilo se smazat soubor: $fullPath");
+                        }
+                    } else {
+                        // Soubor neexistuje - pouze poznamenat, není to chyba
+                        $missingFiles++;
+                    }
+                }
+                
+                // 4. Smazat položky objednávky
+                $stmt = $db->prepare("DELETE FROM " . TBL_OBJEDNAVKY_POLOZKY . " WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $deletedItems = $stmt->rowCount();
+                
+                // 5. Smazat přílohy objednávky z databáze
+                $stmt = $db->prepare("DELETE FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $deletedAttachments = $stmt->rowCount();
+                
+                // 6. Nakonec smazat samotnou objednávku
+                $stmt = $db->prepare("DELETE FROM " . get_orders_table_name() . " WHERE id = :id");
+                $stmt->execute([':id' => $order_id]);
+                
+                $db->commit();
+                
+                $response = array(
+                    'status' => 'ok',
+                    'message' => 'Objednávka byla trvale smazána',
+                    'meta' => array(
+                        'version' => 'v2',
+                        'deleted_id' => $order_id,
+                        'hard_delete' => true,
+                        'detached_invoices' => $detachedInvoices,
+                        'deleted_items' => $deletedItems,
+                        'deleted_attachments' => $deletedAttachments,
+                        'deleted_files' => $deletedFiles,
+                        'missing_files' => $missingFiles,
+                        'timestamp' => TimezoneHelper::getApiTimestamp()
+                    )
+                );
+                
+                if ($failedFiles > 0) {
+                    $response['warning'] = "Některé soubory se nepodařilo smazat z disku ($failedFiles). Pravděpodobně problém s oprávněními.";
+                }
+                
+                echo json_encode($response);
+            } catch (Exception $e) {
+                $db->rollBack();
+                throw $e;
+            }
+        } else {
+            // SOFT DELETE - nastavíme aktivni = 0
+            $sql = "UPDATE " . get_orders_table_name() . " 
+                    SET aktivni = 0, dt_aktualizace = :dt_aktualizace 
+                    WHERE id = :id";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
+            $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            echo json_encode(array(
+                'status' => 'ok',
+                'message' => 'Objednávka byla úspěšně smazána',
+                'meta' => array(
+                    'version' => 'v2',
+                    'deleted_id' => $order_id,
+                    'soft_delete' => true,
+                    'timestamp' => TimezoneHelper::getApiTimestamp()
+                )
+            ));
+        }
         
     } catch (Exception $e) {
         $error_details = array(
@@ -1880,6 +1996,88 @@ function handle_order_v2_delete($input, $config, $queries) {
         error_log("Order V2 DELETE Error [" . basename(__FILE__) . ":" . __LINE__ . "]: " . json_encode($error_details));
         http_response_code(500);
         echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * POST /api/order-v2/{id}/restore
+ * Obnovení smazané objednávky (aktivni = 0 → aktivni = 1)
+ * Pouze pro ADMIN
+ */
+function handle_order_v2_restore($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    // 🔒 ADMIN CHECK - pouze admin může obnovovat
+    $isAdmin = isset($auth_result['is_admin']) && $auth_result['is_admin'];
+    if (!$isAdmin) {
+        http_response_code(403);
+        echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k obnovení objednávky'));
+        return;
+    }
+    
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        TimezoneHelper::setMysqlTimezone($db);
+        
+        // Ověř že objednávka existuje a je neaktivní
+        $checkSql = "SELECT id, aktivni FROM " . get_orders_table_name() . " WHERE id = :id";
+        $checkStmt = $db->prepare($checkSql);
+        $checkStmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+        $checkStmt->execute();
+        $order = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
+            return;
+        }
+        
+        if ($order['aktivni'] == 1) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka není smazaná (už je aktivní)'));
+            return;
+        }
+        
+        // Restore - nastavíme aktivni = 1
+        $sql = "UPDATE " . get_orders_table_name() . " 
+                SET aktivni = 1, dt_aktualizace = :dt_aktualizace 
+                WHERE id = :id";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
+        $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Objednávka byla úspěšně obnovena',
+            'meta' => array(
+                'version' => 'v2',
+                'restored_id' => $order_id,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 RESTORE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při obnovení objednávky: ' . $e->getMessage()));
     }
 } 
 

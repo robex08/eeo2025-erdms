@@ -110,12 +110,14 @@ class OrderV2Handler {
             }
         }
         
-        // ========== BOOLEAN POLE ==========
+        // ========== BOOLEAN POLE - PŘEVOD NA INTEGER 0/1 ==========
+        // 🔧 NORMALIZACE: Vždy posíláme 0 nebo 1 (integer), NIKDY string '0' nebo boolean
         
         $boolFields = array('aktivni', 'potvrzeni_dokonceni_objednavky', 'potvrzeni_vecne_spravnosti');
         foreach ($boolFields as $field) {
             if (isset($rawData[$field])) {
-                $result[$field] = (bool)$rawData[$field];
+                // Explicitně převést na integer 0 nebo 1
+                $result[$field] = $rawData[$field] ? 1 : 0;
             }
         }
         

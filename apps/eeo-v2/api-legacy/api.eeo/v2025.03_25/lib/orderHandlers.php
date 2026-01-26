@@ -1562,7 +1562,11 @@ function handle_orders25_list($input, $config, $queries) {
     // Volitelný parametr archivovano (1 = jen archivované objednávky se stavem ARCHIVOVANO)
     $archivovano = isset($input['archivovano']) && $input['archivovano'] == 1 ? 1 : 0;
     
-    // 📋 Volitelný filtr podle stavu objednávky (např. 'FAKTURACE')
+    // � ADMIN FEATURE: show_only_inactive (zobrazit POUZE neaktivní objednávky)
+    // Pokud je show_only_inactive = 1 → zobrazí POUZE neaktivní objednávky (soft-deleted, aktivni=0)
+    $show_only_inactive = isset($input['show_only_inactive']) && (int)$input['show_only_inactive'] === 1;
+    
+    // �📋 Volitelný filtr podle stavu objednávky (např. 'FAKTURACE')
     $stav_objednavky = isset($input['stav_objednavky']) && $input['stav_objednavky'] !== '' ? trim($input['stav_objednavky']) : null;
     
     // Parsing měsíce - může být jednotlivý (10) nebo interval (10-12)
@@ -1594,41 +1598,47 @@ function handle_orders25_list($input, $config, $queries) {
         }
     }
 
-    // Dynamické sestavení SQL dotazu s filtrem pro archivované objednávky
-    $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1";
+    // Dynamické sestavení SQL dotazu s filtrem pro aktivní/neaktivní objednávky
+    // 🔧 ADMIN: Pokud je show_only_inactive=1, zobraz POUZE neaktivní (aktivni=0)
+    // Jinak standardně pouze aktivní (aktivni=1)
+    if ($show_only_inactive) {
+        $sql = "SELECT o.* FROM " . TBL_OBJEDNAVKY . " o WHERE o.aktivni = 0";
+    } else {
+        $sql = "SELECT o.* FROM " . TBL_OBJEDNAVKY . " o WHERE o.aktivni = 1";
+    }
     
     // Datum od/do má přednost před rok/měsíc filtrováním
     if ($datum_od !== null && $datum_do !== null) {
-        $sql .= " AND DATE(dt_vytvoreni) >= :datum_od AND DATE(dt_vytvoreni) <= :datum_do";
+        $sql .= " AND DATE(o.dt_vytvoreni) >= :datum_od AND DATE(o.dt_vytvoreni) <= :datum_do";
     } else if ($datum_od !== null) {
-        $sql .= " AND DATE(dt_vytvoreni) >= :datum_od";
+        $sql .= " AND DATE(o.dt_vytvoreni) >= :datum_od";
     } else if ($datum_do !== null) {
-        $sql .= " AND DATE(dt_vytvoreni) <= :datum_do";
+        $sql .= " AND DATE(o.dt_vytvoreni) <= :datum_do";
     } else {
         // Pokud nejsou datum filtry, použij rok/měsíc filtry
         if ($rok !== null) {
-            $sql .= " AND YEAR(dt_vytvoreni) = :rok";
+            $sql .= " AND YEAR(o.dt_vytvoreni) = :rok";
         }
         if ($mesic_od !== null) {
-            $sql .= " AND MONTH(dt_vytvoreni) >= :mesic_od";
+            $sql .= " AND MONTH(o.dt_vytvoreni) >= :mesic_od";
         }
         if ($mesic_do !== null) {
-            $sql .= " AND MONTH(dt_vytvoreni) <= :mesic_do";
+            $sql .= " AND MONTH(o.dt_vytvoreni) <= :mesic_do";
         }
     }
     
     // Pokud archivovano NENÍ nastaveno, vyloučíme archivované objednávky
     if ($archivovano == 0) {
-        $sql .= " AND stav_objednavky != 'ARCHIVOVANO'";
+        $sql .= " AND o.stav_objednavky != 'ARCHIVOVANO'";
     }
     // Pokud archivovano = 1, necháme všechny objednávky (i archivované)
     
     // 📋 Filtr podle konkrétního stavu objednávky
     if ($stav_objednavky !== null) {
-        $sql .= " AND stav_objednavky = :stav_objednavky";
+        $sql .= " AND o.stav_objednavky = :stav_objednavky";
     }
     
-    $sql .= " ORDER BY dt_vytvoreni DESC";
+    $sql .= " ORDER BY o.dt_vytvoreni DESC";
 
     // Select all orders with optional year/month filter
     $stmt = $db->prepare($sql);
