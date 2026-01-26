@@ -58,14 +58,15 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
     // Okamžitý update při mount (simulace login/refresh)
     updateActivity();
 
-    // ❌ VYPNUTÝ background ping - token refresh se řeší při login a reload stránky
-    // Background task způsoboval zbytečné generování tokenů každé 3 minuty
-    // když token měl < 2h do expirace
-    // 
-    // intervalRef.current = setInterval(() => {
-    //   console.log('⏰ Background ping triggered');
-    //   updateActivity();
-    // }, 180000); // 3 minuty
+    // ✅ Background ping každou hodinu
+    // Interval 1h zajišťuje:
+    // - Aktuální aktivitu uživatelů (ping každou hodinu)
+    // - Minimální zátěž serveru (24 requestů/den místo 480)
+    // - Token refresh max 2x v posledních 2h před vypršením (místo 40x při 3min intervalu)
+    intervalRef.current = setInterval(() => {
+      console.log('⏰ Background ping triggered (1h interval)');
+      updateActivity();
+    }, 3600000); // 1 hodina = 3 600 000 ms
 
     // Cleanup při unmount
     return () => {
