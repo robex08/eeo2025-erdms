@@ -280,16 +280,21 @@ const compareNumericValue = (value, filterValue) => {
   // Pokud je prázdný string, vrať všechno
   if (!trimmed) return true;
 
-  // Pokus se detekovat operátor na začátku
-  const operatorMatch = trimmed.match(/^(>|<|=)\s*(.+)$/);
+  // Pokus se detekovat operátor na začátku (změna .+ na .* pro zachycení i prázdného stringu)
+  const operatorMatch = trimmed.match(/^(>|<|=)(.*)$/);
 
   if (operatorMatch) {
     const operator = operatorMatch[1];
-    const numStr = operatorMatch[2].replace(/\s/g, '').replace(/,/g, '.');
+    const numStr = (operatorMatch[2] || '').replace(/\s/g, '').replace(/,/g, '.');
+    
+    // ✅ KRITICKÁ OPRAVA: Pokud není číslo po operátoru (prázdný string), vrať všechno
+    // Toto nastává když uživatel změní operátor ale input je prázdný (např. ">" bez čísla)
+    if (!numStr || numStr.trim() === '') return true;
+    
     const filterNum = parseFloat(numStr);
 
     // Pokud není validní číslo po operátoru, vrať všechno
-    if (isNaN(filterNum)) return true;
+    if (isNaN(filterNum) || filterNum <= 0) return true;
 
     switch (operator) {
       case '>':

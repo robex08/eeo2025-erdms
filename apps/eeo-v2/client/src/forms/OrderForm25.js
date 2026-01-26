@@ -3918,7 +3918,7 @@ const transformBackendDataToFrontend = (backendData) => {
             cena_s_dph: typeof item.cena_s_dph === 'number' 
               ? item.cena_s_dph.toFixed(2) 
               : (parseFloat((item.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
-            sazba_dph: parseInt(item.sazba_dph) || 21,
+            sazba_dph: item.sazba_dph !== undefined && item.sazba_dph !== null ? parseInt(item.sazba_dph) : 21,
             poznamka: item.poznamka || ''  // ✅ Backend vrací poznamka přímo jako plain text
           };
         })
@@ -9729,7 +9729,7 @@ function OrderForm25() {
               popis: polozka.popis || '',
               // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
               cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-              sazba_dph: parseInt(polozka.sazba_dph) || 21,
+              sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
               cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
               usek_kod: polozka.usek_kod || null,
               budova_kod: polozka.budova_kod || null,
@@ -9972,7 +9972,7 @@ function OrderForm25() {
               popis: polozka.popis || '',
               // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
               cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-              sazba_dph: parseInt(polozka.sazba_dph) || 21,
+              sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
               cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
               // 🏢 Volitelná lokalizace (úsek, budova, místnost, poznámka)
               usek_kod: polozka.usek_kod || null,
@@ -9996,7 +9996,7 @@ function OrderForm25() {
           return {
             popis: polozka.popis || '',
             cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            sazba_dph: parseInt(polozka.sazba_dph) || 21,
+            sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
             cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
             usek_kod: polozka.usek_kod || null,
             budova_kod: polozka.budova_kod || null,
@@ -15202,6 +15202,7 @@ function OrderForm25() {
           }
 
           // Pokud se mění cena bez DPH nebo DPH sazba, přepočítej cenu s DPH
+          // ✅ Bezpečné pro DPH 0%: (1 + 0/100) = 1, tedy cena_s_dph = cena_bez_dph
           if (field === 'cena_bez_dph' || field === 'sazba_dph') {
             const cenaBezDph = parseFloat((updatedPolozka.cena_bez_dph || '0').replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
             const dphSazba = parseFloat(updatedPolozka.sazba_dph) || 0;
@@ -15211,6 +15212,7 @@ function OrderForm25() {
           }
 
           // Pokud se mění cena s DPH, přepočítej cenu bez DPH
+          // ✅ Bezpečné pro DPH 0%: dělíme (1 + 0/100) = 1, nikoli nulou!
           if (field === 'cena_s_dph') {
             const cenaSdph = parseFloat((updatedPolozka.cena_s_dph || '0').replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
             const dphSazba = parseFloat(updatedPolozka.sazba_dph) || 0;
@@ -16705,7 +16707,7 @@ function OrderForm25() {
   }, [formData.id, formData.stav_workflow_kod, currentPhase, hasWorkflowState, mainWorkflowState]);
 
   // 📄 Handler pro generování DOCX dokumentu
-  const handleGenerateDocx = useCallback(() => {
+  const handleGenerateDocx = useCallback(async () => {
     if (!canGenerateDocx()) {
       // Zobraz specifickou chybu podle toho, co chybí
       if (!formData.id) {
@@ -16721,22 +16723,24 @@ function OrderForm25() {
     try {
       addDebugLog('info', 'DOCX-GENERATOR', 'open-dialog', `Otevírám DOCX generátor pro objednávku ID: ${formData.id}`);
 
-      // Vytvoř order objekt kompatibilní s DocxGeneratorModal
-      const orderForDocx = {
-        objednavka_id: formData.id,
-        cislo_objednavky: formData.cislo_objednavky,
-        nazev_objednavky: formData.nazev_objednavky || formData.nazev,
-        ...formData
-      };
+      // 🔄 KRITICKÁ OPRAVA: Načti fresh enriched data z API (účastníci workflow s cele_jmeno)
+      // Toto zajistí, že DocxGeneratorModal má k dispozici garant_uzivatel, prikazce_uzivatel, atd.
+      const enrichedOrder = await getOrderV2(formData.id, token, username, true, 0);
 
-      setDocxModalOrder(orderForDocx);
+      if (!enrichedOrder) {
+        showToast && showToast('Nepodařilo se načíst data objednávky', { type: 'error' });
+        return;
+      }
+
+      // ✅ Předej enriched data do dialogu (teď už máme garanta, příkazce, schvalovatele s cele_jmeno)
+      setDocxModalOrder(enrichedOrder);
       setDocxModalOpen(true);
 
     } catch (error) {
       addDebugLog('error', 'DOCX-GENERATOR', 'error', error.message);
       showToast && showToast(`Chyba při otevírání DOCX generátoru: ${error.message}`, { type: 'error' });
     }
-  }, [formData, currentPhase, showToast]);
+  }, [formData, currentPhase, showToast, token, username]);
 
   const handleDocxModalClose = useCallback(() => {
     setDocxModalOpen(false);
@@ -22043,6 +22047,7 @@ function OrderForm25() {
                             width: '80px'
                           }}
                         >
+                          <option value="0">0%</option>
                           <option value="12">12%</option>
                           <option value="21">21%</option>
                         </select>
