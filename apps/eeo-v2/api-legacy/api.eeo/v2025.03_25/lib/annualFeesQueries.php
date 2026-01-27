@@ -146,8 +146,8 @@ function queryAnnualFeesDetail($pdo, $id) {
         SELECT 
             p.*,
             cs_stav.nazev_stavu AS stav_nazev,
-            f.cislo_faktury,
-            f.dodaci_list_c AS faktura_dodaci_list,
+            f.fa_cislo_vema AS faktura_cislo,
+            f.fa_datum_vystaveni AS faktura_datum,
             u_vytvoril.jmeno AS vytvoril_jmeno,
             u_vytvoril.prijmeni AS vytvoril_prijmeni
         FROM `25a_rocni_poplatky_polozky` p

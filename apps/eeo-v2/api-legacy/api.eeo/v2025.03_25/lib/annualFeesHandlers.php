@@ -120,13 +120,15 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         $smlouva_id = (int)$data['smlouva_id'];
         $rok = (int)$data['rok'];
         
-        // Flexibilní handling částky - přijímá 'castka' nebo 'castka_na_polozku'
-        $castka_na_polozku = isset($data['castka_na_polozku']) 
-            ? (float)$data['castka_na_polozku'] 
-            : (float)($data['castka'] ?? 0);
+        // Celková částka je vstup (uživatel zadává celkovou částku, ne částku na položku)
+        $celkova_castka = isset($data['celkova_castka']) 
+            ? (float)$data['celkova_castka'] 
+            : (isset($data['castka_na_polozku']) 
+                ? (float)$data['castka_na_polozku'] 
+                : (float)($data['castka'] ?? 0));
         
-        if ($castka_na_polozku <= 0) {
-            return ['status' => 'error', 'message' => 'Částka musí být větší než 0'];
+        if ($celkova_castka <= 0) {
+            return ['status' => 'error', 'message' => 'Celková částka musí být větší než 0'];
         }
         
         // Datum první splatnosti - pokud není zadáno, použije se 1. leden daného roku
@@ -148,15 +150,17 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 
         $pdo->beginTransaction();
 
-        // 1️⃣ Generování položek podle typu platby
+        // 1️⃣ Generování položek podle typu platby (zatím bez částek)
         $polozky = generatePolozky(
             $data['platba'],
             $rok,
-            $castka_na_polozku,
+            0, // Částka se dopočítá níže
             $datum_prvni_splatnosti
         );
 
-        $celkova_castka = count($polozky) * $castka_na_polozku;
+        // Výpočet částky na položku: celková / počet položek
+        $pocet_polozek = count($polozky);
+        $castka_na_polozku = $pocet_polozek > 0 ? ($celkova_castka / $pocet_polozek) : 0;
 
         // 2️⃣ Vytvoření hlavičky (dodavatel se načte automaticky ze smlouvy přes JOIN)
         $rocni_poplatek_id = queryInsertAnnualFee($pdo, [
@@ -209,11 +213,12 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
                 'druh' => $data['druh'],
                 'platba' => $data['platba'],
                 'celkova_castka' => $celkova_castka,
+                'castka_na_polozku' => $castka_na_polozku,
                 'pocet_polozek' => count($polozky),
                 'polozky_vytvoreno' => $created_polozky
             ],
             'message' => count($polozky) > 0
-                ? "Roční poplatek byl úspěšně vytvořen včetně " . count($polozky) . " položek"
+                ? "Roční poplatek byl úspěšně vytvořen včetně " . count($polozky) . " položek (celková částka " . number_format($celkova_castka, 2, ',', ' ') . " Kč rozpočítána na " . number_format($castka_na_polozku, 2, ',', ' ') . " Kč/položku)"
                 : "Roční poplatek byl úspěšně vytvořen (typ JINÁ - položky se přidávají manuálně)"
         ];
 

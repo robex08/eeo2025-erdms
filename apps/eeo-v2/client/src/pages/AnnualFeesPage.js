@@ -577,7 +577,8 @@ function AnnualFeesPage() {
     druh: '',
     platba: '',
     castka: '',
-    rok: new Date().getFullYear()
+    rok: new Date().getFullYear(),
+    datum_prvni_splatnosti: `${new Date().getFullYear()}-01-01`
   });
   
   // Debounced search
@@ -796,8 +797,9 @@ function AnnualFeesPage() {
         nazev: newFeeData.nazev,
         druh: newFeeData.druh,
         platba: newFeeData.platba,
-        castka: parseFloat(newFeeData.castka),
-        rok: newFeeData.rok
+        celkova_castka: parseFloat(newFeeData.castka),
+        rok: newFeeData.rok,
+        datum_prvni_splatnosti: newFeeData.datum_prvni_splatnosti
       });
       
       if (response.status === 'success') {
@@ -812,7 +814,8 @@ function AnnualFeesPage() {
           druh: '',
           platba: '',
           castka: '',
-          rok: new Date().getFullYear()
+          rok: new Date().getFullYear(),
+          datum_prvni_splatnosti: `${new Date().getFullYear()}-01-01`
         });
         setSmlouvySearch('');
         setShowNewRow(false);
@@ -1082,13 +1085,25 @@ function AnnualFeesPage() {
                   </Td>
                   <Td>
                     <InlineInput 
-                      placeholder="Částka" 
+                      placeholder="Celková částka (Kč)" 
                       type="number" 
+                      step="0.01"
                       value={newFeeData.castka}
                       onChange={(e) => setNewFeeData(prev => ({...prev, castka: e.target.value}))}
                     />
+                    <small style={{display: 'block', marginTop: '2px', color: '#6b7280', fontSize: '0.75rem'}}>
+                      Zadejte celkovou roční částku
+                    </small>
                   </Td>
-                  <Td colSpan="4" style={{textAlign: 'right'}}>
+                  <Td>
+                    <InlineInput 
+                      placeholder="1. splatnost" 
+                      type="date" 
+                      value={newFeeData.datum_prvni_splatnosti}
+                      onChange={(e) => setNewFeeData(prev => ({...prev, datum_prvni_splatnosti: e.target.value}))}
+                    />
+                  </Td>
+                  <Td colSpan="3" style={{textAlign: 'right'}}>
                     <Button 
                       variant="primary" 
                       style={{padding: '6px 16px', fontSize: '0.85rem', marginRight: '8px'}}
@@ -1123,7 +1138,14 @@ function AnnualFeesPage() {
                       <div>{fee.druh_nazev}</div>
                       <div style={{fontSize: '0.85rem', color: '#9ca3af'}}>{fee.platba_nazev}</div>
                     </Td>
-                    <Td><strong>{formatCurrency(fee.celkova_castka)}</strong></Td>
+                    <Td>
+                      <strong>{formatCurrency(fee.celkova_castka)}</strong>
+                      {fee.pocet_polozek > 0 && fee.stav !== 'ZAPLACENO' && (
+                        <div style={{fontSize: '0.75rem', color: '#6b7280', marginTop: '2px'}}>
+                          {formatCurrency(fee.celkova_castka / fee.pocet_polozek)}/{fee.platba === 'MESICNI' ? 'měsíc' : fee.platba === 'KVARTALNI' ? 'Q' : 'rok'}
+                        </div>
+                      )}
+                    </Td>
                     <Td style={{color: '#10b981'}}>{formatCurrency(fee.zaplaceno_celkem)}</Td>
                     <Td style={{color: '#ef4444'}}>{formatCurrency(fee.zbyva_zaplatit)}</Td>
                     <Td>
