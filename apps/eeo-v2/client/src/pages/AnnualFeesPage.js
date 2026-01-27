@@ -888,7 +888,42 @@ function AnnualFeesPage() {
       
       if (response.status === 'success') {
         showToast('Položka aktualizována', 'success');
-        loadAnnualFees();
+        
+        // ✅ Aktualizovat lokální stav místo refreshe celého seznamu
+        setAnnualFees(prev => prev.map(fee => {
+          // Najít položku v poli položek
+          if (fee.polozky && fee.polozky.some(item => item.id === itemId)) {
+            const updatedPolozky = fee.polozky.map(item => 
+              item.id === itemId 
+                ? { ...item, ...data, ...response.data } // Merge s daty z BE (obsahuje přepočítané hodnoty)
+                : item
+            );
+            
+            // Přepočítat sumarizační hodnoty v hlavičce
+            const zaplaceno = updatedPolozky
+              .filter(p => p.stav === 'ZAPLACENO')
+              .reduce((sum, p) => sum + parseFloat(p.castka || 0), 0);
+            
+            const zbyva = fee.celkova_castka - zaplaceno;
+            
+            // Určit nový stav hlavičky
+            let novyStav = 'NEZAPLACENO';
+            if (zaplaceno >= fee.celkova_castka) {
+              novyStav = 'ZAPLACENO';
+            } else if (zaplaceno > 0) {
+              novyStav = 'CASTECNE';
+            }
+            
+            return {
+              ...fee,
+              polozky: updatedPolozky,
+              zaplaceno_celkem: zaplaceno,
+              zbyva_zaplatit: zbyva,
+              stav: novyStav
+            };
+          }
+          return fee;
+        }));
       }
     } catch (error) {
       console.error('Chyba při aktualizaci položky:', error);
