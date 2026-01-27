@@ -120,12 +120,12 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         $smlouva_id = (int)$data['smlouva_id'];
         $rok = (int)$data['rok'];
         
-        // Celková částka je vstup (uživatel zadává celkovou částku, ne částku na položku)
-        $celkova_castka = isset($data['celkova_castka']) 
-            ? (float)$data['celkova_castka'] 
-            : (isset($data['castka_na_polozku']) 
-                ? (float)$data['castka_na_polozku'] 
-                : (float)($data['castka'] ?? 0));
+        // Celková částka je vstup
+        if (!isset($data['celkova_castka'])) {
+            return ['status' => 'error', 'message' => 'Chybí celková částka'];
+        }
+        
+        $celkova_castka = (float)$data['celkova_castka'];
         
         if ($celkova_castka <= 0) {
             return ['status' => 'error', 'message' => 'Celková částka musí být větší než 0'];
