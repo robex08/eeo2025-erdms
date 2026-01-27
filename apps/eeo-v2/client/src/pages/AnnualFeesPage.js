@@ -806,13 +806,35 @@ function AnnualFeesPage() {
     }
     
     // Očistit částku od formátování (mezery, čárky)
-    const cleanCastka = newFeeData.castka.toString().replace(/[^\d,.-]/g, '').replace(',', '.');
+    const castkaStr = (newFeeData.castka || '').toString().trim();
+    const cleanCastka = castkaStr.replace(/[^\d,.-]/g, '').replace(',', '.');
     const parsedCastka = parseFloat(cleanCastka);
     
-    if (!newFeeData.castka || isNaN(parsedCastka) || parsedCastka <= 0) {
-      showToast('Vyplňte platnou částku', 'error');
+    console.log('🔍 DEBUG CREATE:', {
+      originalCastka: newFeeData.castka,
+      castkaStr,
+      cleanCastka,
+      parsedCastka,
+      isNaN: isNaN(parsedCastka),
+      typeof: typeof parsedCastka
+    });
+    
+    if (!castkaStr || castkaStr === '' || isNaN(parsedCastka) || parsedCastka <= 0) {
+      showToast('Vyplňte platnou částku (musí být větší než 0)', 'error');
+      console.error('❌ Validace částky selhala');
       return;
     }
+    
+    // Zaokrouhlení na 2 desetinná místa pro konzistenci
+    const celkovaCastka = Math.round(parsedCastka * 100) / 100;
+    
+    console.log('📤 Posílám na BE:', {
+      celkova_castka: celkovaCastka,
+      smlouva_id: newFeeData.smlouva_id,
+      nazev: newFeeData.nazev,
+      druh: newFeeData.druh,
+      platba: newFeeData.platba
+    });
     
     try {
       const response = await createAnnualFee({
@@ -822,7 +844,7 @@ function AnnualFeesPage() {
         nazev: newFeeData.nazev,
         druh: newFeeData.druh,
         platba: newFeeData.platba,
-        celkova_castka: parsedCastka,
+        celkova_castka: celkovaCastka,
         rok: newFeeData.rok,
         datum_prvni_splatnosti: newFeeData.datum_prvni_splatnosti
       });
@@ -1120,15 +1142,7 @@ function AnnualFeesPage() {
                       <CurrencySymbol>Kč</CurrencySymbol>
                     </CurrencyInputWrapper>
                   </Td>
-                  <Td>
-                    <InlineInput 
-                      placeholder="1. splatnost" 
-                      type="date" 
-                      value={newFeeData.datum_prvni_splatnosti}
-                      onChange={(e) => setNewFeeData(prev => ({...prev, datum_prvni_splatnosti: e.target.value}))}
-                    />
-                  </Td>
-                  <Td colSpan="3" style={{textAlign: 'right'}}>
+                  <Td colSpan="4" style={{textAlign: 'right'}}>
                     <Button 
                       variant="primary" 
                       style={{padding: '6px 16px', fontSize: '0.85rem', marginRight: '8px'}}
