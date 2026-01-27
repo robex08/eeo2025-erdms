@@ -3154,3 +3154,145 @@ function handle_ciselniky_role_bulk_update_prava($input, $config, $queries) {
 }
 
 ?>
+
+// =============================================================================
+// ROČNÍ POPLATKY - ČÍSELNÍKY
+// =============================================================================
+
+/**
+ * Seznam druhů ročních poplatků
+ * POST /ciselniky/annual-fees-druhy/list
+ */
+function handle_ciselniky_annual_fees_druhy_list($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Uživatelské jméno neodpovídá'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
+        
+        $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . " 
+                WHERE kategorie = 'ROCNI_POPLATEK_DRUH'";
+        if (!$show_inactive) {
+            $sql .= " AND aktivni = 1";
+        }
+        $sql .= " ORDER BY nazev ASC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $data
+        ));
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání druhů: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * Seznam typů plateb ročních poplatků
+ * POST /ciselniky/annual-fees-platby/list
+ */
+function handle_ciselniky_annual_fees_platby_list($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Uživatelské jméno neodpovídá'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
+        
+        $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . " 
+                WHERE kategorie = 'ROCNI_POPLATEK_PLATBA'";
+        if (!$show_inactive) {
+            $sql .= " AND aktivni = 1";
+        }
+        $sql .= " ORDER BY poradi ASC, nazev ASC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $data
+        ));
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání typů plateb: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * Seznam stavů ročních poplatků
+ * POST /ciselniky/annual-fees-stavy/list
+ */
+function handle_ciselniky_annual_fees_stavy_list($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Uživatelské jméno neodpovídá'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
+        
+        $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . " 
+                WHERE kategorie = 'ROCNI_POPLATEK'";
+        if (!$show_inactive) {
+            $sql .= " AND aktivni = 1";
+        }
+        $sql .= " ORDER BY poradi ASC, nazev ASC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $data
+        ));
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání stavů: ' . $e->getMessage()));
+    }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import styled from '@emotion/styled';
@@ -6,8 +6,20 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faPlus, faMinus, faFilter, faSearch, faCalendar, 
   faMoneyBill, faFileInvoice, faEdit, 
-  faTrash, faCheckCircle, faExclamationTriangle 
+  faTrash, faCheckCircle, faExclamationTriangle, faSpinner 
 } from '@fortawesome/free-solid-svg-icons';
+import { 
+  getAnnualFeesList, 
+  getAnnualFeeDetail, 
+  createAnnualFee, 
+  updateAnnualFee, 
+  updateAnnualFeeItem, 
+  deleteAnnualFee 
+} from '../services/apiAnnualFees';
+import { universalSearch } from '../services/apiUniversalSearch';
+import { getSmlouvaDetail } from '../services/apiSmlouvy';
+import { getStavyRocnichPoplatku, getDruhyRocnichPoplatku, getPlatbyRocnichPoplatku } from '../services/apiv2Dictionaries';
+import { useDebounce } from '../hooks/useDebounce';
 
 /**
  * 📋 EVIDENCE ROČNÍCH POPLATKŮ
@@ -17,10 +29,12 @@ import {
  * - Automatické generování položek podle typu platby (měsíční/kvartální/roční)
  * - Integrace se smlouvami a fakturami
  * 
- * ⚠️ DATA: Aktuálně MOCKDATA pro testování UI
- * Po otestování připojit na API endpoints:
- * - POST /api.eeo/annual-fees/list (s filtry)
- * - POST /api.eeo/annual-fees/detail (s položkami)
+ * ✅ DATA: Připojeno na API
+ * - POST /api.eeo/annual-fees/list (seznam s filtry)
+ * - POST /api.eeo/annual-fees/detail (detail s položkami)
+ * - POST /api.eeo/annual-fees/create (vytvoření + auto-generování položek)
+ * - POST /api.eeo/annual-fees/update-item (změna stavu položky)
+ * - POST /api.eeo/annual-fees/delete (smazání poplatku)
  * 
  * @version 1.1.0
  * @date 2026-01-27
@@ -195,6 +209,68 @@ const SearchInput = styled.input`
   &::placeholder {
     color: #9ca3af;
   }
+`;
+
+const SuggestionsWrapper = styled.div`
+  position: relative;
+`;
+
+const SuggestionsDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1000;
+`;
+
+const SuggestionItem = styled.div`
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.15s ease;
+  
+  &:hover {
+    background: #f9fafb;
+  }
+  
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const SuggestionTitle = styled.div`
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const SuggestionBadge = styled.span`
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: ${props => props.$color || '#e5e7eb'};
+  color: ${props => props.$textColor || '#374151'};
+`;
+
+const SuggestionDetail = styled.div`
+  font-size: 0.85rem;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 `;
 
 const TableContainer = styled.div`
@@ -465,7 +541,7 @@ function AnnualFeesPage() {
   const [loading, setLoading] = useState(true);
   const [annualFees, setAnnualFees] = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());
-  const [showNewRow, setShowNewRow] = useState(false); // II. Inline nový řádek
+  const [showNewRow, setShowNewRow] = useState(false);
   const [filters, setFilters] = useState({
     rok: new Date().getFullYear(),
     druh: 'all',
@@ -474,54 +550,79 @@ function AnnualFeesPage() {
     smlouva: ''
   });
   
+  // Číselníky
+  const [druhy, setDruhy] = useState([]);
+  const [platby, setPlatby] = useState([]);
+  const [stavy, setStavy] = useState([]);
+  
+  // Autocomplete pro smlouvy
+  const [smlouvySearch, setSmlouvySearch] = useState('');
+  const [smlouvySuggestions, setSmlouvySuggestions] = useState([]);
+  const [showSmlouvySuggestions, setShowSmlouvySuggestions] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const smlouvySearchRef = useRef(null);
+  
+  // Form data pro CREATE
+  const [newFeeData, setNewFeeData] = useState({
+    smlouva_id: null,
+    smlouva_cislo: '',
+    dodavatel_nazev: '',
+    nazev: '',
+    druh: '',
+    platba: '',
+    castka: '',
+    rok: new Date().getFullYear()
+  });
+  
+  // Debounced search
+  const debouncedSmlouvySearch = useDebounce(smlouvySearch, 300);
+  
+  // Load číselníky
+  useEffect(() => {
+    loadCiselniky();
+  }, []);
+  
+  const loadCiselniky = async () => {
+    try {
+      const [druhyRes, platbyRes, stavyRes] = await Promise.all([
+        getDruhyRocnichPoplatku({ token: userDetail.token, username: userDetail.username }),
+        getPlatbyRocnichPoplatku({ token: userDetail.token, username: userDetail.username }),
+        getStavyRocnichPoplatku({ token: userDetail.token, username: userDetail.username })
+      ]);
+      
+      setDruhy(druhyRes.data || []);
+      setPlatby(platbyRes.data || []);
+      setStavy(stavyRes.data || []);
+    } catch (error) {
+      console.error('Chyba při načítání číselníků:', error);
+      showToast('Chyba při načítání číselníků', 'error');
+    }
+  };
+  
   // Load data
   useEffect(() => {
     loadAnnualFees();
   }, [filters]);
   
   const loadAnnualFees = async () => {
+    if (!userDetail?.token) return;
+    
     try {
       setLoading(true);
       
-      // TODO: Implementovat API call
-      // const response = await fetch('/api.eeo/annual-fees/list', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     token: userDetail.token,
-      //     username: userDetail.username,
-      //     filters: filters
-      //   })
-      // });
-      
-      // Mockdata pro testování UI
-      const mockData = [
-        {
-          id: 1,
-          smlouva_cislo: '12548',
-          dodavatel_nazev: 'XY s.r.o.',
-          nazev: 'Roční poplatky 2026 - Nájem kanceláří',
-          rok: 2026,
-          druh: 'NAJEMNI',
-          druh_nazev: 'Nájemní',
-          platba: 'MESICNI',
-          platba_nazev: 'Měsíční',
-          celkova_castka: 12000.00,
-          zaplaceno_celkem: 1000.00,
-          zbyva_zaplatit: 11000.00,
-          stav: 'NEZAPLACENO',
-          stav_nazev: 'Nezaplaceno',
-          pocet_polozek: 12,
-          pocet_zaplaceno: 1,
-          polozky: [
-            { id: 1, poradi: 1, nazev_polozky: 'Leden 2026', castka: 1000.00, datum_splatnosti: '2026-01-20', datum_zaplaceni: '2026-01-20', stav: 'ZAPLACENO', faktura_cislo: 'FA123456' },
-            { id: 2, poradi: 2, nazev_polozky: 'Únor 2026', castka: 1000.00, datum_splatnosti: '2026-02-20', datum_zaplaceni: null, stav: 'NEZAPLACENO', faktura_cislo: null },
-            { id: 3, poradi: 3, nazev_polozky: 'Březen 2026', castka: 1000.00, datum_splatnosti: '2026-03-20', datum_zaplaceni: null, stav: 'NEZAPLACENO', faktura_cislo: null }
-          ]
+      const response = await getAnnualFeesList({
+        token: userDetail.token,
+        username: userDetail.username,
+        filters: {
+          rok: filters.rok,
+          druh: filters.druh !== 'all' ? filters.druh : undefined,
+          platba: filters.platba !== 'all' ? filters.platba : undefined,
+          stav: filters.stav !== 'all' ? filters.stav : undefined,
+          smlouva: filters.smlouva || undefined
         }
-      ];
+      });
       
-      setAnnualFees(mockData);
+      setAnnualFees(response.data || []);
       
     } catch (error) {
       console.error('Chyba při načítání ročních poplatků:', error);
@@ -531,24 +632,222 @@ function AnnualFeesPage() {
     }
   };
   
-  const toggleRow = (id) => {
+  // Toggle row expansion
+  const toggleRow = async (id) => {
     const newExpanded = new Set(expandedRows);
+    
     if (newExpanded.has(id)) {
       newExpanded.delete(id);
     } else {
       newExpanded.add(id);
+      
+      // Načíst detail s položkami
+      try {
+        const detail = await getAnnualFeeDetail({
+          token: userDetail.token,
+          username: userDetail.username,
+          id
+        });
+        
+        if (detail.data) {
+          setAnnualFees(prev => prev.map(fee => 
+            fee.id === id ? { ...fee, polozky: detail.data.polozky } : fee
+          ));
+        }
+      } catch (error) {
+        console.error('Chyba při načítání detailu:', error);
+        showToast('Chyba při načítání detailu poplatku', 'error');
+      }
     }
+    
     setExpandedRows(newExpanded);
   };
   
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  // Filter change
+  const handleFilterChange = (key, value) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
   };
   
-  const formatCurrency = (amount) => {
+  // Search smluv pro autocomplete
+  useEffect(() => {
+    if (debouncedSmlouvySearch.length >= 3) {
+      searchSmlouvy(debouncedSmlouvySearch);
+    } else {
+      setSmlouvySuggestions([]);
+      setShowSmlouvySuggestions(false);
+    }
+  }, [debouncedSmlouvySearch]);
+  
+  const searchSmlouvy = async (query) => {
+    if (!query || query.length < 3) {
+      setSmlouvySuggestions([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const response = await universalSearch({
+        query,
+        categories: ['contracts'],
+        limit: 10,
+        archivovano: 0
+      });
+      
+      const contracts = response?.categories?.contracts?.results || [];
+      const activeContracts = contracts.filter(c => c.aktivni === 1);
+      
+      setSmlouvySuggestions(activeContracts);
+      setShowSmlouvySuggestions(true);
+    } catch (error) {
+      console.error('Chyba při vyhledávání smluv:', error);
+      setSmlouvySuggestions([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+  
+  // Select smlouva z autocomplete
+  const handleSelectSmlouva = async (smlouva) => {
+    try {
+      // Načíst detail smlouvy pro dodavatele
+      const detail = await getSmlouvaDetail({
+        token: userDetail.token,
+        username: userDetail.username,
+        id: smlouva.id
+      });
+      
+      setNewFeeData(prev => ({
+        ...prev,
+        smlouva_id: smlouva.id,
+        smlouva_cislo: smlouva.cislo_smlouvy || '',
+        dodavatel_nazev: detail.data?.nazev_firmy || smlouva.nazev_firmy || ''
+      }));
+      
+      setSmlouvySearch(smlouva.cislo_smlouvy || '');
+      setShowSmlouvySuggestions(false);
+    } catch (error) {
+      console.error('Chyba při načítání detailu smlouvy:', error);
+      showToast('Chyba při načítání detailu smlouvy', 'error');
+    }
+  };
+  
+  // Close autocomplete při kliknutí mimo
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (smlouvySearchRef.current && !smlouvySearchRef.current.contains(event.target)) {
+        setShowSmlouvySuggestions(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  // CREATE handler
+  const handleCreateAnnualFee = async () => {
+    // Validace
+    if (!newFeeData.smlouva_id) {
+      showToast('Vyberte smlouvu', 'error');
+      return;
+    }
+    if (!newFeeData.nazev.trim()) {
+      showToast('Vyplňte název', 'error');
+      return;
+    }
+    if (!newFeeData.druh) {
+      showToast('Vyberte druh poplatku', 'error');
+      return;
+    }
+    if (!newFeeData.platba) {
+      showToast('Vyberte typ platby', 'error');
+      return;
+    }
+    if (!newFeeData.castka || parseFloat(newFeeData.castka) <= 0) {
+      showToast('Vyplňte platnou částku', 'error');
+      return;
+    }
+    
+    try {
+      const response = await createAnnualFee({
+        token: userDetail.token,
+        username: userDetail.username,
+        smlouva_id: newFeeData.smlouva_id,
+        nazev: newFeeData.nazev,
+        druh: newFeeData.druh,
+        platba: newFeeData.platba,
+        castka: parseFloat(newFeeData.castka),
+        rok: newFeeData.rok
+      });
+      
+      if (response.status === 'success') {
+        showToast('Roční poplatek vytvořen', 'success');
+        
+        // Reset form
+        setNewFeeData({
+          smlouva_id: null,
+          smlouva_cislo: '',
+          dodavatel_nazev: '',
+          nazev: '',
+          druh: '',
+          platba: '',
+          castka: '',
+          rok: new Date().getFullYear()
+        });
+        setSmlouvySearch('');
+        setShowNewRow(false);
+        
+        // Reload list
+        loadAnnualFees();
+      }
+    } catch (error) {
+      console.error('Chyba při vytváření poplatku:', error);
+      showToast(error.message || 'Chyba při vytváření poplatku', 'error');
+    }
+  };
+  
+  // UPDATE item handler
+  const handleUpdateItem = async (itemId, data) => {
+    try {
+      const response = await updateAnnualFeeItem({
+        token: userDetail.token,
+        username: userDetail.username,
+        id: itemId,
+        data
+      });
+      
+      if (response.status === 'success') {
+        showToast('Položka aktualizována', 'success');
+        loadAnnualFees();
+      }
+    } catch (error) {
+      console.error('Chyba při aktualizaci položky:', error);
+      showToast(error.message || 'Chyba při aktualizaci položky', 'error');
+    }
+  };
+  
+  // DELETE handler
+  const handleDeleteFee = async (id) => {
+    if (!window.confirm('Opravdu smazat tento roční poplatek?')) {
+      return;
+    }
+    
+    try {
+      const response = await deleteAnnualFee({
+        token: userDetail.token,
+        username: userDetail.username,
+        id
+      });
+      
+      if (response.status === 'success') {
+        showToast('Roční poplatek smazán', 'success');
+        loadAnnualFees();
+      }
+    } catch (error) {
+      console.error('Chyba při mazání poplatku:', error);
+      showToast(error.message || 'Chyba při mazání poplatku', 'error');
+    }
+  };
+    const formatCurrency = (amount) => {
     return new Intl.NumberFormat('cs-CZ', {
       style: 'currency',
       currency: 'CZK'
@@ -680,43 +979,117 @@ function AnnualFeesPage() {
               ) : (
                 <NewRowTr>
                   <Td>
-                    <NewRowButton onClick={() => setShowNewRow(false)} title="Zrušit">
+                    <NewRowButton onClick={() => { setShowNewRow(false); setSmlouvySearch(''); setShowSmlouvySuggestions(false); }} title="Zrušit">
                       <FontAwesomeIcon icon={faMinus} />
                     </NewRowButton>
                   </Td>
                   <Td>
-                    <InlineInput placeholder="Smlouva #" />
+                    <SuggestionsWrapper ref={smlouvySearchRef}>
+                      <InlineInput 
+                        placeholder="Smlouva # (min 3 znaky)" 
+                        value={smlouvySearch}
+                        onChange={(e) => setSmlouvySearch(e.target.value)}
+                        onFocus={() => smlouvySearch.length >= 3 && setShowSmlouvySuggestions(true)}
+                      />
+                      {showSmlouvySuggestions && smlouvySuggestions.length > 0 && (
+                        <SuggestionsDropdown>
+                          {isSearching && (
+                            <SuggestionItem style={{textAlign: 'center', color: '#9ca3af'}}>
+                              <FontAwesomeIcon icon={faSpinner} spin /> Vyhledávání...
+                            </SuggestionItem>
+                          )}
+                          {!isSearching && smlouvySuggestions.map(smlouva => (
+                            <SuggestionItem key={smlouva.id} onClick={() => handleSelectSmlouva(smlouva)}>
+                              <SuggestionTitle>
+                                <SuggestionBadge $color="#10b981" $textColor="white">SML</SuggestionBadge>
+                                {smlouva.cislo_smlouvy}
+                                {smlouva.hodnota_s_dph && (
+                                  <SuggestionBadge $color="#fef3c7" $textColor="#92400e">
+                                    {parseFloat(smlouva.hodnota_s_dph).toLocaleString('cs-CZ')} Kč
+                                  </SuggestionBadge>
+                                )}
+                              </SuggestionTitle>
+                              <SuggestionDetail>
+                                {smlouva.nazev_smlouvy && <span><strong>Název:</strong> {smlouva.nazev_smlouvy}</span>}
+                                {smlouva.nazev_firmy && (
+                                  <span>
+                                    <strong>{smlouva.nazev_firmy}</strong>
+                                    {smlouva.ico && ` (IČO: ${smlouva.ico})`}
+                                  </span>
+                                )}
+                              </SuggestionDetail>
+                            </SuggestionItem>
+                          ))}
+                        </SuggestionsDropdown>
+                      )}
+                      {showSmlouvySuggestions && !isSearching && smlouvySearch.length >= 3 && smlouvySuggestions.length === 0 && (
+                        <SuggestionsDropdown>
+                          <SuggestionItem style={{textAlign: 'center', color: '#9ca3af'}}>
+                            Žádné smlouvy nenalezeny
+                          </SuggestionItem>
+                        </SuggestionsDropdown>
+                      )}
+                    </SuggestionsWrapper>
                   </Td>
                   <Td>
-                    <InlineInput placeholder="Dodavatel" disabled style={{background: '#f9fafb'}} />
+                    <InlineInput 
+                      placeholder="Dodavatel (načte se ze smlouvy)" 
+                      value={newFeeData.dodavatel_nazev}
+                      disabled 
+                      style={{background: '#f9fafb'}} 
+                    />
                   </Td>
                   <Td>
-                    <InlineInput placeholder="Název ročního poplatku" />
+                    <InlineInput 
+                      placeholder="Název ročního poplatku" 
+                      value={newFeeData.nazev}
+                      onChange={(e) => setNewFeeData(prev => ({...prev, nazev: e.target.value}))}
+                    />
                   </Td>
                   <Td>
-                    <InlineSelect>
+                    <InlineSelect 
+                      value={newFeeData.druh}
+                      onChange={(e) => setNewFeeData(prev => ({...prev, druh: e.target.value}))}
+                    >
                       <option value="">Druh...</option>
-                      <option value="NAJEMNI">Nájemní</option>
-                      <option value="ENERGIE">Energie</option>
-                      <option value="POPLATKY">Poplatky</option>
-                      <option value="JINE">Jiné</option>
+                      {druhy.map(d => (
+                        <option key={d.kod} value={d.kod}>{d.nazev}</option>
+                      ))}
                     </InlineSelect>
-                    <InlineSelect style={{marginTop: '4px'}}>
+                    <InlineSelect 
+                      style={{marginTop: '4px'}}
+                      value={newFeeData.platba}
+                      onChange={(e) => setNewFeeData(prev => ({...prev, platba: e.target.value}))}
+                    >
                       <option value="">Platba...</option>
-                      <option value="MESICNI">Měsíční (12x)</option>
-                      <option value="KVARTALNI">Kvartální (4x)</option>
-                      <option value="ROCNI">Roční (1x)</option>
-                      <option value="JINA">Jiná</option>
+                      {platby.map(p => (
+                        <option key={p.kod} value={p.kod}>
+                          {p.nazev} {p.pocet_polozek && `(${p.pocet_polozek}x)`}
+                        </option>
+                      ))}
                     </InlineSelect>
                   </Td>
                   <Td>
-                    <InlineInput placeholder="Částka" type="number" />
+                    <InlineInput 
+                      placeholder="Částka" 
+                      type="number" 
+                      value={newFeeData.castka}
+                      onChange={(e) => setNewFeeData(prev => ({...prev, castka: e.target.value}))}
+                    />
                   </Td>
                   <Td colSpan="4" style={{textAlign: 'right'}}>
-                    <Button variant="primary" style={{padding: '6px 16px', fontSize: '0.85rem', marginRight: '8px'}}>
+                    <Button 
+                      variant="primary" 
+                      style={{padding: '6px 16px', fontSize: '0.85rem', marginRight: '8px'}}
+                      onClick={handleCreateAnnualFee}
+                    >
                       💾 Uložit
                     </Button>
-                    <Button variant="secondary" onClick={() => setShowNewRow(false)} style={{padding: '6px 16px', fontSize: '0.85rem'}}>
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => { setShowNewRow(false); setSmlouvySearch(''); setShowSmlouvySuggestions(false); }} 
+                      style={{padding: '6px 16px', fontSize: '0.85rem'}}
+                    >
                       Zrušit
                     </Button>
                   </Td>
@@ -783,19 +1156,43 @@ function AnnualFeesPage() {
                                 </SubItemCell>
                                 <SubItemCell>
                                   <StatusBadge status={item.stav}>
-                                    {item.stav === 'ZAPLACENO' ? 'Zaplaceno' : 'Nezaplaceno'}
+                                    {item.stav === 'ZAPLACENO' ? (
+                                      <><FontAwesomeIcon icon={faCheckCircle} /> Zaplaceno</>
+                                    ) : 'Nezaplaceno'}
                                   </StatusBadge>
                                 </SubItemCell>
                                 <SubItemCell>
-                                  <Button variant="secondary" style={{padding: '6px 12px', fontSize: '0.85rem'}}>
-                                    <FontAwesomeIcon icon={faEdit} />
-                                    Upravit
-                                  </Button>
+                                  {item.stav !== 'ZAPLACENO' && (
+                                    <Button 
+                                      variant="secondary" 
+                                      style={{padding: '6px 12px', fontSize: '0.85rem', marginRight: '4px'}}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleUpdateItem(item.id, { stav: 'ZAPLACENO', datum_zaplaceni: new Date().toISOString().split('T')[0] });
+                                      }}
+                                    >
+                                      <FontAwesomeIcon icon={faCheckCircle} />
+                                      Zaplaceno
+                                    </Button>
+                                  )}
                                 </SubItemCell>
                               </SubItemRow>
                             ))}
                           </tbody>
                         </SubItemsTable>
+                        <div style={{padding: '12px', textAlign: 'right', borderTop: '1px solid #e5e7eb'}}>
+                          <Button 
+                            variant="secondary" 
+                            style={{padding: '6px 12px', fontSize: '0.85rem', color: '#ef4444', borderColor: '#ef4444'}}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFee(fee.id);
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faTrash} />
+                            Smazat poplatek
+                          </Button>
+                        </div>
                       </SubItemsWrapper>
                     </SubItemsContainer>
                   )}
