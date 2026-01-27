@@ -4438,13 +4438,24 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/list - seznam ročních poplatků s filtry
         if ($endpoint === 'annual-fees/list') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesList($pdo, $input, $user);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesList($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
                 echo json_encode($result);
             } else {
                 http_response_code(405);
@@ -4456,13 +4467,24 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/detail - detail ročního poplatku včetně položek
         if ($endpoint === 'annual-fees/detail') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesDetail($pdo, $input, $user);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesDetail($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
                 echo json_encode($result);
             } else {
                 http_response_code(405);
@@ -4474,14 +4496,31 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/create - vytvoření s automatickým generováním položek
         if ($endpoint === 'annual-fees/create') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesCreate($pdo, $input, $user);
-                echo json_encode($result);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                try {
+                    $result = handleAnnualFeesCreate($pdo, $input, $auth_result);
+                    http_response_code($result['status'] === 'error' ? 400 : 200);
+                    echo json_encode($result);
+                } catch (Exception $e) {
+                    error_log("❌ FATAL ERROR in annual-fees/create: " . $e->getMessage());
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba serveru: ' . $e->getMessage()]);
+                }
             } else {
                 http_response_code(405);
                 echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
@@ -4492,13 +4531,24 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/update - aktualizace hlavičky
         if ($endpoint === 'annual-fees/update') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesUpdate($pdo, $input, $user);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesUpdate($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
                 echo json_encode($result);
             } else {
                 http_response_code(405);
@@ -4510,13 +4560,24 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/update-item - aktualizace jedné položky
         if ($endpoint === 'annual-fees/update-item') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesUpdateItem($pdo, $input, $user);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesUpdateItem($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
                 echo json_encode($result);
             } else {
                 http_response_code(405);
@@ -4528,13 +4589,24 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/delete - soft delete ročního poplatku
         if ($endpoint === 'annual-fees/delete') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesDelete($pdo, $input, $user);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesDelete($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
                 echo json_encode($result);
             } else {
                 http_response_code(405);
@@ -4546,13 +4618,24 @@ switch ($endpoint) {
         // POST /api.eeo/annual-fees/stats - statistiky ročních poplatků
         if ($endpoint === 'annual-fees/stats') {
             if ($request_method === 'POST') {
-                $user = authenticate_user($input, $pdo);
-                if (!$user) {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
                     http_response_code(401);
                     echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
                     break;
                 }
-                $result = handleAnnualFeesStats($pdo, $input, $user);
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesStats($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
                 echo json_encode($result);
             } else {
                 http_response_code(405);

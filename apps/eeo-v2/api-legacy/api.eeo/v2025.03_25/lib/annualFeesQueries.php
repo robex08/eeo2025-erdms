@@ -72,16 +72,15 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             rp.smlouva_id,
             s.cislo_smlouvy,
             s.nazev_smlouvy,
-            rp.dodavatel_id,
-            d.nazev AS dodavatel_nazev,
+            s.nazev_firmy AS dodavatel_nazev,
+            s.ico AS dodavatel_ico,
             rp.dt_vytvoreni,
             rp.dt_aktualizace,
             (SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek
         FROM `25a_rocni_poplatky` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
-        LEFT JOIN `25_dodavatele` d ON rp.dodavatel_id = d.id
-        LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'ROCNI_POPLATEK_DRUH'
-        LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'ROCNI_POPLATEK_PLATBA'
+        LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
+        LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_stav ON rp.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         WHERE $whereClause
         ORDER BY rp.rok DESC, rp.dt_vytvoreni DESC
@@ -118,17 +117,17 @@ function queryAnnualFeesDetail($pdo, $id) {
             s.nazev_smlouvy,
             s.platnost_od AS smlouva_platnost_od,
             s.platnost_do AS smlouva_platnost_do,
-            d.nazev AS dodavatel_nazev,
-            d.ico AS dodavatel_ico,
+            s.nazev_firmy AS dodavatel_nazev,
+            s.ico AS dodavatel_ico,
+            s.dic AS dodavatel_dic,
             u_vytvoril.jmeno AS vytvoril_jmeno,
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_aktualizoval.jmeno AS aktualizoval_jmeno,
             u_aktualizoval.prijmeni AS aktualizoval_prijmeni
         FROM `25a_rocni_poplatky` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
-        LEFT JOIN `25_dodavatele` d ON rp.dodavatel_id = d.id
-        LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'ROCNI_POPLATEK_DRUH'
-        LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'ROCNI_POPLATEK_PLATBA'
+        LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
+        LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_stav ON rp.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         LEFT JOIN `25_uzivatele` u_vytvoril ON rp.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_aktualizoval ON rp.aktualizoval_uzivatel_id = u_aktualizoval.id
@@ -173,11 +172,11 @@ function queryAnnualFeesDetail($pdo, $id) {
 function queryInsertAnnualFee($pdo, $data) {
     $sql = "
         INSERT INTO `25a_rocni_poplatky` (
-            smlouva_id, dodavatel_id, nazev, popis, rok,
+            smlouva_id, nazev, popis, rok,
             druh, platba, celkova_castka, zaplaceno_celkem, zbyva_zaplatit,
             stav, rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
         ) VALUES (
-            :smlouva_id, :dodavatel_id, :nazev, :popis, :rok,
+            :smlouva_id, :nazev, :popis, :rok,
             :druh, :platba, :celkova_castka, :zaplaceno_celkem, :zbyva_zaplatit,
             :stav, :rozsirujici_data, :vytvoril_uzivatel_id, :dt_vytvoreni, 1
         )
@@ -185,7 +184,6 @@ function queryInsertAnnualFee($pdo, $data) {
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
         ':smlouva_id' => $data['smlouva_id'],
-        ':dodavatel_id' => $data['dodavatel_id'],
         ':nazev' => $data['nazev'],
         ':popis' => $data['popis'],
         ':rok' => $data['rok'],

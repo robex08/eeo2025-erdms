@@ -10,7 +10,7 @@
  * @date 2026-01-27
  */
 
-const BASE_URL = '/api.eeo/api.php';
+const BASE_URL = '/api.eeo';
 
 /**
  * Načte seznam ročních poplatků s filtry
@@ -268,5 +268,89 @@ export const getAnnualFeesStats = async ({ token, username, rok }) => {
   } catch (error) {
     console.error('getAnnualFeesStats error:', error);
     throw error;
+  }
+};
+
+/**
+ * Načte číselník druhů ročních poplatků
+ */
+export const getDruhyRocnichPoplatku = async ({ token, username }) => {
+  try {
+    const response = await fetch(`${BASE_URL}/ciselniky/annual-fees-druhy/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Chyba při načítání druhů poplatků');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('getDruhyRocnichPoplatku error:', error);
+    return [];
+  }
+};
+
+/**
+ * Načte číselník typů plateb ročních poplatků
+ */
+export const getPlatbyRocnichPoplatku = async ({ token, username }) => {
+  try {
+    const response = await fetch(`${BASE_URL}/ciselniky/annual-fees-platby/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Chyba při načítání typů plateb');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('getPlatbyRocnichPoplatku error:', error);
+    return [];
+  }
+};
+
+/**
+ * Načte číselník stavů ročních poplatků
+ */
+export const getStavyRocnichPoplatku = async ({ token, username }) => {
+  try {
+    const response = await fetch(`${BASE_URL}/ciselniky/annual-fees-stavy/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Chyba při načítání stavů');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('getStavyRocnichPoplatku error:', error);
+    return [];
   }
 };
