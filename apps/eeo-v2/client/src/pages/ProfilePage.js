@@ -5,6 +5,7 @@ import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
+import { loadAuthData } from '../utils/authStorage';
 import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
@@ -2132,6 +2133,17 @@ const ProfilePage = () => {
     setIsSavingSettings(true);
 
     try {
+      // 🔐 KROK 0: PRE-SAVE TOKEN CHECK - ověřit že token existuje PŘED uložením
+      const preTokenCheck = await loadAuthData.token();
+      if (!preTokenCheck) {
+        console.error('❌ [ProfilePage] KRITICKÁ CHYBA: Token chybí PŘED uložením nastavení!');
+        if (showToast) {
+          showToast('Kritická chyba: Token chybí. Zůstáváte na stránce, zkuste se odhlásit a znovu přihlásit.', 'error');
+        }
+        setIsSavingSettings(false);
+        return; // STOP - neukládat, nezreloadovat
+      }
+
       const { saveUserSettings, saveSettingsToLocalStorage } = await import('../services/userSettingsApi');
 
       // Helper funkce pro extrakci hodnoty (pokud je to objekt s .value, vezmi .value, jinak celou hodnotu)
@@ -2181,13 +2193,24 @@ const ProfilePage = () => {
         };
       }
 
-      // Krok 1: Uložit do databáze (saveUserSettings automaticky uloží i do localStorage)
+      // 🔐 KROK 1: Uložit do databáze (saveUserSettings automaticky uloží i do localStorage)
       const dbResponse = await saveUserSettings({
         token,
         username,
         userId: parseInt(user_id, 10),
         nastaveni: cleanSettings
       });
+
+      // 🔐 KROK 1.5: POST-SAVE TOKEN CHECK - ověřit že token stále existuje PO uložení
+      const postTokenCheck = await loadAuthData.token();
+      if (!postTokenCheck) {
+        console.error('❌ [ProfilePage] KRITICKÁ CHYBA: Token chybí PO uložení nastavení!');
+        if (showToast) {
+          showToast('Nastavení uloženo, ale token byl ztracen. Zkuste se odhlásit a znovu přihlásit.', 'warning');
+        }
+        setIsSavingSettings(false);
+        return; // STOP - neukládat, nezreloadovat
+      }
 
       // ℹ️ localStorage je automaticky aktualizován uvnitř saveUserSettings()
 
@@ -2221,11 +2244,28 @@ const ProfilePage = () => {
         console.warn('Nelze uložit aktivní tab před reloadem:', e);
       }
 
-      // Krok 4: Reload aplikace pro aplikování změn (okamžitě, bez setTimeout)
+      // 🔐 KROK 3.5: DELAY 1000ms - Dát localStorage čas na synchronizaci
+      // KRITICKÉ: Tento delay zabrání race condition mezi save a reload
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 🔐 KROK 4: FINAL TOKEN CHECK - triple check před reloadem (stejná metoda jako předchozí checky)
+      const finalTokenCheck = await loadAuthData.token();
+      if (!finalTokenCheck) {
+        console.error('❌ [ProfilePage] KRITICKÁ CHYBA: Token chybí těsně PŘED reloadem!');
+        if (showToast) {
+          showToast('Kritická chyba: Token byl ztracen před reloadem. Zůstáváte na stránce.', 'error');
+        }
+        setIsSavingSettings(false);
+        return; // STOP - NIKDY nezreloadovat bez tokenu!
+      }
+
+      // 🔐 KROK 5: Reload aplikace pro aplikování změn
+      // Pouze pokud všechny kontroly prošly!
+      console.log('✅ [ProfilePage] Všechny token kontroly prošly, provádím reload...');
       window.location.reload();
 
     } catch (error) {
-      console.error('Chyba při ukládání nastavení:', error);
+      console.error('❌ [ProfilePage] Chyba při ukládání nastavení:', error);
       if (showToast) {
         showToast('Chyba při ukládání nastavení: ' + (error.message || 'Neznámá chyba'), 'error');
       }

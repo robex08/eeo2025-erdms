@@ -702,6 +702,74 @@ function handle_user_active($input, $config, $queries) {
     }
 }
 
+/**
+ * 💓 KEEPALIVE: Jednoduchý ping endpoint - každých 5 minut
+ * 
+ * Účel:
+ * - Zobrazit že user je aktivní/online
+ * - BEZ token validace nebo refresh (rychlý, lightweight)
+ * - BEZ kritických error handlerů
+ * - Minimální DB zátěž (jen UPDATE timestamp)
+ * 
+ * Rozdíl oproti update-activity:
+ * - ŽÁDNÝ token refresh
+ * - ŽÁDNÉ složité kontroly
+ * - Tiché selhání (není kritický)
+ * - Vždy vrací 200 OK (i při chybě)
+ * 
+ * @param array $input - {token, username, timestamp}
+ * @param array $config - DB config
+ * @param array $queries - SQL queries (nepoužívá se)
+ */
+function handle_user_keepalive($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    
+    // Minimální validace - jen zkontroluj že nejsou prázdné
+    if (empty($request_username) || empty($token)) {
+        // Tiché selhání - vrátit OK i při chybě
+        echo json_encode(array('status' => 'ok', 'keepalive' => true, 'silentFail' => 'missing_params'));
+        exit;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // MINIMÁLNÍ token check - jen ověřit že existuje, BEZ refresh logiky
+        $checkTokenSQL = "SELECT id, username FROM " . TBL_UZIVATELE . " WHERE username = :username";
+        $stmt = $db->prepare($checkTokenSQL);
+        $stmt->bindParam(':username', $request_username, PDO::PARAM_STR);
+        $stmt->execute();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            // Tiché selhání - user neexistuje
+            echo json_encode(array('status' => 'ok', 'keepalive' => true, 'silentFail' => 'user_not_found'));
+            exit;
+        }
+        
+        // UPDATE aktivity - jen timestamp, nic víc
+        $updateSQL = "UPDATE " . TBL_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
+        $updateStmt = $db->prepare($updateSQL);
+        $updateStmt->bindParam(':id', $user['id'], PDO::PARAM_INT);
+        $updateStmt->execute();
+        
+        // Vždy vrátit OK
+        echo json_encode(array(
+            'status' => 'ok',
+            'keepalive' => true,
+            'timestamp' => date('Y-m-d H:i:s')
+        ));
+        
+    } catch (Exception $e) {
+        // Tiché selhání i při DB chybě - není kritický
+        if (API_DEBUG_MODE) {
+            error_log("Keepalive error (non-critical): " . $e->getMessage());
+        }
+        echo json_encode(array('status' => 'ok', 'keepalive' => true, 'silentFail' => 'db_error'));
+    }
+}
+
 function handle_user_update_activity($input, $config, $queries) {
     // Ověření tokenu - ✅ POUŽÍVÁ verify_token_v2 (jednotné s ostatními endpointy)
     $token = isset($input['token']) ? $input['token'] : '';
