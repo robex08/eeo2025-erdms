@@ -42,6 +42,26 @@ import { useDebounce } from '../hooks/useDebounce';
 
 // 🎨 STYLED COMPONENTS
 
+const CurrencyInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const CurrencySymbol = styled.span`
+  position: absolute;
+  right: 8px;
+  color: ${props => props.disabled ? '#9ca3af' : '#374151'};
+  font-weight: 600;
+  font-size: 0.875rem;
+  font-family: inherit;
+  pointer-events: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  height: 100%;
+`;
+
 const PageContainer = styled.div`
   width: 100%;
   padding: 16px;
@@ -784,7 +804,12 @@ function AnnualFeesPage() {
       showToast('Vyberte typ platby', 'error');
       return;
     }
-    if (!newFeeData.castka || parseFloat(newFeeData.castka) <= 0) {
+    
+    // Očistit částku od formátování (mezery, čárky)
+    const cleanCastka = newFeeData.castka.toString().replace(/[^\d,.-]/g, '').replace(',', '.');
+    const parsedCastka = parseFloat(cleanCastka);
+    
+    if (!newFeeData.castka || isNaN(parsedCastka) || parsedCastka <= 0) {
       showToast('Vyplňte platnou částku', 'error');
       return;
     }
@@ -797,7 +822,7 @@ function AnnualFeesPage() {
         nazev: newFeeData.nazev,
         druh: newFeeData.druh,
         platba: newFeeData.platba,
-        celkova_castka: parseFloat(newFeeData.castka),
+        celkova_castka: parsedCastka,
         rok: newFeeData.rok,
         datum_prvni_splatnosti: newFeeData.datum_prvni_splatnosti
       });
@@ -1084,16 +1109,16 @@ function AnnualFeesPage() {
                     </InlineSelect>
                   </Td>
                   <Td>
-                    <InlineInput 
-                      placeholder="Celková částka (Kč)" 
-                      type="number" 
-                      step="0.01"
-                      value={newFeeData.castka}
-                      onChange={(e) => setNewFeeData(prev => ({...prev, castka: e.target.value}))}
-                    />
-                    <small style={{display: 'block', marginTop: '2px', color: '#6b7280', fontSize: '0.75rem'}}>
-                      Zadejte celkovou roční částku
-                    </small>
+                    <CurrencyInputWrapper>
+                      <InlineInput 
+                        placeholder="Celková částka" 
+                        type="text" 
+                        value={newFeeData.castka}
+                        onChange={(e) => setNewFeeData(prev => ({...prev, castka: e.target.value}))}
+                        style={{paddingRight: '40px', textAlign: 'right'}}
+                      />
+                      <CurrencySymbol>Kč</CurrencySymbol>
+                    </CurrencyInputWrapper>
                   </Td>
                   <Td>
                     <InlineInput 
@@ -1182,7 +1207,14 @@ function AnnualFeesPage() {
                                   <strong>{item.nazev_polozky}</strong>
                                 </SubItemCell>
                                 <SubItemCell>{formatCurrency(item.castka)}</SubItemCell>
-                                <SubItemCell>{formatDate(item.datum_splatnosti)}</SubItemCell>
+                                <SubItemCell>
+                                  <InlineInput 
+                                    type="date" 
+                                    value={item.datum_splatnosti}
+                                    onChange={(e) => handleUpdateItem(item.id, { datum_splatnosti: e.target.value })}
+                                    style={{fontSize: '0.85rem', padding: '4px 8px'}}
+                                  />
+                                </SubItemCell>
                                 <SubItemCell>{formatDate(item.datum_zaplaceni)}</SubItemCell>
                                 <SubItemCell>
                                   {item.faktura_cislo || '-'}
