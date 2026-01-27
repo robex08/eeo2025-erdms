@@ -19,6 +19,7 @@
  * @date 2026-01-27
  */
 
+require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/annualFeesQueries.php';
 
 // ============================================================================
@@ -27,6 +28,9 @@ require_once __DIR__ . '/annualFeesQueries.php';
 
 function handleAnnualFeesList($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny pro MySQL spojení
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         // Filtry (volitelné)
         $filters = [
             'rok' => $data['rok'] ?? null,
@@ -69,6 +73,9 @@ function handleAnnualFeesList($pdo, $data, $user) {
 
 function handleAnnualFeesDetail($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         if (!isset($data['id'])) {
             return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
         }
@@ -99,6 +106,9 @@ function handleAnnualFeesDetail($pdo, $data, $user) {
 
 function handleAnnualFeesCreate($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         // Validace povinných polí
         $required = ['smlouva_id', 'nazev', 'rok', 'druh', 'platba', 'castka_na_polozku', 'datum_prvni_splatnosti'];
         foreach ($required as $field) {
@@ -215,6 +225,9 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 
 function handleAnnualFeesUpdate($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         if (!isset($data['id'])) {
             return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
         }
@@ -281,6 +294,9 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
 
 function handleAnnualFeesUpdateItem($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         if (!isset($data['id'])) {
             return ['status' => 'error', 'message' => 'Chybí ID položky'];
         }
@@ -343,6 +359,9 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
 
 function handleAnnualFeesDelete($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         if (!isset($data['id'])) {
             return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
         }
@@ -375,6 +394,9 @@ function handleAnnualFeesDelete($pdo, $data, $user) {
 
 function handleAnnualFeesStats($pdo, $data, $user) {
     try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
         $rok = isset($data['rok']) ? (int)$data['rok'] : null;
         $stats = queryAnnualFeesStats($pdo, $rok);
 
