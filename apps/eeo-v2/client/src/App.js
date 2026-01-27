@@ -29,6 +29,7 @@ const OrderForm25 = lazy(() => import('./forms/OrderForm25'));
 
 const Orders25List = lazy(() => import('./pages/Orders25List'));
 const Orders25ListV3 = lazy(() => import('./pages/Orders25ListV3')); // V3 - Beta s backend paging
+const AnnualFeesPage = lazy(() => import('./pages/AnnualFeesPage')); // 🆕 Evidence ročních poplatků - BETA
 const Invoices25List = lazy(() => import('./pages/Invoices25List'));
 const InvoiceEvidencePage = lazy(() => import('./pages/InvoiceEvidencePage'));
 const AddressBookPage = lazy(() => import('./pages/AddressBookPage'));
@@ -595,6 +596,8 @@ function App() {
                   ) && <Route path="/orders25-list" element={<Orders25List />} />}
                   {/* 🚀 V3 - BETA: Nová verze s backend paging (zatím jen pro ADMINY) */}
                   {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/orders25-list-v3" element={<Orders25ListV3 />} />}
+                  {/* 💰 BETA: Evidence ročních poplatků (pouze pro ADMINY) */}
+                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/annual-fees" element={<AnnualFeesPage />} />}
                   {isLoggedIn && <Route path="/invoices25-list" element={<Invoices25List />} />}
                   {isLoggedIn && <Route path="/invoice-evidence/:orderId?" element={<InvoiceEvidencePage />} />}
                   {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}

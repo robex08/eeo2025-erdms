@@ -163,6 +163,10 @@ define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
 define('TBL_FAKTURY_LP_CERPANI', '25a_faktury_lp_cerpani');
 define('TBL_DODAVATELE', '25_dodavatele');
 
+// DATABASE TABLE NAMES - ROČNÍ POPLATKY
+define('TBL_ROCNI_POPLATKY', '25a_rocni_poplatky');
+define('TBL_ROCNI_POPLATKY_POLOZKY', '25a_rocni_poplatky_polozky');
+
 // FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
 define('INVOICE_STATUS_REGISTERED', 'ZAEVIDOVANA');      // Nově vložená z podatelny
 define('INVOICE_STATUS_VERIFICATION', 'VECNA_SPRAVNOST'); // Poslaná k potvrzení věcné správnosti
@@ -273,6 +277,9 @@ require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlersExtended.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashboxByPeriodHandler.php';
+
+// ANNUAL FEES - Roční poplatky
+require_once __DIR__ . '/v2025.03_25/lib/annualFeesHandlers.php';
 
 // USER DETAIL - User detail with statistics
 require_once __DIR__ . '/v2025.03_25/lib/userDetailHandlers.php';
@@ -4392,6 +4399,136 @@ switch ($endpoint) {
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // ===========================================================================
+        // ANNUAL FEES - Roční poplatky (Evidence ročních poplatků pod smlouvami)
+        // ===========================================================================
+        
+        // POST /api.eeo/annual-fees/list - seznam ročních poplatků s filtry
+        if ($endpoint === 'annual-fees/list') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesList($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/detail - detail ročního poplatku včetně položek
+        if ($endpoint === 'annual-fees/detail') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesDetail($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/create - vytvoření s automatickým generováním položek
+        if ($endpoint === 'annual-fees/create') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesCreate($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/update - aktualizace hlavičky
+        if ($endpoint === 'annual-fees/update') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesUpdate($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/update-item - aktualizace jedné položky
+        if ($endpoint === 'annual-fees/update-item') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesUpdateItem($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/delete - soft delete ročního poplatku
+        if ($endpoint === 'annual-fees/delete') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesDelete($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/stats - statistiky ročních poplatků
+        if ($endpoint === 'annual-fees/stats') {
+            if ($request_method === 'POST') {
+                $user = authenticate_user($input, $pdo);
+                if (!$user) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                $result = handleAnnualFeesStats($pdo, $input, $user);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
             }
             break;
         }

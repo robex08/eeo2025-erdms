@@ -1,0 +1,489 @@
+<?php
+/**
+ * ============================================================================
+ * 💰 ROČNÍ POPLATKY - API HANDLERS
+ * ============================================================================
+ * 
+ * Obslužné funkce pro Evidence ročních poplatků
+ * 
+ * Endpointy:
+ * - annual-fees/list            - Seznam ročních poplatků s filtry + rozbalitelné položky
+ * - annual-fees/detail          - Detail jednoho ročního poplatku včetně všech položek
+ * - annual-fees/create          - Vytvoření s automatickým generováním položek podle platby
+ * - annual-fees/update          - Aktualizace hlavičky (přepočítává sumy)
+ * - annual-fees/update-item     - Aktualizace jedné položky (stav, datum zaplacení)
+ * - annual-fees/delete          - Soft delete (CASCADE smaže i položky)
+ * - annual-fees/stats           - Statistiky (celkem, zaplaceno, nezaplaceno, prosrořeno)
+ * 
+ * @version 1.0.0
+ * @date 2026-01-27
+ */
+
+require_once __DIR__ . '/annualFeesQueries.php';
+
+// ============================================================================
+// 📋 LIST - Seznam ročních poplatků s filtry
+// ============================================================================
+
+function handleAnnualFeesList($pdo, $data, $user) {
+    try {
+        // Filtry (volitelné)
+        $filters = [
+            'rok' => $data['rok'] ?? null,
+            'druh' => $data['druh'] ?? null,
+            'platba' => $data['platba'] ?? null,
+            'stav' => $data['stav'] ?? null,
+            'smlouva_search' => $data['smlouva_search'] ?? null, // Vyhledávání v čísle nebo názvu smlouvy
+            'aktivni' => isset($data['aktivni']) ? (int)$data['aktivni'] : 1
+        ];
+
+        // Paginace
+        $page = isset($data['page']) ? max(1, (int)$data['page']) : 1;
+        $limit = isset($data['limit']) ? max(1, min(100, (int)$data['limit'])) : 50;
+        $offset = ($page - 1) * $limit;
+
+        $result = queryAnnualFeesList($pdo, $filters, $limit, $offset);
+        
+        return [
+            'status' => 'success',
+            'data' => $result['items'],
+            'pagination' => [
+                'total' => $result['total'],
+                'page' => $page,
+                'limit' => $limit,
+                'pages' => ceil($result['total'] / $limit)
+            ]
+        ];
+    } catch (Exception $e) {
+        error_log("❌ Annual Fees List Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při načítání seznamu ročních poplatků'
+        ];
+    }
+}
+
+// ============================================================================
+// 🔍 DETAIL - Detail včetně všech položek
+// ============================================================================
+
+function handleAnnualFeesDetail($pdo, $data, $user) {
+    try {
+        if (!isset($data['id'])) {
+            return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
+        }
+
+        $id = (int)$data['id'];
+        $detail = queryAnnualFeesDetail($pdo, $id);
+
+        if (!$detail) {
+            return ['status' => 'error', 'message' => 'Roční poplatek nenalezen'];
+        }
+
+        return [
+            'status' => 'success',
+            'data' => $detail
+        ];
+    } catch (Exception $e) {
+        error_log("❌ Annual Fees Detail Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při načítání detailu ročního poplatku'
+        ];
+    }
+}
+
+// ============================================================================
+// ➕ CREATE - Vytvoření s automatickým generováním položek
+// ============================================================================
+
+function handleAnnualFeesCreate($pdo, $data, $user) {
+    try {
+        // Validace povinných polí
+        $required = ['smlouva_id', 'nazev', 'rok', 'druh', 'platba', 'castka_na_polozku', 'datum_prvni_splatnosti'];
+        foreach ($required as $field) {
+            if (!isset($data[$field]) || $data[$field] === '') {
+                return ['status' => 'error', 'message' => "Chybí povinné pole: $field"];
+            }
+        }
+
+        $smlouva_id = (int)$data['smlouva_id'];
+        $rok = (int)$data['rok'];
+        $castka_na_polozku = (float)$data['castka_na_polozku'];
+
+        // Validace smlouvy
+        $smlouva = queryGetSmlouva($pdo, $smlouva_id);
+        if (!$smlouva) {
+            return ['status' => 'error', 'message' => 'Smlouva s daným ID neexistuje', 'error_code' => 'SMLOUVA_NOT_FOUND'];
+        }
+
+        // Validace číselníků
+        if (!validateCiselnikValue($pdo, 'ROCNI_POPLATEK_DRUH', $data['druh'])) {
+            return ['status' => 'error', 'message' => 'Neplatný druh poplatku'];
+        }
+        if (!validateCiselnikValue($pdo, 'ROCNI_POPLATEK_PLATBA', $data['platba'])) {
+            return ['status' => 'error', 'message' => 'Neplatný typ platby'];
+        }
+
+        $pdo->beginTransaction();
+
+        // 1️⃣ Generování položek podle typu platby
+        $polozky = generatePolozky(
+            $data['platba'],
+            $rok,
+            $castka_na_polozku,
+            $data['datum_prvni_splatnosti']
+        );
+
+        $celkova_castka = count($polozky) * $castka_na_polozku;
+
+        // 2️⃣ Vytvoření hlavičky
+        $rocni_poplatek_id = queryInsertAnnualFee($pdo, [
+            'smlouva_id' => $smlouva_id,
+            'dodavatel_id' => $smlouva['dodavatel_id'] ?? null,
+            'nazev' => $data['nazev'],
+            'popis' => $data['popis'] ?? null,
+            'rok' => $rok,
+            'druh' => $data['druh'],
+            'platba' => $data['platba'],
+            'celkova_castka' => $celkova_castka,
+            'zaplaceno_celkem' => 0,
+            'zbyva_zaplatit' => $celkova_castka,
+            'stav' => 'NEZAPLACENO',
+            'rozsirujici_data' => isset($data['rozsirujici_data']) ? json_encode($data['rozsirujici_data']) : null,
+            'vytvoril_uzivatel_id' => $user['id'],
+            'dt_vytvoreni' => TimezoneHelper::getCurrentDatetimeCzech()
+        ]);
+
+        // 3️⃣ Vytvoření položek (pokud nějaké jsou)
+        $created_polozky = [];
+        foreach ($polozky as $index => $polozka) {
+            $polozka_id = queryInsertAnnualFeeItem($pdo, [
+                'rocni_poplatek_id' => $rocni_poplatek_id,
+                'poradi' => $index + 1,
+                'nazev_polozky' => $polozka['nazev'],
+                'castka' => $castka_na_polozku,
+                'datum_splatnosti' => $polozka['splatnost'],
+                'stav' => 'NEZAPLACENO',
+                'vytvoril_uzivatel_id' => $user['id'],
+                'dt_vytvoreni' => TimezoneHelper::getCurrentDatetimeCzech()
+            ]);
+
+            $created_polozky[] = [
+                'id' => $polozka_id,
+                'poradi' => $index + 1,
+                'nazev' => $polozka['nazev'],
+                'castka' => $castka_na_polozku,
+                'splatnost' => $polozka['splatnost']
+            ];
+        }
+
+        $pdo->commit();
+
+        return [
+            'status' => 'success',
+            'data' => [
+                'id' => $rocni_poplatek_id,
+                'nazev' => $data['nazev'],
+                'rok' => $rok,
+                'druh' => $data['druh'],
+                'platba' => $data['platba'],
+                'celkova_castka' => $celkova_castka,
+                'pocet_polozek' => count($polozky),
+                'polozky_vytvoreno' => $created_polozky
+            ],
+            'message' => count($polozky) > 0
+                ? "Roční poplatek byl úspěšně vytvořen včetně " . count($polozky) . " položek"
+                : "Roční poplatek byl úspěšně vytvořen (typ JINÁ - položky se přidávají manuálně)"
+        ];
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("❌ Annual Fees Create Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při vytváření ročního poplatku: ' . $e->getMessage()
+        ];
+    }
+}
+
+// ============================================================================
+// 🔄 UPDATE - Aktualizace hlavičky
+// ============================================================================
+
+function handleAnnualFeesUpdate($pdo, $data, $user) {
+    try {
+        if (!isset($data['id'])) {
+            return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
+        }
+
+        $id = (int)$data['id'];
+
+        // Validace existence
+        $existing = queryAnnualFeesDetail($pdo, $id);
+        if (!$existing) {
+            return ['status' => 'error', 'message' => 'Roční poplatek nenalezen'];
+        }
+
+        $pdo->beginTransaction();
+
+        // Aktualizace hlavičky
+        $updateData = [
+            'id' => $id,
+            'aktualizoval_uzivatel_id' => $user['id'],
+            'dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+        ];
+
+        $allowedFields = ['nazev', 'popis', 'druh', 'stav', 'rozsirujici_data'];
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) {
+                if ($field === 'rozsirujici_data' && is_array($data[$field])) {
+                    $updateData[$field] = json_encode($data[$field]);
+                } else {
+                    $updateData[$field] = $data[$field];
+                }
+            }
+        }
+
+        queryUpdateAnnualFee($pdo, $updateData);
+
+        // Přepočítání sum z položek
+        queryRecalculateAnnualFeeSums($pdo, $id);
+
+        $pdo->commit();
+
+        // Načtení aktualizovaných dat
+        $updated = queryAnnualFeesDetail($pdo, $id);
+
+        return [
+            'status' => 'success',
+            'data' => $updated,
+            'message' => 'Roční poplatek byl úspěšně aktualizován'
+        ];
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("❌ Annual Fees Update Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při aktualizaci ročního poplatku: ' . $e->getMessage()
+        ];
+    }
+}
+
+// ============================================================================
+// 📝 UPDATE-ITEM - Aktualizace jedné položky
+// ============================================================================
+
+function handleAnnualFeesUpdateItem($pdo, $data, $user) {
+    try {
+        if (!isset($data['id'])) {
+            return ['status' => 'error', 'message' => 'Chybí ID položky'];
+        }
+
+        $id = (int)$data['id'];
+
+        $pdo->beginTransaction();
+
+        // Aktualizace položky
+        $updateData = [
+            'id' => $id,
+            'aktualizoval_uzivatel_id' => $user['id'],
+            'dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+        ];
+
+        $allowedFields = ['stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'rozsirujici_data'];
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) {
+                if ($field === 'rozsirujici_data' && is_array($data[$field])) {
+                    $updateData[$field] = json_encode($data[$field]);
+                } else {
+                    $updateData[$field] = $data[$field];
+                }
+            }
+        }
+
+        $item = queryUpdateAnnualFeeItem($pdo, $updateData);
+
+        if (!$item) {
+            $pdo->rollBack();
+            return ['status' => 'error', 'message' => 'Položka nenalezena'];
+        }
+
+        // Přepočítání sum v hlavičce
+        queryRecalculateAnnualFeeSums($pdo, $item['rocni_poplatek_id']);
+
+        $pdo->commit();
+
+        return [
+            'status' => 'success',
+            'data' => $item,
+            'message' => 'Položka byla úspěšně aktualizována'
+        ];
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("❌ Annual Fees Update Item Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při aktualizaci položky: ' . $e->getMessage()
+        ];
+    }
+}
+
+// ============================================================================
+// 🗑️ DELETE - Soft delete
+// ============================================================================
+
+function handleAnnualFeesDelete($pdo, $data, $user) {
+    try {
+        if (!isset($data['id'])) {
+            return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
+        }
+
+        $id = (int)$data['id'];
+
+        $result = querySoftDeleteAnnualFee($pdo, $id, $user['id']);
+
+        if (!$result) {
+            return ['status' => 'error', 'message' => 'Roční poplatek nenalezen'];
+        }
+
+        return [
+            'status' => 'success',
+            'message' => 'Roční poplatek byl úspěšně smazán (včetně všech položek)'
+        ];
+
+    } catch (Exception $e) {
+        error_log("❌ Annual Fees Delete Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při mazání ročního poplatku: ' . $e->getMessage()
+        ];
+    }
+}
+
+// ============================================================================
+// 📊 STATS - Statistiky
+// ============================================================================
+
+function handleAnnualFeesStats($pdo, $data, $user) {
+    try {
+        $rok = isset($data['rok']) ? (int)$data['rok'] : null;
+        $stats = queryAnnualFeesStats($pdo, $rok);
+
+        return [
+            'status' => 'success',
+            'data' => $stats
+        ];
+
+    } catch (Exception $e) {
+        error_log("❌ Annual Fees Stats Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při načítání statistik: ' . $e->getMessage()
+        ];
+    }
+}
+
+// ============================================================================
+// 🔧 HELPER FUNKCE - Generování položek podle typu platby
+// ============================================================================
+
+/**
+ * Generuje položky podle typu platby
+ * 
+ * @param string $platba Typ platby: MESICNI|KVARTALNI|ROCNI|JINA
+ * @param int $rok Rok poplatků
+ * @param float $castka_na_polozku Částka na jednu položku
+ * @param string $datum_prvni_splatnosti První splatnost (YYYY-MM-DD)
+ * @return array Pole položek s názvy a splatnostmi
+ */
+function generatePolozky($platba, $rok, $castka_na_polozku, $datum_prvni_splatnosti) {
+    $polozky = [];
+    $datum = new DateTime($datum_prvni_splatnosti);
+    
+    $mesice_cesky = [
+        1 => 'Leden', 2 => 'Únor', 3 => 'Březen', 4 => 'Duben',
+        5 => 'Květen', 6 => 'Červen', 7 => 'Červenec', 8 => 'Srpen',
+        9 => 'Září', 10 => 'Říjen', 11 => 'Listopad', 12 => 'Prosinec'
+    ];
+
+    switch ($platba) {
+        case 'MESICNI':
+            // 12 měsíčních položek
+            for ($i = 0; $i < 12; $i++) {
+                $mesic = (int)$datum->format('n');
+                $polozky[] = [
+                    'nazev' => $mesice_cesky[$mesic] . ' ' . $rok,
+                    'splatnost' => $datum->format('Y-m-d')
+                ];
+                $datum->modify('+1 month');
+            }
+            break;
+
+        case 'KVARTALNI':
+            // 4 kvartální položky
+            for ($i = 1; $i <= 4; $i++) {
+                $polozky[] = [
+                    'nazev' => "Q$i $rok",
+                    'splatnost' => $datum->format('Y-m-d')
+                ];
+                $datum->modify('+3 months');
+            }
+            break;
+
+        case 'ROCNI':
+            // 1 roční položka
+            $polozky[] = [
+                'nazev' => "Roční poplatek $rok",
+                'splatnost' => $datum->format('Y-m-d')
+            ];
+            break;
+
+        case 'JINA':
+            // Žádné položky - přidávají se manuálně přes add-item endpoint
+            break;
+
+        default:
+            throw new Exception("Neznámý typ platby: $platba");
+    }
+
+    return $polozky;
+}
+
+/**
+ * Validuje hodnotu z číselníku
+ */
+function validateCiselnikValue($pdo, $typ_objektu, $kod_stavu) {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM `25_ciselnik_stavy`
+        WHERE typ_objektu = :typ_objektu
+          AND kod_stavu = :kod_stavu
+          AND aktivni = 1
+    ");
+    $stmt->execute([
+        ':typ_objektu' => $typ_objektu,
+        ':kod_stavu' => $kod_stavu
+    ]);
+    return $stmt->fetchColumn() > 0;
+}
+
+/**
+ * Načte smlouvu pro validaci
+ */
+function queryGetSmlouva($pdo, $smlouva_id) {
+    $stmt = $pdo->prepare("
+        SELECT id, dodavatel_id, cislo_smlouvy, nazev_smlouvy
+        FROM `25_smlouvy`
+        WHERE id = :id AND aktivni = 1
+    ");
+    $stmt->execute([':id' => $smlouva_id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
