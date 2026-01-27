@@ -1400,4 +1400,64 @@ export default {
   downloadDocxSablonaAsFile,
   verifyDocxSablony,
   verifySingleDocxSablona,
+  
+  // Roční poplatky - číselníky
+  getDruhyRocnichPoplatku,
+  getPlatbyRocnichPoplatku,
+  getStavyRocnichPoplatku,
 };
+
+// =============================================================================
+// ROČNÍ POPLATKY - Číselníky
+// =============================================================================
+
+/**
+ * Načte druhy ročních poplatků z číselníku
+ */
+export async function getDruhyRocnichPoplatku({ token, username, show_inactive = false }) {
+  try {
+    const response = await api.post('ciselniky/annual-fees-druhy/list', {
+      token,
+      username,
+      show_inactive
+    });
+    checkResponse(response, 'načtení druhů ročních poplatků');
+    return { status: 'ok', data: response.data.data || [] };
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání druhů ročních poplatků');
+  }
+}
+
+/**
+ * Načte typy plateb ročních poplatků z číselníku
+ */
+export async function getPlatbyRocnichPoplatku({ token, username, show_inactive = false }) {
+  try {
+    const response = await api.post('ciselniky/annual-fees-platby/list', {
+      token,
+      username,
+      show_inactive
+    });
+    checkResponse(response, 'načtení typů plateb');
+    return { status: 'ok', data: response.data.data || [] };
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání typů plateb');
+  }
+}
+
+/**
+ * Načte stavy ročních poplatků z číselníku
+ */
+export async function getStavyRocnichPoplatku({ token, username, show_inactive = false }) {
+  try {
+    const response = await api.post('ciselniky/annual-fees-stavy/list', {
+      token,
+      username,
+      show_inactive
+    });
+    checkResponse(response, 'načtení stavů poplatků');
+    return { status: 'ok', data: response.data.data || [] };
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání stavů poplatků');
+  }
+}
