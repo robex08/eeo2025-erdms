@@ -3153,8 +3153,6 @@ function handle_ciselniky_role_bulk_update_prava($input, $config, $queries) {
     }
 }
 
-?>
-
 // =============================================================================
 // ROČNÍ POPLATKY - ČÍSELNÍKY
 // =============================================================================
@@ -3176,20 +3174,21 @@ function handle_ciselniky_annual_fees_druhy_list($input, $config, $queries) {
 
     if ($token_data['username'] !== $request_username) {
         http_response_code(401);
-        echo json_encode(array('err' => 'Uživatelské jméno neodpovídá'));
+        echo json_encode(array('err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu'));
         return;
     }
 
     try {
         $db = get_db($config);
+        
         $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
         
         $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . " 
-                WHERE kategorie = 'ROCNI_POPLATEK_DRUH'";
+                WHERE typ_objektu = 'DRUH_ROCNIHO_POPLATKU'";
         if (!$show_inactive) {
             $sql .= " AND aktivni = 1";
         }
-        $sql .= " ORDER BY nazev ASC";
+        $sql .= " ORDER BY nazev_stavu ASC";
         
         $stmt = $db->prepare($sql);
         $stmt->execute();
@@ -3222,20 +3221,21 @@ function handle_ciselniky_annual_fees_platby_list($input, $config, $queries) {
 
     if ($token_data['username'] !== $request_username) {
         http_response_code(401);
-        echo json_encode(array('err' => 'Uživatelské jméno neodpovídá'));
+        echo json_encode(array('err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu'));
         return;
     }
 
     try {
         $db = get_db($config);
+        
         $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
         
         $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . " 
-                WHERE kategorie = 'ROCNI_POPLATEK_PLATBA'";
+                WHERE typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'";
         if (!$show_inactive) {
             $sql .= " AND aktivni = 1";
         }
-        $sql .= " ORDER BY poradi ASC, nazev ASC";
+        $sql .= " ORDER BY nazev_stavu ASC";
         
         $stmt = $db->prepare($sql);
         $stmt->execute();
@@ -3268,20 +3268,21 @@ function handle_ciselniky_annual_fees_stavy_list($input, $config, $queries) {
 
     if ($token_data['username'] !== $request_username) {
         http_response_code(401);
-        echo json_encode(array('err' => 'Uživatelské jméno neodpovídá'));
+        echo json_encode(array('err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu'));
         return;
     }
 
     try {
         $db = get_db($config);
+        
         $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
         
         $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . " 
-                WHERE kategorie = 'ROCNI_POPLATEK'";
+                WHERE typ_objektu = 'ROCNI_POPLATEK'";
         if (!$show_inactive) {
             $sql .= " AND aktivni = 1";
         }
-        $sql .= " ORDER BY poradi ASC, nazev ASC";
+        $sql .= " ORDER BY nazev_stavu ASC";
         
         $stmt = $db->prepare($sql);
         $stmt->execute();

@@ -109,8 +109,8 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
         
-        // Validace povinných polí
-        $required = ['smlouva_id', 'nazev', 'rok', 'druh', 'platba', 'castka_na_polozku', 'datum_prvni_splatnosti'];
+        // Validace povinných polí (flexibilní - přijímá castka i castka_na_polozku)
+        $required = ['smlouva_id', 'nazev', 'rok', 'druh', 'platba'];
         foreach ($required as $field) {
             if (!isset($data[$field]) || $data[$field] === '') {
                 return ['status' => 'error', 'message' => "Chybí povinné pole: $field"];
@@ -119,7 +119,18 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 
         $smlouva_id = (int)$data['smlouva_id'];
         $rok = (int)$data['rok'];
-        $castka_na_polozku = (float)$data['castka_na_polozku'];
+        
+        // Flexibilní handling částky - přijímá 'castka' nebo 'castka_na_polozku'
+        $castka_na_polozku = isset($data['castka_na_polozku']) 
+            ? (float)$data['castka_na_polozku'] 
+            : (float)($data['castka'] ?? 0);
+        
+        if ($castka_na_polozku <= 0) {
+            return ['status' => 'error', 'message' => 'Částka musí být větší než 0'];
+        }
+        
+        // Datum první splatnosti - pokud není zadáno, použije se 1. leden daného roku
+        $datum_prvni_splatnosti = $data['datum_prvni_splatnosti'] ?? "$rok-01-01";
 
         // Validace smlouvy
         $smlouva = queryGetSmlouva($pdo, $smlouva_id);
@@ -128,10 +139,10 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         }
 
         // Validace číselníků
-        if (!validateCiselnikValue($pdo, 'ROCNI_POPLATEK_DRUH', $data['druh'])) {
+        if (!validateCiselnikValue($pdo, 'DRUH_ROCNIHO_POPLATKU', $data['druh'])) {
             return ['status' => 'error', 'message' => 'Neplatný druh poplatku'];
         }
-        if (!validateCiselnikValue($pdo, 'ROCNI_POPLATEK_PLATBA', $data['platba'])) {
+        if (!validateCiselnikValue($pdo, 'PLATBA_ROCNIHO_POPLATKU', $data['platba'])) {
             return ['status' => 'error', 'message' => 'Neplatný typ platby'];
         }
 
@@ -142,15 +153,14 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
             $data['platba'],
             $rok,
             $castka_na_polozku,
-            $data['datum_prvni_splatnosti']
+            $datum_prvni_splatnosti
         );
 
         $celkova_castka = count($polozky) * $castka_na_polozku;
 
-        // 2️⃣ Vytvoření hlavičky
+        // 2️⃣ Vytvoření hlavičky (dodavatel se načte automaticky ze smlouvy přes JOIN)
         $rocni_poplatek_id = queryInsertAnnualFee($pdo, [
             'smlouva_id' => $smlouva_id,
-            'dodavatel_id' => $smlouva['dodavatel_id'] ?? null,
             'nazev' => $data['nazev'],
             'popis' => $data['popis'] ?? null,
             'rok' => $rok,
@@ -162,7 +172,7 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
             'stav' => 'NEZAPLACENO',
             'rozsirujici_data' => isset($data['rozsirujici_data']) ? json_encode($data['rozsirujici_data']) : null,
             'vytvoril_uzivatel_id' => $user['id'],
-            'dt_vytvoreni' => TimezoneHelper::getCurrentDatetimeCzech()
+            'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
         ]);
 
         // 3️⃣ Vytvoření položek (pokud nějaké jsou)
@@ -176,7 +186,7 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
                 'datum_splatnosti' => $polozka['splatnost'],
                 'stav' => 'NEZAPLACENO',
                 'vytvoril_uzivatel_id' => $user['id'],
-                'dt_vytvoreni' => TimezoneHelper::getCurrentDatetimeCzech()
+                'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
             ]);
 
             $created_polozky[] = [
@@ -246,7 +256,7 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
         $updateData = [
             'id' => $id,
             'aktualizoval_uzivatel_id' => $user['id'],
-            'dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+            'dt_aktualizace' => TimezoneHelper::getCzechDateTime()
         ];
 
         $allowedFields = ['nazev', 'popis', 'druh', 'stav', 'rozsirujici_data'];
@@ -309,7 +319,7 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
         $updateData = [
             'id' => $id,
             'aktualizoval_uzivatel_id' => $user['id'],
-            'dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+            'dt_aktualizace' => TimezoneHelper::getCzechDateTime()
         ];
 
         $allowedFields = ['stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'rozsirujici_data'];
@@ -502,7 +512,7 @@ function validateCiselnikValue($pdo, $typ_objektu, $kod_stavu) {
  */
 function queryGetSmlouva($pdo, $smlouva_id) {
     $stmt = $pdo->prepare("
-        SELECT id, dodavatel_id, cislo_smlouvy, nazev_smlouvy
+        SELECT id, cislo_smlouvy, nazev_smlouvy, nazev_firmy, ico, dic
         FROM `25_smlouvy`
         WHERE id = :id AND aktivni = 1
     ");
