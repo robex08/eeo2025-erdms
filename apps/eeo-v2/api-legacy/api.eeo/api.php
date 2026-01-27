@@ -3087,6 +3087,34 @@ switch ($endpoint) {
         }
         break;
 
+    // ===== ROČNÍ POPLATKY - ČÍSELNÍKY =====
+    case 'ciselniky/annual-fees-druhy/list':
+        if ($request_method === 'POST') {
+            handle_ciselniky_annual_fees_druhy_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'ciselniky/annual-fees-platby/list':
+        if ($request_method === 'POST') {
+            handle_ciselniky_annual_fees_platby_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'ciselniky/annual-fees-stavy/list':
+        if ($request_method === 'POST') {
+            handle_ciselniky_annual_fees_stavy_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
     // ===== DOCX ŠABLONY API =====
     case 'sablona_docx/list':
         if ($request_method === 'POST') {
