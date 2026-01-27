@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -1519,6 +1519,12 @@ const Layout = ({ children }) => {
   const analyticsButtonRef = useRef(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
+  // State pro submenu - BETA funkce
+  const [betaMenuOpen, setBetaMenuOpen] = useState(false);
+  const betaMenuRef = useRef(null);
+  const betaButtonRef = useRef(null);
+  const [betaDropdownPosition, setBetaDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+
   // State pro submenu - Přehled (dynamické menu)
   const [prehledMenuOpen, setPrehledMenuOpen] = useState(false);
   const prehledMenuRef = useRef(null);
@@ -1570,6 +1576,21 @@ const Layout = ({ children }) => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [analyticsMenuOpen]);
+
+  // Zavřít submenu při kliku mimo - BETA
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (betaMenuRef.current && !betaMenuRef.current.contains(event.target) &&
+          betaButtonRef.current && !betaButtonRef.current.contains(event.target)) {
+        setBetaMenuOpen(false);
+      }
+    };
+    
+    if (betaMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [betaMenuOpen]);
 
   // Zavřít submenu při kliku mimo - Přehled
   useEffect(() => {
@@ -2978,21 +2999,75 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) }
             
-            {/* 🚀 V3 - BETA: Nová verze s backend paging (zatím jen pro ADMINY) */}
+            {/* 🚀 BETA menu - nové/experimentální funkce (pouze pro ADMINY) */}
             { hasAdminRole && hasAdminRole() && (
-              <MenuLinkLeft to="/orders25-list-v3" $active={isActive('/orders25-list-v3')}>
-                <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3 
-                <span style={{
-                  marginLeft: '0.5rem',
-                  padding: '0.125rem 0.5rem',
-                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                  color: 'white',
-                  fontSize: '0.7rem',
-                  fontWeight: '600',
-                  borderRadius: '10px',
-                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
-                }}>BETA</span>
-              </MenuLinkLeft>
+              <MenuDropdownWrapper>
+                <MenuDropdownButton 
+                  ref={betaButtonRef}
+                  onClick={() => {
+                    if (!betaMenuOpen && betaButtonRef.current) {
+                      const rect = betaButtonRef.current.getBoundingClientRect();
+                      setBetaDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setBetaMenuOpen(!betaMenuOpen);
+                  }}
+                  data-open={betaMenuOpen}
+                  style={{
+                    background: betaMenuOpen 
+                      ? 'linear-gradient(90deg, transparent 0 33.333%, rgba(59,130,246,0.25) 33.333% 100%)'
+                      : 'transparent'
+                  }}
+                >
+                  <span style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.25rem 0.6rem',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: 'white',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    borderRadius: '10px',
+                    boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
+                    letterSpacing: '0.5px'
+                  }}>
+                    <FontAwesomeIcon icon={faFlask} style={{ fontSize: '0.9rem' }} />
+                    BETA
+                  </span>
+                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
+                    {betaMenuOpen ? '▴' : '▾'}
+                  </span>
+                </MenuDropdownButton>
+                {betaMenuOpen && ReactDOM.createPortal(
+                  <MenuDropdownContent 
+                    ref={betaMenuRef}
+                    $open={betaMenuOpen}
+                    style={{
+                      top: `${betaDropdownPosition.top}px`,
+                      left: `${betaDropdownPosition.left}px`,
+                      minWidth: `${betaDropdownPosition.width}px`
+                    }}
+                  >
+                    <MenuDropdownItem 
+                      to="/orders25-list-v3" 
+                      onClick={() => setBetaMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3
+                    </MenuDropdownItem>
+                    <MenuDropdownItem 
+                      to="/annual-fees" 
+                      onClick={() => setBetaMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Evidence ročních poplatků
+                    </MenuDropdownItem>
+                  </MenuDropdownContent>,
+                  document.body
+                )}
+              </MenuDropdownWrapper>
             ) }
             
             { hasAdminRole && hasAdminRole() && (

@@ -704,6 +704,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
+    
+    case 'user/keepalive':
+        if ($request_method === 'POST') {
+            handle_user_keepalive($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
         
     case 'orders/create':
         if ($request_method === 'POST') {

@@ -10,7 +10,7 @@ export const api2 = axios.create({
 
 // 🔧 Separátní axios instance BEZ interceptoru pro token refresh operace
 // Musí být bez interceptoru aby se zabránilo circular dependency
-const api2NoInterceptor = axios.create({
+export const api2NoInterceptor = axios.create({
   baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 'Content-Type': 'application/json' }
 });

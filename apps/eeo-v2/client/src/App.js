@@ -305,7 +305,10 @@ function App() {
     });
   }, [setToken]);
 
-  // User activity tracking - pings every 3 minutes, triggers on login/save operations
+  // 💓 User activity tracking:
+  // - Keepalive ping každých 5 minut (BEZ validace, jen "user is alive")  
+  // - Activity update každou 1 hodinu (S možností token refresh)
+  // - Manual triggers při login/save operacích
   // ✅ Nyní předává handleTokenRefresh pro automatický refresh tokenu
   const { triggerActivity } = useUserActivity(token, username, handleTokenRefresh);
 
