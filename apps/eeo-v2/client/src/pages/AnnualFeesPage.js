@@ -4,8 +4,8 @@ import { ToastContext } from '../context/ToastContext';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-  faPlus, faFilter, faSearch, faCalendar, faChevronDown, 
-  faChevronRight, faMoneyBill, faFileInvoice, faEdit, 
+  faPlus, faMinus, faFilter, faSearch, faCalendar, 
+  faMoneyBill, faFileInvoice, faEdit, 
   faTrash, faCheckCircle, faExclamationTriangle 
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -17,17 +17,27 @@ import {
  * - Automatické generování položek podle typu platby (měsíční/kvartální/roční)
  * - Integrace se smlouvami a fakturami
  * 
- * @version 1.0.0
+ * ⚠️ DATA: Aktuálně MOCKDATA pro testování UI
+ * Po otestování připojit na API endpoints:
+ * - POST /api.eeo/annual-fees/list (s filtry)
+ * - POST /api.eeo/annual-fees/detail (s položkami)
+ * 
+ * @version 1.1.0
  * @date 2026-01-27
  */
 
 // 🎨 STYLED COMPONENTS
 
 const PageContainer = styled.div`
-  padding: 20px;
-  max-width: 1600px;
-  margin: 0 auto;
-  font-family: var(--app-font-family, 'Inter', sans-serif);
+  width: 100%;
+  padding: 16px;
+  margin: 0;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  /* Využití celé šířky obrazovky jako u Order V3 */
+  @media (min-width: 1920px) {
+    padding: 20px;
+  }
 `;
 
 const PageHeader = styled.div`
@@ -197,6 +207,9 @@ const TableContainer = styled.div`
 const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.01em;
+  font-size: 0.875rem;
 `;
 
 const Thead = styled.thead`
@@ -205,13 +218,15 @@ const Thead = styled.thead`
 `;
 
 const Th = styled.th`
-  padding: 16px;
+  padding: 12px 8px;
   text-align: left;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #374151;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.025em;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  white-space: nowrap;
 `;
 
 const Tbody = styled.tbody`
@@ -230,29 +245,35 @@ const Tr = styled.tr`
 `;
 
 const Td = styled.td`
-  padding: 16px;
-  color: #374151;
-  font-size: 0.95rem;
+  padding: 12px 8px;
+  color: #1e293b;
+  font-size: 0.875rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  vertical-align: middle;
 `;
 
 const ExpandButton = styled.button`
-  background: none;
-  border: none;
-  padding: 4px 8px;
-  cursor: pointer;
-  color: #6b7280;
-  font-size: 1.1rem;
-  transition: all 0.2s ease;
+  background: transparent;
+  border: 1px solid #cbd5e1;
   border-radius: 4px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
   
   &:hover {
-    background: #f3f4f6;
-    color: #374151;
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #475569;
   }
   
-  ${props => props.expanded && `
-    color: #10b981;
-  `}
+  &:active {
+    transform: scale(0.95);
+  }
 `;
 
 const StatusBadge = styled.span`
@@ -302,6 +323,8 @@ const SubItemsTable = styled.table`
   width: 100%;
   background: #fafbfc;
   border-left: 4px solid #10b981;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.875rem;
 `;
 
 const SubItemRow = styled.tr`
@@ -317,10 +340,75 @@ const SubItemRow = styled.tr`
 `;
 
 const SubItemCell = styled.td`
-  padding: 12px 16px;
+  padding: 10px 12px;
   padding-left: ${props => props.indent ? '48px' : '16px'};
-  color: #6b7280;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  vertical-align: middle;
+`;
+
+// II. Styled komponenty pro inline "Nový řádek" formulář
+const NewRowTr = styled.tr`
+  background: #f0fdf4;
+  border: 2px solid #10b981;
+  
+  &:hover {
+    background: #dcfce7;
+  }
+`;
+
+const NewRowButton = styled.button`
+  background: transparent;
+  border: 1px dashed #10b981;
+  border-radius: 4px;
+  color: #10b981;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  &:hover {
+    background: #10b981;
+    color: white;
+    border-style: solid;
+  }
+`;
+
+const InlineInput = styled.input`
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  &:focus {
+    outline: none;
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+  }
+`;
+
+const InlineSelect = styled.select`
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  
+  &:focus {
+    outline: none;
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+  }
 `;
 
 const EmptyState = styled.div`
@@ -377,6 +465,7 @@ function AnnualFeesPage() {
   const [loading, setLoading] = useState(true);
   const [annualFees, setAnnualFees] = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [showNewRow, setShowNewRow] = useState(false); // II. Inline nový řádek
   const [filters, setFilters] = useState({
     rok: new Date().getFullYear(),
     druh: 'all',
@@ -479,12 +568,7 @@ function AnnualFeesPage() {
           Evidence ročních poplatků
           <span className="beta-badge">BETA</span>
         </PageTitle>
-        <ActionBar>
-          <Button variant="primary">
-            <FontAwesomeIcon icon={faPlus} />
-            Nový roční poplatek
-          </Button>
-        </ActionBar>
+        {/* II. Tlačítko přesunuto do tabulky jako inline řádek */}
       </PageHeader>
       
       <FiltersBar>
@@ -583,12 +667,69 @@ function AnnualFeesPage() {
               </tr>
             </Thead>
             <Tbody>
+              {/* II. Inline řádek pro vytvoření nového ročního poplatku */}
+              {!showNewRow ? (
+                <NewRowTr>
+                  <Td colSpan="10" style={{textAlign: 'center', padding: '12px'}}>
+                    <NewRowButton onClick={() => setShowNewRow(true)}>
+                      <FontAwesomeIcon icon={faPlus} />
+                      Nový roční poplatek
+                    </NewRowButton>
+                  </Td>
+                </NewRowTr>
+              ) : (
+                <NewRowTr>
+                  <Td>
+                    <NewRowButton onClick={() => setShowNewRow(false)} title="Zrušit">
+                      <FontAwesomeIcon icon={faMinus} />
+                    </NewRowButton>
+                  </Td>
+                  <Td>
+                    <InlineInput placeholder="Smlouva #" />
+                  </Td>
+                  <Td>
+                    <InlineInput placeholder="Dodavatel" disabled style={{background: '#f9fafb'}} />
+                  </Td>
+                  <Td>
+                    <InlineInput placeholder="Název ročního poplatku" />
+                  </Td>
+                  <Td>
+                    <InlineSelect>
+                      <option value="">Druh...</option>
+                      <option value="NAJEMNI">Nájemní</option>
+                      <option value="ENERGIE">Energie</option>
+                      <option value="POPLATKY">Poplatky</option>
+                      <option value="JINE">Jiné</option>
+                    </InlineSelect>
+                    <InlineSelect style={{marginTop: '4px'}}>
+                      <option value="">Platba...</option>
+                      <option value="MESICNI">Měsíční (12x)</option>
+                      <option value="KVARTALNI">Kvartální (4x)</option>
+                      <option value="ROCNI">Roční (1x)</option>
+                      <option value="JINA">Jiná</option>
+                    </InlineSelect>
+                  </Td>
+                  <Td>
+                    <InlineInput placeholder="Částka" type="number" />
+                  </Td>
+                  <Td colSpan="4" style={{textAlign: 'right'}}>
+                    <Button variant="primary" style={{padding: '6px 16px', fontSize: '0.85rem', marginRight: '8px'}}>
+                      💾 Uložit
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowNewRow(false)} style={{padding: '6px 16px', fontSize: '0.85rem'}}>
+                      Zrušit
+                    </Button>
+                  </Td>
+                </NewRowTr>
+              )}
+              
+              {/* Existující řádky */}
               {annualFees.map(fee => (
                 <React.Fragment key={fee.id}>
                   <Tr clickable onClick={() => toggleRow(fee.id)}>
                     <Td>
-                      <ExpandButton expanded={expandedRows.has(fee.id)}>
-                        <FontAwesomeIcon icon={expandedRows.has(fee.id) ? faChevronDown : faChevronRight} />
+                      <ExpandButton title={expandedRows.has(fee.id) ? 'Sbalit' : 'Rozbalit'}>
+                        <FontAwesomeIcon icon={expandedRows.has(fee.id) ? faMinus : faPlus} />
                       </ExpandButton>
                     </Td>
                     <Td><strong>{fee.smlouva_cislo}</strong></Td>
