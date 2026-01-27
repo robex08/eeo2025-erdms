@@ -10,7 +10,7 @@
  * @date 2026-01-27
  */
 
-const BASE_URL = '/api.eeo';
+const BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 /**
  * Načte seznam ročních poplatků s filtry
@@ -92,11 +92,12 @@ export const getAnnualFeeDetail = async ({ token, username, id }) => {
  * @param {string} params.nazev - Název poplatku
  * @param {string} params.druh - Druh poplatku (z číselníku)
  * @param {string} params.platba - Typ platby (MESICNI, KVARTALNI, ROCNI, JINA)
- * @param {number} params.castka - Částka bez DPH
+ * @param {number} params.celkova_castka - Celková částka
  * @param {number} params.rok - Rok poplatku
+ * @param {string} params.datum_prvni_splatnosti - Datum první splatnosti
  * @returns {Promise<Object>} Vytvořený poplatek s položkami
  */
-export const createAnnualFee = async ({ token, username, smlouva_id, nazev, druh, platba, castka, rok }) => {
+export const createAnnualFee = async ({ token, username, smlouva_id, nazev, druh, platba, celkova_castka, rok, datum_prvni_splatnosti }) => {
   try {
     const response = await fetch(`${BASE_URL}/annual-fees/create`, {
       method: 'POST',
@@ -110,8 +111,9 @@ export const createAnnualFee = async ({ token, username, smlouva_id, nazev, druh
         nazev,
         druh,
         platba,
-        castka,
-        rok: rok || new Date().getFullYear()
+        celkova_castka,
+        rok: rok || new Date().getFullYear(),
+        datum_prvni_splatnosti
       }),
     });
 
