@@ -908,10 +908,14 @@ function AnnualFeesPage() {
             
             // Určit nový stav hlavičky
             let novyStav = 'NEZAPLACENO';
+            let novyStavNazev = 'Nezaplaceno';
+            
             if (zaplaceno >= fee.celkova_castka) {
               novyStav = 'ZAPLACENO';
+              novyStavNazev = 'Zaplaceno';
             } else if (zaplaceno > 0) {
               novyStav = 'CASTECNE';
+              novyStavNazev = 'Částečně zaplaceno';
             }
             
             return {
@@ -919,7 +923,8 @@ function AnnualFeesPage() {
               polozky: updatedPolozky,
               zaplaceno_celkem: zaplaceno,
               zbyva_zaplatit: zbyva,
-              stav: novyStav
+              stav: novyStav,
+              stav_nazev: novyStavNazev
             };
           }
           return fee;
