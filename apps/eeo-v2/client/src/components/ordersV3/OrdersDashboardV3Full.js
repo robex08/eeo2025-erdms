@@ -335,7 +335,7 @@ const OrdersDashboardV3Full = ({
               </StatValue>
               <StatLabel>Celková cena s DPH za období ({stats.total || 0})</StatLabel>
               
-              {hasActiveFilters && filteredCount < stats.total && (
+              {hasActiveFilters && filteredCount < (stats.total || 0) && (
                 <div style={{
                   marginTop: '0.75rem',
                   paddingTop: '0.75rem',
@@ -373,7 +373,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
 
           {/* Dynamické stavové karty - pouze s hodnotou > 0 */}
-          {stats.ke_schvaleni > 0 && (
+          {(stats.ke_schvaleni || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.KE_SCHVALENI.dark}
               $clickable
@@ -381,7 +381,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('ke_schvaleni')}
             >
               <StatHeader>
-                <StatValue>{stats.ke_schvaleni}</StatValue>
+                <StatValue>{stats.ke_schvaleni || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                   <FontAwesomeIcon icon={faHourglassHalf} />
                 </StatIcon>
@@ -390,7 +390,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {stats.schvalena > 0 && (
+          {(stats.schvalena || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.SCHVALENA.dark}
               $clickable
@@ -398,7 +398,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('schvalena')}
             >
               <StatHeader>
-                <StatValue>{stats.schvalena}</StatValue>
+                <StatValue>{stats.schvalena || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                   <FontAwesomeIcon icon={faShield} />
                 </StatIcon>
@@ -407,7 +407,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {stats.rozpracovana > 0 && (
+          {(stats.rozpracovana || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.ROZPRACOVANA.dark}
               $clickable
@@ -415,7 +415,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('rozpracovana')}
             >
               <StatHeader>
-                <StatValue>{stats.rozpracovana}</StatValue>
+                <StatValue>{stats.rozpracovana || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.ROZPRACOVANA.dark}>
                   ⚙️
                 </StatIcon>
@@ -424,7 +424,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {stats.dokoncena > 0 && (
+          {(stats.dokoncena || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.DOKONCENA.dark}
               $clickable
@@ -432,7 +432,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('dokoncena')}
             >
               <StatHeader>
-                <StatValue>{stats.dokoncena}</StatValue>
+                <StatValue>{stats.dokoncena || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.DOKONCENA.dark}>
                   🎯
                 </StatIcon>
@@ -483,7 +483,7 @@ const OrdersDashboardV3Full = ({
               Celková cena s DPH za období ({stats.total || 0})
             </LargeStatLabel>
             
-            {hasActiveFilters && filteredCount < stats.total && (
+            {hasActiveFilters && filteredCount < (stats.total || 0) && (
               <div style={{
                 marginTop: '0.75rem',
                 paddingTop: '0.75rem',

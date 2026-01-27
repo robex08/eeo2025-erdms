@@ -611,7 +611,8 @@ function Orders25ListV3() {
   
   const [dashboardMode, setDashboardMode] = useState(() => {
     const saved = localStorage.getItem(`ordersV3_dashboardMode_${user_id}`);
-    return saved || 'DYNAMIC'; // FULL, DYNAMIC, COMPACT - výchozí DYNAMIC
+    // Normalizovat na lowercase, výchozí 'dynamic'
+    return saved ? saved.toLowerCase() : 'dynamic'; // full, dynamic, compact - výchozí dynamic
   });
   
   const [showRowColoring, setShowRowColoring] = useState(() => {
