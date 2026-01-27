@@ -213,13 +213,16 @@ const SearchInput = styled.input`
 
 const SuggestionsWrapper = styled.div`
   position: relative;
+  z-index: 100;
 `;
 
 const SuggestionsDropdown = styled.div`
   position: absolute;
   top: 100%;
   left: 0;
-  right: 0;
+  min-width: 500px;
+  width: max-content;
+  max-width: 800px;
   background: white;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
@@ -227,7 +230,8 @@ const SuggestionsDropdown = styled.div`
   margin-top: 4px;
   max-height: 400px;
   overflow-y: auto;
-  z-index: 1000;
+  overflow-x: hidden;
+  z-index: 10000;
 `;
 
 const SuggestionItem = styled.div`
@@ -277,7 +281,7 @@ const TableContainer = styled.div`
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  overflow: visible;
 `;
 
 const Table = styled.table`
@@ -326,6 +330,8 @@ const Td = styled.td`
   font-size: 0.875rem;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   vertical-align: middle;
+  position: relative;
+  overflow: visible;
 `;
 
 const ExpandButton = styled.button`
@@ -534,7 +540,7 @@ const LoadingState = styled.div`
 // 🧩 MAIN COMPONENT
 
 function AnnualFeesPage() {
-  const { userDetail } = useContext(AuthContext);
+  const { token, username, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   
   // State
@@ -585,14 +591,22 @@ function AnnualFeesPage() {
   const loadCiselniky = async () => {
     try {
       const [druhyRes, platbyRes, stavyRes] = await Promise.all([
-        getDruhyRocnichPoplatku({ token: userDetail.token, username: userDetail.username }),
-        getPlatbyRocnichPoplatku({ token: userDetail.token, username: userDetail.username }),
-        getStavyRocnichPoplatku({ token: userDetail.token, username: userDetail.username })
+        getDruhyRocnichPoplatku({ token, username }),
+        getPlatbyRocnichPoplatku({ token, username }),
+        getStavyRocnichPoplatku({ token, username })
       ]);
       
-      setDruhy(druhyRes.data || []);
-      setPlatby(platbyRes.data || []);
-      setStavy(stavyRes.data || []);
+      // 🔍 DEBUG - RAW data číselníků
+      console.log('📊 RAW Číselníky - Druhy:', druhyRes);
+      console.log('📊 RAW Číselníky - Platby:', platbyRes);
+      console.log('📊 RAW Číselníky - Stavy:', stavyRes);
+      console.log('🔍 Struktura Druhy[0]:', druhyRes?.[0]);
+      console.log('🔍 Struktura Platby[0]:', platbyRes?.[0]);
+      console.log('🔍 Struktura Stavy[0]:', stavyRes?.[0]);
+      
+      setDruhy(druhyRes || []);
+      setPlatby(platbyRes || []);
+      setStavy(stavyRes || []);
     } catch (error) {
       console.error('Chyba při načítání číselníků:', error);
       showToast('Chyba při načítání číselníků', 'error');
@@ -604,15 +618,22 @@ function AnnualFeesPage() {
     loadAnnualFees();
   }, [filters]);
   
+  // Load číselníky při startu
+  useEffect(() => {
+    if (token && username) {
+      loadCiselniky();
+    }
+  }, [token, username]);
+  
   const loadAnnualFees = async () => {
-    if (!userDetail?.token) return;
+    if (!token) return;
     
     try {
       setLoading(true);
       
       const response = await getAnnualFeesList({
-        token: userDetail.token,
-        username: userDetail.username,
+        token,
+        username,
         filters: {
           rok: filters.rok,
           druh: filters.druh !== 'all' ? filters.druh : undefined,
@@ -644,8 +665,8 @@ function AnnualFeesPage() {
       // Načíst detail s položkami
       try {
         const detail = await getAnnualFeeDetail({
-          token: userDetail.token,
-          username: userDetail.username,
+          token,
+          username,
           id
         });
         
@@ -711,8 +732,8 @@ function AnnualFeesPage() {
     try {
       // Načíst detail smlouvy pro dodavatele
       const detail = await getSmlouvaDetail({
-        token: userDetail.token,
-        username: userDetail.username,
+        token,
+        username,
         id: smlouva.id
       });
       
@@ -769,8 +790,8 @@ function AnnualFeesPage() {
     
     try {
       const response = await createAnnualFee({
-        token: userDetail.token,
-        username: userDetail.username,
+        token,
+        username,
         smlouva_id: newFeeData.smlouva_id,
         nazev: newFeeData.nazev,
         druh: newFeeData.druh,
@@ -809,8 +830,8 @@ function AnnualFeesPage() {
   const handleUpdateItem = async (itemId, data) => {
     try {
       const response = await updateAnnualFeeItem({
-        token: userDetail.token,
-        username: userDetail.username,
+        token,
+        username,
         id: itemId,
         data
       });
@@ -833,8 +854,8 @@ function AnnualFeesPage() {
     
     try {
       const response = await deleteAnnualFee({
-        token: userDetail.token,
-        username: userDetail.username,
+        token,
+        username,
         id
       });
       
@@ -877,9 +898,9 @@ function AnnualFeesPage() {
             value={filters.rok} 
             onChange={(e) => handleFilterChange('rok', e.target.value)}
           >
-            <option value="2026">2026</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
+            <option key="2026" value="2026">2026</option>
+            <option key="2025" value="2025">2025</option>
+            <option key="2024" value="2024">2024</option>
           </Select>
         </FilterGroup>
         
@@ -889,11 +910,10 @@ function AnnualFeesPage() {
             value={filters.druh} 
             onChange={(e) => handleFilterChange('druh', e.target.value)}
           >
-            <option value="all">Vše</option>
-            <option value="NAJEMNI">Nájemní</option>
-            <option value="ENERGIE">Energie</option>
-            <option value="POPLATKY">Poplatky</option>
-            <option value="JINE">Jiné</option>
+            <option key="all" value="all">Vše</option>
+            {druhy.map(d => (
+              <option key={d.kod_stavu} value={d.kod_stavu}>{d.nazev_stavu}</option>
+            ))}
           </Select>
         </FilterGroup>
         
@@ -903,11 +923,10 @@ function AnnualFeesPage() {
             value={filters.platba} 
             onChange={(e) => handleFilterChange('platba', e.target.value)}
           >
-            <option value="all">Vše</option>
-            <option value="MESICNI">Měsíční</option>
-            <option value="KVARTALNI">Kvartální</option>
-            <option value="ROCNI">Roční</option>
-            <option value="JINA">Jiná</option>
+            <option key="all" value="all">Vše</option>
+            {platby.map(p => (
+              <option key={p.kod_stavu} value={p.kod_stavu}>{p.nazev_stavu}</option>
+            ))}
           </Select>
         </FilterGroup>
         
@@ -917,10 +936,10 @@ function AnnualFeesPage() {
             value={filters.stav} 
             onChange={(e) => handleFilterChange('stav', e.target.value)}
           >
-            <option value="all">Vše</option>
-            <option value="ZAPLACENO">Zaplaceno</option>
-            <option value="NEZAPLACENO">Nezaplaceno</option>
-            <option value="V_RESENI">V řešení</option>
+            <option key="all" value="all">Vše</option>
+            {stavy.map(s => (
+              <option key={s.kod_stavu} value={s.kod_stavu}>{s.nazev_stavu}</option>
+            ))}
           </Select>
         </FilterGroup>
         
@@ -941,14 +960,6 @@ function AnnualFeesPage() {
             <div className="spinner"></div>
             <p>Načítání ročních poplatků...</p>
           </LoadingState>
-        ) : annualFees.length === 0 ? (
-          <EmptyState>
-            <div className="icon">
-              <FontAwesomeIcon icon={faMoneyBill} />
-            </div>
-            <h3>Žádné roční poplatky</h3>
-            <p>Začněte vytvořením nového ročního poplatku</p>
-          </EmptyState>
         ) : (
           <Table>
             <Thead>
@@ -1051,9 +1062,9 @@ function AnnualFeesPage() {
                       value={newFeeData.druh}
                       onChange={(e) => setNewFeeData(prev => ({...prev, druh: e.target.value}))}
                     >
-                      <option value="">Druh...</option>
+                      <option key="empty-druh" value="">Druh...</option>
                       {druhy.map(d => (
-                        <option key={d.kod} value={d.kod}>{d.nazev}</option>
+                        <option key={d.kod_stavu} value={d.kod_stavu}>{d.nazev_stavu}</option>
                       ))}
                     </InlineSelect>
                     <InlineSelect 
@@ -1061,10 +1072,10 @@ function AnnualFeesPage() {
                       value={newFeeData.platba}
                       onChange={(e) => setNewFeeData(prev => ({...prev, platba: e.target.value}))}
                     >
-                      <option value="">Platba...</option>
+                      <option key="empty-platba" value="">Platba...</option>
                       {platby.map(p => (
-                        <option key={p.kod} value={p.kod}>
-                          {p.nazev} {p.pocet_polozek && `(${p.pocet_polozek}x)`}
+                        <option key={p.kod_stavu} value={p.kod_stavu}>
+                          {p.nazev_stavu} {p.pocet_polozek && `(${p.pocet_polozek}x)`}
                         </option>
                       ))}
                     </InlineSelect>
@@ -1198,6 +1209,19 @@ function AnnualFeesPage() {
                   )}
                 </React.Fragment>
               ))}
+              
+              {/* Empty state message v tabulce */}
+              {annualFees.length === 0 && !showNewRow && (
+                <Tr>
+                  <Td colSpan="10" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                    <div style={{fontSize: '3rem', marginBottom: '16px'}}>
+                      <FontAwesomeIcon icon={faMoneyBill} />
+                    </div>
+                    <h3 style={{margin: '0 0 8px 0', color: '#6b7280'}}>Žádné roční poplatky</h3>
+                    <p style={{margin: '0'}}>Začněte kliknutím na tlačítko "+ Nový roční poplatek" výše</p>
+                  </Td>
+                </Tr>
+              )}
             </Tbody>
           </Table>
         )}
