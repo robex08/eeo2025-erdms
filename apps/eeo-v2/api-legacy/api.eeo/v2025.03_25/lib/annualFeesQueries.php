@@ -54,7 +54,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
     $countStmt->execute($params);
     $total = $countStmt->fetchColumn();
 
-    // Seznam s JOIN na číselníky a smlouvy
+    // Seznam - JEDNODUŠE bez složitého výpočtu stavu v SQL
     $sql = "
         SELECT 
             rp.id,
@@ -67,21 +67,27 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             rp.celkova_castka,
             rp.zaplaceno_celkem,
             rp.zbyva_zaplatit,
-            rp.stav,
-            cs_stav.nazev_stavu AS stav_nazev,
             rp.smlouva_id,
-            s.cislo_smlouvy,
+            s.cislo_smlouvy AS smlouva_cislo,
             s.nazev_smlouvy,
             s.nazev_firmy AS dodavatel_nazev,
             s.ico AS dodavatel_ico,
             rp.dt_vytvoreni,
             rp.dt_aktualizace,
-            (SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek
+            rp.vytvoril_uzivatel_id,
+            rp.aktualizoval_uzivatel_id,
+            u_vytvoril.jmeno AS vytvoril_jmeno,
+            u_vytvoril.prijmeni AS vytvoril_prijmeni,
+            u_aktualizoval.jmeno AS aktualizoval_jmeno,
+            u_aktualizoval.prijmeni AS aktualizoval_prijmeni,
+            (SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek,
+            (SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = 'ZAPLACENO') AS pocet_zaplaceno
         FROM `25a_rocni_poplatky` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
-        LEFT JOIN `25_ciselnik_stavy` cs_stav ON rp.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
+        LEFT JOIN `25_uzivatele` u_vytvoril ON rp.vytvoril_uzivatel_id = u_vytvoril.id
+        LEFT JOIN `25_uzivatele` u_aktualizoval ON rp.aktualizoval_uzivatel_id = u_aktualizoval.id
         WHERE $whereClause
         ORDER BY rp.rok DESC, rp.dt_vytvoreni DESC
         LIMIT :limit OFFSET :offset
@@ -95,8 +101,36 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
     $stmt->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
     $stmt->execute();
 
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Načíst číselník stavů jednou
+    $stavyMap = [];
+    $stavyStmt = $pdo->query("SELECT kod_stavu, nazev_stavu FROM `25_ciselnik_stavy` WHERE typ_objektu = 'ROCNI_POPLATEK'");
+    while ($row = $stavyStmt->fetch(PDO::FETCH_ASSOC)) {
+        $stavyMap[$row['kod_stavu']] = $row['nazev_stavu'];
+    }
+    
+    // Pro každý řádek dynamicky spočítat stav podle položek
+    foreach ($items as &$item) {
+        $pocet_polozek = (int)$item['pocet_polozek'];
+        $pocet_zaplaceno = (int)$item['pocet_zaplaceno'];
+        
+        // JEDNODUCHÁ LOGIKA
+        if ($pocet_polozek > 0 && $pocet_zaplaceno >= $pocet_polozek) {
+            $stav = 'ZAPLACENO';
+        } else if ($pocet_zaplaceno > 0) {
+            $stav = 'CASTECNE';
+        } else {
+            $stav = 'NEZAPLACENO';
+        }
+        
+        $item['stav'] = $stav;
+        $item['stav_nazev'] = $stavyMap[$stav] ?? $stav; // Fallback na kód pokud chybí v číselníku
+    }
+    unset($item); // Break reference
+
     return [
-        'items' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+        'items' => $items,
         'total' => $total
     ];
 }
@@ -149,11 +183,14 @@ function queryAnnualFeesDetail($pdo, $id) {
             f.fa_cislo_vema AS faktura_cislo,
             f.fa_datum_vystaveni AS faktura_datum,
             u_vytvoril.jmeno AS vytvoril_jmeno,
-            u_vytvoril.prijmeni AS vytvoril_prijmeni
+            u_vytvoril.prijmeni AS vytvoril_prijmeni,
+            u_aktualizoval.jmeno AS aktualizoval_jmeno,
+            u_aktualizoval.prijmeni AS aktualizoval_prijmeni
         FROM `25a_rocni_poplatky_polozky` p
         LEFT JOIN `25_ciselnik_stavy` cs_stav ON p.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         LEFT JOIN `25a_objednavky_faktury` f ON p.faktura_id = f.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON p.vytvoril_uzivatel_id = u_vytvoril.id
+        LEFT JOIN `25_uzivatele` u_aktualizoval ON p.aktualizoval_uzivatel_id = u_aktualizoval.id
         WHERE p.rocni_poplatek_id = :id AND p.aktivni = 1
         ORDER BY p.poradi ASC
     ";
@@ -311,14 +348,38 @@ function queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id) {
     $celkova = $sums['celkova_castka'] ?? 0;
     $zaplaceno = $sums['zaplaceno_celkem'] ?? 0;
     $zbyva = $celkova - $zaplaceno;
+    
+    // 2️⃣ Určit stav na základě zaplacenosti
+    // Počet zaplacených položek (přesnější než porovnávání částek kvůli zaokrouhlování)
+    $sqlCount = "
+        SELECT COUNT(*) as total, SUM(CASE WHEN stav = 'ZAPLACENO' THEN 1 ELSE 0 END) as zaplaceno_count
+        FROM `25a_rocni_poplatky_polozky`
+        WHERE rocni_poplatek_id = :id AND aktivni = 1
+    ";
+    $stmtCount = $pdo->prepare($sqlCount);
+    $stmtCount->execute([':id' => $rocni_poplatek_id]);
+    $counts = $stmtCount->fetch(PDO::FETCH_ASSOC);
+    
+    $total_polozek = $counts['total'] ?? 0;
+    $zaplaceno_polozek = $counts['zaplaceno_count'] ?? 0;
+    
+    $stav = 'NEZAPLACENO';
+    if ($total_polozek > 0 && $zaplaceno_polozek >= $total_polozek) {
+        // Všechny položky zaplaceny
+        $stav = 'ZAPLACENO';
+    } else if ($zaplaceno > 0 || $zaplaceno_polozek > 0) {
+        // Alespoň něco zaplaceno
+        $stav = 'CASTECNE';
+    }
 
-    // 2️⃣ Aktualizovat hlavičku
+    // 3️⃣ Aktualizovat hlavičku včetně stavu
     $updateSql = "
         UPDATE `25a_rocni_poplatky`
         SET 
             celkova_castka = :celkova,
             zaplaceno_celkem = :zaplaceno,
-            zbyva_zaplatit = :zbyva
+            zbyva_zaplatit = :zbyva,
+            stav = :stav
         WHERE id = :id
     ";
     $updateStmt = $pdo->prepare($updateSql);
@@ -326,6 +387,7 @@ function queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id) {
         ':celkova' => $celkova,
         ':zaplaceno' => $zaplaceno,
         ':zbyva' => $zbyva,
+        ':stav' => $stav,
         ':id' => $rocni_poplatek_id
     ]);
 

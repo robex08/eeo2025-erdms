@@ -6,12 +6,15 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faPlus, faMinus, faFilter, faSearch, faCalendar, 
   faMoneyBill, faFileInvoice, faEdit, 
-  faTrash, faCheckCircle, faExclamationTriangle, faSpinner 
+  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo 
 } from '@fortawesome/free-solid-svg-icons';
+import { Calculator } from 'lucide-react';
+import DatePicker from '../components/DatePicker';
 import { 
   getAnnualFeesList, 
   getAnnualFeeDetail, 
   createAnnualFee, 
+  createAnnualFeeItem,
   updateAnnualFee, 
   updateAnnualFeeItem, 
   deleteAnnualFee 
@@ -46,6 +49,7 @@ const CurrencyInputWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
 `;
 
 const CurrencySymbol = styled.span`
@@ -413,6 +417,62 @@ const StatusBadge = styled.span`
   }}
 `;
 
+const InvoiceStatusBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  
+  ${props => {
+    switch(props.status) {
+      case 'ZAPLACENO':
+        return `
+          background: #d1fae5;
+          color: #065f46;
+        `;
+      case 'VECNA_SPRAVNOST':
+        return `
+          background: #dbeafe;
+          color: #1e40af;
+        `;
+      case 'K_ZAPLACENI':
+        return `
+          background: #fef3c7;
+          color: #92400e;
+        `;
+      case 'PREDANA_PO':
+        return `
+          background: #e0e7ff;
+          color: #4338ca;
+        `;
+      case 'V_RESENI':
+        return `
+          background: #fce7f3;
+          color: #9f1239;
+        `;
+      case 'ZAEVIDOVANA':
+        return `
+          background: #e5e7eb;
+          color: #374151;
+        `;
+      case 'STORNO':
+        return `
+          background: #fee2e2;
+          color: #991b1b;
+        `;
+      default:
+        return `
+          background: #f3f4f6;
+          color: #6b7280;
+        `;
+    }
+  }}
+`;
+
 const SubItemsContainer = styled.tr`
   background: #f9fafb;
 `;
@@ -461,24 +521,36 @@ const NewRowTr = styled.tr`
 `;
 
 const NewRowButton = styled.button`
+  width: 100%;
   background: transparent;
-  border: 1px dashed #10b981;
-  border-radius: 4px;
-  color: #10b981;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  color: #6b7280;
   cursor: pointer;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.9rem;
+  padding: 16px 24px;
+  font-size: 0.95rem;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 10px;
   font-weight: 600;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   
   &:hover {
-    background: #10b981;
-    color: white;
-    border-style: solid;
+    background: #f9fafb;
+    border-color: #10b981;
+    color: #10b981;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  svg {
+    font-size: 1.1rem;
   }
 `;
 
@@ -557,6 +629,82 @@ const LoadingState = styled.div`
   }
 `;
 
+// 🧩 CURRENCY INPUT COMPONENT - Převzato z OrderForm25
+function CurrencyInput({ value, onChange, onBlur, disabled, hasError, placeholder = '0,00' }) {
+  const inputRef = useRef(null);
+  const [localValue, setLocalValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Funkce pro formátování měny (BEZ Kč, protože to je fixně vpravo)
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '';
+    const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
+    if (isNaN(num)) return '';
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+  };
+
+  // Inicializace lokální hodnoty z props (pouze když není focused)
+  useEffect(() => {
+    if (!isFocused) {
+      const formattedValue = formatCurrency(value || '');
+      if (localValue !== formattedValue) {
+        setLocalValue(formattedValue);
+      }
+    }
+  }, [value, isFocused, localValue]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+
+    // Očistit hodnotu od formátování
+    const cleanValue = newValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+
+    if (onChange) {
+      onChange(finalValue);
+    }
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlurLocal = () => {
+    setIsFocused(false);
+
+    // Formátovat hodnotu při ztrátě fokusu
+    const formatted = formatCurrency(localValue);
+    setLocalValue(formatted);
+
+    const cleanValue = localValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+
+    if (onBlur) {
+      onBlur(finalValue);
+    }
+  };
+
+  return (
+    <CurrencyInputWrapper>
+      <InlineInput
+        ref={inputRef}
+        type="text"
+        placeholder={placeholder}
+        value={localValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlurLocal}
+        disabled={disabled}
+        style={{ textAlign: 'right', paddingRight: '32px' }}
+      />
+      <CurrencySymbol disabled={disabled}>Kč</CurrencySymbol>
+    </CurrencyInputWrapper>
+  );
+}
+
 // 🧩 MAIN COMPONENT
 
 function AnnualFeesPage() {
@@ -566,7 +714,18 @@ function AnnualFeesPage() {
   // State
   const [loading, setLoading] = useState(true);
   const [annualFees, setAnnualFees] = useState([]);
-  const [expandedRows, setExpandedRows] = useState(new Set());
+  
+  // 💾 Inicializace expandedRows z localStorage
+  const [expandedRows, setExpandedRows] = useState(() => {
+    try {
+      const saved = localStorage.getItem('annualFees_expandedRows');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (error) {
+      console.error('Chyba při načítání expandedRows z localStorage:', error);
+      return new Set();
+    }
+  });
+  
   const [showNewRow, setShowNewRow] = useState(false);
   const [filters, setFilters] = useState({
     rok: new Date().getFullYear(),
@@ -587,6 +746,34 @@ function AnnualFeesPage() {
   const [showSmlouvySuggestions, setShowSmlouvySuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const smlouvySearchRef = useRef(null);
+  
+  // Editace hlavního řádku (fee)
+  const [editingFeeId, setEditingFeeId] = useState(null);
+  const [editFeeData, setEditFeeData] = useState({});
+  
+  // Editace položek
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editItemData, setEditItemData] = useState({});
+  
+  // Přidání nové položky k existujícímu ročnímu poplatku
+  const [addingItemToFeeId, setAddingItemToFeeId] = useState(null);
+  const [newItemData, setNewItemData] = useState({
+    nazev_polozky: '',
+    datum_splatnosti: '',
+    castka: '',
+    faktura_id: null,
+    faktura_cislo: ''
+  });
+  
+  // Autocomplete pro faktury
+  const [fakturySearch, setFakturySearch] = useState('');
+  const [fakturySuggestions, setFakturySuggestions] = useState([]);
+  const [showFakturySuggestions, setShowFakturySuggestions] = useState(false);
+  const [isSearchingFaktury, setIsSearchingFaktury] = useState(false);
+  const fakturySearchRef = useRef(null);
+  const fakturyInputRef = useRef(null);
+  const [shouldFocusFaktura, setShouldFocusFaktura] = useState(false);
+  const debouncedFakturySearch = useDebounce(fakturySearch, 300);
   
   // Form data pro CREATE
   const [newFeeData, setNewFeeData] = useState({
@@ -646,6 +833,15 @@ function AnnualFeesPage() {
     }
   }, [token, username]);
   
+  // 💾 Uložit expandedRows do localStorage při změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('annualFees_expandedRows', JSON.stringify([...expandedRows]));
+    } catch (error) {
+      console.error('Chyba při ukládání expandedRows do localStorage:', error);
+    }
+  }, [expandedRows]);
+  
   const loadAnnualFees = async () => {
     if (!token) return;
     
@@ -664,7 +860,33 @@ function AnnualFeesPage() {
         }
       });
       
+      // Backend nyní vrací pocet_zaplaceno přímo - nemusíme přepočítávat
       setAnnualFees(response.data || []);
+      
+      // 💾 Načíst detaily pro již rozbalené řádky
+      if (expandedRows.size > 0) {
+        const fees = response.data || [];
+        for (const feeId of expandedRows) {
+          const feeExists = fees.find(f => f.id === feeId);
+          if (feeExists && !feeExists.polozky) {
+            try {
+              const detail = await getAnnualFeeDetail({
+                token,
+                username,
+                id: feeId
+              });
+              
+              if (detail.data) {
+                setAnnualFees(prev => prev.map(fee => 
+                  fee.id === feeId ? { ...fee, polozky: detail.data.polozky } : fee
+                ));
+              }
+            } catch (error) {
+              console.error(`Chyba při načítání detailu pro ID ${feeId}:`, error);
+            }
+          }
+        }
+      }
       
     } catch (error) {
       console.error('Chyba při načítání ročních poplatků:', error);
@@ -720,6 +942,26 @@ function AnnualFeesPage() {
     }
   }, [debouncedSmlouvySearch]);
   
+  // Search faktur pro autocomplete
+  useEffect(() => {
+    if (debouncedFakturySearch.length >= 3) {
+      searchFaktury(debouncedFakturySearch);
+    } else {
+      setFakturySuggestions([]);
+      setShowFakturySuggestions(false);
+    }
+  }, [debouncedFakturySearch]);
+  
+  // Fokus na pole faktury při otevření editace kvůli chybějící faktuře
+  useEffect(() => {
+    if (shouldFocusFaktura && fakturyInputRef.current) {
+      setTimeout(() => {
+        fakturyInputRef.current?.focus();
+        setShouldFocusFaktura(false);
+      }, 100);
+    }
+  }, [shouldFocusFaktura, editingItemId]);
+  
   const searchSmlouvy = async (query) => {
     if (!query || query.length < 3) {
       setSmlouvySuggestions([]);
@@ -746,6 +988,147 @@ function AnnualFeesPage() {
     } finally {
       setIsSearching(false);
     }
+  };
+  
+  const searchFaktury = async (query) => {
+    if (!query || query.length < 3) {
+      setFakturySuggestions([]);
+      return;
+    }
+    
+    setIsSearchingFaktury(true);
+    try {
+      const response = await universalSearch({
+        query,
+        categories: ['invoices'],
+        limit: 10,
+        include_inactive: false  // ✅ Nabízet JEN aktivní faktury (aktivni = 1)
+      });
+      
+      const invoices = response?.categories?.invoices?.results || [];
+      
+      // Dvojitá kontrola - filtruj pouze aktivní faktury
+      const activeFaktury = invoices.filter(f => f.aktivni === 1 || f.aktivni === '1');
+      
+      setFakturySuggestions(activeFaktury);
+      setShowFakturySuggestions(true);
+    } catch (error) {
+      console.error('Chyba při vyhledávání faktur:', error);
+      setFakturySuggestions([]);
+    } finally {
+      setIsSearchingFaktury(false);
+    }
+  };
+  
+  const handleStartEditItem = (item, focusOnFaktura = false) => {
+    setEditingItemId(item.id);
+    setEditItemData({
+      nazev_polozky: item.nazev_polozky,
+      datum_splatnosti: item.datum_splatnosti,
+      castka: item.castka,
+      faktura_id: item.faktura_id,
+      faktura_cislo: item.faktura_cislo || ''
+    });
+    setFakturySearch(item.faktura_cislo || '');
+    if (focusOnFaktura) {
+      setShouldFocusFaktura(true);
+    }
+  };
+  
+  const handleCancelEditItem = () => {
+    setEditingItemId(null);
+    setEditItemData({});
+    setFakturySearch('');
+    setFakturySuggestions([]);
+    setShowFakturySuggestions(false);
+    setShouldFocusFaktura(false);
+  };
+  
+  const handleSaveEditItem = async (itemId) => {
+    try {
+      await handleUpdateItem(itemId, editItemData);
+      setEditingItemId(null);
+      setEditItemData({});
+      setFakturySearch('');
+    } catch (error) {
+      console.error('Chyba při ukládání položky:', error);
+    }
+  };
+  
+  const handleStartAddItem = (feeId) => {
+    setAddingItemToFeeId(feeId);
+    setNewItemData({
+      nazev_polozky: '',
+      datum_splatnosti: '',
+      castka: '',
+      faktura_id: null,
+      faktura_cislo: ''
+    });
+    setFakturySearch('');
+    setShowFakturySuggestions(false);
+  };
+  
+  const handleCancelAddItem = () => {
+    setAddingItemToFeeId(null);
+    setNewItemData({
+      nazev_polozky: '',
+      datum_splatnosti: '',
+      castka: '',
+      faktura_id: null,
+      faktura_cislo: ''
+    });
+    setFakturySearch('');
+    setShowFakturySuggestions(false);
+  };
+  
+  const handleSaveNewItem = async (feeId) => {
+    if (!newItemData.nazev_polozky || !newItemData.datum_splatnosti || !newItemData.castka) {
+      showToast('Vyplňte název, splatnost a částku', 'error');
+      return;
+    }
+    
+    // Očistit částku od formátování
+    const castkaStr = (newItemData.castka || '').toString().trim();
+    const cleanCastka = castkaStr.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const parsedCastka = parseFloat(cleanCastka);
+    
+    if (isNaN(parsedCastka) || parsedCastka <= 0) {
+      showToast('Vyplňte platnou částku', 'error');
+      return;
+    }
+    
+    try {
+      const response = await createAnnualFeeItem({
+        token,
+        username,
+        rocni_poplatek_id: feeId,
+        nazev_polozky: newItemData.nazev_polozky,
+        datum_splatnosti: newItemData.datum_splatnosti,
+        castka: Math.round(parsedCastka * 100) / 100,
+        faktura_id: newItemData.faktura_id || null
+      });
+      
+      if (response.status === 'success') {
+        showToast('Položka přidána', 'success');
+        handleCancelAddItem();
+        loadAnnualFees();
+      } else {
+        showToast(response.message || 'Chyba při přidávání položky', 'error');
+      }
+    } catch (error) {
+      console.error('Chyba při přidávání položky:', error);
+      showToast('Chyba při přidávání položky', 'error');
+    }
+  };
+  
+  const handleSelectFaktura = (faktura) => {
+    setEditItemData(prev => ({
+      ...prev,
+      faktura_id: faktura.id,
+      faktura_cislo: faktura.fa_cislo_vema
+    }));
+    setFakturySearch(faktura.fa_cislo_vema);
+    setShowFakturySuggestions(false);
   };
   
   // Select smlouva z autocomplete
@@ -778,6 +1161,18 @@ function AnnualFeesPage() {
     const handleClickOutside = (event) => {
       if (smlouvySearchRef.current && !smlouvySearchRef.current.contains(event.target)) {
         setShowSmlouvySuggestions(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  // Close faktury autocomplete při kliknutí mimo
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (fakturySearchRef.current && !fakturySearchRef.current.contains(event.target)) {
+        setShowFakturySuggestions(false);
       }
     };
     
@@ -889,46 +1284,27 @@ function AnnualFeesPage() {
       if (response.status === 'success') {
         showToast('Položka aktualizována', 'success');
         
-        // ✅ Aktualizovat lokální stav místo refreshe celého seznamu
-        setAnnualFees(prev => prev.map(fee => {
-          // Najít položku v poli položek
-          if (fee.polozky && fee.polozky.some(item => item.id === itemId)) {
-            const updatedPolozky = fee.polozky.map(item => 
-              item.id === itemId 
-                ? { ...item, ...data, ...response.data } // Merge s daty z BE (obsahuje přepočítané hodnoty)
-                : item
-            );
+        // Najít ID hlavičky pro refresh
+        const fee = annualFees.find(f => f.polozky && f.polozky.some(item => item.id === itemId));
+        
+        if (fee) {
+          // Načíst aktualizovaný detail s přepočítanými hodnotami z BE
+          const detail = await getAnnualFeeDetail({
+            token,
+            username,
+            id: fee.id
+          });
+          
+          if (detail.data) {
+            // ✅ Aktualizovat celou hlavičku + položky z BE (má správné přepočítané hodnoty)
+            // Vypočítat pocet_zaplaceno z položek
+            const pocet_zaplaceno = (detail.data.polozky || []).filter(item => item.stav === 'ZAPLACENO').length;
             
-            // Přepočítat sumarizační hodnoty v hlavičce
-            const zaplaceno = updatedPolozky
-              .filter(p => p.stav === 'ZAPLACENO')
-              .reduce((sum, p) => sum + parseFloat(p.castka || 0), 0);
-            
-            const zbyva = fee.celkova_castka - zaplaceno;
-            
-            // Určit nový stav hlavičky
-            let novyStav = 'NEZAPLACENO';
-            let novyStavNazev = 'Nezaplaceno';
-            
-            if (zaplaceno >= fee.celkova_castka) {
-              novyStav = 'ZAPLACENO';
-              novyStavNazev = 'Zaplaceno';
-            } else if (zaplaceno > 0) {
-              novyStav = 'CASTECNE';
-              novyStavNazev = 'Částečně zaplaceno';
-            }
-            
-            return {
-              ...fee,
-              polozky: updatedPolozky,
-              zaplaceno_celkem: zaplaceno,
-              zbyva_zaplatit: zbyva,
-              stav: novyStav,
-              stav_nazev: novyStavNazev
-            };
+            setAnnualFees(prev => prev.map(f => 
+              f.id === fee.id ? { ...f, ...detail.data, polozky: detail.data.polozky, pocet_zaplaceno } : f
+            ));
           }
-          return fee;
-        }));
+        }
       }
     } catch (error) {
       console.error('Chyba při aktualizaci položky:', error);
@@ -958,11 +1334,74 @@ function AnnualFeesPage() {
       showToast(error.message || 'Chyba při mazání poplatku', 'error');
     }
   };
-    const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('cs-CZ', {
-      style: 'currency',
-      currency: 'CZK'
-    }).format(amount);
+  
+  // Editace hlavního řádku (fee)
+  const handleStartEditFee = (fee) => {
+    console.log('📝 Start edit fee:', fee);
+    console.log('📊 Druhy:', druhy);
+    console.log('📊 Platby:', platby);
+    setEditingFeeId(fee.id);
+    setEditFeeData({
+      nazev: fee.nazev,
+      celkova_castka: fee.celkova_castka,
+      druh: fee.druh,
+      platba: fee.platba,
+      rok: fee.rok
+    });
+  };
+  
+  const handleCancelEditFee = () => {
+    setEditingFeeId(null);
+    setEditFeeData({});
+  };
+  
+  const handleSaveEditFee = async (feeId) => {
+    try {
+      const response = await updateAnnualFee({
+        token,
+        username,
+        id: feeId,
+        data: editFeeData
+      });
+      
+      if (response.status === 'success') {
+        showToast('Roční poplatek aktualizován', 'success');
+        setEditingFeeId(null);
+        setEditFeeData({});
+        loadAnnualFees();
+      }
+    } catch (error) {
+      console.error('Chyba při aktualizaci poplatku:', error);
+      showToast(error.message || 'Chyba při aktualizaci poplatku', 'error');
+    }
+  };
+  
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return '0 Kč';
+    const num = parseFloat(amount.toString().replace(/[^0-9.-]/g, ''));
+    if (isNaN(num)) return '0 Kč';
+    // Formát: 100 000 Kč (mezera jako tisícový oddělovač)
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',') + ' Kč';
+  };
+  
+  const formatCurrencySimple = (val) => {
+    if (!val && val !== 0) return '-';
+    const num = parseFloat(val);
+    if (isNaN(num)) return '-';
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',') + ' Kč';
+  };
+  
+  const getInvoiceStatusText = (status) => {
+    switch(status) {
+      case 'ZAPLACENO': return 'Zaplaceno';
+      case 'VECNA_SPRAVNOST': return 'Věcná správnost';
+      case 'K_ZAPLACENI': return 'K zaplacení';
+      case 'PREDANA_PO': return 'Předána PO';
+      case 'V_RESENI': return 'V řešení';
+      case 'ZAEVIDOVANA': return 'Zaevidována';
+      case 'STORNO': return 'Storno';
+      default: return status || '-';
+    }
   };
   
   const formatDate = (dateString) => {
@@ -1064,13 +1503,15 @@ function AnnualFeesPage() {
                 <Th>Zbývá</Th>
                 <Th>Položky</Th>
                 <Th>Stav</Th>
+                <Th>Zpracovatel</Th>
+                <Th>Akce</Th>
               </tr>
             </Thead>
             <Tbody>
               {/* II. Inline řádek pro vytvoření nového ročního poplatku */}
               {!showNewRow ? (
                 <NewRowTr>
-                  <Td colSpan="10" style={{textAlign: 'center', padding: '12px'}}>
+                  <Td colSpan="12" style={{textAlign: 'center', padding: '12px'}}>
                     <NewRowButton onClick={() => setShowNewRow(true)}>
                       <FontAwesomeIcon icon={faPlus} />
                       Nový roční poplatek
@@ -1202,9 +1643,12 @@ function AnnualFeesPage() {
               )}
               
               {/* Existující řádky */}
-              {annualFees.map(fee => (
+              {annualFees.map(fee => {
+                const isEditingFee = editingFeeId === fee.id;
+                const hasZaplaceno = fee.pocet_zaplaceno > 0;
+                return (
                 <React.Fragment key={fee.id}>
-                  <Tr clickable onClick={() => toggleRow(fee.id)}>
+                  <Tr clickable={!isEditingFee} onClick={() => !isEditingFee && toggleRow(fee.id)}>
                     <Td>
                       <ExpandButton title={expandedRows.has(fee.id) ? 'Sbalit' : 'Rozbalit'}>
                         <FontAwesomeIcon icon={expandedRows.has(fee.id) ? faMinus : faPlus} />
@@ -1212,17 +1656,63 @@ function AnnualFeesPage() {
                     </Td>
                     <Td><strong>{fee.smlouva_cislo}</strong></Td>
                     <Td>{fee.dodavatel_nazev}</Td>
-                    <Td>{fee.nazev}</Td>
                     <Td>
-                      <div>{fee.druh_nazev}</div>
-                      <div style={{fontSize: '0.85rem', color: '#9ca3af'}}>{fee.platba_nazev}</div>
+                      {isEditingFee ? (
+                        <InlineInput
+                          value={editFeeData.nazev || ''}
+                          onChange={(e) => setEditFeeData(prev => ({...prev, nazev: e.target.value}))}
+                          style={{fontSize: '0.85rem'}}
+                        />
+                      ) : (
+                        fee.nazev
+                      )}
                     </Td>
                     <Td>
-                      <strong>{formatCurrency(fee.celkova_castka)}</strong>
-                      {fee.pocet_polozek > 0 && fee.stav !== 'ZAPLACENO' && (
-                        <div style={{fontSize: '0.75rem', color: '#6b7280', marginTop: '2px'}}>
-                          {formatCurrency(fee.celkova_castka / fee.pocet_polozek)}/{fee.platba === 'MESICNI' ? 'měsíc' : fee.platba === 'KVARTALNI' ? 'Q' : 'rok'}
-                        </div>
+                      {isEditingFee ? (
+                        <>
+                          <InlineSelect
+                            value={editFeeData.druh || ''}
+                            onChange={(e) => setEditFeeData(prev => ({...prev, druh: e.target.value}))}
+                            style={{fontSize: '0.85rem', marginBottom: '4px'}}
+                          >
+                            <option value="">Vyberte druh</option>
+                            {druhy.map(d => (
+                              <option key={d.kod_stavu || d.kod} value={d.kod_stavu || d.kod}>{d.nazev_stavu || d.nazev}</option>
+                            ))}
+                          </InlineSelect>
+                          <InlineSelect
+                            value={editFeeData.platba || ''}
+                            onChange={(e) => setEditFeeData(prev => ({...prev, platba: e.target.value}))}
+                            style={{fontSize: '0.85rem'}}
+                          >
+                            <option value="">Vyberte platbu</option>
+                            {platby.map(p => (
+                              <option key={p.kod_stavu || p.kod} value={p.kod_stavu || p.kod}>{p.nazev_stavu || p.nazev}</option>
+                            ))}
+                          </InlineSelect>
+                        </>
+                      ) : (
+                        <>
+                          <div>{fee.druh_nazev}</div>
+                          <div style={{fontSize: '0.85rem', color: '#9ca3af'}}>{fee.platba_nazev}</div>
+                        </>
+                      )}
+                    </Td>
+                    <Td>
+                      {isEditingFee ? (
+                        <CurrencyInput
+                          value={editFeeData.celkova_castka || ''}
+                          onChange={(val) => setEditFeeData(prev => ({...prev, celkova_castka: val}))}
+                        />
+                      ) : (
+                        <>
+                          <strong>{formatCurrency(fee.celkova_castka)}</strong>
+                          {fee.pocet_polozek > 0 && fee.stav !== 'ZAPLACENO' && (
+                            <div style={{fontSize: '0.75rem', color: '#6b7280', marginTop: '2px'}}>
+                              {formatCurrency(fee.celkova_castka / fee.pocet_polozek)}/{fee.platba === 'MESICNI' ? 'měsíc' : fee.platba === 'KVARTALNI' ? 'Q' : 'rok'}
+                            </div>
+                          )}
+                        </>
                       )}
                     </Td>
                     <Td style={{color: '#10b981'}}>{formatCurrency(fee.zaplaceno_celkem)}</Td>
@@ -1237,91 +1727,494 @@ function AnnualFeesPage() {
                         {fee.stav_nazev}
                       </StatusBadge>
                     </Td>
+                    <Td style={{fontSize: '0.85rem', color: '#6b7280'}}>
+                      {fee.aktualizoval_jmeno && fee.aktualizoval_prijmeni ? (
+                        <div>{fee.aktualizoval_jmeno} {fee.aktualizoval_prijmeni}</div>
+                      ) : fee.vytvoril_jmeno && fee.vytvoril_prijmeni ? (
+                        <div>{fee.vytvoril_jmeno} {fee.vytvoril_prijmeni}</div>
+                      ) : '-'}
+                    </Td>
+                    <Td>
+                      <div style={{display: 'flex', gap: '8px', justifyContent: 'center'}}>
+                        {isEditingFee ? (
+                          <>
+                            <Button 
+                              variant="secondary" 
+                              style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#10b981', color: 'white', borderColor: '#10b981'}}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveEditFee(fee.id);
+                              }}
+                              title="Uložit změny"
+                            >
+                              <FontAwesomeIcon icon={faCheckCircle} />
+                            </Button>
+                            <Button 
+                              variant="secondary" 
+                              style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', color: '#ef4444', borderColor: '#ef4444'}}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelEditFee();
+                              }}
+                              title="Zrušit"
+                            >
+                              <FontAwesomeIcon icon={faMinus} />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button 
+                              variant="secondary" 
+                              style={{
+                                padding: '6px 10px', 
+                                fontSize: '0.85rem', 
+                                minWidth: 'auto',
+                                opacity: hasZaplaceno ? 0.5 : 1,
+                                cursor: hasZaplaceno ? 'not-allowed' : 'pointer'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!hasZaplaceno) {
+                                  handleStartEditFee(fee);
+                                }
+                              }}
+                              disabled={hasZaplaceno}
+                              title={hasZaplaceno ? 'Nelze editovat - již jsou zaplacené položky' : 'Upravit roční poplatek'}
+                            >
+                              <FontAwesomeIcon icon={faEdit} />
+                            </Button>
+                            <Button 
+                              variant="secondary" 
+                              style={{
+                                padding: '6px 10px', 
+                                fontSize: '0.85rem', 
+                                minWidth: 'auto', 
+                                color: '#ef4444', 
+                                borderColor: '#ef4444',
+                                opacity: hasZaplaceno ? 0.5 : 1,
+                                cursor: hasZaplaceno ? 'not-allowed' : 'pointer'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!hasZaplaceno) {
+                                  handleDeleteFee(fee.id);
+                                }
+                              }}
+                              disabled={hasZaplaceno}
+                              title={hasZaplaceno ? 'Nelze smazat - již jsou zaplacené položky' : 'Smazat roční poplatek'}
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </Td>
                   </Tr>
                   
                   {expandedRows.has(fee.id) && fee.polozky && (
                     <SubItemsContainer>
-                      <SubItemsWrapper colSpan="10">
+                      {/* Prázdné buňky pro odsazení - zarovnání pod sloupec "Název" */}
+                      <Td style={{border: 'none', background: '#f9fafb'}}></Td>
+                      <Td style={{border: 'none', background: '#f9fafb'}}></Td>
+                      <Td style={{border: 'none', background: '#f9fafb'}}></Td>
+                      <SubItemsWrapper colSpan="9">
                         <SubItemsTable>
                           <thead>
                             <tr>
                               <Th indent style={{background: '#f3f4f6'}}>Položka</Th>
-                              <Th style={{background: '#f3f4f6'}}>Částka</Th>
                               <Th style={{background: '#f3f4f6'}}>Splatnost</Th>
+                              <Th style={{background: '#f3f4f6'}}>Částka</Th>
                               <Th style={{background: '#f3f4f6'}}>Zaplaceno</Th>
                               <Th style={{background: '#f3f4f6'}}>Faktura</Th>
                               <Th style={{background: '#f3f4f6'}}>Stav</Th>
+                              <Th style={{background: '#f3f4f6'}}>Zpracovatel</Th>
                               <Th style={{background: '#f3f4f6'}}>Akce</Th>
                             </tr>
                           </thead>
                           <tbody>
-                            {fee.polozky.map(item => (
+                            {fee.polozky.map(item => {
+                              const isEditing = editingItemId === item.id;
+                              return (
                               <SubItemRow key={item.id}>
+                                {/* Položka */}
                                 <SubItemCell indent>
-                                  <strong>{item.nazev_polozky}</strong>
+                                  {isEditing ? (
+                                    <InlineInput 
+                                      value={editItemData.nazev_polozky || ''}
+                                      onChange={(e) => setEditItemData(prev => ({...prev, nazev_polozky: e.target.value}))}
+                                      style={{fontSize: '0.85rem', padding: '4px 8px', width: '100%'}}
+                                      placeholder="Název položky"
+                                    />
+                                  ) : (
+                                    <strong>{item.nazev_polozky}</strong>
+                                  )}
                                 </SubItemCell>
-                                <SubItemCell>{formatCurrency(item.castka)}</SubItemCell>
+                                
+                                {/* Splatnost */}
                                 <SubItemCell>
-                                  <InlineInput 
-                                    type="date" 
-                                    value={item.datum_splatnosti}
-                                    onChange={(e) => handleUpdateItem(item.id, { datum_splatnosti: e.target.value })}
-                                    style={{fontSize: '0.85rem', padding: '4px 8px'}}
-                                  />
+                                  {isEditing ? (
+                                    <DatePicker
+                                      fieldName="datum_splatnosti"
+                                      value={editItemData.datum_splatnosti || ''}
+                                      onChange={(field, val) => setEditItemData(prev => ({...prev, [field]: val}))}
+                                      placeholder="Vyberte datum"
+                                      variant="compact"
+                                    />
+                                  ) : (
+                                    formatDate(item.datum_splatnosti)
+                                  )}
                                 </SubItemCell>
-                                <SubItemCell>{formatDate(item.datum_zaplaceni)}</SubItemCell>
+                                
+                                {/* Částka */}
                                 <SubItemCell>
-                                  {item.faktura_cislo || '-'}
+                                  {isEditing ? (
+                                    <CurrencyInput
+                                      value={editItemData.castka || ''}
+                                      onChange={(val) => setEditItemData(prev => ({...prev, castka: val}))}
+                                      placeholder="0,00"
+                                    />
+                                  ) : (
+                                    formatCurrency(item.castka)
+                                  )}
                                 </SubItemCell>
+                                
+                                {/* Zaplaceno */}
                                 <SubItemCell>
-                                  <StatusBadge status={item.stav}>
+                                  {formatDate(item.datum_zaplaceni)}
+                                </SubItemCell>
+                                
+                                {/* Faktura */}
+                                <SubItemCell>
+                                  {isEditing ? (
+                                    <SuggestionsWrapper ref={fakturySearchRef}>
+                                      <InlineInput 
+                                        ref={fakturyInputRef}
+                                        value={fakturySearch}
+                                        onChange={(e) => setFakturySearch(e.target.value)}
+                                        onFocus={() => fakturySearch.length >= 3 && setShowFakturySuggestions(true)}
+                                        style={{
+                                          fontSize: '0.85rem', 
+                                          padding: '4px 8px', 
+                                          width: '150px',
+                                          backgroundColor: !editItemData.faktura_id ? '#fee2e2' : 'white',
+                                          borderColor: !editItemData.faktura_id ? '#ef4444' : '#d1d5db'
+                                        }}
+                                        placeholder="VS, název... (min 3)"
+                                      />
+                                      {showFakturySuggestions && fakturySuggestions.length > 0 && (
+                                        <SuggestionsDropdown style={{maxHeight: '200px'}}>
+                                          {isSearchingFaktury && (
+                                            <SuggestionItem style={{textAlign: 'center', color: '#9ca3af'}}>
+                                              <FontAwesomeIcon icon={faSpinner} spin /> Vyhledávání...
+                                            </SuggestionItem>
+                                          )}
+                                          {!isSearchingFaktury && fakturySuggestions.map(faktura => (
+                                            <SuggestionItem key={faktura.id} onClick={() => handleSelectFaktura(faktura)}>
+                                              <SuggestionTitle>
+                                                <SuggestionBadge $color="#ef4444" $textColor="white">FA</SuggestionBadge>
+                                                {faktura.fa_cislo_vema}
+                                                {faktura.castka && (
+                                                  <span style={{marginLeft: '8px', color: '#10b981', fontWeight: '600', fontSize: '0.9rem'}}>
+                                                    {formatCurrencySimple(faktura.castka)}
+                                                  </span>
+                                                )}
+                                                {faktura.stav_workflow && (
+                                                  <InvoiceStatusBadge status={faktura.stav_workflow} style={{marginLeft: '8px'}}>
+                                                    {getInvoiceStatusText(faktura.stav_workflow)}
+                                                  </InvoiceStatusBadge>
+                                                )}
+                                              </SuggestionTitle>
+                                              <SuggestionDetail>
+                                                {(faktura.dodavatel_nazev || faktura.nazev_firmy) && (
+                                                  <span style={{fontSize: '0.75rem', display: 'block'}}>
+                                                    <strong>{faktura.dodavatel_nazev || faktura.nazev_firmy}</strong>
+                                                    {(faktura.dodavatel_ico || faktura.ico) && ` (IČO: ${faktura.dodavatel_ico || faktura.ico})`}
+                                                  </span>
+                                                )}
+                                                {faktura.datum_splatnosti && (
+                                                  <span style={{fontSize: '0.7rem', color: '#6b7280', display: 'block', marginTop: '2px'}}>
+                                                    Splatnost: {formatDate(faktura.datum_splatnosti)}
+                                                    {faktura.datum_vystaveni && ` • Vystaveno: ${formatDate(faktura.datum_vystaveni)}`}
+                                                  </span>
+                                                )}
+                                              </SuggestionDetail>
+                                            </SuggestionItem>
+                                          ))}
+                                        </SuggestionsDropdown>
+                                      )}
+                                    </SuggestionsWrapper>
+                                  ) : (
+                                    item.faktura_cislo ? (
+                                      <span style={{fontSize: '0.85rem'}}>{item.faktura_cislo}</span>
+                                    ) : (
+                                      <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>Nepřiřazena</span>
+                                    )
+                                  )}
+                                </SubItemCell>
+                                
+                                {/* Stav */}
+                                <SubItemCell>
+                                  <StatusBadge status={item.stav} style={{fontSize: '0.85rem'}}>
                                     {item.stav === 'ZAPLACENO' ? (
                                       <><FontAwesomeIcon icon={faCheckCircle} /> Zaplaceno</>
                                     ) : 'Nezaplaceno'}
                                   </StatusBadge>
                                 </SubItemCell>
+                                
+                                {/* Upravil */}
+                                <SubItemCell style={{fontSize: '0.85rem', color: '#6b7280'}}>
+                                  {item.aktualizoval_jmeno && item.aktualizoval_prijmeni ? (
+                                    <span>{item.aktualizoval_jmeno} {item.aktualizoval_prijmeni}</span>
+                                  ) : item.vytvoril_jmeno && item.vytvoril_prijmeni ? (
+                                    <span>{item.vytvoril_jmeno} {item.vytvoril_prijmeni}</span>
+                                  ) : '-'}
+                                </SubItemCell>
+                                
+                                {/* Akce */}
                                 <SubItemCell>
-                                  {item.stav !== 'ZAPLACENO' && (
-                                    <Button 
-                                      variant="secondary" 
-                                      style={{padding: '6px 12px', fontSize: '0.85rem', marginRight: '4px'}}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleUpdateItem(item.id, { stav: 'ZAPLACENO', datum_zaplaceni: new Date().toISOString().split('T')[0] });
-                                      }}
-                                    >
-                                      <FontAwesomeIcon icon={faCheckCircle} />
-                                      Zaplaceno
-                                    </Button>
-                                  )}
+                                  <div style={{display: 'flex', gap: '6px', justifyContent: 'flex-start'}}>
+                                    {isEditing ? (
+                                      <>
+                                        <Button 
+                                          variant="secondary" 
+                                          style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#10b981', color: 'white', borderColor: '#10b981'}}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSaveEditItem(item.id);
+                                          }}
+                                          title="Uložit změny"
+                                        >
+                                          <FontAwesomeIcon icon={faCheckCircle} />
+                                        </Button>
+                                        <Button 
+                                          variant="secondary" 
+                                          style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', color: '#ef4444', borderColor: '#ef4444'}}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCancelEditItem();
+                                          }}
+                                          title="Zrušit"
+                                        >
+                                          <FontAwesomeIcon icon={faMinus} />
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        {item.stav === 'ZAPLACENO' ? (
+                                          <Button 
+                                            variant="secondary" 
+                                            style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#f59e0b', color: 'white', borderColor: '#f59e0b'}}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUpdateItem(item.id, { stav: 'NEZAPLACENO', datum_zaplaceni: null });
+                                            }}
+                                            title="Vrátit na nezaplaceno"
+                                          >
+                                            <FontAwesomeIcon icon={faUndo} />
+                                          </Button>
+                                        ) : (
+                                          <Button 
+                                            variant="secondary" 
+                                            style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#10b981', color: 'white', borderColor: '#10b981'}}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              // Pokud není přiřazená faktura, otevřít editaci s fokusem na fakturu
+                                              if (!item.faktura_id) {
+                                                handleStartEditItem(item, true);
+                                              } else {
+                                                handleUpdateItem(item.id, { stav: 'ZAPLACENO', datum_zaplaceni: new Date().toISOString().split('T')[0] });
+                                              }
+                                            }}
+                                            title="Označit jako zaplaceno"
+                                          >
+                                            <FontAwesomeIcon icon={faCheckCircle} />
+                                          </Button>
+                                        )}
+                                        <Button 
+                                          variant="secondary" 
+                                          style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto'}}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleStartEditItem(item);
+                                          }}
+                                          title="Upravit položku"
+                                        >
+                                          <FontAwesomeIcon icon={faEdit} />
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
                                 </SubItemCell>
                               </SubItemRow>
-                            ))}
+                              );
+                            })}
+                            
+                            {/* Řádek pro přidání nové položky */}
+                            {addingItemToFeeId === fee.id && (
+                              <SubItemRow>
+                                {/* Položka */}
+                                <SubItemCell indent>
+                                  <InlineInput 
+                                    value={newItemData.nazev_polozky || ''}
+                                    onChange={(e) => setNewItemData(prev => ({...prev, nazev_polozky: e.target.value}))}
+                                    style={{fontSize: '0.85rem', padding: '4px 8px', width: '100%'}}
+                                    placeholder="Název položky"
+                                  />
+                                </SubItemCell>
+                                
+                                {/* Splatnost */}
+                                <SubItemCell>
+                                  <DatePicker
+                                    fieldName="datum_splatnosti"
+                                    value={newItemData.datum_splatnosti || ''}
+                                    onChange={(field, val) => setNewItemData(prev => ({...prev, [field]: val}))}
+                                    placeholder="Vyberte datum"
+                                    variant="compact"
+                                  />
+                                </SubItemCell>
+                                
+                                {/* Částka */}
+                                <SubItemCell>
+                                  <CurrencyInput
+                                    value={newItemData.castka || ''}
+                                    onChange={(val) => setNewItemData(prev => ({...prev, castka: val}))}
+                                    placeholder="0,00"
+                                  />
+                                </SubItemCell>
+                                
+                                {/* Zaplaceno */}
+                                <SubItemCell>
+                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>-</span>
+                                </SubItemCell>
+                                
+                                {/* Faktura */}
+                                <SubItemCell>
+                                  <SuggestionsWrapper ref={fakturySearchRef}>
+                                    <InlineInput 
+                                      value={fakturySearch}
+                                      onChange={(e) => setFakturySearch(e.target.value)}
+                                      onFocus={() => fakturySearch.length >= 3 && setShowFakturySuggestions(true)}
+                                      style={{fontSize: '0.85rem', padding: '4px 8px', width: '150px'}}
+                                      placeholder="VS, název... (min 3)"
+                                    />
+                                    {showFakturySuggestions && fakturySuggestions.length > 0 && (
+                                      <SuggestionsDropdown style={{maxHeight: '200px'}}>
+                                        {isSearchingFaktury && (
+                                          <SuggestionItem style={{textAlign: 'center', color: '#9ca3af'}}>
+                                            <FontAwesomeIcon icon={faSpinner} spin /> Vyhledávání...
+                                          </SuggestionItem>
+                                        )}
+                                        {!isSearchingFaktury && fakturySuggestions.map(faktura => (
+                                          <SuggestionItem key={faktura.id} onClick={() => {
+                                            setNewItemData(prev => ({
+                                              ...prev,
+                                              faktura_id: faktura.id,
+                                              faktura_cislo: faktura.fa_cislo_vema
+                                            }));
+                                            setFakturySearch(faktura.fa_cislo_vema);
+                                            setShowFakturySuggestions(false);
+                                          }}>
+                                            <SuggestionTitle>
+                                              <SuggestionBadge $color="#ef4444" $textColor="white">FA</SuggestionBadge>
+                                              {faktura.fa_cislo_vema}
+                                              {faktura.castka && (
+                                                <span style={{marginLeft: '8px', color: '#10b981', fontWeight: '600', fontSize: '0.9rem'}}>
+                                                  {formatCurrencySimple(faktura.castka)}
+                                                </span>
+                                              )}
+                                              {faktura.stav_workflow && (
+                                                <InvoiceStatusBadge status={faktura.stav_workflow} style={{marginLeft: '8px'}}>
+                                                  {getInvoiceStatusText(faktura.stav_workflow)}
+                                                </InvoiceStatusBadge>
+                                              )}
+                                            </SuggestionTitle>
+                                            <SuggestionDetail>
+                                              {(faktura.dodavatel_nazev || faktura.nazev_firmy) && (
+                                                <span style={{fontSize: '0.75rem', display: 'block'}}>
+                                                  <strong>{faktura.dodavatel_nazev || faktura.nazev_firmy}</strong>
+                                                  {(faktura.dodavatel_ico || faktura.ico) && ` (IČO: ${faktura.dodavatel_ico || faktura.ico})`}
+                                                </span>
+                                              )}
+                                              {faktura.datum_splatnosti && (
+                                                <span style={{fontSize: '0.7rem', color: '#6b7280', display: 'block', marginTop: '2px'}}>
+                                                  Splatnost: {formatDate(faktura.datum_splatnosti)}
+                                                  {faktura.datum_vystaveni && ` • Vystaveno: ${formatDate(faktura.datum_vystaveni)}`}
+                                                </span>
+                                              )}
+                                            </SuggestionDetail>
+                                          </SuggestionItem>
+                                        ))}
+                                      </SuggestionsDropdown>
+                                    )}
+                                  </SuggestionsWrapper>
+                                </SubItemCell>
+                                
+                                {/* Stav */}
+                                <SubItemCell>
+                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>Nová</span>
+                                </SubItemCell>
+                                
+                                {/* Zpracovatel */}
+                                <SubItemCell style={{fontSize: '0.85rem', color: '#6b7280'}}>
+                                  <span>-</span>
+                                </SubItemCell>
+                                
+                                {/* Akce */}
+                                <SubItemCell>
+                                  <div style={{display: 'flex', gap: '6px', justifyContent: 'flex-start'}}>
+                                    <Button 
+                                      variant="secondary" 
+                                      style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#10b981', color: 'white', borderColor: '#10b981'}}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSaveNewItem(fee.id);
+                                      }}
+                                      title="Uložit novou položku"
+                                    >
+                                      <FontAwesomeIcon icon={faCheckCircle} />
+                                    </Button>
+                                    <Button 
+                                      variant="secondary" 
+                                      style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', color: '#ef4444', borderColor: '#ef4444'}}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelAddItem();
+                                      }}
+                                      title="Zrušit"
+                                    >
+                                      <FontAwesomeIcon icon={faMinus} />
+                                    </Button>
+                                  </div>
+                                </SubItemCell>
+                              </SubItemRow>
+                            )}
                           </tbody>
                         </SubItemsTable>
-                        <div style={{padding: '12px', textAlign: 'right', borderTop: '1px solid #e5e7eb'}}>
-                          <Button 
-                            variant="secondary" 
-                            style={{padding: '6px 12px', fontSize: '0.85rem', color: '#ef4444', borderColor: '#ef4444'}}
+                        
+                        {/* Tlačítko pro přidání další položky */}
+                        {addingItemToFeeId !== fee.id && (
+                          <NewRowButton 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteFee(fee.id);
+                              handleStartAddItem(fee.id);
                             }}
+                            style={{marginTop: '8px'}}
                           >
-                            <FontAwesomeIcon icon={faTrash} />
-                            Smazat poplatek
-                          </Button>
-                        </div>
+                            <FontAwesomeIcon icon={faPlus} style={{marginRight: '8px'}} />
+                            Přidat další položku
+                          </NewRowButton>
+                        )}
                       </SubItemsWrapper>
                     </SubItemsContainer>
                   )}
                 </React.Fragment>
-              ))}
+                );
+              })}
               
               {/* Empty state message v tabulce */}
               {annualFees.length === 0 && !showNewRow && (
                 <Tr>
-                  <Td colSpan="10" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                  <Td colSpan="12" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
                     <div style={{fontSize: '3rem', marginBottom: '16px'}}>
                       <FontAwesomeIcon icon={faMoneyBill} />
                     </div>

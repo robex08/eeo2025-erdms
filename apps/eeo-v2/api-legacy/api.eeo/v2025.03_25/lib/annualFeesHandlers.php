@@ -304,6 +304,94 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
 }
 
 // ============================================================================
+// ➕ CREATE-ITEM - Vytvoření nové manuální položky
+// ============================================================================
+
+function handleAnnualFeesCreateItem($pdo, $data, $user) {
+    try {
+        // Nastavení české časové zóny
+        TimezoneHelper::setMysqlTimezone($pdo);
+        
+        // Validace povinných polí
+        if (!isset($data['rocni_poplatek_id'])) {
+            return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
+        }
+        if (!isset($data['nazev_polozky']) || $data['nazev_polozky'] === '') {
+            return ['status' => 'error', 'message' => 'Chybí název položky'];
+        }
+        if (!isset($data['datum_splatnosti']) || $data['datum_splatnosti'] === '') {
+            return ['status' => 'error', 'message' => 'Chybí datum splatnosti'];
+        }
+        if (!isset($data['castka']) || $data['castka'] <= 0) {
+            return ['status' => 'error', 'message' => 'Chybí částka nebo je neplatná'];
+        }
+        
+        $rocni_poplatek_id = (int)$data['rocni_poplatek_id'];
+        
+        // Validace existence ročního poplatku
+        $existing = queryAnnualFeesDetail($pdo, $rocni_poplatek_id);
+        if (!$existing) {
+            return ['status' => 'error', 'message' => 'Roční poplatek nenalezen'];
+        }
+        
+        $pdo->beginTransaction();
+        
+        // Zjištění nejvyššího pořadí pro novou položku
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(MAX(poradi), 0) as max_poradi 
+            FROM `25a_rocni_poplatky_polozky` 
+            WHERE rocni_poplatek_id = :rocni_poplatek_id 
+            AND aktivni = 1
+        ");
+        $stmt->execute([':rocni_poplatek_id' => $rocni_poplatek_id]);
+        $maxPoradi = $stmt->fetchColumn();
+        $novePoradi = $maxPoradi + 1;
+        
+        // Vytvoření nové položky
+        $polozka_id = queryInsertAnnualFeeItem($pdo, [
+            'rocni_poplatek_id' => $rocni_poplatek_id,
+            'poradi' => $novePoradi,
+            'nazev_polozky' => $data['nazev_polozky'],
+            'castka' => (float)$data['castka'],
+            'datum_splatnosti' => $data['datum_splatnosti'],
+            'faktura_id' => isset($data['faktura_id']) ? (int)$data['faktura_id'] : null,
+            'poznamka' => isset($data['poznamka']) ? $data['poznamka'] : null,
+            'stav' => 'NEZAPLACENO',
+            'vytvoril_uzivatel_id' => $user['id'],
+            'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
+        ]);
+        
+        // Přepočítání sum v hlavičce
+        queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id);
+        
+        $pdo->commit();
+        
+        return [
+            'status' => 'success',
+            'data' => [
+                'id' => $polozka_id,
+                'rocni_poplatek_id' => $rocni_poplatek_id,
+                'poradi' => $novePoradi,
+                'nazev_polozky' => $data['nazev_polozky'],
+                'castka' => (float)$data['castka'],
+                'datum_splatnosti' => $data['datum_splatnosti']
+            ],
+            'message' => 'Položka byla úspěšně přidána'
+        ];
+        
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("❌ Annual Fees Create Item Error: " . $e->getMessage());
+        return [
+            'status' => 'error',
+            'message' => 'Chyba při vytváření položky: ' . $e->getMessage()
+        ];
+    }
+}
+
+// ============================================================================
 // 📝 UPDATE-ITEM - Aktualizace jedné položky
 // ============================================================================
 
