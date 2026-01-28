@@ -616,8 +616,14 @@ function getSqlSearchInvoices() {
                LIKE :query_normalized
         )
         AND f.aktivni = 1
-        AND (f.smlouva_id IS NULL OR f.smlouva_id = 0)
-        AND (f.objednavka_id IS NULL OR f.objednavka_id = 0)
+        AND (
+            (f.smlouva_id IS NULL OR f.smlouva_id = 0)
+            OR JSON_EXTRACT(f.rozsirujici_data, '$.rocni_poplatek') IS NOT NULL
+        )
+        AND (
+            (f.objednavka_id IS NULL OR f.objednavka_id = 0)
+            OR JSON_EXTRACT(f.rozsirujici_data, '$.rocni_poplatek') IS NOT NULL
+        )
         AND (
             :is_admin = 1
             OR f.fa_predana_zam_id = :user_id

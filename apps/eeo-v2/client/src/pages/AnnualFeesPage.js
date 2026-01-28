@@ -1007,7 +1007,11 @@ function AnnualFeesPage() {
       
       const invoices = response?.categories?.invoices?.results || [];
       
-      // Dvojitá kontrola - filtruj pouze aktivní faktury
+      // Filtruj pouze aktivní faktury
+      // Backend už zajišťuje, že se nabízejí:
+      // 1) Nepřiřazené faktury (smlouva_id IS NULL AND objednavka_id IS NULL)
+      // 2) Faktury již přiřazené k ročním poplatkům (mají rocni_poplatek v rozsirujici_data)
+      // Takže když editujeme položku s fakturou, ta se nabídne znovu
       const activeFaktury = invoices.filter(f => f.aktivni === 1 || f.aktivni === '1');
       
       setFakturySuggestions(activeFaktury);
