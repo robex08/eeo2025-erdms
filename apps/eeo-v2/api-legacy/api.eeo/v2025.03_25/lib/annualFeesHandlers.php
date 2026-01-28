@@ -361,6 +361,25 @@ function handleAnnualFeesCreateItem($pdo, $data, $user) {
             'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
         ]);
         
+        // ✨ Pokud byla přiřazena faktura, aktualizovat fakturu o smlouvu z ročního poplatku
+        if (isset($data['faktura_id']) && $data['faktura_id'] > 0 && isset($existing['smlouva_id']) && $existing['smlouva_id']) {
+            $tblFaktury = defined('TBL_FAKTURY') ? TBL_FAKTURY : '25a_objednavky_faktury';
+            
+            $stmtInvoice = $pdo->prepare("
+                UPDATE `$tblFaktury` 
+                SET smlouva_id = :smlouva_id,
+                    aktualizoval_uzivatel_id = :user_id,
+                    dt_aktualizace = :dt_aktualizace
+                WHERE id = :faktura_id
+            ");
+            $stmtInvoice->execute([
+                'smlouva_id' => $existing['smlouva_id'],
+                'user_id' => $user['id'],
+                'dt_aktualizace' => TimezoneHelper::getCzechDateTime(),
+                'faktura_id' => $data['faktura_id']
+            ]);
+        }
+        
         // Přepočítání sum v hlavičce
         queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id);
         
@@ -431,6 +450,38 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
         if (!$item) {
             $pdo->rollBack();
             return ['status' => 'error', 'message' => 'Položka nenalezena'];
+        }
+
+        // ✨ Pokud byla přiřazena faktura, aktualizovat fakturu o smlouvu z ročního poplatku
+        if (isset($data['faktura_id']) && $data['faktura_id'] > 0) {
+            // Načíst roční poplatek pro získání smlouvy
+            $tblRocniPoplatky = defined('TBL_ROCNI_POPLATKY') ? TBL_ROCNI_POPLATKY : '25a_rocni_poplatky';
+            $tblFaktury = defined('TBL_FAKTURY') ? TBL_FAKTURY : '25a_objednavky_faktury';
+            
+            $stmtFee = $pdo->prepare("
+                SELECT smlouva_id 
+                FROM `$tblRocniPoplatky` 
+                WHERE id = :fee_id AND aktivni = 1
+            ");
+            $stmtFee->execute(['fee_id' => $item['rocni_poplatek_id']]);
+            $fee = $stmtFee->fetch(PDO::FETCH_ASSOC);
+            
+            if ($fee && $fee['smlouva_id']) {
+                // Aktualizovat fakturu - přiřadit smlouvu
+                $stmtInvoice = $pdo->prepare("
+                    UPDATE `$tblFaktury` 
+                    SET smlouva_id = :smlouva_id,
+                        aktualizoval_uzivatel_id = :user_id,
+                        dt_aktualizace = :dt_aktualizace
+                    WHERE id = :faktura_id
+                ");
+                $stmtInvoice->execute([
+                    'smlouva_id' => $fee['smlouva_id'],
+                    'user_id' => $user['id'],
+                    'dt_aktualizace' => TimezoneHelper::getCzechDateTime(),
+                    'faktura_id' => $data['faktura_id']
+                ]);
+            }
         }
 
         // Přepočítání sum v hlavičce
