@@ -6,6 +6,18 @@ ERDMS používá automatizované build skripty pro konzistentní development a p
 
 **Aktuální DEV verze:** `2.20` *(aktivní verze)*
 
+## 📍 Lokace Build Skriptů
+
+**VŠECHNY build skripty jsou umístěny v:**
+```
+/var/www/erdms-dev/docs/scripts-shell/
+```
+
+**Před spuštěním jakéhokoliv buildu:**
+```bash
+cd /var/www/erdms-dev/docs/scripts-shell
+```
+
 ## 🎯 KRITICKÉ - KONFIGURACE PROSTŘEDÍ
 
 ### 🔴 TŘI REŽIMY PROVOZU:
@@ -135,17 +147,24 @@ includnutý pouze v `if (IS_DEV_ENV)` bloku → 500 error na všech complex endp
 
 ## 🚀 Quick Start
 
+**DŮLEŽITÉ:** Build skripty jsou umístěny v `/var/www/erdms-dev/docs/scripts-shell/`
+
 ```bash
+# 1. Přejdi do složky se skripty
+cd /var/www/erdms-dev/docs/scripts-shell
+
+# 2. Spusť požadovaný build
+
 # Dashboard build a deploy
 ./build-dashboard.sh --dev --deploy
 
-# EEO v2 frontend + backend (verze 2.19)
-./build-eeo-v2.sh --dev --all --deploy
+# EEO v2 frontend + backend (verze 2.20)
+./build-eeo-v2.sh --dev --all
 
 # Všechny aplikace najednou
 ./build-all.sh --dev --deploy
 
-# Production build (verze 2.19)
+# Production build (verze 2.20)
 ./build-dashboard.sh --prod --deploy
 ```
 
@@ -157,8 +176,16 @@ includnutý pouze v `if (IS_DEV_ENV)` bloku → 500 error na všech complex endp
 
 ### Lokace
 ```
-/var/www/erdms-dev/docs/scripts-shell/  (originály)
-/var/www/erdms-dev/                     (symlinky)
+/var/www/erdms-dev/docs/scripts-shell/  (všechny build skripty)
+```
+
+**Jak spustit:**
+```bash
+# 1. Přejdi do složky se skripty
+cd /var/www/erdms-dev/docs/scripts-shell
+
+# 2. Spusť skript s parametry
+./build-eeo-v2.sh --dev --all
 ```
 
 ### Dostupné skripty
@@ -220,7 +247,9 @@ includnutý pouze v `if (IS_DEV_ENV)` bloku → 500 error na všech complex endp
 └── data/                     # Application data
 ```
 
-## 🚀 Usage Examples
+## � Usage Examples
+
+**POZNÁMKA:** Všechny příklady předpokládají, že jste ve složce `/var/www/erdms-dev/docs/scripts-shell/`
 
 ### Dashboard Development
 ```bash
@@ -235,8 +264,10 @@ cd /var/www/erdms-dev/docs/scripts-shell
 
 ### EEO v2 Deployment
 ```bash
-# Build frontend pro dev (speciální: zůstává v dev složce)
-./build-eeo-v2.sh --dev --frontend
+cd /var/www/erdms-dev/docs/scripts-shell
+
+# Build frontend + backend pro dev
+./build-eeo-v2.sh --dev --all
 
 # Build a deploy celý EEO v2 do produkce
 ./build-eeo-v2.sh --prod --all --deploy
@@ -247,12 +278,16 @@ cd /var/www/erdms-dev/docs/scripts-shell
 
 ### Auth API
 ```bash
+cd /var/www/erdms-dev/docs/scripts-shell
+
 # Deploy auth API do produkce
 ./build-auth-api.sh --prod --deploy
 ```
 
 ### Master Build
 ```bash
+cd /var/www/erdms-dev/docs/scripts-shell
+
 # Build všechny aplikace pro produkci
 ./build-all.sh --prod --deploy
 

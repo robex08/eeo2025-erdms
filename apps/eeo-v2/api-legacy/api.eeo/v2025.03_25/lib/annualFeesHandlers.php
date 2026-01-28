@@ -365,19 +365,23 @@ function handleAnnualFeesCreateItem($pdo, $data, $user) {
         if (isset($data['faktura_id']) && $data['faktura_id'] > 0 && isset($existing['smlouva_id']) && $existing['smlouva_id']) {
             $tblFaktury = defined('TBL_FAKTURY') ? TBL_FAKTURY : '25a_objednavky_faktury';
             
-            $stmtInvoice = $pdo->prepare("
-                UPDATE `$tblFaktury` 
-                SET smlouva_id = :smlouva_id,
-                    aktualizoval_uzivatel_id = :user_id,
-                    dt_aktualizace = :dt_aktualizace
-                WHERE id = :faktura_id
-            ");
-            $stmtInvoice->execute([
-                'smlouva_id' => $existing['smlouva_id'],
-                'user_id' => $user['id'],
-                'dt_aktualizace' => TimezoneHelper::getCzechDateTime(),
-                'faktura_id' => $data['faktura_id']
-            ]);
+            // ✅ Použití centralizované helper funkce pro bezpečnou aktualizaci rozsirujici_data
+            updateRozsirujiciData(
+                $pdo,
+                $tblFaktury,
+                $data['faktura_id'],
+                [
+                    'rocni_poplatek' => [
+                        'id' => $rocni_poplatek_id,
+                        'nazev' => $existing['nazev'],
+                        'rok' => $existing['rok'],
+                        'prirazeno_dne' => TimezoneHelper::getCzechDateTime(),
+                        'prirazeno_uzivatelem_id' => $user['id']
+                    ]
+                ],
+                ['smlouva_id' => $existing['smlouva_id']], // Také přiřadit smlouvu
+                $user['id']
+            );
         }
         
         // Přepočítání sum v hlavičce
@@ -459,7 +463,7 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
             $tblFaktury = defined('TBL_FAKTURY') ? TBL_FAKTURY : '25a_objednavky_faktury';
             
             $stmtFee = $pdo->prepare("
-                SELECT smlouva_id 
+                SELECT smlouva_id, nazev, rok
                 FROM `$tblRocniPoplatky` 
                 WHERE id = :fee_id AND aktivni = 1
             ");
@@ -467,20 +471,23 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
             $fee = $stmtFee->fetch(PDO::FETCH_ASSOC);
             
             if ($fee && $fee['smlouva_id']) {
-                // Aktualizovat fakturu - přiřadit smlouvu
-                $stmtInvoice = $pdo->prepare("
-                    UPDATE `$tblFaktury` 
-                    SET smlouva_id = :smlouva_id,
-                        aktualizoval_uzivatel_id = :user_id,
-                        dt_aktualizace = :dt_aktualizace
-                    WHERE id = :faktura_id
-                ");
-                $stmtInvoice->execute([
-                    'smlouva_id' => $fee['smlouva_id'],
-                    'user_id' => $user['id'],
-                    'dt_aktualizace' => TimezoneHelper::getCzechDateTime(),
-                    'faktura_id' => $data['faktura_id']
-                ]);
+                // ✅ Použití centralizované helper funkce pro bezpečnou aktualizaci rozsirujici_data
+                updateRozsirujiciData(
+                    $pdo,
+                    $tblFaktury,
+                    $data['faktura_id'],
+                    [
+                        'rocni_poplatek' => [
+                            'id' => $item['rocni_poplatek_id'],
+                            'nazev' => $fee['nazev'],
+                            'rok' => $fee['rok'],
+                            'prirazeno_dne' => TimezoneHelper::getCzechDateTime(),
+                            'prirazeno_uzivatelem_id' => $user['id']
+                        ]
+                    ],
+                    ['smlouva_id' => $fee['smlouva_id']], // Také přiřadit smlouvu
+                    $user['id']
+                );
             }
         }
 
