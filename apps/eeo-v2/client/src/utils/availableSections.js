@@ -33,6 +33,11 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
   }
   
+  // 💰 ROČNÍ POPLATKY - pouze pro ADMIN (beta verze)
+  if (isAdmin) {
+    sections.push({ value: 'annual-fees', label: 'Roční poplatky' });
+  }
+  
   // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW
   if (isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) {
     sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });

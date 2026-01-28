@@ -204,6 +204,51 @@ export const updateAnnualFeeItem = async ({ token, username, id, data }) => {
 };
 
 /**
+ * Vytvoří novou manuální položku k existujícímu ročnímu poplatku
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} params.rocni_poplatek_id - ID ročního poplatku
+ * @param {string} params.nazev_polozky - Název položky
+ * @param {string} params.datum_splatnosti - Datum splatnosti (YYYY-MM-DD)
+ * @param {number} params.castka - Částka
+ * @param {number} params.faktura_id - ID faktury (volitelné)
+ * @param {string} params.poznamka - Poznámka (volitelné)
+ * @returns {Promise<Object>} Vytvořená položka
+ */
+export const createAnnualFeeItem = async ({ token, username, rocni_poplatek_id, nazev_polozky, datum_splatnosti, castka, faktura_id = null, poznamka = null }) => {
+  try {
+    const response = await fetch(`${BASE_URL}/annual-fees/create-item`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        rocni_poplatek_id,
+        nazev_polozky,
+        datum_splatnosti,
+        castka,
+        faktura_id,
+        poznamka
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Chyba při vytváření položky');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('createAnnualFeeItem error:', error);
+    throw error;
+  }
+};
+
+/**
  * Smaže roční poplatek (soft delete)
  * 
  * @param {Object} params - Parametry
