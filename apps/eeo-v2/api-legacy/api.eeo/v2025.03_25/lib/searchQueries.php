@@ -466,6 +466,9 @@ function getSqlSearchInvoices() {
                 ' ', 
                 COALESCE(u_predana.prijmeni, '')
             ) as predano_kym,
+            f.potvrdil_vecnou_spravnost_id,
+            f.fa_predana_zam_id,
+            f.stav as stav_workflow,
             CASE 
                 WHEN f.fa_zaplacena = 1 THEN 'zaplaceno'
                 WHEN f.fa_datum_splatnosti < CURDATE() THEN 'po_splatnosti'
@@ -613,6 +616,8 @@ function getSqlSearchInvoices() {
                LIKE :query_normalized
         )
         AND f.aktivni = 1
+        AND (f.smlouva_id IS NULL OR f.smlouva_id = 0)
+        AND (f.objednavka_id IS NULL OR f.objednavka_id = 0)
         AND (
             :is_admin = 1
             OR f.fa_predana_zam_id = :user_id
