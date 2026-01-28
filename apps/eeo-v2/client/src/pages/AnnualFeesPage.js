@@ -1046,7 +1046,14 @@ function AnnualFeesPage() {
   
   const handleSaveEditItem = async (itemId) => {
     try {
-      await handleUpdateItem(itemId, editItemData);
+      // Pokud byla přiřazena faktura, automaticky nastavit jako zaplaceno
+      const dataToSave = {...editItemData};
+      if (dataToSave.faktura_id && !dataToSave.stav) {
+        dataToSave.stav = 'ZAPLACENO';
+        dataToSave.datum_zaplaceni = new Date().toISOString().split('T')[0];
+      }
+      
+      await handleUpdateItem(itemId, dataToSave);
       setEditingItemId(null);
       setEditItemData({});
       setFakturySearch('');
@@ -1842,7 +1849,7 @@ function AnnualFeesPage() {
                                     <InlineInput 
                                       value={editItemData.nazev_polozky || ''}
                                       onChange={(e) => setEditItemData(prev => ({...prev, nazev_polozky: e.target.value}))}
-                                      style={{fontSize: '0.85rem', padding: '4px 8px', width: '100%'}}
+                                      style={{fontSize: '0.85rem', padding: '4px 6px', width: '100%', minWidth: '120px'}}
                                       placeholder="Název položky"
                                     />
                                   ) : (
@@ -1853,13 +1860,15 @@ function AnnualFeesPage() {
                                 {/* Splatnost */}
                                 <SubItemCell>
                                   {isEditing ? (
-                                    <DatePicker
-                                      fieldName="datum_splatnosti"
-                                      value={editItemData.datum_splatnosti || ''}
-                                      onChange={(field, val) => setEditItemData(prev => ({...prev, [field]: val}))}
-                                      placeholder="Vyberte datum"
-                                      variant="compact"
-                                    />
+                                    <div style={{maxWidth: '130px'}}>
+                                      <DatePicker
+                                        fieldName="datum_splatnosti"
+                                        value={editItemData.datum_splatnosti || ''}
+                                        onChange={(field, val) => setEditItemData(prev => ({...prev, [field]: val}))}
+                                        placeholder="Vyberte datum"
+                                        variant="compact"
+                                      />
+                                    </div>
                                   ) : (
                                     formatDate(item.datum_splatnosti)
                                   )}
@@ -1868,11 +1877,13 @@ function AnnualFeesPage() {
                                 {/* Částka */}
                                 <SubItemCell>
                                   {isEditing ? (
-                                    <CurrencyInput
-                                      value={editItemData.castka || ''}
-                                      onChange={(val) => setEditItemData(prev => ({...prev, castka: val}))}
-                                      placeholder="0,00"
-                                    />
+                                    <div style={{maxWidth: '120px'}}>
+                                      <CurrencyInput
+                                        value={editItemData.castka || ''}
+                                        onChange={(val) => setEditItemData(prev => ({...prev, castka: val}))}
+                                        placeholder="0,00"
+                                      />
+                                    </div>
                                   ) : (
                                     formatCurrency(item.castka)
                                   )}
@@ -1894,12 +1905,14 @@ function AnnualFeesPage() {
                                         onFocus={() => fakturySearch.length >= 3 && setShowFakturySuggestions(true)}
                                         style={{
                                           fontSize: '0.85rem', 
-                                          padding: '4px 8px', 
-                                          width: '150px',
+                                          padding: '4px 6px', 
+                                          width: '100%',
+                                          minWidth: '100px',
+                                          maxWidth: '180px',
                                           backgroundColor: !editItemData.faktura_id ? '#fee2e2' : 'white',
                                           borderColor: !editItemData.faktura_id ? '#ef4444' : '#d1d5db'
                                         }}
-                                        placeholder="VS, název... (min 3)"
+                                        placeholder="VS, název..."
                                       />
                                       {showFakturySuggestions && fakturySuggestions.length > 0 && (
                                         <SuggestionsDropdown style={{maxHeight: '200px'}}>
@@ -2057,29 +2070,33 @@ function AnnualFeesPage() {
                                   <InlineInput 
                                     value={newItemData.nazev_polozky || ''}
                                     onChange={(e) => setNewItemData(prev => ({...prev, nazev_polozky: e.target.value}))}
-                                    style={{fontSize: '0.85rem', padding: '4px 8px', width: '100%'}}
+                                    style={{fontSize: '0.85rem', padding: '4px 6px', width: '100%', minWidth: '120px'}}
                                     placeholder="Název položky"
                                   />
                                 </SubItemCell>
                                 
                                 {/* Splatnost */}
                                 <SubItemCell>
-                                  <DatePicker
-                                    fieldName="datum_splatnosti"
-                                    value={newItemData.datum_splatnosti || ''}
-                                    onChange={(field, val) => setNewItemData(prev => ({...prev, [field]: val}))}
-                                    placeholder="Vyberte datum"
-                                    variant="compact"
-                                  />
+                                  <div style={{maxWidth: '130px'}}>
+                                    <DatePicker
+                                      fieldName="datum_splatnosti"
+                                      value={newItemData.datum_splatnosti || ''}
+                                      onChange={(field, val) => setNewItemData(prev => ({...prev, [field]: val}))}
+                                      placeholder="Vyberte datum"
+                                      variant="compact"
+                                    />
+                                  </div>
                                 </SubItemCell>
                                 
                                 {/* Částka */}
                                 <SubItemCell>
-                                  <CurrencyInput
-                                    value={newItemData.castka || ''}
-                                    onChange={(val) => setNewItemData(prev => ({...prev, castka: val}))}
-                                    placeholder="0,00"
-                                  />
+                                  <div style={{maxWidth: '120px'}}>
+                                    <CurrencyInput
+                                      value={newItemData.castka || ''}
+                                      onChange={(val) => setNewItemData(prev => ({...prev, castka: val}))}
+                                      placeholder="0,00"
+                                    />
+                                  </div>
                                 </SubItemCell>
                                 
                                 {/* Zaplaceno */}
@@ -2094,8 +2111,8 @@ function AnnualFeesPage() {
                                       value={fakturySearch}
                                       onChange={(e) => setFakturySearch(e.target.value)}
                                       onFocus={() => fakturySearch.length >= 3 && setShowFakturySuggestions(true)}
-                                      style={{fontSize: '0.85rem', padding: '4px 8px', width: '150px'}}
-                                      placeholder="VS, název... (min 3)"
+                                      style={{fontSize: '0.85rem', padding: '4px 6px', width: '100%', minWidth: '100px', maxWidth: '180px'}}
+                                      placeholder="VS, název..."
                                     />
                                     {showFakturySuggestions && fakturySuggestions.length > 0 && (
                                       <SuggestionsDropdown style={{maxHeight: '200px'}}>
