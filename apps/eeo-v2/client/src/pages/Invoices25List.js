@@ -11,7 +11,7 @@ import {
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
-  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash
+  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -94,6 +94,28 @@ const ContactItem = styled.div`
       color: #1e3a8a;
       text-decoration: underline;
     }
+  }
+`;
+
+// 💰 Roční poplatky badge
+const InfoIconBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-radius: 50%;
+  color: white;
+  font-size: 11px;
+  margin-left: 8px;
+  cursor: help;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+  transition: all 0.2s ease;
+  
+  &:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
   }
 `;
 
@@ -5480,6 +5502,33 @@ const Invoices25List = () => {
                           {slidePanelInvoice.fa_cislo_vema || slidePanelInvoice.cislo_faktury}
                           <FontAwesomeIcon icon={faEdit} style={{ fontSize: '0.85rem' }} />
                         </ClickableValue>
+                        {slidePanelInvoice.rozsirujici_data?.rocni_poplatek && (
+                          <TooltipWrapper
+                            content={
+                              <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
+                                  💰 Faktura přiřazena k ročnímu poplatku
+                                </strong>
+                                <div style={{ color: '#e5e7eb' }}>
+                                  <strong>Název:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
+                                </div>
+                                <div style={{ color: '#e5e7eb' }}>
+                                  <strong>Rok:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
+                                </div>
+                                {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                                  <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
+                                    Přiřazeno: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                  </div>
+                                )}
+                              </div>
+                            }
+                            position="right"
+                          >
+                            <InfoIconBadge>
+                              <FontAwesomeIcon icon={faCoins} />
+                            </InfoIconBadge>
+                          </TooltipWrapper>
+                        )}
                       </InfoValue>
                     </InfoContent>
                   </InfoRowFullWidth>
@@ -5876,6 +5925,33 @@ const Invoices25List = () => {
                         <InfoLabel>Variabilní symbol</InfoLabel>
                         <InfoValue style={{ fontFamily: 'monospace', fontSize: '1.05rem', fontWeight: '600' }}>
                           {slidePanelInvoice.fa_vs}
+                          {slidePanelInvoice.rozsirujici_data?.rocni_poplatek && (
+                            <TooltipWrapper
+                              content={
+                                <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                  <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
+                                    💰 Faktura přiřazena k ročnímu poplatku
+                                  </strong>
+                                  <div style={{ color: '#e5e7eb' }}>
+                                    <strong>Název:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
+                                  </div>
+                                  <div style={{ color: '#e5e7eb' }}>
+                                    <strong>Rok:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
+                                  </div>
+                                  {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                                    <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
+                                      Přiřazeno: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                    </div>
+                                  )}
+                                </div>
+                              }
+                              position="right"
+                            >
+                              <InfoIconBadge>
+                                <FontAwesomeIcon icon={faCoins} />
+                              </InfoIconBadge>
+                            </TooltipWrapper>
+                          )}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
