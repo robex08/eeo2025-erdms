@@ -279,6 +279,7 @@ require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlersExtended.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashboxByPeriodHandler.php';
 
 // ANNUAL FEES - Roční poplatky
+require_once __DIR__ . '/v2025.03_25/lib/rozsirujiciDataHelper.php';
 require_once __DIR__ . '/v2025.03_25/lib/annualFeesHandlers.php';
 
 // USER DETAIL - User detail with statistics
