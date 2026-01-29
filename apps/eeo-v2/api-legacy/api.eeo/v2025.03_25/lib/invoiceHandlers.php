@@ -2201,6 +2201,27 @@ function handle_invoices25_list($input, $config, $queries) {
             if (!empty($faktura['rozsirujici_data'])) {
                 $decoded = json_decode($faktura['rozsirujici_data'], true);
                 $faktura['rozsirujici_data'] = is_array($decoded) ? $decoded : null;
+                
+                // ✨ Doplnit username uživatele, který přiřadil roční poplatek
+                if (isset($faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_id'])) {
+                    $userId = (int)$faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_id'];
+                    try {
+                        $stmtUser = $db->prepare("
+                            SELECT CONCAT(prijmeni, ' ', jmeno) as jmeno_cele, 
+                                   CONCAT(prijmeni, ' ', SUBSTRING(jmeno, 1, 1), '.') as jmeno_zkracene
+                            FROM 25_uzivatele 
+                            WHERE id = ?
+                        ");
+                        $stmtUser->execute([$userId]);
+                        $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
+                        if ($user) {
+                            $faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_jmeno'] = $user['jmeno_cele'];
+                            $faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_jmeno_zkracene'] = $user['jmeno_zkracene'];
+                        }
+                    } catch (Exception $e) {
+                        error_log("Chyba při načítání uživatele pro roční poplatek: " . $e->getMessage());
+                    }
+                }
             } else {
                 $faktura['rozsirujici_data'] = null;
             }
