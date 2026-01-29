@@ -1824,6 +1824,22 @@ const CashBookPage = () => {
             setCarryOverAmount(freshCarryOver);
           }
 
+          // ✅ FIX: Aktualizovat bookStatus a metadata (jinak zmizí z UI při auto-refresh)
+          if (book) {
+            setBookStatus(book.stav_knihy || 'aktivni');
+            
+            // Aktualizovat metadata o uzavření/zamčení
+            const closedByName = book.uzivatel_jmeno_plne || `ID: ${book.uzivatel_id}`;
+            const lockedByName = book.zamknul_spravce_jmeno_plne || null;
+            
+            setBookStatusMetadata({
+              closedDate: book.uzavrena_uzivatelem_kdy || null,
+              closedBy: closedByName,
+              lockedDate: book.zamknuta_spravcem_kdy || null,
+              lockedBy: lockedByName,
+            });
+          }
+
           const entries = bookData.data?.entries || [];
           const dbEntries = entries.map(entry => ({
             ...entry,

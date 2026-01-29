@@ -6585,12 +6585,62 @@ const Invoices25List = () => {
                       return (
                         <AttachmentItem
                           key={attachment.id || index}
-                          onClick={() => {
-                            if (attachment.url || attachment.file_path) {
-                              window.open(attachment.url || attachment.file_path, '_blank');
+                          onClick={async () => {
+                            if (!attachment.id) return;
+                            
+                            try {
+                              // Import download funkce
+                              const { downloadInvoiceAttachment25 } = await import('../services/api25invoices');
+                              
+                              // Stáhnout soubor jako blob
+                              const blobData = await downloadInvoiceAttachment25({
+                                token,
+                                username,
+                                faktura_id: attachment.faktura_id || slidePanelInvoice.id,
+                                priloha_id: attachment.id,
+                                objednavka_id: attachment.objednavka_id
+                              });
+                              
+                              const ext = fileName.toLowerCase().split('.').pop();
+
+                              // Určit MIME type podle přípony
+                              let mimeType = 'application/octet-stream';
+                              if (ext === 'pdf') {
+                                mimeType = 'application/pdf';
+                              } else if (['jpg', 'jpeg'].includes(ext)) {
+                                mimeType = 'image/jpeg';
+                              } else if (ext === 'png') {
+                                mimeType = 'image/png';
+                              } else if (ext === 'gif') {
+                                mimeType = 'image/gif';
+                              } else if (ext === 'bmp') {
+                                mimeType = 'image/bmp';
+                              } else if (ext === 'webp') {
+                                mimeType = 'image/webp';
+                              } else if (ext === 'svg') {
+                                mimeType = 'image/svg+xml';
+                              }
+
+                              // Vytvořit nový Blob se správným MIME typem
+                              const blob = new Blob([blobData], { type: mimeType });
+                              
+                              // Vytvořit URL pro blob
+                              const blobUrl = window.URL.createObjectURL(blob);
+                              
+                              // Otevřít náhled
+                              setViewerAttachment({
+                                ...attachment,
+                                original_filename: fileName,
+                                blobUrl: blobUrl,
+                                mimeType: mimeType
+                              });
+                            } catch (err) {
+                              console.error('Chyba při otevírání přílohy:', err);
+                              showToast('Nepodařilo se načíst přílohu', { type: 'error' });
                             }
                           }}
-                          title="Klikněte pro stažení"
+                          title="Klikněte pro náhled"
+                          style={{ cursor: 'pointer' }}
                         >
                           <AttachmentIcon $color={bgColor} $iconColor={iconColor}>
                             <FontAwesomeIcon icon={icon} />

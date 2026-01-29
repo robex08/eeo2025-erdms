@@ -26,6 +26,7 @@ import {
 import ordersCacheService from '../services/ordersCacheService';
 import backgroundTaskService from '../services/backgroundTaskService';
 import { fetchUserSettings, clearSettingsFromLocalStorage } from '../services/userSettingsApi';
+import { tokenRefreshService } from '../utils/tokenRefresh'; // 🔄 Token refresh
 
 // Globální flag pro potlačení duplikátních logů
 let initCount = 0;
@@ -133,7 +134,19 @@ export const AuthProvider = ({ children }) => {
       // Tím zajistíme, že App.js useEffect najde aktuální data v localStorage
       setIsLoggedIn(true);
       
-      // 🔔 POST-LOGIN MODAL: Zkontrolovat a zobrazit modal po přihlášení
+      // � TOKEN REFRESH: Spustit auto-refresh timer (10 min před expirací)
+      try {
+        // Token byl právě vytvořen, vyprší za 12 hodin
+        const expiresAt = Date.now() + (12 * 60 * 60 * 1000);
+        tokenRefreshService.startRefreshTimer(expiresAt);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔄 Token refresh timer started');
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při startu token refresh timeru:', error);
+      }
+      
+      // �🔔 POST-LOGIN MODAL: Zkontrolovat a zobrazit modal po přihlášení
       // Spustit až po dokončení login workflow (setTimeout)
       setTimeout(async () => {
         try {
@@ -332,7 +345,17 @@ export const AuthProvider = ({ children }) => {
   }, [user, token]);
 
   const logout = useCallback((reason = 'manual', skipBroadcast = false) => {
-    // 🚀 BACKGROUND TASKS: Zastavit všechny background tasky
+    // � TOKEN REFRESH: Zastavit refresh timer
+    try {
+      tokenRefreshService.stopRefreshTimer();
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Token refresh timer stopped (logout)');
+      }
+    } catch (error) {
+      console.warn('⚠️ Chyba při zastavení token refresh timeru:', error);
+    }
+    
+    // �🚀 BACKGROUND TASKS: Zastavit všechny background tasky
     try {
       backgroundTaskService.unregisterAll();
     } catch (error) {
@@ -575,6 +598,19 @@ export const AuthProvider = ({ children }) => {
           // ✅ KRITICKÉ: Nastavit isLoggedIn = true PO úspěšné validaci tokenu!
           setIsLoggedIn(true);
           setLoading(false);
+          
+          // 🔄 TOKEN REFRESH: Spustit auto-refresh timer i při page reload
+          try {
+            // Token byl načten z localStorage, zkus zjistit expiraci
+            // Pro teď předpokládáme, že token vyprší za zbývající část 12h
+            const expiresAt = Date.now() + (12 * 60 * 60 * 1000);
+            tokenRefreshService.startRefreshTimer(expiresAt);
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔄 Token refresh timer started (page reload)');
+            }
+          } catch (error) {
+            console.warn('⚠️ Chyba při startu token refresh timeru:', error);
+          }
         } catch (error) {
           // ⚠️ KRITICKÁ LOGIKA: Rozpoznej TYP chyby
 

@@ -6,8 +6,8 @@
 define('API_DEBUG_MODE', true);
 
 // Token configuration
-define('TOKEN_LIFETIME', 24 * 3600);           // 24 hodin = 86400 sekund
-define('TOKEN_REFRESH_THRESHOLD', 2 * 3600);   // Obnovit pokud zbývá < 2 hodiny = 7200 sekund
+define('TOKEN_LIFETIME', 12 * 3600);           // 12 hodin = 43200 sekund (zkráceno pro bezpečnost)
+define('TOKEN_REFRESH_THRESHOLD', 10 * 60);    // Obnovit pokud zbývá < 10 minut = 600 sekund
 
 // Připojení k databázi (PDO)
 function get_db($config) {
@@ -419,6 +419,77 @@ function handle_login($input, $config, $queries) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba databáze: ' . $e->getMessage()));
         exit;
+    }
+}
+
+/**
+ * Token refresh endpoint
+ * Validates old token and issues new one if still valid
+ * 
+ * @param array $input POST data containing username and old_token
+ * @param array $config Database configuration
+ * @param array $queries SQL queries (not used in this handler)
+ * @return void Echoes JSON response
+ */
+function handle_token_refresh($input, $config, $queries) {
+    $username = isset($input['username']) ? trim($input['username']) : '';
+    $old_token = isset($input['old_token']) ? trim($input['old_token']) : '';
+    
+    if (!$username || !$old_token) {
+        http_response_code(400);
+        echo json_encode(array(
+            'err' => 'Chybí username nebo token',
+            'code' => 'MISSING_PARAMS'
+        ));
+        return;
+    }
+    
+    try {
+        // Ověř starý token pomocí verify_token()
+        $token_data = verify_token($old_token);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(array(
+                'err' => 'Neplatný nebo expirovaný token',
+                'code' => 'INVALID_TOKEN'
+            ));
+            return;
+        }
+        
+        // Ověř, že username z tokenu odpovídá username z požadavku
+        if ($token_data['username'] !== $username) {
+            http_response_code(401);
+            echo json_encode(array(
+                'err' => 'Username z tokenu neodpovídá username z požadavku',
+                'code' => 'USERNAME_MISMATCH'
+            ));
+            return;
+        }
+        
+        // Vygeneruj nový token
+        $new_token = base64_encode($username . '|' . time());
+        $expires_at = date('Y-m-d H:i:s', time() + TOKEN_LIFETIME);
+        
+        if (API_DEBUG_MODE) {
+            error_log("Token refresh: username=$username, old_token_valid=yes, new_token_generated");
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'token' => $new_token,
+            'expires_at' => $expires_at,
+            'message' => 'Token refreshed successfully',
+            'lifetime_seconds' => TOKEN_LIFETIME
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array(
+            'err' => 'Server error: ' . $e->getMessage(),
+            'code' => 'SERVER_ERROR'
+        ));
+        error_log("Token refresh error: " . $e->getMessage());
     }
 }
 
