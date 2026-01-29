@@ -307,7 +307,8 @@ function queryUpdateAnnualFeeItem($pdo, $data) {
 
     $allowedFields = ['stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'rozsirujici_data', 'aktualizoval_uzivatel_id', 'dt_aktualizace'];
     foreach ($allowedFields as $field) {
-        if (isset($data[$field])) {
+        // ✅ Použít array_key_exists místo isset, aby se mohly nastavit NULL hodnoty (např. faktura_id = NULL)
+        if (array_key_exists($field, $data)) {
             $setClauses[] = "`$field` = :$field";
             $params[":$field"] = $data[$field];
         }
