@@ -750,9 +750,28 @@ export const createNotification = async (notificationData) => {
   try {
     const auth = await getAuthData();
 
+    // ⚠️ MAPPING: Frontend FE používá `type` ale backend BE očekává `typ`
+    const mappedData = {
+      ...notificationData,
+      typ: notificationData.type,  // Mapuj type → typ pro backend
+      pro_uzivatele_id: notificationData.to_user_id,  // Mapuj to_user_id → pro_uzivatele_id
+      pro_vsechny: notificationData.to_all_users,  // Mapuj to_all_users → pro_vsechny
+      odeslat_email: notificationData.send_email,  // Mapuj send_email → odeslat_email
+      objekt_typ: notificationData.related_object_type,  // Mapuj related_object_type → objekt_typ
+      objekt_id: notificationData.related_object_id  // Mapuj related_object_id → objekt_id
+    };
+
+    // Odstraň původní FE názvy, které už byly namapovány
+    delete mappedData.type;
+    delete mappedData.to_user_id;
+    delete mappedData.to_all_users;
+    delete mappedData.send_email;
+    delete mappedData.related_object_type;
+    delete mappedData.related_object_id;
+
     const payload = {
       ...auth,
-      ...notificationData
+      ...mappedData
     };
 
     const response = await notificationsApi.post('/notifications/create', payload);

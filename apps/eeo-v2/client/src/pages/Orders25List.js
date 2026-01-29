@@ -761,7 +761,17 @@ const YearFilterTitle = styled.h2`
 
 //  CACHE: Status indicator komponenty
 const CacheStatusIconWrapper = styled(TooltipWrapper)`
-  z-index: 999999;
+  /* Wrapper má správný position: relative z TooltipWrapper */
+  
+  /* OPRAVA: Tooltip má být úplně skrytý, ne jen průhledný */
+  .tooltip {
+    display: none;
+  }
+  
+  &:hover .tooltip {
+    display: flex;
+    opacity: 1;
+  }
 `;
 
 // 💡 Hint text komponenta (jako LockWarning u pokladny)
@@ -14269,27 +14279,32 @@ const Orders25List = () => {
         </YearFilterLeft>
         <YearFilterTitle>
           {lastLoadSource && (
-            <CacheStatusIconWrapper>
+            <SmartTooltip 
+              text={
+                <>
+                  {(lastLoadSource === 'memory' || lastLoadSource === 'cache')
+                    ? '⚡ Načteno z cache (paměti) - rychlé zobrazení bez dotazu na databázi'
+                    : '💾 Načteno z databáze - aktuální data přímo ze serveru'
+                  }
+                  {lastLoadTime && (
+                    <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8 }}>
+                      📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
+                      {lastLoadDuration !== null && (
+                        <span style={{ marginLeft: '0.5rem' }}>
+                          ⏱ {lastLoadDuration}ms
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
+              }
+              icon="none"
+              preferredPosition="bottom"
+            >
               <CacheStatusIcon fromCache={lastLoadSource === 'memory' || lastLoadSource === 'cache'}>
                 <FontAwesomeIcon icon={lastLoadSource === 'memory' || lastLoadSource === 'cache' ? faBoltLightning : faDatabase} />
               </CacheStatusIcon>
-              <div className="tooltip" data-icon="none">
-                {(lastLoadSource === 'memory' || lastLoadSource === 'cache')
-                  ? '⚡ Načteno z cache (paměti) - rychlé zobrazení bez dotazu na databázi'
-                  : '💾 Načteno z databáze - aktuální data přímo ze serveru'
-                }
-                {lastLoadTime && (
-                  <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8 }}>
-                    📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
-                    {lastLoadDuration !== null && (
-                      <span style={{ marginLeft: '0.5rem' }}>
-                        ⏱ {lastLoadDuration}ms
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CacheStatusIconWrapper>
+            </SmartTooltip>
           )}
           <span>
             Přehled objednávek
