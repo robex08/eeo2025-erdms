@@ -2023,9 +2023,13 @@ function AnnualFeesPage() {
                                             style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#f59e0b', color: 'white', borderColor: '#f59e0b'}}
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleUpdateItem(item.id, { stav: 'NEZAPLACENO', datum_zaplaceni: null });
+                                              handleUpdateItem(item.id, { 
+                                                stav: 'NEZAPLACENO', 
+                                                datum_zaplaceni: null,
+                                                faktura_id: null  // ✨ Odpárovat fakturu při revertu
+                                              });
                                             }}
-                                            title="Vrátit na nezaplaceno"
+                                            title="Vrátit na nezaplaceno a odpárovat fakturu"
                                           >
                                             <FontAwesomeIcon icon={faUndo} />
                                           </Button>

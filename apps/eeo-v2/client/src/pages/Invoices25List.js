@@ -1287,6 +1287,10 @@ const InfoGrid = styled.div`
   display: grid;
   gap: 1rem;
   
+  &:not(:last-child) {
+    margin-bottom: 1rem;
+  }
+  
   /* Dva sloupce pro větší obrazovky */
   @media (min-width: 768px) {
     grid-template-columns: repeat(2, 1fr);
@@ -2166,8 +2170,9 @@ const Invoices25List = () => {
     // 2️⃣ Pokud má datum splatnosti → kontrola po splatnosti
     // ⚠️ DŮLEŽITÉ: Stav K_ZAPLACENI je PŘED zaplacením, takže MŮŽE být po splatnosti!
     // Pouze stavy ZAPLACENO, DOKONCENA a STORNO se NIKDY nepočítají jako "po splatnosti"
-    if (invoice.fa_datum_splatnosti) {
-      const splatnost = new Date(invoice.fa_datum_splatnosti);
+    const datumSplatnosti = invoice.datum_splatnosti || invoice.fa_datum_splatnosti;
+    if (datumSplatnosti) {
+      const splatnost = new Date(datumSplatnosti);
       splatnost.setHours(0, 0, 0, 0);
       
       // Pokud je splatnost v minulosti → PO SPLATNOSTI
@@ -2179,6 +2184,29 @@ const Invoices25List = () => {
     // 3️⃣ Jinak → NEZAPLACENO (ale ještě není po splatnosti)
     return 'unpaid';
   }, []);
+
+  // ⏰ Funkce pro výpočet počtu dní po splatnosti
+  const getDaysOverdue = useCallback((invoice) => {
+    if (!invoice.datum_splatnosti && !invoice.fa_datum_splatnosti) {
+      return 0;
+    }
+
+    const status = getInvoiceStatus(invoice);
+    if (status !== 'overdue') {
+      return 0;
+    }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    const splatnost = new Date(invoice.datum_splatnosti || invoice.fa_datum_splatnosti);
+    splatnost.setHours(0, 0, 0, 0);
+    
+    const diffTime = now - splatnost;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays > 0 ? diffDays : 0;
+  }, [getInvoiceStatus]);
 
   // 💾 Ukládání stavu do localStorage při změnách
   useEffect(() => {
@@ -2786,6 +2814,51 @@ const Invoices25List = () => {
       case 'unpaid': return faHourglassHalf;
       case 'overdue': return faExclamationTriangle;
       default: return faFileInvoice;
+    }
+  };
+
+  // Překlad workflow stavů faktury (skutečný stav ze sloupce 'stav')
+  const getWorkflowStatusLabel = (stav) => {
+    switch(stav) {
+      case 'NOVA': return 'Nová';
+      case 'NEZAPLACENO': return 'Nezaplaceno';
+      case 'K_ZAPLACENI': return 'K zaplacení';
+      case 'ZAPLACENO': return 'Zaplaceno';
+      case 'DOKONCENA': return 'Dokončena';
+      case 'STORNO': return 'Storno';
+      case 'VECNA_SPRAVNOST': return 'Věcná správnost';
+      case 'SCHVALENO': return 'Schváleno';
+      default: return stav || 'Neznámý';
+    }
+  };
+
+  // Ikona pro workflow stav
+  const getWorkflowStatusIcon = (stav) => {
+    switch(stav) {
+      case 'NOVA': return faFileInvoice;
+      case 'NEZAPLACENO': return faHourglassHalf;
+      case 'K_ZAPLACENI': return faMoneyBillWave;
+      case 'ZAPLACENO': return faCheckCircle;
+      case 'DOKONCENA': return faCheckCircle;
+      case 'STORNO': return faTimesCircle;
+      case 'VECNA_SPRAVNOST': return faCheckSquare;
+      case 'SCHVALENO': return faCheck;
+      default: return faFileInvoice;
+    }
+  };
+
+  // Barva pro workflow stav
+  const getWorkflowStatusColor = (stav) => {
+    switch(stav) {
+      case 'NOVA': return '#3b82f6';
+      case 'NEZAPLACENO': return '#f59e0b';
+      case 'K_ZAPLACENI': return '#10b981';
+      case 'ZAPLACENO': return '#059669';
+      case 'DOKONCENA': return '#059669';
+      case 'STORNO': return '#ef4444';
+      case 'VECNA_SPRAVNOST': return '#8b5cf6';
+      case 'SCHVALENO': return '#10b981';
+      default: return '#64748b';
     }
   };
 
@@ -4371,6 +4444,44 @@ const Invoices25List = () => {
                     <TableCell className="center">
                       <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         <strong>{invoice.cislo_faktury}</strong>
+                        {invoice.rozsirujici_data?.rocni_poplatek && (
+                          <TooltipWrapper
+                            content={
+                              <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
+                                  💰 Faktura přiřazena k ročnímu poplatku
+                                </strong>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                  <strong>Název:</strong> {invoice.rozsirujici_data.rocni_poplatek.nazev}
+                                </div>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                  <strong>Rok:</strong> {invoice.rozsirujici_data.rocni_poplatek.rok}
+                                </div>
+                                {invoice.cislo_smlouvy && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Smlouva:</strong> {invoice.cislo_smlouvy}
+                                  </div>
+                                )}
+                                {invoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Přiřadil:</strong> {invoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                                  </div>
+                                )}
+                                {invoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                                  <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
+                                    Datum přiřazení: {new Date(invoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                  </div>
+                                )}
+                              </div>
+                            }
+                            position="top"
+                            showDelay={200}
+                          >
+                            <InfoIconBadge style={{ marginLeft: '6px' }}>
+                              <FontAwesomeIcon icon={faCoins} />
+                            </InfoIconBadge>
+                          </TooltipWrapper>
+                        )}
                       </span>
                     </TableCell>
                     <TableCell className="center">
@@ -5485,7 +5596,7 @@ const Invoices25List = () => {
                   Základní informace
                 </SectionTitle>
                 <InfoGrid>
-                  <InfoRowFullWidth>
+                  <InfoRow>
                     <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
                       <FontAwesomeIcon icon={faFileInvoice} />
                     </InfoIcon>
@@ -5509,42 +5620,37 @@ const Invoices25List = () => {
                                 <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
                                   💰 Faktura přiřazena k ročnímu poplatku
                                 </strong>
-                                <div style={{ color: '#e5e7eb' }}>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
                                   <strong>Název:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
                                 </div>
-                                <div style={{ color: '#e5e7eb' }}>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
                                   <strong>Rok:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
                                 </div>
+                                {slidePanelInvoice.cislo_smlouvy && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Smlouva:</strong> {slidePanelInvoice.cislo_smlouvy}
+                                  </div>
+                                )}
+                                {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Přiřadil:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                                  </div>
+                                )}
                                 {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
                                   <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
-                                    Přiřazeno: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                    Datum přiřazení: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
                                   </div>
                                 )}
                               </div>
                             }
-                            position="right"
+                            position="top"
+                            showDelay={200}
                           >
                             <InfoIconBadge>
                               <FontAwesomeIcon icon={faCoins} />
                             </InfoIconBadge>
                           </TooltipWrapper>
                         )}
-                      </InfoValue>
-                    </InfoContent>
-                  </InfoRowFullWidth>
-
-                  <InfoRow>
-                    <InfoIcon>
-                      <FontAwesomeIcon icon={faCheckCircle} />
-                    </InfoIcon>
-                    <InfoContent>
-                      <InfoLabel>Stav platby</InfoLabel>
-                      <InfoValue>
-                        <StatusBadge $status={getInvoiceStatus(slidePanelInvoice)}>
-                          <FontAwesomeIcon icon={getStatusIcon(getInvoiceStatus(slidePanelInvoice))} />
-                          {' '}
-                          {getStatusLabel(getInvoiceStatus(slidePanelInvoice))}
-                        </StatusBadge>
                       </InfoValue>
                     </InfoContent>
                   </InfoRow>
@@ -5579,7 +5685,56 @@ const Invoices25List = () => {
                       </InfoContent>
                     </InfoRow>
                   )}
+                </InfoGrid>
 
+                <InfoGrid>
+                  <InfoRowFullWidth>
+                    <InfoIcon style={{ background: slidePanelInvoice.cislo_smlouvy ? '#fef3c7' : (slidePanelInvoice.cislo_objednavky ? '#dcfce7' : '#f1f5f9'), color: slidePanelInvoice.cislo_smlouvy ? '#f59e0b' : (slidePanelInvoice.cislo_objednavky ? '#059669' : '#94a3b8') }}>
+                      <FontAwesomeIcon icon={slidePanelInvoice.cislo_smlouvy ? faFileContract : (slidePanelInvoice.cislo_objednavky ? faFileInvoice : faExclamationTriangle)} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>{slidePanelInvoice.cislo_smlouvy ? 'Číslo smlouvy' : (slidePanelInvoice.cislo_objednavky ? 'Číslo objednávky' : 'Přiřazení')}</InfoLabel>
+                      <InfoValue style={{ fontWeight: '600' }}>
+                        {slidePanelInvoice.cislo_smlouvy ? (
+                          slidePanelInvoice.cislo_smlouvy
+                        ) : slidePanelInvoice.cislo_objednavky ? (
+                          slidePanelInvoice.cislo_objednavky
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Faktura není přiřazena ke smlouvě ani objednávce</span>
+                        )}
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRowFullWidth>
+                </InfoGrid>
+
+                <InfoGrid>
+                  <InfoRowFullWidth>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faCheckCircle} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Stav faktury</InfoLabel>
+                      <InfoValue>
+                        <StatusBadge style={{ 
+                          background: getWorkflowStatusColor(slidePanelInvoice.stav) + '20',
+                          color: getWorkflowStatusColor(slidePanelInvoice.stav),
+                          border: `1px solid ${getWorkflowStatusColor(slidePanelInvoice.stav)}40`
+                        }}>
+                          <FontAwesomeIcon icon={getWorkflowStatusIcon(slidePanelInvoice.stav)} />
+                          {' '}
+                          {getWorkflowStatusLabel(slidePanelInvoice.stav)}
+                          {getInvoiceStatus(slidePanelInvoice) === 'overdue' && (
+                            <span style={{ marginLeft: '0.5rem', color: '#dc2626', fontWeight: '700' }}>
+                              • Po splatnosti {getDaysOverdue(slidePanelInvoice)} dní
+                            </span>
+                          )}
+                        </StatusBadge>
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRowFullWidth>
+                </InfoGrid>
+
+                <InfoGrid>
                   {slidePanelInvoice.fa_cislo_faktury_dodavatele && (
                     <InfoRow>
                       <InfoIcon>
@@ -5932,20 +6087,31 @@ const Invoices25List = () => {
                                   <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
                                     💰 Faktura přiřazena k ročnímu poplatku
                                   </strong>
-                                  <div style={{ color: '#e5e7eb' }}>
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
                                     <strong>Název:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
                                   </div>
-                                  <div style={{ color: '#e5e7eb' }}>
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
                                     <strong>Rok:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
                                   </div>
+                                  {slidePanelInvoice.cislo_smlouvy && (
+                                    <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                      <strong>Smlouva:</strong> {slidePanelInvoice.cislo_smlouvy}
+                                    </div>
+                                  )}
+                                  {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                                    <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                      <strong>Přiřadil:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                                    </div>
+                                  )}
                                   {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
                                     <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
-                                      Přiřazeno: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                      Datum přiřazení: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
                                     </div>
                                   )}
                                 </div>
                               }
-                              position="right"
+                              position="top"
+                              showDelay={200}
                             >
                               <InfoIconBadge>
                                 <FontAwesomeIcon icon={faCoins} />
@@ -6043,6 +6209,168 @@ const Invoices25List = () => {
                 </InfoGrid>
               </DetailSection>
 
+              {/* Roční poplatky - samostatný blok */}
+              {slidePanelInvoice.rozsirujici_data?.rocni_poplatek && (
+                <DetailSection>
+                  <SectionTitle style={{ color: '#f59e0b' }}>
+                    <FontAwesomeIcon icon={faCoins} style={{ marginRight: '0.5rem' }} />
+                    Roční poplatek
+                  </SectionTitle>
+                  <InfoGrid>
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faFileContract} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Název</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Rok</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+
+                    {slidePanelInvoice.cislo_smlouvy && (
+                      <InfoRow>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faFileContract} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Smlouva</InfoLabel>
+                          <InfoValue>
+                            {slidePanelInvoice.cislo_smlouvy}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                      <InfoRow>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faUser} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Přiřadil</InfoLabel>
+                          <InfoValue>
+                            {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                      <InfoRow>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faClock} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Datum přiřazení</InfoLabel>
+                          <InfoValue>
+                            {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+                  </InfoGrid>
+                </DetailSection>
+              )}
+
+              {/* Evidence faktury */}
+              <DetailSection>
+                <SectionTitle>
+                  <FontAwesomeIcon icon={faUser} style={{ marginRight: '0.5rem' }} />
+                  Evidence faktury
+                </SectionTitle>
+                <InfoGrid>
+                  {(slidePanelInvoice.vytvoril_uzivatel || slidePanelInvoice.vytvoril_uzivatel_zkracene) && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#e0e7ff', color: '#6366f1' }}>
+                        <FontAwesomeIcon icon={faUser} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Fakturu evidoval(a)</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.vytvoril_uzivatel || slidePanelInvoice.vytvoril_uzivatel_zkracene}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.dt_vytvoreni && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum zaevidování</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {new Date(slidePanelInvoice.dt_vytvoreni).toLocaleString('cs-CZ', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_predana_zam_jmeno_cele && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faUser} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Předána zaměstnanci</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.fa_predana_zam_jmeno_cele}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_predani_zam && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum předání zaměstnanci</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          ↓ {formatDateOnly(slidePanelInvoice.fa_datum_predani_zam)}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_vraceni_zam && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fee2e2', color: '#dc2626' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum vrácení zaměstnancem</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600', color: '#dc2626' }}>
+                          ↑ {formatDateOnly(slidePanelInvoice.fa_datum_vraceni_zam)}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+                </InfoGrid>
+              </DetailSection>
+
               {/* Data */}
               <DetailSection>
                 <SectionTitle>
@@ -6050,7 +6378,7 @@ const Invoices25List = () => {
                   Důležitá data
                 </SectionTitle>
                 <InfoGrid>
-                  {slidePanelInvoice.fa_datum_vystaveni && (
+                  {slidePanelInvoice.datum_vystaveni && (
                     <InfoRow>
                       <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -6058,17 +6386,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum vystavení</InfoLabel>
                         <InfoValue style={{ fontWeight: '600' }}>
-                          {new Date(slidePanelInvoice.fa_datum_vystaveni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_vystaveni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_zdanitelneho_plneni && (
+                  {slidePanelInvoice.datum_zdanitelneho_plneni && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -6076,17 +6400,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum zdanitelného plnění</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_zdanitelneho_plneni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_zdanitelneho_plneni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
                   
-                  {slidePanelInvoice.fa_datum_splatnosti && (
+                  {slidePanelInvoice.datum_splatnosti && (
                     <InfoRow>
                       <InfoIcon style={{ 
                         background: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#fee2e2' : '#fef3c7',
@@ -6100,11 +6420,7 @@ const Invoices25List = () => {
                           fontWeight: '700',
                           color: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#dc2626' : '#1e293b'
                         }}>
-                          {new Date(slidePanelInvoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_splatnosti)}
                           {getInvoiceStatus(slidePanelInvoice) === 'overdue' && (
                             <Badge $color="#fee2e2" $textColor="#991b1b" style={{ marginLeft: '0.5rem' }}>
                               ⚠️ Po splatnosti
@@ -6115,7 +6431,7 @@ const Invoices25List = () => {
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_prijeti && (
+                  {slidePanelInvoice.datum_prijeti && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -6123,17 +6439,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum přijetí</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_prijeti).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_prijeti)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_doruceni && (
+                  {slidePanelInvoice.datum_doruceni && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -6141,17 +6453,27 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum doručení</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_doruceni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_doruceni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_uhrazeni && (
+                  {slidePanelInvoice.datum_uhrady && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#dcfce7', color: '#059669' }}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum úhrady</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600', color: '#059669' }}>
+                          {formatDateOnly(slidePanelInvoice.datum_uhrady)}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.datum_uhrazeni && (
                     <InfoRow>
                       <InfoIcon style={{ background: '#d1fae5', color: '#10b981' }}>
                         <FontAwesomeIcon icon={faCheckCircle} />
@@ -6159,18 +6481,14 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum uhrazení</InfoLabel>
                         <InfoValue style={{ fontWeight: '700', color: '#10b981' }}>
-                          {new Date(slidePanelInvoice.fa_datum_uhrazeni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_uhrazeni)}
                           {' ✅'}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_platby && (
+                  {slidePanelInvoice.datum_platby && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -6178,17 +6496,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum platby</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_platby).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_platby)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_zuctovani && (
+                  {slidePanelInvoice.datum_zuctovani && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -6196,11 +6510,7 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum zúčtování</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_zuctovani).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_zuctovani)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
@@ -6237,9 +6547,9 @@ const Invoices25List = () => {
                   </SectionTitle>
                   <AttachmentsGrid>
                     {slidePanelAttachments.map((attachment, index) => {
-                      // ✅ ČESKÉ NÁZVY 1:1 Z DB
-                      const fileName = attachment.originalni_nazev_souboru || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
-                      const fileSize = attachment.velikost_souboru_b || attachment.velikost_souboru || attachment.file_size;
+                      // ✅ Backend vrací "original_filename" z invoices25/list
+                      const fileName = attachment.original_filename || attachment.originalni_nazev_souboru || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+                      const fileSize = attachment.velikost_b || attachment.velikost_souboru_b || attachment.velikost_souboru || attachment.file_size;
                       const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
                       
                       // Ikona a barva podle typu souboru

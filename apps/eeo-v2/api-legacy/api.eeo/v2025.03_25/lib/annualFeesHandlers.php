@@ -428,8 +428,32 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
         }
 
         $id = (int)$data['id'];
+        
+        $tblRocniPoplatky = defined('TBL_ROCNI_POPLATKY') ? TBL_ROCNI_POPLATKY : '25a_rocni_poplatky';
+        $tblRocniPoplatkyPolozky = defined('TBL_ROCNI_POPLATKY_POLOZKY') ? TBL_ROCNI_POPLATKY_POLOZKY : '25a_rocni_poplatky_polozky';
+        $tblFaktury = defined('TBL_FAKTURY') ? TBL_FAKTURY : '25a_objednavky_faktury';
 
         $pdo->beginTransaction();
+        
+        // 🔍 KROK 1: Načíst původní stav položky (před aktualizací)
+        $stmtOldItem = $pdo->prepare("
+            SELECT faktura_id, rocni_poplatek_id
+            FROM `$tblRocniPoplatkyPolozky`
+            WHERE id = :id
+        ");
+        $stmtOldItem->execute(['id' => $id]);
+        $oldItem = $stmtOldItem->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$oldItem) {
+            $pdo->rollBack();
+            return ['status' => 'error', 'message' => 'Položka nenalezena'];
+        }
+        
+        $oldFakturaId = $oldItem['faktura_id'];
+        // ✨ Použít array_key_exists pro detekci null hodnot
+        $newFakturaId = array_key_exists('faktura_id', $data) 
+            ? ($data['faktura_id'] ? (int)$data['faktura_id'] : null)
+            : $oldFakturaId; // Pokud faktura_id není v requestu, ponechat původní
 
         // Aktualizace položky
         $updateData = [
@@ -440,7 +464,8 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
 
         $allowedFields = ['stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'rozsirujici_data'];
         foreach ($allowedFields as $field) {
-            if (isset($data[$field])) {
+            // ✨ Použít array_key_exists místo isset, protože isset(null) vrací false
+            if (array_key_exists($field, $data)) {
                 if ($field === 'rozsirujici_data' && is_array($data[$field])) {
                     $updateData[$field] = json_encode($data[$field]);
                 } else {
@@ -456,12 +481,30 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
             return ['status' => 'error', 'message' => 'Položka nenalezena'];
         }
 
-        // ✨ Pokud byla přiřazena faktura, aktualizovat fakturu o smlouvu z ročního poplatku
-        if (isset($data['faktura_id']) && $data['faktura_id'] > 0) {
-            // Načíst roční poplatek pro získání smlouvy
-            $tblRocniPoplatky = defined('TBL_ROCNI_POPLATKY') ? TBL_ROCNI_POPLATKY : '25a_rocni_poplatky';
-            $tblFaktury = defined('TBL_FAKTURY') ? TBL_FAKTURY : '25a_objednavky_faktury';
+        // 🧹 KROK 2: Pokud se faktura změnila, vyčistit rocni_poplatek z původní faktury
+        if ($oldFakturaId && $oldFakturaId != $newFakturaId) {
+            removeRozsirujiciDataKey($pdo, $tblFaktury, $oldFakturaId, 'rocni_poplatek', $user['id']);
             
+            // Pokud byla faktura odebrána (newFakturaId je NULL/0), odebrat i smlouvu z faktury
+            if (!$newFakturaId || $newFakturaId == 0) {
+                $stmtClearContract = $pdo->prepare("
+                    UPDATE `$tblFaktury` 
+                    SET smlouva_id = NULL,
+                        aktualizoval_uzivatel_id = :user_id,
+                        dt_aktualizace = :dt_aktualizace
+                    WHERE id = :faktura_id
+                ");
+                $stmtClearContract->execute([
+                    'faktura_id' => $oldFakturaId,
+                    'user_id' => $user['id'],
+                    'dt_aktualizace' => TimezoneHelper::getCzechDateTime()
+                ]);
+            }
+        }
+
+        // ✨ KROK 3: Pokud byla přiřazena nová faktura, aktualizovat ji o smlouvu z ročního poplatku
+        if ($newFakturaId && $newFakturaId > 0) {
+            // Načíst roční poplatek pro získání smlouvy
             $stmtFee = $pdo->prepare("
                 SELECT smlouva_id, nazev, rok
                 FROM `$tblRocniPoplatky` 
@@ -475,7 +518,7 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
                 updateRozsirujiciData(
                     $pdo,
                     $tblFaktury,
-                    $data['faktura_id'],
+                    $newFakturaId,
                     [
                         'rocni_poplatek' => [
                             'id' => $item['rocni_poplatek_id'],
