@@ -37,7 +37,7 @@ export const saveAuthData = {
 
       const tokenData = {
         value: token,
-        expires: Date.now() + (24 * 60 * 60 * 1000) // 24h
+        expires: Date.now() + (12 * 60 * 60 * 1000) // 12h (zkráceno pro bezpečnost)
       };
 
       sessionStorage.setItem('auth_token_persistent', JSON.stringify(tokenData));

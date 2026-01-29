@@ -36,8 +36,8 @@ const LOCAL_KEYS = {
   UI_SETTINGS: 'ui_settings'
 };
 
-// Konstanta pro dobu platnosti tokenu (24 hodin podle dokumentace)
-const TOKEN_EXPIRY_HOURS = 24; // 24 hodin
+// Konstanta pro dobu platnosti tokenu (12 hodin - zkráceno pro bezpečnost)
+const TOKEN_EXPIRY_HOURS = 12; // 12 hodin
 
 /**
  * Uložení autentifikačních dat do localStorage s expirací (smart šifrování)
@@ -47,7 +47,7 @@ export const saveAuthData = {
     try {
       const tokenData = {
         value: token,
-        expires: Date.now() + (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000) // 24 hodin
+        expires: Date.now() + (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000) // 12 hodin
       };
 
       const dataString = JSON.stringify(tokenData);

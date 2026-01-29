@@ -644,6 +644,16 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
+    
+    // === TOKEN REFRESH ENDPOINT ===
+    case 'token-refresh':
+        if ($request_method === 'POST') {
+            handle_token_refresh($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
         
     case 'user/detail':
         if ($request_method === 'POST') {

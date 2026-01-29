@@ -207,9 +207,9 @@ function handle_cashbook_get_post($config, $input) {
         if ($forceRecalc == 1 
             || (floatval($book['prevod_z_predchoziho']) == 0 || $book['prevod_z_predchoziho'] === null)) {
             
-            if ($book['pokladna_id'] && $book['uzivatel_id']) {
+            if ($book['pokladna_id']) {
+                // ✅ OPRAVENO: getPreviousMonthBalance má 3 parametry (pokladnaId, year, month)
                 $prevTransfer = $bookModel->getPreviousMonthBalance(
-                    $book['uzivatel_id'], 
                     $book['pokladna_id'], 
                     $book['rok'], 
                     $book['mesic']
