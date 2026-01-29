@@ -10,6 +10,7 @@ import { BackgroundTasksProvider, useBackgroundTasks as useBgTasksContext } from
 import { ExchangeRatesProvider, useExchangeRates } from './context/ExchangeRatesContext';
 import { useBackgroundTasks } from './hooks/useBackgroundTasks';
 import { useUserActivity } from './hooks/useUserActivity';
+import useVersionChecker from './hooks/useVersionChecker';
 import { createStandardTasks } from './services/backgroundTasks';
 import Layout from './components/Layout';
 import { setupEncryptionDebug } from './utils/encryptionUtils';
@@ -50,6 +51,7 @@ const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy')
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
 const PostLoginModal = lazy(() => import('./components/PostLoginModal'));
+const UpdateNotificationModal = lazy(() => import('./components/UpdateNotificationModal'));
 const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
 );
@@ -289,6 +291,38 @@ function App() {
     config: null,
     fromPasswordChange: false // 🔑 Flag pokud modal přišel po změně hesla
   });
+
+  // 🔄 VERSION CHECKER: Automatická detekce nové verze aplikace
+  const [updateAvailable, setUpdateAvailable] = React.useState(false);
+  const [updateData, setUpdateData] = React.useState(null);
+  
+  useVersionChecker({
+    // Zakázat v development režimu (npm start), povolit jen v production buildech
+    enabled: process.env.NODE_ENV === 'production',
+    checkInterval: 5 * 60 * 1000, // 5 minut
+    gracePeriod: 60 * 1000, // 60 sekund po načtení
+    onUpdate: (versionData) => {
+      setUpdateData(versionData);
+      setUpdateAvailable(true);
+      
+      // Optional: Toast notifikace
+      if (showToast) {
+        showToast('Je dostupná nová verze aplikace', { 
+          type: 'info',
+          autoClose: 8000
+        });
+      }
+    }
+  });
+
+  const handleCloseUpdateModal = () => {
+    setUpdateAvailable(false);
+  };
+
+  const handleUpdateApp = () => {
+    // Hard reload
+    window.location.reload(true);
+  };
 
   // ✅ KRITICKÉ: Stabilní reference na bgTasks - vytvoří se POUZE JEDNOU
   const bgTasksConfigRef = useRef({ trackState: false });
@@ -658,6 +692,18 @@ function App() {
               validFrom={postLoginModal.config.validFrom}
               validTo={postLoginModal.config.validTo}
               modalGuid={postLoginModal.config.modalGuid}
+            />
+          </Suspense>
+        )}
+
+        {/* 🔄 UPDATE NOTIFICATION: Zobrazí se při detekci nové verze aplikace */}
+        {updateAvailable && updateData && (
+          <Suspense fallback={null}>
+            <UpdateNotificationModal
+              open={updateAvailable}
+              onClose={handleCloseUpdateModal}
+              onUpdate={handleUpdateApp}
+              versionData={updateData}
             />
           </Suspense>
         )}
