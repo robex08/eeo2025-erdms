@@ -770,22 +770,23 @@ function getLPBudgetInfo($db, $lp_id) {
     
     try {
         // Nejdříve získáme cislo_lp z master tabulky
-        $stmt = $db->prepare("SELECT cislo_lp, YEAR(platne_od) as rok FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
+        $stmt = $db->prepare("SELECT cislo_lp FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
         $stmt->bindParam(':lp_id', $lp_id, PDO::PARAM_INT);
         $stmt->execute();
         $lp_data = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$lp_data) return null;
         
-        // Pak načteme data z tabulky čerpání podle cislo_lp a roku
+        // Pak načteme data z tabulky čerpání podle cislo_lp a AKTUÁLNÍHO roku (ne roku platnosti LP)
+        $current_year = intval(date('Y'));
         $stmt2 = $db->prepare("
-            SELECT celkovy_limit, zbyva_predpoklad, zbyva_skutecne 
+            SELECT celkovy_limit, zbyva_predpoklad, zbyva_skutecne, cerpano_predpoklad, cerpano_skutecne
             FROM " . TBL_LP_CERPANI . " 
             WHERE cislo_lp = :cislo_lp AND rok = :rok 
             LIMIT 1
         ");
         $stmt2->bindParam(':cislo_lp', $lp_data['cislo_lp'], PDO::PARAM_STR);
-        $stmt2->bindParam(':rok', $lp_data['rok'], PDO::PARAM_INT);
+        $stmt2->bindParam(':rok', $current_year, PDO::PARAM_INT);
         $stmt2->execute();
         $result = $stmt2->fetch(PDO::FETCH_ASSOC);
         
@@ -882,7 +883,10 @@ function enrichOrderFinancovani($db, &$order) {
                         'kod' => $lp['cislo_lp'],
                         'nazev' => $lp['nazev_uctu'],
                         'remaining_budget' => $budget_info ? $budget_info['zbyva_predpoklad'] : null,
-                        'total_limit' => $budget_info ? $budget_info['celkovy_limit'] : null
+                        'total_limit' => $budget_info ? $budget_info['celkovy_limit'] : null,
+                        'cerpano_predpoklad' => $budget_info ? $budget_info['cerpano_predpoklad'] : null,
+                        'cerpano_skutecne' => $budget_info ? $budget_info['cerpano_skutecne'] : null,
+                        'zbyva_skutecne' => $budget_info ? $budget_info['zbyva_skutecne'] : null
                     );
                 } else {
                     $lp_detaily[] = array(
