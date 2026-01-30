@@ -1116,7 +1116,6 @@ const SmlouvyTab = () => {
               aktivni: isActive ? 0 : 1
             }
           });
-          console.log(`Smlouva byla ${isActive ? 'deaktivována' : 'aktivována'}:`, smlouva.cislo_smlouvy);
           loadData();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (err) {
@@ -1151,7 +1150,6 @@ const SmlouvyTab = () => {
             username: user.username,
             id: smlouva.id
           });
-          console.log('Smlouva byla smazána:', smlouva.cislo_smlouvy);
           loadData();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (err) {
@@ -1181,27 +1179,21 @@ const SmlouvyTab = () => {
       variant: 'warning',
       onConfirm: async () => {
         try {
-          console.log('[SMLOUVY] Spouštím přepočet čerpání...');
           const result = await prepocetCerpaniSmluv({
             token: token,
             username: user.username,
             cislo_smlouvy: null,
             usek_id: null
           });
-          console.log('[SMLOUVY] Přepočet dokončen:', result);
           
           const pocet = result?.prepocitano_smluv || 'všechny';
-          console.log('[SMLOUVY] Počet smluv:', pocet);
           
           setConfirmDialog({ ...confirmDialog, isOpen: false });
-          console.log('[SMLOUVY] Dialog zavřen, načítám data...');
           
           await loadData();
-          console.log('[SMLOUVY] Data načtena, zobrazuji toast...');
           
           // Toast notifikace
           showToast(`Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`, 'success');
-          console.log('[SMLOUVY] Toast zobrazen');
         } catch (err) {
           console.error('Chyba při přepočtu:', err);
           setError('Chyba při přepočtu: ' + err.message);
