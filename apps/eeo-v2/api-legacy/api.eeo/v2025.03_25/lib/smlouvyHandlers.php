@@ -1786,11 +1786,15 @@ function handle_ciselniky_smlouvy_inicializace($input, $config, $queries) {
         
         $elapsed_ms = round((microtime(true) - $start_time) * 1000);
         
+        // Get count of processed contracts from stats
+        $pocet_smluv = isset($stats['celkem_smluv']) ? intval($stats['celkem_smluv']) : 0;
+        
         echo json_encode(array(
             'status' => 'ok',
             'data' => array(
                 'statistiky' => $stats,
                 'problematicke_smlouvy' => $problematic,
+                'pocet_zpracovanych_smluv' => $pocet_smluv,
                 'cas_vypoctu_ms' => $elapsed_ms,
                 'dt_inicializace' => date('c'),
                 '_info' => 'Systém čerpání byl úspěšně inicializován. Všechny smlouvy přepočteny (3 typy: požadováno, plánováno, skutečně).'
