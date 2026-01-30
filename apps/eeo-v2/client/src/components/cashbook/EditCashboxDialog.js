@@ -330,14 +330,14 @@ const UsersList = styled.div`
 
 const UserItem = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: 0.625rem 0.75rem;
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   margin-bottom: 0.5rem;
   transition: all 0.15s;
+  gap: 0.5rem;
 
   &:hover {
     border-color: #cbd5e1;
@@ -351,9 +351,9 @@ const UserItem = styled.div`
 
 const UserInfo = styled.div`
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
-  flex: 1;
+  justify-content: space-between;
 `;
 
 const UserIcon = styled.div`
@@ -372,8 +372,8 @@ const UserIcon = styled.div`
 
 const UserDetails = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
+  align-items: center;
+  gap: 0.5rem;
   flex: 1;
   min-width: 0;
 `;
@@ -382,15 +382,25 @@ const UserName = styled.span`
   font-weight: 600;
   color: #0f172a;
   font-size: 0.8125rem;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 `;
 
 const UserMeta = styled.span`
   font-size: 0.7rem;
   color: #64748b;
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+`;
+
+const UserBottomRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-left: 2.5rem; /* Offset pro ikonu vlevo */
 `;
 
 const MainBadge = styled.span`
@@ -402,6 +412,8 @@ const MainBadge = styled.span`
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
 `;
 
 const UserActions = styled.div`
@@ -869,7 +881,7 @@ const SearchableSelectWrapper = styled.div`
 
 const SearchableSelectButton = styled.div`
   width: 100%;
-  padding: 0.625rem 2.25rem 0.625rem ${props => props.$hasIcon ? '2.5rem' : '0.75rem'};
+  padding: 0.625rem 2rem 0.625rem ${props => props.$hasIcon ? '2.5rem' : '0.75rem'};
   border: 1px solid ${props => props.$error ? '#f87171' : '#e2e8f0'};
   border-radius: 6px;
   font-size: 0.875rem;
@@ -895,6 +907,14 @@ const SearchableSelectButton = styled.div`
     position: absolute;
     left: 0.75rem;
     color: #94a3b8;
+  }
+
+  .chevron {
+    position: absolute;
+    right: 0.5rem;
+    color: #94a3b8;
+    transition: transform 0.2s;
+    pointer-events: none;
   }
 `;
 
@@ -968,7 +988,7 @@ const SearchClearButton = styled.button`
 
 const ClearButton = styled.button`
   position: absolute;
-  right: 2.25rem;
+  right: 1.75rem;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -980,7 +1000,7 @@ const ClearButton = styled.button`
   align-items: center;
   justify-content: center;
   transition: color 0.2s;
-  z-index: 1;
+  z-index: 2;
 
   &:hover {
     color: #475569;
@@ -1022,7 +1042,7 @@ const NoResults = styled.div`
 `;
 
 // SearchableSelect Component
-const SearchableSelect = ({ value, onChange, options, placeholder, disabled, icon }) => {
+const SearchableSelect = React.forwardRef(({ value, onChange, options, placeholder, disabled, icon, autoFocus }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -1030,6 +1050,36 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
   const buttonRef = React.useRef(null);
   const dropdownRef = React.useRef(null);
   const searchInputRef = React.useRef(null);
+
+  // Expose buttonRef to parent via ref prop
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (buttonRef.current) {
+        buttonRef.current.focus();
+        // Automaticky otevřít dropdown při focus
+        if (!disabled) {
+          setIsOpen(true);
+        }
+      }
+    },
+    click: () => {
+      if (buttonRef.current && !disabled) {
+        buttonRef.current.click();
+      }
+    }
+  }));
+
+  // Auto-focus on mount if autoFocus prop is true
+  useEffect(() => {
+    if (autoFocus && buttonRef.current && !disabled) {
+      // Delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        buttonRef.current?.focus();
+        setIsOpen(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus, disabled]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1107,7 +1157,11 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
             <X size={14} />
           </ClearButton>
         )}
-        <ChevronDown size={16} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+        <ChevronDown 
+          size={16} 
+          className="chevron"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'none' }} 
+        />
       </SearchableSelectButton>
 
       {isOpen && ReactDOM.createPortal(
@@ -1155,7 +1209,9 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
       )}
     </SearchableSelectWrapper>
   );
-};
+});
+
+SearchableSelect.displayName = 'SearchableSelect';
 
 // =============================================================================
 // KOMPONENTA
@@ -1164,6 +1220,9 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
 const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   const { token, user } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+
+  // Ref pro SearchableSelect pro přidání uživatelů
+  const addUserSelectRef = React.useRef(null);
 
   const [formData, setFormData] = useState({
     nazev: '',
@@ -1209,11 +1268,17 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
 
       // Načíst přiřazené uživatele - filtrovat jen aktivní (platne_do NULL nebo v budoucnosti)
       const allUsers = cashbox.uzivatele || [];
+      console.log('👥 Načtení uživatelů z cashbox:', allUsers);
+      if (allUsers.length > 0) {
+        console.log('🔍 První uživatel - všechny fieldy:', Object.keys(allUsers[0]));
+        console.log('📋 První uživatel - kompletní data:', allUsers[0]);
+      }
       const today = new Date().toISOString().split('T')[0];
       const activeUsers = allUsers.filter(user => {
         if (!user.platne_do) return true; // NULL = aktivní navždy
         return user.platne_do > today; // Budoucí datum = ještě aktivní
       });
+      console.log('✅ Aktivní uživatelé:', activeUsers);
       setUsers(activeUsers);
 
       // Načíst dostupné uživatele a úseky
@@ -1221,6 +1286,17 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
       loadUseky();
     }
   }, [isOpen, cashbox, token, user?.username]);
+
+  // Nastavit focus na SearchableSelect pro přidání uživatelů po otevření dialogu
+  useEffect(() => {
+    if (isOpen && addUserSelectRef.current) {
+      // Delay pro zajištění, že je dialog již zobrazen
+      const timer = setTimeout(() => {
+        addUserSelectRef.current?.focus();
+      }, 300); // Prodlouženo na 300ms kvůli animaci dialogu
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   const loadUseky = async () => {
     if (!token || !user?.username) return;
@@ -1674,6 +1750,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
 
                   return (
                     <UserItem key={user.prirazeni_id || user.uzivatel_id}>
+                      {/* První řádek: ikona + jméno (osobní číslo) + badge */}
                       <UserInfo>
                         <UserIcon>
                           <User size={16} />
@@ -1681,88 +1758,106 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                         <UserDetails>
                           <UserName>
                             {user.uzivatel_cele_jmeno}
-                            {(user.je_hlavni === 1 || user.je_hlavni === '1') ? (
-                              <MainBadge>Hlavní</MainBadge>
-                            ) : (
-                              <MainBadge style={{ background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)' }}>Zástupce</MainBadge>
-                            )}
+                            {user.username && ` (${user.username})`}
                           </UserName>
-
-                          {isEditing ? (
-                            <EditModeContainer>
-                              <EditDateInputs>
-                                <EditDateLabel>Přiřazena od:</EditDateLabel>
-                                <EditDatePickerWrapper>
-                                  <DatePicker
-                                    value={editValues.platne_od}
-                                    onChange={(newValue) => {
-                                      setEditValues(prev => {
-                                        const newState = { ...prev, platne_od: newValue };
-
-                                        // Pokud je datum "do" vyplněné a je menší než nové datum "od",
-                                        // nastav datum "do" na nové datum "od"
-                                        if (newState.platne_do && newValue && newState.platne_do < newValue) {
-                                          newState.platne_do = newValue;
-                                        }
-
-                                        return newState;
-                                      });
-                                    }}
-                                    placeholder="Vyberte datum"
-                                  />
-                                </EditDatePickerWrapper>
-                                <EditDateLabel>do:</EditDateLabel>
-                                <EditDatePickerWrapper>
-                                  <DatePicker
-                                    value={editValues.platne_do}
-                                    onChange={(newValue) => {
-                                      setEditValues(prev => {
-                                        // Pokud je nové datum "do" menší než datum "od", nastav na datum "od"
-                                        if (newValue && prev.platne_od && newValue < prev.platne_od) {
-                                          return { ...prev, platne_do: prev.platne_od };
-                                        }
-                                        return { ...prev, platne_do: newValue };
-                                      });
-                                    }}
-                                    placeholder="Nevyplnit = navždy"
-                                  />
-                                </EditDatePickerWrapper>
-                              </EditDateInputs>
-                              <EditModeButtons>
-                                <SaveEditButton onClick={() => handleSaveUserDates(user.uzivatel_id)}>
-                                  ✓ Uložit
-                                </SaveEditButton>
-                                <CancelEditButton onClick={handleCancelEditDates}>
-                                  ✕ Zrušit
-                                </CancelEditButton>
-                              </EditModeButtons>
-                            </EditModeContainer>
+                          {(user.je_hlavni === 1 || user.je_hlavni === '1') ? (
+                            <MainBadge>Hlavní</MainBadge>
                           ) : (
-                            <UserMeta>
-                              {user.username}
-                              {user.platne_od && ` • Přiřazena od: ${user.platne_od}`}
-                              {user.platne_do ? ` • do: ${user.platne_do}` : ' • navždy'}
-                            </UserMeta>
+                            <MainBadge style={{ background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)' }}>Zástupce</MainBadge>
                           )}
                         </UserDetails>
                       </UserInfo>
 
-                      {!isEditing && (
-                        <UserActions>
-                          <EditDateButton
-                            onClick={() => handleEditUserClick(user)}
-                            title="Editovat platnost přiřazení"
-                          >
-                            <Calendar size={13} />
-                            Přiřazená
-                          </EditDateButton>
-                          <RemoveButton
-                            onClick={() => handleRemoveUserClick(user.prirazeni_id, user.uzivatel_cele_jmeno)}
-                            title="Odebrat uživatele"
-                          >
-                            <Trash2 />
-                          </RemoveButton>
-                        </UserActions>
+                      {/* Druhý řádek: úsek + metadata + ikony */}
+                      {isEditing ? (
+                        <EditModeContainer>
+                          <EditDateInputs>
+                            <EditDateLabel>Přiřazena od:</EditDateLabel>
+                            <EditDatePickerWrapper>
+                              <DatePicker
+                                value={editValues.platne_od}
+                                onChange={(newValue) => {
+                                  setEditValues(prev => {
+                                    const newState = { ...prev, platne_od: newValue };
+
+                                    // Pokud je datum "do" vyplněné a je menší než nové datum "od",
+                                    // nastav datum "do" na nové datum "od"
+                                    if (newState.platne_do && newValue && newState.platne_do < newValue) {
+                                      newState.platne_do = newValue;
+                                    }
+
+                                    return newState;
+                                  });
+                                }}
+                                placeholder="Vyberte datum"
+                              />
+                            </EditDatePickerWrapper>
+                            <EditDateLabel>do:</EditDateLabel>
+                            <EditDatePickerWrapper>
+                              <DatePicker
+                                value={editValues.platne_do}
+                                onChange={(newValue) => {
+                                  setEditValues(prev => {
+                                    // Pokud je nové datum "do" menší než datum "od", nastav na datum "od"
+                                    if (newValue && prev.platne_od && newValue < prev.platne_od) {
+                                      return { ...prev, platne_do: prev.platne_od };
+                                    }
+                                    return { ...prev, platne_do: newValue };
+                                  });
+                                }}
+                                placeholder="Nevyplnit = navždy"
+                              />
+                            </EditDatePickerWrapper>
+                          </EditDateInputs>
+                          <EditModeButtons>
+                            <SaveEditButton onClick={() => handleSaveUserDates(user.uzivatel_id)}>
+                              ✓ Uložit
+                            </SaveEditButton>
+                            <CancelEditButton onClick={handleCancelEditDates}>
+                              ✕ Zrušit
+                            </CancelEditButton>
+                          </EditModeButtons>
+                        </EditModeContainer>
+                      ) : (
+                        <UserBottomRow>
+                          <UserMeta>
+                            {(() => {
+                              // Zkusit různé varianty názvů polí pro úsek
+                              const usek = user.usek_nazev || user.usek || user.usek_kod || user.nazev_usek || '';
+                              const parts = [];
+                              
+                              if (usek) {
+                                parts.push(usek);
+                              }
+                              
+                              if (user.platne_od) {
+                                parts.push(`Přiřazena od: ${user.platne_od}`);
+                              }
+                              
+                              if (user.platne_do) {
+                                parts.push(`do: ${user.platne_do}`);
+                              } else if (user.platne_od) {
+                                parts.push('navždy');
+                              }
+                              
+                              return parts.join(' • ');
+                            })()}
+                          </UserMeta>
+                          <UserActions>
+                            <EditDateButton
+                              onClick={() => handleEditUserClick(user)}
+                              title="Editovat platnost přiřazení"
+                            >
+                              <Calendar size={13} />
+                            </EditDateButton>
+                            <RemoveButton
+                              onClick={() => handleRemoveUserClick(user.prirazeni_id, user.uzivatel_cele_jmeno)}
+                              title="Odebrat uživatele"
+                            >
+                              <Trash2 size={13} />
+                            </RemoveButton>
+                          </UserActions>
+                        </UserBottomRow>
                       )}
                     </UserItem>
                   );
@@ -1773,6 +1868,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
             <AddUserSection>
               <AddUserRow>
                 <SearchableSelect
+                  ref={addUserSelectRef}
                   value={selectedUser}
                   onChange={(val) => setSelectedUser(val)}
                   options={availableUsers.map(user => ({
@@ -1782,6 +1878,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                   placeholder="Vyberte uživatele..."
                   disabled={loading}
                   icon={<User size={14} />}
+                  autoFocus={false}
                 />
                 <AddButton
                   onClick={handleAddUser}

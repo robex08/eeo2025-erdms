@@ -898,8 +898,12 @@ const CashbookTab = () => {
         true    // includeUsers = true (načíst i uživatele)
       );
 
+      console.log('📦 Loaded cashboxResult:', cashboxResult);
+
       if (cashboxResult.status === 'ok') {
         const pokladny = cashboxResult.data.pokladny || [];
+        console.log('✅ Loaded pokladny:', pokladny);
+        console.log('📝 Pokladny IDs:', pokladny.map(p => ({ id: p.id, cislo: p.cislo_pokladny })));
         setCashboxes(pokladny);
       } else {
         showToast?.('Chyba při načítání pokladen', { type: 'error' });
@@ -1144,7 +1148,7 @@ const CashbookTab = () => {
         )}
 
         <div style={{ marginTop: '1rem' }}>
-          <AddUserButton onClick={() => handleAssignUser(cashbox.id)}>
+          <AddUserButton onClick={() => handleAssignUser(cashbox)}>
             <FontAwesomeIcon icon={faPlus} />
             Přiřadit uživatele
           </AddUserButton>
@@ -1154,13 +1158,20 @@ const CashbookTab = () => {
   }, [canView, canEdit, canDelete]);
 
   // Placeholder handlery pro assign/unassign (budou implementovány s dialogy)
-  const handleAssignUser = useCallback((cashboxId) => {
-    // Najít pokladnu podle ID a otevřít EditCashboxDialog
-    const cashbox = cashboxes.find(c => c.id === cashboxId);
+  const handleAssignUser = useCallback((cashboxParam) => {
+    // Pokud je parametr číslo, hledáme v cashboxes state (fallback)
+    // Pokud je parametr objekt, používáme přímo ten objekt
+    const cashbox = typeof cashboxParam === 'object' ? cashboxParam : cashboxes.find(c => c.id == cashboxParam);
+    
+    console.log('🔍 handleAssignUser called with:', cashboxParam, 'type:', typeof cashboxParam);
+    console.log('📦 Available cashboxes:', cashboxes);
+    console.log('✅ Found cashbox:', cashbox);
+    
     if (cashbox) {
       setSelectedAssignment(cashbox);
       setEditDialogOpen(true);
     } else {
+      console.error('❌ Cashbox not found for:', cashboxParam);
       showToast('Pokladna nenalezena', 'error');
     }
   }, [cashboxes, showToast]);
