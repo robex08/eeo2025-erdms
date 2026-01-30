@@ -81,11 +81,11 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             $meta['rok'] = $rok;
         }
         
-        // KROK 2: PLÁNOVÁNO (předpoklad) - max_cena_s_dph pro objednávky ve stavu žádosti o schválení
-        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
+        // KROK 2: REZERVACE - max_cena_s_dph pro objednávky ve schvalování (pesimistický odhad)
+        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená, ale ještě nejsou položky)
         // ✅ POUZE objednávky BEZ faktur (pokud má faktury, započítá se do skutečně)
         // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
-        $sql_planovano = "
+        $sql_rezervace = "
             SELECT 
                 obj.id,
                 obj.max_cena_s_dph,
@@ -99,14 +99,14 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             AND fakt.id IS NULL
         ";
         
-        $stmt_plan = $pdo->prepare($sql_planovano);
-        $stmt_plan->execute([
+        $stmt_rez = $pdo->prepare($sql_rezervace);
+        $stmt_rez->execute([
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
         
-        $predpokladane_cerpani = 0;
-        while ($row = $stmt_plan->fetch(PDO::FETCH_ASSOC)) {
+        $rezervovano = 0;
+        while ($row = $stmt_rez->fetch(PDO::FETCH_ASSOC)) {
             $financovani_raw = $row['financovani'];
             $financovani = json_decode($financovani_raw, true);
             
@@ -133,15 +133,15 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             
             if ($lp_match) {
                 $podil = $pocet_lp > 0 ? ((float)$row['max_cena_s_dph'] / $pocet_lp) : 0;
-                $predpokladane_cerpani += $podil;
+                $rezervovano += $podil;
             }
         }
         
-        // KROK 3: POŽADOVÁNO (rezervace) - suma položek pro objednávky odeslané dodavateli
+        // KROK 3: PŘEDPOKLAD - suma položek pro objednávky odeslané dodavateli (přesnější odhad)
         // STAV: ODESLANA (odeslána dodavateli, potvrzena dodavatelem)
         // ✅ POUZE objednávky BEZ faktur (pokud má faktury, započítá se do skutečně)
         // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
-        $sql_pozadovano = "
+        $sql_predpoklad = "
             SELECT 
                 obj.id,
                 obj.financovani,
@@ -157,14 +157,14 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             GROUP BY obj.id, obj.financovani
         ";
         
-        $stmt_poz = $pdo->prepare($sql_pozadovano);
-        $stmt_poz->execute([
+        $stmt_pred = $pdo->prepare($sql_predpoklad);
+        $stmt_pred->execute([
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
         
-        $rezervovano = 0;
-        while ($row = $stmt_poz->fetch(PDO::FETCH_ASSOC)) {
+        $predpokladane_cerpani = 0;
+        while ($row = $stmt_pred->fetch(PDO::FETCH_ASSOC)) {
             $financovani_raw = $row['financovani'];
             $financovani = json_decode($financovani_raw, true);
             
@@ -191,7 +191,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             
             if ($lp_match) {
                 $podil = $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
-                $rezervovano += $podil;
+                $predpokladane_cerpani += $podil;
             }
         }
         
