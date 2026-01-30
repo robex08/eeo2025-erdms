@@ -54,6 +54,7 @@ import { getUsekyList } from '../../../services/apiv2Dictionaries';
 // Context
 import { useContext } from 'react';
 import AuthContext from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
 
 // Common Components
 import { SmartTooltip } from '../../../styles/SmartTooltip';
@@ -768,13 +769,13 @@ const saveShowFiltersToStorage = (show) => {
 
 const SmlouvyTab = () => {
   const { user, token } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
 
   // State
   const [smlouvy, setSmlouvy] = useState([]);
   const [useky, setUseky] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   
   // Filters - načíst z localStorage při inicializaci
   const [showFilters, setShowFilters] = useState(() => loadShowFiltersFromStorage());
@@ -1180,12 +1181,11 @@ const SmlouvyTab = () => {
           console.log('[SMLOUVY] Dialog zavřen, načítám data...');
           
           await loadData();
-          console.log('[SMLOUVY] Data načtena, nastavuji success...');
+          console.log('[SMLOUVY] Data načtena, zobrazuji toast...');
           
-          // Success nastavit až po loadData
-          setSuccess(`✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
-          console.log('[SMLOUVY] Success nastaven:', `✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
-          setTimeout(() => setSuccess(null), 5000);
+          // Toast notifikace
+          showToast(`Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`, 'success');
+          console.log('[SMLOUVY] Toast zobrazen');
         } catch (err) {
           console.error('Chyba při přepočtu:', err);
           setError('Chyba při přepočtu: ' + err.message);
@@ -1633,12 +1633,6 @@ const SmlouvyTab = () => {
       {error && (
         <div style={{ padding: '1rem', background: '#fee2e2', color: '#dc2626', borderRadius: '8px', marginBottom: '1rem' }}>
           {error}
-        </div>
-      )}
-
-      {success && (
-        <div style={{ padding: '1rem', background: '#dcfce7', color: '#166534', borderRadius: '8px', marginBottom: '1rem', fontWeight: 600 }}>
-          {success}
         </div>
       )}
 
