@@ -739,11 +739,15 @@ function handle_cashbox_list_post($config, $input) {
                         u.prijmeni AS uzivatel_prijmeni,
                         CONCAT(u.jmeno, ' ', u.prijmeni) AS uzivatel_cele_jmeno,
                         
+                        usek.usek_nazev,
+                        usek.usek_zkr,
+                        
                         vytvoril_u.jmeno AS vytvoril_jmeno,
                         vytvoril_u.prijmeni AS vytvoril_prijmeni
                         
                     FROM " . TBL_POKLADNY_UZIVATELE . " pu
                     JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+                    LEFT JOIN " . TBL_USEKY . " usek ON usek.id = u.usek_id
                     LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
                     WHERE pu.pokladna_id = ?
                       AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
