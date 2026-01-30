@@ -898,12 +898,8 @@ const CashbookTab = () => {
         true    // includeUsers = true (načíst i uživatele)
       );
 
-      console.log('📦 Loaded cashboxResult:', cashboxResult);
-
       if (cashboxResult.status === 'ok') {
         const pokladny = cashboxResult.data.pokladny || [];
-        console.log('✅ Loaded pokladny:', pokladny);
-        console.log('📝 Pokladny IDs:', pokladny.map(p => ({ id: p.id, cislo: p.cislo_pokladny })));
         setCashboxes(pokladny);
       } else {
         showToast?.('Chyba při načítání pokladen', { type: 'error' });
@@ -1163,15 +1159,10 @@ const CashbookTab = () => {
     // Pokud je parametr objekt, používáme přímo ten objekt
     const cashbox = typeof cashboxParam === 'object' ? cashboxParam : cashboxes.find(c => c.id == cashboxParam);
     
-    console.log('🔍 handleAssignUser called with:', cashboxParam, 'type:', typeof cashboxParam);
-    console.log('📦 Available cashboxes:', cashboxes);
-    console.log('✅ Found cashbox:', cashbox);
-    
     if (cashbox) {
       setSelectedAssignment(cashbox);
       setEditDialogOpen(true);
     } else {
-      console.error('❌ Cashbox not found for:', cashboxParam);
       showToast('Pokladna nenalezena', 'error');
     }
   }, [cashboxes, showToast]);
