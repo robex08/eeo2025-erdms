@@ -1174,8 +1174,9 @@ const SmlouvyTab = () => {
           const pocet = result?.prepocitano_smluv || 'všechny';
           
           setConfirmDialog({ ...confirmDialog, isOpen: false });
-          loadData();
+          await loadData();  // Počkat na načtení dat
           
+          // Success nastavit až po loadData
           setSuccess(`✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
           setTimeout(() => setSuccess(null), 5000);
         } catch (err) {
