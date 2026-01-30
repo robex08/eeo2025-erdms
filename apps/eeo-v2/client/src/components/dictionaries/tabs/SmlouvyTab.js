@@ -1025,8 +1025,11 @@ const SmlouvyTab = () => {
     // ✅ ZBÝVÁ: Počáteční stav - čerpáno
     const celkemZbyva = celkemLimit - celkemCerpano;
     
-    // ℹ️ CELKOVÉ PLNĚNÍ: Informativní součet maximálních plnění (nepoužívá se ve výpočtech)
-    const celkemPlneni = smlouvyProStatistiku.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
+    // ℹ️ CELKOVÉ PLNĚNÍ VŠECH aktivních smluv (včetně vypršených)
+    const celkemPlneniVsech = aktivniSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
+    
+    // ℹ️ PLNĚNÍ JEN PLATNÝCH smluv (bez vypršených)
+    const plneniPlatnychSmluv = platneSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
     
     // ✅ PRŮMĚRNÉ ČERPÁNÍ: Počítáme vůči hodnota_s_dph
     const prumerneCerpani = aktivniSmlouvy.length > 0 
@@ -1045,7 +1048,8 @@ const SmlouvyTab = () => {
       celkem_cerpano: celkemCerpano,
       celkem_limit: celkemLimit,
       celkem_zbyva: celkemZbyva,
-      celkem_plneni: celkemPlneni,
+      celkem_plneni_vsech: celkemPlneniVsech,
+      plneni_platnich: plneniPlatnychSmluv,
       prumerne_cerpani: prumerneCerpani
     };
   }, [filteredSmlouvy, filters.show_inactive]);
@@ -1638,8 +1642,12 @@ const SmlouvyTab = () => {
           <StatValue $color="#10b981">{formatCurrency(statistics.celkem_zbyva)}</StatValue>
         </StatItem>
         <StatItem>
-          <StatLabel>Celkové plnění</StatLabel>
-          <StatValue $color="#6b7280">{formatCurrency(statistics.celkem_plneni)}</StatValue>
+          <StatLabel>Plnění všech smluv</StatLabel>
+          <StatValue $color="#6b7280">{formatCurrency(statistics.celkem_plneni_vsech)}</StatValue>
+        </StatItem>
+        <StatItem>
+          <StatLabel>Plnění platných</StatLabel>
+          <StatValue $color="#059669">{formatCurrency(statistics.plneni_platnich)}</StatValue>
         </StatItem>
         <StatItem>
           <StatLabel>Průměrné čerpání</StatLabel>
