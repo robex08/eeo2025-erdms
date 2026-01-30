@@ -1164,20 +1164,27 @@ const SmlouvyTab = () => {
       variant: 'warning',
       onConfirm: async () => {
         try {
+          console.log('[SMLOUVY] Spouštím přepočet čerpání...');
           const result = await prepocetCerpaniSmluv({
             token: token,
             username: user.username,
             cislo_smlouvy: null,
             usek_id: null
           });
+          console.log('[SMLOUVY] Přepočet dokončen:', result);
           
           const pocet = result?.prepocitano_smluv || 'všechny';
+          console.log('[SMLOUVY] Počet smluv:', pocet);
           
           setConfirmDialog({ ...confirmDialog, isOpen: false });
-          await loadData();  // Počkat na načtení dat
+          console.log('[SMLOUVY] Dialog zavřen, načítám data...');
+          
+          await loadData();
+          console.log('[SMLOUVY] Data načtena, nastavuji success...');
           
           // Success nastavit až po loadData
           setSuccess(`✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
+          console.log('[SMLOUVY] Success nastaven:', `✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
           setTimeout(() => setSuccess(null), 5000);
         } catch (err) {
           console.error('Chyba při přepočtu:', err);

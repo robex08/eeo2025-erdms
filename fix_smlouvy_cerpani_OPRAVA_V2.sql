@@ -110,6 +110,7 @@ BEGIN
       cerpano_pozadovano = v_cerpano_pozadovano,
       cerpano_planovano = v_cerpano_planovano,
       cerpano_skutecne = v_cerpano_skutecne,
+      cerpano_celkem = v_cerpano_pozadovano + v_cerpano_skutecne,  -- ⚠️ DOPLNĚNO!
       
       -- Zbývající = limit - (nefakturované + fakturované)
       zbyva_pozadovano = v_hodnota - (v_cerpano_pozadovano + v_cerpano_skutecne),
