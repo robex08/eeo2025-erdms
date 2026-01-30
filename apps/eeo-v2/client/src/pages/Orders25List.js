@@ -7406,6 +7406,78 @@ const Orders25List = () => {
                 }
               </div>
             )}
+            
+            {/* Roční plán čerpání - jen pro smlouvy se stropovou cenou */}
+            {order.financovani?.typ === 'SMLOUVA' && order._enriched?.smlouva_info && (() => {
+              const smlouvaInfo = order._enriched.smlouva_info;
+              const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
+              const cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+              const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((cerpanoPozadovano / hodnotaSmlouvy) * 100) : 0;
+              
+              if (hodnotaSmlouvy > 0) {
+                const currentMonth = new Date().getMonth();
+                const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                
+                return (
+                  <div style={{
+                    display: 'flex',
+                    width: '100%',
+                    minHeight: '14px',
+                    gap: '1px',
+                    background: '#f1f5f9',
+                    borderRadius: '2px',
+                    padding: '1px',
+                    marginTop: '3px'
+                  }}>
+                    {Array.from({ length: 12 }).map((_, monthIndex) => {
+                      const isCurrentMonth = monthIndex === currentMonth;
+                      const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                      
+                      let bgColor;
+                      if (isCurrentMonth) {
+                        bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                      } else if (monthIndex < currentMonth) {
+                        bgColor = '#94a3b8';
+                      } else {
+                        bgColor = '#e2e8f0';
+                      }
+                      
+                      const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                      
+                      return (
+                        <div
+                          key={monthIndex}
+                          style={{
+                            flex: 1,
+                            background: bgColor,
+                            borderRadius: '1px',
+                            position: 'relative',
+                            border: isCurrentMonth ? '1px solid #0f172a' : 'none',
+                            minHeight: '12px',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'center',
+                            paddingBottom: '1px'
+                          }}
+                          title={`${percentCerpani}% / ${planedPercent}%`}
+                        >
+                          <div style={{ 
+                            fontSize: '0.45rem', 
+                            fontWeight: 700,
+                            color: textColor,
+                            lineHeight: 1
+                          }}>
+                            {planedPercent}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
         );
       },
@@ -18428,9 +18500,35 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                         const cisloSmlouvy = orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy;
                         
                         if (smlouvaInfo && smlouvaInfo.hodnota) {
+                          // Výpočet procent čerpání (pokud je stropová cena)
+                          const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
+                          const cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+                          const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((cerpanoPozadovano / hodnotaSmlouvy) * 100) : 0;
+                          const hasStropovaCena = hodnotaSmlouvy > 0;
+                          
                           return (
                             <ApprovalLPItem>
-                              <ApprovalLPHeader>{cisloSmlouvy}</ApprovalLPHeader>
+                              <ApprovalLPHeader>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{cisloSmlouvy}</span>
+                                  {/* Vizuální indikátor čerpání - jen pokud má smlouva stropovou cenu */}
+                                  {hasStropovaCena && (
+                                    <div style={{
+                                      background: percentCerpani <= 100 ? '#dcfce7' : '#fee2e2',
+                                      color: percentCerpani <= 100 ? '#166534' : '#991b1b',
+                                      padding: '0.25rem 0.6rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                      border: `1px solid ${percentCerpani <= 100 ? '#86efac' : '#fca5a5'}`,
+                                      minWidth: '50px',
+                                      textAlign: 'center'
+                                    }}>
+                                      {percentCerpani}%
+                                    </div>
+                                  )}
+                                </div>
+                              </ApprovalLPHeader>
                               <ApprovalLPRow>
                                 <span>Hodnota smlouvy:</span>
                                 <strong>{parseFloat(smlouvaInfo.hodnota).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
@@ -18449,6 +18547,102 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                                 <span>Čerpáno (skut.):</span>
                                 <strong>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
                               </ApprovalLPRow>
+                              
+                              {/* Roční plán čerpání - progress bar */}
+                              {hodnotaSmlouvy > 0 && (() => {
+                                const currentMonth = new Date().getMonth(); // 0-11
+                                const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                // Výpočet s desetinami, pak zaokrouhlení dolů
+                                const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                                
+                                // Římské číslice pro měsíce
+                                const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+                                
+                                return (
+                                  <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
+                                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
+                                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
+                                        {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
+                                      </span>
+                                    </div>
+                                    <div style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minHeight: '36px',
+                                      gap: '2px',
+                                      background: '#f1f5f9',
+                                      borderRadius: '4px',
+                                      padding: '3px',
+                                      position: 'relative'
+                                    }}>
+                                      {Array.from({ length: 12 }).map((_, monthIndex) => {
+                                        const isCurrentMonth = monthIndex === currentMonth;
+                                        // Výpočet s desetinami, pak zaokrouhlení dolů
+                                        const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                                        
+                                        // Barva čtverečku
+                                        let bgColor;
+                                        if (isCurrentMonth) {
+                                          bgColor = isUnderPlan ? '#22c55e' : '#ef4444'; // Zelená/Červená pro aktuální měsíc
+                                        } else if (monthIndex < currentMonth) {
+                                          bgColor = '#94a3b8'; // Tmavší pro minulé měsíce
+                                        } else {
+                                          bgColor = '#e2e8f0'; // Světlá pro budoucí měsíce
+                                        }
+                                        
+                                        const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                                        
+                                        return (
+                                          <div
+                                            key={monthIndex}
+                                            style={{
+                                              flex: 1,
+                                              background: bgColor,
+                                              borderRadius: '3px',
+                                              position: 'relative',
+                                              border: isCurrentMonth ? '2px solid #0f172a' : 'none',
+                                              minHeight: '30px',
+                                              paddingLeft: '1px',
+                                              paddingRight: '1px'
+                                            }}
+                                            title={`${percentCerpani}% / ${planedPercent}%`}
+                                          >
+                                            {/* Římská číslice vpravo nahoře - malá */}
+                                            <div style={{
+                                              position: 'absolute',
+                                              top: '2px',
+                                              right: '3px',
+                                              fontSize: '0.5rem',
+                                              fontWeight: 500,
+                                              opacity: 0.6,
+                                              color: textColor,
+                                              zIndex: 10
+                                            }}>
+                                              {romanNumerals[monthIndex]}
+                                            </div>
+                                            
+                                            {/* Procento dole - stejná velikost všude */}
+                                            <div style={{ 
+                                              position: 'absolute',
+                                              bottom: '0px',
+                                              left: '0',
+                                              right: '0',
+                                              textAlign: 'center',
+                                              fontSize: '0.65rem', 
+                                              fontWeight: 700,
+                                              color: textColor
+                                            }}>
+                                              {planedPercent}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </ApprovalLPRow>
+                                );
+                              })()}
                             </ApprovalLPItem>
                           );
                         } else {
