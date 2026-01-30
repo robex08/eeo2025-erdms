@@ -18456,29 +18456,145 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                         const lpInfo = orderToApprove._enriched?.lp_info || [];
                         
                         if (lpInfo.length > 0) {
-                          return lpInfo.map((lp, idx) => (
-                            <ApprovalLPItem key={idx}>
-                              <ApprovalLPHeader>{lp.kod} — {lp.nazev}</ApprovalLPHeader>
-                              <ApprovalLPRow>
-                                <span>Celkový limit:</span>
-                                <strong>{lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
-                              </ApprovalLPRow>
-                              <ApprovalLPRow>
-                                <span>Čerpání:</span>
-                                <strong>
-                                  {lp.total_limit && lp.remaining_budget 
-                                    ? (parseFloat(lp.total_limit) - parseFloat(lp.remaining_budget)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) 
-                                    : '0,00'} Kč
-                                </strong>
-                              </ApprovalLPRow>
-                              <ApprovalLPRow $highlight>
-                                <span>Zbývá:</span>
-                                <strong style={{ color: lp.remaining_budget && parseFloat(lp.remaining_budget) < 0 ? '#dc2626' : '#059669' }}>
-                                  {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
-                                </strong>
-                              </ApprovalLPRow>
-                            </ApprovalLPItem>
-                          ));
+                          return lpInfo.map((lp, idx) => {
+                            // Výpočet procenta čerpání (plánovaného)
+                            const hodnotaLP = parseFloat(lp.total_limit) || 0;
+                            const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                            const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
+                            const percentCerpani = hodnotaLP > 0 ? Math.round((cerpanoPredpoklad / hodnotaLP) * 100) : 0;
+                            const hasLimit = hodnotaLP > 0;
+                            
+                            return (
+                              <ApprovalLPItem key={idx}>
+                                <ApprovalLPHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{lp.kod} — {lp.nazev}</span>
+                                  {hasLimit && (
+                                    <div style={{
+                                      background: percentCerpani <= 100 ? '#dcfce7' : '#fee2e2',
+                                      color: percentCerpani <= 100 ? '#166534' : '#991b1b',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                      border: `1px solid ${percentCerpani <= 100 ? '#86efac' : '#fca5a5'}`,
+                                      minWidth: '50px',
+                                      textAlign: 'center'
+                                    }}>
+                                      {percentCerpani}%
+                                    </div>
+                                  )}
+                                </ApprovalLPHeader>
+                                <ApprovalLPRow>
+                                  <span>Celkový limit:</span>
+                                  <strong>{lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow>
+                                  <span>Čerpáno (předpokl.):</span>
+                                  <strong>{cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow $highlight>
+                                  <span>Zbývá (předpokl.):</span>
+                                  <strong style={{ color: lp.remaining_budget && parseFloat(lp.remaining_budget) < 0 ? '#dc2626' : '#059669' }}>
+                                    {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                  </strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow>
+                                  <span>Čerpáno (skutečně):</span>
+                                  <strong>{cerpanoSkutecne.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                </ApprovalLPRow>
+                                
+                                {/* Roční plán čerpání - progress bar */}
+                                {hodnotaLP > 0 && (() => {
+                                  const currentMonth = new Date().getMonth(); // 0-11
+                                  const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                  const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                  const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                                  
+                                  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+                                  
+                                  return (
+                                    <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
+                                          {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
+                                        </span>
+                                      </div>
+                                      <div style={{
+                                        display: 'flex',
+                                        width: '100%',
+                                        minHeight: '36px',
+                                        gap: '2px',
+                                        background: '#f1f5f9',
+                                        borderRadius: '4px',
+                                        padding: '3px',
+                                        position: 'relative'
+                                      }}>
+                                        {Array.from({ length: 12 }).map((_, monthIndex) => {
+                                          const isCurrentMonth = monthIndex === currentMonth;
+                                          const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                                          
+                                          let bgColor;
+                                          if (isCurrentMonth) {
+                                            bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                                          } else if (monthIndex < currentMonth) {
+                                            bgColor = '#94a3b8';
+                                          } else {
+                                            bgColor = '#e2e8f0';
+                                          }
+                                          
+                                          const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                                          
+                                          return (
+                                            <div
+                                              key={monthIndex}
+                                              style={{
+                                                flex: 1,
+                                                background: bgColor,
+                                                borderRadius: '3px',
+                                                position: 'relative',
+                                                border: isCurrentMonth ? '2px solid #0f172a' : 'none',
+                                                minHeight: '30px',
+                                                paddingLeft: '1px',
+                                                paddingRight: '1px'
+                                              }}
+                                              title={`${percentCerpani}% / ${planedPercent}%`}
+                                            >
+                                              <div style={{
+                                                position: 'absolute',
+                                                top: '2px',
+                                                right: '3px',
+                                                fontSize: '0.5rem',
+                                                fontWeight: 500,
+                                                opacity: 0.6,
+                                                color: textColor,
+                                                zIndex: 10
+                                              }}>
+                                                {romanNumerals[monthIndex]}
+                                              </div>
+                                              
+                                              <div style={{ 
+                                                position: 'absolute',
+                                                bottom: '0px',
+                                                left: '0',
+                                                right: '0',
+                                                textAlign: 'center',
+                                                fontSize: '0.65rem', 
+                                                fontWeight: 700,
+                                                color: textColor
+                                              }}>
+                                                {planedPercent}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </ApprovalLPRow>
+                                  );
+                                })()}
+                              </ApprovalLPItem>
+                            );
+                          });
                         } else {
                           return <div style={{ color: '#64748b', fontSize: '0.875rem' }}>{orderToApprove.financovani.lp_kody.join(', ')}</div>;
                         }
