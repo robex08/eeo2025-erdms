@@ -1268,17 +1268,11 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
 
       // Načíst přiřazené uživatele - filtrovat jen aktivní (platne_do NULL nebo v budoucnosti)
       const allUsers = cashbox.uzivatele || [];
-      console.log('👥 Načtení uživatelů z cashbox:', allUsers);
-      if (allUsers.length > 0) {
-        console.log('🔍 První uživatel - všechny fieldy:', Object.keys(allUsers[0]));
-        console.log('📋 První uživatel - kompletní data:', allUsers[0]);
-      }
       const today = new Date().toISOString().split('T')[0];
       const activeUsers = allUsers.filter(user => {
         if (!user.platne_do) return true; // NULL = aktivní navždy
         return user.platne_do > today; // Budoucí datum = ještě aktivní
       });
-      console.log('✅ Aktivní uživatelé:', activeUsers);
       setUsers(activeUsers);
 
       // Načíst dostupné uživatele a úseky
