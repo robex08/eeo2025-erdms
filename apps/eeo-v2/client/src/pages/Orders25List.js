@@ -7478,6 +7478,84 @@ const Orders25List = () => {
               }
               return null;
             })()}
+            
+            {/* Roční plán čerpání - pro LP (může jich být více na jedné objednávce) */}
+            {order.financovani?.typ === 'LP' && order._enriched?.lp_info && Array.isArray(order._enriched.lp_info) && order._enriched.lp_info.length > 0 && (
+              <>
+                {order._enriched.lp_info.map((lp, lpIndex) => {
+                  const hodnotaLP = parseFloat(lp.total_limit) || 0;
+                  const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                  const percentCerpani = hodnotaLP > 0 ? Math.round((cerpanoPredpoklad / hodnotaLP) * 100) : 0;
+                  
+                  if (hodnotaLP > 0) {
+                    const currentMonth = new Date().getMonth();
+                    const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                    const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                    
+                    return (
+                      <div 
+                        key={lpIndex}
+                        style={{
+                          display: 'flex',
+                          width: '100%',
+                          minHeight: '14px',
+                          gap: '1px',
+                          background: '#f1f5f9',
+                          borderRadius: '2px',
+                          padding: '1px',
+                          marginTop: '3px'
+                        }}
+                      >
+                        {Array.from({ length: 12 }).map((_, monthIndex) => {
+                          const isCurrentMonth = monthIndex === currentMonth;
+                          const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                          
+                          let bgColor;
+                          if (isCurrentMonth) {
+                            bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                          } else if (monthIndex < currentMonth) {
+                            bgColor = '#94a3b8';
+                          } else {
+                            bgColor = '#e2e8f0';
+                          }
+                          
+                          const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                          
+                          return (
+                            <div
+                              key={monthIndex}
+                              style={{
+                                flex: 1,
+                                background: bgColor,
+                                borderRadius: '1px',
+                                position: 'relative',
+                                border: isCurrentMonth ? '1px solid #0f172a' : 'none',
+                                minHeight: '12px',
+                                display: 'flex',
+                                alignItems: 'flex-end',
+                                justifyContent: 'center',
+                                paddingBottom: '1px'
+                              }}
+                              title={`${lp.kod}: ${percentCerpani}% / ${planedPercent}%`}
+                            >
+                              <div style={{ 
+                                fontSize: '0.45rem', 
+                                fontWeight: 700,
+                                color: textColor,
+                                lineHeight: 1
+                              }}>
+                                {planedPercent}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </>
+            )}
           </div>
         );
       },
