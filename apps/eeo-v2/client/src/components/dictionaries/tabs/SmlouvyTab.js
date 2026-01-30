@@ -1170,22 +1170,14 @@ const SmlouvyTab = () => {
             cislo_smlouvy: null,
             usek_id: null
           });
-          console.log('Přepočet dokončen:', result);
-          console.log('result.data:', result?.data);
-          console.log('pocet_zpracovanych_smluv:', result?.data?.pocet_zpracovanych_smluv);
           
-          // Zobrazit success zprávu
-          const pocet = result?.prepocitano_smluv || result?.data?.pocet_zpracovanych_smluv || result?.pocet_zpracovanych_smluv || 'všechny';
-          console.log('Použitý pocet pro toast:', pocet);
+          const pocet = result?.prepocitano_smluv || 'všechny';
           
-          // Nejdřív načti data, pak zobraz toast
-          await loadData();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
+          loadData();
           
-          // Success state nastavit AŽ PO loadData, aby se neresetoval
           setSuccess(`✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
-          console.log('Success state nastaven:', `✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
-          setTimeout(() => setSuccess(null), 5000); // Skrýt po 5 sekundách
+          setTimeout(() => setSuccess(null), 5000);
         } catch (err) {
           console.error('Chyba při přepočtu:', err);
           setError('Chyba při přepočtu: ' + err.message);
