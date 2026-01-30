@@ -774,6 +774,7 @@ const SmlouvyTab = () => {
   const [useky, setUseky] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   
   // Filters - načíst z localStorage při inicializaci
   const [showFilters, setShowFilters] = useState(() => loadShowFiltersFromStorage());
@@ -1170,6 +1171,12 @@ const SmlouvyTab = () => {
             usek_id: null
           });
           console.log('Přepočet dokončen:', result);
+          
+          // Zobrazit success zprávu
+          const pocet = result?.data?.pocet_zpracovanych_smluv || result?.pocet_zpracovanych_smluv || 'všechny';
+          setSuccess(`✅ Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`);
+          setTimeout(() => setSuccess(null), 5000); // Skrýt po 5 sekundách
+          
           loadData();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (err) {
@@ -1619,6 +1626,12 @@ const SmlouvyTab = () => {
       {error && (
         <div style={{ padding: '1rem', background: '#fee2e2', color: '#dc2626', borderRadius: '8px', marginBottom: '1rem' }}>
           {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{ padding: '1rem', background: '#dcfce7', color: '#166534', borderRadius: '8px', marginBottom: '1rem', fontWeight: 600 }}>
+          {success}
         </div>
       )}
 
