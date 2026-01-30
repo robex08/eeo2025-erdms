@@ -780,7 +780,7 @@ function getLPBudgetInfo($db, $lp_id) {
         // Pak načteme data z tabulky čerpání podle cislo_lp a AKTUÁLNÍHO roku (ne roku platnosti LP)
         $current_year = intval(date('Y'));
         $stmt2 = $db->prepare("
-            SELECT celkovy_limit, zbyva_predpoklad, zbyva_skutecne, cerpano_predpoklad, cerpano_skutecne
+            SELECT celkovy_limit, zbyva_predpoklad, zbyva_skutecne, predpokladane_cerpani, skutecne_cerpano
             FROM " . TBL_LP_CERPANI . " 
             WHERE cislo_lp = :cislo_lp AND rok = :rok 
             LIMIT 1
@@ -884,8 +884,8 @@ function enrichOrderFinancovani($db, &$order) {
                         'nazev' => $lp['nazev_uctu'],
                         'remaining_budget' => $budget_info ? $budget_info['zbyva_predpoklad'] : null,
                         'total_limit' => $budget_info ? $budget_info['celkovy_limit'] : null,
-                        'cerpano_predpoklad' => $budget_info ? $budget_info['cerpano_predpoklad'] : null,
-                        'cerpano_skutecne' => $budget_info ? $budget_info['cerpano_skutecne'] : null,
+                        'cerpano_predpoklad' => $budget_info ? $budget_info['predpokladane_cerpani'] : null,
+                        'cerpano_skutecne' => $budget_info ? $budget_info['skutecne_cerpano'] : null,
                         'zbyva_skutecne' => $budget_info ? $budget_info['zbyva_skutecne'] : null
                     );
                 } else {
