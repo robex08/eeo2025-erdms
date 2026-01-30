@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS `25a_rocni_poplatky` (
   -- ZÁKLADNÍ ÚDAJE
   `nazev` VARCHAR(255) NOT NULL COMMENT 'Název ročního poplatku',
   `popis` TEXT NULL COMMENT 'Popis poplatku',
+  `poznamka` TEXT NULL COMMENT 'Poznámka k ročnímu poplatku',
   `rok` YEAR NOT NULL COMMENT 'Rok poplatků (2026, 2027...)',
   
   -- ČÍSELNÍKOVÉ KATEGORIE
@@ -164,7 +165,49 @@ CREATE TABLE IF NOT EXISTS `25a_rocni_poplatky_polozky` (
 COMMENT='Položky ročních poplatků - automaticky generované podle typu platby';
 
 -- =============================================================================
--- ČÁST 4: OVĚŘENÍ INSTALACE
+-- ČÁST 4: TABULKA PŘÍLOH - 25a_rocni_poplatky_prilohy
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS `25a_rocni_poplatky_prilohy` (
+  `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primární klíč',
+  
+  -- VAZBA NA ROČNÍ POPLATEK (hlavní řádek)
+  `rocni_poplatek_id` INT(10) UNSIGNED NOT NULL COMMENT 'Vazba na 25a_rocni_poplatky.id',
+  
+  -- ÚDAJE O SOUBORU
+  `guid` VARCHAR(50) DEFAULT NULL COMMENT 'GUID pro jedinečnost souboru',
+  `typ_prilohy` VARCHAR(50) DEFAULT NULL COMMENT 'Klasifikace přílohy (např. SMLOUVA, FAKTURA, JINE)',
+  `originalni_nazev_souboru` VARCHAR(255) NOT NULL COMMENT 'Původní název souboru',
+  `systemova_cesta` VARCHAR(255) NOT NULL COMMENT 'Cesta k souboru na disku (relativní, prefix: rp)',
+  `velikost_souboru_b` INT(10) UNSIGNED DEFAULT NULL COMMENT 'Velikost souboru v bytech',
+  
+  -- AUDIT TRAIL
+  `nahrano_uzivatel_id` INT(10) UNSIGNED DEFAULT NULL COMMENT 'ID uživatele, který nahrál soubor',
+  `dt_vytvoreni` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Datum a čas vytvoření',
+  `dt_aktualizace` DATETIME DEFAULT NULL COMMENT 'Datum poslední aktualizace',
+  
+  PRIMARY KEY (`id`),
+  INDEX `idx_rocni_poplatek_id` (`rocni_poplatek_id`),
+  INDEX `idx_nahrano_uzivatel_id` (`nahrano_uzivatel_id`),
+  INDEX `idx_guid` (`guid`),
+  INDEX `idx_dt_vytvoreni` (`dt_vytvoreni`),
+  
+  CONSTRAINT `fk_rp_prilohy_rocni_poplatek`
+    FOREIGN KEY (`rocni_poplatek_id`) 
+    REFERENCES `25a_rocni_poplatky` (`id`) 
+    ON DELETE CASCADE 
+    ON UPDATE CASCADE,
+  
+  CONSTRAINT `fk_rp_prilohy_uzivatel`
+    FOREIGN KEY (`nahrano_uzivatel_id`) 
+    REFERENCES `25_uzivatele` (`id`) 
+    ON DELETE SET NULL 
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_czech_ci 
+COMMENT='Přílohy k ročním poplatkům (hlavní řádky) - prefix: rp';
+
+-- =============================================================================
+-- ČÁST 5: OVĚŘENÍ INSTALACE
 -- =============================================================================
 
 SELECT 
@@ -191,7 +234,7 @@ SELECT
   TABLE_COMMENT
 FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = 'eeo2025'
-  AND TABLE_NAME IN ('25a_rocni_poplatky', '25a_rocni_poplatky_polozky');
+  AND TABLE_NAME IN ('25a_rocni_poplatky', '25a_rocni_poplatky_polozky', '25a_rocni_poplatky_prilohy');
 
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -200,8 +243,12 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- =============================================================================
 -- Vytvořeno:
 -- - 12 číselníkových záznamů v 25_ciselnik_stavy (3 typy objektů)
--- - 2 nové tabulky (hlavička + položky)
+-- - 3 nové tabulky (hlavička + položky + přílohy)
 -- - Všechny indexy a foreign keys
+-- 
+-- Poznámky:
+-- - Přílohy jsou vztaženy k hlavnímu řádku (ne k podřádkům)
+-- - Při ukládání použít prefix "rp" pro soubory
 -- 
 -- ⚠️ AFTER DEPLOYMENT:
 -- 1. Zkontrolovat logy aplikace
