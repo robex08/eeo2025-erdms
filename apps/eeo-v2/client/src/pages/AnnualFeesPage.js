@@ -2284,8 +2284,12 @@ function AnnualFeesPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {fee.polozky.map(item => {
+                            {fee.polozky.map((item, itemIndex) => {
                               const isEditing = editingItemId === item.id;
+                              // Kontrola, zda lze položku zaplatit (všechny předchozí musí být zaplacené)
+                              const canPay = fee.polozky
+                                .slice(0, itemIndex)
+                                .every(prevItem => prevItem.stav === 'ZAPLACENO');
                               return (
                               <SubItemRow key={item.id}>
                                 {/* Poznámka */}
@@ -2438,14 +2442,25 @@ function AnnualFeesPage() {
                                         ) : (
                                           <Button 
                                             variant="secondary" 
-                                            style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#10b981', color: 'white', borderColor: '#10b981'}}
+                                            style={{
+                                              padding: '6px 10px', 
+                                              fontSize: '0.85rem', 
+                                              minWidth: 'auto', 
+                                              background: canPay ? '#10b981' : '#9ca3af', 
+                                              color: 'white', 
+                                              borderColor: canPay ? '#10b981' : '#9ca3af',
+                                              opacity: canPay ? 1 : 0.6,
+                                              cursor: canPay ? 'pointer' : 'not-allowed'
+                                            }}
                                             onClick={(e) => {
                                               e.stopPropagation();
+                                              if (!canPay) return;
                                               // Otevřít edit režim s příznakem, že chceme zaplatit
                                               const itemForPayment = {...item, _paymentMode: true};
                                               handleStartEditItem(itemForPayment);
                                             }}
-                                            title="Označit jako zaplaceno"
+                                            title={canPay ? 'Označit jako zaplaceno' : 'Nejdříve zaplaťte předchozí položky'}
+                                            disabled={!canPay}
                                           >
                                             <FontAwesomeIcon icon={faMoneyBill} />
                                           </Button>
