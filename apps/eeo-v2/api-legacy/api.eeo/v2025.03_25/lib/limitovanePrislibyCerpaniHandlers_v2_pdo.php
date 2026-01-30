@@ -286,10 +286,12 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         // CELKOVÉ skutečné čerpání = faktury + pokladna (pro výpočet zůstatků)
         $celkove_skutecne = $skutecne_cerpano + $cerpano_pokladna;
         
-        // OPRAVA: Skutečné čerpání (faktury + pokladna) snižuje dostupný limit
-        // Protože všechny tři typy (rezervace, předpoklad, skutečně) sdílí JEDEN společný limit
-        $zbyva_rezervace = $celkovy_limit - max($rezervovano, $celkove_skutecne);
-        $zbyva_predpoklad = $celkovy_limit - max($predpokladane_cerpani, $celkove_skutecne);
+        // OPRAVA 2026-01-30: Předpokládané čerpání obsahuje JEN objednávky BEZ faktur (díky LEFT JOIN fakt.id IS NULL)
+        // Skutečné čerpání obsahuje JEN faktury + pokladna
+        // Proto se SČÍTAJÍ, ne max()!
+        // Pokud obj měla předpoklad 100k a faktura 95k → čerpání = 95k (ušetřili jsme 5k)
+        $zbyva_rezervace = $celkovy_limit - ($rezervovano + $celkove_skutecne);
+        $zbyva_predpoklad = $celkovy_limit - ($predpokladane_cerpani + $celkove_skutecne);
         $zbyva_skutecne = $celkovy_limit - $celkove_skutecne;
         
         // Omezit procenta na max 999.99 (DECIMAL(5,2) rozsah) a zajistit platnou hodnotu
