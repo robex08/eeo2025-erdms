@@ -804,14 +804,6 @@ function AnnualFeesPage() {
         getStavyRocnichPoplatku({ token, username })
       ]);
       
-      // 🔍 DEBUG - RAW data číselníků
-      console.log('📊 RAW Číselníky - Druhy:', druhyRes);
-      console.log('📊 RAW Číselníky - Platby:', platbyRes);
-      console.log('📊 RAW Číselníky - Stavy:', stavyRes);
-      console.log('🔍 Struktura Druhy[0]:', druhyRes?.[0]);
-      console.log('🔍 Struktura Platby[0]:', platbyRes?.[0]);
-      console.log('🔍 Struktura Stavy[0]:', stavyRes?.[0]);
-      
       setDruhy(druhyRes || []);
       setPlatby(platbyRes || []);
       setStavy(stavyRes || []);
