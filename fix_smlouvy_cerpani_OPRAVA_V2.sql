@@ -117,13 +117,13 @@ BEGIN
       zbyva_planovano = v_hodnota - (v_cerpano_planovano + v_cerpano_skutecne),
       zbyva_skutecne = v_hodnota - v_cerpano_skutecne,
       
-      -- PROCENTA: Také součet (nefakturované + fakturované) / limit
+      -- PROCENTA: Každý typ samostatně (NIKDY nesčítat!)
       procento_pozadovano = CASE
-        WHEN v_hodnota > 0 THEN ROUND(((v_cerpano_pozadovano + v_cerpano_skutecne) / v_hodnota) * 100, 2)
+        WHEN v_hodnota > 0 THEN ROUND((v_cerpano_pozadovano / v_hodnota) * 100, 2)
         ELSE 0 
       END,
       procento_planovano = CASE
-        WHEN v_hodnota > 0 THEN ROUND(((v_cerpano_planovano + v_cerpano_skutecne) / v_hodnota) * 100, 2)
+        WHEN v_hodnota > 0 THEN ROUND((v_cerpano_planovano / v_hodnota) * 100, 2)
         ELSE 0 
       END,
       procento_skutecne = CASE
