@@ -109,15 +109,21 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
         
-        // Validace povinných polí (flexibilní - přijímá castka i castka_na_polozku)
-        $required = ['smlouva_id', 'nazev', 'rok', 'druh', 'platba'];
+        // Validace povinných polí
+        $required = ['nazev', 'rok', 'druh', 'platba'];
         foreach ($required as $field) {
             if (!isset($data[$field]) || $data[$field] === '') {
                 return ['status' => 'error', 'message' => "Chybí povinné pole: $field"];
             }
         }
+        
+        // Musí být buď smlouva_id NEBO dodavatel_nazev
+        if (empty($data['smlouva_id']) && empty($data['dodavatel_nazev'])) {
+            return ['status' => 'error', 'message' => 'Musí být vyplněna smlouva nebo dodavatel'];
+        }
 
-        $smlouva_id = (int)$data['smlouva_id'];
+        $smlouva_id = !empty($data['smlouva_id']) ? (int)$data['smlouva_id'] : null;
+        $dodavatel_nazev = !empty($data['dodavatel_nazev']) ? trim($data['dodavatel_nazev']) : null;
         $rok = (int)$data['rok'];
         
         // Celková částka je vstup
@@ -134,10 +140,12 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         // Datum první splatnosti - pokud není zadáno, použije se 1. leden daného roku
         $datum_prvni_splatnosti = $data['datum_prvni_splatnosti'] ?? "$rok-01-01";
 
-        // Validace smlouvy
-        $smlouva = queryGetSmlouva($pdo, $smlouva_id);
-        if (!$smlouva) {
-            return ['status' => 'error', 'message' => 'Smlouva s daným ID neexistuje', 'error_code' => 'SMLOUVA_NOT_FOUND'];
+        // Validace smlouvy (pokud je vyplněna)
+        if ($smlouva_id) {
+            $smlouva = queryGetSmlouva($pdo, $smlouva_id);
+            if (!$smlouva) {
+                return ['status' => 'error', 'message' => 'Smlouva s daným ID neexistuje', 'error_code' => 'SMLOUVA_NOT_FOUND'];
+            }
         }
 
         // Validace číselníků
@@ -150,23 +158,35 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 
         $pdo->beginTransaction();
 
-        // 1️⃣ Generování položek podle typu platby (zatím bez částek)
-        $polozky = generatePolozky(
-            $data['platba'],
-            $rok,
-            0, // Částka se dopočítá níže
-            $datum_prvni_splatnosti
-        );
+        // 1️⃣ Pokud frontend poslal vlastní položky, použít je; jinak vygenerovat
+        if (isset($data['polozky']) && is_array($data['polozky']) && count($data['polozky']) > 0) {
+            // Frontend poslal upravené položky
+            $polozky = $data['polozky'];
+        } else {
+            // Generování položek podle typu platby
+            $polozky = generatePolozky(
+                $data['platba'],
+                $rok,
+                0, // Částka se dopočítá níže
+                $datum_prvni_splatnosti
+            );
 
-        // Výpočet částky na položku: celková / počet položek
-        $pocet_polozek = count($polozky);
-        $castka_na_polozku = $pocet_polozek > 0 ? ($celkova_castka / $pocet_polozek) : 0;
+            // Výpočet částky na položku: celková / počet položek
+            $pocet_polozek = count($polozky);
+            $castka_na_polozku = $pocet_polozek > 0 ? ($celkova_castka / $pocet_polozek) : 0;
+            
+            // Přidat částku do vygenerovaných položek
+            foreach ($polozky as &$polozka) {
+                $polozka['castka'] = $castka_na_polozku;
+            }
+        }
 
         // 2️⃣ Vytvoření hlavičky (dodavatel se načte automaticky ze smlouvy přes JOIN)
         $rocni_poplatek_id = queryInsertAnnualFee($pdo, [
             'smlouva_id' => $smlouva_id,
             'nazev' => $data['nazev'],
             'popis' => $data['popis'] ?? null,
+            'poznamka' => $data['poznamka'] ?? null,
             'rok' => $rok,
             'druh' => $data['druh'],
             'platba' => $data['platba'],
@@ -185,9 +205,11 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
             $polozka_id = queryInsertAnnualFeeItem($pdo, [
                 'rocni_poplatek_id' => $rocni_poplatek_id,
                 'poradi' => $index + 1,
-                'nazev_polozky' => $polozka['nazev'],
-                'castka' => $castka_na_polozku,
-                'datum_splatnosti' => $polozka['splatnost'],
+                'nazev_polozky' => $polozka['nazev_polozky'] ?? $polozka['nazev'] ?? '',
+                'castka' => $polozka['castka'] ?? 0,
+                'datum_splatnosti' => $polozka['datum_splatnosti'] ?? $polozka['splatnost'] ?? null,
+                'cislo_dokladu' => $polozka['cislo_dokladu'] ?? null,
+                'datum_zaplaceno' => $polozka['datum_zaplaceno'] ?? null,
                 'stav' => 'NEZAPLACENO',
                 'vytvoril_uzivatel_id' => $user['id'],
                 'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
@@ -196,9 +218,9 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
             $created_polozky[] = [
                 'id' => $polozka_id,
                 'poradi' => $index + 1,
-                'nazev' => $polozka['nazev'],
-                'castka' => $castka_na_polozku,
-                'splatnost' => $polozka['splatnost']
+                'nazev' => $polozka['nazev_polozky'] ?? $polozka['nazev'] ?? '',
+                'castka' => $polozka['castka'] ?? 0,
+                'splatnost' => $polozka['datum_splatnosti'] ?? $polozka['splatnost'] ?? null
             ];
         }
 
@@ -257,6 +279,10 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
 
         $pdo->beginTransaction();
 
+        // Detekce změny platby
+        $platba_changed = isset($data['platba']) && $data['platba'] !== $existing['platba'];
+        $celkova_castka_changed = isset($data['celkova_castka']) && (float)$data['celkova_castka'] !== (float)$existing['celkova_castka'];
+
         // Aktualizace hlavičky
         $updateData = [
             'id' => $id,
@@ -264,7 +290,7 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
             'dt_aktualizace' => TimezoneHelper::getCzechDateTime()
         ];
 
-        $allowedFields = ['nazev', 'popis', 'druh', 'stav', 'rozsirujici_data'];
+        $allowedFields = ['nazev', 'popis', 'poznamka', 'druh', 'stav', 'platba', 'celkova_castka', 'rozsirujici_data'];
         foreach ($allowedFields as $field) {
             if (isset($data[$field])) {
                 if ($field === 'rozsirujici_data' && is_array($data[$field])) {
@@ -276,6 +302,74 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
         }
 
         queryUpdateAnnualFee($pdo, $updateData);
+
+        // 🔄 Pokud frontend poslal nové položky, použít je
+        if (isset($data['polozky']) && is_array($data['polozky']) && count($data['polozky']) > 0) {
+            // Frontend poslal upravené položky - smazat staré a vytvořit nové
+            $stmt_delete = $pdo->prepare("DELETE FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = :id");
+            $stmt_delete->execute([':id' => $id]);
+
+            foreach ($data['polozky'] as $index => $polozka) {
+                queryInsertAnnualFeeItem($pdo, [
+                    'rocni_poplatek_id' => $id,
+                    'poradi' => $index + 1,
+                    'nazev_polozky' => $polozka['nazev_polozky'] ?? '',
+                    'castka' => $polozka['castka'] ?? 0,
+                    'datum_splatnosti' => $polozka['datum_splatnosti'] ?? null,
+                    'cislo_dokladu' => $polozka['cislo_dokladu'] ?? null,
+                    'datum_zaplaceno' => $polozka['datum_zaplaceno'] ?? null,
+                    'stav' => 'NEZAPLACENO',
+                    'vytvoril_uzivatel_id' => $user['id'],
+                    'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
+                ]);
+            }
+        } elseif ($platba_changed) {
+            // 🔄 Pokud se změnila PLATBA (bez položek od frontendu), přegenerovat
+            $new_platba = $data['platba'];
+            $celkova_castka = isset($data['celkova_castka']) ? (float)$data['celkova_castka'] : (float)$existing['celkova_castka'];
+            $rok = $existing['rok'];
+            $datum_prvni_splatnosti = $existing['datum_prvni_splatnosti'] ?? "$rok-01-01";
+
+            // Validace nové platby
+            if (!validateCiselnikValue($pdo, 'PLATBA_ROCNIHO_POPLATKU', $new_platba)) {
+                throw new Exception('Neplatný typ platby');
+            }
+
+            // 1️⃣ Smazat všechny existující položky
+            $stmt_delete = $pdo->prepare("DELETE FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = :id");
+            $stmt_delete->execute([':id' => $id]);
+
+            // 2️⃣ Vygenerovat nové položky
+            $polozky = generatePolozky($new_platba, $rok, 0, $datum_prvni_splatnosti);
+            $pocet_polozek = count($polozky);
+            $castka_na_polozku = $pocet_polozek > 0 ? ($celkova_castka / $pocet_polozek) : 0;
+
+            // 3️⃣ Vytvořit nové položky
+            foreach ($polozky as $index => $polozka) {
+                queryInsertAnnualFeeItem($pdo, [
+                    'rocni_poplatek_id' => $id,
+                    'poradi' => $index + 1,
+                    'nazev_polozky' => $polozka['nazev'],
+                    'castka' => $castka_na_polozku,
+                    'datum_splatnosti' => $polozka['splatnost'],
+                    'stav' => 'NEZAPLACENO',
+                    'vytvoril_uzivatel_id' => $user['id'],
+                    'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
+                ]);
+            }
+        } elseif ($celkova_castka_changed) {
+            // 💰 Pokud se změnila jen částka (bez změny platby), přepočítat částky na položky
+            $celkova_castka = (float)$data['celkova_castka'];
+            $stmt_count = $pdo->prepare("SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = :id");
+            $stmt_count->execute([':id' => $id]);
+            $pocet_polozek = $stmt_count->fetchColumn();
+            
+            if ($pocet_polozek > 0) {
+                $castka_na_polozku = $celkova_castka / $pocet_polozek;
+                $stmt_update = $pdo->prepare("UPDATE `25a_rocni_poplatky_polozky` SET castka = :castka WHERE rocni_poplatek_id = :id");
+                $stmt_update->execute([':castka' => $castka_na_polozku, ':id' => $id]);
+            }
+        }
 
         // Přepočítání sum z položek
         queryRecalculateAnnualFeeSums($pdo, $id);
@@ -354,6 +448,8 @@ function handleAnnualFeesCreateItem($pdo, $data, $user) {
             'nazev_polozky' => $data['nazev_polozky'],
             'castka' => (float)$data['castka'],
             'datum_splatnosti' => $data['datum_splatnosti'],
+            'cislo_dokladu' => (!empty($data['cislo_dokladu']) && $data['cislo_dokladu'] !== '') ? $data['cislo_dokladu'] : null,
+            'datum_zaplaceno' => (!empty($data['datum_zaplaceno']) && $data['datum_zaplaceno'] !== '') ? $data['datum_zaplaceno'] : null,
             'faktura_id' => isset($data['faktura_id']) ? (int)$data['faktura_id'] : null,
             'poznamka' => isset($data['poznamka']) ? $data['poznamka'] : null,
             'stav' => 'NEZAPLACENO',
@@ -423,6 +519,9 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
         
+        // 🔍 DEBUG: Logování příchozích dat
+        error_log("🔍 handleAnnualFeesUpdateItem - příchozí data: " . json_encode($data, JSON_UNESCAPED_UNICODE));
+        
         if (!isset($data['id'])) {
             return ['status' => 'error', 'message' => 'Chybí ID položky'];
         }
@@ -462,12 +561,15 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
             'dt_aktualizace' => TimezoneHelper::getCzechDateTime()
         ];
 
-        $allowedFields = ['stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'rozsirujici_data'];
+        $allowedFields = ['nazev_polozky', 'castka', 'datum_splatnosti', 'stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'cislo_dokladu', 'datum_zaplaceno', 'rozsirujici_data'];
         foreach ($allowedFields as $field) {
             // ✨ Použít array_key_exists místo isset, protože isset(null) vrací false
             if (array_key_exists($field, $data)) {
                 if ($field === 'rozsirujici_data' && is_array($data[$field])) {
                     $updateData[$field] = json_encode($data[$field]);
+                } elseif (in_array($field, ['datum_splatnosti', 'datum_zaplaceno', 'datum_zaplaceni'])) {
+                    // 🧹 Prázdné stringy pro datumy převést na NULL
+                    $updateData[$field] = (!empty($data[$field]) && $data[$field] !== '') ? $data[$field] : null;
                 } else {
                     $updateData[$field] = $data[$field];
                 }

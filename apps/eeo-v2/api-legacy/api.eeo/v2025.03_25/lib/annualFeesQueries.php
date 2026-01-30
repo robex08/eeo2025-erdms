@@ -59,6 +59,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
         SELECT 
             rp.id,
             rp.nazev,
+            rp.poznamka,
             rp.rok,
             rp.druh,
             cs_druh.nazev_stavu AS druh_nazev,
@@ -185,7 +186,9 @@ function queryAnnualFeesDetail($pdo, $id) {
             u_vytvoril.jmeno AS vytvoril_jmeno,
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_aktualizoval.jmeno AS aktualizoval_jmeno,
-            u_aktualizoval.prijmeni AS aktualizoval_prijmeni
+            u_aktualizoval.prijmeni AS aktualizoval_prijmeni,
+            p.cislo_dokladu,
+            p.datum_zaplaceno
         FROM `25a_rocni_poplatky_polozky` p
         LEFT JOIN `25_ciselnik_stavy` cs_stav ON p.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         LEFT JOIN `25a_objednavky_faktury` f ON p.faktura_id = f.id
@@ -209,11 +212,11 @@ function queryAnnualFeesDetail($pdo, $id) {
 function queryInsertAnnualFee($pdo, $data) {
     $sql = "
         INSERT INTO `25a_rocni_poplatky` (
-            smlouva_id, nazev, popis, rok,
+            smlouva_id, nazev, popis, poznamka, rok,
             druh, platba, celkova_castka, zaplaceno_celkem, zbyva_zaplatit,
             stav, rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
         ) VALUES (
-            :smlouva_id, :nazev, :popis, :rok,
+            :smlouva_id, :nazev, :popis, :poznamka, :rok,
             :druh, :platba, :celkova_castka, :zaplaceno_celkem, :zbyva_zaplatit,
             :stav, :rozsirujici_data, :vytvoril_uzivatel_id, :dt_vytvoreni, 1
         )
@@ -223,6 +226,7 @@ function queryInsertAnnualFee($pdo, $data) {
         ':smlouva_id' => $data['smlouva_id'],
         ':nazev' => $data['nazev'],
         ':popis' => $data['popis'],
+        ':poznamka' => $data['poznamka'] ?? null,
         ':rok' => $data['rok'],
         ':druh' => $data['druh'],
         ':platba' => $data['platba'],
@@ -245,11 +249,11 @@ function queryInsertAnnualFeeItem($pdo, $data) {
     $sql = "
         INSERT INTO `25a_rocni_poplatky_polozky` (
             rocni_poplatek_id, faktura_id, poradi, nazev_polozky,
-            castka, datum_splatnosti, datum_zaplaceni, stav, poznamka,
+            castka, cislo_dokladu, datum_zaplaceno, datum_splatnosti, datum_zaplaceni, stav, poznamka,
             rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
         ) VALUES (
             :rocni_poplatek_id, :faktura_id, :poradi, :nazev_polozky,
-            :castka, :datum_splatnosti, :datum_zaplaceni, :stav, :poznamka,
+            :castka, :cislo_dokladu, :datum_zaplaceno, :datum_splatnosti, :datum_zaplaceni, :stav, :poznamka,
             :rozsirujici_data, :vytvoril_uzivatel_id, :dt_vytvoreni, 1
         )
     ";
@@ -260,6 +264,8 @@ function queryInsertAnnualFeeItem($pdo, $data) {
         ':poradi' => $data['poradi'],
         ':nazev_polozky' => $data['nazev_polozky'],
         ':castka' => $data['castka'],
+        ':cislo_dokladu' => $data['cislo_dokladu'] ?? null,
+        ':datum_zaplaceno' => $data['datum_zaplaceno'] ?? null,
         ':datum_splatnosti' => $data['datum_splatnosti'],
         ':datum_zaplaceni' => $data['datum_zaplaceni'] ?? null,
         ':stav' => $data['stav'],
@@ -279,7 +285,7 @@ function queryUpdateAnnualFee($pdo, $data) {
     $setClauses = [];
     $params = [':id' => $data['id']];
 
-    $allowedFields = ['nazev', 'popis', 'druh', 'stav', 'rozsirujici_data', 'aktualizoval_uzivatel_id', 'dt_aktualizace'];
+    $allowedFields = ['nazev', 'popis', 'poznamka', 'druh', 'stav', 'platba', 'celkova_castka', 'rozsirujici_data', 'aktualizoval_uzivatel_id', 'dt_aktualizace'];
     foreach ($allowedFields as $field) {
         if (isset($data[$field])) {
             $setClauses[] = "`$field` = :$field";
@@ -305,7 +311,7 @@ function queryUpdateAnnualFeeItem($pdo, $data) {
     $setClauses = [];
     $params = [':id' => $data['id']];
 
-    $allowedFields = ['stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'rozsirujici_data', 'aktualizoval_uzivatel_id', 'dt_aktualizace'];
+    $allowedFields = ['nazev_polozky', 'castka', 'datum_splatnosti', 'stav', 'datum_zaplaceni', 'poznamka', 'faktura_id', 'cislo_dokladu', 'datum_zaplaceno', 'rozsirujici_data', 'aktualizoval_uzivatel_id', 'dt_aktualizace'];
     foreach ($allowedFields as $field) {
         // ✅ Použít array_key_exists místo isset, aby se mohly nastavit NULL hodnoty (např. faktura_id = NULL)
         if (array_key_exists($field, $data)) {
@@ -315,10 +321,14 @@ function queryUpdateAnnualFeeItem($pdo, $data) {
     }
 
     if (empty($setClauses)) {
+        error_log("⚠️ queryUpdateAnnualFeeItem - žádná pole k aktualizaci!");
         return null;
     }
 
     $sql = "UPDATE `25a_rocni_poplatky_polozky` SET " . implode(', ', $setClauses) . " WHERE id = :id AND aktivni = 1";
+    error_log("🔍 queryUpdateAnnualFeeItem SQL: " . $sql);
+    error_log("🔍 queryUpdateAnnualFeeItem params: " . json_encode($params, JSON_UNESCAPED_UNICODE));
+    
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
