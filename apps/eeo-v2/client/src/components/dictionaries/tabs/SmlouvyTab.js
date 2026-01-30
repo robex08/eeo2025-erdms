@@ -1617,13 +1617,13 @@ const SmlouvyTab = () => {
           <StatValue>
             {statistics.pocet_aktivnich}
             {statistics.pocet_vyprsenych > 0 && (
-              <span style={{ color: '#9ca3af', fontSize: '0.9em' }}> ({statistics.pocet_vyprsenych})</span>
+              <span style={{ color: '#dc2626', fontSize: '0.9em', fontWeight: 600 }}> ({statistics.pocet_vyprsenych})</span>
             )}
           </StatValue>
         </StatItem>
         <StatItem>
-          <StatLabel>Aktivních</StatLabel>
-          <StatValue $color="#10b981">{statistics.pocet_aktivnich}</StatValue>
+          <StatLabel>Platných smluv</StatLabel>
+          <StatValue $color="#10b981">{statistics.pocet_platnych}</StatValue>
         </StatItem>
         <StatItem>
           <StatLabel>Celkový limit</StatLabel>
