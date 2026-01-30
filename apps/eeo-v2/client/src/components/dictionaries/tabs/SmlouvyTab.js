@@ -1002,6 +1002,16 @@ const SmlouvyTab = () => {
     // ✅ AKTIVNÍ = kde aktivni != 0 (nebo aktivni === true / aktivni === 1)
     const aktivniSmlouvy = filteredSmlouvy.filter(s => s.aktivni == 1 || s.aktivni === true);
     
+    // ✅ PLATNÉ = aktivní a platnost_do >= dnes (nebo platnost_do IS NULL)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const platneSmlouvy = aktivniSmlouvy.filter(s => {
+      if (!s.platnost_do) return true; // Pokud není platnost_do, je neomezená
+      const platnostDo = new Date(s.platnost_do);
+      return platnostDo >= today;
+    });
+    const vyprselychSmluv = aktivniSmlouvy.length - platneSmlouvy.length;
+    
     // ✅ PRAVIDLO: Pokud je show_inactive=false, vyloučit smlouvy kde aktivni==0
     const smlouvyProStatistiku = filters.show_inactive 
       ? filteredSmlouvy      // Zobrazují se i neaktivní → sečíst všechny zobrazené
@@ -1030,6 +1040,8 @@ const SmlouvyTab = () => {
     return {
       pocet_celkem: filteredSmlouvy.length,
       pocet_aktivnich: aktivniSmlouvy.length,
+      pocet_platnych: platneSmlouvy.length,
+      pocet_vyprsenych: vyprselychSmluv,
       celkem_cerpano: celkemCerpano,
       celkem_limit: celkemLimit,
       celkem_zbyva: celkemZbyva,
@@ -1317,7 +1329,7 @@ const SmlouvyTab = () => {
       cell: info => {
         const value = info.getValue();
         return (
-          <SmartTooltip content={value === 1 ? 'Použít v obj. formuláři při objednávkách' : 'Pouze v modulu faktur'}>
+          <SmartTooltip content={value === 1 ? 'Použít v objednávkovém formuláři při vytváření objednávek' : 'Pouze v modulu faktur'}>
             <span style={{ 
               fontSize: '0.875rem',
               display: 'inline-block',
@@ -1327,7 +1339,7 @@ const SmlouvyTab = () => {
               color: value === 1 ? '#1e40af' : '#92400e',
               fontWeight: '500'
             }}>
-              {value === 1 ? '📋 Obj. formulář' : '🔒 Faktury'}
+              {value === 1 ? '📋 Objednávky' : '🔒 Faktury'}
             </span>
           </SmartTooltip>
         );
@@ -1602,7 +1614,12 @@ const SmlouvyTab = () => {
       <StatsBar>
         <StatItem>
           <StatLabel>Smluv celkem</StatLabel>
-          <StatValue>{statistics.pocet_celkem}</StatValue>
+          <StatValue>
+            {statistics.pocet_aktivnich}
+            {statistics.pocet_vyprsenych > 0 && (
+              <span style={{ color: '#9ca3af', fontSize: '0.9em' }}> ({statistics.pocet_vyprsenych})</span>
+            )}
+          </StatValue>
         </StatItem>
         <StatItem>
           <StatLabel>Aktivních</StatLabel>
@@ -1744,7 +1761,7 @@ const SmlouvyTab = () => {
                     onChange={(e) => setColumnFilters(prev => ({...prev, pouzit_v_obj_formu: e.target.value}))}
                   >
                     <option value="">Vše</option>
-                    <option value="1">📋 Obj. formulář</option>
+                    <option value="1">📋 Objednávky</option>
                     <option value="0">🔒 Faktury</option>
                   </ColumnFilterSelect>
                 </TableHeaderFilterCell>
