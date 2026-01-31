@@ -90,7 +90,9 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             u_aktualizoval.jmeno AS aktualizoval_jmeno,
             u_aktualizoval.prijmeni AS aktualizoval_prijmeni,
             (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek,
-            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = 'ZAPLACENO') AS pocet_zaplaceno
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = 'ZAPLACENO') AS pocet_zaplaceno,
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != 'ZAPLACENO' AND datum_splatnosti < CURDATE()) AS pocet_po_splatnosti,
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != 'ZAPLACENO' AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)) AS pocet_blizi_se_splatnost
         FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
@@ -624,20 +626,87 @@ function queryAnnualFeesStats($pdo, $rok = null) {
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
     // Statistiky podle druhu
+    $whereWithAlias = str_replace(['aktivni = 1', 'rok = :rok'], ['rp.aktivni = 1', 'rp.rok = :rok'], $where);
     $sqlDruh = "
         SELECT 
-            druh,
+            rp.druh,
             cs.nazev_stavu AS druh_nazev,
             COUNT(*) AS pocet,
-            SUM(celkova_castka) AS castka_celkem
+            SUM(rp.celkova_castka) AS castka_celkem
         FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_ciselnik_stavy` cs ON rp.druh = cs.kod_stavu AND cs.typ_objektu = 'ROCNI_POPLATEK_DRUH'
-        WHERE $where
-        GROUP BY druh, cs.nazev_stavu
+        WHERE $whereWithAlias
+        GROUP BY rp.druh, cs.nazev_stavu
     ";
     $stmtDruh = $pdo->prepare($sqlDruh);
     $stmtDruh->execute($params);
     $stats['podle_druhu'] = $stmtDruh->fetchAll(PDO::FETCH_ASSOC);
+
+    // Dashboard statistiky - aktuální měsíc a po splatnosti
+    $currentMonth = date('Y-m');
+    $today = date('Y-m-d');
+    
+    // Separátní parametry pro dashboard dotaz
+    $dashboardParams = [
+        ':current_month_start' => $currentMonth . '-01',
+        ':next_month_start' => date('Y-m-d', strtotime($currentMonth . '-01 +1 month')),
+        ':today' => $today
+    ];
+    
+    // Statistiky podle jednotlivých položek - s aliasy tabulek
+    $sqlDashboard = "
+        SELECT 
+            SUM(CASE WHEN p.datum_splatnosti >= :current_month_start 
+                     AND p.datum_splatnosti < :next_month_start 
+                     AND p.stav != 'ZAPLACENO' THEN 1 ELSE 0 END) AS current_month,
+            SUM(CASE WHEN p.datum_splatnosti >= :current_month_start 
+                     AND p.datum_splatnosti < :next_month_start 
+                     AND p.stav != 'ZAPLACENO' THEN p.castka ELSE 0 END) AS current_month_amount,
+                     
+            SUM(CASE WHEN p.datum_splatnosti < :today 
+                     AND p.stav != 'ZAPLACENO' THEN 1 ELSE 0 END) AS overdue,
+            SUM(CASE WHEN p.datum_splatnosti < :today 
+                     AND p.stav != 'ZAPLACENO' THEN p.castka ELSE 0 END) AS overdue_amount,
+                     
+            SUM(CASE WHEN p.datum_splatnosti >= :today 
+                     AND p.datum_splatnosti <= DATE_ADD(:today, INTERVAL 10 DAY) 
+                     AND p.stav != 'ZAPLACENO' THEN 1 ELSE 0 END) AS due_soon,
+            SUM(CASE WHEN p.datum_splatnosti >= :today 
+                     AND p.datum_splatnosti <= DATE_ADD(:today, INTERVAL 10 DAY) 
+                     AND p.stav != 'ZAPLACENO' THEN p.castka ELSE 0 END) AS due_soon_amount,
+                     
+            COUNT(DISTINCT r.id) AS total_active,
+            SUM(DISTINCT r.celkova_castka) AS total_active_amount,
+            
+            SUM(CASE WHEN p.stav != 'ZAPLACENO' THEN p.castka ELSE 0 END) AS total_to_pay,
+            SUM(CASE WHEN p.stav = 'ZAPLACENO' THEN p.castka ELSE 0 END) AS total_paid
+        FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p
+        JOIN `" . TBL_ROCNI_POPLATKY . "` r ON p.rocni_poplatek_id = r.id
+        WHERE r.aktivni = 1 AND p.aktivni = 1
+    ";
+    
+    if ($rok) {
+        $sqlDashboard .= ' AND r.rok = :rok_dashboard';
+        $dashboardParams[':rok_dashboard'] = $rok;
+    }
+    
+    $stmtDashboard = $pdo->prepare($sqlDashboard);
+    $stmtDashboard->execute($dashboardParams);
+    $dashboardStats = $stmtDashboard->fetch(PDO::FETCH_ASSOC);
+    
+    $stats['dashboard'] = [
+        'dueSoon' => (int)$dashboardStats['due_soon'],
+        'dueSoonAmount' => number_format((float)$dashboardStats['due_soon_amount'], 0, ',', ' '),
+        'overdue' => (int)$dashboardStats['overdue'],
+        'overdueAmount' => number_format((float)$dashboardStats['overdue_amount'], 0, ',', ' '),
+        'currentMonth' => (int)$dashboardStats['current_month'],
+        'currentMonthAmount' => number_format((float)$dashboardStats['current_month_amount'], 0, ',', ' '),
+        'totalActive' => (int)$dashboardStats['total_active'],
+        'totalActiveAmount' => number_format((float)$dashboardStats['total_active_amount'], 0, ',', ' '),
+        'totalToPay' => number_format((float)$dashboardStats['total_to_pay'], 0, ',', ' '),
+        'totalPaid' => number_format((float)$dashboardStats['total_paid'], 0, ',', ' '),
+        'totalRemaining' => number_format((float)$dashboardStats['total_to_pay'], 0, ',', ' ')
+    ];
 
     return $stats;
 }

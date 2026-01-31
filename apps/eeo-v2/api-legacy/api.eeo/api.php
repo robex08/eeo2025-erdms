@@ -4692,9 +4692,7 @@ switch ($endpoint) {
                     break;
                 }
                 
-                $result = handleAnnualFeesStats($pdo, $input, $auth_result);
-                http_response_code($result['status'] === 'error' ? 400 : 200);
-                echo json_encode($result);
+                handleAnnualFeesStats($pdo, $input, $auth_result);
             } else {
                 http_response_code(405);
                 echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
