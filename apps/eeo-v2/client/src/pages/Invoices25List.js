@@ -6640,8 +6640,6 @@ const Invoices25List = () => {
                                   mimeType: mimeType
                                 });
                               } else if (downloadableTypes.includes(ext)) {
-                                // Automaticky stáhnout nepodporované soubory
-                                console.log('📥 Auto-downloading unsupported file type:', fileName);
                                 
                                 const downloadLink = document.createElement('a');
                                 downloadLink.href = blobUrl;
@@ -6657,8 +6655,6 @@ const Invoices25List = () => {
                                 
                                 showToast(`Stahuje se soubor: ${fileName}`, { type: 'info' });
                               } else {
-                                // Pro neznámé typy také stáhnout
-                                console.log('📥 Auto-downloading unknown file type:', fileName);
                                 
                                 const downloadLink = document.createElement('a');
                                 downloadLink.href = blobUrl;

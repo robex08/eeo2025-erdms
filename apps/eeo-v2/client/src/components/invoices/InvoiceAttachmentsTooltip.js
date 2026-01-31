@@ -360,8 +360,6 @@ const InvoiceAttachmentsTooltip = ({
           });
         }
       } else if (downloadableTypes.includes(ext)) {
-        // Automaticky stáhnout nepodporované soubory
-        console.log('📥 Auto-downloading unsupported file type:', filename);
         
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;
@@ -375,8 +373,6 @@ const InvoiceAttachmentsTooltip = ({
           window.URL.revokeObjectURL(blobUrl);
         }, 1000);
       } else {
-        // Pro neznámé typy také stáhnout
-        console.log('📥 Auto-downloading unknown file type:', filename);
         
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;
