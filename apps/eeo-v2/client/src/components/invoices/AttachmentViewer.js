@@ -262,7 +262,6 @@ const AttachmentViewer = ({
       // For unsupported types (DOCX, XLS, etc.), auto-download instead of showing viewer
       const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
       if (downloadableTypes.includes(ext)) {
-        console.log('📥 Auto-downloading unsupported file type:', filename);
         
         // Create download link
         const downloadLink = document.createElement('a');
@@ -339,14 +338,7 @@ const AttachmentViewer = ({
                 objectFit: 'contain'
               }}
               onLoad={(e) => {
-                console.log('✅ Image loaded successfully:', filename);
-                console.log('✅ Blob URL is working:', attachment.blobUrl);
-                console.log('✅ Image dimensions:', {
-                  naturalWidth: e.target.naturalWidth,
-                  naturalHeight: e.target.naturalHeight,
-                  displayWidth: e.target.width,
-                  displayHeight: e.target.height
-                });
+                // Image loaded successfully
               }}
               onError={(e) => {
                 console.error('❌ Image failed to load:', filename);
