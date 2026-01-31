@@ -358,7 +358,8 @@ function handleAnnualFeeAttachmentDownload($pdo, $input, $user) {
     $uploadRootPath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-dev/data/eeo-v2/prilohy/';
     $fullPath = rtrim($uploadRootPath, '/') . '/' . $attachment['systemova_cesta'];
     
-    error_log("📁 Download request - File path: " . $fullPath . " | Original name: " . $attachment['originalni_nazev_souboru'] . " | File size: " . (file_exists($fullPath) ? filesize($fullPath) : 'NOT FOUND'));
+    // POZOR: Žádný error_log před posílání binárních dat! To by mohlo korumpovat soubor.
+    // error_log("📁 Download request - File path: " . $fullPath . " | Original name: " . $attachment['originalni_nazev_souboru'] . " | File size: " . (file_exists($fullPath) ? filesize($fullPath) : 'NOT FOUND'));
     
     if (!file_exists($fullPath)) {
         header('Content-Type: application/json');
@@ -376,14 +377,17 @@ function handleAnnualFeeAttachmentDownload($pdo, $input, $user) {
     $allowedTypes = getAnnualFeesAllowedTypes();
     $mimeType = $allowedTypes[$extension] ?? 'application/octet-stream';
     
-    // Odeslání souboru
+    // Vyčistit všechny output buffery před posláním binárních dat
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Odeslání souboru - všechny headers najednou
     header('Content-Type: ' . $mimeType);
     header('Content-Disposition: inline; filename="' . $attachment['originalni_nazev_souboru'] . '"');
     header('Content-Length: ' . filesize($fullPath));
     header('Cache-Control: no-cache, must-revalidate');
     header('Pragma: no-cache');
-    
-    // CORS headers pro frontend přístup
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type, Authorization');

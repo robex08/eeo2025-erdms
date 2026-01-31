@@ -345,14 +345,49 @@ const InvoiceAttachmentsTooltip = ({
       // Vytvořit URL pro blob
       const blobUrl = window.URL.createObjectURL(blob);
       
-      // Zavolat onView s attachment + blobUrl
-      if (onView) {
-        onView({
-          ...attachment,
-          blobUrl: blobUrl,
-          filename: filename,
-          fileType: ext === 'pdf' ? 'pdf' : (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext) ? 'image' : 'other')
-        });
+      // Check if file type is supported for preview
+      const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+      const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
+      
+      if (previewableTypes.includes(ext)) {
+        // Zavolat onView s attachment + blobUrl pro podporované soubory
+        if (onView) {
+          onView({
+            ...attachment,
+            blobUrl: blobUrl,
+            filename: filename,
+            fileType: ext === 'pdf' ? 'pdf' : 'image'
+          });
+        }
+      } else if (downloadableTypes.includes(ext)) {
+        // Automaticky stáhnout nepodporované soubory
+        console.log('📥 Auto-downloading unsupported file type:', filename);
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        // Cleanup blob URL
+        setTimeout(() => {
+          window.URL.revokeObjectURL(blobUrl);
+        }, 1000);
+      } else {
+        // Pro neznámé typy také stáhnout
+        console.log('📥 Auto-downloading unknown file type:', filename);
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        setTimeout(() => {
+          window.URL.revokeObjectURL(blobUrl);
+        }, 1000);
       }
       
     } catch (error) {
