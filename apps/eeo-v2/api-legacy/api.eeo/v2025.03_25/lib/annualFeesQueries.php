@@ -11,6 +11,14 @@
  * @date 2026-01-27
  */
 
+// Konstanty tabulek podle PHPAPI.prompt.md pravidel
+if (!defined('TBL_ROCNI_POPLATKY')) {
+    define('TBL_ROCNI_POPLATKY', '25a_rocni_poplatky');
+}
+if (!defined('TBL_ROCNI_POPLATKY_POLOZKY')) {
+    define('TBL_ROCNI_POPLATKY_POLOZKY', '25a_rocni_poplatky_polozky');
+}
+
 // ============================================================================
 // 📋 LIST - Seznam ročních poplatků s filtry
 // ============================================================================
@@ -46,7 +54,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
     // Celkový počet
     $countSql = "
         SELECT COUNT(*) 
-        FROM `25a_rocni_poplatky` rp
+        FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         WHERE $whereClause
     ";
@@ -81,9 +89,9 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_aktualizoval.jmeno AS aktualizoval_jmeno,
             u_aktualizoval.prijmeni AS aktualizoval_prijmeni,
-            (SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek,
-            (SELECT COUNT(*) FROM `25a_rocni_poplatky_polozky` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = 'ZAPLACENO') AS pocet_zaplaceno
-        FROM `25a_rocni_poplatky` rp
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek,
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = 'ZAPLACENO') AS pocet_zaplaceno
+        FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
@@ -159,7 +167,7 @@ function queryAnnualFeesDetail($pdo, $id) {
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_aktualizoval.jmeno AS aktualizoval_jmeno,
             u_aktualizoval.prijmeni AS aktualizoval_prijmeni
-        FROM `25a_rocni_poplatky` rp
+        FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
@@ -189,7 +197,7 @@ function queryAnnualFeesDetail($pdo, $id) {
             u_aktualizoval.prijmeni AS aktualizoval_prijmeni,
             p.cislo_dokladu,
             p.datum_zaplaceno
-        FROM `25a_rocni_poplatky_polozky` p
+        FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p
         LEFT JOIN `25_ciselnik_stavy` cs_stav ON p.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         LEFT JOIN `25a_objednavky_faktury` f ON p.faktura_id = f.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON p.vytvoril_uzivatel_id = u_vytvoril.id
@@ -211,7 +219,7 @@ function queryAnnualFeesDetail($pdo, $id) {
 
 function queryInsertAnnualFee($pdo, $data) {
     $sql = "
-        INSERT INTO `25a_rocni_poplatky` (
+        INSERT INTO `" . TBL_ROCNI_POPLATKY . "` (
             smlouva_id, nazev, popis, poznamka, rok,
             druh, platba, celkova_castka, zaplaceno_celkem, zbyva_zaplatit,
             stav, rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
@@ -247,7 +255,7 @@ function queryInsertAnnualFee($pdo, $data) {
 
 function queryInsertAnnualFeeItem($pdo, $data) {
     $sql = "
-        INSERT INTO `25a_rocni_poplatky_polozky` (
+        INSERT INTO `" . TBL_ROCNI_POPLATKY_POLOZKY . "` (
             rocni_poplatek_id, faktura_id, poradi, nazev_polozky,
             castka, cislo_dokladu, datum_zaplaceno, datum_splatnosti, datum_zaplaceni, stav, poznamka,
             rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
@@ -297,7 +305,7 @@ function queryUpdateAnnualFee($pdo, $data) {
         return false;
     }
 
-    $sql = "UPDATE `25a_rocni_poplatky` SET " . implode(', ', $setClauses) . " WHERE id = :id AND aktivni = 1";
+    $sql = "UPDATE `" . TBL_ROCNI_POPLATKY . "` SET " . implode(', ', $setClauses) . " WHERE id = :id AND aktivni = 1";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->rowCount() > 0;
@@ -325,7 +333,7 @@ function queryUpdateAnnualFeeItem($pdo, $data) {
         return null;
     }
 
-    $sql = "UPDATE `25a_rocni_poplatky_polozky` SET " . implode(', ', $setClauses) . " WHERE id = :id AND aktivni = 1";
+    $sql = "UPDATE `" . TBL_ROCNI_POPLATKY_POLOZKY . "` SET " . implode(', ', $setClauses) . " WHERE id = :id AND aktivni = 1";
     error_log("🔍 queryUpdateAnnualFeeItem SQL: " . $sql);
     error_log("🔍 queryUpdateAnnualFeeItem params: " . json_encode($params, JSON_UNESCAPED_UNICODE));
     
@@ -333,7 +341,7 @@ function queryUpdateAnnualFeeItem($pdo, $data) {
     $stmt->execute($params);
 
     // Vrátit položku včetně rocni_poplatek_id pro přepočítání
-    $selectSql = "SELECT * FROM `25a_rocni_poplatky_polozky` WHERE id = :id";
+    $selectSql = "SELECT * FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE id = :id";
     $selectStmt = $pdo->prepare($selectSql);
     $selectStmt->execute([':id' => $data['id']]);
     return $selectStmt->fetch(PDO::FETCH_ASSOC);
@@ -349,7 +357,7 @@ function queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id) {
         SELECT 
             SUM(castka) AS celkova_castka,
             SUM(CASE WHEN stav = 'ZAPLACENO' THEN castka ELSE 0 END) AS zaplaceno_celkem
-        FROM `25a_rocni_poplatky_polozky`
+        FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "`
         WHERE rocni_poplatek_id = :id AND aktivni = 1
     ";
     $stmt = $pdo->prepare($sql);
@@ -364,7 +372,7 @@ function queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id) {
     // Počet zaplacených položek (přesnější než porovnávání částek kvůli zaokrouhlování)
     $sqlCount = "
         SELECT COUNT(*) as total, SUM(CASE WHEN stav = 'ZAPLACENO' THEN 1 ELSE 0 END) as zaplaceno_count
-        FROM `25a_rocni_poplatky_polozky`
+        FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "`
         WHERE rocni_poplatek_id = :id AND aktivni = 1
     ";
     $stmtCount = $pdo->prepare($sqlCount);
@@ -385,7 +393,7 @@ function queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id) {
 
     // 3️⃣ Aktualizovat hlavičku včetně stavu
     $updateSql = "
-        UPDATE `25a_rocni_poplatky`
+        UPDATE `" . TBL_ROCNI_POPLATKY . "`
         SET 
             celkova_castka = :celkova,
             zaplaceno_celkem = :zaplaceno,
@@ -409,45 +417,181 @@ function queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id) {
 // 🗑️ SOFT DELETE - Deaktivace ročního poplatku a všech položek
 // ============================================================================
 
+function querySoftDeleteAnnualFeeWithConstants($pdo, $id, $user_id) {
+    try {
+        $pdo->beginTransaction();
+
+        // Nejprve zkontroluj, zda roční poplatek existuje a je aktivní
+        // Použití konstant podle PHPAPI.prompt.md pravidel
+        $checkSql = "SELECT id FROM `" . TBL_ROCNI_POPLATKY . "` WHERE id = :id AND aktivni = 1";
+        $checkStmt = $pdo->prepare($checkSql);
+        $checkStmt->execute([':id' => $id]);
+        
+        if ($checkStmt->rowCount() === 0) {
+            $pdo->rollback();
+            error_log("❌ Annual Fees Delete: Poplatek ID $id neexistuje nebo již neaktivní");
+            return false; // Nenalezen nebo již neaktivní
+        }
+
+        // Deaktivovat položky s použitím konstanty
+        $sql1 = "
+            UPDATE `" . TBL_ROCNI_POPLATKY_POLOZKY . "`
+            SET 
+                aktivni = 0,
+                aktualizoval_uzivatel_id = :user_id,
+                dt_aktualizace = :dt_aktualizace
+            WHERE rocni_poplatek_id = :id
+        ";
+        $stmt1 = $pdo->prepare($sql1);
+        $stmt1->execute([
+            ':id' => $id,
+            ':user_id' => $user_id,
+            ':dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+        ]);
+
+        error_log("✅ Annual Fees Delete: Deaktivovány položky: " . $stmt1->rowCount());
+
+        // Deaktivovat hlavičku s použitím konstanty
+        $sql2 = "
+            UPDATE `" . TBL_ROCNI_POPLATKY . "`
+            SET 
+                aktivni = 0,
+                aktualizoval_uzivatel_id = :user_id,
+                dt_aktualizace = :dt_aktualizace
+            WHERE id = :id AND aktivni = 1
+        ";
+        $stmt2 = $pdo->prepare($sql2);
+        $stmt2->execute([
+            ':id' => $id,
+            ':user_id' => $user_id,
+            ':dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+        ]);
+
+        $affectedRows = $stmt2->rowCount();
+        error_log("✅ Annual Fees Delete: Deaktivována hlavička, affected rows: " . $affectedRows);
+        
+        $pdo->commit();
+
+        return $affectedRows > 0;
+        
+    } catch (Exception $e) {
+        $pdo->rollback();
+        error_log("❌ Annual Fees Delete Query Error: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+// ============================================================================
+// 🗑️ HARD DELETE - Fyzické smazání ročního poplatku z databáze (SQL DELETE)
+// ============================================================================
+
+function queryHardDeleteAnnualFee($pdo, $id) {
+    try {
+        $pdo->beginTransaction();
+
+        // 1. Zkontroluj existence ročního poplatku
+        $checkSql = "SELECT id FROM `" . TBL_ROCNI_POPLATKY . "` WHERE id = :id";
+        $checkStmt = $pdo->prepare($checkSql);
+        $checkStmt->execute([':id' => $id]);
+        
+        if ($checkStmt->rowCount() === 0) {
+            $pdo->rollback();
+            error_log("❌ Annual Fees Hard Delete: Poplatek ID $id neexistuje");
+            return false; // Nenalezen
+        }
+
+        error_log("🔥 Hard Delete: Mazání ročního poplatku ID $id včetně všech položek");
+
+        // 2. Smazat všechny položky (CASCADE delete)
+        $deletePolicyStmt = "DELETE FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = :id";
+        $stmt1 = $pdo->prepare($deletePolicyStmt);
+        $stmt1->execute([':id' => $id]);
+        
+        $deletedItems = $stmt1->rowCount();
+        error_log("✅ Hard Delete: Smazáno $deletedItems položek pro roční poplatek ID $id");
+
+        // 3. Smazat hlavičku ročního poplatku
+        $deleteMainSql = "DELETE FROM `" . TBL_ROCNI_POPLATKY . "` WHERE id = :id";
+        $stmt2 = $pdo->prepare($deleteMainSql);
+        $stmt2->execute([':id' => $id]);
+        
+        $affectedRows = $stmt2->rowCount();
+        error_log("✅ Hard Delete: Smazán roční poplatek ID $id, affected rows: " . $affectedRows);
+        
+        $pdo->commit();
+
+        return $affectedRows > 0;
+        
+    } catch (Exception $e) {
+        $pdo->rollback();
+        error_log("❌ Annual Fees Hard Delete Error: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+// ============================================================================
+
+// Zachová původní funkci pro zpětnou kompatibilitu
 function querySoftDeleteAnnualFee($pdo, $id, $user_id) {
-    $pdo->beginTransaction();
+    try {
+        $pdo->beginTransaction();
 
-    // Deaktivovat položky
-    $sql1 = "
-        UPDATE `25a_rocni_poplatky_polozky`
-        SET 
-            aktivni = 0,
-            aktualizoval_uzivatel_id = :user_id,
-            dt_aktualizace = :dt_aktualizace
-        WHERE rocni_poplatek_id = :id
-    ";
-    $stmt1 = $pdo->prepare($sql1);
-    $stmt1->execute([
-        ':id' => $id,
-        ':user_id' => $user_id,
-        ':dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
-    ]);
+        // Nejprve zkontroluj, zda roční poplatek existuje a je aktivní
+        $checkSql = "SELECT id FROM `25a_rocni_poplatky` WHERE id = :id AND aktivni = 1";
+        $checkStmt = $pdo->prepare($checkSql);
+        $checkStmt->execute([':id' => $id]);
+        
+        if ($checkStmt->rowCount() === 0) {
+            $pdo->rollback();
+            return false; // Nenalezen nebo již neaktivní
+        }
 
-    // Deaktivovat hlavičku
-    $sql2 = "
-        UPDATE `25a_rocni_poplatky`
-        SET 
-            aktivni = 0,
-            aktualizoval_uzivatel_id = :user_id,
-            dt_aktualizace = :dt_aktualizace
-        WHERE id = :id AND aktivni = 1
-    ";
-    $stmt2 = $pdo->prepare($sql2);
-    $stmt2->execute([
-        ':id' => $id,
-        ':user_id' => $user_id,
-        ':dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
-    ]);
+        // Deaktivovat položky
+        $sql1 = "
+            UPDATE `25a_rocni_poplatky_polozky`
+            SET 
+                aktivni = 0,
+                aktualizoval_uzivatel_id = :user_id,
+                dt_aktualizace = :dt_aktualizace
+            WHERE rocni_poplatek_id = :id
+        ";
+        $stmt1 = $pdo->prepare($sql1);
+        $stmt1->execute([
+            ':id' => $id,
+            ':user_id' => $user_id,
+            ':dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+        ]);
 
-    $affectedRows = $stmt2->rowCount();
-    $pdo->commit();
+        error_log("✅ Annual Fees Delete: Deaktivovány položky: " . $stmt1->rowCount());
 
-    return $affectedRows > 0;
+        // Deaktivovat hlavičku
+        $sql2 = "
+            UPDATE `25a_rocni_poplatky`
+            SET 
+                aktivni = 0,
+                aktualizoval_uzivatel_id = :user_id,
+                dt_aktualizace = :dt_aktualizace
+            WHERE id = :id AND aktivni = 1
+        ";
+        $stmt2 = $pdo->prepare($sql2);
+        $stmt2->execute([
+            ':id' => $id,
+            ':user_id' => $user_id,
+            ':dt_aktualizace' => TimezoneHelper::getCurrentDatetimeCzech()
+        ]);
+
+        $affectedRows = $stmt2->rowCount();
+        error_log("✅ Annual Fees Delete: Deaktivována hlavička, affected rows: " . $affectedRows);
+        
+        $pdo->commit();
+
+        return $affectedRows > 0;
+        
+    } catch (Exception $e) {
+        $pdo->rollback();
+        error_log("❌ Annual Fees Delete Query Error: " . $e->getMessage());
+        throw $e;
+    }
 }
 
 // ============================================================================
@@ -472,7 +616,7 @@ function queryAnnualFeesStats($pdo, $rok = null) {
             SUM(CASE WHEN stav = 'ZAPLACENO' THEN 1 ELSE 0 END) AS zaplaceno_count,
             SUM(CASE WHEN stav = 'NEZAPLACENO' THEN 1 ELSE 0 END) AS nezaplaceno_count,
             SUM(CASE WHEN stav = 'V_RESENI' THEN 1 ELSE 0 END) AS v_reseni_count
-        FROM `25a_rocni_poplatky`
+        FROM `" . TBL_ROCNI_POPLATKY . "`
         WHERE $where
     ";
     $stmt = $pdo->prepare($sql);
@@ -486,7 +630,7 @@ function queryAnnualFeesStats($pdo, $rok = null) {
             cs.nazev_stavu AS druh_nazev,
             COUNT(*) AS pocet,
             SUM(celkova_castka) AS castka_celkem
-        FROM `25a_rocni_poplatky` rp
+        FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_ciselnik_stavy` cs ON rp.druh = cs.kod_stavu AND cs.typ_objektu = 'ROCNI_POPLATEK_DRUH'
         WHERE $where
         GROUP BY druh, cs.nazev_stavu
