@@ -13,15 +13,16 @@
 const BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
 
 /**
- * Načte seznam ročních poplatků s filtry
+ * Načte seznam ročních poplatků s filtry a paginací
  * 
  * @param {Object} params - Parametry
  * @param {string} params.token - Auth token
  * @param {string} params.username - Uživatelské jméno
  * @param {Object} params.filters - Filtry (rok, druh, platba, stav, smlouva)
- * @returns {Promise<Object>} Response s daty
+ * @param {Object} params.pagination - Pagination (page, pageSize)
+ * @returns {Promise<Object>} Response s daty a pagination info
  */
-export const getAnnualFeesList = async ({ token, username, filters = {} }) => {
+export const getAnnualFeesList = async ({ token, username, filters = {}, pagination = {} }) => {
   try {
     const response = await fetch(`${BASE_URL}/annual-fees/list`, {
       method: 'POST',
@@ -31,6 +32,8 @@ export const getAnnualFeesList = async ({ token, username, filters = {} }) => {
       body: JSON.stringify({
         token,
         username,
+        page: pagination.page || 1,
+        limit: pagination.pageSize || 50,
         ...filters
       }),
     });
@@ -40,7 +43,15 @@ export const getAnnualFeesList = async ({ token, username, filters = {} }) => {
       throw new Error(errorData.message || 'Chyba při načítání ročních poplatků');
     }
 
-    return await response.json();
+    const result = await response.json();
+    
+    // Transformace odpovědi pro kompatibilitu s frontendem
+    return {
+      data: result.data || [],
+      totalRecords: result.pagination?.total || 0,
+      totalPages: result.pagination?.pages || 0,
+      currentPage: result.pagination?.page || 1
+    };
   } catch (error) {
     console.error('getAnnualFeesList error:', error);
     throw error;

@@ -6,7 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faPlus, faMinus, faFilter, faSearch, faCalendar, 
   faMoneyBill, faFileInvoice, faEdit, 
-  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown 
+  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown, faEraser 
 } from '@fortawesome/free-solid-svg-icons';
 import { Calculator } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
@@ -14,6 +14,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { 
   getAnnualFeesList, 
   getAnnualFeeDetail, 
+  getAnnualFeesStats,
   createAnnualFee, 
   createAnnualFeeItem,
   updateAnnualFee, 
@@ -195,9 +196,14 @@ const Select = styled.select`
   font-size: 0.95rem;
   font-family: inherit;
   color: #374151;
-  background: white;
+  background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E") no-repeat right 8px center;
+  background-size: 16px;
+  padding-right: 32px;
   cursor: pointer;
   transition: all 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   
   &:hover {
     border-color: #d1d5db;
@@ -218,7 +224,8 @@ const SearchInput = styled.input`
   font-family: inherit;
   color: #374151;
   background: white;
-  min-width: 300px;
+  width: 100%;
+  min-width: 200px;
   transition: all 0.2s ease;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -233,6 +240,34 @@ const SearchInput = styled.input`
   
   &::placeholder {
     color: #9ca3af;
+  }
+`;
+
+const ClearAllButton = styled.button`
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  height: 40px;
+  align-self: flex-end; /* Zarovnání k dolnímu okraji jako ostatní prvky */
+  
+  &:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  }
+  
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -404,10 +439,20 @@ const StatusBadge = styled.span`
           background: #fee2e2;
           color: #991b1b;
         `;
-      case 'V_RESENI':
+      case 'PO_SPLATNOSTI':
+        return `
+          background: #fee2e2;
+          color: #991b1b;
+        `;
+      case 'BLIZI_SE_SPLATNOST':
         return `
           background: #fef3c7;
-          color: #92400e;
+          color: #d97706;
+        `;
+      case 'CASTECNE':
+        return `
+          background: #fef3c7;
+          color: #d97706;
         `;
       default:
         return `
@@ -450,20 +495,15 @@ const InvoiceStatusBadge = styled.span`
           background: #e0e7ff;
           color: #4338ca;
         `;
-      case 'V_RESENI':
-        return `
-          background: #fce7f3;
-          color: #9f1239;
-        `;
-      case 'ZAEVIDOVANA':
-        return `
-          background: #e5e7eb;
-          color: #374151;
-        `;
-      case 'STORNO':
+      case 'PO_SPLATNOSTI':
         return `
           background: #fee2e2;
-          color: #991b1b;
+          color: #dc2626;
+        `;
+      case 'BLIZI_SE_SPLATNOST':
+        return `
+          background: #fef3c7;
+          color: #d97706;
         `;
       default:
         return `
@@ -752,9 +792,9 @@ const InlineSelect = styled.select`
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.5rem center;
+  background-position: right 8px center;
   background-size: 16px 16px;
-  padding-right: 2.5rem;
+  padding-right: 32px;
 
   &:focus {
     outline: none;
@@ -890,6 +930,205 @@ function CurrencyInput({ value, onChange, onBlur, disabled, hasError, placeholde
   );
 }
 
+// Dashboard komponenty
+const DashboardContainer = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+`;
+
+const DashboardCard = styled.div`
+  background: white;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  text-align: center;
+  position: relative;
+  
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+  }
+  
+  .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  
+  .amount {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin-top: 0.25rem;
+  }
+  
+  &.overdue {
+    border-color: #ef4444;
+    .value { color: #ef4444; }
+  }
+  
+  &.current {
+    border-color: #3b82f6;
+    .value { color: #3b82f6; }
+  }
+  
+  @keyframes pulseAlert {
+    0%, 100% { 
+      opacity: 1; 
+      transform: scale(1);
+    }
+    50% { 
+      opacity: 0.6; 
+      transform: scale(1.1);
+    }
+  }
+  
+  .alert-icon {
+    position: absolute;
+    right: 24px;
+    top: 1rem;
+    bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ef4444;
+    font-size: 53px;
+    font-weight: bold;
+    animation: pulseAlert 1.5s ease-in-out infinite;
+    z-index: 1;
+    line-height: 1;
+  }
+  
+  .alert-icon-left {
+    position: absolute;
+    left: 24px;
+    top: 1rem;
+    bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ef4444;
+    font-size: 53px;
+    font-weight: bold;
+    animation: pulseAlert 1.5s ease-in-out infinite;
+    z-index: 1;
+    line-height: 1;
+  }
+  
+  .alert-icon-orange {
+    position: absolute;
+    right: 24px;
+    top: 1rem;
+    bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ff9800;
+    font-size: 53px;
+    font-weight: bold;
+    animation: pulseAlert 1.5s ease-in-out infinite;
+    z-index: 1;
+    line-height: 1;
+  }
+  
+  .alert-icon-left-orange {
+    position: absolute;
+    left: 24px;
+    top: 1rem;
+    bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ff9800;
+    font-size: 53px;
+    font-weight: bold;
+    animation: pulseAlert 1.5s ease-in-out infinite;
+    z-index: 1;
+    line-height: 1;
+  }
+`;
+
+const Badge = styled.span`
+  background: #ef4444;
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.25rem;
+`;
+
+// Pagination komponenty
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const PageButton = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  
+  &:hover:not(:disabled) {
+    background: #f3f4f6;
+  }
+  
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  
+  &.active {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+  }
+`;
+
+const PageSizeSelector = styled.select`
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  font-size: 0.875rem;
+`;
+
+// Řádky po splatnosti styling
+const OverdueRow = styled.tr`
+  &.overdue-highlight {
+    background-color: #fef2f2 !important;
+    border-left: 4px solid #ef4444;
+  }
+`;
+
 // 🧩 MAIN COMPONENT
 
 function AnnualFeesPage() {
@@ -920,6 +1159,10 @@ function AnnualFeesPage() {
     smlouva: ''
   });
   
+  // Fulltext vyhledávání state
+  const [fulltextSearch, setFulltextSearch] = useState('');
+  const debouncedFulltext = useDebounce(fulltextSearch, 300);
+  
   // Číselníky
   const [druhy, setDruhy] = useState([]);
   const [platby, setPlatby] = useState([]);
@@ -945,6 +1188,28 @@ function AnnualFeesPage() {
   const [generatedPolozky, setGeneratedPolozky] = useState([]);
   const [pendingFeeData, setPendingFeeData] = useState(null); // Hlavní řádek čekající na potvrzení
   const [isCreating, setIsCreating] = useState(false); // true = CREATE, false = UPDATE
+  
+  // 📄 Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const pageSizeOptions = [5, 10, 25, 50, 100];
+  
+  // 📊 Dashboard data
+  const [dashboardStats, setDashboardStats] = useState({
+    dueSoon: 0,               // Blíží se splatnost (10 dní)
+    dueSoonAmount: 0,         // Částka blíží se splatnost
+    currentMonth: 0,          // Aktuální měsíc
+    currentMonthAmount: 0,    // Částka aktuální měsíc
+    overdue: 0,               // Po splatnosti
+    overdueAmount: 0,         // Částka po splatnosti
+    totalActive: 0,           // Celkem aktivních
+    totalActiveAmount: 0,     // Částka celkem aktivních
+    totalToPay: 0,            // Celkem k zaplacení
+    totalPaid: 0,             // Celkem zaplaceno
+    totalRemaining: 0         // Celkem zbývá
+  });
   
   // Přidání nové položky k existujícímu ročnímu poplatku
   const [addingItemToFeeId, setAddingItemToFeeId] = useState(null);
@@ -999,6 +1264,69 @@ function AnnualFeesPage() {
   };
   
   // 🔧 Generování položek (stejná logika jako backend)
+  // Funkce pro kontrolu splatnosti
+  const isItemOverdue = (item) => {
+    // Zaplacené položky NIKDY nejsou po splatnosti
+    if (item.stav === 'ZAPLACENO') return false;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Nulové časy pro přesné porovnání dat
+    
+    const dueDate = new Date(item.datum_splatnosti);
+    dueDate.setHours(0, 0, 0, 0);
+    
+    return dueDate < today;
+  };
+  
+  // Funkce pro kontrolu "blíží se splatnost" (do 10 dní)
+  const isItemDueSoon = (item) => {
+    // Zaplacené položky nejsou "blíží se splatnost"
+    if (item.stav === 'ZAPLACENO') return false;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const dueDate = new Date(item.datum_splatnosti);
+    dueDate.setHours(0, 0, 0, 0);
+    
+    const dueSoonLimit = new Date(today);
+    dueSoonLimit.setDate(today.getDate() + 10);
+    
+    // Blíží se splatnost: od dneška (včetně) do 10 dní dopředu (včetně)
+    return dueDate >= today && dueDate <= dueSoonLimit;
+  };
+
+  // Funkce pro automatické určení stavu položky podle data splatnosti
+  const getItemStatusByDate = (item) => {
+    if (item.stav === 'ZAPLACENO') return 'ZAPLACENO';
+    
+    if (isItemOverdue(item)) {
+      return 'PO_SPLATNOSTI';
+    } else if (isItemDueSoon(item)) {
+      return 'BLIZI_SE_SPLATNOST';
+    } else {
+      return 'NEZAPLACENO';
+    }
+  };
+  
+  // Funkce pro výpočet nezaplacených položek po splatnosti
+  const getUnpaidItemsCount = (fee) => {
+    // Použij data z API (dostupná hned) místo počítání z fee.polozky (dostupná až po rozbalení)
+    return fee.pocet_po_splatnosti || 0;
+  };
+  
+  // Funkce pro badge - vrátí počty pro oba typy problémů
+  const getBadgeInfo = (fee) => {
+    const overdue = fee.pocet_po_splatnosti || 0;
+    const dueSoon = fee.pocet_blizi_se_splatnost || 0;
+    
+    return { 
+      overdue: overdue,
+      dueSoon: dueSoon,
+      hasAny: overdue > 0 || dueSoon > 0 
+    };
+  };
+  
   const generatePolozkyLocal = (platba, rok, celkovaCastka, datumPrvniSplatnosti) => {
     const polozky = [];
     const datum = new Date(datumPrvniSplatnosti);
@@ -1065,27 +1393,46 @@ function AnnualFeesPage() {
   // 🔄 Aktualizace datumů podle periody platby od daného řádku dolů
   const updateDatesFromIndex = (items, setItems, startIndex, platba, baseDate) => {
     const updated = [...items];
-    const startDate = new Date(baseDate);
+    // Parsuj datum ze stringu (YYYY-MM-DD)
+    const [year, month, day] = baseDate.split('-').map(Number);
     
     for (let i = startIndex + 1; i < updated.length; i++) {
-      const nextDate = new Date(startDate);
       const offset = i - startIndex;
+      let targetYear = year;
+      let targetMonth = month; // 1-based (1 = leden)
       
       switch (platba) {
         case 'MESICNI':
-          nextDate.setMonth(startDate.getMonth() + offset);
+          targetMonth = month + offset;
           break;
         case 'KVARTALNI':
-          nextDate.setMonth(startDate.getMonth() + (offset * 3));
+          targetMonth = month + (offset * 3);
           break;
         case 'ROCNI':
-          nextDate.setFullYear(startDate.getFullYear() + offset);
+          targetYear = year + offset;
           break;
         default:
           continue; // Pro JINA a neznámé typy neaktualizujeme
       }
       
-      updated[i].datum_splatnosti = nextDate.toISOString().split('T')[0];
+      // Normalizuj měsíc a rok (pokud měsíc přesahuje 12)
+      while (targetMonth > 12) {
+        targetMonth -= 12;
+        targetYear += 1;
+      }
+      while (targetMonth < 1) {
+        targetMonth += 12;
+        targetYear -= 1;
+      }
+      
+      // Zkontroluj, zda den existuje v cílovém měsíci
+      const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+      const finalDay = Math.min(day, daysInTargetMonth);
+      
+      // Vytvoř finální datum ve formátu YYYY-MM-DD
+      const finalDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(finalDay).padStart(2, '0')}`;
+      
+      updated[i].datum_splatnosti = finalDate;
     }
     
     setItems(updated);
@@ -1113,26 +1460,48 @@ function AnnualFeesPage() {
           const startDate = new Date(customStartDate || startItem.datum_splatnosti);
           
           for (let i = itemIndex + 1; i < updatedPolozky.length; i++) {
-            const nextDate = new Date(startDate);
+            // Parsuj datum ze stringu (YYYY-MM-DD)
+            const dateStr = customStartDate || startItem.datum_splatnosti;
+            const [year, month, day] = dateStr.split('-').map(Number);
             const offset = i - itemIndex;
             
-            switch (currentFee.periodicnost_platby) {
+            let targetYear = year;
+            let targetMonth = month; // 1-based (1 = leden)
+            
+            switch (currentFee.platba) {
               case 'MESICNI':
-                nextDate.setMonth(startDate.getMonth() + offset);
+                targetMonth = month + offset;
                 break;
               case 'KVARTALNI':
-                nextDate.setMonth(startDate.getMonth() + (offset * 3));
+                targetMonth = month + (offset * 3);
                 break;
               case 'ROCNI':
-                nextDate.setFullYear(startDate.getFullYear() + offset);
+                targetYear = year + offset;
                 break;
               default:
                 continue; // Pro JINA a neznámé typy neaktualizujeme
             }
             
+            // Normalizuj měsíc a rok (pokud měsíc přesahuje 12)
+            while (targetMonth > 12) {
+              targetMonth -= 12;
+              targetYear += 1;
+            }
+            while (targetMonth < 1) {
+              targetMonth += 12;
+              targetYear -= 1;
+            }
+            
+            // Zkontroluj, zda den existuje v cílovém měsíci
+            const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+            const finalDay = Math.min(day, daysInTargetMonth);
+            
+            // Vytvoř finální datum ve formátu YYYY-MM-DD
+            const finalDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(finalDay).padStart(2, '0')}`;
+            
             updatedPolozky[i] = {
               ...updatedPolozky[i],
-              datum_splatnosti: nextDate.toISOString().split('T')[0]
+              datum_splatnosti: finalDate
             };
           }
           
@@ -1153,22 +1522,44 @@ function AnnualFeesPage() {
         const updatePromises = [];
         
         for (let i = itemIndex + 1; i < currentFee.polozky.length; i++) {
-          const nextDate = new Date(startDate);
+          // Parsuj datum ze stringu (YYYY-MM-DD)
+          const dateStr = customStartDate || startItem.datum_splatnosti;
+          const [year, month, day] = dateStr.split('-').map(Number);
           const offset = i - itemIndex;
           
-          switch (currentFee.periodicnost_platby) {
+          let targetYear = year;
+          let targetMonth = month; // 1-based (1 = leden)
+          
+          switch (currentFee.platba) {
             case 'MESICNI':
-              nextDate.setMonth(startDate.getMonth() + offset);
+              targetMonth = month + offset;
               break;
             case 'KVARTALNI':
-              nextDate.setMonth(startDate.getMonth() + (offset * 3));
+              targetMonth = month + (offset * 3);
               break;
             case 'ROCNI':
-              nextDate.setFullYear(startDate.getFullYear() + offset);
+              targetYear = year + offset;
               break;
             default:
               continue;
           }
+          
+          // Normalizuj měsíc a rok (pokud měsíc přesahuje 12)
+          while (targetMonth > 12) {
+            targetMonth -= 12;
+            targetYear += 1;
+          }
+          while (targetMonth < 1) {
+            targetMonth += 12;
+            targetYear -= 1;
+          }
+          
+          // Zkontroluj, zda den existuje v cílovém měsíci
+          const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+          const finalDay = Math.min(day, daysInTargetMonth);
+          
+          // Vytvoř finální datum ve formátu YYYY-MM-DD
+          const finalDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(finalDay).padStart(2, '0')}`;
           
           const item = currentFee.polozky[i];
           updatePromises.push(
@@ -1176,7 +1567,7 @@ function AnnualFeesPage() {
               token,
               username,
               id: item.id,
-              data: { datum_splatnosti: nextDate.toISOString().split('T')[0] }
+              data: { datum_splatnosti: finalDate }
             })
           );
         }
@@ -1231,6 +1622,16 @@ function AnnualFeesPage() {
     loadAnnualFees();
   }, [filters]);
   
+  // Load data when page changes
+  useEffect(() => {
+    loadAnnualFees(currentPage, pageSize);
+  }, [currentPage]);
+
+  // Load data when page size changes
+  useEffect(() => {
+    loadAnnualFees(1, pageSize);
+  }, [pageSize]);
+  
   // Load číselníky při startu
   useEffect(() => {
     if (token && username) {
@@ -1247,12 +1648,13 @@ function AnnualFeesPage() {
     }
   }, [expandedRows]);
   
-  const loadAnnualFees = async () => {
+  const loadAnnualFees = async (page = currentPage, size = pageSize) => {
     if (!token) return;
     
     try {
       setLoading(true);
       
+      // Načíst seznam poplatků s paginací
       const response = await getAnnualFeesList({
         token,
         username,
@@ -1260,13 +1662,47 @@ function AnnualFeesPage() {
           rok: filters.rok,
           druh: filters.druh !== 'all' ? filters.druh : undefined,
           platba: filters.platba !== 'all' ? filters.platba : undefined,
-          stav: filters.stav !== 'all' ? filters.stav : undefined,
+          // stav filtrujeme až na frontendu, nikoliv v API
           smlouva: filters.smlouva || undefined
+        },
+        pagination: {
+          page: page,
+          pageSize: size
         }
       });
       
-      // Backend nyní vrací pocet_zaplaceno přímo - nemusíme přepočítávat
-      setAnnualFees(response.data || []);
+      // Nastavit pagination data
+      setTotalRecords(response.totalRecords || 0);
+      setTotalPages(response.totalPages || 0);
+      setCurrentPage(page);
+      
+      // Načíst dashboard statistiky
+      try {
+        const statsResponse = await getAnnualFeesStats({
+          token,
+          username,
+          rok: filters.rok !== 'all' ? filters.rok : undefined
+        });
+        
+        if (statsResponse.status === 'success' && statsResponse.data?.dashboard) {
+          setDashboardStats(statsResponse.data.dashboard);
+        }
+      } catch (statsError) {
+        console.error('Chyba při načítání dashboard statistik:', statsError);
+      }
+      
+      // Inicializovat počítadla pro filtrování
+      const feesWithInitializedCounts = (response.data || []).map(fee => {
+        // Pokud nejsou počítadla nastavená, inicializuj je na 0
+        return {
+          ...fee,
+          pocet_po_splatnosti: fee.pocet_po_splatnosti ?? 0,
+          pocet_blizi_se_splatnost: fee.pocet_blizi_se_splatnost ?? 0,
+          pocet_zaplaceno: fee.pocet_zaplaceno ?? 0
+        };
+      });
+      
+      setAnnualFees(feesWithInitializedCounts);
       
       // 💾 Načíst detaily pro již rozbalené řádky
       if (expandedRows.size > 0) {
@@ -1335,6 +1771,122 @@ function AnnualFeesPage() {
   // Filter change
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+  };
+  
+  // Funkce pro zrušení všech filtrů
+  const handleClearFilters = () => {
+    setFilters({
+      rok: new Date().getFullYear(),
+      druh: 'all',
+      platba: 'all',
+      stav: 'all',
+      smlouva: ''
+    });
+    setFulltextSearch('');
+  };
+  
+  // Normalizace textu pro vyhledávání - bez diakritiky a case-insensitive
+  const normalizeText = (text) => {
+    if (!text) return '';
+    return text.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // odstraní diakritiku
+  };
+  
+  // Kontrola zda řetězec obsahuje hledaný term
+  const containsSearchTerm = (text, searchTerm) => {
+    if (!searchTerm || !text) return false;
+    return normalizeText(text).includes(normalizeText(searchTerm));
+  };
+  
+  // Filtrovaná data podle fulltext vyhledávání a stavu
+  const filteredAnnualFees = annualFees.filter(fee => {
+    // Fulltext filtr
+    if (debouncedFulltext) {
+      // Vyhledávej v hlavních polích
+      const mainFields = [
+        fee.nazev,
+        fee.smlouva_cislo,
+        fee.dodavatel_nazev,
+        fee.druh_nazev,
+        fee.platba_nazev,
+        fee.poznamka,
+        fee.stav_nazev,
+        fee.aktualizoval_jmeno,
+        fee.aktualizoval_prijmeni,
+        fee.vytvoril_jmeno,
+        fee.vytvoril_prijmeni
+      ];
+      
+      // Zkontroluj hlavní pole
+      const foundInMain = mainFields.some(field => containsSearchTerm(field, debouncedFulltext));
+      if (!foundInMain) {
+        // Zkontroluj i podpoložky (pokud jsou načtené)
+        if (fee.polozky && fee.polozky.length > 0) {
+          const foundInItems = fee.polozky.some(item => {
+            const itemFields = [
+              item.nazev_polozky,
+              item.cislo_dokladu,
+              item.stav,
+              item.aktualizoval_jmeno,
+              item.aktualizoval_prijmeni
+            ];
+            return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
+          });
+          if (!foundInItems) return false;
+        } else {
+          return false;
+        }
+      }
+    }
+    
+    // Filtrování podle stavu (používá počítadla)
+    if (filters.stav && filters.stav !== 'all') {
+      switch (filters.stav) {
+        case '_PO_SPLATNOSTI':
+          return (fee.pocet_po_splatnosti || 0) > 0;
+        case '_BLIZI_SE_SPLATNOST':
+          return (fee.pocet_blizi_se_splatnost || 0) > 0;
+        case 'ZAPLACENO':
+          // Všechny položky zaplacené
+          return fee.pocet_polozek > 0 && fee.pocet_zaplaceno === fee.pocet_polozek;
+        case 'NEZAPLACENO':
+          // Má nezaplacené položky, ale nejsou po/blížící se splatnosti
+          return (fee.pocet_polozek - (fee.pocet_zaplaceno || 0)) > 0 && 
+                 (fee.pocet_po_splatnosti || 0) === 0 && 
+                 (fee.pocet_blizi_se_splatnost || 0) === 0;
+        case 'CASTECNE':
+          // Některé zaplacené, ale ne všechny
+          return (fee.pocet_zaplaceno || 0) > 0 && (fee.pocet_zaplaceno || 0) < fee.pocet_polozek;
+        default:
+          return true;
+      }
+    }
+    
+    return true;
+  });
+  
+  // Funkce pro zvýraznění hledaného textu
+  const highlightSearchTerm = (text, searchTerm) => {
+    if (!text || !searchTerm) return text;
+    
+    const normalizedText = normalizeText(text);
+    const normalizedSearch = normalizeText(searchTerm);
+    const index = normalizedText.indexOf(normalizedSearch);
+    
+    if (index === -1) return text;
+    
+    const beforeMatch = text.substring(0, index);
+    const match = text.substring(index, index + searchTerm.length);
+    const afterMatch = text.substring(index + searchTerm.length);
+    
+    return (
+      <>
+        {beforeMatch}
+        <span style={{ backgroundColor: '#fef3c7', fontWeight: 'bold' }}>{match}</span>
+        {afterMatch}
+      </>
+    );
   };
   
   // Search smluv pro autocomplete
@@ -1455,6 +2007,35 @@ function AnnualFeesPage() {
     setFakturySuggestions([]);
     setShowFakturySuggestions(false);
     setShouldFocusFaktura(false);
+  };
+
+  // Pagination handlers
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
+      setCurrentPage(newPage);
+    }
+  };
+  
+  const handlePageSizeChange = (newPageSize) => {
+    setPageSize(newPageSize);
+    setCurrentPage(1); // Reset na první stránku
+  };
+
+  // Generování stránek pro pagination
+  const generatePageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+    
+    if (end - start + 1 < maxVisiblePages && start > 1) {
+      start = Math.max(1, end - maxVisiblePages + 1);
+    }
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
   };
   
   const handleSaveEditItem = async (itemId) => {
@@ -1675,11 +2256,22 @@ function AnnualFeesPage() {
   // UPDATE item handler
   const handleUpdateItem = async (itemId, data) => {
     try {
+      // Automaticky aktualizovat stav podle data splatnosti (pokud není zaplaceno)
+      let finalData = { ...data };
+      if (finalData.stav !== 'ZAPLACENO') {
+        const mockItem = {
+          stav: finalData.stav || 'NEZAPLACENO',
+          datum_splatnosti: finalData.datum_splatnosti || new Date().toISOString().split('T')[0]
+        };
+        const autoStatus = getItemStatusByDate(mockItem);
+        finalData.stav = autoStatus;
+      }
+      
       const response = await updateAnnualFeeItem({
         token,
         username,
         id: itemId,
-        data
+        data: finalData
       });
       
       if (response.status === 'success') {
@@ -1701,9 +2293,52 @@ function AnnualFeesPage() {
             // Vypočítat pocet_zaplaceno z položek
             const pocet_zaplaceno = (detail.data.polozky || []).filter(item => item.stav === 'ZAPLACENO').length;
             
+            // Vypočítat pocet_po_splatnosti a pocet_blizi_se_splatnost pro aktualizaci badges
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const pocet_po_splatnosti = (detail.data.polozky || []).filter(item => {
+              if (item.stav === 'ZAPLACENO') return false;
+              const dueDate = new Date(item.datum_splatnosti);
+              dueDate.setHours(0, 0, 0, 0);
+              return dueDate < today;
+            }).length;
+            
+            const pocet_blizi_se_splatnost = (detail.data.polozky || []).filter(item => {
+              if (item.stav === 'ZAPLACENO') return false;
+              const dueDate = new Date(item.datum_splatnosti);
+              dueDate.setHours(0, 0, 0, 0);
+              const dueSoonLimit = new Date(today);
+              dueSoonLimit.setDate(today.getDate() + 10);
+              // Blíží se splatnost: od dneška (včetně) do 10 dní dopředu (včetně)
+              return dueDate >= today && dueDate <= dueSoonLimit;
+            }).length;
+            
             setAnnualFees(prev => prev.map(f => 
-              f.id === fee.id ? { ...f, ...detail.data, polozky: detail.data.polozky, pocet_zaplaceno } : f
+              f.id === fee.id ? { 
+                ...f, 
+                ...detail.data, 
+                polozky: detail.data.polozky, 
+                pocet_zaplaceno, 
+                pocet_po_splatnosti, 
+                pocet_blizi_se_splatnost 
+              } : f
             ));
+            
+            // ✅ Refresh dashboard statistik po změně
+            try {
+              const statsResponse = await getAnnualFeesStats({
+                token,
+                username,
+                rok: filters.rok !== 'all' ? filters.rok : undefined
+              });
+              
+              if (statsResponse.status === 'success' && statsResponse.data?.dashboard) {
+                setDashboardStats(statsResponse.data.dashboard);
+              }
+            } catch (statsError) {
+              console.error('Chyba při aktualizaci dashboard statistik:', statsError);
+            }
           }
         }
       }
@@ -1909,7 +2544,8 @@ function AnnualFeesPage() {
       case 'VECNA_SPRAVNOST': return 'Věcná správnost';
       case 'K_ZAPLACENI': return 'K zaplacení';
       case 'PREDANA_PO': return 'Předána PO';
-      case 'V_RESENI': return 'V řešení';
+      case 'PO_SPLATNOSTI': return 'Po splatnosti';
+      case 'BLIZI_SE_SPLATNOST': return 'Blíží se splatnost';
       case 'ZAEVIDOVANA': return 'Zaevidována';
       case 'STORNO': return 'Storno';
       default: return status || '-';
@@ -1932,6 +2568,58 @@ function AnnualFeesPage() {
         {/* II. Tlačítko přesunuto do tabulky jako inline řádek */}
       </PageHeader>
       
+      {/* Dashboard */}
+      <DashboardContainer>
+        <DashboardCard className="due-soon" style={{borderColor: '#ff9800'}}>
+          <h3>Blíží se splatnost</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#ff9800'}}>
+            {dashboardStats.dueSoon || 0}
+          </div>
+          <small>{dashboardStats.dueSoonAmount || '0'} Kč (do 10 dní)</small>
+        </DashboardCard>
+        <DashboardCard className="overdue">
+          <h3>Po splatnosti</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#f44336'}}>
+            {dashboardStats.overdue || 0}
+          </div>
+          <small>{dashboardStats.overdueAmount || '0'} Kč</small>
+          {dashboardStats.overdue > 0 && (
+            <>
+              <span className="alert-icon-left">!</span>
+              <span className="alert-icon">!</span>
+            </>
+          )}
+        </DashboardCard>
+        <DashboardCard>
+          <h3>Platby v aktuálním měsíci</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#2196f3'}}>
+            {dashboardStats.currentMonth || 0}
+          </div>
+          <small>{dashboardStats.currentMonthAmount || '0'} Kč</small>
+        </DashboardCard>
+        <DashboardCard>
+          <h3>K zaplacení</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#ff9800'}}>
+            {dashboardStats.totalToPay || '0'} Kč
+          </div>
+          <small>Nezaplacené položky</small>
+        </DashboardCard>
+        <DashboardCard>
+          <h3>Zaplaceno</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#4caf50'}}>
+            {dashboardStats.totalPaid || '0'} Kč
+          </div>
+          <small>Uhrazené platby</small>
+        </DashboardCard>
+        <DashboardCard>
+          <h3>Celkem aktivních</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#607d8b'}}>
+            {dashboardStats.totalActive || 0}
+          </div>
+          <small>{dashboardStats.totalActiveAmount || '0'} Kč</small>
+        </DashboardCard>
+      </DashboardContainer>
+
       <FiltersBar>
         <FilterGroup>
           <FilterLabel>Rok</FilterLabel>
@@ -1978,21 +2666,31 @@ function AnnualFeesPage() {
             onChange={(e) => handleFilterChange('stav', e.target.value)}
           >
             <option key="all" value="all">Vše</option>
-            {stavy.map(s => (
-              <option key={s.kod_stavu} value={s.kod_stavu}>{s.nazev_stavu}</option>
-            ))}
+            <option key="ZAPLACENO" value="ZAPLACENO">Zaplaceno</option>
+            <option key="NEZAPLACENO" value="NEZAPLACENO">Nezaplaceno</option>
+            <option key="CASTECNE" value="CASTECNE">Částečně zaplaceno</option>
+            <option key="_PO_SPLATNOSTI" value="_PO_SPLATNOSTI">Po splatnosti</option>
+            <option key="_BLIZI_SE_SPLATNOST" value="_BLIZI_SE_SPLATNOST">Blíží se splatnost</option>
           </Select>
         </FilterGroup>
         
-        <FilterGroup style={{ flex: 1 }}>
-          <FilterLabel>Hledat smlouvu</FilterLabel>
+        <FilterGroup style={{ flex: 1, minWidth: '300px' }}>
+          <FilterLabel>Fulltext vyhledávání</FilterLabel>
           <SearchInput 
             type="text"
-            placeholder="Číslo smlouvy nebo dodavatel..."
-            value={filters.smlouva}
-            onChange={(e) => handleFilterChange('smlouva', e.target.value)}
+            placeholder="Vyhledat ve všech polích..."
+            value={fulltextSearch}
+            onChange={(e) => setFulltextSearch(e.target.value)}
           />
         </FilterGroup>
+        
+        <ClearAllButton 
+          onClick={handleClearFilters}
+          title="Zrušit všechny filtry a vyhledávání"
+        >
+          <FontAwesomeIcon icon={faEraser} />
+          Vymazat filtry
+        </ClearAllButton>
       </FiltersBar>
       
       <TableContainer>
@@ -2258,17 +2956,94 @@ function AnnualFeesPage() {
               )}
               
               {/* Existující řádky */}
-              {annualFees.map(fee => {
+              {filteredAnnualFees.map(fee => {
                 const isEditingFee = editingFeeId === fee.id;
                 const hasZaplaceno = fee.pocet_zaplaceno > 0;
+                const hasOverdueItems = fee.pocet_po_splatnosti > 0;
+                const hasDueSoonItems = fee.pocet_blizi_se_splatnost > 0;
+                
+                // Zkontroluj zda jsou všechny podpoložky zaplacené podle počtů z API
+                const allItemsPaid = fee.pocet_polozek > 0 && fee.pocet_zaplaceno === fee.pocet_polozek;
+                
+                // Priorita barev: zelená (vše zaplaceno) > červená (po splatnosti) > oranžová (blíží se splatnost)
+                let rowBackgroundColor = undefined;
+                if (allItemsPaid) {
+                  rowBackgroundColor = '#dcfce7'; // Světle zelená - vše zaplaceno
+                } else if (hasOverdueItems) {
+                  rowBackgroundColor = '#ffebee'; // Světle červená
+                } else if (hasDueSoonItems) {
+                  rowBackgroundColor = '#fff3e0'; // Světle oranžová
+                }
                 return (
                 <React.Fragment key={fee.id}>
-                  <Tr clickable={!isEditingFee} onClick={() => !isEditingFee && toggleRow(fee.id)}>
+                  <Tr 
+                    clickable={!isEditingFee} 
+                    onClick={() => !isEditingFee && toggleRow(fee.id)}
+                    style={{
+                      backgroundColor: rowBackgroundColor
+                    }}
+                  >
                     <Td>
                       {!isEditingFee && (
-                        <ExpandButton title={expandedRows.has(fee.id) ? 'Sbalit' : 'Rozbalit'}>
-                          <FontAwesomeIcon icon={expandedRows.has(fee.id) ? faMinus : faPlus} />
-                        </ExpandButton>
+                        <div style={{position: 'relative', display: 'inline-block'}}>
+                          <ExpandButton title={expandedRows.has(fee.id) ? 'Sbalit' : 'Rozbalit'}>
+                            <FontAwesomeIcon icon={expandedRows.has(fee.id) ? faMinus : faPlus} />
+                            {(() => {
+                              const badgeInfo = getBadgeInfo(fee);
+                              if (!badgeInfo.hasAny) return null;
+                              
+                              return (
+                                <>
+                                  {/* Červené číslo po splatnosti - pravý horní roh */}
+                                  {badgeInfo.overdue > 0 && (
+                                    <Badge style={{
+                                      position: 'absolute',
+                                      top: '-6px',
+                                      right: '-6px',
+                                      backgroundColor: '#f44336',
+                                      color: 'white',
+                                      borderRadius: '50%',
+                                      width: '16px',
+                                      height: '16px',
+                                      fontSize: '10px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontWeight: 'bold',
+                                      lineHeight: '1',
+                                      zIndex: 2
+                                    }}>
+                                      {badgeInfo.overdue}
+                                    </Badge>
+                                  )}
+                                  
+                                  {/* Oranžové číslo blíží se splatnost - pravý dolní roh */}
+                                  {badgeInfo.dueSoon > 0 && (
+                                    <Badge style={{
+                                      position: 'absolute',
+                                      bottom: '-6px',
+                                      right: '-6px',
+                                      backgroundColor: '#ff9800',
+                                      color: 'white',
+                                      borderRadius: '50%',
+                                      width: '16px',
+                                      height: '16px',
+                                      fontSize: '10px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontWeight: 'bold',
+                                      lineHeight: '1',
+                                      zIndex: 2
+                                    }}>
+                                      {badgeInfo.dueSoon}
+                                    </Badge>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </ExpandButton>
+                        </div>
                       )}
                     </Td>
                     <Td>
@@ -2285,8 +3060,8 @@ function AnnualFeesPage() {
                         <strong>{fee.rok}</strong>
                       )}
                     </Td>
-                    <Td><strong>{fee.smlouva_cislo}</strong></Td>
-                    <Td>{fee.dodavatel_nazev}</Td>
+                    <Td><strong>{highlightSearchTerm(fee.smlouva_cislo || '', debouncedFulltext)}</strong></Td>
+                    <Td>{highlightSearchTerm(fee.dodavatel_nazev || '', debouncedFulltext)}</Td>
                     <Td>
                       {isEditingFee ? (
                         <InlineInput
@@ -2296,7 +3071,7 @@ function AnnualFeesPage() {
                           placeholder="Název"
                         />
                       ) : (
-                        fee.nazev
+                        highlightSearchTerm(fee.nazev || '', debouncedFulltext)
                       )}
                     </Td>
                     <Td>
@@ -2325,8 +3100,8 @@ function AnnualFeesPage() {
                         </>
                       ) : (
                         <>
-                          <div>{fee.druh_nazev}</div>
-                          <div style={{fontSize: '0.85rem', color: '#9ca3af'}}>{fee.platba_nazev}</div>
+                          <div>{highlightSearchTerm(fee.druh_nazev || '', debouncedFulltext)}</div>
+                          <div style={{fontSize: '0.85rem', color: '#9ca3af'}}>{highlightSearchTerm(fee.platba_nazev || '', debouncedFulltext)}</div>
                         </>
                       )}
                     </Td>
@@ -2355,8 +3130,8 @@ function AnnualFeesPage() {
                     <Td style={{textAlign: 'center'}}>
                       <StatusBadge status={fee.stav}>
                         {fee.stav === 'ZAPLACENO' && <FontAwesomeIcon icon={faCheckCircle} />}
-                        {fee.stav === 'V_RESENI' && <FontAwesomeIcon icon={faExclamationTriangle} />}
-                        {fee.stav_nazev}
+                        {fee.stav === 'PO_SPLATNOSTI' && <FontAwesomeIcon icon={faExclamationTriangle} />}
+                        {highlightSearchTerm(fee.stav_nazev || '', debouncedFulltext)}
                       </StatusBadge>
                     </Td>
                     <Td style={{fontSize: '0.75rem', color: '#1f2937', lineHeight: '1.3'}}>
@@ -2364,9 +3139,9 @@ function AnnualFeesPage() {
                         <div>
                           <div>
                             {fee.aktualizoval_jmeno ? (
-                              `${fee.aktualizoval_jmeno} ${fee.aktualizoval_prijmeni || ''}`
+                              highlightSearchTerm(`${fee.aktualizoval_jmeno} ${fee.aktualizoval_prijmeni || ''}`, debouncedFulltext)
                             ) : fee.vytvoril_jmeno ? (
-                              `${fee.vytvoril_jmeno} ${fee.vytvoril_prijmeni || ''}`
+                              highlightSearchTerm(`${fee.vytvoril_jmeno} ${fee.vytvoril_prijmeni || ''}`, debouncedFulltext)
                             ) : ''}
                           </div>
                           <div>{formatDate(fee.dt_aktualizace || fee.dt_vytvoreni)}</div>
@@ -2385,7 +3160,7 @@ function AnnualFeesPage() {
                         />
                       ) : (
                         fee.poznamka ? (
-                          <div style={{color: '#6b7280'}}>💬 {fee.poznamka}</div>
+                          <div style={{color: '#6b7280'}}>💬 {highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
                         ) : '-'
                       )}
                     </Td>
@@ -2499,7 +3274,14 @@ function AnnualFeesPage() {
                                 .slice(itemIndex + 1)
                                 .every(nextItem => nextItem.stav !== 'ZAPLACENO');
                               return (
-                              <SubItemRow key={item.id}>
+                              <SubItemRow 
+                                key={item.id}
+                                style={{
+                                  backgroundColor: item.stav === 'ZAPLACENO' ? '#dcfce7' : // Světle zelená pro zaplacené
+                                                 isItemOverdue(item) ? '#ffcccb' : 
+                                                 isItemDueSoon(item) ? '#ffe0b3' : undefined
+                                }}
+                              >
                                 {/* Poznámka */}
                                 <SubItemCell indent colSpan="4">
                                   {isEditing ? (
@@ -2514,7 +3296,7 @@ function AnnualFeesPage() {
                                       />
                                     )
                                   ) : (
-                                    <strong>{item.nazev_polozky}</strong>
+                                    <strong>{highlightSearchTerm(item.nazev_polozky || '', debouncedFulltext)}</strong>
                                   )}
                                 </SubItemCell>
                                 
@@ -2537,36 +3319,19 @@ function AnnualFeesPage() {
                                             onClick={async () => {
                                               const currentItemIndex = fee.polozky.findIndex(p => p.id === item.id);
                                               
-                                              // Nejprve uložit aktuální editované datum do databáze
+                                              // Použít aktuální datum z editace nebo z položky
+                                              const currentDate = editItemData.datum_splatnosti || item.datum_splatnosti;
+                                              
+                                              // Nejprve uložit aktuálně editované datum, pak aktualizovat ostatní
                                               if (editItemData.datum_splatnosti && editItemData.datum_splatnosti !== item.datum_splatnosti) {
+                                                // Uložit aktuální editaci nejprve
                                                 await handleUpdateItem(item.id, { datum_splatnosti: editItemData.datum_splatnosti });
-                                                
-                                                // Po uložení aktualizovat celý fee ze serveru
-                                                const detail = await getAnnualFeeDetail({
-                                                  token,
-                                                  username,
-                                                  id: fee.id
-                                                });
-                                                
-                                                if (detail.data) {
-                                                  setAnnualFees(prev => prev.map(f => 
-                                                    f.id === fee.id ? { ...f, ...detail.data } : f
-                                                  ));
-                                                  
-                                                  // Použít nově uložené datum pro aktualizaci
-                                                  const updatedFee = detail.data;
-                                                  const updatedItem = updatedFee.polozky.find(p => p.id === item.id);
-                                                  if (updatedItem) {
-                                                    updateExistingDatesFromIndex(currentItemIndex, updatedFee, setAnnualFees, updatedItem.datum_splatnosti);
-                                                  }
-                                                }
-                                              } else {
-                                                // Použít aktuální datum z editace nebo z položky
-                                                const currentDate = editItemData.datum_splatnosti || item.datum_splatnosti;
-                                                updateExistingDatesFromIndex(currentItemIndex, fee, setAnnualFees, currentDate);
                                               }
+                                              
+                                              // Pak aktualizovat následující data s ukládáním do DB
+                                              updateExistingDatesFromIndex(currentItemIndex, fee, setAnnualFees, currentDate, true);
                                             }}
-                                            title={`Aktualizovat data níže podle periody platby (${fee.periodicnost_platby})`}
+                                            title={`Aktualizovat data níže podle periody platby (${fee.platba})`}
                                           >
                                             <FontAwesomeIcon icon={faArrowDown} size="sm" />
                                           </ArrowButton>
@@ -2607,7 +3372,9 @@ function AnnualFeesPage() {
                                       placeholder="Číslo dokladu"
                                     />
                                   ) : (
-                                    item.cislo_dokladu || <span style={{color: '#9ca3af'}}>-</span>
+                                    item.cislo_dokladu ? 
+                                      highlightSearchTerm(item.cislo_dokladu, debouncedFulltext) : 
+                                      <span style={{color: '#9ca3af'}}>-</span>
                                   )}
                                 </SubItemCell>
                                 
@@ -2635,8 +3402,8 @@ function AnnualFeesPage() {
                                 <SubItemCell style={{textAlign: 'center'}}>
                                   <StatusBadge status={item.stav} style={{fontSize: '0.85rem'}}>
                                     {item.stav === 'ZAPLACENO' ? (
-                                      <><FontAwesomeIcon icon={faCheckCircle} /> Zaplaceno</>
-                                    ) : 'Nezaplaceno'}
+                                      <><FontAwesomeIcon icon={faCheckCircle} /> {highlightSearchTerm('Zaplaceno', debouncedFulltext)}</>
+                                    ) : highlightSearchTerm('Nezaplaceno', debouncedFulltext)}
                                   </StatusBadge>
                                 </SubItemCell>
                                 
@@ -2644,7 +3411,7 @@ function AnnualFeesPage() {
                                 <SubItemCell style={{fontSize: '0.75rem', color: '#6b7280', lineHeight: '1.3'}}>
                                   {item.aktualizoval_jmeno || item.dt_aktualizace ? (
                                     <div>
-                                      <div>{item.aktualizoval_jmeno} {item.aktualizoval_prijmeni}</div>
+                                      <div>{highlightSearchTerm(`${item.aktualizoval_jmeno || ''} ${item.aktualizoval_prijmeni || ''}`.trim(), debouncedFulltext)}</div>
                                       <div>{formatDate(item.dt_aktualizace)}</div>
                                     </div>
                                   ) : (
@@ -2698,8 +3465,14 @@ function AnnualFeesPage() {
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               if (!canUndo) return;
+                                              // Při zrušení platby automaticky určit stav podle data splatnosti
+                                              const mockItem = {
+                                                stav: 'NEZAPLACENO',
+                                                datum_splatnosti: item.datum_splatnosti
+                                              };
+                                              const autoStatus = getItemStatusByDate(mockItem);
                                               handleUpdateItem(item.id, { 
-                                                stav: 'NEZAPLACENO', 
+                                                stav: autoStatus, 
                                                 datum_zaplaceni: null,
                                                 datum_zaplaceno: null,
                                                 faktura_id: null
@@ -2880,14 +3653,21 @@ function AnnualFeesPage() {
               })}
               
               {/* Empty state message v tabulce */}
-              {annualFees.length === 0 && !showNewRow && (
+              {filteredAnnualFees.length === 0 && !showNewRow && (
                 <Tr>
-                  <Td colSpan="12" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                  <Td colSpan="14" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
                     <div style={{fontSize: '3rem', marginBottom: '16px'}}>
                       <FontAwesomeIcon icon={faMoneyBill} />
                     </div>
-                    <h3 style={{margin: '0 0 8px 0', color: '#6b7280'}}>Žádné roční poplatky</h3>
-                    <p style={{margin: '0'}}>Začněte kliknutím na tlačítko "+ Nový roční poplatek" výše</p>
+                    <h3 style={{margin: '0 0 8px 0', color: '#6b7280'}}>
+                      {annualFees.length === 0 ? 'Žádné roční poplatky' : 'Nenalezeny žádné výsledky'}
+                    </h3>
+                    <p style={{margin: '0'}}>
+                      {annualFees.length === 0 
+                        ? 'Začněte kliknutím na tlačítko "+ Nový roční poplatek" výše' 
+                        : 'Zkuste upravit filtry nebo vyhledávací termín'
+                      }
+                    </p>
                   </Td>
                 </Tr>
               )}
@@ -2895,6 +3675,96 @@ function AnnualFeesPage() {
           </Table>
         )}
       </TableContainer>
+
+      {/* Pagination */}
+      {totalRecords > 0 && (
+        <PaginationContainer>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
+            
+            {/* Levá strana - informace o záznamech a page size selector */}
+            <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+              <span style={{fontSize: '14px', color: '#6b7280'}}>
+                Zobrazeno {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalRecords)} z {totalRecords} záznamů
+              </span>
+              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                <span style={{fontSize: '14px', color: '#6b7280'}}>Na stránku:</span>
+                <select 
+                  value={pageSize} 
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '14px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    backgroundColor: 'white'
+                  }}
+                >
+                  {pageSizeOptions.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            {/* Pravá strana - pagination controls */}
+            {totalPages > 1 && (
+              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                {/* První stránka */}
+                <PageButton 
+                  disabled={currentPage === 1}
+                  onClick={() => handlePageChange(1)}
+                  title="První stránka"
+                >
+                  «
+                </PageButton>
+                
+                {/* Předchozí */}
+                <PageButton 
+                  disabled={currentPage === 1}
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  title="Předchozí stránka"
+                >
+                  ‹
+                </PageButton>
+                
+                {/* Čísla stránek */}
+                {generatePageNumbers().map(pageNum => (
+                  <PageButton
+                    key={pageNum}
+                    active={pageNum === currentPage}
+                    onClick={() => handlePageChange(pageNum)}
+                    style={{
+                      backgroundColor: pageNum === currentPage ? '#2563eb' : 'white',
+                      color: pageNum === currentPage ? 'white' : '#374151',
+                      borderColor: pageNum === currentPage ? '#2563eb' : '#d1d5db'
+                    }}
+                  >
+                    {pageNum}
+                  </PageButton>
+                ))}
+                
+                {/* Další */}
+                <PageButton 
+                  disabled={currentPage === totalPages}
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  title="Další stránka"
+                >
+                  ›
+                </PageButton>
+                
+                {/* Poslední stránka */}
+                <PageButton 
+                  disabled={currentPage === totalPages}
+                  onClick={() => handlePageChange(totalPages)}
+                  title="Poslední stránka"
+                >
+                  »
+                </PageButton>
+              </div>
+            )}
+          </div>
+        </PaginationContainer>
+      )}
       
       {/* 🔔 Modal pro úpravu položek před uložením */}
       {showPolozkyModal && (
