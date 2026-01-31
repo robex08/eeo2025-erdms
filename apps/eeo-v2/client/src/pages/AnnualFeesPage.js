@@ -283,6 +283,41 @@ const ClearAllButton = styled.button`
   }
 `;
 
+const ExpandCollapseButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  background: white;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 10px;
+  
+  &:hover:not(:disabled) {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+    color: #374151;
+  }
+  
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  svg {
+    width: 10px;
+    height: 10px;
+  }
+`;
+
 const SuggestionsWrapper = styled.div`
   position: relative;
   z-index: 100;
@@ -1354,11 +1389,19 @@ function AnnualFeesPage() {
   // 💾 Inicializace expandedRows z localStorage
   const [expandedRows, setExpandedRows] = useState(() => {
     try {
+      // Vymazat starý localStorage s Set struktuou
       const saved = localStorage.getItem('annualFees_expandedRows');
-      return saved ? new Set(JSON.parse(saved)) : new Set();
+      if (saved && saved.includes('[') && saved.includes(']')) {
+        // Starý formát (array), vymaž a začni znovu
+        localStorage.removeItem('annualFees_expandedRows');
+        return {};
+      }
+      return saved ? JSON.parse(saved) : {};
     } catch (error) {
       console.error('Chyba při načítání expandedRows z localStorage:', error);
-      return new Set();
+      // Vymaž poškozený localStorage
+      localStorage.removeItem('annualFees_expandedRows');
+      return {};
     }
   });
   
@@ -1394,6 +1437,9 @@ function AnnualFeesPage() {
   // Editace položek
   const [editingItemId, setEditingItemId] = useState(null);
   const [editItemData, setEditItemData] = useState({});
+  
+  // Bulk expand/collapse state
+  const [expandingAll, setExpandingAll] = useState(false);
   
   // 🔔 Modal pro potvrzení položek
   const [showPolozkyModal, setShowPolozkyModal] = useState(false);
@@ -1854,7 +1900,7 @@ function AnnualFeesPage() {
   // 💾 Uložit expandedRows do localStorage při změně
   useEffect(() => {
     try {
-      localStorage.setItem('annualFees_expandedRows', JSON.stringify([...expandedRows]));
+      localStorage.setItem('annualFees_expandedRows', JSON.stringify(expandedRows));
     } catch (error) {
       console.error('Chyba při ukládání expandedRows do localStorage:', error);
     }
@@ -1956,12 +2002,12 @@ function AnnualFeesPage() {
   
   // Toggle row expansion
   const toggleRow = async (id) => {
-    const newExpanded = new Set(expandedRows);
+    const newExpanded = { ...expandedRows };
     
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+    if (newExpanded[id]) {
+      delete newExpanded[id];
     } else {
-      newExpanded.add(id);
+      newExpanded[id] = true;
       
       // Načíst detail s položkami
       try {
@@ -1990,32 +2036,41 @@ function AnnualFeesPage() {
   
   // Rozbalit všechny řádky
   const expandAll = async () => {
-    const allIds = filteredAnnualFees.map(fee => fee.id);
-    const newExpanded = new Set(allIds);
+    setExpandingAll(true);
     
-    // Načíst detaily pro všechny
-    for (const id of allIds) {
-      const fee = annualFees.find(f => f.id === id);
-      if (!fee.polozky) {
-        try {
-          const detail = await getAnnualFeeDetail({ token, username, id });
-          if (detail.data) {
-            setAnnualFees(prev => prev.map(f => 
-              f.id === id ? { ...f, polozky: detail.data.polozky } : f
-            ));
+    try {
+      const allIds = filteredAnnualFees.map(fee => fee.id);
+      const newExpanded = {};
+      allIds.forEach(id => {
+        newExpanded[id] = true;
+      });
+      
+      // Načíst detaily pro všechny
+      for (const id of allIds) {
+        const fee = annualFees.find(f => f.id === id);
+        if (!fee.polozky) {
+          try {
+            const detail = await getAnnualFeeDetail({ token, username, id });
+            if (detail.data) {
+              setAnnualFees(prev => prev.map(f => 
+                f.id === id ? { ...f, polozky: detail.data.polozky } : f
+              ));
+            }
+          } catch (error) {
+            console.error(`Chyba při načítání detailu pro ID ${id}:`, error);
           }
-        } catch (error) {
-          console.error(`Chyba při načítání detailu pro ID ${id}:`, error);
         }
       }
+      
+      setExpandedRows(newExpanded);
+    } finally {
+      setExpandingAll(false);
     }
-    
-    setExpandedRows(newExpanded);
   };
   
   // Sbalit všechny řádky
   const collapseAll = () => {
-    setExpandedRows(new Set());
+    setExpandedRows({});
   };
   
   // Filter change
@@ -2177,26 +2232,15 @@ function AnnualFeesPage() {
   
   // Načtení příloh pro daný poplatek
   const loadAttachments = async (feeId) => {
-    console.log('🔍 loadAttachments CALLED for feeId:', feeId);
-    if (!token || !username) {
-      console.log('⚠️ Missing token or username');
-      return;
-    }
+    if (!token || !username) return;
     
     try {
-      console.log('📡 Calling listAnnualFeeAttachments API...');
       const result = await listAnnualFeeAttachments({ token, username, rocni_poplatek_id: feeId });
-      console.log('✅ LIST API result:', result);
       if (result.success) {
-        console.log('📎 Setting attachments for feeId', feeId, ':', result.data);
-        setAttachments(prev => {
-          const newState = { ...prev, [feeId]: result.data || [] };
-          console.log('📦 New attachments state:', newState);
-          return newState;
-        });
+        setAttachments(prev => ({ ...prev, [feeId]: result.data || [] }));
       }
     } catch (error) {
-      console.error('❌ Chyba při načítání příloh:', error);
+      console.error('Chyba při načítání příloh:', error);
     }
   };
   
@@ -2226,27 +2270,21 @@ function AnnualFeesPage() {
     setUploadingAttachments(prev => new Set([...prev, feeId]));
     
     try {
-      console.log('📤 Uploading file:', file.name, 'for feeId:', feeId);
       const result = await uploadAnnualFeeAttachment({ token, username, rocni_poplatek_id: feeId, file });
-      console.log('📤 UPLOAD result:', result);
       
       if (result.success) {
         showToast(formatToastMessage('✅ Příloha byla úspěšně nahrána', 'success'), { type: 'success' });
-        console.log('✅ Upload SUCCESS, calling loadAttachments...');
         await loadAttachments(feeId);
-        console.log('✅ loadAttachments completed');
       } else {
         showToast(formatToastMessage(`⚠️ ${result.message || 'Chyba při nahrávání přílohy'}`, 'error'), { type: 'error' });
       }
     } catch (error) {
-      console.error('❌ Chyba při uploadu přílohy:', error);
+      console.error('Chyba při uploadu přílohy:', error);
       showToast(formatToastMessage('⚠️ Chyba při nahrávání přílohy', 'error'), { type: 'error' });
     } finally {
-      console.log('🧹 Clearing uploadingAttachments for feeId:', feeId);
       setUploadingAttachments(prev => {
         const newSet = new Set(prev);
         newSet.delete(feeId);
-        console.log('🧹 New uploadingAttachments Set:', newSet);
         return newSet;
       });
       // Reset file input
@@ -2277,7 +2315,8 @@ function AnnualFeesPage() {
       // For viewable files (PDF, images) open in viewer
       if (fileType === 'pdf' || fileType === 'image') {
         // Fetch soubor jako blob
-        const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/annual-fees/attachments/download`, {
+        const BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+        const response = await fetch(`${BASE_URL}/annual-fees/attachments/download`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3302,8 +3341,33 @@ function AnnualFeesPage() {
           <Table>
             <Thead>
               <tr>
-                <Th style={{width: '50px'}}></Th>
-                <Th style={{width: '70px'}}>Rok</Th>
+                <Th style={{width: '50px', textAlign: 'center'}}>
+                  <ExpandCollapseButton
+                    onClick={() => {
+                      const allExpanded = Object.keys(expandedRows).length === filteredAnnualFees.length;
+                      if (allExpanded) {
+                        // Sbalit vše
+                        collapseAll();
+                      } else {
+                        // Rozbalit vše (načte data z databáze)
+                        expandAll();
+                      }
+                    }}
+                    disabled={expandingAll}
+                    title={expandingAll ? "Načítám detaily..." : (Object.keys(expandedRows).length === filteredAnnualFees.length ? "Sbalit všechny řádky" : "Rozbalit všechny řádky")}
+                  >
+                    {expandingAll ? (
+                      <FontAwesomeIcon icon={faSpinner} spin />
+                    ) : (
+                      <FontAwesomeIcon 
+                        icon={Object.keys(expandedRows).length === filteredAnnualFees.length ? faMinus : faPlus} 
+                      />
+                    )}
+                  </ExpandCollapseButton>
+                </Th>
+                <Th style={{width: '100px'}}>
+                  Rok
+                </Th>
                 <Th>Smlouva</Th>
                 <Th>Dodavatel</Th>
                 <Th>Název</Th>
@@ -3588,8 +3652,8 @@ function AnnualFeesPage() {
                     <Td>
                       {!isEditingFee && (
                         <div style={{position: 'relative', display: 'inline-block'}}>
-                          <ExpandButton title={expandedRows.has(fee.id) ? 'Sbalit' : 'Rozbalit'}>
-                            <FontAwesomeIcon icon={expandedRows.has(fee.id) ? faMinus : faPlus} />
+                          <ExpandButton title={expandedRows[fee.id] ? 'Sbalit' : 'Rozbalit'}>
+                            <FontAwesomeIcon icon={expandedRows[fee.id] ? faMinus : faPlus} />
                             {(() => {
                               const badgeInfo = getBadgeInfo(fee);
                               if (!badgeInfo.hasAny) return null;
@@ -3884,7 +3948,7 @@ function AnnualFeesPage() {
                     </Td>
                   </Tr>
                   
-                  {expandedRows.has(fee.id) && fee.polozky && (
+                  {expandedRows[fee.id] && fee.polozky && (
                     <SubItemsContainer>
                       {/* Prázdné buňky pro odsazení - zarovnání pod sloupec "Název" */}
                       <Td style={{border: 'none', background: '#f9fafb'}}></Td>
@@ -4686,7 +4750,7 @@ function AnnualFeesPage() {
             fileType: pdfViewer.fileType
           }}
           onClose={() => {
-            // Cleanup blob URL
+            // Data URLs don't need to be revoked like blob URLs
             if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
               window.URL.revokeObjectURL(pdfViewer.url);
             }

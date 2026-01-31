@@ -223,6 +223,12 @@ const AnnualFeeAttachmentsTooltip = ({
     
     try {
       const BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+      const downloadUrl = `${BASE_URL}/annual-fees/attachments/download`;
+      
+      console.log('📍 Downloading from:', downloadUrl);
+      console.log('🔑 Using token:', token ? 'OK' : 'MISSING');
+      console.log('👤 Using username:', username ? 'OK' : 'MISSING');
+      console.log('📎 Attachment ID:', attachment.id);
       
       if (!token || !username) {
         console.error('Chybí přihlašovací údaje');
@@ -230,7 +236,7 @@ const AnnualFeeAttachmentsTooltip = ({
       }
       
       // Stáhnout soubor jako blob
-      const response = await fetch(`${BASE_URL}/annual-fees/attachments/download`, {
+      const response = await fetch(downloadUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -242,40 +248,76 @@ const AnnualFeeAttachmentsTooltip = ({
         }),
       });
 
+      console.log('📊 Response status:', response.status);
+      console.log('📋 Response headers:', response.headers.get('Content-Type'));
+      console.log('📋 Response size:', response.headers.get('Content-Length'));
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error:', errorText);
         throw new Error('Chyba při načítání souboru');
       }
 
       const blobData = await response.blob();
+      console.log('📦 Blob created:', { size: blobData.size, type: blobData.type });
+      
+      // Test the blob data - try to read first few bytes
+      const arrayBuffer = await blobData.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      console.log('🔍 First 10 bytes:', Array.from(uint8Array.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      
+      // For PNG images, first bytes should be: 89 50 4E 47 0D 0A 1A 0A
+      const isPNG = uint8Array[0] === 0x89 && uint8Array[1] === 0x50 && uint8Array[2] === 0x4E && uint8Array[3] === 0x47;
+      console.log('🖼️ Is valid PNG?', isPNG);
+      
       const filename = attachment.originalni_nazev_souboru || 'priloha';
       const ext = filename.toLowerCase().split('.').pop();
-
-      // Určit MIME type podle přípony
-      let mimeType = 'application/octet-stream';
-      if (ext === 'pdf') {
-        mimeType = 'application/pdf';
-      } else if (['jpg', 'jpeg'].includes(ext)) {
-        mimeType = 'image/jpeg';
-      } else if (ext === 'png') {
-        mimeType = 'image/png';
-      } else if (ext === 'gif') {
-        mimeType = 'image/gif';
+      
+      // Create new blob with explicit MIME type for images
+      const correctedBlob = ext === 'png' ? new Blob([arrayBuffer], { type: 'image/png' }) : 
+                           ext === 'jpg' || ext === 'jpeg' ? new Blob([arrayBuffer], { type: 'image/jpeg' }) :
+                           ext === 'gif' ? new Blob([arrayBuffer], { type: 'image/gif' }) :
+                           blobData;
+      
+      console.log('🔧 Corrected blob:', { size: correctedBlob.size, type: correctedBlob.type });
+      
+      // Vytvořit blob URL s validací
+      const blobUrl = window.URL.createObjectURL(correctedBlob);
+      console.log('🔗 Blob URL created:', blobUrl);
+      
+      // Test zda je blob platný pro obrázky
+      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
+        // Create a test image to validate the blob URL
+        const testImg = new Image();
+        testImg.crossOrigin = 'anonymous'; // Try to avoid CORS issues
+        testImg.onload = () => {
+          console.log('✅ Test image loaded successfully:', {
+            width: testImg.naturalWidth,
+            height: testImg.naturalHeight,
+            src: testImg.src
+          });
+        };
+        testImg.onerror = (e) => {
+          console.error('❌ Test image failed to load:', e);
+          console.error('❌ Test image src:', testImg.src);
+        };
+        // Don't await this - just fire and forget for testing
+        testImg.src = blobUrl;
       }
-
-      // Vytvořit nový Blob se správným MIME typem
-      const blob = new Blob([blobData], { type: mimeType });
       
-      // Vytvořit URL pro blob
-      const blobUrl = window.URL.createObjectURL(blob);
-      
-      // Zavolat onView s attachment + blobUrl
+      // Zavolat onView s attachment + blobUrl  
       if (onView) {
-        onView({
-          ...attachment,
-          blobUrl: blobUrl,
-          filename: filename,
-          fileType: ext === 'pdf' ? 'pdf' : (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext) ? 'image' : 'other')
-        });
+        const detectedFileType = ext === 'pdf' ? 'pdf' : (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext) ? 'image' : 'other');
+        
+        // Wait a bit to ensure blob URL is stable
+        setTimeout(() => {
+          onView({
+            ...attachment,
+            blobUrl: blobUrl,
+            filename: filename,
+            fileType: detectedFileType
+          });
+        }, 100);
       }
       
     } catch (error) {
