@@ -6,7 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faPlus, faMinus, faFilter, faSearch, faCalendar, 
   faMoneyBill, faFileInvoice, faEdit, 
-  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faAngleDown 
+  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown 
 } from '@fortawesome/free-solid-svg-icons';
 import { Calculator } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
@@ -1092,23 +1092,31 @@ function AnnualFeesPage() {
   };
 
   // Aktualizace dat v existujících annual fees
-  const updateExistingDatesFromIndex = async (itemIndex, fee, setAnnualFees, saveToDatabase = true) => {
+  const updateExistingDatesFromIndex = async (itemIndex, fee, setAnnualFees, customStartDate = null, saveToDatabase = true) => {
+    // Získat aktuální stav dat ze state
+    let currentFee = fee;
+    setAnnualFees(prevFees => {
+      const found = prevFees.find(f => f.id === fee.id);
+      if (found) currentFee = found;
+      return prevFees;
+    });
+
     // Nejprve aktualizovat stav pro okamžitou vizuální zpětnou vazbu
     setAnnualFees(prevFees => 
       prevFees.map(f => {
-        if (f.id === fee.id) {
+        if (f.id === currentFee.id) {
           const updated = {...f};
           const updatedPolozky = [...f.polozky];
           const startItem = updatedPolozky[itemIndex];
           if (!startItem) return f;
 
-          const startDate = new Date(startItem.datum_splatnosti);
+          const startDate = new Date(customStartDate || startItem.datum_splatnosti);
           
           for (let i = itemIndex + 1; i < updatedPolozky.length; i++) {
             const nextDate = new Date(startDate);
             const offset = i - itemIndex;
             
-            switch (fee.periodicnost_platby) {
+            switch (currentFee.periodicnost_platby) {
               case 'MESICNI':
                 nextDate.setMonth(startDate.getMonth() + offset);
                 break;
@@ -1138,17 +1146,17 @@ function AnnualFeesPage() {
     // Pokud je saveToDatabase true, uložit změny do databáze
     if (saveToDatabase) {
       try {
-        const startItem = fee.polozky[itemIndex];
+        const startItem = currentFee.polozky[itemIndex];
         if (!startItem) return;
 
-        const startDate = new Date(startItem.datum_splatnosti);
+        const startDate = new Date(customStartDate || startItem.datum_splatnosti);
         const updatePromises = [];
         
-        for (let i = itemIndex + 1; i < fee.polozky.length; i++) {
+        for (let i = itemIndex + 1; i < currentFee.polozky.length; i++) {
           const nextDate = new Date(startDate);
           const offset = i - itemIndex;
           
-          switch (fee.periodicnost_platby) {
+          switch (currentFee.periodicnost_platby) {
             case 'MESICNI':
               nextDate.setMonth(startDate.getMonth() + offset);
               break;
@@ -1162,7 +1170,7 @@ function AnnualFeesPage() {
               continue;
           }
           
-          const item = fee.polozky[i];
+          const item = currentFee.polozky[i];
           updatePromises.push(
             updateAnnualFeeItem({
               token,
@@ -1184,12 +1192,12 @@ function AnnualFeesPage() {
         const detail = await getAnnualFeeDetail({
           token,
           username,
-          id: fee.id
+          id: currentFee.id
         });
         
         if (detail.data) {
           setAnnualFees(prev => prev.map(f => 
-            f.id === fee.id ? { ...f, ...detail.data } : f
+            f.id === currentFee.id ? { ...f, ...detail.data } : f
           ));
         }
       }
@@ -1631,19 +1639,9 @@ function AnnualFeesPage() {
     const castkaStr = (newFeeData.castka || '').toString().trim();
     const cleanCastka = castkaStr.replace(/[^\d,.-]/g, '').replace(',', '.');
     const parsedCastka = parseFloat(cleanCastka);
-    
-    console.log('🔍 DEBUG CREATE:', {
-      originalCastka: newFeeData.castka,
-      castkaStr,
-      cleanCastka,
-      parsedCastka,
-      isNaN: isNaN(parsedCastka),
-      typeof: typeof parsedCastka
-    });
-    
+
     if (!castkaStr || castkaStr === '' || isNaN(parsedCastka) || parsedCastka <= 0) {
       showToast('Vyplňte platnou částku (musí být větší než 0)', 'error');
-      console.error('❌ Validace částky selhala');
       return;
     }
     
@@ -1751,9 +1749,6 @@ function AnnualFeesPage() {
   
   // Editace hlavního řádku (fee)
   const handleStartEditFee = (fee) => {
-    console.log('📝 Start edit fee:', fee);
-    console.log('📊 Druhy:', druhy);
-    console.log('📊 Platby:', platby);
     setEditingFeeId(fee.id);
     setEditFeeData({
       nazev: fee.nazev,
@@ -1850,15 +1845,6 @@ function AnnualFeesPage() {
         };
         
         // 🔧 DEBUG: Výpis request payload do console
-        console.group('🔧 [DEBUG] Annual Fees CREATE Request');
-        console.log('📤 Data posílaná na backend:', dataToSend);
-        console.log('📋 Položky z modal dialogu:', generatedPolozky);
-        console.log('📄 Pending fee data:', pendingFeeData);
-        console.log('🔍 Klíče v dataToSend:', Object.keys(dataToSend));
-        console.log('💰 celkova_castka:', dataToSend.celkova_castka, typeof dataToSend.celkova_castka);
-        console.log('👤 token a username:', { token: dataToSend.token, username: dataToSend.username });
-        console.groupEnd();
-        
         const response = await createAnnualFee(dataToSend);
         
         if (response.status === 'success') {
@@ -1899,12 +1885,6 @@ function AnnualFeesPage() {
         };
         
         // 🔧 DEBUG: Výpis request payload do console
-        console.group('🔧 [DEBUG] Annual Fees UPDATE Request');
-        console.log('📤 Data posílaná na backend:', dataToUpdate);
-        console.log('📋 Položky z modal dialogu:', generatedPolozky);
-        console.log('📄 Pending fee data:', pendingFeeData);
-        console.groupEnd();
-        
         const response = await updateAnnualFee(dataToUpdate);
         
         if (response.status === 'success') {
@@ -2554,13 +2534,41 @@ function AnnualFeesPage() {
                                             style={{width: '105px'}}
                                           />
                                           <ArrowButton
-                                            onClick={() => {
+                                            onClick={async () => {
                                               const currentItemIndex = fee.polozky.findIndex(p => p.id === item.id);
-                                              updateExistingDatesFromIndex(currentItemIndex, fee, setAnnualFees);
+                                              
+                                              // Nejprve uložit aktuální editované datum do databáze
+                                              if (editItemData.datum_splatnosti && editItemData.datum_splatnosti !== item.datum_splatnosti) {
+                                                await handleUpdateItem(item.id, { datum_splatnosti: editItemData.datum_splatnosti });
+                                                
+                                                // Po uložení aktualizovat celý fee ze serveru
+                                                const detail = await getAnnualFeeDetail({
+                                                  token,
+                                                  username,
+                                                  id: fee.id
+                                                });
+                                                
+                                                if (detail.data) {
+                                                  setAnnualFees(prev => prev.map(f => 
+                                                    f.id === fee.id ? { ...f, ...detail.data } : f
+                                                  ));
+                                                  
+                                                  // Použít nově uložené datum pro aktualizaci
+                                                  const updatedFee = detail.data;
+                                                  const updatedItem = updatedFee.polozky.find(p => p.id === item.id);
+                                                  if (updatedItem) {
+                                                    updateExistingDatesFromIndex(currentItemIndex, updatedFee, setAnnualFees, updatedItem.datum_splatnosti);
+                                                  }
+                                                }
+                                              } else {
+                                                // Použít aktuální datum z editace nebo z položky
+                                                const currentDate = editItemData.datum_splatnosti || item.datum_splatnosti;
+                                                updateExistingDatesFromIndex(currentItemIndex, fee, setAnnualFees, currentDate);
+                                              }
                                             }}
                                             title={`Aktualizovat data níže podle periody platby (${fee.periodicnost_platby})`}
                                           >
-                                            <FontAwesomeIcon icon={faAngleDown} size="sm" />
+                                            <FontAwesomeIcon icon={faArrowDown} size="sm" />
                                           </ArrowButton>
                                         </DateWithArrowContainer>
                                       </div>
@@ -2942,17 +2950,20 @@ function AnnualFeesPage() {
                           />
                           <ArrowButton
                             onClick={() => {
+                              // Použít aktuální snapshot položek s aktuálními daty
+                              const currentPolozky = [...generatedPolozky];
+                              const currentDate = currentPolozky[index].datum_splatnosti;
                               updateDatesFromIndex(
-                                generatedPolozky,
+                                currentPolozky,
                                 setGeneratedPolozky,
                                 index,
                                 pendingFeeData.platba,
-                                polozka.datum_splatnosti
+                                currentDate
                               );
                             }}
                             title="Aktualizovat datumy níže podle periody platby"
                           >
-                            <FontAwesomeIcon icon={faAngleDown} />
+                            <FontAwesomeIcon icon={faArrowDown} />
                           </ArrowButton>
                         </DateWithArrowContainer>
                       </td>
