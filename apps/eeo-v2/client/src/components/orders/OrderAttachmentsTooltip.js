@@ -339,8 +339,6 @@ const OrderAttachmentsTooltip = ({ attachments, position, onClose, token, userna
           onClose();
         }
       } else if (downloadableTypes.includes(ext)) {
-        // Automaticky stáhnout nepodporované soubory
-        console.log('📥 Auto-downloading unsupported file type:', filename);
         
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;
@@ -356,8 +354,6 @@ const OrderAttachmentsTooltip = ({ attachments, position, onClose, token, userna
         
         onClose();
       } else {
-        // Pro neznámé typy také stáhnout
-        console.log('📥 Auto-downloading unknown file type:', filename);
         
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;

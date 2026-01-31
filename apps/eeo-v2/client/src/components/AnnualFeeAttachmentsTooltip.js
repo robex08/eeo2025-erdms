@@ -225,10 +225,7 @@ const AnnualFeeAttachmentsTooltip = ({
       const BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
       const downloadUrl = `${BASE_URL}/annual-fees/attachments/download`;
       
-      console.log('📍 Downloading from:', downloadUrl);
-      console.log('🔑 Using token:', token ? 'OK' : 'MISSING');
-      console.log('👤 Using username:', username ? 'OK' : 'MISSING');
-      console.log('📎 Attachment ID:', attachment.id);
+
       
       if (!token || !username) {
         console.error('Chybí přihlašovací údaje');
@@ -248,9 +245,7 @@ const AnnualFeeAttachmentsTooltip = ({
         }),
       });
 
-      console.log('📊 Response status:', response.status);
-      console.log('📋 Response headers:', response.headers.get('Content-Type'));
-      console.log('📋 Response size:', response.headers.get('Content-Length'));
+
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -259,17 +254,13 @@ const AnnualFeeAttachmentsTooltip = ({
       }
 
       const blobData = await response.blob();
-      console.log('📦 Blob created:', { size: blobData.size, type: blobData.type });
-      
-      // Test the blob data - try to read first few bytes
+      // Test the blob data - try to read first few bytes for PNG corruption fix
       const arrayBuffer = await blobData.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
-      console.log('🔍 First 10 bytes:', Array.from(uint8Array.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' '));
       
       // For PNG images, first bytes should be: 89 50 4E 47 0D 0A 1A 0A
       const expectedPngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
       const hasPngSignature = expectedPngSignature.every((byte, index) => uint8Array[index] === byte);
-      console.log('🖼️ Is valid PNG?', hasPngSignature);
       
       const filename = attachment.originalni_nazev_souboru || 'priloha';
       const ext = filename.toLowerCase().split('.').pop();
@@ -282,7 +273,6 @@ const AnnualFeeAttachmentsTooltip = ({
         for (let i = 1; i < 10; i++) {
           const checkSignature = expectedPngSignature.every((byte, index) => uint8Array[i + index] === byte);
           if (checkSignature) {
-            console.log('🔧 Found PNG signature at offset:', i, '- removing', i, 'corrupted bytes from beginning');
             finalArrayBuffer = arrayBuffer.slice(i);
             break;
           }
@@ -295,11 +285,8 @@ const AnnualFeeAttachmentsTooltip = ({
                            ext === 'gif' ? new Blob([finalArrayBuffer], { type: 'image/gif' }) :
                            blobData;
       
-      console.log('🔧 Corrected blob:', { size: correctedBlob.size, type: correctedBlob.type });
-      
-      // Vytvořit blob URL s validací
+      // Vytvořit blob URL
       const blobUrl = window.URL.createObjectURL(correctedBlob);
-      console.log('🔗 Blob URL created:', blobUrl);
       
       // Test zda je blob platný pro obrázky
       if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
@@ -307,15 +294,10 @@ const AnnualFeeAttachmentsTooltip = ({
         const testImg = new Image();
         testImg.crossOrigin = 'anonymous'; // Try to avoid CORS issues
         testImg.onload = () => {
-          console.log('✅ Test image loaded successfully:', {
-            width: testImg.naturalWidth,
-            height: testImg.naturalHeight,
-            src: testImg.src
-          });
+          // Image loaded successfully
         };
         testImg.onerror = (e) => {
-          console.error('❌ Test image failed to load:', e);
-          console.error('❌ Test image src:', testImg.src);
+          console.error('Image failed to load:', testImg.src);
         };
         // Don't await this - just fire and forget for testing
         testImg.src = blobUrl;
@@ -327,7 +309,6 @@ const AnnualFeeAttachmentsTooltip = ({
         
         // Pro nepodporované soubory (DOCX, XLS, atd.) automaticky stáhnout místo zobrazování
         if (detectedFileType === 'other') {
-          console.log('📥 Automaticky stahování nepodporovaného souboru:', filename);
           
           // Automatické stažení
           const downloadLink = document.createElement('a');
