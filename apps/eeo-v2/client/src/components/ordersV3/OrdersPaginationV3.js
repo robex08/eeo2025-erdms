@@ -7,13 +7,6 @@
 
 import React from 'react';
 import styled from '@emotion/styled';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faChevronLeft,
-  faChevronRight,
-  faAngleDoubleLeft,
-  faAngleDoubleRight,
-} from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -142,12 +135,27 @@ function OrdersPaginationV3({
 
       {/* Pagination controls */}
       <PaginationControls>
+        <span style={{ fontSize: '0.875rem', color: '#64748b', marginRight: '1rem' }}>
+          Zobrazit:
+        </span>
+        <PageSizeSelect
+          value={itemsPerPage}
+          onChange={handleItemsPerPageChange}
+          disabled={loading}
+        >
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+          <option value={200}>200</option>
+        </PageSizeSelect>
+
         <PageButton
           onClick={handleFirstPage}
           disabled={currentPage === 1 || loading}
           title="První stránka"
         >
-          <FontAwesomeIcon icon={faAngleDoubleLeft} />
+          ««
         </PageButton>
 
         <PageButton
@@ -155,10 +163,10 @@ function OrdersPaginationV3({
           disabled={currentPage === 1 || loading}
           title="Předchozí stránka"
         >
-          <FontAwesomeIcon icon={faChevronLeft} />
+          ‹
         </PageButton>
 
-        <span style={{ padding: '0 1rem', fontSize: '0.875rem', color: '#64748b' }}>
+        <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 1rem' }}>
           Stránka {currentPage} z {totalPages}
         </span>
 
@@ -167,7 +175,7 @@ function OrdersPaginationV3({
           disabled={currentPage === totalPages || loading}
           title="Další stránka"
         >
-          <FontAwesomeIcon icon={faChevronRight} />
+          ›
         </PageButton>
 
         <PageButton
@@ -175,20 +183,8 @@ function OrdersPaginationV3({
           disabled={currentPage === totalPages || loading}
           title="Poslední stránka"
         >
-          <FontAwesomeIcon icon={faAngleDoubleRight} />
+          ››
         </PageButton>
-
-        <PageSizeSelect
-          value={itemsPerPage}
-          onChange={handleItemsPerPageChange}
-          disabled={loading}
-        >
-          <option value={10}>10 / stránku</option>
-          <option value={25}>25 / stránku</option>
-          <option value={50}>50 / stránku</option>
-          <option value={100}>100 / stránku</option>
-          <option value={200}>200 / stránku</option>
-        </PageSizeSelect>
       </PaginationControls>
     </PaginationContainer>
   );
