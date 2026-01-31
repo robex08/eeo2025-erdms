@@ -6627,13 +6627,52 @@ const Invoices25List = () => {
                               // Vytvořit URL pro blob
                               const blobUrl = window.URL.createObjectURL(blob);
                               
-                              // Otevřít náhled
-                              setViewerAttachment({
-                                ...attachment,
-                                original_filename: fileName,
-                                blobUrl: blobUrl,
-                                mimeType: mimeType
-                              });
+                              // Check if file type is supported for preview
+                              const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+                              const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
+                              
+                              if (previewableTypes.includes(ext)) {
+                                // Otevřít náhled pro podporované soubory
+                                setViewerAttachment({
+                                  ...attachment,
+                                  original_filename: fileName,
+                                  blobUrl: blobUrl,
+                                  mimeType: mimeType
+                                });
+                              } else if (downloadableTypes.includes(ext)) {
+                                // Automaticky stáhnout nepodporované soubory
+                                console.log('📥 Auto-downloading unsupported file type:', fileName);
+                                
+                                const downloadLink = document.createElement('a');
+                                downloadLink.href = blobUrl;
+                                downloadLink.download = fileName;
+                                document.body.appendChild(downloadLink);
+                                downloadLink.click();
+                                document.body.removeChild(downloadLink);
+                                
+                                // Cleanup blob URL
+                                setTimeout(() => {
+                                  window.URL.revokeObjectURL(blobUrl);
+                                }, 1000);
+                                
+                                showToast(`Stahuje se soubor: ${fileName}`, { type: 'info' });
+                              } else {
+                                // Pro neznámé typy také stáhnout
+                                console.log('📥 Auto-downloading unknown file type:', fileName);
+                                
+                                const downloadLink = document.createElement('a');
+                                downloadLink.href = blobUrl;
+                                downloadLink.download = fileName;
+                                document.body.appendChild(downloadLink);
+                                downloadLink.click();
+                                document.body.removeChild(downloadLink);
+                                
+                                setTimeout(() => {
+                                  window.URL.revokeObjectURL(blobUrl);
+                                }, 1000);
+                                
+                                showToast(`Stahuje se soubor: ${fileName}`, { type: 'info' });
+                              }
                             } catch (err) {
                               console.error('Chyba při otevírání přílohy:', err);
                               showToast('Nepodařilo se načíst přílohu', { type: 'error' });
