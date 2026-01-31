@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import styled from '@emotion/styled';
@@ -6,11 +7,14 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faPlus, faMinus, faFilter, faSearch, faCalendar, 
   faMoneyBill, faFileInvoice, faEdit, 
-  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown, faEraser 
+  faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown, faEraser,
+  faPaperclip, faUpload, faDownload, faFile 
 } from '@fortawesome/free-solid-svg-icons';
-import { Calculator, AlertCircle, CheckCircle2, AlertTriangle, Info as InfoIcon } from 'lucide-react';
+import { Calculator, AlertCircle, CheckCircle2, AlertTriangle, Info as InfoIcon, Paperclip, Upload, Download, Trash2, X } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
+import AnnualFeeAttachmentsTooltip from '../components/AnnualFeeAttachmentsTooltip';
+import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { 
   getAnnualFeesList, 
   getAnnualFeeDetail, 
@@ -20,7 +24,14 @@ import {
   updateAnnualFee, 
   updateAnnualFeeItem,
   deleteAnnualFee,
-  deleteAnnualFeeItem
+  deleteAnnualFeeItem,
+  uploadAnnualFeeAttachment,
+  listAnnualFeeAttachments,
+  downloadAnnualFeeAttachment,
+  deleteAnnualFeeAttachment,
+  isAllowedAnnualFeeFileType,
+  isAllowedAnnualFeeFileSize,
+  formatFileSize
 } from '../services/apiAnnualFees';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
@@ -1137,12 +1148,173 @@ const OverdueRow = styled.tr`
   }
 `;
 
+// 📎 PŘÍLOHY - Styled komponenty
+const AttachmentsContainer = styled.div`
+  background: #f9fafb;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+`;
+
+const AttachmentsHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #374151;
+`;
+
+const DropZone = styled.div`
+  border: 2px dashed ${props => props.$isDragging ? '#3b82f6' : '#cbd5e1'};
+  border-radius: 8px;
+  padding: 0.75rem;
+  text-align: center;
+  background: ${props => props.$isDragging ? '#eff6ff' : 'white'};
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 1rem;
+  
+  &:hover {
+    border-color: #3b82f6;
+    background: #f8fafc;
+  }
+`;
+
+const DropZoneContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const DropZoneIcon = styled.div`
+  font-size: 2rem;
+  color: ${props => props.$isDragging ? '#3b82f6' : '#94a3b8'};
+`;
+
+const DropZoneText = styled.div`
+  font-size: 0.875rem;
+  color: #64748b;
+`;
+
+const AttachmentsList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const AttachmentItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+`;
+
+const AttachmentIcon = styled.div`
+  font-size: 1.25rem;
+  color: #3b82f6;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const AttachmentInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AttachmentName = styled.div`
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const AttachmentMeta = styled.div`
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.125rem;
+`;
+
+const AttachmentActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const AttachmentButton = styled.button`
+  padding: 0.375rem 0.5rem;
+  border: none;
+  background: ${props => props.$danger ? '#fee2e2' : '#eff6ff'};
+  color: ${props => props.$danger ? '#dc2626' : '#3b82f6'};
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: ${props => props.$danger ? '#fecaca' : '#dbeafe'};
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const HiddenFileInput = styled.input`
+  display: none;
+`;
+
+// PDF Viewer styled components
 // 🧩 MAIN COMPONENT
 
 function AnnualFeesPage() {
-  const { token, username, userDetail } = useContext(AuthContext);
+  const { token, username, userDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
+  // 🔐 KONTROLA OPRÁVNĚNÍ
+  // Pravidla:
+  // 1. ADMIN + ANNUAL_FEES_MANAGE = plný přístup
+  // 2. ANNUAL_FEES_VIEW = pouze čtení
+  // 3. ANNUAL_FEES_CREATE + ANNUAL_FEES_EDIT = vytváření + editace
+  // 4. ANNUAL_FEES_DELETE (+ EDIT) = mazání
+  // 5. ANNUAL_FEES_ITEM_PAYMENT (+ VIEW nebo EDIT) = označování plateb
+  
+  const isAdmin = hasPermission('ADMIN');
+  const hasManage = hasPermission('ANNUAL_FEES_MANAGE');
+  const hasView = hasPermission('ANNUAL_FEES_VIEW');
+  const hasCreate = hasPermission('ANNUAL_FEES_CREATE');
+  const hasEdit = hasPermission('ANNUAL_FEES_EDIT');
+  const hasDelete = hasPermission('ANNUAL_FEES_DELETE');
+  const hasItemPayment = hasPermission('ANNUAL_FEES_ITEM_PAYMENT');
+  
+  // Kombinované kontroly
+  const canView = isAdmin || hasManage || hasView || hasEdit || hasCreate;
+  const canCreate = isAdmin || hasManage || hasCreate;
+  const canEdit = isAdmin || hasManage || hasEdit;
+  const canDelete = isAdmin || hasManage || (hasDelete && hasEdit); // DELETE jen s EDIT
+  const canMarkPayment = isAdmin || hasManage || (hasItemPayment && (hasView || hasEdit));
+  
+  // 📎 STATE PRO PŘÍLOHY
+  const [attachments, setAttachments] = useState({}); // { [feeId]: [{id, original_name, ...}] }
+  const [uploadingAttachments, setUploadingAttachments] = useState(new Set());
+  const [isDragging, setIsDragging] = useState({}); // { [feeId]: boolean }
+  
   // 🎨 HELPER FUNKCE PRO FORMÁTOVANÉ TOASTY
   // Vytváří jednotný vzhled pro všechny toast zprávy s ikonami a barvami
   const formatToastMessage = useCallback((message, type = 'info') => {
@@ -1744,7 +1916,12 @@ function AnnualFeesPage() {
       
       setAnnualFees(feesWithInitializedCounts);
       
-      // 💾 Načíst detaily pro již rozbalené řádky
+      // � Načíst počty příloh pro všechny řádky
+      feesWithInitializedCounts.forEach(fee => {
+        loadAttachments(fee.id);
+      });
+      
+      // �💾 Načíst detaily pro již rozbalené řádky
       if (expandedRows.size > 0) {
         const fees = response.data || [];
         for (const feeId of expandedRows) {
@@ -1803,9 +1980,42 @@ function AnnualFeesPage() {
         console.error('Chyba při načítání detailu:', error);
         showToast(formatToastMessage('Chyba při načítání detailu poplatku', 'error'), { type: 'error' });
       }
+      
+      // 📎 Načíst přílohy
+      loadAttachments(id);
     }
     
     setExpandedRows(newExpanded);
+  };
+  
+  // Rozbalit všechny řádky
+  const expandAll = async () => {
+    const allIds = filteredAnnualFees.map(fee => fee.id);
+    const newExpanded = new Set(allIds);
+    
+    // Načíst detaily pro všechny
+    for (const id of allIds) {
+      const fee = annualFees.find(f => f.id === id);
+      if (!fee.polozky) {
+        try {
+          const detail = await getAnnualFeeDetail({ token, username, id });
+          if (detail.data) {
+            setAnnualFees(prev => prev.map(f => 
+              f.id === id ? { ...f, polozky: detail.data.polozky } : f
+            ));
+          }
+        } catch (error) {
+          console.error(`Chyba při načítání detailu pro ID ${id}:`, error);
+        }
+      }
+    }
+    
+    setExpandedRows(newExpanded);
+  };
+  
+  // Sbalit všechny řádky
+  const collapseAll = () => {
+    setExpandedRows(new Set());
   };
   
   // Filter change
@@ -1958,6 +2168,223 @@ function AnnualFeesPage() {
       }, 100);
     }
   }, [shouldFocusFaktura, editingItemId]);
+  
+  // ============================================================================
+  // 📎 FUNKCE PRO PŘÍLOHY
+  // ============================================================================
+  
+  const fileInputRef = useRef(null);
+  
+  // Načtení příloh pro daný poplatek
+  const loadAttachments = async (feeId) => {
+    console.log('🔍 loadAttachments CALLED for feeId:', feeId);
+    if (!token || !username) {
+      console.log('⚠️ Missing token or username');
+      return;
+    }
+    
+    try {
+      console.log('📡 Calling listAnnualFeeAttachments API...');
+      const result = await listAnnualFeeAttachments({ token, username, rocni_poplatek_id: feeId });
+      console.log('✅ LIST API result:', result);
+      if (result.success) {
+        console.log('📎 Setting attachments for feeId', feeId, ':', result.data);
+        setAttachments(prev => {
+          const newState = { ...prev, [feeId]: result.data || [] };
+          console.log('📦 New attachments state:', newState);
+          return newState;
+        });
+      }
+    } catch (error) {
+      console.error('❌ Chyba při načítání příloh:', error);
+    }
+  };
+  
+  // Upload souboru
+  const handleFileUpload = async (feeId, files) => {
+    if (!files || files.length === 0) return;
+    if (!canCreate && !canEdit) {
+      showToast(formatToastMessage('⚠️ Nemáte oprávnění nahrávat přílohy', 'error'), { type: 'error' });
+      return;
+    }
+    
+    const file = files[0];
+    
+    // Validace typu
+    if (!isAllowedAnnualFeeFileType(file.name)) {
+      showToast(formatToastMessage('⚠️ Nepovolený typ souboru. Povolené: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG, GIF, ZIP, RAR', 'error'), { type: 'error' });
+      return;
+    }
+    
+    // Validace velikosti (10 MB)
+    if (!isAllowedAnnualFeeFileSize(file.size)) {
+      showToast(formatToastMessage('⚠️ Soubor je příliš velký. Maximální velikost: 10 MB', 'error'), { type: 'error' });
+      return;
+    }
+    
+    // Nastavit uploading stav
+    setUploadingAttachments(prev => new Set([...prev, feeId]));
+    
+    try {
+      console.log('📤 Uploading file:', file.name, 'for feeId:', feeId);
+      const result = await uploadAnnualFeeAttachment({ token, username, rocni_poplatek_id: feeId, file });
+      console.log('📤 UPLOAD result:', result);
+      
+      if (result.success) {
+        showToast(formatToastMessage('✅ Příloha byla úspěšně nahrána', 'success'), { type: 'success' });
+        console.log('✅ Upload SUCCESS, calling loadAttachments...');
+        await loadAttachments(feeId);
+        console.log('✅ loadAttachments completed');
+      } else {
+        showToast(formatToastMessage(`⚠️ ${result.message || 'Chyba při nahrávání přílohy'}`, 'error'), { type: 'error' });
+      }
+    } catch (error) {
+      console.error('❌ Chyba při uploadu přílohy:', error);
+      showToast(formatToastMessage('⚠️ Chyba při nahrávání přílohy', 'error'), { type: 'error' });
+    } finally {
+      console.log('🧹 Clearing uploadingAttachments for feeId:', feeId);
+      setUploadingAttachments(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(feeId);
+        console.log('🧹 New uploadingAttachments Set:', newSet);
+        return newSet;
+      });
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  // Stažení přílohy
+  const handleDownloadAttachment = async (feeId, attachmentId, filename) => {
+    if (!canView) {
+      showToast(formatToastMessage('⚠️ Nemáte oprávnění stahovat přílohy', 'error'), { type: 'error' });
+      return;
+    }
+    
+    try {
+      // Determine file type
+      const extension = filename.split('.').pop().toLowerCase();
+      let fileType = 'other';
+      
+      if (extension === 'pdf') {
+        fileType = 'pdf';
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(extension)) {
+        fileType = 'image';
+      }
+      
+      // For viewable files (PDF, images) open in viewer
+      if (fileType === 'pdf' || fileType === 'image') {
+        // Fetch soubor jako blob
+        const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/annual-fees/attachments/download`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token,
+            username,
+            attachment_id: attachmentId
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Chyba při načítání souboru');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        setPdfViewer({
+          visible: true,
+          url,
+          filename,
+          fileType
+        });
+      } else {
+        // Pro ostatní soubory standardní stažení
+        await downloadAnnualFeeAttachment({ token, username, rocni_poplatek_id: feeId, attachment_id: attachmentId, filename });
+      }
+    } catch (error) {
+      console.error('Chyba při stahování přílohy:', error);
+      showToast(formatToastMessage('⚠️ Chyba při stahování přílohy', 'error'), { type: 'error' });
+    }
+  };
+  
+  // Smazání přílohy
+  const handleDeleteAttachment = (feeId, attachmentId, filename) => {
+    if (!canEdit) {
+      showToast(formatToastMessage('⚠️ Nemáte oprávnění mazat přílohy', 'error'), { type: 'error' });
+      return;
+    }
+    
+    setDeleteAttachmentDialog({ isOpen: true, feeId, attachmentId, filename });
+  };
+  
+  const handleConfirmDeleteAttachment = async () => {
+    const { feeId, attachmentId } = deleteAttachmentDialog;
+    setDeleteAttachmentDialog({ isOpen: false, feeId: null, attachmentId: null, filename: '' });
+    
+    try {
+      const result = await deleteAnnualFeeAttachment({ token, username, rocni_poplatek_id: feeId, attachment_id: attachmentId });
+      
+      if (result.success) {
+        showToast(formatToastMessage('🗑️ Příloha byla smazána', 'success'), { type: 'success' });
+        await loadAttachments(feeId);
+      } else {
+        showToast(formatToastMessage(`⚠️ ${result.message || 'Chyba při mazání přílohy'}`, 'error'), { type: 'error' });
+      }
+    } catch (error) {
+      console.error('Chyba při mazání přílohy:', error);
+      showToast(formatToastMessage('⚠️ Chyba při mazání přílohy', 'error'), { type: 'error' });
+    }
+  };
+  
+  // Drag & Drop handlers
+  const handleFileDragEnter = (e, feeId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(prev => ({ ...prev, [feeId]: true }));
+  };
+  
+  const handleFileDragLeave = (e, feeId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(prev => ({ ...prev, [feeId]: false }));
+  };
+  
+  const handleFileDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const handleFileDrop = (e, feeId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(prev => ({ ...prev, [feeId]: false }));
+    
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileUpload(feeId, files);
+    }
+  };
+  
+  // Otevřít file picker
+  const openFilePicker = (feeId) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.dataset.feeId = feeId;
+      fileInputRef.current.click();
+    }
+  };
+  
+  const handleFileInputChange = (e) => {
+    const feeId = parseInt(e.target.dataset.feeId);
+    const files = Array.from(e.target.files);
+    if (files.length > 0 && feeId) {
+      handleFileUpload(feeId, files);
+    }
+  };
   
   const searchSmlouvy = async (query) => {
     if (!query || query.length < 3) {
@@ -2423,6 +2850,24 @@ function AnnualFeesPage() {
   // State pro confirm dialog položky
   const [deleteItemConfirmDialog, setDeleteItemConfirmDialog] = useState({ isOpen: false, itemId: null, itemName: '' });
   
+  // State pro confirm dialog přílohy
+  const [deleteAttachmentDialog, setDeleteAttachmentDialog] = useState({ isOpen: false, feeId: null, attachmentId: null, filename: '' });
+  
+  // State pro attachments tooltip popup
+  const [attachmentsTooltip, setAttachmentsTooltip] = useState({ visible: false, feeId: null, position: { top: 0, left: 0 } });
+  
+  // State pro PDF viewer
+  const [pdfViewer, setPdfViewer] = useState({ visible: false, url: '', filename: '', fileType: 'pdf' });
+  
+  // Cleanup PDF viewer URL on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
+        window.URL.revokeObjectURL(pdfViewer.url);
+      }
+    };
+  }, [pdfViewer.url]);
+  
   // DELETE handler - otevře confirm dialog
   const handleDeleteFee = (id, name) => {
     setDeleteConfirmDialog({
@@ -2660,6 +3105,25 @@ function AnnualFeesPage() {
     return new Date(dateString).toLocaleDateString('cs-CZ');
   };
   
+  // Pokud nemá právo VIEW, zobraz access denied screen
+  if (!canView) {
+    return (
+      <PageContainer>
+        <PageHeader>
+          <PageTitle>🔒 Přístup odepřen</PageTitle>
+        </PageHeader>
+        <div style={{padding: '2rem', textAlign: 'center'}}>
+          <p style={{fontSize: '1.1rem', color: '#6b7280', marginBottom: '1rem'}}>
+            Nemáte oprávnění k zobrazení ročních poplatků.
+          </p>
+          <p style={{fontSize: '0.95rem', color: '#9ca3af'}}>
+            Pro přístup kontaktujte administrátora systému.
+          </p>
+        </div>
+      </PageContainer>
+    );
+  }
+  
   return (
     <PageContainer>
       <PageHeader>
@@ -2796,6 +3260,38 @@ function AnnualFeesPage() {
         </ClearAllButton>
       </FiltersBar>
       
+      {/* 📎 Hidden file input pro přílohy - globální pro všechny řádky */}
+      <HiddenFileInput
+        ref={fileInputRef}
+        type="file"
+        onChange={handleFileInputChange}
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar"
+      />
+      
+      {/* Expand/Collapse All tlačítka */}
+      {filteredAnnualFees.length > 0 && (
+        <div style={{display: 'flex', gap: '8px', marginBottom: '12px', justifyContent: 'flex-end'}}>
+          <Button
+            variant="secondary"
+            onClick={expandAll}
+            style={{padding: '6px 12px', fontSize: '0.875rem'}}
+            title="Rozbalit všechny podřádky"
+          >
+            <FontAwesomeIcon icon={faPlus} style={{marginRight: '6px'}} />
+            Rozbalit vše
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={collapseAll}
+            style={{padding: '6px 12px', fontSize: '0.875rem'}}
+            title="Sbalit všechny podřádky"
+          >
+            <FontAwesomeIcon icon={faMinus} style={{marginRight: '6px'}} />
+            Sbalit vše
+          </Button>
+        </div>
+      )}
+      
       <TableContainer>
         {loading ? (
           <LoadingState>
@@ -2819,21 +3315,24 @@ function AnnualFeesPage() {
                 <Th style={{textAlign: 'center'}}>Stav</Th>
                 <Th>Zpracovatel</Th>
                 <Th>Poznámka</Th>
+                <Th style={{textAlign: 'center'}} title="Přílohy">📎</Th>
                 <Th style={{textAlign: 'center'}}>Akce</Th>
               </tr>
             </Thead>
             <Tbody>
-              {/* II. Inline řádek pro vytvoření nového ročního poplatku */}
-              {!showNewRow ? (
+              {/* II. Inline řádek pro vytvoření nového ročního poplatku - pouze s právem CREATE */}
+              {canCreate && !showNewRow && (
                 <NewRowTr>
-                  <Td colSpan="14" style={{textAlign: 'center', padding: '12px'}}>
+                  <Td colSpan="15" style={{textAlign: 'center', padding: '12px'}}>
                     <NewRowButton onClick={() => setShowNewRow(true)}>
                       <FontAwesomeIcon icon={faPlus} />
                       Nový roční poplatek
                     </NewRowButton>
                   </Td>
                 </NewRowTr>
-              ) : (
+              )}
+              
+              {canCreate && showNewRow && (
                 <NewRowTr>
                   <Td colSpan="2">
                     <InlineSelect
@@ -3277,9 +3776,30 @@ function AnnualFeesPage() {
                         />
                       ) : (
                         fee.poznamka ? (
-                          <div style={{color: '#6b7280'}}>💬 {highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
+                          <div style={{color: '#6b7280'}}>{highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
                         ) : '-'
                       )}
+                    </Td>
+                    <Td style={{textAlign: 'center'}}>
+                      <span 
+                        style={{cursor: 'pointer'}} 
+                        title={`${attachments[fee.id]?.length || 0} příloha/y - klikněte pro zobrazení`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setAttachmentsTooltip({
+                            visible: true,
+                            feeId: fee.id,
+                            position: {
+                              top: rect.bottom + window.scrollY + 8,
+                              left: Math.min(rect.left + window.scrollX, window.innerWidth - 320)
+                            }
+                          });
+                        }}
+                      >
+                        <Paperclip size={16} style={{marginRight: '4px', color: attachments[fee.id]?.length > 0 ? '#3b82f6' : '#cbd5e1'}} />
+                        <span style={{fontSize: '0.875rem', color: '#64748b'}}>{attachments[fee.id]?.length || 0}</span>
+                      </span>
                     </Td>
                     <Td>
                       <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
@@ -3310,48 +3830,54 @@ function AnnualFeesPage() {
                           </>
                         ) : (
                           <>
-                            <Button 
-                              variant="secondary" 
-                              style={{
-                                padding: '6px 10px', 
-                                fontSize: '0.85rem', 
-                                minWidth: 'auto',
-                                opacity: hasZaplaceno ? 0.5 : 1,
-                                cursor: hasZaplaceno ? 'not-allowed' : 'pointer'
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!hasZaplaceno) {
-                                  handleStartEditFee(fee);
-                                }
-                              }}
-                              disabled={hasZaplaceno}
-                              title={hasZaplaceno ? 'Nelze editovat - již jsou zaplacené položky' : 'Upravit roční poplatek'}
-                            >
-                              <FontAwesomeIcon icon={faEdit} />
-                            </Button>
-                            <Button 
-                              variant="secondary" 
-                              style={{
-                                padding: '6px 10px', 
-                                fontSize: '0.85rem', 
-                                minWidth: 'auto', 
-                                color: '#ef4444', 
-                                borderColor: '#ef4444',
-                                opacity: hasZaplaceno ? 0.5 : 1,
-                                cursor: hasZaplaceno ? 'not-allowed' : 'pointer'
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!hasZaplaceno) {
-                                  handleDeleteFee(fee.id, fee.nazev);
-                                }
-                              }}
-                              disabled={hasZaplaceno}
-                              title={hasZaplaceno ? 'Nelze smazat - již jsou zaplacené položky' : 'Smazat roční poplatek'}
-                            >
-                              <FontAwesomeIcon icon={faTrash} />
-                            </Button>
+                            {/* Tlačítko EDIT - pouze s právem EDIT */}
+                            {canEdit && (
+                              <Button 
+                                variant="secondary" 
+                                style={{
+                                  padding: '6px 10px', 
+                                  fontSize: '0.85rem', 
+                                  minWidth: 'auto',
+                                  opacity: hasZaplaceno ? 0.5 : 1,
+                                  cursor: hasZaplaceno ? 'not-allowed' : 'pointer'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!hasZaplaceno) {
+                                    handleStartEditFee(fee);
+                                  }
+                                }}
+                                disabled={hasZaplaceno}
+                                title={hasZaplaceno ? 'Nelze editovat - již jsou zaplacené položky' : 'Upravit roční poplatek'}
+                              >
+                                <FontAwesomeIcon icon={faEdit} />
+                              </Button>
+                            )}
+                            {/* Tlačítko DELETE - pouze s právem DELETE (+ EDIT) */}
+                            {canDelete && (
+                              <Button 
+                                variant="secondary" 
+                                style={{
+                                  padding: '6px 10px', 
+                                  fontSize: '0.85rem', 
+                                  minWidth: 'auto', 
+                                  color: '#ef4444', 
+                                  borderColor: '#ef4444',
+                                  opacity: hasZaplaceno ? 0.5 : 1,
+                                  cursor: hasZaplaceno ? 'not-allowed' : 'pointer'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!hasZaplaceno) {
+                                    handleDeleteFee(fee.id, fee.nazev);
+                                  }
+                                }}
+                                disabled={hasZaplaceno}
+                                title={hasZaplaceno ? 'Nelze smazat - již jsou zaplacené položky' : 'Smazat roční poplatek'}
+                              >
+                                <FontAwesomeIcon icon={faTrash} />
+                              </Button>
+                            )}
                           </>
                         )}
                       </div>
@@ -3363,9 +3889,103 @@ function AnnualFeesPage() {
                       {/* Prázdné buňky pro odsazení - zarovnání pod sloupec "Název" */}
                       <Td style={{border: 'none', background: '#f9fafb'}}></Td>
                       <Td style={{border: 'none', background: '#f9fafb'}}></Td>
-                      <Td style={{border: 'none', background: '#f9fafb'}}></Td>
-                      <Td style={{border: 'none', background: '#f9fafb'}}></Td>
-                      <SubItemsWrapper colSpan="10">
+                      
+                      {/* 📎 DROPZONE PRO PŘÍLOHY - VLEVO */}
+                      <Td colSpan="4" style={{verticalAlign: 'top', padding: '16px', background: '#f9fafb'}}>
+                        <AttachmentsContainer>
+                          <AttachmentsHeader>
+                            <Paperclip size={18} />
+                            <span>Přílohy ({attachments[fee.id]?.length || 0})</span>
+                          </AttachmentsHeader>
+                          
+                          {/* Dropzone */}
+                          {canView && (
+                            <DropZone
+                              $isDragging={isDragging[fee.id] || false}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openFilePicker(fee.id);
+                              }}
+                              onDragEnter={(e) => handleFileDragEnter(e, fee.id)}
+                              onDragLeave={(e) => handleFileDragLeave(e, fee.id)}
+                              onDragOver={handleFileDragOver}
+                              onDrop={(e) => handleFileDrop(e, fee.id)}
+                            >
+                              <DropZoneContent>
+                                <DropZoneIcon $isDragging={isDragging[fee.id] || false}>
+                                  {uploadingAttachments.has(fee.id) ? (
+                                    '⏳'
+                                  ) : (
+                                    <Upload size={32} />
+                                  )}
+                                </DropZoneIcon>
+                                <DropZoneText>
+                                  {uploadingAttachments.has(fee.id) 
+                                    ? 'Nahrávám...' 
+                                    : 'Klikněte nebo přetáhněte soubor'}
+                                </DropZoneText>
+                                <DropZoneText style={{fontSize: '0.75rem', marginTop: '4px'}}>
+                                  Max 10 MB • PDF, DOC, XLS, obrázky, ZIP
+                                </DropZoneText>
+                              </DropZoneContent>
+                            </DropZone>
+                          )}
+                          
+                          {/* Seznam příloh */}
+                          {attachments[fee.id] && attachments[fee.id].length > 0 && (
+                            <AttachmentsList>
+                              {attachments[fee.id].map(att => {
+                                const extension = att.systemova_cesta?.split('.').pop()?.toLowerCase();
+                                const fileIcon = extension === 'pdf' ? '📄' :
+                                               ['jpg', 'jpeg', 'png', 'gif'].includes(extension) ? '🖼️' :
+                                               ['doc', 'docx'].includes(extension) ? '📝' :
+                                               ['xls', 'xlsx'].includes(extension) ? '📊' :
+                                               ['zip', 'rar'].includes(extension) ? '📦' : '📎';
+                                
+                                return (
+                                  <AttachmentItem key={att.id}>
+                                    <AttachmentIcon>{fileIcon}</AttachmentIcon>
+                                    <AttachmentInfo>
+                                      <AttachmentName title={att.originalni_nazev_souboru}>
+                                        {att.originalni_nazev_souboru}
+                                      </AttachmentName>
+                                      <AttachmentMeta>
+                                        {formatFileSize(att.velikost_souboru_b)} • {att.dt_vytvoreni ? new Date(att.dt_vytvoreni).toLocaleDateString('cs-CZ') : ''}
+                                      </AttachmentMeta>
+                                    </AttachmentInfo>
+                                    <AttachmentActions>
+                                      <AttachmentButton
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDownloadAttachment(fee.id, att.id, att.originalni_nazev_souboru);
+                                        }}
+                                        title="Stáhnout"
+                                      >
+                                        <Download size={14} />
+                                      </AttachmentButton>
+                                      {canEdit && (
+                                        <AttachmentButton
+                                          $danger
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteAttachment(fee.id, att.id, att.originalni_nazev_souboru);
+                                          }}
+                                          title="Smazat"
+                                        >
+                                          <Trash2 size={14} />
+                                        </AttachmentButton>
+                                      )}
+                                    </AttachmentActions>
+                                  </AttachmentItem>
+                                );
+                              })}
+                            </AttachmentsList>
+                          )}
+                        </AttachmentsContainer>
+                      </Td>
+                      
+                      {/* POLOŽKY - VPRAVO */}
+                      <SubItemsWrapper colSpan="9">
                         <SubItemsTable>
                           <thead>
                             <tr>
@@ -3764,8 +4384,8 @@ function AnnualFeesPage() {
                           </tbody>
                         </SubItemsTable>
                         
-                        {/* Tlačítko pro přidání další položky */}
-                        {addingItemToFeeId !== fee.id && (
+                        {/* Tlačítko pro přidání další položky - pouze s CREATE nebo EDIT */}
+                        {(canCreate || canEdit) && addingItemToFeeId !== fee.id && (
                           <NewRowButton 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -4001,6 +4621,79 @@ function AnnualFeesPage() {
         confirmText="Smazat"
         cancelText="Zrušit"
       />
+      
+      {/* KONFIRMACE SMAZÁNÍ PŘÍLOHY */}
+      <ConfirmDialog
+        isOpen={deleteAttachmentDialog.isOpen}
+        onClose={() => setDeleteAttachmentDialog({ isOpen: false, feeId: null, attachmentId: null, filename: '' })}
+        onConfirm={handleConfirmDeleteAttachment}
+        title="Smazat přílohu"
+        message={
+          <div>
+            <p>Opravdu chcete smazat přílohu?</p>
+            <p style={{fontWeight: 'bold', marginTop: '8px'}}>{deleteAttachmentDialog.filename}</p>
+            <p style={{color: '#ef4444', marginTop: '12px'}}>⚠️ Tato akce je nevratná.</p>
+          </div>
+        }
+        icon={faTrash}
+        variant="danger"
+        confirmText="Smazat"
+        cancelText="Zrušit"
+      />
+      
+      {/* TOOLTIP PŘÍLOH */}
+      {attachmentsTooltip.visible && attachmentsTooltip.feeId && attachments[attachmentsTooltip.feeId] && (
+        <AnnualFeeAttachmentsTooltip
+          attachments={attachments[attachmentsTooltip.feeId]}
+          position={attachmentsTooltip.position}
+          token={token}
+          username={username}
+          onView={(attachment) => {
+            // Uzavřít tooltip
+            setAttachmentsTooltip({ visible: false, feeId: null, position: { top: 0, left: 0 } });
+            // Otevřít PDF viewer
+            setPdfViewer({
+              visible: true,
+              url: attachment.blobUrl,
+              filename: attachment.filename,
+              fileType: attachment.fileType || 'other'
+            });
+          }}
+        />
+      )}
+      
+      {/* Click overlay pro zavření tooltipu */}
+      {attachmentsTooltip.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999
+          }}
+          onClick={() => setAttachmentsTooltip({ visible: false, feeId: null, position: { top: 0, left: 0 } })}
+        />
+      )}
+      
+      {/* ATTACHMENT VIEWER */}
+      {pdfViewer.visible && (
+        <AttachmentViewer
+          attachment={{
+            blobUrl: pdfViewer.url,
+            filename: pdfViewer.filename,
+            fileType: pdfViewer.fileType
+          }}
+          onClose={() => {
+            // Cleanup blob URL
+            if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
+              window.URL.revokeObjectURL(pdfViewer.url);
+            }
+            setPdfViewer({ visible: false, url: '', filename: '', fileType: 'pdf' });
+          }}
+        />
+      )}
     </PageContainer>
   );
 }

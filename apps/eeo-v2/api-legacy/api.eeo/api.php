@@ -166,6 +166,7 @@ define('TBL_DODAVATELE', '25_dodavatele');
 // DATABASE TABLE NAMES - ROČNÍ POPLATKY
 define('TBL_ROCNI_POPLATKY', '25a_rocni_poplatky');
 define('TBL_ROCNI_POPLATKY_POLOZKY', '25a_rocni_poplatky_polozky');
+define('TBL_ROCNI_POPLATKY_PRILOHY', '25a_rocni_poplatky_prilohy');
 
 // FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
 define('INVOICE_STATUS_REGISTERED', 'ZAEVIDOVANA');      // Nově vložená z podatelny
@@ -281,6 +282,7 @@ require_once __DIR__ . '/v2025.03_25/lib/cashboxByPeriodHandler.php';
 // ANNUAL FEES - Roční poplatky
 require_once __DIR__ . '/v2025.03_25/lib/rozsirujiciDataHelper.php';
 require_once __DIR__ . '/v2025.03_25/lib/annualFeesHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/annualFeesAttachmentsHandlers.php';
 
 // USER DETAIL - User detail with statistics
 require_once __DIR__ . '/v2025.03_25/lib/userDetailHandlers.php';
@@ -4724,6 +4726,177 @@ switch ($endpoint) {
             } else {
                 http_response_code(405);
                 echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // ========================================================================
+        // ANNUAL FEES - PŘÍLOHY (Attachments)
+        // ========================================================================
+        
+        // POST /api.eeo/annual-fees/attachments/upload - nahrání přílohy
+        if ($endpoint === 'annual-fees/attachments/upload') {
+            error_log("=== API.PHP: annual-fees/attachments/upload endpoint HIT ===");
+            error_log("Request method: " . $request_method);
+            error_log("POST data: " . json_encode($_POST));
+            error_log("FILES data: " . json_encode($_FILES));
+            
+            if ($request_method === 'POST') {
+                // Token a username z POST (pro multipart/form-data)
+                $token = $_POST['token'] ?? '';
+                $username = $_POST['username'] ?? '';
+                
+                error_log("Token: " . substr($token, 0, 20) . "...");
+                error_log("Username: " . $username);
+                
+                if (!$token || !$username) {
+                    error_log("Missing token or username");
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                error_log("Calling verify_token_v2...");
+                $auth_result = verify_token_v2($username, $token);
+                error_log("verify_token_v2 result: " . ($auth_result ? 'SUCCESS' : 'FAILED'));
+                
+                if (!$auth_result) {
+                    error_log("Auth failed");
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    error_log("PDO not available");
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                error_log("Calling handleAnnualFeeAttachmentUpload...");
+                // Zpracování uploadu (input obsahuje $_POST data + rocni_poplatek_id)
+                $input = $_POST;
+                $result = handleAnnualFeeAttachmentUpload($pdo, $input, $auth_result);
+                error_log("Handler result: " . json_encode($result));
+                
+                http_response_code($result['success'] ? 200 : 400);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/attachments/list - seznam příloh
+        if ($endpoint === 'annual-fees/attachments/list') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeeAttachmentsList($pdo, $input, $auth_result);
+                
+                http_response_code($result['success'] ? 200 : 400);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/attachments/download - stažení přílohy
+        if ($endpoint === 'annual-fees/attachments/download') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    exit;
+                }
+                
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    exit;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    exit;
+                }
+                
+                // Handler sám odešle soubor a ukončí skript
+                handleAnnualFeeAttachmentDownload($pdo, $input, $auth_result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/attachments/delete - smazání přílohy
+        if ($endpoint === 'annual-fees/attachments/delete') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeeAttachmentDelete($pdo, $input, $auth_result);
+                
+                http_response_code($result['success'] ? 200 : 400);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
             }
             break;
         }

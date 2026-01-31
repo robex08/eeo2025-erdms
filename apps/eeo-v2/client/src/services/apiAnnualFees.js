@@ -10,7 +10,7 @@
  * @date 2026-01-27
  */
 
-const BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
+const BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, ''); // Odstranění koncového lomítka
 
 /**
  * Načte seznam ročních poplatků s filtry a paginací
@@ -448,4 +448,223 @@ export const getStavyRocnichPoplatku = async ({ token, username }) => {
     console.error('getStavyRocnichPoplatku error:', error);
     return [];
   }
+};
+
+// ============================================================================
+// 📎 ATTACHMENTS API - Přílohy ročních poplatků
+// ============================================================================
+
+/**
+ * Nahrání přílohy k ročnímu poplatku
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} params.rocni_poplatek_id - ID ročního poplatku
+ * @param {File} params.file - Soubor k nahrání
+ * @param {string} params.typ_prilohy - Typ přílohy (default: 'PRILOHA')
+ * @param {string} params.poznamka - Volitelná poznámka
+ * @returns {Promise<Object>} Upload response
+ */
+export const uploadAnnualFeeAttachment = async ({ 
+  token, 
+  username, 
+  rocni_poplatek_id, 
+  file,
+  typ_prilohy = 'PRILOHA',
+  poznamka = null
+}) => {
+  try {
+    const formData = new FormData();
+    formData.append('token', token);
+    formData.append('username', username);
+    formData.append('rocni_poplatek_id', rocni_poplatek_id);
+    formData.append('file', file);
+    formData.append('typ_prilohy', typ_prilohy);
+    if (poznamka) {
+      formData.append('poznamka', poznamka);
+    }
+
+    const response = await fetch(`${BASE_URL}/annual-fees/attachments/upload`, {
+      method: 'POST',
+      body: formData, // Bez Content-Type - browser nastaví správný boundary
+    });
+
+    console.log('Upload response status:', response.status);
+    console.log('Upload response headers:', Object.fromEntries(response.headers.entries()));
+    
+    // Přečti response body jako text pro debugging
+    const responseText = await response.text();
+    console.log('Upload response body:', responseText);
+
+    if (!response.ok) {
+      let errorMessage = 'Chyba při nahrávání přílohy';
+      try {
+        const errorData = JSON.parse(responseText);
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (e) {
+        // Response není JSON - použij raw text
+        errorMessage = responseText || `${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return JSON.parse(responseText);
+  } catch (error) {
+    console.error('uploadAnnualFeeAttachment error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Seznam příloh pro roční poplatek
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} params.rocni_poplatek_id - ID ročního poplatku
+ * @returns {Promise<Object>} Seznam příloh
+ */
+export const listAnnualFeeAttachments = async ({ token, username, rocni_poplatek_id }) => {
+  try {
+    const response = await fetch(`${BASE_URL}/annual-fees/attachments/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        rocni_poplatek_id
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Chyba při načítání příloh');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('listAnnualFeeAttachments error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Stažení přílohy
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} params.attachment_id - ID přílohy
+ * @param {string} params.original_name - Původní název souboru (pro download)
+ * @returns {Promise<void>} Triggers download
+ */
+export const downloadAnnualFeeAttachment = async ({ 
+  token, 
+  username, 
+  attachment_id,
+  original_name 
+}) => {
+  try {
+    const response = await fetch(`${BASE_URL}/annual-fees/attachments/download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        attachment_id
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Chyba při stahování přílohy');
+    }
+
+    // Získání souboru jako blob
+    const blob = await response.blob();
+    
+    // Vytvoření download linku
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = original_name || 'priloha';
+    document.body.appendChild(a);
+    a.click();
+    
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('downloadAnnualFeeAttachment error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Smazání přílohy
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} params.attachment_id - ID přílohy
+ * @returns {Promise<Object>} Delete response
+ */
+export const deleteAnnualFeeAttachment = async ({ token, username, attachment_id }) => {
+  try {
+    const response = await fetch(`${BASE_URL}/annual-fees/attachments/delete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        attachment_id
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Chyba při mazání přílohy');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('deleteAnnualFeeAttachment error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Helper: Kontrola, zda je typ souboru povolen
+ */
+export const isAllowedAnnualFeeFileType = (filename) => {
+  const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx', 'xml'];
+  const extension = filename.split('.').pop().toLowerCase();
+  return allowedExtensions.includes(extension);
+};
+
+/**
+ * Helper: Kontrola velikosti souboru
+ */
+export const isAllowedAnnualFeeFileSize = (fileSize, maxSize = 10 * 1024 * 1024) => {
+  return fileSize <= maxSize;
+};
+
+/**
+ * Helper: Formátování velikosti souboru
+ */
+export const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 };

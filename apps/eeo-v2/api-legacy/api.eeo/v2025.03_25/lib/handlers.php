@@ -142,6 +142,16 @@ function verify_token_v2($username, $token, $db = null) {
         $token_data['is_admin'] = !empty(array_intersect($roles, array('SUPERADMIN', 'ADMINISTRATOR')));
         $token_data['roles'] = $roles; // ✅ Přidat pole rolí do výstupu
         
+        // ✅ Načtení uživatelských oprávnění (pro Annual Fees a další moduly)
+        $stmt = $db->prepare("
+            SELECT p.kod_prava, p.nazev_prava, p.popis 
+            FROM " . TBL_UZIVATELE_PRAVA . " up
+            INNER JOIN " . TBL_PRAVA . " p ON p.id = up.pravo_id
+            WHERE up.uzivatel_id = ? AND up.aktivni = 1
+        ");
+        $stmt->execute(array($token_data['id']));
+        $token_data['permissions'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
     } catch (Exception $e) {
         error_log("verify_token_v2: Error loading role - " . $e->getMessage());
         $token_data['is_admin'] = false;
