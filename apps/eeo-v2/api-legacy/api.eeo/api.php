@@ -4632,6 +4632,34 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/annual-fees/delete-item - smazání jedné položky
+        if ($endpoint === 'annual-fees/delete-item') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesDeleteItem($pdo, $input, $auth_result);
+                // Handler už sám řídí response - nepotřebujeme další echo
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
         // POST /api.eeo/annual-fees/delete - soft delete ročního poplatku (V3 standard)
         if ($endpoint === 'annual-fees/delete') {
             if ($request_method === 'POST') {

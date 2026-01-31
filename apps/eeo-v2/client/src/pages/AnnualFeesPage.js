@@ -8,7 +8,7 @@ import {
   faMoneyBill, faFileInvoice, faEdit, 
   faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown, faEraser 
 } from '@fortawesome/free-solid-svg-icons';
-import { Calculator } from 'lucide-react';
+import { Calculator, AlertCircle, CheckCircle2, AlertTriangle, Info as InfoIcon } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { 
@@ -18,8 +18,9 @@ import {
   createAnnualFee, 
   createAnnualFeeItem,
   updateAnnualFee, 
-  updateAnnualFeeItem, 
-  deleteAnnualFee 
+  updateAnnualFeeItem,
+  deleteAnnualFee,
+  deleteAnnualFeeItem
 } from '../services/apiAnnualFees';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
@@ -1141,6 +1142,38 @@ const OverdueRow = styled.tr`
 function AnnualFeesPage() {
   const { token, username, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+
+  // 🎨 HELPER FUNKCE PRO FORMÁTOVANÉ TOASTY
+  // Vytváří jednotný vzhled pro všechny toast zprávy s ikonami a barvami
+  const formatToastMessage = useCallback((message, type = 'info') => {
+    const styles = {
+      error: {
+        color: '#d32f2f',
+      },
+      success: {
+        color: '#0d7d3e',
+      },
+      warning: {
+        color: '#d46b08',
+      },
+      info: {
+        color: '#4b5563',
+      }
+    };
+
+    const style = styles[type] || styles.info;
+
+    return (
+      <div style={{ 
+        fontSize: '14px',
+        lineHeight: '1.5',
+        color: style.color,
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        {message}
+      </div>
+    );
+  }, []);
   
   // State
   const [loading, setLoading] = useState(true);
@@ -1580,11 +1613,11 @@ function AnnualFeesPage() {
         }
 
         await Promise.all(updatePromises);
-        showToast('Data splatnosti byla aktualizována podle periody platby', 'success');
+        showToast(formatToastMessage('Data splatnosti byla aktualizována podle periody platby', 'success'), { type: 'success' });
         
       } catch (error) {
         console.error('Chyba při aktualizaci dat splatnosti:', error);
-        showToast('Chyba při ukládání aktualizovaných dat splatnosti', 'error');
+        showToast(formatToastMessage('Chyba při ukládání aktualizovaných dat splatnosti', 'error'), { type: 'error' });
         
         // V případě chyby obnovit data z databáze
         const detail = await getAnnualFeeDetail({
@@ -1620,7 +1653,7 @@ function AnnualFeesPage() {
       setStavy(stavyRes || []);
     } catch (error) {
       console.error('Chyba při načítání číselníků:', error);
-      showToast('Chyba při načítání číselníků', 'error');
+      showToast(formatToastMessage('Chyba při načítání číselníků', 'error'), { type: 'error' });
     }
   };
   
@@ -1738,7 +1771,7 @@ function AnnualFeesPage() {
       
     } catch (error) {
       console.error('Chyba při načítání ročních poplatků:', error);
-      showToast('Chyba při načítání ročních poplatků', 'error');
+      showToast(formatToastMessage('Chyba při načítání ročních poplatků', 'error'), { type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -1768,7 +1801,7 @@ function AnnualFeesPage() {
         }
       } catch (error) {
         console.error('Chyba při načítání detailu:', error);
-        showToast('Chyba při načítání detailu poplatku', 'error');
+        showToast(formatToastMessage('Chyba při načítání detailu poplatku', 'error'), { type: 'error' });
       }
     }
     
@@ -2086,9 +2119,7 @@ function AnnualFeesPage() {
     setNewItemData({
       nazev_polozky: '',
       datum_splatnosti: '',
-      castka: '',
-      cislo_dokladu: '',
-      datum_zaplaceno: new Date().toISOString().split('T')[0]
+      castka: ''
     });
   };
   
@@ -2097,15 +2128,13 @@ function AnnualFeesPage() {
     setNewItemData({
       nazev_polozky: '',
       datum_splatnosti: '',
-      castka: '',
-      cislo_dokladu: '',
-      datum_zaplaceno: new Date().toISOString().split('T')[0]
+      castka: ''
     });
   };
   
   const handleSaveNewItem = async (feeId) => {
     if (!newItemData.nazev_polozky || !newItemData.datum_splatnosti || !newItemData.castka) {
-      showToast('Vyplňte poznámku, splatnost a částku', 'error');
+      showToast(formatToastMessage('⚠️ Vyplňte poznámku, splatnost a částku', 'error'), { type: 'error' });
       return;
     }
     
@@ -2115,7 +2144,7 @@ function AnnualFeesPage() {
     const parsedCastka = parseFloat(cleanCastka);
     
     if (isNaN(parsedCastka) || parsedCastka <= 0) {
-      showToast('Vyplňte platnou částku', 'error');
+      showToast(formatToastMessage('💰 Vyplňte platnou částku', 'error'), { type: 'error' });
       return;
     }
     
@@ -2126,21 +2155,20 @@ function AnnualFeesPage() {
         rocni_poplatek_id: feeId,
         nazev_polozky: newItemData.nazev_polozky,
         datum_splatnosti: newItemData.datum_splatnosti,
-        castka: Math.round(parsedCastka * 100) / 100,
-        cislo_dokladu: newItemData.cislo_dokladu || null,
-        datum_zaplaceno: newItemData.datum_zaplaceno || null
+        castka: Math.round(parsedCastka * 100) / 100
+        // Číslo dokladu a datum zaplacení se nenastavují - budou null/prázdné
       });
       
       if (response.status === 'success') {
-        showToast('Položka přidána', 'success');
+        showToast(formatToastMessage('✅ Položka přidána', 'success'), { type: 'success' });
         handleCancelAddItem();
         loadAnnualFees();
       } else {
-        showToast(response.message || 'Chyba při přidávání položky', 'error');
+        showToast(formatToastMessage(`⚠️ ${response.message || 'Chyba při přidávání položky'}`, 'error'), { type: 'error' });
       }
     } catch (error) {
       console.error('Chyba při přidávání položky:', error);
-      showToast('Chyba při přidávání položky', 'error');
+      showToast(formatToastMessage('⚠️ Chyba při přidávání položky', 'error'), { type: 'error' });
     }
   };
   
@@ -2175,7 +2203,7 @@ function AnnualFeesPage() {
       setShowSmlouvySuggestions(false);
     } catch (error) {
       console.error('Chyba při načítání detailu smlouvy:', error);
-      showToast('Chyba při načítání detailu smlouvy', 'error');
+      showToast(formatToastMessage('⚠️ Chyba při načítání detailu smlouvy', 'error'), { type: 'error' });
     }
   };
   
@@ -2205,21 +2233,17 @@ function AnnualFeesPage() {
   
   // CREATE handler
   const handleCreateAnnualFee = async () => {
-    // Validace
-    if (!newFeeData.smlouva_id && !newFeeData.dodavatel_nazev.trim()) {
-      showToast('Vyberte smlouvu nebo vyplňte dodavatele', 'error');
-      return;
-    }
+    // Validace - názvu a základních polí (smlouva/dodavatel už není povinný)
     if (!newFeeData.nazev.trim()) {
-      showToast('Vyplňte název', 'error');
+      showToast(formatToastMessage('⚠️ Vyplňte název', 'error'), { type: 'error' });
       return;
     }
     if (!newFeeData.druh) {
-      showToast('Vyberte druh poplatku', 'error');
+      showToast(formatToastMessage('📂 Vyberte druh poplatku', 'error'), { type: 'error' });
       return;
     }
     if (!newFeeData.platba) {
-      showToast('Vyberte typ platby', 'error');
+      showToast(formatToastMessage('💳 Vyberte typ platby', 'error'), { type: 'error' });
       return;
     }
     
@@ -2229,7 +2253,7 @@ function AnnualFeesPage() {
     const parsedCastka = parseFloat(cleanCastka);
 
     if (!castkaStr || castkaStr === '' || isNaN(parsedCastka) || parsedCastka <= 0) {
-      showToast('Vyplňte platnou částku (musí být větší než 0)', 'error');
+      showToast(formatToastMessage('💰 Vyplňte platnou částku (musí být větší než 0)', 'error'), { type: 'error' });
       return;
     }
     
@@ -2282,7 +2306,7 @@ function AnnualFeesPage() {
       });
       
       if (response.status === 'success') {
-        showToast('Položka aktualizována', 'success');
+        showToast(formatToastMessage('✅ Položka aktualizována', 'success'), { type: 'success' });
         
         // Najít ID hlavičky pro refresh
         const fee = annualFees.find(f => f.polozky && f.polozky.some(item => item.id === itemId));
@@ -2351,12 +2375,53 @@ function AnnualFeesPage() {
       }
     } catch (error) {
       console.error('Chyba při aktualizaci položky:', error);
-      showToast(error.message || 'Chyba při aktualizaci položky', 'error');
+      showToast(formatToastMessage(`⚠️ ${error.message || 'Chyba při aktualizaci položky'}`, 'error'), { type: 'error' });
     }
   };
+
+  // DELETE item handler
+  const handleDeleteItem = (itemId, itemNazev) => {
+    setDeleteItemConfirmDialog({
+      isOpen: true,
+      itemId: itemId,
+      itemName: itemNazev || 'Položka'
+    });
+  };
   
+  // Potvrzeno smazání položky
+  const handleConfirmDeleteItem = async () => {
+    const { itemId } = deleteItemConfirmDialog;
+    setDeleteItemConfirmDialog({ isOpen: false, itemId: null, itemName: '' });
+    
+    try {
+      const response = await deleteAnnualFeeItem({
+        token,
+        username,
+        id: itemId
+      });
+      
+      if (response.status === 'success') {
+        showToast(formatToastMessage('🗑️ Položka smazána', 'success'), { type: 'success' });
+        
+        // Najít ID hlavičky pro refresh
+        const fee = annualFees.find(f => f.polozky && f.polozky.some(item => item.id === itemId));
+        
+        if (fee) {
+          // Reload celého seznamu aby se aktualizovaly sumy
+          loadAnnualFees();
+        }
+      }
+    } catch (error) {
+      console.error('Chyba při mazání položky:', error);
+      showToast(formatToastMessage(`⚠️ ${error.message || 'Chyba při mazání položky'}`, 'error'), { type: 'error' });
+    }
+  };
+
   // State pro confirm dialog
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState({ isOpen: false, feeId: null, feeName: '' });
+  
+  // State pro confirm dialog položky
+  const [deleteItemConfirmDialog, setDeleteItemConfirmDialog] = useState({ isOpen: false, itemId: null, itemName: '' });
   
   // DELETE handler - otevře confirm dialog
   const handleDeleteFee = (id, name) => {
@@ -2380,12 +2445,12 @@ function AnnualFeesPage() {
       });
       
       if (response.status === 'success') {
-        showToast('Roční poplatek smazán', 'success');
+        showToast(formatToastMessage('🗑️ Roční poplatek smazán', 'success'), { type: 'success' });
         loadAnnualFees();
       }
     } catch (error) {
       console.error('Chyba při mazání poplatku:', error);
-      showToast(error.message || 'Chyba při mazání poplatku', 'error');
+      showToast(formatToastMessage(`⚠️ ${error.message || 'Chyba při mazání poplatku'}`, 'error'), { type: 'error' });
     }
   };
   
@@ -2398,7 +2463,8 @@ function AnnualFeesPage() {
       celkova_castka: fee.celkova_castka,
       druh: fee.druh,
       platba: fee.platba,
-      rok: fee.rok
+      rok: fee.rok,
+      dodavatel_nazev: fee.dodavatel_nazev || ''
     });
   };
   
@@ -2417,15 +2483,45 @@ function AnnualFeesPage() {
         cleanData.celkova_castka = parseFloat(cleanCastka);
       }
       
+      // Pokud je zadán dodavatel_nazev, uložit do rozsirujici_data
+      if (cleanData.dodavatel_nazev) {
+        cleanData.rozsirujici_data = {
+          dodavatel_nazev: cleanData.dodavatel_nazev
+        };
+        delete cleanData.dodavatel_nazev; // Odebrat z přímého payloadu
+      }
+      
+      // Odebrat smlouva_cislo - není editovatelné (vázáno na smlouvu)
+      delete cleanData.smlouva_cislo;
+      
       // Najít původní fee pro porovnání
       const originalFee = annualFees.find(f => f.id === feeId);
       const platbaChanged = cleanData.platba && cleanData.platba !== originalFee.platba;
       const castkaChanged = cleanData.celkova_castka && cleanData.celkova_castka !== originalFee.celkova_castka;
 
-      // 🔔 Pokud se změnila platba nebo částka, zobrazit modal pro úpravu položek
+      // 🔔 Pokud se změnila platba nebo částka, načíst detail a zobrazit modal pro úpravu položek
       if (platbaChanged || castkaChanged) {
-        // Pro UPDATE mode: použít existující položky místo generování nových
-        const existingPolozky = originalFee.polozky || [];
+        console.log('🔧 Změna platby/částky detekována - načítám detail pro položky...', {
+          platbaChanged,
+          castkaChanged,
+          feeId,
+          originalFee: originalFee.nazev
+        });
+        
+        // Načíst detail s položkami z BE
+        const detail = await getAnnualFeeDetail({
+          token,
+          username,
+          id: feeId
+        });
+        
+        if (!detail?.data?.polozky) {
+          console.error('❌ Nepodařilo se načíst detail nebo položky pro fee ID:', feeId);
+          throw new Error('Nepodařilo se načíst stávající položky');
+        }
+        
+        const existingPolozky = detail.data.polozky;
+        console.log('✅ Načteno položek pro regeneraci:', existingPolozky.length);
         
         let polozky;
         if (platbaChanged) {
@@ -2470,7 +2566,7 @@ function AnnualFeesPage() {
       }
     } catch (error) {
       console.error('Chyba při aktualizaci poplatku:', error);
-      showToast(error.message || 'Chyba při aktualizaci poplatku', 'error');
+      showToast(formatToastMessage(`⚠️ ${error.message || 'Chyba při aktualizaci poplatku'}`, 'error'), { type: 'error' });
     }
   };
   
@@ -2490,7 +2586,7 @@ function AnnualFeesPage() {
         const response = await createAnnualFee(dataToSend);
         
         if (response.status === 'success') {
-          showToast('Roční poplatek vytvořen', 'success');
+          showToast(formatToastMessage('✅ Roční poplatek vytvořen', 'success'), { type: 'success' });
           
           // Reset form
           setNewFeeData({
@@ -2530,7 +2626,7 @@ function AnnualFeesPage() {
         const response = await updateAnnualFee(dataToUpdate);
         
         if (response.status === 'success') {
-          showToast('Roční poplatek aktualizován', 'success');
+          showToast(formatToastMessage('✅ Roční poplatek aktualizován', 'success'), { type: 'success' });
           setEditingFeeId(null);
           setEditFeeData({});
           setShowPolozkyModal(false);
@@ -2541,7 +2637,7 @@ function AnnualFeesPage() {
       }
     } catch (error) {
       console.error('Chyba při ukládání:', error);
-      showToast(error.message || 'Chyba při ukládání', 'error');
+      showToast(formatToastMessage(`⚠️ ${error.message || 'Chyba při ukládání'}`, 'error'), { type: 'error' });
     }
   };
   
@@ -3058,6 +3154,7 @@ function AnnualFeesPage() {
                         <InlineSelect
                           value={editFeeData.rok || new Date().getFullYear()}
                           onChange={(e) => setEditFeeData(prev => ({...prev, rok: parseInt(e.target.value)}))}
+                          style={{minWidth: '80px'}}
                         >
                           {Array.from({length: new Date().getFullYear() - 2026 + 1}, (_, i) => 2026 + i).map(year => (
                             <option key={year} value={year}>{year}</option>
@@ -3067,8 +3164,21 @@ function AnnualFeesPage() {
                         <strong>{fee.rok}</strong>
                       )}
                     </Td>
-                    <Td><strong>{highlightSearchTerm(fee.smlouva_cislo || '', debouncedFulltext)}</strong></Td>
-                    <Td>{highlightSearchTerm(fee.dodavatel_nazev || '', debouncedFulltext)}</Td>
+                    <Td>
+                      <strong>{highlightSearchTerm(fee.smlouva_cislo || '', debouncedFulltext)}</strong>
+                    </Td>
+                    <Td>
+                      {isEditingFee ? (
+                        <InlineInput
+                          value={editFeeData.dodavatel_nazev || ''}
+                          onChange={(e) => setEditFeeData(prev => ({...prev, dodavatel_nazev: e.target.value}))}
+                          style={{fontSize: '0.85rem'}}
+                          placeholder="Název dodavatele"
+                        />
+                      ) : (
+                        highlightSearchTerm(fee.dodavatel_nazev || '', debouncedFulltext)
+                      )}
+                    </Td>
                     <Td>
                       {isEditingFee ? (
                         <InlineInput
@@ -3195,7 +3305,7 @@ function AnnualFeesPage() {
                               }}
                               title="Zrušit"
                             >
-                              <FontAwesomeIcon icon={faMinus} />
+                              <FontAwesomeIcon icon={faTimes} />
                             </Button>
                           </>
                         ) : (
@@ -3451,7 +3561,7 @@ function AnnualFeesPage() {
                                           }}
                                           title="Zrušit"
                                         >
-                                          <FontAwesomeIcon icon={faMinus} />
+                                          <FontAwesomeIcon icon={faTimes} />
                                         </Button>
                                       </>
                                     ) : (
@@ -3536,6 +3646,28 @@ function AnnualFeesPage() {
                                         >
                                           <FontAwesomeIcon icon={faEdit} />
                                         </Button>
+                                        <Button 
+                                          variant="secondary" 
+                                          style={{
+                                            padding: '6px 10px', 
+                                            fontSize: '0.85rem', 
+                                            minWidth: 'auto',
+                                            color: item.stav === 'ZAPLACENO' ? '#9ca3af' : '#ef4444',
+                                            borderColor: item.stav === 'ZAPLACENO' ? '#9ca3af' : '#ef4444',
+                                            opacity: item.stav === 'ZAPLACENO' ? 0.4 : 1,
+                                            cursor: item.stav === 'ZAPLACENO' ? 'not-allowed' : 'pointer'
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (item.stav !== 'ZAPLACENO') {
+                                              handleDeleteItem(item.id, item.nazev_polozky);
+                                            }
+                                          }}
+                                          title={item.stav === 'ZAPLACENO' ? 'Nelze smazat zaplacenou položku' : 'Smazat položku'}
+                                          disabled={item.stav === 'ZAPLACENO'}
+                                        >
+                                          <FontAwesomeIcon icon={faTrash} />
+                                        </Button>
                                       </>
                                     )}
                                   </div>
@@ -3553,7 +3685,7 @@ function AnnualFeesPage() {
                                     value={newItemData.nazev_polozky || ''}
                                     onChange={(e) => setNewItemData(prev => ({...prev, nazev_polozky: e.target.value}))}
                                     style={{fontSize: '0.85rem', padding: '4px 6px', width: '100%'}}
-                                    placeholder="Poznámka"
+                                    placeholder="Poznámka k položce"
                                   />
                                 </SubItemCell>
                                 
@@ -3580,36 +3712,29 @@ function AnnualFeesPage() {
                                   </div>
                                 </SubItemCell>
                                 
-                                {/* Číslo dokladu (VEMA) */}
+                                {/* Číslo dokladu - prázdné */}
                                 <SubItemCell>
-                                  <InlineInput 
-                                    value={newItemData.cislo_dokladu || ''}
-                                    onChange={(e) => setNewItemData(prev => ({...prev, cislo_dokladu: e.target.value}))}
-                                    style={{fontSize: '0.85rem', padding: '4px 6px', width: '100%', maxWidth: '130px'}}
-                                    placeholder="Číslo dokladu"
-                                  />
+                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>—</span>
                                 </SubItemCell>
                                 
-                                {/* Datum zaplaceno */}
+                                {/* Datum zaplaceno - prázdné */}
                                 <SubItemCell>
-                                  <div style={{maxWidth: '130px'}}>
-                                    <DatePicker
-                                      value={newItemData.datum_zaplaceno || ''}
-                                      onChange={(date) => setNewItemData(prev => ({...prev, datum_zaplaceno: date}))}
-                                      placeholder="dd.mm.rrrr"
-                                      variant="compact"
-                                    />
-                                  </div>
+                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>—</span>
                                 </SubItemCell>
                                 
-                                {/* Stav */}
+                                {/* Stav - prázdný pro nové položky */}
                                 <SubItemCell>
-                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>Nová</span>
+                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>—</span>
                                 </SubItemCell>
                                 
-                                {/* Akce */}
+                                {/* Aktualizoval - prázdný sloupec */}
                                 <SubItemCell>
-                                  <div style={{display: 'flex', gap: '6px', justifyContent: 'flex-start'}}>
+                                  <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>—</span>
+                                </SubItemCell>
+                                
+                                {/* Akce - zarovnané vpravo */}
+                                <SubItemCell>
+                                  <div style={{display: 'flex', gap: '6px', justifyContent: 'flex-end'}}>
                                     <Button 
                                       variant="secondary" 
                                       style={{padding: '6px 10px', fontSize: '0.85rem', minWidth: 'auto', background: '#10b981', color: 'white', borderColor: '#10b981'}}
@@ -3630,7 +3755,7 @@ function AnnualFeesPage() {
                                       }}
                                       title="Zrušit"
                                     >
-                                      <FontAwesomeIcon icon={faMinus} />
+                                      <FontAwesomeIcon icon={faTimes} />
                                     </Button>
                                   </div>
                                 </SubItemCell>
@@ -3849,6 +3974,25 @@ function AnnualFeesPage() {
           <div>
             <p>Opravdu chcete smazat roční poplatek?</p>
             <p style={{fontWeight: 'bold', marginTop: '8px'}}>{deleteConfirmDialog.feeName}</p>
+            <p style={{color: '#ef4444', marginTop: '12px'}}>⚠️ Tato akce je nevratná.</p>
+          </div>
+        }
+        icon={faTrash}
+        variant="danger"
+        confirmText="Smazat"
+        cancelText="Zrušit"
+      />
+
+      {/* KONFIRMACE SMAZÁNÍ POLOŽKY */}
+      <ConfirmDialog
+        isOpen={deleteItemConfirmDialog.isOpen}
+        onClose={() => setDeleteItemConfirmDialog({ isOpen: false, itemId: null, itemName: '' })}
+        onConfirm={handleConfirmDeleteItem}
+        title="Smazat položku"
+        message={
+          <div>
+            <p>Opravdu chcete smazat položku?</p>
+            <p style={{fontWeight: 'bold', marginTop: '8px'}}>{deleteItemConfirmDialog.itemName}</p>
             <p style={{color: '#ef4444', marginTop: '12px'}}>⚠️ Tato akce je nevratná.</p>
           </div>
         }

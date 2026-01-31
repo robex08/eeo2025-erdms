@@ -79,7 +79,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             rp.smlouva_id,
             s.cislo_smlouvy AS smlouva_cislo,
             s.nazev_smlouvy,
-            s.nazev_firmy AS dodavatel_nazev,
+            COALESCE(s.nazev_firmy, JSON_UNQUOTE(JSON_EXTRACT(rp.rozsirujici_data, '$.dodavatel_nazev'))) AS dodavatel_nazev,
             s.ico AS dodavatel_ico,
             rp.dt_vytvoreni,
             rp.dt_aktualizace,
@@ -162,7 +162,7 @@ function queryAnnualFeesDetail($pdo, $id) {
             s.nazev_smlouvy,
             s.platnost_od AS smlouva_platnost_od,
             s.platnost_do AS smlouva_platnost_do,
-            s.nazev_firmy AS dodavatel_nazev,
+            COALESCE(s.nazev_firmy, JSON_UNQUOTE(JSON_EXTRACT(rp.rozsirujici_data, '$.dodavatel_nazev'))) AS dodavatel_nazev,
             s.ico AS dodavatel_ico,
             s.dic AS dodavatel_dic,
             u_vytvoril.jmeno AS vytvoril_jmeno,
@@ -260,11 +260,13 @@ function queryInsertAnnualFeeItem($pdo, $data) {
         INSERT INTO `" . TBL_ROCNI_POPLATKY_POLOZKY . "` (
             rocni_poplatek_id, faktura_id, poradi, nazev_polozky,
             castka, cislo_dokladu, datum_zaplaceno, datum_splatnosti, datum_zaplaceni, stav, poznamka,
-            rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
+            rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, 
+            aktualizoval_uzivatel_id, dt_aktualizace, aktivni
         ) VALUES (
             :rocni_poplatek_id, :faktura_id, :poradi, :nazev_polozky,
             :castka, :cislo_dokladu, :datum_zaplaceno, :datum_splatnosti, :datum_zaplaceni, :stav, :poznamka,
-            :rozsirujici_data, :vytvoril_uzivatel_id, :dt_vytvoreni, 1
+            :rozsirujici_data, :vytvoril_uzivatel_id, :dt_vytvoreni, 
+            :aktualizoval_uzivatel_id, :dt_aktualizace, 1
         )
     ";
     $stmt = $pdo->prepare($sql);
@@ -282,7 +284,9 @@ function queryInsertAnnualFeeItem($pdo, $data) {
         ':poznamka' => $data['poznamka'] ?? null,
         ':rozsirujici_data' => $data['rozsirujici_data'] ?? null,
         ':vytvoril_uzivatel_id' => $data['vytvoril_uzivatel_id'],
-        ':dt_vytvoreni' => $data['dt_vytvoreni']
+        ':dt_vytvoreni' => $data['dt_vytvoreni'],
+        ':aktualizoval_uzivatel_id' => $data['vytvoril_uzivatel_id'], // Při vytvoření je to stejný uživatel
+        ':dt_aktualizace' => $data['dt_vytvoreni'] // Při vytvoření je to stejný čas
     ]);
     return $pdo->lastInsertId();
 }
@@ -347,6 +351,17 @@ function queryUpdateAnnualFeeItem($pdo, $data) {
     $selectStmt = $pdo->prepare($selectSql);
     $selectStmt->execute([':id' => $data['id']]);
     return $selectStmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// ============================================================================
+// 🔍 GET ITEM - Načtení jedné položky
+// ============================================================================
+
+function queryGetAnnualFeeItem($pdo, $id) {
+    $sql = "SELECT * FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE id = :id AND aktivni = 1";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':id' => $id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 // ============================================================================
