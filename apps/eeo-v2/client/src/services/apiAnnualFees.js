@@ -10,7 +10,7 @@
  * @date 2026-01-27
  */
 
-const BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+const BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
 
 /**
  * Načte seznam ročních poplatků s filtry
@@ -85,36 +85,30 @@ export const getAnnualFeeDetail = async ({ token, username, id }) => {
 /**
  * Vytvoří nový roční poplatek
  * 
- * @param {Object} params - Parametry
- * @param {string} params.token - Auth token
- * @param {string} params.username - Uživatelské jméno
- * @param {number} params.smlouva_id - ID smlouvy
- * @param {string} params.nazev - Název poplatku
- * @param {string} params.druh - Druh poplatku (z číselníku)
- * @param {string} params.platba - Typ platby (MESICNI, KVARTALNI, ROCNI, JINA)
- * @param {number} params.celkova_castka - Celková částka
- * @param {number} params.rok - Rok poplatku
- * @param {string} params.datum_prvni_splatnosti - Datum první splatnosti
+ * @param {Object} data - Kompletní data ročního poplatku
+ * @param {string} data.token - Auth token
+ * @param {string} data.username - Uživatelské jméno
+ * @param {number} data.smlouva_id - ID smlouvy
+ * @param {string} data.nazev - Název poplatku
+ * @param {string} data.druh - Druh poplatku (z číselníku)
+ * @param {string} data.platba - Typ platby (MESICNI, KVARTALNI, ROCNI, JINA)
+ * @param {number} data.celkova_castka - Celková částka
+ * @param {number} data.rok - Rok poplatku
+ * @param {string} data.datum_prvni_splatnosti - Datum první splatnosti
+ * @param {Array} data.polozky - Pole položek (volitelné)
  * @returns {Promise<Object>} Vytvořený poplatek s položkami
  */
-export const createAnnualFee = async ({ token, username, smlouva_id, nazev, druh, platba, celkova_castka, rok, datum_prvni_splatnosti }) => {
+export const createAnnualFee = async (data) => {
   try {
+    // 🔧 DEBUG: Log dat posílaných na server
+    console.log('🌐 [API] createAnnualFee - odesílám data:', data);
+    
     const response = await fetch(`${BASE_URL}/annual-fees/create`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        token,
-        username,
-        smlouva_id,
-        nazev,
-        druh,
-        platba,
-        celkova_castka,
-        rok: rok || new Date().getFullYear(),
-        datum_prvni_splatnosti
-      }),
+      body: JSON.stringify(data),
     });
 
     if (!response.ok) {
@@ -122,7 +116,9 @@ export const createAnnualFee = async ({ token, username, smlouva_id, nazev, druh
       throw new Error(errorData.message || 'Chyba při vytváření ročního poplatku');
     }
 
-    return await response.json();
+    const result = await response.json();
+    console.log('🌐 [API] createAnnualFee - odpověď ze serveru:', result);
+    return result;
   } catch (error) {
     console.error('createAnnualFee error:', error);
     throw error;
