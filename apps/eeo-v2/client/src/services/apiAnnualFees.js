@@ -288,6 +288,50 @@ export const deleteAnnualFee = async ({ token, username, id }) => {
 };
 
 /**
+ * Smaže položku ročního poplatku
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} params.id - ID položky k smazání
+ * @returns {Promise<Object>} Response s výsledkem
+ */
+export const deleteAnnualFeeItem = async ({ token, username, id }) => {
+  const response = await fetch(`${BASE_URL}/annual-fees/delete-item`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      id
+    })
+  });
+
+  if (!response.ok) {
+    let errorMessage = `HTTP ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorMessage;
+    } catch (e) {
+      console.warn('Failed to parse error response:', e);
+    }
+    throw new Error(`Chyba při mazání položky: ${errorMessage}`);
+  }
+
+  const result = await response.json();
+  console.log('deleteAnnualFeeItem response:', result);
+
+  if (result.status === 'error') {
+    console.error('deleteAnnualFeeItem error:', result.message);
+    throw new Error(result.message || 'Neznámá chyba při mazání položky');
+  }
+
+  return result;
+};
+
+/**
  * Načte statistiky ročních poplatků
  * 
  * @param {Object} params - Parametry
