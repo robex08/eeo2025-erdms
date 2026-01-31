@@ -4504,11 +4504,22 @@ switch ($endpoint) {
             break;
         }
         
-        // POST /api.eeo/annual-fees/create - vytvoření s automatickým generováním položek
+        // POST /api.eeo/annual-fees/create - vytvoření s automatickým generováním položek (V3 standard)
         if ($endpoint === 'annual-fees/create') {
             if ($request_method === 'POST') {
-                $token = isset($input['token']) ? $input['token'] : '';
-                $username = isset($input['username']) ? $input['username'] : '';
+                // Parse vstupních dat podle PHPAPI.prompt.md
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                // Validace auth parametrů podle PHPAPI.prompt.md
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                // Ověření tokenu (V3 standard)
                 $auth_result = verify_token_v2($username, $token);
                 
                 if (!$auth_result) {
@@ -4517,24 +4528,19 @@ switch ($endpoint) {
                     break;
                 }
                 
+                // Kontrola DB připojení
                 if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
                     break;
                 }
                 
-                try {
-                    $result = handleAnnualFeesCreate($pdo, $input, $auth_result);
-                    http_response_code($result['status'] === 'error' ? 400 : 200);
-                    echo json_encode($result);
-                } catch (Exception $e) {
-                    error_log("❌ FATAL ERROR in annual-fees/create: " . $e->getMessage());
-                    http_response_code(500);
-                    echo json_encode(['status' => 'error', 'message' => 'Chyba serveru: ' . $e->getMessage()]);
-                }
+                // Volání handleru (nový handler echuje response přímo podle PHPAPI.prompt.md)
+                handleAnnualFeesCreate($pdo, $input, $auth_result);
+                
             } else {
                 http_response_code(405);
-                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+                echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
             }
             break;
         }
@@ -4626,11 +4632,22 @@ switch ($endpoint) {
             break;
         }
         
-        // POST /api.eeo/annual-fees/delete - soft delete ročního poplatku
+        // POST /api.eeo/annual-fees/delete - soft delete ročního poplatku (V3 standard)
         if ($endpoint === 'annual-fees/delete') {
             if ($request_method === 'POST') {
-                $token = isset($input['token']) ? $input['token'] : '';
-                $username = isset($input['username']) ? $input['username'] : '';
+                // Parse vstupních dat podle PHPAPI.prompt.md
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                // Validace auth parametrů podle PHPAPI.prompt.md
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                // Ověření tokenu (V3 standard - stále používá verify_token_v2)
                 $auth_result = verify_token_v2($username, $token);
                 
                 if (!$auth_result) {
@@ -4639,18 +4656,19 @@ switch ($endpoint) {
                     break;
                 }
                 
+                // Kontrola DB připojení
                 if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
                     break;
                 }
                 
-                $result = handleAnnualFeesDelete($pdo, $input, $auth_result);
-                http_response_code($result['status'] === 'error' ? 400 : 200);
-                echo json_encode($result);
+                // Volání handleru (nový handler echuje response přímo podle PHPAPI.prompt.md)
+                handleAnnualFeesDelete($pdo, $input, $auth_result);
+                
             } else {
                 http_response_code(405);
-                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+                echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
             }
             break;
         }

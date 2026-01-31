@@ -105,21 +105,41 @@ function handleAnnualFeesDetail($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesCreate($pdo, $data, $user) {
+    // 1. Validace HTTP metody (PHPAPI.prompt.md standard)
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+        return;
+    }
+    
     try {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
+        
+        // 🔧 DEBUG: Výpis přijatých dat z frontend
+        error_log("🔧 [DEBUG] Annual Fees CREATE - přijatá data:");
+        error_log("📦 Data: " . json_encode($data, JSON_UNESCAPED_UNICODE));
+        if (isset($data['polozky'])) {
+            error_log("📋 Položky: " . json_encode($data['polozky'], JSON_UNESCAPED_UNICODE));
+        }
         
         // Validace povinných polí
         $required = ['nazev', 'rok', 'druh', 'platba'];
         foreach ($required as $field) {
             if (!isset($data[$field]) || $data[$field] === '') {
-                return ['status' => 'error', 'message' => "Chybí povinné pole: $field"];
+                error_log("❌ Annual Fees CREATE: Chybí povinné pole: $field");
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => "Chybí povinné pole: $field"]);
+                return;
             }
         }
         
         // Musí být buď smlouva_id NEBO dodavatel_nazev
         if (empty($data['smlouva_id']) && empty($data['dodavatel_nazev'])) {
-            return ['status' => 'error', 'message' => 'Musí být vyplněna smlouva nebo dodavatel'];
+            error_log("❌ Annual Fees CREATE: Musí být vyplněna smlouva nebo dodavatel");
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Musí být vyplněna smlouva nebo dodavatel']);
+            return;
         }
 
         $smlouva_id = !empty($data['smlouva_id']) ? (int)$data['smlouva_id'] : null;
@@ -128,13 +148,19 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         
         // Celková částka je vstup
         if (!isset($data['celkova_castka'])) {
-            return ['status' => 'error', 'message' => 'Chybí celková částka'];
+            error_log("❌ Annual Fees CREATE: Chybí celková částka");
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Chybí celková částka']);
+            return;
         }
         
         $celkova_castka = (float)$data['celkova_castka'];
         
         if ($celkova_castka <= 0) {
-            return ['status' => 'error', 'message' => 'Celková částka musí být větší než 0'];
+            error_log("❌ Annual Fees CREATE: Celková částka musí být větší než 0: $celkova_castka");
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Celková částka musí být větší než 0']);
+            return;
         }
         
         // Datum první splatnosti - pokud není zadáno, použije se 1. leden daného roku
@@ -144,16 +170,25 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         if ($smlouva_id) {
             $smlouva = queryGetSmlouva($pdo, $smlouva_id);
             if (!$smlouva) {
-                return ['status' => 'error', 'message' => 'Smlouva s daným ID neexistuje', 'error_code' => 'SMLOUVA_NOT_FOUND'];
+                error_log("❌ Annual Fees CREATE: Smlouva s ID $smlouva_id neexistuje");
+                http_response_code(404);
+                echo json_encode(['status' => 'error', 'message' => 'Smlouva s daným ID neexistuje', 'error_code' => 'SMLOUVA_NOT_FOUND']);
+                return;
             }
         }
 
         // Validace číselníků
         if (!validateCiselnikValue($pdo, 'DRUH_ROCNIHO_POPLATKU', $data['druh'])) {
-            return ['status' => 'error', 'message' => 'Neplatný druh poplatku'];
+            error_log("❌ Annual Fees CREATE: Neplatný druh poplatku: " . $data['druh']);
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný druh poplatku']);
+            return;
         }
         if (!validateCiselnikValue($pdo, 'PLATBA_ROCNIHO_POPLATKU', $data['platba'])) {
-            return ['status' => 'error', 'message' => 'Neplatný typ platby'];
+            error_log("❌ Annual Fees CREATE: Neplatný typ platby: " . $data['platba']);
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný typ platby']);
+            return;
         }
 
         $pdo->beginTransaction();
@@ -180,6 +215,9 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
                 $polozka['castka'] = $castka_na_polozku;
             }
         }
+        
+        // Vždy spočítej průměrnou částku na položku pro response
+        $castka_na_polozku = count($polozky) > 0 ? ($celkova_castka / count($polozky)) : 0;
 
         // 2️⃣ Vytvoření hlavičky (dodavatel se načte automaticky ze smlouvy přes JOIN)
         $rocni_poplatek_id = queryInsertAnnualFee($pdo, [
@@ -202,6 +240,8 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         // 3️⃣ Vytvoření položek (pokud nějaké jsou)
         $created_polozky = [];
         foreach ($polozky as $index => $polozka) {
+            error_log("🔧 [DEBUG] Zpracovávám položku " . ($index + 1) . ": " . json_encode($polozka, JSON_UNESCAPED_UNICODE));
+            
             $polozka_id = queryInsertAnnualFeeItem($pdo, [
                 'rocni_poplatek_id' => $rocni_poplatek_id,
                 'poradi' => $index + 1,
@@ -214,6 +254,8 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
                 'vytvoril_uzivatel_id' => $user['id'],
                 'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
             ]);
+            
+            error_log("✅ [DEBUG] Vytvořena položka ID: $polozka_id");
 
             $created_polozky[] = [
                 'id' => $polozka_id,
@@ -226,7 +268,10 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 
         $pdo->commit();
 
-        return [
+        // Úspěšná odpověď podle PHPAPI.prompt.md standardu
+        error_log("✅ Annual Fees CREATE: Úspěšně vytvořen roční poplatek ID: $rocni_poplatek_id");
+        http_response_code(200);
+        echo json_encode([
             'status' => 'success',
             'data' => [
                 'id' => $rocni_poplatek_id,
@@ -235,24 +280,27 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
                 'druh' => $data['druh'],
                 'platba' => $data['platba'],
                 'celkova_castka' => $celkova_castka,
-                'castka_na_polozku' => $castka_na_polozku,
                 'pocet_polozek' => count($polozky),
                 'polozky_vytvoreno' => $created_polozky
             ],
             'message' => count($polozky) > 0
-                ? "Roční poplatek byl úspěšně vytvořen včetně " . count($polozky) . " položek (celková částka " . number_format($celkova_castka, 2, ',', ' ') . " Kč rozpočítána na " . number_format($castka_na_polozku, 2, ',', ' ') . " Kč/položku)"
+                ? "Roční poplatek byl úspěšně vytvořen včetně " . count($polozky) . " položek"
                 : "Roční poplatek byl úspěšně vytvořen (typ JINÁ - položky se přidávají manuálně)"
-        ];
+        ]);
+        return;
 
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
         error_log("❌ Annual Fees Create Error: " . $e->getMessage());
-        return [
+        error_log("❌ Stack trace: " . $e->getTraceAsString());
+        http_response_code(500);
+        echo json_encode([
             'status' => 'error',
             'message' => 'Chyba při vytváření ročního poplatku: ' . $e->getMessage()
-        ];
+        ]);
+        return;
     }
 }
 
@@ -664,33 +712,66 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesDelete($pdo, $data, $user) {
+    // 1. Validace HTTP metody (PHPAPI.prompt.md standard)
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+        return;
+    }
     try {
-        // Nastavení české časové zóny
+        // 2. Nastavení české časové zóny (PHPAPI.prompt.md požadavek)
         TimezoneHelper::setMysqlTimezone($pdo);
         
-        if (!isset($data['id'])) {
-            return ['status' => 'error', 'message' => 'Chybí ID ročního poplatku'];
+        // 3. Validace povinných parametrů podle PHPAPI.prompt.md
+        if (!isset($data['id']) || empty($data['id'])) {
+            error_log("❌ Annual Fees Delete: Chybí ID parametr");
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Chybí ID ročního poplatku']);
+            return;
         }
 
-        $id = (int)$data['id'];
+        $id = filter_var($data['id'], FILTER_VALIDATE_INT);
+        if ($id === false || $id <= 0) {
+            error_log("❌ Annual Fees Delete: Neplatné ID: " . $data['id']);
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatné ID ročního poplatku']);
+            return;
+        }
 
-        $result = querySoftDeleteAnnualFee($pdo, $id, $user['id']);
+        error_log("🔥 Annual Fees Delete: Mazání ID $id, user: " . $user['id']);
+
+        // 4. Hard delete s SQL DELETE příkazem (místo soft delete jak požadoval uživatel)
+        $result = queryHardDeleteAnnualFee($pdo, $id);
 
         if (!$result) {
-            return ['status' => 'error', 'message' => 'Roční poplatek nenalezen'];
+            error_log("❌ Annual Fees Delete: Roční poplatek ID $id nenalezen");
+            http_response_code(404);
+            echo json_encode([
+                'status' => 'error', 
+                'message' => 'Roční poplatek nenalezen'
+            ]);
+            return;
         }
 
-        return [
+        error_log("✅ Annual Fees Delete: Úspěšně smazán ID $id pomocí hard delete");
+        
+        // 5. Úspěšná odpověď podle PHPAPI.prompt.md standardu
+        http_response_code(200);
+        echo json_encode([
             'status' => 'success',
             'message' => 'Roční poplatek byl úspěšně smazán (včetně všech položek)'
-        ];
+        ]);
+        return;
 
     } catch (Exception $e) {
-        error_log("❌ Annual Fees Delete Error: " . $e->getMessage());
-        return [
+        error_log("❌ Annual Fees Delete Handler Error: " . $e->getMessage());
+        error_log("❌ Stack trace: " . $e->getTraceAsString());
+        http_response_code(500);
+        echo json_encode([
             'status' => 'error',
             'message' => 'Chyba při mazání ročního poplatku: ' . $e->getMessage()
-        ];
+        ]);
+        return;
     }
 }
 
