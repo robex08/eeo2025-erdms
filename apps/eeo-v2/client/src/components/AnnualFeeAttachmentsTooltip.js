@@ -267,16 +267,32 @@ const AnnualFeeAttachmentsTooltip = ({
       console.log('🔍 First 10 bytes:', Array.from(uint8Array.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' '));
       
       // For PNG images, first bytes should be: 89 50 4E 47 0D 0A 1A 0A
-      const isPNG = uint8Array[0] === 0x89 && uint8Array[1] === 0x50 && uint8Array[2] === 0x4E && uint8Array[3] === 0x47;
-      console.log('🖼️ Is valid PNG?', isPNG);
+      const expectedPngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+      const hasPngSignature = expectedPngSignature.every((byte, index) => uint8Array[index] === byte);
+      console.log('🖼️ Is valid PNG?', hasPngSignature);
       
       const filename = attachment.originalni_nazev_souboru || 'priloha';
       const ext = filename.toLowerCase().split('.').pop();
       
-      // Create new blob with explicit MIME type for images
-      const correctedBlob = ext === 'png' ? new Blob([arrayBuffer], { type: 'image/png' }) : 
-                           ext === 'jpg' || ext === 'jpeg' ? new Blob([arrayBuffer], { type: 'image/jpeg' }) :
-                           ext === 'gif' ? new Blob([arrayBuffer], { type: 'image/gif' }) :
+      let finalArrayBuffer = arrayBuffer;
+      
+      // Fix corrupted PNG files (remove extra bytes at the beginning)
+      if (ext === 'png' && !hasPngSignature) {
+        // Look for PNG signature starting from different positions
+        for (let i = 1; i < 10; i++) {
+          const checkSignature = expectedPngSignature.every((byte, index) => uint8Array[i + index] === byte);
+          if (checkSignature) {
+            console.log('🔧 Found PNG signature at offset:', i, '- removing', i, 'corrupted bytes from beginning');
+            finalArrayBuffer = arrayBuffer.slice(i);
+            break;
+          }
+        }
+      }
+      
+      // Create new blob with explicit MIME type and potentially fixed data
+      const correctedBlob = ext === 'png' ? new Blob([finalArrayBuffer], { type: 'image/png' }) : 
+                           ext === 'jpg' || ext === 'jpeg' ? new Blob([finalArrayBuffer], { type: 'image/jpeg' }) :
+                           ext === 'gif' ? new Blob([finalArrayBuffer], { type: 'image/gif' }) :
                            blobData;
       
       console.log('🔧 Corrected blob:', { size: correctedBlob.size, type: correctedBlob.type });
@@ -308,6 +324,26 @@ const AnnualFeeAttachmentsTooltip = ({
       // Zavolat onView s attachment + blobUrl  
       if (onView) {
         const detectedFileType = ext === 'pdf' ? 'pdf' : (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext) ? 'image' : 'other');
+        
+        // Pro nepodporované soubory (DOCX, XLS, atd.) automaticky stáhnout místo zobrazování
+        if (detectedFileType === 'other') {
+          console.log('📥 Automaticky stahování nepodporovaného souboru:', filename);
+          
+          // Automatické stažení
+          const downloadLink = document.createElement('a');
+          downloadLink.href = blobUrl;
+          downloadLink.download = filename;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          // Cleanup blob URL po chvíli
+          setTimeout(() => {
+            window.URL.revokeObjectURL(blobUrl);
+          }, 1000);
+          
+          return; // Neposílej do AttachmentViewer
+        }
         
         // Wait a bit to ensure blob URL is stable
         setTimeout(() => {

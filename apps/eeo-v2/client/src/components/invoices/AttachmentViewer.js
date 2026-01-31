@@ -250,7 +250,38 @@ const AttachmentViewer = ({
                   attachment.nazev_souboru || 
                   'Příloha';
                   
-  const fileType = attachment.fileType || 'other';
+  // Auto-detect file type from extension if not provided
+  let fileType = attachment.fileType;
+  if (!fileType || fileType === 'other') {
+    const ext = filename.toLowerCase().split('.').pop();
+    if (ext === 'pdf') {
+      fileType = 'pdf';
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
+      fileType = 'image';
+    } else {
+      // For unsupported types (DOCX, XLS, etc.), auto-download instead of showing viewer
+      const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
+      if (downloadableTypes.includes(ext)) {
+        console.log('📥 Auto-downloading unsupported file type:', filename);
+        
+        // Create download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = attachment.blobUrl;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        // Close viewer and cleanup
+        setTimeout(() => {
+          onClose();
+        }, 100);
+        
+        return null; // Don't render viewer
+      }
+      fileType = 'other';
+    }
+  }
 
   const toggleFullscreen = () => {
     setFullscreen(!fullscreen);
@@ -378,8 +409,8 @@ const AttachmentViewer = ({
           {fileType === 'other' && (
             <UnsupportedMessage>
               <FontAwesomeIcon icon={faFileAlt} />
-              <h4>Náhled není podporován</h4>
-              <p>Tento typ souboru nelze zobrazit v prohlížeči.</p>
+              <h4>Automatické stažení</h4>
+              <p>Tento typ souboru se automaticky stahuje...</p>
             </UnsupportedMessage>
           )}
         </ViewerContent>
