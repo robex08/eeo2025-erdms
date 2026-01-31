@@ -298,7 +298,82 @@ const AttachmentViewer = ({
             <iframe src={attachment.blobUrl} title={filename} />
           )}
           {fileType === 'image' && (
-            <img src={attachment.blobUrl} alt={filename} />
+            <img 
+              src={attachment.blobUrl} 
+              alt={filename}
+              crossOrigin="anonymous"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain'
+              }}
+              onLoad={(e) => {
+                console.log('✅ Image loaded successfully:', filename);
+                console.log('✅ Blob URL is working:', attachment.blobUrl);
+                console.log('✅ Image dimensions:', {
+                  naturalWidth: e.target.naturalWidth,
+                  naturalHeight: e.target.naturalHeight,
+                  displayWidth: e.target.width,
+                  displayHeight: e.target.height
+                });
+              }}
+              onError={(e) => {
+                console.error('❌ Image failed to load:', filename);
+                console.error('❌ Blob URL:', attachment.blobUrl);
+                console.error('❌ Error event:', e);
+                console.error('❌ Image src:', e.target.src);
+                
+                // Advanced debugging - try to fetch the blob URL directly
+                fetch(attachment.blobUrl)
+                  .then(response => {
+                    console.log('🔍 Direct blob fetch - Status:', response.ok ? 'OK' : 'FAILED');
+                    console.log('🔍 Direct blob fetch - Status code:', response.status);
+                    console.log('🔍 Direct blob fetch - Content-Type:', response.headers.get('Content-Type'));
+                    console.log('🔍 Direct blob fetch - Content-Length:', response.headers.get('Content-Length'));
+                    return response.blob();
+                  })
+                  .then(blob => {
+                    console.log('🔍 Direct blob data:', { size: blob.size, type: blob.type });
+                    
+                    // Try creating a new blob URL
+                    const newBlobUrl = window.URL.createObjectURL(blob);
+                    console.log('🔍 New blob URL:', newBlobUrl);
+                    
+                    // Try setting it as src again
+                    e.target.src = newBlobUrl;
+                    
+                    // Cleanup old URL
+                    if (attachment.blobUrl && attachment.blobUrl.startsWith('blob:')) {
+                      URL.revokeObjectURL(attachment.blobUrl);
+                    }
+                  })
+                  .catch(err => {
+                    console.error('🔍 Direct blob fetch failed:', err);
+                    
+                    // Show error message to user
+                    e.target.style.display = 'none';
+                    const errorDiv = document.createElement('div');
+                    errorDiv.innerHTML = `
+                      <div style="
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        height: 200px;
+                        color: #ef4444;
+                        font-size: 14px;
+                        text-align: center;
+                        padding: 20px;
+                      ">
+                        <div style="font-size: 24px; margin-bottom: 10px;">❌</div>
+                        <div>Chyba při načítání obrázku</div>
+                        <div style="font-size: 12px; color: #6b7280; margin-top: 5px;">${filename}</div>
+                      </div>
+                    `;
+                    e.target.parentNode.appendChild(errorDiv);
+                  });
+              }}
+            />
           )}
           {fileType === 'other' && (
             <UnsupportedMessage>
