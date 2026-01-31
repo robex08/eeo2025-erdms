@@ -100,9 +100,7 @@ export const getAnnualFeeDetail = async ({ token, username, id }) => {
  */
 export const createAnnualFee = async (data) => {
   try {
-    // 🔧 DEBUG: Log dat posílaných na server
-    console.log('🌐 [API] createAnnualFee - odesílám data:', data);
-    
+
     const response = await fetch(`${BASE_URL}/annual-fees/create`, {
       method: 'POST',
       headers: {
@@ -117,7 +115,6 @@ export const createAnnualFee = async (data) => {
     }
 
     const result = await response.json();
-    console.log('🌐 [API] createAnnualFee - odpověď ze serveru:', result);
     return result;
   } catch (error) {
     console.error('createAnnualFee error:', error);
