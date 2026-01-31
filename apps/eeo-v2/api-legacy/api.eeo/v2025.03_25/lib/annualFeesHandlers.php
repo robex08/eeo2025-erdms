@@ -787,17 +787,19 @@ function handleAnnualFeesStats($pdo, $data, $user) {
         $rok = isset($data['rok']) ? (int)$data['rok'] : null;
         $stats = queryAnnualFeesStats($pdo, $rok);
 
-        return [
+        http_response_code(200);
+        echo json_encode([
             'status' => 'success',
             'data' => $stats
-        ];
+        ]);
 
     } catch (Exception $e) {
         error_log("❌ Annual Fees Stats Error: " . $e->getMessage());
-        return [
+        http_response_code(500);
+        echo json_encode([
             'status' => 'error',
             'message' => 'Chyba při načítání statistik: ' . $e->getMessage()
-        ];
+        ]);
     }
 }
 
