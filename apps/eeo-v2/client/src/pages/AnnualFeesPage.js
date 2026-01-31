@@ -2076,6 +2076,13 @@ function AnnualFeesPage() {
   // Filter change
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1); // Reset na první stránku při změně filtru
+  };
+
+  // Fulltext search change
+  const handleFulltextSearchChange = (value) => {
+    setFulltextSearch(value);
+    setCurrentPage(1); // Reset na první stránku při změně vyhledávání
   };
   
   // Funkce pro zrušení všech filtrů
@@ -2088,6 +2095,7 @@ function AnnualFeesPage() {
       smlouva: ''
     });
     setFulltextSearch('');
+    setCurrentPage(1); // Reset na první stránku při vymazání filtrů
   };
   
   // Normalizace textu pro vyhledávání - bez diakritiky a case-insensitive
@@ -3286,7 +3294,7 @@ function AnnualFeesPage() {
             type="text"
             placeholder="Vyhledat ve všech polích..."
             value={fulltextSearch}
-            onChange={(e) => setFulltextSearch(e.target.value)}
+            onChange={(e) => handleFulltextSearchChange(e.target.value)}
           />
         </FilterGroup>
         
