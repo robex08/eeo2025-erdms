@@ -15,18 +15,162 @@
  * - annual-fees/delete          - Soft delete (CASCADE smaže i položky)
  * - annual-fees/stats           - Statistiky (celkem, zaplaceno, nezaplaceno, prosrořeno)
  * 
- * @version 1.0.0
- * @date 2026-01-27
+ * OPRÁVNĚNÍ:
+ * - ADMIN/ANNUAL_FEES_MANAGE    - Plný přístup ke všemu
+ * - ANNUAL_FEES_VIEW            - Pouze čtení (bez editace/mazání/vytváření)
+ * - ANNUAL_FEES_CREATE          - Vytváření nových poplatků
+ * - ANNUAL_FEES_EDIT            - Editace existujících (hlavičky i položek)
+ * - ANNUAL_FEES_DELETE          - Mazání poplatků (jen s EDIT)
+ * - ANNUAL_FEES_ITEM_PAYMENT    - Označování položek k zaplacení (s VIEW nebo EDIT)
+ * 
+ * @version 1.1.0
+ * @date 2026-01-31
  */
 
 require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/annualFeesQueries.php';
 
 // ============================================================================
+// 🔐 HELPER FUNKCE PRO KONTROLU PRÁV
+// ============================================================================
+
+/**
+ * Kontrola, zda má uživatel konkrétní oprávnění
+ * @param array $user - Objekt uživatele s permissions polem
+ * @param string $permissionCode - Kód oprávnění
+ * @return bool
+ */
+function hasAnnualFeesPermission($user, $permissionCode) {
+    if (!isset($user['permissions']) || !is_array($user['permissions'])) {
+        return false;
+    }
+    
+    foreach ($user['permissions'] as $perm) {
+        if (isset($perm['kod_prava']) && $perm['kod_prava'] === $permissionCode) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Kontrola, zda má uživatel alespoň jedno z oprávnění
+ * @param array $user - Objekt uživatele
+ * @param array $permissionCodes - Pole kódů oprávnění
+ * @return bool
+ */
+function hasAnyAnnualFeesPermission($user, $permissionCodes) {
+    foreach ($permissionCodes as $code) {
+        if (hasAnnualFeesPermission($user, $code)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Kontrola, zda je uživatel ADMIN (role SUPERADMIN nebo ADMINISTRATOR)
+ * @param array $user - Objekt uživatele
+ * @return bool
+ */
+function isAnnualFeesAdmin($user) {
+    // Z verify_token_v2 máme is_admin flag
+    if (isset($user['is_admin']) && $user['is_admin']) {
+        return true;
+    }
+    
+    // Fallback: kontrola rolí
+    if (!isset($user['roles']) || !is_array($user['roles'])) {
+        return false;
+    }
+    
+    return in_array('SUPERADMIN', $user['roles']) || in_array('ADMINISTRATOR', $user['roles']);
+}
+
+/**
+ * Kontrola práv pro VIEW (čtení)
+ * ADMIN, ANNUAL_FEES_MANAGE nebo ANNUAL_FEES_VIEW
+ * @param array $user
+ * @return bool
+ */
+function canViewAnnualFees($user) {
+    return isAnnualFeesAdmin($user) || 
+           hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_VIEW', 'ANNUAL_FEES_EDIT', 'ANNUAL_FEES_CREATE']);
+}
+
+/**
+ * Kontrola práv pro CREATE (vytváření)
+ * ADMIN, ANNUAL_FEES_MANAGE nebo ANNUAL_FEES_CREATE
+ * @param array $user
+ * @return bool
+ */
+function canCreateAnnualFees($user) {
+    return isAnnualFeesAdmin($user) || 
+           hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_CREATE']);
+}
+
+/**
+ * Kontrola práv pro EDIT (editace)
+ * ADMIN, ANNUAL_FEES_MANAGE nebo ANNUAL_FEES_EDIT
+ * @param array $user
+ * @return bool
+ */
+function canEditAnnualFees($user) {
+    return isAnnualFeesAdmin($user) || 
+           hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_EDIT']);
+}
+
+/**
+ * Kontrola práv pro DELETE (mazání)
+ * ADMIN, ANNUAL_FEES_MANAGE nebo (ANNUAL_FEES_DELETE + ANNUAL_FEES_EDIT)
+ * @param array $user
+ * @return bool
+ */
+function canDeleteAnnualFees($user) {
+    if (isAnnualFeesAdmin($user) || hasAnnualFeesPermission($user, 'ANNUAL_FEES_MANAGE')) {
+        return true;
+    }
+    
+    // DELETE musí být s EDIT, jinak je zbytečný
+    return hasAnnualFeesPermission($user, 'ANNUAL_FEES_DELETE') && 
+           hasAnnualFeesPermission($user, 'ANNUAL_FEES_EDIT');
+}
+
+/**
+ * Kontrola práv pro PAYMENT (označení k zaplacení)
+ * ADMIN, ANNUAL_FEES_MANAGE nebo (ANNUAL_FEES_ITEM_PAYMENT + (VIEW nebo EDIT))
+ * @param array $user
+ * @return bool
+ */
+function canMarkPaymentAnnualFees($user) {
+    if (isAnnualFeesAdmin($user) || hasAnnualFeesPermission($user, 'ANNUAL_FEES_MANAGE')) {
+        return true;
+    }
+    
+    // PAYMENT musí být s VIEW nebo EDIT
+    if (!hasAnnualFeesPermission($user, 'ANNUAL_FEES_ITEM_PAYMENT')) {
+        return false;
+    }
+    
+    return hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_VIEW', 'ANNUAL_FEES_EDIT']);
+}
+
+// ============================================================================
 // 📋 LIST - Seznam ročních poplatků s filtry
 // ============================================================================
 
 function handleAnnualFeesList($pdo, $data, $user) {
+    // 🔐 KONTROLA PRÁV: VIEW
+    if (!canViewAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k zobrazení ročních poplatků'
+        ]);
+        return;
+    }
+    
     try {
         // Nastavení české časové zóny pro MySQL spojení
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -72,6 +216,16 @@ function handleAnnualFeesList($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesDetail($pdo, $data, $user) {
+    // 🔐 KONTROLA PRÁV: VIEW
+    if (!canViewAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k zobrazení detailu ročního poplatku'
+        ]);
+        return;
+    }
+    
     try {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -109,6 +263,16 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+        return;
+    }
+    
+    // 🔐 KONTROLA PRÁV: CREATE
+    if (!canCreateAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k vytváření ročních poplatků'
+        ]);
         return;
     }
     
@@ -310,6 +474,16 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesUpdate($pdo, $data, $user) {
+    // 🔐 KONTROLA PRÁV: EDIT
+    if (!canEditAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k editaci ročních poplatků'
+        ]);
+        return;
+    }
+    
     try {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -451,6 +625,16 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesCreateItem($pdo, $data, $user) {
+    // 🔐 KONTROLA PRÁV: CREATE nebo EDIT (položky může přidávat i ten kdo edituje)
+    if (!canCreateAnnualFees($user) && !canEditAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k přidávání položek ročních poplatků'
+        ]);
+        return;
+    }
+    
     try {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -564,6 +748,33 @@ function handleAnnualFeesCreateItem($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesUpdateItem($pdo, $data, $user) {
+    // 🔐 KONTROLA PRÁV: EDIT nebo PAYMENT (pokud je změna stavu)
+    // Pokud se mění jen stav na ZAPLACENO, stačí PAYMENT právo
+    $isOnlyPaymentChange = isset($data['stav']) && $data['stav'] === 'ZAPLACENO' && 
+                           count(array_diff_key($data, ['id' => '', 'stav' => '', 'datum_zaplaceni' => '', 'cislo_dokladu' => ''])) === 0;
+    
+    if ($isOnlyPaymentChange) {
+        // Změna platby - stačí PAYMENT právo
+        if (!canMarkPaymentAnnualFees($user)) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nemáte oprávnění k označování plateb'
+            ]);
+            return;
+        }
+    } else {
+        // Jiná editace - potřeba EDIT právo
+        if (!canEditAnnualFees($user)) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nemáte oprávnění k editaci položek ročních poplatků'
+            ]);
+            return;
+        }
+    }
+    
     try {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -719,6 +930,17 @@ function handleAnnualFeesDelete($pdo, $data, $user) {
         echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
         return;
     }
+    
+    // 🔐 KONTROLA PRÁV: DELETE (musí mít i EDIT)
+    if (!canDeleteAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k mazání ročních poplatků'
+        ]);
+        return;
+    }
+    
     try {
         // 2. Nastavení české časové zóny (PHPAPI.prompt.md požadavek)
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -781,6 +1003,16 @@ function handleAnnualFeesDelete($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesStats($pdo, $data, $user) {
+    // 🔐 KONTROLA PRÁV: VIEW (pro statistiky stačí VIEW)
+    if (!canViewAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k zobrazení statistik ročních poplatků'
+        ]);
+        return;
+    }
+    
     try {
         // Nastavení české časové zóny
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -909,6 +1141,16 @@ function handleAnnualFeesDeleteItem($pdo, $data, $user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+        return;
+    }
+    
+    // 🔐 KONTROLA PRÁV: DELETE (musí mít i EDIT)
+    if (!canDeleteAnnualFees($user)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Nemáte oprávnění k mazání položek ročních poplatků'
+        ]);
         return;
     }
     
