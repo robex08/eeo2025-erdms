@@ -61,14 +61,8 @@ function getAnnualFeesAllowedTypes() {
  */
 function handleAnnualFeeAttachmentUpload($pdo, $input, $user) {
     try {
-        error_log("=== ANNUAL FEES UPLOAD START ===");
-        error_log("User: " . json_encode($user));
-        error_log("Input: " . json_encode($input));
-        error_log("Files: " . json_encode($_FILES));
-        
         // Kontrola oprávnění - musí mít VIEW nebo vyšší
         if (!canViewAnnualFees($user)) {
-            error_log("Permission denied for user");
             return [
                 'success' => false,
                 'error' => 'Nemáte oprávnění pro nahrávání příloh ročních poplatků',
@@ -76,11 +70,8 @@ function handleAnnualFeeAttachmentUpload($pdo, $input, $user) {
             ];
         }
         
-        error_log("Permission check passed");
-        
         // Validace vstupu
         if (!isset($input['rocni_poplatek_id']) || empty($input['rocni_poplatek_id'])) {
-            error_log("Missing rocni_poplatek_id");
             return [
                 'success' => false,
                 'error' => 'Chybí ID ročního poplatku',
@@ -89,7 +80,6 @@ function handleAnnualFeeAttachmentUpload($pdo, $input, $user) {
         }
         
         $rocniPoplatekId = intval($input['rocni_poplatek_id']);
-        error_log("rocni_poplatek_id: " . $rocniPoplatekId);
         
         // Nastavení timezone pro MySQL session
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -226,8 +216,6 @@ function handleAnnualFeeAttachmentUpload($pdo, $input, $user) {
         $stmt->execute([$attachmentId]);
         $attachment = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        error_log("Upload successful, attachment_id: " . $attachmentId);
-        
         return [
             'success' => true,
             'message' => 'Příloha byla úspěšně nahrána',
@@ -236,8 +224,7 @@ function handleAnnualFeeAttachmentUpload($pdo, $input, $user) {
         ];
         
     } catch (Exception $e) {
-        error_log("❌ UPLOAD ERROR: " . $e->getMessage());
-        error_log("Stack trace: " . $e->getTraceAsString());
+        error_log("ANNUAL FEES UPLOAD ERROR: " . $e->getMessage());
         return [
             'success' => false,
             'error' => 'Chyba při nahrávání: ' . $e->getMessage(),
@@ -371,6 +358,8 @@ function handleAnnualFeeAttachmentDownload($pdo, $input, $user) {
     $uploadRootPath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-dev/data/eeo-v2/prilohy/';
     $fullPath = rtrim($uploadRootPath, '/') . '/' . $attachment['systemova_cesta'];
     
+    error_log("📁 Download request - File path: " . $fullPath . " | Original name: " . $attachment['originalni_nazev_souboru'] . " | File size: " . (file_exists($fullPath) ? filesize($fullPath) : 'NOT FOUND'));
+    
     if (!file_exists($fullPath)) {
         header('Content-Type: application/json');
         echo json_encode([
@@ -389,10 +378,15 @@ function handleAnnualFeeAttachmentDownload($pdo, $input, $user) {
     
     // Odeslání souboru
     header('Content-Type: ' . $mimeType);
-    header('Content-Disposition: attachment; filename="' . $attachment['originalni_nazev_souboru'] . '"');
+    header('Content-Disposition: inline; filename="' . $attachment['originalni_nazev_souboru'] . '"');
     header('Content-Length: ' . filesize($fullPath));
     header('Cache-Control: no-cache, must-revalidate');
     header('Pragma: no-cache');
+    
+    // CORS headers pro frontend přístup
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization');
     
     readfile($fullPath);
     exit;

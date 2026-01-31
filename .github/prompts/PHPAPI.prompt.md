@@ -19,6 +19,38 @@ last_updated: 2025-12-30
 3. ❌ **NIKDY nedělat rsync do /var/www/erdms-platform/** bez explicitního příkazu
 4. ❌ **NIKDY nepoužívat `--delete` flag** při rsync (smaže api-legacy/)
 5. ❌ **NIKDY neměnit produkční databázi** `eeo2025` (pouze `eeo2025-dev`)
+6. ❌ **ŽÁDNÉ HARDCODED KONSTANTY, URL, CESTY** - vše pouze z .env nebo config souborů!
+
+### 🔒 ZÁKAZ HARDCODED HODNOT - NEJVYŠŠÍ PRIORITA:
+- ❌ **Hardcoded URL:** `http://localhost:3001`, `https://erdms.zachranka.cz`
+- ❌ **Hardcoded cesty:** `/var/www/erdms-data/`, `/data/eeo-v2/`
+- ❌ **Hardcoded DB jména:** `eeo2025`, `eeo2025-dev`
+- ❌ **Hardcoded porty:** `:3306`, `:3000`, `:3001`
+- ❌ **Hardcoded API endpointy:** `/api.eeo/`, `/api/`
+
+### ✅ POUŽIJ VŽDY Z CONFIG:
+```php
+// ✅ SPRÁVNĚ - čti z .env
+$uploadRoot = $_ENV['UPLOAD_ROOT_PATH'] ?? '/var/www/erdms-data/';
+$apiBaseUrl = $_ENV['API_BASE_URL'] ?? '/api.eeo';
+$dbHost = $_ENV['DB_HOST'] ?? 'localhost';
+$dbName = $_ENV['DB_NAME'] ?? 'eeo2025-dev';
+
+// ❌ ŠPATNĚ - hardcoded
+$uploadRoot = '/var/www/erdms-data/';  // NIKDY!
+$apiBaseUrl = '/api.eeo';             // NIKDY!
+```
+
+### ✅ FRONTEND - POUŽIJ ENV VARIABLES:
+```javascript
+// ✅ SPRÁVNĚ - čti z process.env
+const API_BASE = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
+const UPLOAD_URL = process.env.REACT_APP_UPLOAD_BASE_URL;
+
+// ❌ ŠPATNĚ - hardcoded
+const API_BASE = '/api.eeo';           // NIKDY!
+const API_BASE = 'http://localhost:3001/api'; // NIKDY!
+```
 
 ### ✅ POVOLENÉ OPERACE (bez potvrzení):
 - ✅ Všechny změny v `/var/www/erdms-dev/` (dev workspace)
@@ -161,6 +193,7 @@ echo json_encode([
 
 Před dokončením práce vždy zkontroluj:
 
+- [ ] **🔒 ŽÁDNÝ HARDCODE:** Všechny URL, cesty, DB názvy z .env?
 - [ ] **Metoda:** Používáš POST?
 - [ ] **Autentizace:** Validuješ `username` a `token` z body?
 - [ ] **Bezpečnost:** Používáš prepared statements?
@@ -170,6 +203,8 @@ Před dokončením práce vždy zkontroluj:
 - [ ] **Error handling:** Try-catch pro všechny DB operace?
 - [ ] **HTTP kódy:** Správné status codes (200, 400, 401, 403, 500)?
 - [ ] **České texty:** Všechny error messages jsou česky?
+- [ ] **ENV Variables:** Frontend používá process.env.REACT_APP_*?
+- [ ] **Config:** PHP čte všechny cesty a URL z $_ENV nebo config?
 
 ---
 
@@ -314,7 +349,44 @@ function handle_muj_endpoint_create($input, $config) {
 
 ---
 
-## 📖 SOUVISEJÍCÍ DOKUMENTACE
+## � ENVIRONMENT VARIABLES A CONFIG
+
+### 🔍 KONTROLA PŘED KAŽDÝM COMMIT:
+```bash
+# Vyhledej hardcoded hodnoty v kódu:
+grep -r "localhost:3001" apps/eeo-v2/client/src/
+grep -r "/api.eeo" apps/eeo-v2/client/src/ | grep -v "process.env"
+grep -r "eeo2025" apps/eeo-v2/api-legacy/ | grep -v ".env"
+```
+
+### 📂 MÍSTA PRO ENV VARIABLES:
+- **Frontend:** `/apps/eeo-v2/client/.env`
+- **Backend API:** `/apps/eeo-v2/api-legacy/api.eeo/.env`
+- **Production:** `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env`
+
+### 🎯 POVINNÉ ENV VARIABLES:
+```bash
+# Frontend (.env)
+REACT_APP_API2_BASE_URL=/api.eeo/
+REACT_APP_API_BASE_URL=/api
+REACT_APP_UPLOAD_BASE_URL=/data/eeo-v2/prilohy/
+
+# Backend (.env)
+DB_HOST=10.3.174.11
+DB_NAME=eeo2025-dev
+UPLOAD_ROOT_PATH=/var/www/erdms-data/
+API_BASE_URL=/api.eeo
+```
+
+### ⚠️ NEJČASTĚJŠÍ CHYBY:
+1. **Špatná env variable:** `REACT_APP_API_BASE_URL` místo `REACT_APP_API2_BASE_URL`
+2. **Zapomenutý fallback:** `process.env.REACT_APP_API2_BASE_URL` bez `|| '/api.eeo'`
+3. **Hardcoded localhost:** `http://localhost:3001/api/` v prod kódu
+4. **Missing env load:** PHP neloaduje dotenv properly
+
+---
+
+## �📖 SOUVISEJÍCÍ DOKUMENTACE
 
 - Bezpečnost: `/_docs/PHP_API_SECURITY_AUDIT_20251220.md`
 - DB struktura: `/_docs/ERDMS_PLATFORM_STRUCTURE.md`
