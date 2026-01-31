@@ -1071,16 +1071,19 @@ const Badge = styled.span`
   margin-left: 0.25rem;
 `;
 
-// Pagination komponenty
+// Pagination komponenty podle vzoru Orders25List
 const PaginationContainer = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 1rem 0;
   padding: 1rem;
   background: #f8fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border-top: 1px solid #e5e7eb;
+`;
+
+const PaginationInfo = styled.div`
+  font-size: 0.875rem;
+  color: #64748b;
 `;
 
 const PaginationControls = styled.div`
@@ -1090,22 +1093,25 @@ const PaginationControls = styled.div`
 `;
 
 const PageButton = styled.button`
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
   background: white;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.875rem;
-  
+  font-weight: 500;
+  transition: all 0.2s ease;
+
   &:hover:not(:disabled) {
     background: #f3f4f6;
+    border-color: #3b82f6;
   }
-  
+
   &:disabled {
-    cursor: not-allowed;
     opacity: 0.5;
+    cursor: not-allowed;
   }
-  
+
   &.active {
     background: #3b82f6;
     color: white;
@@ -1113,12 +1119,13 @@ const PageButton = styled.button`
   }
 `;
 
-const PageSizeSelector = styled.select`
+const PageSizeSelect = styled.select`
   padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   background: white;
   font-size: 0.875rem;
+  cursor: pointer;
 `;
 
 // Řádky po splatnosti styling
@@ -3676,93 +3683,59 @@ function AnnualFeesPage() {
         )}
       </TableContainer>
 
-      {/* Pagination */}
+      {/* Pagination podle vzoru Orders25List */}
       {totalRecords > 0 && (
         <PaginationContainer>
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
-            
-            {/* Levá strana - informace o záznamech a page size selector */}
-            <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
-              <span style={{fontSize: '14px', color: '#6b7280'}}>
-                Zobrazeno {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalRecords)} z {totalRecords} záznamů
-              </span>
-              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                <span style={{fontSize: '14px', color: '#6b7280'}}>Na stránku:</span>
-                <select 
-                  value={pageSize} 
-                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: '14px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    backgroundColor: 'white'
-                  }}
-                >
-                  {pageSizeOptions.map(size => (
-                    <option key={size} value={size}>{size}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            {/* Pravá strana - pagination controls */}
-            {totalPages > 1 && (
-              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                {/* První stránka */}
-                <PageButton 
-                  disabled={currentPage === 1}
-                  onClick={() => handlePageChange(1)}
-                  title="První stránka"
-                >
-                  «
-                </PageButton>
-                
-                {/* Předchozí */}
-                <PageButton 
-                  disabled={currentPage === 1}
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  title="Předchozí stránka"
-                >
-                  ‹
-                </PageButton>
-                
-                {/* Čísla stránek */}
-                {generatePageNumbers().map(pageNum => (
-                  <PageButton
-                    key={pageNum}
-                    active={pageNum === currentPage}
-                    onClick={() => handlePageChange(pageNum)}
-                    style={{
-                      backgroundColor: pageNum === currentPage ? '#2563eb' : 'white',
-                      color: pageNum === currentPage ? 'white' : '#374151',
-                      borderColor: pageNum === currentPage ? '#2563eb' : '#d1d5db'
-                    }}
-                  >
-                    {pageNum}
-                  </PageButton>
-                ))}
-                
-                {/* Další */}
-                <PageButton 
-                  disabled={currentPage === totalPages}
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  title="Další stránka"
-                >
-                  ›
-                </PageButton>
-                
-                {/* Poslední stránka */}
-                <PageButton 
-                  disabled={currentPage === totalPages}
-                  onClick={() => handlePageChange(totalPages)}
-                  title="Poslední stránka"
-                >
-                  »
-                </PageButton>
-              </div>
+          <PaginationInfo>
+            Zobrazeno {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalRecords)} z {totalRecords} ročních poplatků
+            {filteredAnnualFees.length !== annualFees.length && (
+              <span> (filtrováno z {annualFees.length})</span>
             )}
-          </div>
+          </PaginationInfo>
+
+          <PaginationControls>
+            <span style={{ fontSize: '0.875rem', color: '#64748b', marginRight: '1rem' }}>
+              Zobrazit:
+            </span>
+            <PageSizeSelect
+              value={pageSize}
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            >
+              {pageSizeOptions.map(size => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </PageSizeSelect>
+
+            <PageButton
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage === 1}
+            >
+              ««
+            </PageButton>
+            <PageButton
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              ‹
+            </PageButton>
+
+            <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 1rem' }}>
+              Stránka {currentPage} z {totalPages}
+            </span>
+
+            <PageButton
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              ›
+            </PageButton>
+            <PageButton
+              onClick={() => handlePageChange(totalPages)}
+              disabled={currentPage === totalPages}
+            >
+              »»
+            </PageButton>
+          </PaginationControls>
         </PaginationContainer>
       )}
       
