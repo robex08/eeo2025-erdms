@@ -2048,7 +2048,7 @@ function AnnualFeesPage() {
     setExpandingAll(true);
     
     try {
-      const allIds = filteredAnnualFees.map(fee => fee.id);
+      const allIds = paginatedData.map(fee => fee.id);
       const newExpanded = {};
       allIds.forEach(id => {
         newExpanded[id] = true;
@@ -3269,7 +3269,7 @@ function AnnualFeesPage() {
       />
       
       {/* Expand/Collapse All tlačítka */}
-      {filteredAnnualFees.length > 0 && (
+      {paginatedData.length > 0 && (
         <div style={{display: 'flex', gap: '8px', marginBottom: '12px', justifyContent: 'flex-end'}}>
           <Button
             variant="secondary"
@@ -3305,7 +3305,7 @@ function AnnualFeesPage() {
                 <Th style={{width: '50px', textAlign: 'center'}}>
                   <ExpandCollapseButton
                     onClick={() => {
-                      const allExpanded = Object.keys(expandedRows).length === filteredAnnualFees.length;
+                      const allExpanded = Object.keys(expandedRows).length === paginatedData.length;
                       if (allExpanded) {
                         // Sbalit vše
                         collapseAll();
@@ -3315,13 +3315,13 @@ function AnnualFeesPage() {
                       }
                     }}
                     disabled={expandingAll}
-                    title={expandingAll ? "Načítám detaily..." : (Object.keys(expandedRows).length === filteredAnnualFees.length ? "Sbalit všechny řádky" : "Rozbalit všechny řádky")}
+                    title={expandingAll ? "Načítám detaily..." : (Object.keys(expandedRows).length === paginatedData.length ? "Sbalit všechny řádky" : "Rozbalit všechny řádky")}
                   >
                     {expandingAll ? (
                       <FontAwesomeIcon icon={faSpinner} spin />
                     ) : (
                       <FontAwesomeIcon 
-                        icon={Object.keys(expandedRows).length === filteredAnnualFees.length ? faMinus : faPlus} 
+                        icon={Object.keys(expandedRows).length === paginatedData.length ? faMinus : faPlus} 
                       />
                     )}
                   </ExpandCollapseButton>
@@ -4430,7 +4430,7 @@ function AnnualFeesPage() {
               })}
               
               {/* Empty state message v tabulce */}
-              {filteredAnnualFees.length === 0 && !showNewRow && (
+              {paginatedData.length === 0 && !showNewRow && (
                 <Tr>
                   <Td colSpan="14" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
                     <div style={{fontSize: '3rem', marginBottom: '16px'}}>
@@ -4458,7 +4458,7 @@ function AnnualFeesPage() {
         <PaginationContainer>
           <PaginationInfo>
             Zobrazeno {((paginationInfo.currentPage - 1) * pageSize) + 1}-{Math.min(paginationInfo.currentPage * pageSize, paginationInfo.totalRecords)} z {paginationInfo.totalRecords} ročních poplatků
-            {filteredAnnualFees.length !== annualFees.length && (
+            {totalRecords > 0 && (debouncedFulltext || filters.stav !== 'all' || filters.druh !== 'all' || filters.platba !== 'all' || filters.smlouva) && (
               <span> (filtrováno z {annualFees.length})</span>
             )}
           </PaginationInfo>
