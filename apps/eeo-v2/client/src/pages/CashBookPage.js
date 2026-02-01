@@ -1646,6 +1646,10 @@ const CashBookPage = () => {
         const targetUserId = mainAssignment?.uzivatel_id || userDetail?.id;
         const isOwnCashbox = targetUserId === userDetail?.id;
 
+        // ✅ KRITICKÉ: VŽDY nastavit carryOverAmount z DB (NIKDY z localStorage!)
+        // Backend správně počítá převod z předchozího měsíce = koncový stav předchozího měsíce
+        setCarryOverAmount(parseFloat(book.prevod_z_predchoziho || 0));
+
         // 🎯 PRAVIDLO 1: Pokud je page reload (F5), VŽDY ignorovat localStorage
         if (isPageReload) {
           // F5 → načíst jen z DB, smazat starý localStorage
@@ -1693,12 +1697,14 @@ const CashBookPage = () => {
         else if (entries.length === 0 && localEntries.length > 0 && isOwnCashbox) {
           // Offline režim - použít lokální data a pokusit se sync
           setCashBookEntries(localEntries);
+          // ⚠️ V offline režimu ponechat carryOverAmount z DB (už nastaveno výše)
           syncLocalChangesToDB(localEntries, book.id);
         }
         // 🎯 PRAVIDLO 5: Ani DB ani localStorage nemá data → prázdný start
         else {
           setCashBookEntries([]);
           localStorage.removeItem(STORAGE_KEY);
+          // carryOverAmount už je nastaveno z DB výše
         }
 
         // ✅ Nastavit loading flag na false po dokončení
@@ -2344,11 +2350,21 @@ const CashBookPage = () => {
       }
 
       const platneOdDate = new Date(mainAssignment.platne_od);
-      // ✅ FIX: Použiť UTC dátum pre porovnanie (aby sa predišlo timezone problémom)
-      const targetMonthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
-
-      // Vrátit true pokud cílový měsíc je >= platne_od
-      return targetMonthStart >= platneOdDate;
+      
+      // 🔧 FIX: Porovnávat pouze měsíc a rok, ne přesné datum
+      // Pokud je pokladna přiřazena kdykoliv v měsíci (např. 4.1.2026),
+      // měla by být dostupná pro celý ten měsíc (od 1.1.2026)
+      const platneOdYear = platneOdDate.getFullYear();
+      const platneOdMonth = platneOdDate.getMonth() + 1; // getMonth() vrací 0-11
+      
+      // Kontrola: cílový měsíc musí být >= než měsíc přiřazení (bez dne)
+      if (targetYear > platneOdYear) {
+        return true; // Cílový rok je novější → vždy OK
+      } else if (targetYear === platneOdYear) {
+        return targetMonth >= platneOdMonth; // Stejný rok → kontrola měsíců
+      } else {
+        return false; // Cílový rok je starší → NELZE
+      }
     } catch (error) {
       console.error('❌ Chyba při výpočtu canGoToPreviousMonth:', error);
       return true; // V případě chyby povolit navigaci
@@ -2370,10 +2386,24 @@ const CashBookPage = () => {
     if (mainAssignment?.platne_od) {
       try {
         const platneOdDate = new Date(mainAssignment.platne_od);
-        // ✅ FIX: Použiť UTC dátum pre porovnanie (aby sa predišlo timezone problémom)
-        const targetMonthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
+        
+        // 🔧 FIX: Porovnávat pouze měsíc a rok, ne přesné datum
+        // Pokud je pokladna přiřazena kdykoliv v měsíci (např. 4.1.2026),
+        // měla by být dostupná pro celý ten měsíc (od 1.1.2026)
+        const platneOdYear = platneOdDate.getFullYear();
+        const platneOdMonth = platneOdDate.getMonth() + 1; // getMonth() vrací 0-11
+        
+        // Kontrola: cílový měsíc musí být >= než měsíc přiřazení (bez dne)
+        let canAccess = false;
+        if (targetYear > platneOdYear) {
+          canAccess = true; // Cílový rok je novější → OK
+        } else if (targetYear === platneOdYear) {
+          canAccess = targetMonth >= platneOdMonth; // Stejný rok → kontrola měsíců
+        } else {
+          canAccess = false; // Cílový rok je starší → NELZE
+        }
 
-        if (targetMonthStart < platneOdDate) {
+        if (!canAccess) {
           const formattedDate = platneOdDate.toLocaleDateString('cs-CZ');
           showToast(
             `Pokladna vám byla přiřazena až od ${formattedDate}. Nelze přejít na měsíc ${targetMonth}/${targetYear}.`,
