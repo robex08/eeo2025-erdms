@@ -2072,14 +2072,14 @@ function AnnualFeesPage() {
     setExpandingAll(true);
     
     try {
-      const allIds = paginatedData.map(fee => fee.id);
+      const expandableIds = paginatedData.filter(fee => hasExpandableItems(fee)).map(fee => fee.id);
       const newExpanded = {};
-      allIds.forEach(id => {
+      expandableIds.forEach(id => {
         newExpanded[id] = true;
       });
       
-      // Načíst detaily pro všechny
-      for (const id of allIds) {
+      // Načíst detaily pro všechny expandovatelné řádky
+      for (const id of expandableIds) {
         const fee = annualFees.find(f => f.id === id);
         if (!fee.polozky) {
           try {
@@ -2167,6 +2167,44 @@ function AnnualFeesPage() {
   const containsSearchTerm = (text, searchTerm) => {
     if (!searchTerm || !text) return false;
     return normalizeText(text).includes(normalizeText(searchTerm));
+  };
+
+  // Helper funkce pro počítání filtrovaných podpoložek
+  const getFilteredItemsCount = (fee) => {
+    if (!fee.polozky) {
+      // Pokud nejsou načtené podpoložky, použij původní počet
+      return fee.pocet_polozek || 0;
+    }
+
+    if (!debouncedFulltext) {
+      // Bez filtru vrať všechny podpoložky
+      return fee.polozky.length;
+    }
+
+    // Spočítej kolik podpoložek vyhovuje filtru
+    return fee.polozky.filter(item => {
+      const itemFields = [
+        item.nazev_polozky,
+        item.cislo_dokladu,
+        item.stav,
+        item.stav_nazev,
+        item.aktualizoval_jmeno,
+        item.aktualizoval_prijmeni,
+        item.vytvoril_jmeno,
+        item.vytvoril_prijmeni,
+        item.castka?.toString(),
+        item.datum_splatnosti,
+        item.datum_zaplaceno,
+        'zaplaceno',
+        'nezaplaceno'
+      ];
+      return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
+    }).length;
+  };
+
+  // Helper funkce pro určení, zda má řádek expandovatelné podpoložky
+  const hasExpandableItems = (fee) => {
+    return getFilteredItemsCount(fee) > 0;
   };
   
   // Data už jsou filtrovaná a paginovaná ze serveru, nemusíme filtrovat client-side
@@ -3353,7 +3391,10 @@ function AnnualFeesPage() {
                 <Th style={{width: '50px', textAlign: 'center'}}>
                   <ExpandCollapseButton
                     onClick={() => {
-                      const allExpanded = Object.keys(expandedRows).length === paginatedData.length;
+                      const expandableFeesCount = paginatedData.filter(fee => hasExpandableItems(fee)).length;
+                      const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id]).length;
+                      const allExpanded = expandedExpandableCount === expandableFeesCount && expandableFeesCount > 0;
+                      
                       if (allExpanded) {
                         // Sbalit vše
                         collapseAll();
@@ -3363,13 +3404,22 @@ function AnnualFeesPage() {
                       }
                     }}
                     disabled={expandingAll}
-                    title={expandingAll ? "Načítám detaily..." : (Object.keys(expandedRows).length === paginatedData.length ? "Sbalit všechny řádky" : "Rozbalit všechny řádky")}
+                    title={expandingAll ? "Načítám detaily..." : (() => {
+                      const expandableFeesCount = paginatedData.filter(fee => hasExpandableItems(fee)).length;
+                      const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id]).length;
+                      const allExpanded = expandedExpandableCount === expandableFeesCount && expandableFeesCount > 0;
+                      return allExpanded ? "Sbalit všechny řádky" : "Rozbalit všechny řádky";
+                    })()}
                   >
                     {expandingAll ? (
                       <FontAwesomeIcon icon={faSpinner} spin />
                     ) : (
                       <FontAwesomeIcon 
-                        icon={Object.keys(expandedRows).length === paginatedData.length ? faMinus : faPlus} 
+                        icon={(() => {
+                          const expandableFeesCount = paginatedData.filter(fee => hasExpandableItems(fee)).length;
+                          const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id]).length;
+                          return (expandedExpandableCount === expandableFeesCount && expandableFeesCount > 0) ? faMinus : faPlus;
+                        })()} 
                       />
                     )}
                   </ExpandCollapseButton>
@@ -3652,14 +3702,14 @@ function AnnualFeesPage() {
                 return (
                 <React.Fragment key={fee.id}>
                   <Tr 
-                    clickable={!isEditingFee} 
-                    onClick={() => !isEditingFee && toggleRow(fee.id)}
+                    clickable={!isEditingFee && hasExpandableItems(fee)} 
+                    onClick={() => !isEditingFee && hasExpandableItems(fee) && toggleRow(fee.id)}
                     style={{
                       backgroundColor: rowBackgroundColor
                     }}
                   >
                     <Td>
-                      {!isEditingFee && (
+                      {!isEditingFee && hasExpandableItems(fee) && (
                         <div style={{position: 'relative', display: 'inline-block'}}>
                           <ExpandButton title={expandedRows[fee.id] ? 'Sbalit' : 'Rozbalit'}>
                             <FontAwesomeIcon icon={expandedRows[fee.id] ? faMinus : faPlus} />
