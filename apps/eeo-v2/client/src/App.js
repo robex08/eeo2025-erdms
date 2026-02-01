@@ -307,7 +307,7 @@ function App() {
       
       // Optional: Toast notifikace
       if (showToast) {
-        showToast('Je dostupná nová verze aplikace', { 
+        showToast('Je dostupná nová verze aplikace v2.21', { 
           type: 'info',
           autoClose: 8000
         });

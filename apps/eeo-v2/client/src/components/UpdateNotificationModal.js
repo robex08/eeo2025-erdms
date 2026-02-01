@@ -62,7 +62,7 @@ const UpdateNotificationModal = ({ open, onClose, onUpdate, versionData }) => {
         />
         <Box>
           <Typography variant="h6" component="div">
-            Nová verze aplikace
+            Nová verze aplikace (v2.21)
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Aktualizace ze {buildTime}
