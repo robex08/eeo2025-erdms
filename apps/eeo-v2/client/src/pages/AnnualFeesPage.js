@@ -1875,18 +1875,19 @@ function AnnualFeesPage() {
     }
   };
   
-  // Load data
+  // Load data when filters change
   useEffect(() => {
     loadAnnualFees(1, pageSize); // Vždy začni na stránce 1 při změně filtrů
   }, [filters]);
   
-  // Load data when page changes (pouze pro server-side pagination)
+  // Load data when fulltext search changes
   useEffect(() => {
-    // Pro stavový filtr neloadujeme data znovu, jen použijeme client-side pagination
-    const isStatusFilterActive = filters.stav && filters.stav !== 'all';
-    if (!isStatusFilterActive) {
-      loadAnnualFees(currentPage, pageSize);
-    }
+    loadAnnualFees(1, pageSize); // Vždy začni na stránce 1 při změně fulltext
+  }, [debouncedFulltext]);
+  
+  // Load data when page changes
+  useEffect(() => {
+    loadAnnualFees(currentPage, pageSize);
   }, [currentPage]);
 
   // Load data when page size changes
@@ -1916,12 +1917,8 @@ function AnnualFeesPage() {
     try {
       setLoading(true);
       
-      // Pokud je aktivní filtr stavu, načteme všechny položky pro client-side filtrování
-      const isStatusFilterActive = filters.stav && filters.stav !== 'all';
-      const paginationParams = isStatusFilterActive ? {
-        page: 1,
-        pageSize: 10000 // Načteme všechny položky pro client-side filtrování
-      } : {
+      // Všechno běží server-side, včetně filtrů stavu a fulltext
+      const paginationParams = {
         page: page,
         pageSize: size
       };
@@ -1934,22 +1931,17 @@ function AnnualFeesPage() {
           rok: filters.rok,
           druh: filters.druh !== 'all' ? filters.druh : undefined,
           platba: filters.platba !== 'all' ? filters.platba : undefined,
-          // stav filtrujeme až na frontendu, nikoliv v API
-          smlouva: filters.smlouva || undefined
+          stav: filters.stav !== 'all' ? filters.stav : undefined,
+          smlouva: filters.smlouva || undefined,
+          fulltext_search: debouncedFulltext || undefined
         },
         pagination: paginationParams
       });
       
-      if (isStatusFilterActive) {
-        // Pro stavový filtr nepoužíváme server-side pagination
-        // Pagination data se budou počítat z filtredAnnualFees v komponentě
-        setCurrentPage(page); // Ale current page si pamatujeme
-      } else {
-        // Nastavit pagination data pro server-side pagination
-        setTotalRecords(response.totalRecords || 0);
-        setTotalPages(response.totalPages || 0);
-        setCurrentPage(page);
-      }
+      // Nastavit pagination data ze serveru
+      setTotalRecords(response.totalRecords || 0);
+      setTotalPages(response.totalPages || 0);
+      setCurrentPage(page);
       
       // Načíst dashboard statistiky
       try {
@@ -2129,87 +2121,11 @@ function AnnualFeesPage() {
     return normalizeText(text).includes(normalizeText(searchTerm));
   };
   
-  // Filtrovaná data podle fulltext vyhledávání a stavu
-  const filteredAnnualFees = annualFees.filter(fee => {
-    // Fulltext filtr
-    if (debouncedFulltext) {
-      // Vyhledávej v hlavních polích
-      const mainFields = [
-        fee.nazev,
-        fee.smlouva_cislo,
-        fee.dodavatel_nazev,
-        fee.druh_nazev,
-        fee.platba_nazev,
-        fee.poznamka,
-        fee.stav_nazev,
-        fee.aktualizoval_jmeno,
-        fee.aktualizoval_prijmeni,
-        fee.vytvoril_jmeno,
-        fee.vytvoril_prijmeni
-      ];
-      
-      // Zkontroluj hlavní pole
-      const foundInMain = mainFields.some(field => containsSearchTerm(field, debouncedFulltext));
-      if (!foundInMain) {
-        // Zkontroluj i podpoložky (pokud jsou načtené)
-        if (fee.polozky && fee.polozky.length > 0) {
-          const foundInItems = fee.polozky.some(item => {
-            const itemFields = [
-              item.nazev_polozky,
-              item.cislo_dokladu,
-              item.stav,
-              item.aktualizoval_jmeno,
-              item.aktualizoval_prijmeni
-            ];
-            return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
-          });
-          if (!foundInItems) return false;
-        } else {
-          return false;
-        }
-      }
-    }
-    
-    // Filtrování podle stavu (používá počítadla)
-    if (filters.stav && filters.stav !== 'all') {
-      switch (filters.stav) {
-        case '_PO_SPLATNOSTI':
-          return (fee.pocet_po_splatnosti || 0) > 0;
-        case '_BLIZI_SE_SPLATNOST':
-          return (fee.pocet_blizi_se_splatnost || 0) > 0;
-        case 'ZAPLACENO':
-          // Všechny položky zaplacené
-          return fee.pocet_polozek > 0 && fee.pocet_zaplaceno === fee.pocet_polozek;
-        case 'NEZAPLACENO':
-          // Má nezaplacené položky, ale nejsou po/blížící se splatnosti
-          return (fee.pocet_polozek - (fee.pocet_zaplaceno || 0)) > 0 && 
-                 (fee.pocet_po_splatnosti || 0) === 0 && 
-                 (fee.pocet_blizi_se_splatnost || 0) === 0;
-        case 'CASTECNE':
-          // Některé zaplacené, ale ne všechny
-          return (fee.pocet_zaplaceno || 0) > 0 && (fee.pocet_zaplaceno || 0) < fee.pocet_polozek;
-        default:
-          return true;
-      }
-    }
-    
-    return true;
-  });
+  // Data už jsou filtrovaná a paginovaná ze serveru, nemusíme filtrovat client-side
+  const paginatedData = annualFees;
 
-  // Client-side pagination pro případy kdy je aktivní stavový filtr
-  const isStatusFilterActive = filters.stav && filters.stav !== 'all';
-  const paginatedData = isStatusFilterActive ? (() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return filteredAnnualFees.slice(startIndex, endIndex);
-  })() : filteredAnnualFees;
-
-  // Pagination data pro zobrazení
-  const paginationInfo = isStatusFilterActive ? {
-    totalRecords: filteredAnnualFees.length,
-    totalPages: Math.ceil(filteredAnnualFees.length / pageSize),
-    currentPage: currentPage
-  } : {
+  // Pagination info ze serveru
+  const paginationInfo = {
     totalRecords: totalRecords,
     totalPages: totalPages,
     currentPage: currentPage
@@ -2561,16 +2477,9 @@ function AnnualFeesPage() {
 
   // Pagination handlers
   const handlePageChange = (newPage) => {
-    const maxPages = isStatusFilterActive ? paginationInfo.totalPages : totalPages;
-    if (newPage >= 1 && newPage <= maxPages && newPage !== currentPage) {
+    if (newPage >= 1 && newPage <= paginationInfo.totalPages && newPage !== currentPage) {
       setCurrentPage(newPage);
-      
-      // Pro server-side pagination znovu načti data
-      if (!isStatusFilterActive) {
-        // Počkej na aktualizaci currentPage a pak načti data
-        setTimeout(() => loadAnnualFees(newPage, pageSize), 10);
-      }
-      // Pro client-side pagination se data znovu načítají automaticky přes paginatedData computed property
+      // Data se načtou automaticky přes useEffect pro currentPage
     }
   };
   
