@@ -1971,7 +1971,47 @@ function AnnualFeesPage() {
       
       setAnnualFees(feesWithInitializedCounts);
       
-      // � Načíst počty příloh pro všechny řádky
+      // 🔍 AUTO-ROZBALENÍ: Rozbal řádky, které mají shodu v podpoložkách
+      if (debouncedFulltext) {
+        const idsToExpand = feesWithInitializedCounts
+          .filter(fee => fee.has_subitem_match == 1)
+          .map(fee => fee.id);
+          
+        if (idsToExpand.length > 0) {
+          const newExpanded = { ...expandedRows };
+          
+          // Přidat k už rozbalených řádkům
+          idsToExpand.forEach(id => {
+            newExpanded[id] = true;
+          });
+          
+          setExpandedRows(newExpanded);
+          
+          // Načíst detaily pro všechny nově rozbalené řádky
+          for (const feeId of idsToExpand) {
+            if (!expandedRows[feeId]) { // Pokud ještě nebyl rozbalený
+              try {
+                const detail = await getAnnualFeeDetail({
+                  token,
+                  username,
+                  id: feeId
+                });
+                
+                if (detail.data) {
+                  // DŮLEŽITÉ: Načti VŠECHNY podpoložky, ne jen filtrované
+                  setAnnualFees(prev => prev.map(fee => 
+                    fee.id === feeId ? { ...fee, polozky: detail.data.polozky || [] } : fee
+                  ));
+                }
+              } catch (error) {
+                console.error(`Chyba při auto-rozbalování ${feeId}:`, error);
+              }
+            }
+          }
+        }
+      }
+      
+      // 📎 Načíst počty příloh pro všechny řádky
       feesWithInitializedCounts.forEach(fee => {
         loadAttachments(fee.id);
       });
@@ -2027,29 +2067,19 @@ function AnnualFeesPage() {
         });
         
         if (detail.data) {
-          // Filtrovat položky podle fulltext search (pokud je aktivní)
+          // ZMĚNA: Vždy načti VŠECHNY podpoložky, ne jen filtrované
+          // Díky tomu se zobrazí celý kontext záznamu
           let polozky = detail.data.polozky || [];
           
-          if (debouncedFulltext) {
-            polozky = polozky.filter(item => {
-              const itemFields = [
-                item.nazev_polozky,
-                item.cislo_dokladu,
-                item.stav,
-                item.stav_nazev,
-                item.aktualizoval_jmeno,
-                item.aktualizoval_prijmeni,
-                item.vytvoril_jmeno,
-                item.vytvoril_prijmeni,
-                item.castka?.toString(),
-                item.datum_splatnosti,
-                item.datum_zaplaceno,
-                'zaplaceno',
-                'nezaplaceno'
-              ];
-              return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
-            });
-          }
+          // VYPNUTO filtrování podpoložek - chceme vidět celý objekt
+          // if (debouncedFulltext) {
+          //   polozky = polozky.filter(item => {
+          //     const itemFields = [
+          //       ...
+          //     ];
+          //     return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
+          //   });
+          // }
           
           setAnnualFees(prev => prev.map(fee => 
             fee.id === id ? { ...fee, polozky: polozky } : fee
@@ -2204,7 +2234,8 @@ function AnnualFeesPage() {
 
   // Helper funkce pro určení, zda má řádek expandovatelné podpoložky
   const hasExpandableItems = (fee) => {
-    return getFilteredItemsCount(fee) > 0;
+    // Vždy zobrazuj +/- pokud má řádek nějaké podpoložky (i když jsou filtrovány)
+    return (fee.pocet_polozek || 0) > 0;
   };
   
   // Data už jsou filtrovaná a paginovaná ze serveru, nemusíme filtrovat client-side
@@ -4133,7 +4164,8 @@ function AnnualFeesPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {fee.polozky.map((item, itemIndex) => {
+                            {fee.polozky && fee.polozky.length > 0 ? (
+                              fee.polozky.map((item, itemIndex) => {
                               const isEditing = editingItemId === item.id;
                               // Kontrola, zda lze položku zaplatit (všechny předchozí musí být zaplacené)
                               const canPay = fee.polozky
@@ -4427,7 +4459,19 @@ function AnnualFeesPage() {
                                 </SubItemCell>
                               </SubItemRow>
                               );
-                            })}
+                            })
+                            ) : (
+                              // Zobrazit zprávu když jsou všechny položky filtrovány
+                              fee.pocet_polozek > 0 && debouncedFulltext && (
+                                <SubItemRow>
+                                  <SubItemCell colSpan="11" style={{ textAlign: 'center', padding: '20px', fontStyle: 'italic', color: '#6b7280' }}>
+                                    🔍 Podle filtru "{debouncedFulltext}" nebyly nalezeny žádné položky.
+                                    <br />
+                                    <small>Celkem má tento poplatek {fee.pocet_polozek} položek.</small>
+                                  </SubItemCell>
+                                </SubItemRow>
+                              )
+                            )}
                             
                             {/* Řádek pro přidání nové položky */}
                             {addingItemToFeeId === fee.id && (
