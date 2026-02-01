@@ -1406,16 +1406,48 @@ function AnnualFeesPage() {
   });
   
   const [showNewRow, setShowNewRow] = useState(false);
-  const [filters, setFilters] = useState({
-    rok: new Date().getFullYear(),
-    druh: 'all',
-    platba: 'all',
-    stav: 'all',
-    smlouva: ''
+  
+  // 💾 Inicializace filtrů z localStorage
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('annualFees_filters');
+      if (saved) {
+        const parsedFilters = JSON.parse(saved);
+        // Vždy použij aktuální rok jako výchozí, pokud není nastavený
+        return {
+          rok: parsedFilters.rok || new Date().getFullYear(),
+          druh: parsedFilters.druh || 'all',
+          platba: parsedFilters.platba || 'all',
+          stav: parsedFilters.stav || 'all',
+          smlouva: parsedFilters.smlouva || ''
+        };
+      }
+    } catch (error) {
+      console.error('Chyba při načítání filtrů z localStorage:', error);
+      localStorage.removeItem('annualFees_filters');
+    }
+    
+    // Výchozí hodnoty
+    return {
+      rok: new Date().getFullYear(),
+      druh: 'all',
+      platba: 'all',
+      stav: 'all',
+      smlouva: ''
+    };
   });
   
-  // Fulltext vyhledávání state
-  const [fulltextSearch, setFulltextSearch] = useState('');
+  // 💾 Inicializace fulltext search z localStorage  
+  const [fulltextSearch, setFulltextSearch] = useState(() => {
+    try {
+      const saved = localStorage.getItem('annualFees_fulltextSearch');
+      return saved || '';
+    } catch (error) {
+      console.error('Chyba při načítání fulltextSearch z localStorage:', error);
+      localStorage.removeItem('annualFees_fulltextSearch');
+      return '';
+    }
+  });
   const debouncedFulltext = useDebounce(fulltextSearch, 300);
   
   // Číselníky
@@ -1910,6 +1942,24 @@ function AnnualFeesPage() {
       console.error('Chyba při ukládání expandedRows do localStorage:', error);
     }
   }, [expandedRows]);
+  
+  // 💾 Uložit filtry do localStorage při změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('annualFees_filters', JSON.stringify(filters));
+    } catch (error) {
+      console.error('Chyba při ukládání filtrů do localStorage:', error);
+    }
+  }, [filters]);
+  
+  // 💾 Uložit fulltext search do localStorage při změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('annualFees_fulltextSearch', fulltextSearch);
+    } catch (error) {
+      console.error('Chyba při ukládání fulltextSearch do localStorage:', error);
+    }
+  }, [fulltextSearch]);
   
   const loadAnnualFees = async (page = currentPage, size = pageSize) => {
     if (!token) return;
