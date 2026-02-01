@@ -1880,9 +1880,13 @@ function AnnualFeesPage() {
     loadAnnualFees();
   }, [filters]);
   
-  // Load data when page changes
+  // Load data when page changes (pouze pro server-side pagination)
   useEffect(() => {
-    loadAnnualFees(currentPage, pageSize);
+    // Pro stavový filtr neloadujeme data znovu, jen použijeme client-side pagination
+    const isStatusFilterActive = filters.stav && filters.stav !== 'all';
+    if (!isStatusFilterActive) {
+      loadAnnualFees(currentPage, pageSize);
+    }
   }, [currentPage]);
 
   // Load data when page size changes
@@ -1912,6 +1916,16 @@ function AnnualFeesPage() {
     try {
       setLoading(true);
       
+      // Pokud je aktivní filtr stavu, načteme všechny položky pro client-side filtrování
+      const isStatusFilterActive = filters.stav && filters.stav !== 'all';
+      const paginationParams = isStatusFilterActive ? {
+        page: 1,
+        pageSize: 10000 // Načteme všechny položky pro client-side filtrování
+      } : {
+        page: page,
+        pageSize: size
+      };
+      
       // Načíst seznam poplatků s paginací
       const response = await getAnnualFeesList({
         token,
@@ -1923,16 +1937,19 @@ function AnnualFeesPage() {
           // stav filtrujeme až na frontendu, nikoliv v API
           smlouva: filters.smlouva || undefined
         },
-        pagination: {
-          page: page,
-          pageSize: size
-        }
+        pagination: paginationParams
       });
       
-      // Nastavit pagination data
-      setTotalRecords(response.totalRecords || 0);
-      setTotalPages(response.totalPages || 0);
-      setCurrentPage(page);
+      if (isStatusFilterActive) {
+        // Pro stavový filtr nepoužíváme server-side pagination
+        // Pagination data se budou počítat z filtredAnnualFees v komponentě
+        setCurrentPage(page); // Ale current page si pamatujeme
+      } else {
+        // Nastavit pagination data pro server-side pagination
+        setTotalRecords(response.totalRecords || 0);
+        setTotalPages(response.totalPages || 0);
+        setCurrentPage(page);
+      }
       
       // Načíst dashboard statistiky
       try {
@@ -2178,6 +2195,25 @@ function AnnualFeesPage() {
     
     return true;
   });
+
+  // Client-side pagination pro případy kdy je aktivní stavový filtr
+  const isStatusFilterActive = filters.stav && filters.stav !== 'all';
+  const paginatedData = isStatusFilterActive ? (() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredAnnualFees.slice(startIndex, endIndex);
+  })() : filteredAnnualFees;
+
+  // Pagination data pro zobrazení
+  const paginationInfo = isStatusFilterActive ? {
+    totalRecords: filteredAnnualFees.length,
+    totalPages: Math.ceil(filteredAnnualFees.length / pageSize),
+    currentPage: currentPage
+  } : {
+    totalRecords: totalRecords,
+    totalPages: totalPages,
+    currentPage: currentPage
+  };
   
   // Funkce pro zvýraznění hledaného textu
   const highlightSearchTerm = (text, searchTerm) => {
@@ -2525,8 +2561,16 @@ function AnnualFeesPage() {
 
   // Pagination handlers
   const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
+    const maxPages = isStatusFilterActive ? paginationInfo.totalPages : totalPages;
+    if (newPage >= 1 && newPage <= maxPages && newPage !== currentPage) {
       setCurrentPage(newPage);
+      
+      // Pro server-side pagination znovu načti data
+      if (!isStatusFilterActive) {
+        // Počkej na aktualizaci currentPage a pak načti data
+        setTimeout(() => loadAnnualFees(newPage, pageSize), 10);
+      }
+      // Pro client-side pagination se data znovu načítají automaticky přes paginatedData computed property
     }
   };
   
@@ -3630,7 +3674,7 @@ function AnnualFeesPage() {
               )}
               
               {/* Existující řádky */}
-              {filteredAnnualFees.map(fee => {
+              {paginatedData.map(fee => {
                 const isEditingFee = editingFeeId === fee.id;
                 const hasZaplaceno = fee.pocet_zaplaceno > 0;
                 const hasOverdueItems = fee.pocet_po_splatnosti > 0;
@@ -4504,7 +4548,7 @@ function AnnualFeesPage() {
       {totalRecords > 0 && (
         <PaginationContainer>
           <PaginationInfo>
-            Zobrazeno {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalRecords)} z {totalRecords} ročních poplatků
+            Zobrazeno {((paginationInfo.currentPage - 1) * pageSize) + 1}-{Math.min(paginationInfo.currentPage * pageSize, paginationInfo.totalRecords)} z {paginationInfo.totalRecords} ročních poplatků
             {filteredAnnualFees.length !== annualFees.length && (
               <span> (filtrováno z {annualFees.length})</span>
             )}
@@ -4525,30 +4569,30 @@ function AnnualFeesPage() {
 
             <PageButton
               onClick={() => handlePageChange(1)}
-              disabled={currentPage === 1}
+              disabled={paginationInfo.currentPage === 1}
             >
               ««
             </PageButton>
             <PageButton
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
+              onClick={() => handlePageChange(paginationInfo.currentPage - 1)}
+              disabled={paginationInfo.currentPage === 1}
             >
               ‹
             </PageButton>
 
             <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 1rem' }}>
-              Stránka {currentPage} z {totalPages}
+              Stránka {paginationInfo.currentPage} z {paginationInfo.totalPages}
             </span>
 
             <PageButton
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
+              onClick={() => handlePageChange(paginationInfo.currentPage + 1)}
+              disabled={paginationInfo.currentPage === paginationInfo.totalPages}
             >
               ›
             </PageButton>
             <PageButton
-              onClick={() => handlePageChange(totalPages)}
-              disabled={currentPage === totalPages}
+              onClick={() => handlePageChange(paginationInfo.totalPages)}
+              disabled={paginationInfo.currentPage === paginationInfo.totalPages}
             >
               »»
             </PageButton>
