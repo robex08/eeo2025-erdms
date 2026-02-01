@@ -41,12 +41,56 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
         $params[':platba'] = $filters['platba'];
     }
     if ($filters['stav']) {
-        $where[] = 'rp.stav = :stav';
-        $params[':stav'] = $filters['stav'];
+        switch ($filters['stav']) {
+            case '_PO_SPLATNOSTI':
+                // Má alespoň jednu položku po splatnosti
+                $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti < CURDATE())';
+                break;
+            case '_BLIZI_SE_SPLATNOST':
+                // Má alespoň jednu položku blížící se splatnosti
+                $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY))';
+                break;
+            case 'ZAPLACENO':
+                // Všechny položky zaplacené
+                $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO")';
+                break;
+            case 'NEZAPLACENO':
+                // Má nezaplacené položky, ale nejsou po/blížící se splatnosti
+                $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO")';
+                $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti < CURDATE())';
+                $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY))';
+                break;
+            case 'CASTECNE':
+                // Některé zaplacené, ale ne všechny
+                $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = "ZAPLACENO")';
+                $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO")';
+                break;
+            default:
+                // Běžný stav
+                $where[] = 'rp.stav = :stav';
+                $params[':stav'] = $filters['stav'];
+                break;
+        }
     }
     if ($filters['smlouva_search']) {
         $where[] = '(s.cislo_smlouvy LIKE :search OR s.nazev_smlouvy LIKE :search)';
         $params[':search'] = '%' . $filters['smlouva_search'] . '%';
+    }
+    if ($filters['fulltext_search']) {
+        // Fulltext vyhledávání ve všech relevantních polích
+        $where[] = '(
+            rp.nazev LIKE :fulltext 
+            OR rp.poznamka LIKE :fulltext
+            OR s.cislo_smlouvy LIKE :fulltext 
+            OR s.nazev_smlouvy LIKE :fulltext
+            OR s.nazev_firmy LIKE :fulltext
+            OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(rp.rozsirujici_data, "$.dodavatel_nazev")), "") LIKE :fulltext
+            OR cs_druh.nazev_stavu LIKE :fulltext
+            OR cs_platba.nazev_stavu LIKE :fulltext
+            OR CONCAT(u_vytvoril.jmeno, " ", u_vytvoril.prijmeni) LIKE :fulltext
+            OR CONCAT(u_aktualizoval.jmeno, " ", u_aktualizoval.prijmeni) LIKE :fulltext
+        )';
+        $params[':fulltext'] = '%' . $filters['fulltext_search'] . '%';
     }
 
     $whereClause = implode(' AND ', $where);
@@ -56,6 +100,10 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
         SELECT COUNT(*) 
         FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
+        LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
+        LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
+        LEFT JOIN `25_uzivatele` u_vytvoril ON rp.vytvoril_uzivatel_id = u_vytvoril.id
+        LEFT JOIN `25_uzivatele` u_aktualizoval ON rp.aktualizoval_uzivatel_id = u_aktualizoval.id
         WHERE $whereClause
     ";
     $countStmt = $pdo->prepare($countSql);
