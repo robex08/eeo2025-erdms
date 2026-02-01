@@ -3329,12 +3329,22 @@ function AnnualFeesPage() {
         
         <FilterGroup style={{ flex: 1, minWidth: '300px' }}>
           <FilterLabel>Fulltext vyhledávání</FilterLabel>
-          <SearchInput 
-            type="text"
-            placeholder="Vyhledat ve všech polích..."
-            value={fulltextSearch}
-            onChange={(e) => handleFulltextSearchChange(e.target.value)}
-          />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <SearchInput 
+              type="text"
+              placeholder="Vyhledat ve všech polích..."
+              value={fulltextSearch}
+              onChange={(e) => handleFulltextSearchChange(e.target.value)}
+            />
+            {fulltextSearch && (
+              <ClearButton
+                onClick={() => handleFulltextSearchChange('')}
+                title="Vymazat vyhledávání"
+              >
+                <FontAwesomeIcon icon={faTimes} style={{fontSize: '0.875rem'}} />
+              </ClearButton>
+            )}
+          </div>
         </FilterGroup>
         
         <ClearAllButton 
