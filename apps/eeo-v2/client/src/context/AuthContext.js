@@ -140,7 +140,7 @@ export const AuthProvider = ({ children }) => {
         const expiresAt = Date.now() + (12 * 60 * 60 * 1000);
         tokenRefreshService.startRefreshTimer(expiresAt);
         if (process.env.NODE_ENV === 'development') {
-          console.log('🔄 Token refresh timer started');
+
         }
       } catch (error) {
         console.warn('⚠️ Chyba při startu token refresh timeru:', error);
@@ -349,7 +349,7 @@ export const AuthProvider = ({ children }) => {
     try {
       tokenRefreshService.stopRefreshTimer();
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 Token refresh timer stopped (logout)');
+
       }
     } catch (error) {
       console.warn('⚠️ Chyba při zastavení token refresh timeru:', error);
@@ -606,7 +606,7 @@ export const AuthProvider = ({ children }) => {
             const expiresAt = Date.now() + (12 * 60 * 60 * 1000);
             tokenRefreshService.startRefreshTimer(expiresAt);
             if (process.env.NODE_ENV === 'development') {
-              console.log('🔄 Token refresh timer started (page reload)');
+
             }
           } catch (error) {
             console.warn('⚠️ Chyba při startu token refresh timeru:', error);

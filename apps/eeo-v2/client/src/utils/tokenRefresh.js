@@ -48,10 +48,6 @@ class TokenRefreshService {
       if (timeUntilRefresh > 0) {
         const minutesUntilRefresh = Math.round(timeUntilRefresh / 1000 / 60);
         
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`🔄 Token refresh naplánován za ${minutesUntilRefresh} minut`);
-          console.log(`📅 Token vyprší: ${new Date(expiresAt).toLocaleString('cs-CZ')}`);
-        }
         
         this.refreshTimer = setTimeout(async () => {
           await this.refreshToken();
@@ -75,7 +71,7 @@ class TokenRefreshService {
     // Prevent concurrent refreshes
     if (this.isRefreshing) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 Token refresh již probíhá, přeskakuji...');
+
       }
       return;
     }
@@ -84,7 +80,7 @@ class TokenRefreshService {
 
     try {
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 Spouštím token refresh...');
+
       }
 
       // Načti současné auth data
@@ -120,7 +116,7 @@ class TokenRefreshService {
       await saveAuthData.token(data.token);
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Token refreshed successfully');
+
         console.log(`📅 Nový token vyprší: ${data.expires_at || 'za 12h'}`);
       }
 
@@ -167,7 +163,7 @@ class TokenRefreshService {
       this.refreshTimer = null;
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('🛑 Token refresh timer zastaven');
+
       }
     }
   }
@@ -177,7 +173,7 @@ class TokenRefreshService {
    */
   async manualRefresh() {
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Manuální token refresh...');
+
     }
     await this.refreshToken();
   }
