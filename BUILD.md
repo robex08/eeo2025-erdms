@@ -6,6 +6,233 @@ ERDMS používá automatizované build skripty pro konzistentní development a p
 
 **Aktuální DEV verze:** `2.21` *(aktivní verze)*
 
+## 🔄 VERSION CHECKING SYSTEM
+
+### 🎯 Jak funguje detekce nové verze
+
+ERDMS používá **automatický version checking systém** založený na build hash:
+
+### ⚠️ DŮLEŽITÉ: Build Hash ≠ Číslo Verze
+
+```
+📌 VERZE aplikace (např. 2.21-DEV):
+   - Číselná verze pro uživatele
+   - Mění se při významných změnách
+   - Nastavuje se manuálně v .env (REACT_APP_VERSION)
+
+🔨 BUILD HASH (např. c7a2487ddeef):
+   - Automaticky generovaný MD5 hash při KAŽDÉM buildu
+   - Mění se i při malých změnách v kódu
+   - Používá se pro detekci nové verze
+   - Generuje se automaticky - NELZE nastavit manuálně!
+```
+
+**PŘÍKLAD:**
+```bash
+# Drobná oprava CSS → Verze zůstane 2.21-DEV
+# ALE build hash se změní: c7a2487ddeef → d8e3f9a12b45
+# → Uživatelé dostanou notifikaci "Je dostupná nová verze v2.21-DEV"
+```
+
+### 📋 Build Hash Workflow
+
+1. **Build hash generování**: Při každém buildu se vygeneruje MD5 hash z hlavního JS souboru (prvních 12 znaků)
+2. **Uložení hashe**: Hash se uloží:
+   - Do `<meta name="build-hash" content="...">` v `index.html`
+   - Do `version.json` souboru v root složce buildu
+3. **Automatická kontrola**: Build script automaticky ověří, že oba hashe se SHODUJÍ
+4. **Kontrola verze v prohlížeči**: Aplikace každých 5 minut kontroluje `version.json` na serveru
+5. **Detekce změny**: Pokud je hash v `version.json` jiný než aktuální hash v prohlížeči → zobrazí se notifikace
+6. **Reload**: Po potvrzení se stránka reloadne a načte novou verzi
+7. **Konec**: Po reloadu se hash aktualizuje → žádná další notifikace
+
+### 📝 Důležité soubory
+
+```
+apps/eeo-v2/client/
+├── public/index.html              # Obsahuje placeholder __BUILD_HASH__
+├── build/
+│   ├── index.html                # Hash je nahrazen skutečnou hodnotou
+│   └── version.json              # Server-side hash pro kontrolu
+├── scripts/
+│   └── generate-build-info.sh    # Post-build script pro generování hashe
+└── src/
+    ├── utils/versionChecker.js   # Class pro kontrolu verzí
+    └── hooks/useVersionChecker.js # React hook
+```
+
+### ⚠️ KRITICKÉ: Build Process Flow
+
+```bash
+npm run build
+↓
+1. React build vytvoří minifikované soubory (main.*.js)
+↓
+2. Zkopíruje index.html s placeholderem __BUILD_HASH__
+↓
+3. Post-build script: ./scripts/generate-build-info.sh
+   - Spočítá MD5 hash z main.*.js (prvních 12 znaků)
+   - Nahradí __BUILD_HASH__ v index.html skutečným hashem
+   - Vytvoří version.json se STEJNÝM hashem
+↓
+4. Build script automaticky ověří synchronizaci hashů
+   ✅ Pokud OK → Build úspěšný
+   ❌ Pokud NESOUHLASÍ → Build FAILED, nelze deployovat!
+↓
+5. Build je hotový a připravený k deployu
+```
+
+### 🤖 AUTOMATICKÁ KONTROLA (od verze 2.21)
+
+Build script `/docs/scripts-shell/build-eeo-v2.sh` nyní **automaticky kontroluje** synchronizaci hashů:
+
+```bash
+./build-eeo-v2.sh --dev --explicit
+# → Build probíhá...
+# → 🔍 Kontroluji synchronizaci build hashů...
+# → ✅ Build hashe synchronizované: c7a2487ddeef
+# → ⏰ Build time: 2026-02-01T01:39:00Z
+```
+
+**Pokud hashe NESOUHLASÍ:**
+```bash
+❌ CRITICAL ERROR: Build hashe se NESHODUJÍ!
+   index.html:  c7a2487ddeef
+   version.json: a809c7e85b795c47
+
+⚠️  Build byl NEÚSPĚŠNÝ - nelze deployovat!
+```
+
+**Build script se UKONČÍ s chybou** - deployment se neprovede!
+
+### ✅ Správná synchronizace
+
+**PO každém buildu MUSÍ platit:**
+```bash
+# Hash v index.html
+grep 'build-hash' build/index.html
+# → content="c7a2487ddeef"
+
+# Hash v version.json  
+cat build/version.json
+# → "buildHash": "c7a2487ddeef"
+
+# MUSÍ BÝT STEJNÉ!
+```
+
+### ❌ Častá chyba
+
+**NIKDY nespouštěj `generate-build-info.sh` manuálně po buildu!**
+
+```bash
+# ❌ ŠPATNĚ:
+npm run build:dev:explicit
+./scripts/generate-build-info.sh build  # ← Vygeneruje JINÝ hash!
+
+# ✅ SPRÁVNĚ:
+npm run build:dev:explicit  # Script se spustí automaticky
+```
+
+### 🔍 Jak zjistit, proč se zobrazuje pořád notifikace
+
+1. **Zkontroluj hashe:**
+   ```bash
+   # Hash v aktuálním index.html
+   grep -o 'build-hash" content="[^"]*"' build/index.html
+   
+   # Hash v version.json
+   cat build/version.json | grep buildHash
+   ```
+
+2. **Pokud se NESHODUJÍ:**
+   ```bash
+   # Oprav version.json - použij hash z index.html
+   # Pak už NESPOUŠTĚJ generate-build-info.sh!
+   ```
+
+3. **Pokud se SHODUJÍ, ale notifikace pořád přichází:**
+   ```bash
+   # V prohlížeči: F12 → Console
+   localStorage.clear()
+   # Pak refresh: Ctrl+Shift+R
+   ```
+
+### 🚀 Deploy workflow
+
+```bash
+# ============================================
+# DEV DEPLOYMENT
+# ============================================
+cd /var/www/erdms-dev/docs/scripts-shell
+./build-eeo-v2.sh --dev --no-deploy
+
+# Build script automaticky zkontroluje hashe!
+# ✅ Pokud OK → Pokračuj
+# ❌ Pokud FAIL → Oprav problém
+
+
+# Ověření na serveru:
+curl http://localhost/dev/eeo-v2/version.json
+# → Očekávaný hash musí být STEJNÝ jako v build/index.html
+
+# ============================================
+# PRODUCTION DEPLOYMENT
+# ============================================
+cd /var/www/erdms-dev/docs/scripts-shell
+./build-eeo-v2.sh --prod --all --deploy
+
+# Build script:
+# 1. Automaticky zkontroluje hashe
+# 2. Požádá o POTVRZENÍ před deployem do PROD
+# 3. Vytvoří zálohu
+# 4. Deployuje do /var/www/erdms-platform/
+# 5. Zobrazí ověřovací příkaz
+
+# Po deployu OVĚŘ:
+curl https://erdms.zachranka.cz/eeo-v2/version.json
+# → Hash MUSÍ odpovídat buildu!
+```
+
+### 🔍 Co dělat když build SELŽE
+
+**Případ 1: Build hashe se neshodují**
+```bash
+❌ CRITICAL ERROR: Build hashe se NESHODUJÍ!
+
+ŘEŠENÍ:
+1. NIKDY nespouštěj generate-build-info.sh manuálně!
+2. Smaž build/ složku a buildni znovu:
+   cd /var/www/erdms-dev/apps/eeo-v2/client
+   rm -rf build build-prod
+   cd /var/www/erdms-dev/docs/scripts-shell
+   ./build-eeo-v2.sh --dev
+```
+
+**Případ 2: Notifikace se zobrazuje pořád**
+```bash
+DIAGNÓZA:
+1. Zkontroluj hashe:
+   cd /var/www/erdms-dev
+   ./check_build_hashes.sh
+   
+2. Zkontroluj version.json na serveru:
+   curl http://localhost/dev/eeo-v2/version.json
+   
+3. Pokud se NESHODUJÍ → rebuild:
+   cd /var/www/erdms-dev/docs/scripts-shell
+   ./build-eeo-v2.sh --dev
+
+4. V prohlížeči smaž localStorage:
+   F12 → Console → localStorage.clear() → F5
+```
+
+### 📚 Další dokumentace
+
+Pro detailní troubleshooting a vysvětlení problémů s notifikacemi viz:
+- **[VERSION_CHECKING_GUIDE.md](VERSION_CHECKING_GUIDE.md)** - Kompletní průvodce version checking systémem
+
+---
+
 ## 📍 Lokace Build Skriptů
 
 **VŠECHNY build skripty jsou umístěny v:**
@@ -25,7 +252,7 @@ cd /var/www/erdms-dev/docs/scripts-shell
 | Režim | Command | API Cesta | Databáze | Účel |
 |-------|---------|-----------|----------|------|
 | **HRM (npm start)** | `npm start` | `/api.eeo/` → proxy → `/dev/api.eeo/` | `EEO-OSTRA-DEV` | Lokální vývoj s hot reload |
-| **DEV Build** | `./build-eeo-v2.sh --dev --explicit` | `/dev/api.eeo/` (přímá) | `EEO-OSTRA-DEV` | Testování na DEV serveru |
+| **DEV Build** | `./build-eeo-v2.sh --dev` | `/dev/api.eeo/` (přímá) | `EEO-OSTRA-DEV` | Testování na DEV serveru |
 | **PROD Build** | `./build-eeo-v2.sh --prod` | `/api.eeo/` (přímá) | `eeo2025` | Ostrý provoz |
 
 ### 📍 Jak to funguje:
@@ -44,7 +271,7 @@ npm start
 
 #### 2️⃣ DEV Build - Testování
 ```bash
-./build-eeo-v2.sh --dev --explicit
+./build-eeo-v2.sh --dev
 ```
 - **Build script:** Nastaví `REACT_APP_API2_BASE_URL=/dev/api.eeo/`
 - **API cesta:** `/dev/api.eeo/` (přímá, bez proxy)
@@ -79,11 +306,11 @@ npm start
 ## ⚠️ KRITICKÉ - DEV BUILD S EXPLICITNÍ DB ⚠️
 
 **DEV prostředí MUSÍ používat databázi:** `EEO-OSTRA-DEV`  
-**Build command:** `./build-eeo-v2.sh --dev --explicit`
+**Build command:** `./build-eeo-v2.sh --dev`
 
 ```bash
-# ✅ SPRÁVNĚ: DEV build s explicitní DB
-./build-eeo-v2.sh --dev --explicit
+# ✅ SPRÁVNĚ: DEV build
+./build-eeo-v2.sh --dev
 
 # Database: EEO-OSTRA-DEV
 # Cesta API: /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/

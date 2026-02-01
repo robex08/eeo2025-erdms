@@ -129,6 +129,9 @@ class VersionChecker {
   handleUpdateDetected(versionData) {
     this.notificationShown = true;
 
+    // Ulož nový hash do localStorage pro příští reload
+    localStorage.setItem('app_build_hash', versionData.buildHash);
+
     // Broadcast to other tabs
     try {
       localStorage.setItem('app_update_available', JSON.stringify({
@@ -170,6 +173,9 @@ class VersionChecker {
    * Hard reload aplikace
    */
   reloadApp() {
+    // Před reloadem smaž localStorage hash, aby se po načtení vzal čerstvý z meta tagu
+    localStorage.removeItem('app_build_hash');
+    
     // Hard reload s vyčištěním cache
     window.location.reload(true);
   }

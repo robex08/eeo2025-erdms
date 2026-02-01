@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -2982,24 +2982,89 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) : null }
             
-            {/* Menu položky pro přehledy */}
-            { ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
+            {/* Přehled menu - pouze pro ADMINI */}
+            { hasPermission && hasPermission('ADMINI') && (
+              <MenuDropdownWrapper>
+                <MenuDropdownButton 
+                  ref={prehledButtonRef}
+                  onClick={() => {
+                    if (!prehledMenuOpen && prehledButtonRef.current) {
+                      const rect = prehledButtonRef.current.getBoundingClientRect();
+                      setPrehledDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setPrehledMenuOpen(!prehledMenuOpen);
+                  }}
+                  data-open={prehledMenuOpen}
+                >
+                  <FontAwesomeIcon icon={faList} /> Přehled
+                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
+                    {prehledMenuOpen ? '▴' : '▾'}
+                  </span>
+                </MenuDropdownButton>
+                {prehledMenuOpen && ReactDOM.createPortal(
+                  <MenuDropdownContent 
+                    ref={prehledMenuRef}
+                    $open={prehledMenuOpen}
+                    style={{
+                      top: `${prehledDropdownPosition.top}px`,
+                      left: `${prehledDropdownPosition.left}px`,
+                      minWidth: `${prehledDropdownPosition.width}px`
+                    }}
+                  >
+                    <MenuDropdownItem 
+                      to="/orders25-list" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky
+                    </MenuDropdownItem>
+                    <MenuDropdownItem 
+                      to="/invoices25-list" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} /> Faktury
+                    </MenuDropdownItem>
+                    {(hasPermission('ANNUAL_FEES_MANAGE') || hasPermission('ANNUAL_FEES_VIEW') || hasPermission('ANNUAL_FEES_CREATE') || hasPermission('ANNUAL_FEES_EDIT') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/annual-fees" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
+                      </MenuDropdownItem>
+                    )}
+                    <MenuDropdownItem 
+                      to="/orders" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky 2026
+                    </MenuDropdownItem>
+                  </MenuDropdownContent>,
+                  document.body
+                )}
+              </MenuDropdownWrapper>
+            ) }
+            
+            {/* Menu položky pro přehledy - skryto pro ADMINI (mají dropdown Přehled) */}
+            { (!hasPermission || !hasPermission('ADMINI')) && ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
-            { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
+            { (!hasPermission || !hasPermission('ADMINI')) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt;2026)
               </MenuLinkLeft>
             ) }
-            { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+            { (!hasPermission || !hasPermission('ADMINI')) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
               </MenuLinkLeft>
             ) }
             
-            {/* 🚀 BETA menu - nové/experimentální funkce (pouze pro ADMINY) */}
+            {/* 🚀 BETA menu - nové/experimentální funkce - pouze pro ADMINI */}
             { hasAdminRole && hasAdminRole() && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
@@ -3052,18 +3117,14 @@ const Layout = ({ children }) => {
                       minWidth: `${betaDropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/orders25-list-v3" 
-                      onClick={() => setBetaMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/annual-fees" 
-                      onClick={() => setBetaMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Evidence ročních poplatků
-                    </MenuDropdownItem>
+                    {hasAdminRole && hasAdminRole() && (
+                      <MenuDropdownItem 
+                        to="/orders25-list-v3" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3
+                      </MenuDropdownItem>
+                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}

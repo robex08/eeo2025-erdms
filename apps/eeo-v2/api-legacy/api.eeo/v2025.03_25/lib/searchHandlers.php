@@ -22,9 +22,23 @@ function handle_universal_search($input, $config) {
     $startTime = microtime(true);
     
     try {
+        // ✅ OPRAVA: Nejprve připojení k DB, pak validace tokenu
+        // Připojení k DB
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array(
+                'status' => 'error',
+                'error_code' => 'DB_ERROR',
+                'message' => 'Database connection failed'
+            ));
+            return;
+        }
+        
         // Validace vstupu
         $validation = validateSearchInput($input);
         if (!$validation['valid']) {
+            http_response_code(400);
             echo json_encode(array(
                 'status' => 'error',
                 'error_code' => 'VALIDATION_ERROR',
@@ -40,6 +54,7 @@ function handle_universal_search($input, $config) {
         
         $auth_result = verify_token_v2($username, $token);
         if (!$auth_result) {
+            http_response_code(401);
             echo json_encode(array(
                 'status' => 'error',
                 'error_code' => 'AUTH_ERROR',
@@ -86,17 +101,31 @@ function handle_universal_search($input, $config) {
         
         if (!$isAdmin) {
             // Pro non-adminy získáme jejich úseky pro filtrování
-            $sqlUser = "SELECT usek_zkr FROM " . TBL_UZIVATELE . " WHERE id = :user_id LIMIT 1";
+            // ✅ FIX: JOIN s tabulkou useky pro získání usek_zkr (sloupec usek_zkr není v tabulce uzivatele)
+            $sqlUser = "
+                SELECT us.usek_zkr, u.rozsirene_useky
+                FROM " . TBL_UZIVATELE . " u
+                LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+                WHERE u.id = :user_id 
+                LIMIT 1
+            ";
             $stmtUser = $db->prepare($sqlUser);
             $stmtUser->bindParam(':user_id', $current_user_id, PDO::PARAM_INT);
             $stmtUser->execute();
             $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
             
-            if ($userData && $userData['usek_zkr']) {
-                $decoded = json_decode($userData['usek_zkr'], true);
-                if (is_array($decoded)) {
-                    $current_user_useky = $decoded;
-                } else {
+            if ($userData) {
+                // Pokud má rozsirene_useky, použij je
+                if ($userData['rozsirene_useky']) {
+                    $decoded = json_decode($userData['rozsirene_useky'], true);
+                    if (is_array($decoded)) {
+                        $current_user_useky = $decoded;
+                    } else {
+                        $current_user_useky = array($userData['rozsirene_useky']);
+                    }
+                } 
+                // Jinak použij základní usek_zkr z JOINu
+                else if ($userData['usek_zkr']) {
                     $current_user_useky = array($userData['usek_zkr']);
                 }
             }
@@ -109,11 +138,7 @@ function handle_universal_search($input, $config) {
         // Normalizovaný query BEZ diakritiky (pro vyhledávání "Novak" → najde "Nováк")
         $normalizedQuery = '%' . escapeLikeWildcards(removeDiacritics($query)) . '%';
         
-        // Připojení k DB
-        $db = get_db($config);
-        if (!$db) {
-            throw new Exception('Database connection failed');
-        }
+        // DB připojení už je vytvořeno výše
         
         // Vyhledávání v jednotlivých kategoriích
         $results = array();
@@ -331,7 +356,11 @@ function searchOrders2025($db, $likeQuery, $normalizedQuery, $limit, $includeIna
  */
 function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $filterObjForm = false) {
     try {
+        error_log("🔍 searchContracts: likeQuery='$likeQuery', filterObjForm=$filterObjForm");
+        
         $sql = getSqlSearchContracts($filterObjForm);
+        error_log("📝 SQL: " . substr($sql, 0, 500));
+        
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
@@ -347,6 +376,7 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
         $stmt->execute();
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        error_log("✅ searchContracts: vrací " . count($results) . " výsledků");
         
         // Přidáme highlight
         foreach ($results as &$row) {
@@ -357,6 +387,7 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
         return $results;
         
     } catch (Exception $e) {
+        error_log("❌ searchContracts ERROR: " . $e->getMessage());
         logSearchError('searchContracts failed: ' . $e->getMessage());
         return array();
     }
