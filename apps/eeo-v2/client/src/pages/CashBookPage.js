@@ -4121,7 +4121,10 @@ const CashBookPage = () => {
         </MonthInfo>
         <MonthControls>
           <MonthButton 
-            onClick={goToPreviousMonth}anGoToPreviousMonth 
+            onClick={goToPreviousMonth}
+            disabled={!canGoToPreviousMonth}
+            title={
+              canGoToPreviousMonth 
                 ? "Předchozí měsíc" 
                 : `Pokladna přiřazena od ${mainAssignment?.platne_od ? new Date(mainAssignment.platne_od).toLocaleDateString('cs-CZ') : ''}`
             }
