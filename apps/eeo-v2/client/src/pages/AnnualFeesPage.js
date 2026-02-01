@@ -94,23 +94,32 @@ const PageContainer = styled.div`
 
 const PageHeader = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 1.25rem 1.5rem;
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
+  margin-bottom: 2rem;
 `;
 
-const PageTitle = styled.h1`
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: #ffffff;
-  margin: 0;
+const ModuleHeader = styled.div`
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  color: white;
+`;
+
+const ModuleTitle = styled.h1`
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   
   svg {
@@ -118,44 +127,55 @@ const PageTitle = styled.h1`
   }
 `;
 
-const RefreshButton = styled.button`
-  display: inline-flex;
+const PageTitle = styled.h1`
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  background: rgba(255, 255, 255, 0.15);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  color: white;
+  gap: 0.75rem;
+`;
+
+const ActionBar = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #e5e7eb;
+`;
+
+const ActionButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  height: 38px;
+  border: 2px solid #3b82f6;
+  border-radius: 6px;
+  background: ${props => props.$primary ? '#3b82f6' : 'white'};
+  color: ${props => props.$primary ? 'white' : '#3b82f6'};
+  font-weight: 600;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-right: 12px;
-  
+
   &:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
-    transform: rotate(180deg);
+    background: ${props => props.$primary ? '#2563eb' : '#eff6ff'};
+    border-color: ${props => props.$primary ? '#2563eb' : '#2563eb'};
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
   }
-  
-  &:active {
-    transform: rotate(180deg) scale(0.95);
-  }
-  
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
-  }
-  
-  svg {
-    font-size: 1.2rem;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    box-shadow: none;
   }
 `;
-
-const ActionBar = styled.div`
   display: flex;
   gap: 12px;
   align-items: center;
@@ -3374,21 +3394,20 @@ function AnnualFeesPage() {
   
   return (
     <PageContainer>
+      <ModuleHeader>
+        <ModuleTitle>
+          <FontAwesomeIcon icon={faMoneyBill} />
+          Evidence ročních poplatků
+        </ModuleTitle>
+      </ModuleHeader>
+      
       <PageHeader>
-        <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
-          <RefreshButton 
-            onClick={() => window.location.reload()} 
-            title="Obnovit stránku"
-            aria-label="Obnovit stránku"
-          >
+        <ActionBar>
+          <ActionButton onClick={() => window.location.reload()}>
             <FontAwesomeIcon icon={faUndo} />
-          </RefreshButton>
-          <PageTitle>
-            <FontAwesomeIcon icon={faMoneyBill} />
-            Evidence ročních poplatků
-          </PageTitle>
-        </div>
-        {/* II. Tlačítko přesunuto do tabulky jako inline řádek */}
+            Obnovit
+          </ActionButton>
+        </ActionBar>
       </PageHeader>
       
       {/* Dashboard */}
