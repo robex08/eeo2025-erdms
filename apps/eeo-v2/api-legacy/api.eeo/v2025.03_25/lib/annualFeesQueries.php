@@ -55,10 +55,8 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
                 $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO")';
                 break;
             case 'NEZAPLACENO':
-                // Má nezaplacené položky, ale nejsou po/blížící se splatnosti
+                // Má alespoň jednu nezaplacenou položku (bez ohledu na splatnost)
                 $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO")';
-                $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti < CURDATE())';
-                $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY))';
                 break;
             case 'CASTECNE':
                 // Některé zaplacené, ale ne všechny
