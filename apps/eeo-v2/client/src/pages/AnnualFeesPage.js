@@ -2027,8 +2027,32 @@ function AnnualFeesPage() {
         });
         
         if (detail.data) {
+          // Filtrovat položky podle fulltext search (pokud je aktivní)
+          let polozky = detail.data.polozky || [];
+          
+          if (debouncedFulltext) {
+            polozky = polozky.filter(item => {
+              const itemFields = [
+                item.nazev_polozky,
+                item.cislo_dokladu,
+                item.stav,
+                item.stav_nazev,
+                item.aktualizoval_jmeno,
+                item.aktualizoval_prijmeni,
+                item.vytvoril_jmeno,
+                item.vytvoril_prijmeni,
+                item.castka?.toString(),
+                item.datum_splatnosti,
+                item.datum_zaplaceno,
+                'zaplaceno',
+                'nezaplaceno'
+              ];
+              return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
+            });
+          }
+          
           setAnnualFees(prev => prev.map(fee => 
-            fee.id === id ? { ...fee, polozky: detail.data.polozky } : fee
+            fee.id === id ? { ...fee, polozky: polozky } : fee
           ));
         }
       } catch (error) {
@@ -2061,8 +2085,32 @@ function AnnualFeesPage() {
           try {
             const detail = await getAnnualFeeDetail({ token, username, id });
             if (detail.data) {
+              // Filtrovat položky podle fulltext search (pokud je aktivní)
+              let polozky = detail.data.polozky || [];
+              
+              if (debouncedFulltext) {
+                polozky = polozky.filter(item => {
+                  const itemFields = [
+                    item.nazev_polozky,
+                    item.cislo_dokladu,
+                    item.stav,
+                    item.stav_nazev,
+                    item.aktualizoval_jmeno,
+                    item.aktualizoval_prijmeni,
+                    item.vytvoril_jmeno,
+                    item.vytvoril_prijmeni,
+                    item.castka?.toString(),
+                    item.datum_splatnosti,
+                    item.datum_zaplaceno,
+                    'zaplaceno',
+                    'nezaplaceno'
+                  ];
+                  return itemFields.some(field => containsSearchTerm(field, debouncedFulltext));
+                });
+              }
+              
               setAnnualFees(prev => prev.map(f => 
-                f.id === id ? { ...f, polozky: detail.data.polozky } : f
+                f.id === id ? { ...f, polozky: polozky } : f
               ));
             }
           } catch (error) {
