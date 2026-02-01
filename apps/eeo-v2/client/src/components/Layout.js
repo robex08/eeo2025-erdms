@@ -1701,6 +1701,18 @@ const Layout = ({ children }) => {
     return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
   }, [userDetail]);
 
+  // Check if user has all three permissions (Invoices + Orders + Annual Fees)
+  // These users should also get dropdown menu to save space
+  const hasAllThreePermissions = useMemo(() => {
+    if (!hasPermission) return false;
+    
+    const hasInvoices = hasPermission('INVOICE_VIEW') || hasPermission('INVOICE_EDIT') || hasPermission('INVOICE_MANAGE');
+    const hasOrders = hasPermission('ORDER_VIEW') || hasPermission('ORDER_EDIT') || hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025') || hasPermission('ORDER_OLD');
+    const hasAnnualFees = hasPermission('ANNUAL_FEES_VIEW') || hasPermission('ANNUAL_FEES_EDIT') || hasPermission('ANNUAL_FEES_MANAGE');
+    
+    return hasInvoices && hasOrders && hasAnnualFees;
+  }, [hasPermission, userDetail]);
+
   // Notes recording state (pro floating button)
   const [notesRecording, setNotesRecording] = useState(false);
 
@@ -2982,8 +2994,8 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) : null }
             
-            {/* Přehled menu - pouze pro ADMINI (SUPERADMIN a ADMINISTRATOR) */}
-            { hasAdminRole && hasAdminRole() && (
+            {/* Přehled menu - pro ADMINI nebo uživatele se všemi třemi právy */}
+            { (hasAdminRole && hasAdminRole()) || hasAllThreePermissions ? (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={prehledButtonRef}
@@ -3043,20 +3055,20 @@ const Layout = ({ children }) => {
                   document.body
                 )}
               </MenuDropdownWrapper>
-            ) }
+            ) : null }
             
-            {/* Menu položky pro přehledy - skryto pro ADMINI (mají dropdown Přehled) */}
-            { (!hasAdminRole || !hasAdminRole()) && ((hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
+            {/* Menu položky pro přehledy - skryto pro ADMINI a uživatele se všemi třemi právy */}
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && ((hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
-            { (!hasAdminRole || !hasAdminRole()) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt;2026)
               </MenuLinkLeft>
             ) }
-            { (!hasAdminRole || !hasAdminRole()) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
               </MenuLinkLeft>

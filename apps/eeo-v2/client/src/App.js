@@ -307,7 +307,7 @@ function App() {
       
       // Optional: Toast notifikace
       if (showToast) {
-        showToast('Je dostupná nová verze aplikace v2.21', { 
+        showToast(`Je dostupná nová verze aplikace ${process.env.REACT_APP_VERSION || 'N/A'}`, { 
           type: 'info',
           autoClose: 8000
         });
