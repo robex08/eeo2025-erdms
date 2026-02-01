@@ -4,7 +4,7 @@
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální DEV verze:** `2.21` *(aktivní verze)*
+**Aktuální DEV verze:** `2.23` *(aktivní verze)*
 
 ## 🔄 VERSION CHECKING SYSTEM
 
@@ -193,7 +193,53 @@ curl https://erdms.zachranka.cz/eeo-v2/version.json
 # → Hash MUSÍ odpovídat buildu!
 ```
 
-### 🔍 Co dělat když build SELŽE
+### � KRITICKÉ: MANUÁLNÍ PROD FE DEPLOYMENT (POUZE FE, BEZ API)
+
+**⚠️ DŮLEŽITÉ: Struktura PROD vs DEV je ROZDÍLNÁ!**
+
+```bash
+# ❌ ŠPATNĚ - SMAŽE API SLOŽKU:
+cd /var/www/erdms-dev/apps/eeo-v2/client
+rsync -av --delete build-prod/ /var/www/erdms-platform/apps/eeo-v2/
+# → --delete flag SMAŽE api/ a vše co není v build-prod/!
+
+# ✅ SPRÁVNĚ - POUZE FE, ZACHOVÁ API:
+rsync -av --exclude='api' --exclude='api-legacy' \
+  build-prod/ /var/www/erdms-platform/apps/eeo-v2/
+
+# NEBO (bezpečnější):
+rsync -av build-prod/ /var/www/erdms-platform/apps/eeo-v2/client/
+# → Umístí FE do subfolder client/, API zůstane nedotčené
+```
+
+**📂 Struktura složek:**
+
+```
+DEV struktura:
+/var/www/erdms-dev/apps/eeo-v2/
+├── client/                    # FE zdrojové soubory
+│   ├── src/                  # React komponenty
+│   ├── build/                # DEV build
+│   └── build-prod/           # PROD build (připravený k deployu)
+├── api/                      # Node.js API
+└── api-legacy/               # PHP API
+
+PROD struktura:
+/var/www/erdms-platform/apps/eeo-v2/
+├── index.html               # FE soubory PŘÍMO v root
+├── static/                  # FE statické soubory
+├── version.json             # FE build info
+├── api/                     # Node.js API (NESMÍ se smazat!)
+└── api-legacy/              # PHP API (NESMÍ se smazat!)
+```
+
+**💡 Poučení:**
+- Build script `build-eeo-v2.sh --prod` toto řeší automaticky správně
+- Manuální rsync POUZE pokud víš co děláš
+- NIKDY nepoužívej `--delete` flag při FE deploymentu
+- API složky MUSÍ zůstat zachované
+
+### �🔍 Co dělat když build SELŽE
 
 **Případ 1: Build hashe se neshodují**
 ```bash
@@ -537,17 +583,35 @@ cd /var/www/erdms-dev/docs/scripts-shell
 
 **ŘEŠENÍ - Kontrolní seznam pro změnu verze:**
 
-1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.13\``
+1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.23\``
 2. ✅ **Client .env soubory:**
-   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.13-DEV`
-   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.13-DEV`
-   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.13`
+   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.23-DEV`
+   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.23-DEV`
+   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.23`
 3. ✅ **Client package.json:**
-   - `"version": "2.13.0"`
-   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.13-DEV`
+   - `"version": "2.23.0"`
+   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.23-DEV`
 4. ✅ **API Legacy .env soubory:**
-   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.13-DEV`
-   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.13`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.23-DEV`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.23`
+
+**🔍 Kde se verze zobrazuje:**
+- **Patička aplikace:** Zobrazuje `v{REACT_APP_VERSION}` vpravo dole
+- **About dialog (O aplikaci):** Menu → O aplikaci → zobrazuje `verze {REACT_APP_VERSION}`
+  - Komponent: `/apps/eeo-v2/client/src/components/About.js` (řádek 263)
+  - Čte z: `process.env.REACT_APP_VERSION`
+- **Update notifikace:** Při detekci nové verze zobrazuje aktuální verzi
+  - Soubory: `App.js`, `versionChecker.js`, `UpdateNotificationModal.js`
+  - ✅ **Načítá dynamicky z `process.env.REACT_APP_VERSION`** - změna verze v .env stačí!
+
+**🔧 CO DĚLAT PŘI ZMĚNĚ VERZE (např. 2.23 → 2.24):**
+
+1. **Aktualizuj .env soubory** (6 souborů - viz seznam výše)
+2. **Rebuild aplikace** - build proces načte nové hodnoty z .env
+3. **Ověř v About dialogu** - zkontroluj že se zobrazuje správná verze
+
+**✅ HOTOVO:** Verze se již načítá dynamicky ze .env, není potřeba upravovat žádné další soubory!
+
    - `/apps/eeo-v2/api-legacy/api.eeo/.env.example` → aktualizovat komentáře
 
 **PŘÍKAZ pro hromadnou kontrolu:**
