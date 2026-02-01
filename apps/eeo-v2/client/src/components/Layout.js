@@ -3027,14 +3027,12 @@ const Layout = ({ children }) => {
                     >
                       <FontAwesomeIcon icon={faFileInvoice} /> Faktury
                     </MenuDropdownItem>
-                    {(hasPermission('ANNUAL_FEES_MANAGE') || hasPermission('ANNUAL_FEES_VIEW') || hasPermission('ANNUAL_FEES_CREATE') || hasPermission('ANNUAL_FEES_EDIT') || (hasAdminRole && hasAdminRole())) && (
-                      <MenuDropdownItem 
-                        to="/annual-fees" 
-                        onClick={() => setPrehledMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
-                      </MenuDropdownItem>
-                    )}
+                    <MenuDropdownItem 
+                      to="/annual-fees" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
+                    </MenuDropdownItem>
                     <MenuDropdownItem 
                       to="/orders" 
                       onClick={() => setPrehledMenuOpen(false)}
