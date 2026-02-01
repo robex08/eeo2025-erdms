@@ -1306,8 +1306,20 @@ const CashBookPage = () => {
    */
   const ensureBookExists = useCallback(async () => {
     if (!mainAssignment?.id || !userDetail?.id) {
+      console.log('❌ ensureBookExists: Chybí mainAssignment nebo userDetail', { 
+        mainAssignmentId: mainAssignment?.id, 
+        userDetailId: userDetail?.id 
+      });
       return null;
     }
+
+    console.log('🔍 ensureBookExists: Začíná načítání', {
+      currentMonth,
+      currentYear,
+      mainAssignmentId: mainAssignment.id,
+      pokladnaId: mainAssignment.pokladna_id,
+      cisloPokladny: mainAssignment.cislo_pokladny
+    });
 
     try {
       // ✅ NOVÁ LOGIKA: "jedna pokladna = jedna kniha pro všechny uživatele"
@@ -1318,7 +1330,15 @@ const CashBookPage = () => {
       // 1. Načíst knihu pro tuto pokladnu (backend vrátí jednu sdílenou knihu)
       const booksResult = await cashbookAPI.listBooksForCashbox(pokladnaId, currentYear, currentMonth);
       
+      console.log('🔍 ensureBookExists: Výsledek listBooksForCashbox', {
+        status: booksResult.status,
+        books: booksResult.data?.books?.length || 0,
+        booksData: booksResult.data
+      });
+      
       if (booksResult.status !== 'ok' || !booksResult.data?.books || booksResult.data.books.length === 0) {
+        
+        console.log('🔍 ensureBookExists: Kniha neexistuje, zkusím vytvořit novou');
         
         // Pokud kniha neexistuje, zkusit vytvořit novou
         // createBook(prirazeniPokladnyId, rok, mesic, uzivatelId)
@@ -1328,6 +1348,13 @@ const CashBookPage = () => {
           currentMonth,
           userDetail.id          // uzivatel_id (ten kdo vytváří)
         );
+        
+        console.log('🔍 ensureBookExists: Výsledek createBook', {
+          status: createResult.status,
+          book: createResult.data?.book ? 'exists' : 'missing',
+          error: createResult.error || createResult.message
+        });
+        
         if (createResult.status === 'ok' && createResult.data?.book) {
           const newBook = createResult.data.book;
           
@@ -1340,6 +1367,7 @@ const CashBookPage = () => {
           return { book: newBook, entries: [] };
         }
         
+        console.log('❌ ensureBookExists: Nepodarilo sa vytvoriť knihu');
         return { book: null, entries: [] };
       }
       
@@ -1515,6 +1543,12 @@ const CashBookPage = () => {
       return;
     }
 
+    // ✅ Zabránit race condition - nepokračovat pokud se assignments ještě načítají
+    if (assignmentLoading) {
+      console.log('⏳ Čekám na dokončení načítání assignments');
+      return;
+    }
+
     // ✅ Zabránit nekonečné slučce - nepokračovat pokud už probíhá načítání
     if (isLoadingBook) {
       return;
@@ -1532,14 +1566,13 @@ const CashBookPage = () => {
 
         if (!result) {
           // Pokud je to chyba oprávnění, nechat prázdnou tabulku (již zobrazená chyba v ensureBookExists)
-          // Jinak zkusit localStorage jako fallback
-          if (currentBookId === null) {
-            // Nebyla vytvořena/načtena žádná kniha - zobrazit prázdnou stránku
-            setCashBookEntries([]);
-            setIsLoadingBook(false);
-            return;
-          }
-          loadFromLocalStorageOnly();
+          // ❌ OPRAVA: NEPOUZIVAT localStorage fallback pri navigaci na novy mesiac
+          // localStorage ma data z ineho mesiaca s nespravnym carry-over!
+          console.warn('❌ DB operácia zlyhala - nezobrazujem localStorage data z iného mesiaca');
+          setCashBookEntries([]);
+          setCarryOverAmount(0); // Reset na bezpečnú hodnotu
+          setIsLoadingBook(false);
+          return;
           setIsLoadingBook(false);
           return;
         }
@@ -1550,6 +1583,9 @@ const CashBookPage = () => {
         if (!book) {
           console.warn('⚠️ Nepodařilo se načíst nebo vytvořit knihu');
           setCashBookEntries([]);
+          // ❌ OPRAVA: Ak sa nepodarilo načítať knihu, nepoužívať localStorage fallback
+          // localStorage môže obsahovať dáta z iného mesiaca s nesprávnym carry-over
+          console.warn('📝 Nenastavujem carry-over z localStorage (kniha sa nepodarila načítať)');
           setIsLoadingBook(false);
           return;
         }
@@ -1678,7 +1714,11 @@ const CashBookPage = () => {
 
       } catch (error) {
         console.error('❌ Chyba při načítání z DB:', error);
-        loadFromLocalStorageOnly();
+        // ❌ OPRAVA: NEPOUZIVAT localStorage fallback pri DB chybe
+        // Pri navigaci na novy mesiac by localStorage mal data z ineho mesiaca
+        console.warn('❌ DB chyba - nezobrazujem localStorage data z iného mesiaca');
+        setCashBookEntries([]);
+        setCarryOverAmount(0); // Reset na bezpečnú hodnotu
         setIsLoadingBook(false);
       }
     };
@@ -1728,7 +1768,7 @@ const CashBookPage = () => {
     loadDataFromDB();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [STORAGE_KEY, currentMonth, currentYear, userDetail?.id, mainAssignment?.id, mainAssignment?.cislo_pokladny]);
+  }, [STORAGE_KEY, currentMonth, currentYear, userDetail?.id, mainAssignment?.id, mainAssignment?.uzivatel_id, mainAssignment?.cislo_pokladny, assignmentLoading]);
 
   // Načíst LP kódy z API při načtení komponenty (jednou)
   useEffect(() => {
