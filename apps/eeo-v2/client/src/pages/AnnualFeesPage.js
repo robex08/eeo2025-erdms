@@ -97,28 +97,61 @@ const PageHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #e5e7eb;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
 `;
 
 const PageTitle = styled.h1`
   font-size: 1.75rem;
   font-weight: 700;
-  color: #1f2937;
+  color: #ffffff;
   margin: 0;
   display: flex;
   align-items: center;
   gap: 12px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   
-  .beta-badge {
-    padding: 4px 12px;
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 700;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
-    letter-spacing: 0.5px;
+  svg {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  }
+`;
+
+const RefreshButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-right: 12px;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: rotate(180deg);
+  }
+  
+  &:active {
+    transform: rotate(180deg) scale(0.95);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  svg {
+    font-size: 1.2rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
   }
 `;
 
@@ -3342,11 +3375,19 @@ function AnnualFeesPage() {
   return (
     <PageContainer>
       <PageHeader>
-        <PageTitle>
-          <FontAwesomeIcon icon={faMoneyBill} />
-          Evidence ročních poplatků
-          <span className="beta-badge">BETA</span>
-        </PageTitle>
+        <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+          <RefreshButton 
+            onClick={() => window.location.reload()} 
+            title="Obnovit stránku"
+            aria-label="Obnovit stránku"
+          >
+            <FontAwesomeIcon icon={faUndo} />
+          </RefreshButton>
+          <PageTitle>
+            <FontAwesomeIcon icon={faMoneyBill} />
+            Evidence ročních poplatků
+          </PageTitle>
+        </div>
         {/* II. Tlačítko přesunuto do tabulky jako inline řádek */}
       </PageHeader>
       
