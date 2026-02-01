@@ -1309,28 +1309,18 @@ const CashBookPage = () => {
    */
   const ensureBookExists = useCallback(async () => {
     if (!mainAssignment?.id || !userDetail?.id) {
-      console.log('❌ ensureBookExists: Chybí mainAssignment nebo userDetail', { 
-        mainAssignmentId: mainAssignment?.id, 
-        userDetailId: userDetail?.id 
-      });
       return null;
     }
 
     // ✅ RACE CONDITION PROTECTION - ak už prebieha ensureBookExists, vrátiť null
     if (ensureBookRef.current) {
-      console.log('🔄 ensureBookExists: Už prebieha, preskakujem');
+
       return null;
     }
 
     ensureBookRef.current = true;
 
-    console.log('🔍 ensureBookExists: Začíná načítání', {
-      currentMonth,
-      currentYear,
-      mainAssignmentId: mainAssignment.id,
-      pokladnaId: mainAssignment.pokladna_id,
-      cisloPokladny: mainAssignment.cislo_pokladny
-    });
+
 
     try {
       // ✅ NOVÁ LOGIKA: "jedna pokladna = jedna kniha pro všechny uživatele"
@@ -1341,15 +1331,9 @@ const CashBookPage = () => {
       // 1. Načíst knihu pro tuto pokladnu (backend vrátí jednu sdílenou knihu)
       const booksResult = await cashbookAPI.listBooksForCashbox(pokladnaId, currentYear, currentMonth);
       
-      console.log('🔍 ensureBookExists: Výsledek listBooksForCashbox', {
-        status: booksResult.status,
-        books: booksResult.data?.books?.length || 0,
-        booksData: booksResult.data
-      });
-      
       if (booksResult.status !== 'ok' || !booksResult.data?.books || booksResult.data.books.length === 0) {
         
-        console.log('🔍 ensureBookExists: Kniha neexistuje, zkusím vytvořit novou');
+
         
         // Pokud kniha neexistuje, zkusit vytvořit novou
         // createBook(prirazeniPokladnyId, rok, mesic, uzivatelId)
@@ -1360,14 +1344,7 @@ const CashBookPage = () => {
           userDetail.id          // uzivatel_id (ten kdo vytváří)
         );
         
-        console.log('🔍 ensureBookExists: Výsledek createBook', {
-          status: createResult.status,
-          hasBook: !!createResult.data?.book,
-          bookExists: createResult.data?.book ? 'YES' : 'NO',
-          bookId: createResult.data?.book_id,
-          error: createResult.error || createResult.message,
-          message: createResult.data?.message
-        });
+
         
         if (createResult.status === 'ok' && createResult.data?.book) {
           const newBook = createResult.data.book;
@@ -1381,7 +1358,6 @@ const CashBookPage = () => {
           return { book: newBook, entries: [] };
         }
         
-        console.log('❌ ensureBookExists: Nepodarilo sa vytvoriť knihu');
         return { book: null, entries: [] };
       }
       
@@ -1562,7 +1538,6 @@ const CashBookPage = () => {
 
     // ✅ Zabránit race condition - nepokračovat pokud se assignments ještě načítají
     if (assignmentLoading) {
-      console.log('⏳ Čekám na dokončení načítání assignments');
       return;
     }
 

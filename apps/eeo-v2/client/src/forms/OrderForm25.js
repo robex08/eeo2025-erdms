@@ -6960,7 +6960,7 @@ function OrderForm25() {
     // Pokud se změní editOrderId (např. z notifikace nebo universal search), resetuj stav
     // ALE pouze pokud se skutečně změnilo ID (ne při mount nebo stejné ID)
     if (editOrderId && previousEditOrderIdRef.current !== null && previousEditOrderIdRef.current !== editOrderId) {
-      console.log('🔄 EditOrderId se změnilo:', previousEditOrderIdRef.current, '→', editOrderId);
+
       
       setIsDraftLoaded(false);
       setIsInitialized(false);

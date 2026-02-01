@@ -81,7 +81,7 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
       });
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('💓 Keepalive ping sent');
+
       }
     } catch (error) {
       // Úplně tichá chyba - keepalive není kritický
@@ -122,7 +122,7 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
     // - Minimální zátěž serveru (288 requestů/den)
     keepaliveIntervalRef.current = setInterval(() => {
       if (process.env.NODE_ENV === 'development') {
-        console.log('💓 Keepalive ping (5min interval) - no validation');
+
       }
       sendKeepalive();
     }, 300000); // 5 minut = 300 000 ms
