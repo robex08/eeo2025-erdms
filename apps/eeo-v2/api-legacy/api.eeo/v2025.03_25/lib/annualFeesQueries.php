@@ -126,6 +126,17 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
                 )
             )
             
+            -- Hledání v přílohách (existuje příloha s hledaným názvem souboru)
+            OR EXISTS (
+                SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_PRILOHY . '` rpa
+                WHERE rpa.rocni_poplatek_id = rp.id 
+                AND rpa.aktivni = 1
+                AND (
+                    rpa.originalni_nazev_souboru LIKE :fulltext
+                    OR rpa.typ_prilohy LIKE :fulltext
+                )
+            )
+            
             -- Computed hodnoty pro stavy
             OR "zaplaceno" LIKE :fulltext
             OR "nezaplaceno" LIKE :fulltext
