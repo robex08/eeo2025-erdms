@@ -1080,6 +1080,9 @@ const CashBookPage = () => {
 
   // 🆕 Flag pro zabránění nekonečné slučce při načítání dat
   const [isLoadingBook, setIsLoadingBook] = useState(false);
+  
+  // 🆕 Flag pro zabránění race condition při ensureBookExists
+  const ensureBookRef = useRef(false);
 
   // 🆕 REF: Pro přístup k aktuálnímu stavu v intervalech (bez restart intervalu)
   const cashBookEntriesRef = useRef(cashBookEntries);
@@ -1313,6 +1316,14 @@ const CashBookPage = () => {
       return null;
     }
 
+    // ✅ RACE CONDITION PROTECTION - ak už prebieha ensureBookExists, vrátiť null
+    if (ensureBookRef.current) {
+      console.log('🔄 ensureBookExists: Už prebieha, preskakujem');
+      return null;
+    }
+
+    ensureBookRef.current = true;
+
     console.log('🔍 ensureBookExists: Začíná načítání', {
       currentMonth,
       currentYear,
@@ -1351,8 +1362,10 @@ const CashBookPage = () => {
         
         console.log('🔍 ensureBookExists: Výsledek createBook', {
           status: createResult.status,
-          book: createResult.data?.book ? 'exists' : 'missing',
-          error: createResult.error || createResult.message
+          hasBook: !!createResult.data?.book,
+          bookData: createResult.data?.book,
+          error: createResult.error || createResult.message,
+          fullResponse: createResult
         });
         
         if (createResult.status === 'ok' && createResult.data?.book) {
@@ -1432,6 +1445,9 @@ const CashBookPage = () => {
 
       showToast('Chyba při načítání/vytváření knihy: ' + error.message, 'error');
       return null;
+    } finally {
+      // ✅ VŽDY resetovať flag
+      ensureBookRef.current = false;
     }
   }, [mainAssignment, userDetail, currentYear, currentMonth, showToast, transformDBEntryToFrontend]);
 
