@@ -631,8 +631,14 @@ function App() {
                   ) && <Route path="/orders25-list" element={<Orders25List />} />}
                   {/* 🚀 V3 - BETA: Nová verze s backend paging (zatím jen pro ADMINY) */}
                   {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/orders25-list-v3" element={<Orders25ListV3 />} />}
-                  {/* 💰 BETA: Evidence ročních poplatků (pouze pro ADMINY) */}
-                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/annual-fees" element={<AnnualFeesPage />} />}
+                  {/* 💰 BETA: Evidence ročních poplatků */}
+                  {isLoggedIn && hasPermission && (
+                    hasPermission('ANNUAL_FEES_MANAGE') ||
+                    hasPermission('ANNUAL_FEES_VIEW') ||
+                    hasPermission('ANNUAL_FEES_CREATE') ||
+                    hasPermission('ANNUAL_FEES_EDIT') ||
+                    hasPermission('ADMIN')
+                  ) && <Route path="/annual-fees" element={<AnnualFeesPage />} />}
                   {isLoggedIn && <Route path="/invoices25-list" element={<Invoices25List />} />}
                   {isLoggedIn && <Route path="/invoice-evidence/:orderId?" element={<InvoiceEvidencePage />} />}
                   {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}

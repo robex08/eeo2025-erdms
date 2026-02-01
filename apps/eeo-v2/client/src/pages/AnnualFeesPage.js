@@ -1910,6 +1910,32 @@ function AnnualFeesPage() {
   // Load data when filters change
   useEffect(() => {
     loadAnnualFees(1, pageSize); // Vždy začni na stránce 1 při změně filtrů
+    
+    // ✅ Po načtení dat rozbalit řádky, které jsou uložené v localStorage
+    // setTimeout protože musíme počkat až se data načtou
+    setTimeout(() => {
+      const expandedIds = Object.keys(expandedRows).filter(id => expandedRows[id]);
+      if (expandedIds.length > 0) {
+        // Načíst položky pro všechny rozbalené řádky
+        expandedIds.forEach(async (id) => {
+          const feeId = parseInt(id);
+          const fee = annualFees.find(f => f.id === feeId);
+          if (fee && !fee.polozky) {
+            try {
+              const detail = await getAnnualFeeDetail({ token, username, id: feeId });
+              if (detail.data) {
+                setAnnualFees(prev => prev.map(f => 
+                  f.id === feeId ? { ...f, polozky: detail.data.polozky || [] } : f
+                ));
+                loadAttachments(feeId);
+              }
+            } catch (error) {
+              console.error(`Chyba při načítání detailu pro ID ${feeId}:`, error);
+            }
+          }
+        });
+      }
+    }, 600);
   }, [filters]);
   
   // Load data when fulltext search changes
@@ -1961,6 +1987,25 @@ function AnnualFeesPage() {
     }
   }, [fulltextSearch]);
   
+  // 📊 Načíst statistiky
+  const loadStats = async () => {
+    if (!token) return;
+    
+    try {
+      const statsResponse = await getAnnualFeesStats({
+        token,
+        username,
+        rok: filters.rok !== 'all' ? filters.rok : undefined
+      });
+      
+      if (statsResponse.status === 'success' && statsResponse.data?.dashboard) {
+        setDashboardStats(statsResponse.data.dashboard);
+      }
+    } catch (error) {
+      console.error('Chyba při načítání dashboard statistik:', error);
+    }
+  };
+  
   const loadAnnualFees = async (page = currentPage, size = pageSize) => {
     if (!token) return;
     
@@ -1994,19 +2039,7 @@ function AnnualFeesPage() {
       setCurrentPage(page);
       
       // Načíst dashboard statistiky
-      try {
-        const statsResponse = await getAnnualFeesStats({
-          token,
-          username,
-          rok: filters.rok !== 'all' ? filters.rok : undefined
-        });
-        
-        if (statsResponse.status === 'success' && statsResponse.data?.dashboard) {
-          setDashboardStats(statsResponse.data.dashboard);
-        }
-      } catch (statsError) {
-        console.error('Chyba při načítání dashboard statistik:', statsError);
-      }
+      await loadStats();
       
       // Inicializovat počítadla pro filtrování
       const feesWithInitializedCounts = (response.data || []).map(fee => {
@@ -3001,8 +3034,23 @@ function AnnualFeesPage() {
         const fee = annualFees.find(f => f.polozky && f.polozky.some(item => item.id === itemId));
         
         if (fee) {
-          // Reload celého seznamu aby se aktualizovaly sumy
-          loadAnnualFees();
+          // ✅ Jen reload detailu daného řádku (ne celé stránky)
+          try {
+            const detail = await getAnnualFeeDetail({ token, username, id: fee.id });
+            if (detail.data) {
+              // Aktualizovat jen tento konkrétní fee ve state
+              setAnnualFees(prev => prev.map(f => 
+                f.id === fee.id ? { ...f, ...detail.data, polozky: detail.data.polozky || [] } : f
+              ));
+              
+              // Aktualizovat statistiky
+              loadStats();
+            }
+          } catch (error) {
+            console.error('Chyba při reloadu detailu:', error);
+            // Fallback: reload celého seznamu
+            loadAnnualFees();
+          }
         }
       }
     } catch (error) {
@@ -3445,29 +3493,7 @@ function AnnualFeesPage() {
         accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar"
       />
       
-      {/* Expand/Collapse All tlačítka */}
-      {paginatedData.length > 0 && (
-        <div style={{display: 'flex', gap: '8px', marginBottom: '12px', justifyContent: 'flex-end'}}>
-          <Button
-            variant="secondary"
-            onClick={expandAll}
-            style={{padding: '6px 12px', fontSize: '0.875rem'}}
-            title="Rozbalit všechny podřádky"
-          >
-            <FontAwesomeIcon icon={faPlus} style={{marginRight: '6px'}} />
-            Rozbalit vše
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={collapseAll}
-            style={{padding: '6px 12px', fontSize: '0.875rem'}}
-            title="Sbalit všechny podřádky"
-          >
-            <FontAwesomeIcon icon={faMinus} style={{marginRight: '6px'}} />
-            Sbalit vše
-          </Button>
-        </div>
-      )}
+      {/* Tlacítka Rozbalit/Sbalit vse odstranena - nahrazeno pluskem v hlavicce tabulky */}
       
       <TableContainer>
         {loading ? (
@@ -3483,7 +3509,7 @@ function AnnualFeesPage() {
                   <ExpandCollapseButton
                     onClick={() => {
                       const expandableFeesCount = paginatedData.filter(fee => hasExpandableItems(fee)).length;
-                      const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id]).length;
+                      const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id] && fee.polozky).length;
                       const allExpanded = expandedExpandableCount === expandableFeesCount && expandableFeesCount > 0;
                       
                       if (allExpanded) {
@@ -3497,7 +3523,7 @@ function AnnualFeesPage() {
                     disabled={expandingAll}
                     title={expandingAll ? "Načítám detaily..." : (() => {
                       const expandableFeesCount = paginatedData.filter(fee => hasExpandableItems(fee)).length;
-                      const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id]).length;
+                      const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id] && fee.polozky).length;
                       const allExpanded = expandedExpandableCount === expandableFeesCount && expandableFeesCount > 0;
                       return allExpanded ? "Sbalit všechny řádky" : "Rozbalit všechny řádky";
                     })()}
@@ -3508,7 +3534,7 @@ function AnnualFeesPage() {
                       <FontAwesomeIcon 
                         icon={(() => {
                           const expandableFeesCount = paginatedData.filter(fee => hasExpandableItems(fee)).length;
-                          const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id]).length;
+                          const expandedExpandableCount = paginatedData.filter(fee => hasExpandableItems(fee) && expandedRows[fee.id] && fee.polozky).length;
                           return (expandedExpandableCount === expandableFeesCount && expandableFeesCount > 0) ? faMinus : faPlus;
                         })()} 
                       />
@@ -3802,8 +3828,8 @@ function AnnualFeesPage() {
                     <Td>
                       {!isEditingFee && hasExpandableItems(fee) && (
                         <div style={{position: 'relative', display: 'inline-block'}}>
-                          <ExpandButton title={expandedRows[fee.id] ? 'Sbalit' : 'Rozbalit'}>
-                            <FontAwesomeIcon icon={expandedRows[fee.id] ? faMinus : faPlus} />
+                          <ExpandButton title={expandedRows[fee.id] && fee.polozky ? 'Sbalit' : 'Rozbalit'}>
+                            <FontAwesomeIcon icon={expandedRows[fee.id] && fee.polozky ? faMinus : faPlus} />
                             {(() => {
                               const badgeInfo = getBadgeInfo(fee);
                               if (!badgeInfo.hasAny) return null;
