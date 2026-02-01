@@ -1877,7 +1877,7 @@ function AnnualFeesPage() {
   
   // Load data
   useEffect(() => {
-    loadAnnualFees();
+    loadAnnualFees(1, pageSize); // Vždy začni na stránce 1 při změně filtrů
   }, [filters]);
   
   // Load data when page changes (pouze pro server-side pagination)
