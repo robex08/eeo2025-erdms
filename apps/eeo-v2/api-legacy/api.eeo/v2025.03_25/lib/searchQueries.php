@@ -395,8 +395,8 @@ function getSqlSearchContracts($filterObjForm = false) {
                 WHEN sm.nazev_firmy LIKE :query THEN 'nazev_firmy'
                 WHEN sm.ico LIKE :query THEN 'ico'
                 WHEN sm.dic LIKE :query THEN 'dic'
-                WHEN us.usek_nazev LIKE :query THEN 'usek_nazev'
-                WHEN us.usek_zkr LIKE :query THEN 'usek_zkr'
+                WHEN COALESCE(us.usek_nazev, '') LIKE :query THEN 'usek_nazev'
+                WHEN COALESCE(us.usek_zkr, '') LIKE :query THEN 'usek_zkr'
                 ELSE 'other'
             END as match_type
         FROM " . TBL_SMLOUVY . " sm
@@ -416,8 +416,8 @@ function getSqlSearchContracts($filterObjForm = false) {
             OR sm.nazev_firmy LIKE :query
             OR sm.ico LIKE :query
             OR sm.dic LIKE :query
-            OR us.usek_nazev LIKE :query
-            OR us.usek_zkr LIKE :query
+            OR COALESCE(us.usek_nazev, '') LIKE :query
+            OR COALESCE(us.usek_zkr, '') LIKE :query
         )
         AND (:is_admin = 1 OR sm.aktivni = 1 OR :include_inactive = 1)
         $objFormFilter

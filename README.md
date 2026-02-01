@@ -5,8 +5,19 @@ Systém pro správu dat záchranné služby s přihlášením přes Microsoft En
 ## 📁 Dokumentace
 
 - **[START.md](START.md)** - 🚀 Návod na spuštění aplikace (začni tady!)
+- **[QUICK_BUILD_REFERENCE.md](QUICK_BUILD_REFERENCE.md)** - ⚡ Rychlý přehled build systému & version checking
+- **[BUILD.md](BUILD.md)** - 🔧 Kompletní build & deploy guide
+- **[VERSION_CHECKING_GUIDE.md](VERSION_CHECKING_GUIDE.md)** - 🔄 Detailní průvodce version checking systémem
 - **[apps/eeo-v2/client/BUILD_SEPARATION.md](apps/eeo-v2/client/BUILD_SEPARATION.md)** - 🔧 **BUILD konfigurace DEV vs PROD** (DŮLEŽITÉ!)
 - **[MICROSOFT_ENTRA_SETUP.md](MICROSOFT_ENTRA_SETUP.md)** - Instrukce pro IT admina - registrace v Microsoft Entra ID
+
+### ⚠️ DŮLEŽITÉ: Version & Build System
+
+**Build Hash ≠ Číslo Verze:**
+- Build hash se generuje **automaticky** při každém buildu
+- Uživatelé dostanou notifikaci i při malé změně (i když verze zůstane 2.21-DEV)
+- Build script automaticky kontroluje synchronizaci hashů
+- Viz [QUICK_BUILD_REFERENCE.md](QUICK_BUILD_REFERENCE.md)
 
 ## 🏗️ Struktura projektu
 

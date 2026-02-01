@@ -76,16 +76,62 @@ if [ "$COMPONENT" = "frontend" ] || [ "$COMPONENT" = "all" ]; then
         # NIKDY NEPOUŽÍVEJ build:dev pro DEV (používá ostrou DB eeo2025)!
         echo "⚠️  Using build:dev:explicit (DB: eeo2025-dev, API: /dev/api.eeo/)"
         npm run build:dev:explicit
+        BUILD_DIR="build"
     else
         npm run build:prod
+        BUILD_DIR="build-prod"
+    fi
+    
+    # ✅ AUTOMATICKÁ KONTROLA BUILD HASHŮ
+    echo ""
+    echo "🔍 Kontroluji synchronizaci build hashů..."
+    HASH_HTML=$(grep -o 'build-hash" content="[^"]*"' "$BUILD_DIR/index.html" 2>/dev/null | cut -d'"' -f3)
+    HASH_JSON=$(cat "$BUILD_DIR/version.json" 2>/dev/null | grep -o '"buildHash": "[^"]*"' | cut -d'"' -f4)
+    
+    if [ -z "$HASH_HTML" ]; then
+        echo "❌ ERROR: Build hash nenalezen v index.html!"
+        exit 1
+    elif [ -z "$HASH_JSON" ]; then
+        echo "❌ ERROR: Build hash nenalezen v version.json!"
+        exit 1
+    elif [ "$HASH_HTML" = "$HASH_JSON" ]; then
+        echo "✅ Build hashe synchronizované: $HASH_HTML"
+        BUILD_TIME=$(cat "$BUILD_DIR/version.json" 2>/dev/null | grep -o '"buildTime": "[^"]*"' | cut -d'"' -f4)
+        echo "⏰ Build time: $BUILD_TIME"
+    else
+        echo "❌ CRITICAL ERROR: Build hashe se NESHODUJÍ!"
+        echo "   index.html:  $HASH_HTML"
+        echo "   version.json: $HASH_JSON"
+        echo ""
+        echo "⚠️  Build byl NEÚSPĚŠNÝ - nelze deployovat!"
+        exit 1
     fi
     
     if [ "$ENVIRONMENT" = "dev" ]; then
+        echo ""
         echo "🔄 DEV: Frontend build stays in dev environment"
         echo "   Location: /var/www/erdms-dev/apps/eeo-v2/client/build"
+        echo "   Build hash: $HASH_HTML"
+        echo ""
+        echo "ℹ️  Pro ověření v prohlížeči:"
+        echo "   curl http://localhost/dev/eeo-v2/version.json"
         
     elif [ "$ENVIRONMENT" = "prod" ] && [ "$DEPLOY" = "true" ]; then
+        echo ""
         echo "🚀 PROD: Deploying frontend to production..."
+        echo "   Build hash: $HASH_HTML"
+        
+        # Final confirmation for production
+        echo ""
+        echo "⚠️  PRODUCTION DEPLOYMENT CONFIRMATION REQUIRED"
+        echo "   Build hash: $HASH_HTML"
+        echo "   Build time: $BUILD_TIME"
+        read -p "   Deploy to PRODUCTION? (yes/no): " CONFIRM
+        
+        if [ "$CONFIRM" != "yes" ]; then
+            echo "❌ Production deployment cancelled by user"
+            exit 0
+        fi
         
         # Backup current production
         if [ -d "/var/www/erdms-platform/apps/eeo-v2" ]; then
@@ -109,6 +155,10 @@ if [ "$COMPONENT" = "frontend" ] || [ "$COMPONENT" = "all" ]; then
         chown -R www-data:www-data /var/www/erdms-platform/apps/eeo-v2/
         
         echo "✅ EEO v2 Frontend deployed to production ROOT"
+        echo ""
+        echo "ℹ️  Ověř v prohlížeči:"
+        echo "   curl https://erdms.zachranka.cz/eeo-v2/version.json"
+        echo "   Očekávaný hash: $HASH_HTML"
     fi
 fi
 
