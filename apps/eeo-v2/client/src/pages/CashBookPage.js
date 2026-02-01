@@ -1785,7 +1785,7 @@ const CashBookPage = () => {
     loadDataFromDB();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [STORAGE_KEY, currentMonth, currentYear, userDetail?.id, mainAssignment?.id, mainAssignment?.uzivatel_id, mainAssignment?.cislo_pokladny, assignmentLoading]);
+  }, [STORAGE_KEY, currentMonth, currentYear, userDetail?.id, mainAssignment, assignmentLoading]);
 
   // Načíst LP kódy z API při načtení komponenty (jednou)
   useEffect(() => {
