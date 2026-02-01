@@ -371,7 +371,12 @@ function handle_cashbook_create_post($config, $input) {
             
             $db->commit();
             
+            // ✅ OPRAVA: Vrátiť celý book objekt, nie len ID
+            $bookModel = new CashbookModel($db);
+            $createdBook = $bookModel->getBookById($bookId);
+            
             return api_ok(array(
+                'book' => $createdBook,
                 'book_id' => $bookId,
                 'message' => 'Pokladní kniha byla úspěšně vytvořena'
             ));

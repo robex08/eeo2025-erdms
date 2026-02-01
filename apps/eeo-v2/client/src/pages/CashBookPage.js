@@ -1363,9 +1363,10 @@ const CashBookPage = () => {
         console.log('🔍 ensureBookExists: Výsledek createBook', {
           status: createResult.status,
           hasBook: !!createResult.data?.book,
-          bookData: createResult.data?.book,
+          bookExists: createResult.data?.book ? 'YES' : 'NO',
+          bookId: createResult.data?.book_id,
           error: createResult.error || createResult.message,
-          fullResponse: createResult
+          message: createResult.data?.message
         });
         
         if (createResult.status === 'ok' && createResult.data?.book) {
