@@ -1078,6 +1078,9 @@ const CashBookPage = () => {
   // ✅ FIX: Prázdné pole - data se načtou z DB nebo localStorage v useEffect
   const [cashBookEntries, setCashBookEntries] = useState([]);
 
+  // 🆕 Flag pro zabránění nekonečné slučce při načítání dat
+  const [isLoadingBook, setIsLoadingBook] = useState(false);
+
   // 🆕 REF: Pro přístup k aktuálnímu stavu v intervalech (bez restart intervalu)
   const cashBookEntriesRef = useRef(cashBookEntries);
   useEffect(() => {
@@ -1512,8 +1515,15 @@ const CashBookPage = () => {
       return;
     }
 
+    // ✅ Zabránit nekonečné slučce - nepokračovat pokud už probíhá načítání
+    if (isLoadingBook) {
+      return;
+    }
+
     const loadDataFromDB = async () => {
       try {
+        setIsLoadingBook(true); // Nastavit flag před začátkem
+        
         // Reset error state při úspěšném načtení
         setAccessError(null);
         
@@ -1526,13 +1536,23 @@ const CashBookPage = () => {
           if (currentBookId === null) {
             // Nebyla vytvořena/načtena žádná kniha - zobrazit prázdnou stránku
             setCashBookEntries([]);
+            setIsLoadingBook(false);
             return;
           }
           loadFromLocalStorageOnly();
+          setIsLoadingBook(false);
           return;
         }
 
         const { book, entries } = result;
+
+        // ✅ Kontrola, zda book není null
+        if (!book) {
+          console.warn('⚠️ Nepodařilo se načíst nebo vytvořit knihu');
+          setCashBookEntries([]);
+          setIsLoadingBook(false);
+          return;
+        }
 
         // ✅ NASTAVIT STAV KNIHY HNED PO NAČTENÍ (priorita DB dat)
         setBookStatus(book.stav_knihy || 'aktivni');
@@ -1653,9 +1673,13 @@ const CashBookPage = () => {
           localStorage.removeItem(STORAGE_KEY);
         }
 
+        // ✅ Nastavit loading flag na false po dokončení
+        setIsLoadingBook(false);
+
       } catch (error) {
         console.error('❌ Chyba při načítání z DB:', error);
         loadFromLocalStorageOnly();
+        setIsLoadingBook(false);
       }
     };
 
@@ -2304,7 +2328,8 @@ const CashBookPage = () => {
       }
 
       const platneOdDate = new Date(mainAssignment.platne_od);
-      const targetMonthStart = new Date(targetYear, targetMonth - 1, 1);
+      // ✅ FIX: Použiť UTC dátum pre porovnanie (aby sa predišlo timezone problémom)
+      const targetMonthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
 
       // Vrátit true pokud cílový měsíc je >= platne_od
       return targetMonthStart >= platneOdDate;
@@ -2312,7 +2337,7 @@ const CashBookPage = () => {
       console.error('❌ Chyba při výpočtu canGoToPreviousMonth:', error);
       return true; // V případě chyby povolit navigaci
     }
-  }, [mainAssignment?.platne_od, currentMonth, currentYear]);
+  }, [mainAssignment, currentMonth, currentYear]);
 
   // Navigace na předchozí měsíc
   const goToPreviousMonth = async () => {
@@ -2329,7 +2354,8 @@ const CashBookPage = () => {
     if (mainAssignment?.platne_od) {
       try {
         const platneOdDate = new Date(mainAssignment.platne_od);
-        const targetMonthStart = new Date(targetYear, targetMonth - 1, 1);
+        // ✅ FIX: Použiť UTC dátum pre porovnanie (aby sa predišlo timezone problémom)
+        const targetMonthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
 
         if (targetMonthStart < platneOdDate) {
           const formattedDate = platneOdDate.toLocaleDateString('cs-CZ');
@@ -4095,10 +4121,7 @@ const CashBookPage = () => {
         </MonthInfo>
         <MonthControls>
           <MonthButton 
-            onClick={goToPreviousMonth} 
-            disabled={!canGoToPreviousMonth}
-            title={
-              canGoToPreviousMonth 
+            onClick={goToPreviousMonth}anGoToPreviousMonth 
                 ? "Předchozí měsíc" 
                 : `Pokladna přiřazena od ${mainAssignment?.platne_od ? new Date(mainAssignment.platne_od).toLocaleDateString('cs-CZ') : ''}`
             }
@@ -4109,15 +4132,23 @@ const CashBookPage = () => {
           <MonthButton
             onClick={goToCurrentMonth}
             disabled={currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()}
-            title="Aktuální měsíc"
+            title={
+              currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()
+                ? "Už jste v aktuálním měsíci"
+                : "Přejít na aktuální měsíc"
+            }
           >
             <FontAwesomeIcon icon={faCalendarDay} />
             Nyní
           </MonthButton>
           <MonthButton
             onClick={goToNextMonth}
-            disabled={currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()}
-            title="Následující měsíc"
+            disabled={currentMonth >= new Date().getMonth() + 1 && currentYear >= new Date().getFullYear()}
+            title={
+              currentMonth >= new Date().getMonth() + 1 && currentYear >= new Date().getFullYear()
+                ? "Nelze přejít do budoucnosti"
+                : "Následující měsíc"
+            }
           >
             Další
             <FontAwesomeIcon icon={faChevronRight} />
