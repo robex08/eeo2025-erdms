@@ -157,7 +157,7 @@ class VersionChecker {
       ? new Date(versionData.buildTime).toLocaleString('cs-CZ')
       : 'nedávno';
 
-    const message = `Je dostupná nová verze aplikace (${buildTime}).\n\n` +
+    const message = `Je dostupná nová verze aplikace v2.21 (${buildTime}).\n\n` +
                     `Doporučujeme obnovit stránku pro zajištění správné funkčnosti.\n\n` +
                     `Obnovit nyní?`;
 
