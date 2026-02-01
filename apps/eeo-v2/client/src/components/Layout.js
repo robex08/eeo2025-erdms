@@ -2982,8 +2982,8 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) : null }
             
-            {/* Přehled menu - pouze pro ADMINI */}
-            { hasPermission && hasPermission('ADMINI') && (
+            {/* Přehled menu - pouze pro ADMINI (SUPERADMIN a ADMINISTRATOR) */}
+            { hasAdminRole && hasAdminRole() && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={prehledButtonRef}
@@ -3046,17 +3046,17 @@ const Layout = ({ children }) => {
             ) }
             
             {/* Menu položky pro přehledy - skryto pro ADMINI (mají dropdown Přehled) */}
-            { (!hasPermission || !hasPermission('ADMINI')) && ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
+            { (!hasAdminRole || !hasAdminRole()) && ((hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
-            { (!hasPermission || !hasPermission('ADMINI')) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
+            { (!hasAdminRole || !hasAdminRole()) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt;2026)
               </MenuLinkLeft>
             ) }
-            { (!hasPermission || !hasPermission('ADMINI')) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+            { (!hasAdminRole || !hasAdminRole()) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
               </MenuLinkLeft>
