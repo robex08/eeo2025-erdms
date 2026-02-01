@@ -163,12 +163,11 @@ function canMarkPaymentAnnualFees($user) {
 function handleAnnualFeesList($pdo, $data, $user) {
     // 🔐 KONTROLA PRÁV: VIEW
     if (!canViewAnnualFees($user)) {
-        http_response_code(403);
-        echo json_encode([
+        return [
             'status' => 'error',
-            'message' => 'Nemáte oprávnění k zobrazení ročních poplatků'
-        ]);
-        return;
+            'message' => 'Nemáte oprávnění k zobrazení ročních poplatků',
+            'code' => 403
+        ];
     }
     
     try {
@@ -219,12 +218,11 @@ function handleAnnualFeesList($pdo, $data, $user) {
 function handleAnnualFeesDetail($pdo, $data, $user) {
     // 🔐 KONTROLA PRÁV: VIEW
     if (!canViewAnnualFees($user)) {
-        http_response_code(403);
-        echo json_encode([
+        return [
             'status' => 'error',
-            'message' => 'Nemáte oprávnění k zobrazení detailu ročního poplatku'
-        ]);
-        return;
+            'message' => 'Nemáte oprávnění k zobrazení detailu ročního poplatku',
+            'code' => 403
+        ];
     }
     
     try {

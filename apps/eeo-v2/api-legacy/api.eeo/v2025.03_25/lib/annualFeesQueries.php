@@ -18,6 +18,9 @@ if (!defined('TBL_ROCNI_POPLATKY')) {
 if (!defined('TBL_ROCNI_POPLATKY_POLOZKY')) {
     define('TBL_ROCNI_POPLATKY_POLOZKY', '25a_rocni_poplatky_polozky');
 }
+if (!defined('TBL_ROCNI_POPLATKY_PRILOHY')) {
+    define('TBL_ROCNI_POPLATKY_PRILOHY', '25a_rocni_poplatky_prilohy');
+}
 
 // ============================================================================
 // 📋 LIST - Seznam ročních poplatků s filtry
@@ -130,7 +133,6 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             OR EXISTS (
                 SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_PRILOHY . '` rpa
                 WHERE rpa.rocni_poplatek_id = rp.id 
-                AND rpa.aktivni = 1
                 AND (
                     rpa.originalni_nazev_souboru LIKE :fulltext
                     OR rpa.typ_prilohy LIKE :fulltext
@@ -144,6 +146,8 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             OR "castecne" LIKE :fulltext
         )';
         $params[':fulltext'] = '%' . $filters['fulltext_search'] . '%';
+        // Druhý parametr pro has_subitem_match
+        $params[':fulltext_subitems'] = '%' . $filters['fulltext_search'] . '%';
     }
 
     $whereClause = implode(' AND ', $where);
@@ -196,7 +200,33 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1) AS pocet_polozek,
             (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav = 'ZAPLACENO') AS pocet_zaplaceno,
             (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != 'ZAPLACENO' AND datum_splatnosti < CURDATE()) AS pocet_po_splatnosti,
-            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != 'ZAPLACENO' AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)) AS pocet_blizi_se_splatnost
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != 'ZAPLACENO' AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)) AS pocet_blizi_se_splatnost" . 
+            ($filters['fulltext_search'] ? ",
+            -- Příznak zda má shodu v podpoložkách (pro auto-rozbalení)
+            CASE WHEN EXISTS (
+                SELECT 1 FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+                LEFT JOIN `25_uzivatele` u_item_aktualizoval ON rpp.aktualizoval_uzivatel_id = u_item_aktualizoval.id
+                WHERE rpp.rocni_poplatek_id = rp.id 
+                AND rpp.aktivni = 1
+                AND (
+                    rpp.nazev_polozky LIKE :fulltext_subitems
+                    OR rpp.cislo_dokladu LIKE :fulltext_subitems
+                    OR rpp.stav LIKE :fulltext_subitems
+                    OR CONCAT(u_item_aktualizoval.jmeno, \" \", COALESCE(u_item_aktualizoval.prijmeni, \"\")) LIKE :fulltext_subitems
+                    OR u_item_aktualizoval.jmeno LIKE :fulltext_subitems
+                    OR u_item_aktualizoval.prijmeni LIKE :fulltext_subitems
+                    OR CAST(rpp.castka AS CHAR) LIKE :fulltext_subitems
+                    OR DATE_FORMAT(rpp.datum_splatnosti, \"%d.%m.%Y\") LIKE :fulltext_subitems
+                    OR DATE_FORMAT(rpp.datum_zaplaceno, \"%d.%m.%Y\") LIKE :fulltext_subitems
+                )
+            ) OR EXISTS (
+                SELECT 1 FROM `" . TBL_ROCNI_POPLATKY_PRILOHY . "` rpa
+                WHERE rpa.rocni_poplatek_id = rp.id 
+                AND (
+                    rpa.originalni_nazev_souboru LIKE :fulltext_subitems
+                    OR rpa.typ_prilohy LIKE :fulltext_subitems
+                )
+            ) THEN 1 ELSE 0 END AS has_subitem_match" : "") . "
         FROM `" . TBL_ROCNI_POPLATKY . "` rp
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
