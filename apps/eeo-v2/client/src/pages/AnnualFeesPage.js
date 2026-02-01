@@ -8,7 +8,7 @@ import {
   faPlus, faMinus, faFilter, faSearch, faCalendar, 
   faMoneyBill, faFileInvoice, faEdit, 
   faTrash, faCheckCircle, faExclamationTriangle, faSpinner, faUndo, faTimes, faArrowDown, faEraser,
-  faPaperclip, faUpload, faDownload, faFile 
+  faPaperclip, faUpload, faDownload, faFile, faSyncAlt 
 } from '@fortawesome/free-solid-svg-icons';
 import { Calculator, AlertCircle, CheckCircle2, AlertTriangle, Info as InfoIcon, Paperclip, Upload, Download, Trash2, X } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
@@ -124,6 +124,36 @@ const ModuleTitle = styled.h1`
   
   svg {
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  }
+`;
+
+const RefreshButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: rotate(180deg);
+  }
+  
+  &:active {
+    transform: rotate(180deg) scale(0.95);
+  }
+  
+  svg {
+    font-size: 1.1rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
   }
 `;
 
@@ -3391,9 +3421,9 @@ function AnnualFeesPage() {
   return (
     <PageContainer>
       <ModuleHeader>
-        <ActionButton onClick={() => window.location.reload()}>
-          <FontAwesomeIcon icon={faUndo} />
-        </ActionButton>
+        <RefreshButton onClick={() => window.location.reload()}>
+          <FontAwesomeIcon icon={faSyncAlt} />
+        </RefreshButton>
         <ModuleTitle>
           Evidence ročních poplatků
           <FontAwesomeIcon icon={faMoneyBill} />
