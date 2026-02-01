@@ -1687,29 +1687,18 @@ const CashBookPage = () => {
     const loadFromLocalStorageOnly = () => {
       const savedData = localStorage.getItem(STORAGE_KEY);
 
-      // Načíst konečný zůstatek z předchozího měsíce (pro výpočet carryOver pokud není uložený)
-      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-      // ✅ FIX: Klíč musí obsahovat targetUserId (stejně jako STORAGE_KEY)
-      const targetUserId = mainAssignment?.uzivatel_id || userDetail?.id || 'default';
-      const prevStorageKey = `cashbook_${targetUserId}_${mainAssignment?.id || 'noassignment'}_${prevYear}_${prevMonth}`;
-
+      // ⚠️ POZOR: Carry-over by měl být vždy převzat z DB (backend automaticky počítá správně)
+      // localStorage je pouze fallback pro offline režim
+      // Pro nové měsíce bez DB dat nepoužívat localStorage carry-over!
       let calculatedCarryOver = 0;
-      const prevMonthData = localStorage.getItem(prevStorageKey);
 
-      if (prevMonthData) {
+      // Pouze pro existující localStorage data - použít uložený carry-over
+      if (savedData) {
         try {
-          const prevParsed = JSON.parse(prevMonthData);
-          const prevEntries = prevParsed.entries || [];
-
-          // Spočítat konečný zůstatek předchozího měsíce
-          const prevInitialBalance = prevParsed.carryOverAmount || 0;
-          const totalIncome = prevEntries.reduce((sum, entry) => sum + (entry.income || 0), 0);
-          const totalExpenses = prevEntries.reduce((sum, entry) => sum + (entry.expense || 0), 0);
-          calculatedCarryOver = prevInitialBalance + totalIncome - totalExpenses;
-
+          const parsed = JSON.parse(savedData);
+          calculatedCarryOver = parsed.carryOverAmount || 0;
         } catch (error) {
-          console.error('❌ Chyba při načítání dat předchozího měsíce:', error);
+          console.error('❌ Chyba při čtení carry-over z localStorage:', error);
         }
       }
 
@@ -1721,14 +1710,9 @@ const CashBookPage = () => {
           setCashBookEntries(parsed.entries || []);
           setBookStatus(parsed.bookStatus || 'aktivni');
 
-          const storedCarryOver = parsed.carryOverAmount;
-          if (typeof storedCarryOver === 'number') {
-            setCarryOverAmount(storedCarryOver);
-          } else {
-            setCarryOverAmount(calculatedCarryOver);
-            const updatedData = { ...parsed, carryOverAmount: calculatedCarryOver };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
-          }
+          // ✅ OPRAVA: Vždy použit carry-over z localStorage (nerekalkulovat)
+          // DB je primárny zdroj, localStorage už má správnu hodnotu z predchádzajúcich syncov
+          setCarryOverAmount(calculatedCarryOver);
         } catch (error) {
           console.error('❌ Chyba při načítání dat z localStorage:', error);
           setCashBookEntries([]);
