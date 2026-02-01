@@ -176,10 +176,6 @@ const ActionButton = styled.button`
     box-shadow: none;
   }
 `;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-`;
 
 const Button = styled.button`
   display: inline-flex;
@@ -3395,20 +3391,14 @@ function AnnualFeesPage() {
   return (
     <PageContainer>
       <ModuleHeader>
+        <ActionButton onClick={() => window.location.reload()}>
+          <FontAwesomeIcon icon={faUndo} />
+        </ActionButton>
         <ModuleTitle>
-          <FontAwesomeIcon icon={faMoneyBill} />
           Evidence ročních poplatků
+          <FontAwesomeIcon icon={faMoneyBill} />
         </ModuleTitle>
       </ModuleHeader>
-      
-      <PageHeader>
-        <ActionBar>
-          <ActionButton onClick={() => window.location.reload()}>
-            <FontAwesomeIcon icon={faUndo} />
-            Obnovit
-          </ActionButton>
-        </ActionBar>
-      </PageHeader>
       
       {/* Dashboard */}
       <DashboardContainer>
