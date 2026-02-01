@@ -77,18 +77,62 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
         $params[':search'] = '%' . $filters['smlouva_search'] . '%';
     }
     if ($filters['fulltext_search']) {
-        // Fulltext vyhledávání ve všech relevantních polích
+        // Fulltext vyhledávání ve VŠECH relevantních polích zobrazených na frontendu
         $where[] = '(
+            -- Hlavní pole z tabulky rocni_poplatky
             rp.nazev LIKE :fulltext 
             OR rp.poznamka LIKE :fulltext
+            OR rp.rok LIKE :fulltext
+            
+            -- Smlouva pole
             OR s.cislo_smlouvy LIKE :fulltext 
             OR s.nazev_smlouvy LIKE :fulltext
             OR s.nazev_firmy LIKE :fulltext
+            OR s.ico LIKE :fulltext
             OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(rp.rozsirujici_data, "$.dodavatel_nazev")), "") LIKE :fulltext
+            
+            -- Číselníky
             OR cs_druh.nazev_stavu LIKE :fulltext
             OR cs_platba.nazev_stavu LIKE :fulltext
-            OR CONCAT(u_vytvoril.jmeno, " ", u_vytvoril.prijmeni) LIKE :fulltext
-            OR CONCAT(u_aktualizoval.jmeno, " ", u_aktualizoval.prijmeni) LIKE :fulltext
+            OR cs_stav.nazev_stavu LIKE :fulltext
+            
+            -- Uživatelé
+            OR CONCAT(u_vytvoril.jmeno, " ", COALESCE(u_vytvoril.prijmeni, "")) LIKE :fulltext
+            OR CONCAT(u_aktualizoval.jmeno, " ", COALESCE(u_aktualizoval.prijmeni, "")) LIKE :fulltext
+            OR u_vytvoril.jmeno LIKE :fulltext
+            OR u_vytvoril.prijmeni LIKE :fulltext
+            OR u_aktualizoval.jmeno LIKE :fulltext
+            OR u_aktualizoval.prijmeni LIKE :fulltext
+            
+            -- Částky (formátované)
+            OR CAST(rp.celkova_castka AS CHAR) LIKE :fulltext
+            OR CAST(rp.zaplaceno_celkem AS CHAR) LIKE :fulltext
+            OR CAST(rp.zbyva_zaplatit AS CHAR) LIKE :fulltext
+            
+            -- Hledání v podpoložkách (existuje položka s hledaným textem)
+            OR EXISTS (
+                SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` rpp
+                LEFT JOIN `25_uzivatele` u_item_aktualizoval ON rpp.aktualizoval_uzivatel_id = u_item_aktualizoval.id
+                WHERE rpp.rocni_poplatek_id = rp.id 
+                AND rpp.aktivni = 1
+                AND (
+                    rpp.nazev_polozky LIKE :fulltext
+                    OR rpp.cislo_dokladu LIKE :fulltext
+                    OR rpp.stav LIKE :fulltext
+                    OR CONCAT(u_item_aktualizoval.jmeno, " ", COALESCE(u_item_aktualizoval.prijmeni, "")) LIKE :fulltext
+                    OR u_item_aktualizoval.jmeno LIKE :fulltext
+                    OR u_item_aktualizoval.prijmeni LIKE :fulltext
+                    OR CAST(rpp.castka AS CHAR) LIKE :fulltext
+                    OR DATE_FORMAT(rpp.datum_splatnosti, "%d.%m.%Y") LIKE :fulltext
+                    OR DATE_FORMAT(rpp.datum_zaplaceno, "%d.%m.%Y") LIKE :fulltext
+                )
+            )
+            
+            -- Computed hodnoty pro stavy
+            OR "zaplaceno" LIKE :fulltext
+            OR "nezaplaceno" LIKE :fulltext
+            OR "částečně" LIKE :fulltext
+            OR "castecne" LIKE :fulltext
         )';
         $params[':fulltext'] = '%' . $filters['fulltext_search'] . '%';
     }
@@ -102,6 +146,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
+        LEFT JOIN `25_ciselnik_stavy` cs_stav ON rp.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         LEFT JOIN `25_uzivatele` u_vytvoril ON rp.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_aktualizoval ON rp.aktualizoval_uzivatel_id = u_aktualizoval.id
         WHERE $whereClause
@@ -121,6 +166,8 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
             cs_druh.nazev_stavu AS druh_nazev,
             rp.platba,
             cs_platba.nazev_stavu AS platba_nazev,
+            rp.stav,
+            cs_stav.nazev_stavu AS stav_nazev,
             rp.celkova_castka,
             rp.zaplaceno_celkem,
             rp.zbyva_zaplatit,
@@ -145,6 +192,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
         LEFT JOIN `25_smlouvy` s ON rp.smlouva_id = s.id
         LEFT JOIN `25_ciselnik_stavy` cs_druh ON rp.druh = cs_druh.kod_stavu AND cs_druh.typ_objektu = 'DRUH_ROCNIHO_POPLATKU'
         LEFT JOIN `25_ciselnik_stavy` cs_platba ON rp.platba = cs_platba.kod_stavu AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
+        LEFT JOIN `25_ciselnik_stavy` cs_stav ON rp.stav = cs_stav.kod_stavu AND cs_stav.typ_objektu = 'ROCNI_POPLATEK'
         LEFT JOIN `25_uzivatele` u_vytvoril ON rp.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_aktualizoval ON rp.aktualizoval_uzivatel_id = u_aktualizoval.id
         WHERE $whereClause
