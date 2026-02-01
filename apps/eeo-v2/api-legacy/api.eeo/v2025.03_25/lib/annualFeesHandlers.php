@@ -182,6 +182,7 @@ function handleAnnualFeesList($pdo, $data, $user) {
             'platba' => $data['platba'] ?? null,
             'stav' => $data['stav'] ?? null,
             'smlouva_search' => $data['smlouva_search'] ?? null, // Vyhledávání v čísle nebo názvu smlouvy
+            'fulltext_search' => $data['fulltext_search'] ?? null, // Obecné fulltext vyhledávání
             'aktivni' => isset($data['aktivni']) ? (int)$data['aktivni'] : 1
         ];
 
