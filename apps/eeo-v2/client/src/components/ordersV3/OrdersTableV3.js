@@ -890,6 +890,9 @@ const OrdersTableV3 = ({
   const [draggedColumn, setDraggedColumn] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   
+  // State pro hromadné rozbalování
+  const [isBulkExpanding, setIsBulkExpanding] = useState(false);
+  
   // State pro resizing - načíst z localStorage (per user)
   const [columnSizing, setColumnSizing] = useState(() => {
     if (userId) {
@@ -989,12 +992,61 @@ const OrdersTableV3 = ({
     setDragOverColumn(null);
   }, []);
   
+  // Handler pro globální expand/collapse všech řádků na stránce
+  // MUSÍ být před useMemo pro columns, protože se v něm používá
+  const handleToggleAllRows = useCallback(async () => {
+    // table.getRowModel() není dostupný zde, takže použijeme data prop
+    const anyExpanded = data.some(order => isExpanded(order.id));
+    
+    if (anyExpanded) {
+      // Collapse all - okamžitě bez animace
+      data.forEach(order => {
+        if (isExpanded(order.id)) {
+          toggleRow(order.id);
+        }
+      });
+    } else {
+      // Expand all - postupně s animací
+      setIsBulkExpanding(true);
+      
+      const ordersToExpand = data.filter(order => !isExpanded(order.id));
+      
+      for (let i = 0; i < ordersToExpand.length; i++) {
+        const order = ordersToExpand[i];
+        await handleRowExpand(order.id);
+        
+        // Malá pauza pro plynulé rozbalování
+        if (i < ordersToExpand.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 30));
+        }
+      }
+      
+      setIsBulkExpanding(false);
+    }
+  }, [data, isExpanded, handleRowExpand, toggleRow]);
+  
   // Definice sloupců přesně jako v původním Orders25List.js
   const columns = useMemo(() => {
     const allColumns = [
       {
         id: 'expander',
-        header: '',
+        header: ({ table }) => {
+          const rows = table.getRowModel().rows;
+          const anyExpanded = rows.some(row => isExpanded(row.original.id));
+          
+          return (
+            <ExpandButton
+              onClick={handleToggleAllRows}
+              title={anyExpanded ? 'Sbalit vše' : 'Rozbalit vše'}
+              disabled={isBulkExpanding}
+            >
+              <FontAwesomeIcon 
+                icon={isBulkExpanding ? faCircleNotch : (anyExpanded ? faMinus : faPlus)} 
+                spin={isBulkExpanding}
+              />
+            </ExpandButton>
+          );
+        },
         cell: ({ row }) => {
           const order = row.original;
           const expanded = isExpanded(order.id);
@@ -1492,7 +1544,7 @@ const OrdersTableV3 = ({
     }
     
     return filtered;
-  }, [visibleColumns, columnOrder, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded]);
+  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded]);
 
   // Filtrovat data podle columnFilters (lokální filtr v tabulce)
   // ⚠️ VYPNUTO - Filtrování se provádí na backendu v API
