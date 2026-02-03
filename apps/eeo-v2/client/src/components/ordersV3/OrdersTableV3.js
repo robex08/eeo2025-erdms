@@ -18,6 +18,8 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import DatePicker from '../DatePicker';
 import OperatorInput from '../OperatorInput';
+import useExpandedRowsV3 from '../../hooks/ordersV3/useExpandedRowsV3';
+import OrderExpandedRowV3 from './OrderExpandedRowV3';
 import {
   faPlus,
   faMinus,
@@ -578,53 +580,6 @@ const ActionMenuButton = styled.button`
   }
 `;
 
-const SubRowContainer = styled.div`
-  padding: 1rem;
-  background-color: #fffbeb;
-  border-left: 3px solid #fbbf24;
-  line-height: 1.5;
-  
-  h4 {
-    margin: 0 0 0.75rem 0;
-    font-size: 0.9rem;
-    color: #92400e;
-    font-weight: 600;
-  }
-  
-  .sub-row-section {
-    margin-bottom: 1rem;
-    
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-  
-  .sub-row-label {
-    font-weight: 600;
-    color: #78350f;
-    margin-right: 0.5rem;
-  }
-  
-  .sub-row-value {
-    color: #451a03;
-  }
-  
-  .sub-row-list {
-    list-style: none;
-    padding: 0;
-    margin: 0.5rem 0 0 0;
-    
-    li {
-      padding: 0.35rem 0;
-      border-bottom: 1px solid #fde68a;
-      
-      &:last-child {
-        border-bottom: none;
-      }
-    }
-  }
-`;
-
 const EmptyState = styled.div`
   text-align: center;
   padding: 3rem 1rem;
@@ -715,60 +670,6 @@ const LoadingRow = styled.tr`
   }
 `;
 
-
-/**
- * Renderuje podřádek s detaily objednávky
- */
-const SubRowDetail = ({ order }) => {
-  return (
-    <SubRowContainer>
-      <h4>Detail objednávky #{order.id}</h4>
-      
-      <div className="sub-row-section">
-        <span className="sub-row-label">Předmět:</span>
-        <span className="sub-row-value">{order.predmet || '---'}</span>
-      </div>
-      
-      {order.poznamka && (
-        <div className="sub-row-section">
-          <span className="sub-row-label">Poznámka:</span>
-          <span className="sub-row-value">{order.poznamka}</span>
-        </div>
-      )}
-      
-      {order.polozky && order.polozky.length > 0 && (
-        <div className="sub-row-section">
-          <span className="sub-row-label">Položky ({order.polozky.length}):</span>
-          <ul className="sub-row-list">
-            {order.polozky.slice(0, 5).map((item, idx) => (
-              <li key={idx}>
-                <span style={{ fontWeight: 500 }}>{item.nazev || item.popis || 'Položka'}</span>
-                {item.mnozstvi && <span> - {item.mnozstvi} {item.jednotka || 'ks'}</span>}
-                {item.cena_s_dph && (
-                  <span style={{ float: 'right', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {parseFloat(item.cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
-                  </span>
-                )}
-              </li>
-            ))}
-            {order.polozky.length > 5 && (
-              <li style={{ fontStyle: 'italic', color: '#92400e' }}>
-                ... a dalších {order.polozky.length - 5} položek
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
-      
-      {order.prilohy && order.prilohy.length > 0 && (
-        <div className="sub-row-section">
-          <span className="sub-row-label">Přílohy:</span>
-          <span className="sub-row-value">{order.prilohy.length} souborů</span>
-        </div>
-      )}
-    </SubRowContainer>
-  );
-};
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -955,6 +856,8 @@ const OrdersTableV3 = ({
   onColumnReorder,
   onColumnFiltersChange, // Callback pro změny filtrů
   userId, // Přidáno pro localStorage per user
+  token, // 🆕 Pro API volání
+  username, // 🆕 Pro API volání
   isLoading = false,
   error = null,
   canEdit = () => true,
@@ -965,8 +868,16 @@ const OrdersTableV3 = ({
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
 }) => {
-  // State pro expandované řádky
-  const [expandedRows, setExpandedRows] = useState({});
+  // Hook pro expandované řádky s lazy loading a localStorage persistence
+  const {
+    isExpanded,
+    toggleRow,
+    getRowDetail,
+    loadOrderDetail,
+    loadingDetails,
+    errors,
+    refreshDetail
+  } = useExpandedRowsV3({ token, username, userId });
   
   // State pro column filters (lokální - zobrazení v UI)
   const [columnFilters, setColumnFilters] = useState({});
@@ -1032,13 +943,17 @@ const OrdersTableV3 = ({
   }, []);
   
   // Handler pro toggle expandování
-  const handleRowExpand = useCallback((orderId) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [orderId]: !prev[orderId]
-    }));
+  // Handler pro rozbalení řádku s lazy loading
+  const handleRowExpand = useCallback(async (orderId) => {
+    toggleRow(orderId);
+    
+    // Pokud se řádek rozbaluje (ne sbaluje), načíst data
+    if (!isExpanded(orderId)) {
+      await loadOrderDetail(orderId);
+    }
+    
     onRowExpand?.(orderId);
-  }, [onRowExpand]);
+  }, [toggleRow, isExpanded, loadOrderDetail, onRowExpand]);
   
   // Handler pro skrytí sloupce
   const handleHideColumn = useCallback((columnId) => {
@@ -1082,14 +997,14 @@ const OrdersTableV3 = ({
         header: '',
         cell: ({ row }) => {
           const order = row.original;
-          const isExpanded = expandedRows[order.id];
+          const expanded = isExpanded(order.id);
           
           return (
             <ExpandButton
               onClick={() => handleRowExpand(order.id)}
-              title={isExpanded ? 'Sbalit' : 'Rozbalit'}
+              title={expanded ? 'Sbalit' : 'Rozbalit'}
             >
-              <FontAwesomeIcon icon={isExpanded ? faMinus : faPlus} />
+              <FontAwesomeIcon icon={expanded ? faMinus : faPlus} />
             </ExpandButton>
           );
         },
@@ -1577,7 +1492,7 @@ const OrdersTableV3 = ({
     }
     
     return filtered;
-  }, [visibleColumns, columnOrder, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, expandedRows]);
+  }, [visibleColumns, columnOrder, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded]);
 
   // Filtrovat data podle columnFilters (lokální filtr v tabulce)
   // ⚠️ VYPNUTO - Filtrování se provádí na backendu v API
@@ -1874,8 +1789,13 @@ const OrdersTableV3 = ({
           ) : (
             table.getRowModel().rows.map(row => {
               const order = row.original;
-              const isExpanded = expandedRows[order.id];
+              const expanded = isExpanded(order.id);
               const rowColSpan = row.getVisibleCells().length;
+              
+              // Získat detail data z hooku
+              const rowDetail = expanded ? getRowDetail(order.id) : null;
+              const isLoadingDetail = expanded && loadingDetails.includes(order.id);
+              const detailError = expanded && errors[order.id] ? errors[order.id] : null;
               
               // Získat barvu pozadí řádku
               let rowStyle = {};
@@ -1902,12 +1822,16 @@ const OrdersTableV3 = ({
                       </TableCell>
                     ))}
                   </tr>
-                  {isExpanded && (
-                    <tr className="subrow">
-                      <td colSpan={rowColSpan}>
-                        <SubRowDetail order={order} />
-                      </td>
-                    </tr>
+                  {expanded && (
+                    <OrderExpandedRowV3
+                      order={order}
+                      detail={rowDetail}
+                      loading={isLoadingDetail}
+                      error={detailError}
+                      onRetry={() => loadOrderDetail(order.id)}
+                      onForceRefresh={() => refreshDetail(order.id)}
+                      colSpan={rowColSpan}
+                    />
                   )}
                 </React.Fragment>
               );

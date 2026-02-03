@@ -86,16 +86,22 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
 
   // 📥 Načtení detailu objednávky (lazy loading)
   const loadOrderDetail = useCallback(async (orderId) => {
+    console.log(`📥 [LOAD] Starting load for order ${orderId}`);
+    
     // Pokud už je v cache, nemusíme načítat
     if (detailsCache[orderId]) {
+      console.log(`✅ [LOAD] Order ${orderId} found in cache, returning cached data`);
       return detailsCache[orderId];
     }
 
     // Pokud se právě načítá, počkáme
     if (fetchingRef.current.has(orderId)) {
+      console.log(`⏳ [LOAD] Order ${orderId} is already being fetched, skipping`);
       return null;
     }
 
+    console.log(`🌐 [LOAD] Fetching order ${orderId} from API...`);
+    
     // Označíme že se načítá
     fetchingRef.current.add(orderId);
     setLoadingDetails(prev => new Set([...prev, orderId]));
@@ -177,16 +183,97 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
 
   // 🔄 Refresh detail (force reload)
   const refreshDetail = useCallback(async (orderId) => {
-    // Odstranit z cache
-    setDetailsCache(prev => {
+    console.log(`🔄 [REFRESH] Starting refresh for order ${orderId}`);
+    
+    // Vyčistit fetchingRef (důležité!)
+    fetchingRef.current.delete(orderId);
+    
+    // Vyčistit loading state
+    setLoadingDetails(prev => {
+      const next = new Set(prev);
+      next.delete(orderId);
+      return next;
+    });
+    
+    // Vyčistit error pro tento order
+    setErrors(prev => {
       const next = { ...prev };
       delete next[orderId];
       return next;
     });
 
-    // Načíst znovu
-    return loadOrderDetail(orderId);
-  }, [loadOrderDetail]);
+    // Odstranit z cache
+    setDetailsCache(prev => {
+      const next = { ...prev };
+      delete next[orderId];
+      console.log(`🔄 [REFRESH] Cache cleared for order ${orderId}`);
+      return next;
+    });
+
+    // Vyčistit z localStorage cache
+    try {
+      const cachedDetails = localStorage.getItem(cacheKey);
+      if (cachedDetails) {
+        const parsed = JSON.parse(cachedDetails);
+        delete parsed[orderId];
+        localStorage.setItem(cacheKey, JSON.stringify(parsed));
+        console.log(`🔄 [REFRESH] localStorage cache cleared for order ${orderId}`);
+      }
+    } catch (error) {
+      console.warn('⚠️ Chyba při čištění cache v localStorage:', error);
+    }
+
+    // PŘÍMO volat API (nepoužívat loadOrderDetail kvůli closure problému)
+    console.log(`🔄 [REFRESH] Calling API directly for order ${orderId}`);
+    
+    // Označíme že se načítá
+    fetchingRef.current.add(orderId);
+    setLoadingDetails(prev => new Set([...prev, orderId]));
+
+    try {
+      const detail = await getOrderDetailV3({ 
+        token, 
+        username, 
+        orderId 
+      });
+
+      console.log(`✅ [REFRESH] API response received for order ${orderId}`);
+
+      // Uložíme do cache
+      setDetailsCache(prev => ({
+        ...prev,
+        [orderId]: detail
+      }));
+
+      // Odstraníme z loading
+      setLoadingDetails(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+
+      fetchingRef.current.delete(orderId);
+
+      return detail;
+    } catch (error) {
+      console.error(`❌ [REFRESH] Error loading order ${orderId}:`, error);
+      
+      setErrors(prev => ({
+        ...prev,
+        [orderId]: error.message || 'Chyba při načítání detailu'
+      }));
+
+      setLoadingDetails(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+
+      fetchingRef.current.delete(orderId);
+
+      return null;
+    }
+  }, [token, username, cacheKey]);
 
   // 🗑️ Clear cache
   const clearCache = useCallback(() => {
@@ -218,6 +305,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
     toggleRow,
     isExpanded,
     getRowDetail,
+    loadOrderDetail, // 🆕 Přidáno pro explicitní načtení detailu
     refreshDetail,
     clearCache,
     clearExpanded,
@@ -227,3 +315,5 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
     cachedCount: Object.keys(detailsCache).length
   };
 };
+
+export default useExpandedRowsV3;

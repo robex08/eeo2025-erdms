@@ -965,6 +965,8 @@ function Orders25ListV3() {
         onColumnReorder={handleColumnOrderChange}
         onColumnFiltersChange={handleColumnFilterChange}
         userId={user_id}
+        token={token}
+        username={username}
         isLoading={loading}
         error={error}
         canEdit={canEdit}

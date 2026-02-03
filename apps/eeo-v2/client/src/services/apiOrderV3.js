@@ -39,6 +39,9 @@ export async function getOrderDetailV3({ token, username, orderId }) {
       order_id: orderId
     });
 
+    console.log('🔍 [V3 DETAIL] RAW RESPONSE:', response.data);
+    console.log('🔍 [V3 DETAIL] ORDER DATA:', response.data.order);
+
     if (response.data.status === 'ok' && response.data.order) {
       return response.data.order;
     } else if (response.data.status === 'error') {
