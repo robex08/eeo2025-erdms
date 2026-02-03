@@ -82,12 +82,49 @@ pri kontrole obshu, zakladnai novych sloupcu apod. vzdy pracovat s touto verzi D
 !!! vzdy ukladat u vsech PHP endpointu casove a datumove polozky s vyzuitim TimezoneHelper pro spravnou timezone (
 setMysqlTimezone($db) - nastavuje MySQL session timezone na českou časovou zónu (+01:00 nebo +02:00)) !!!
 
-### Testování a Debugging
+### 🐛 Testování a Debugging
+
+#### 📋 PHP ERROR LOGY - KRITICKÉ MÍSTO PRO DEBUGGING!
+- **✅ HLAVNÍ LOG (DEV):** `/var/www/erdms-dev/logs/php-error.log`
+- **✅ PRODUKČNÍ LOG:** `/var/www/erdms-dev/logs/php/prod-error.log`
+- **⚠️ Apache log (sekundární):** `/var/log/apache2/error.log`
+
+**🔍 JAK DEBUGOVAT CHYBY:**
+```bash
+# 1. Kontrola posledních chyb v DEV logu
+tail -100 /var/www/erdms-dev/logs/php-error.log
+
+# 2. Sledování logu v reálném čase
+tail -f /var/www/erdms-dev/logs/php-error.log
+
+# 3. Filtrování konkrétního endpointu
+tail -100 /var/www/erdms-dev/logs/php-error.log | grep "orders-v3"
+
+# 4. Hledání SQL chyb
+tail -100 /var/www/erdms-dev/logs/php-error.log | grep -i "SQLSTATE\|Column not found\|Table.*doesn't exist"
+```
+
+**⚠️ CO KONTROLOVAT V LOGU:**
+- ❌ SQL chyby: `SQLSTATE[42S22]: Column not found`
+- ❌ Neexistující tabulky: `Table 'EEO-OSTRA-DEV.25_xxx' doesn't exist`
+- ❌ Neexistující sloupce: `Unknown column 'xxx.nazev' in 'SELECT'`
+- ❌ PHP errory: Fatal errors, warnings, notices
+- ✅ Debug výpisy: `error_log("🔍 Debug info...")` v kódu
+
+**🔧 RESTART APACHE PO ZMĚNÁCH:**
+```bash
+systemctl reload apache2  # Bez sudo (už jsi root)
+```
+
+#### 🚫 ZAKÁZANÉ TESTOVACÍ METODY:
 - ❌ **NIKDY nepoužívej curl/wget/http požadavky na produkční URL** `https://erdms.zachranka.cz/api.eeo/`
 - ❌ Nemáš k dispozici přístup k testování produkčních endpointů přes HTTP
-- ✅ Místo toho používej: `php -l` pro syntax check, `grep` pro analýzu kódu
-- ✅ Pro debugging spoléhej na PHP error logy: `/var/log/apache2/error.log`
-- ✅ Kontroluj konzistenci kódu bez spouštění HTTP requestů
+
+#### ✅ POVOLENÉ TESTOVACÍ METODY:
+- ✅ `php -l /path/to/file.php` - syntax check
+- ✅ `grep -r "pattern" /path/` - analýza kódu
+- ✅ Kontrola PHP error logů (viz výše)
+- ✅ Kontrola konzistenci kódu bez HTTP requestů
 
 ### Databázové připojení
 - ❌ NIKDY nepoužívej `localhost` - databáze běží na vzdáleném serveru
@@ -99,7 +136,20 @@ setMysqlTimezone($db) - nastavuje MySQL session timezone na českou časovou zó
 - 🇨🇿 **České názvy** jsou primární (tabulky i sloupce)
 - ✅ VŽDY ověř existenci konstant tabulek v `/apps/eeo-v2/api-legacy/api.eeo/api.php` (řádky 100-200)
 - ❌ NIKDY nevytvářej nové názvy tabulek "od ruky"
-- ❌ NIKDY nepředpokládej názvy sloupců - zkontroluj je v databázi
+- ❌ NIKDY nepředpokládaj názvy sloupců - zkontroluj je v databázi nebo existujících queries!
+
+**⚠️ ČASTÁ CHYBA - NÁZVY SLOUPCŮ:**
+```php
+// ❌ ŠPATNĚ - předpokládáš název sloupce:
+LEFT JOIN 25_organizace_vizitka org ON ...
+SELECT org.nazev  // CHYBA! Sloupec se jmenuje 'nazev_organizace'
+
+// ✅ SPRÁVNĚ - ověř název v existujících queries:
+grep -r "25_organizace_vizitka" lib/*.php
+// Najdeš: ORDER BY nazev_organizace ASC
+
+SELECT org.nazev_organizace as organizace_nazev  // Správně!
+```
 
 **Příklad konstant tabulek:**
 ```php
@@ -107,6 +157,7 @@ define('TBL_OBJEDNAVKY', '25a_objednavky');
 define('TBL_UZIVATELE', '25_uzivatele');
 define('TBL_FAKTURY', '25a_objednavky_faktury');
 define('TBL_SMLOUVY', '25_smlouvy');
+define('TBL_ORGANIZACE_VIZITKA', '25_organizace_vizitka');
 ```
 
 ### Vytváření nových tabulek/sloupců
@@ -198,13 +249,14 @@ Před dokončením práce vždy zkontroluj:
 - [ ] **Autentizace:** Validuješ `username` a `token` z body?
 - [ ] **Bezpečnost:** Používáš prepared statements?
 - [ ] **Konstanty:** Všechny názvy tabulek jsou z konstant (TBL_*)?
-- [ ] **Ověření sloupců:** Ověřil jsi názvy sloupců v databázi?
+- [ ] **Ověření sloupců:** Ověřil jsi názvy sloupců pomocí `grep -r "nazev_tabulky" lib/*.php`?
 - [ ] **Odpověď:** JSON formát má `status`, `data`, `message`?
-- [ ] **Error handling:** Try-catch pro všechny DB operace?
+- [ ] **Error handling:** Try-catch pro všechny DB operace s `error_log()`?
 - [ ] **HTTP kódy:** Správné status codes (200, 400, 401, 403, 500)?
 - [ ] **České texty:** Všechny error messages jsou česky?
 - [ ] **ENV Variables:** Frontend používá process.env.REACT_APP_*?
 - [ ] **Config:** PHP čte všechny cesty a URL z $_ENV nebo config?
+- [ ] **🐛 Testováno:** Zkontroloval jsi `/var/www/erdms-dev/logs/php-error.log` po testu?
 
 ---
 
