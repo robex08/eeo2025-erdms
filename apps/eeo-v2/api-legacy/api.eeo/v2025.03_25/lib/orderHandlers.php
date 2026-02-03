@@ -1180,7 +1180,7 @@ function loadDruhObjednavkyByKod($db, $druh_kod) {
     
     try {
         // Načteme z 25_ciselnik_stavy kde typ_objektu='DRUH_OBJEDNAVKY'
-        $stmt = $db->prepare("SELECT kod_stavu as kod, nazev_stavu as nazev, popis FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :druh LIMIT 1");
+        $stmt = $db->prepare("SELECT kod_stavu as kod, nazev_stavu as nazev, popis, atribut_objektu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :druh LIMIT 1");
         $stmt->bindParam(':druh', $druh_kod, PDO::PARAM_STR);
         $stmt->execute();
         $druh = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1189,7 +1189,8 @@ function loadDruhObjednavkyByKod($db, $druh_kod) {
             return array(
                 'kod' => $druh['kod'],
                 'nazev' => $druh['nazev'],
-                'popis' => isset($druh['popis']) ? $druh['popis'] : null
+                'popis' => isset($druh['popis']) ? $druh['popis'] : null,
+                'atribut_objektu' => isset($druh['atribut_objektu']) ? (int)$druh['atribut_objektu'] : 0
             );
         }
         

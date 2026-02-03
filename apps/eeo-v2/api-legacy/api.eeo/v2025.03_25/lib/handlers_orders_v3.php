@@ -225,8 +225,14 @@ function handle_orders_v3_detail($input, $config) {
             p.typ_prilohy,
             p.velikost_souboru_b,
             p.nahrano_uzivatel_id,
-            p.dt_vytvoreni
+            p.dt_vytvoreni,
+            u.jmeno as nahral_jmeno,
+            u.prijmeni as nahral_prijmeni,
+            u.email as nahral_email,
+            u.titul_pred as nahral_titul_pred,
+            u.titul_za as nahral_titul_za
         FROM " . TBL_OBJEDNAVKY_PRILOHY . " p
+        LEFT JOIN " . TBL_UZIVATELE . " u ON p.nahrano_uzivatel_id = u.id
         WHERE p.objednavka_id = :order_id
         ORDER BY p.dt_vytvoreni DESC";
 
@@ -350,7 +356,7 @@ function handle_orders_v3_detail($input, $config) {
             }
         }
 
-        // 3️⃣ DRUH OBJEDNÁVKY - název z číselníku
+        // 3️⃣ DRUH OBJEDNÁVKY - název z číselníku + atribut_objektu (majetek)
         if (!empty($order['druh_objednavky_kod'])) {
             $druh_kod = $order['druh_objednavky_kod'];
             // Může být JSON nebo string
@@ -359,12 +365,13 @@ function handle_orders_v3_detail($input, $config) {
                 $druh_kod = $decoded['kod_stavu'];
             }
             
-            $stmt = $db->prepare("SELECT nazev_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :kod LIMIT 1");
+            $stmt = $db->prepare("SELECT nazev_stavu, atribut_objektu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :kod LIMIT 1");
             $stmt->execute(['kod' => $druh_kod]);
             $druh_data = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($druh_data) {
                 $order['druh_objednavky_nazev'] = $druh_data['nazev_stavu'];
-                error_log("✅ Enriched druh objednávky: " . $order['druh_objednavky_nazev']);
+                $order['druh_objednavky_atribut'] = isset($druh_data['atribut_objektu']) ? (int)$druh_data['atribut_objektu'] : 0;
+                error_log("✅ Enriched druh objednávky: " . $order['druh_objednavky_nazev'] . " (atribut: " . $order['druh_objednavky_atribut'] . ")");
             }
         }
 
@@ -440,7 +447,10 @@ function handle_orders_v3_items($input, $config) {
             p.cena_bez_dph,
             p.sazba_dph,
             p.cena_s_dph,
-            p.dt_vytvoreni
+            p.dt_vytvoreni,
+            p.budova_nazev,
+            p.mistnost_nazev,
+            p.usek_nazev
         FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
         WHERE p.objednavka_id = :order_id
         ORDER BY p.id ASC";
@@ -582,8 +592,14 @@ function handle_orders_v3_attachments($input, $config) {
             p.typ_prilohy,
             p.velikost_souboru_b,
             p.nahrano_uzivatel_id,
-            p.dt_vytvoreni
+            p.dt_vytvoreni,
+            u.jmeno as nahral_jmeno,
+            u.prijmeni as nahral_prijmeni,
+            u.email as nahral_email,
+            u.titul_pred as nahral_titul_pred,
+            u.titul_za as nahral_titul_za
         FROM " . TBL_OBJEDNAVKY_PRILOHY . " p
+        LEFT JOIN " . TBL_UZIVATELE . " u ON p.nahrano_uzivatel_id = u.id
         WHERE p.objednavka_id = :order_id
         ORDER BY p.dt_vytvoreni DESC";
 
