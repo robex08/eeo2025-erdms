@@ -19,7 +19,7 @@ if (IS_DEV_SPISOVKA) {
     // PROD - Standard
     ini_set('display_errors', 0);
     ini_set('log_errors', 1);
-    ini_set('error_log', '/tmp/php_spisovka_errors.log');
+    ini_set('error_log', '/var/www/erdms-dev/logs/php/spisovka-error.log');
     error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
 }
 
