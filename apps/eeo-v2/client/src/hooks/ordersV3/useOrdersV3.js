@@ -141,7 +141,7 @@ export function useOrdersV3({
   
   const [columnVisibility, setColumnVisibility] = useState({
     expander: true,
-    approve: false,
+    approve: true,
     dt_objednavky: true,
     cislo_objednavky: true,
     financovani: true,
@@ -591,7 +591,7 @@ export function useOrdersV3({
   const handleResetColumnConfig = useCallback(() => {
     setColumnVisibility({
       expander: true,
-      approve: false,
+      approve: true,
       dt_objednavky: true,
       cislo_objednavky: true,
       financovani: true,

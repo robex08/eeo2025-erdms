@@ -8,6 +8,7 @@
  */
 
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import {
   flexRender,
@@ -20,6 +21,8 @@ import DatePicker from '../DatePicker';
 import OperatorInput from '../OperatorInput';
 import useExpandedRowsV3 from '../../hooks/ordersV3/useExpandedRowsV3';
 import OrderExpandedRowV3 from './OrderExpandedRowV3';
+import { updateOrder } from '../../services/api2auth';
+import { getOrderDetailV3 } from '../../services/apiOrderV3';
 import {
   faPlus,
   faMinus,
@@ -670,6 +673,359 @@ const LoadingRow = styled.tr`
   }
 `;
 
+// ============================================================================
+// APPROVAL DIALOG STYLED COMPONENTS
+// ============================================================================
+
+const ApprovalDialogOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+`;
+
+const ApprovalDialog = styled.div`
+  background: white;
+  border-radius: 12px;
+  max-width: 1200px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.3s ease;
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+`;
+
+const ApprovalDialogHeader = styled.div`
+  background: linear-gradient(135deg, #10b981, #059669);
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 2px solid #047857;
+`;
+
+const ApprovalDialogIcon = styled.div`
+  font-size: 1.5rem;
+  filter: drop-shadow(0 2px 8px rgba(4, 120, 87, 0.5));
+`;
+
+const ApprovalDialogTitle = styled.h3`
+  margin: 0;
+  color: white;
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  flex: 1;
+`;
+
+const ApprovalDialogContent = styled.div`
+  padding: 1.25rem;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+`;
+
+const ApprovalTwoColumnLayout = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.5rem;
+  
+  @media (max-width: 968px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ApprovalLeftColumn = styled.div`
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+`;
+
+const ApprovalRightColumn = styled.div`
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  height: fit-content;
+`;
+
+const ApprovalCompactList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+`;
+
+const ApprovalCompactItem = styled.div`
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const ApprovalCompactLabel = styled.div`
+  font-size: 0.8125rem;
+  color: #64748b;
+  font-weight: 600;
+`;
+
+const ApprovalCompactValue = styled.div`
+  font-size: 0.875rem;
+  color: #0f172a;
+  line-height: 1.4;
+  word-break: break-word;
+`;
+
+const ApprovalSection = styled.div`
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  
+  &:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+`;
+
+const ApprovalSectionTitle = styled.div`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+`;
+
+const ApprovalDialogTopGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  grid-column: 1 / -1;
+  margin-bottom: 1rem;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ApprovalDialogSection = styled.div`
+  margin-bottom: ${props => props.$fullWidth ? '1rem' : '0'};
+  grid-column: ${props => props.$fullWidth ? '1 / -1' : 'auto'};
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const ApprovalDialogLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 0.375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const ApprovalDialogValue = styled.div`
+  font-size: 0.9375rem;
+  color: #0f172a;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  line-height: 1.4;
+`;
+
+const ApprovalDialogNote = styled.div`
+  font-size: 0.8125rem;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  background: #f1f5f9;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 4px;
+`;
+
+const ApprovalDialogTextarea = styled.textarea`
+  width: 100%;
+  min-height: 80px;
+  padding: 0.625rem;
+  border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e2e8f0'};
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.$hasError ? '#dc2626' : '#10b981'};
+  }
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
+const ApprovalDialogError = styled.div`
+  color: #ef4444;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-top: 0.375rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+
+  &:before {
+    content: '⚠️';
+    font-size: 0.875rem;
+  }
+`;
+
+const ApprovalDialogActions = styled.div`
+  display: flex;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
+  justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+`;
+
+const ApprovalDialogButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  ${props => {
+    if (props.$approve) {
+      return `
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        
+        &:hover {
+          background: linear-gradient(135deg, #059669, #047857);
+          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+          transform: translateY(-1px);
+        }
+      `;
+    } else if (props.$reject) {
+      return `
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        
+        &:hover {
+          background: linear-gradient(135deg, #dc2626, #b91c1c);
+          box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+          transform: translateY(-1px);
+        }
+      `;
+    } else if (props.$postpone) {
+      return `
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        
+        &:hover {
+          background: linear-gradient(135deg, #d97706, #b45309);
+          box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+          transform: translateY(-1px);
+        }
+      `;
+    } else {
+      return `
+        background: #f1f5f9;
+        color: #475569;
+        
+        &:hover {
+          background: #e2e8f0;
+          color: #1e293b;
+        }
+      `;
+    }
+  }}
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const ApprovalLPItem = styled.div`
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const ApprovalLPHeader = styled.div`
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+`;
+
+const ApprovalLPRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.375rem 0;
+  font-size: 0.8125rem;
+  color: #64748b;
+  
+  strong {
+    color: #0f172a;
+    font-size: 0.875rem;
+  }
+  
+  ${props => props.$highlight && `
+    background: #f8fafc;
+    padding: 0.5rem;
+    margin: 0.25rem -0.5rem;
+    border-radius: 4px;
+  `}
+`;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -893,6 +1249,12 @@ const OrdersTableV3 = ({
   // State pro hromadné rozbalování
   const [isBulkExpanding, setIsBulkExpanding] = useState(false);
   
+  // State pro schvalovací dialog
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [orderToApprove, setOrderToApprove] = useState(null);
+  const [approvalComment, setApprovalComment] = useState('');
+  const [approvalCommentError, setApprovalCommentError] = useState('');
+  
   // State pro resizing - načíst z localStorage (per user)
   const [columnSizing, setColumnSizing] = useState(() => {
     if (userId) {
@@ -992,6 +1354,94 @@ const OrdersTableV3 = ({
     setDragOverColumn(null);
   }, []);
   
+  // Handler pro zpracování schválení objednávky
+  const handleApprovalAction = useCallback(async (action) => {
+    if (!orderToApprove) return;
+
+    // ⚠️ VALIDACE: Pro Odložit a Zamítnout je poznámka POVINNÁ
+    if ((action === 'reject' || action === 'postpone') && !approvalComment.trim()) {
+      setApprovalCommentError('Poznámka je povinná pro zamítnutí nebo odložení');
+      return;
+    }
+
+    // Vymaž validaci pokud je vše OK
+    setApprovalCommentError('');
+
+    try {
+      // Načti současný workflow stav
+      let workflowStates = [];
+      try {
+        if (Array.isArray(orderToApprove.stav_workflow_kod)) {
+          workflowStates = [...orderToApprove.stav_workflow_kod];
+        } else if (typeof orderToApprove.stav_workflow_kod === 'string') {
+          workflowStates = JSON.parse(orderToApprove.stav_workflow_kod);
+        }
+      } catch (e) {
+        workflowStates = [];
+      }
+
+      // Připrav nový workflow stav podle akce
+      let newWorkflowStates = workflowStates.filter(s => 
+        !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA'].includes(s)
+      );
+
+      let orderUpdate = {
+        schvaleni_komentar: approvalComment || '', // ✅ Ukládá se vždy - i prázdný pro schválení
+        mimoradna_udalost: orderToApprove.mimoradna_udalost // ✅ ZACHOVAT status Mimořádná událost
+      };
+
+      const timestamp = new Date().toISOString();
+
+      switch (action) {
+        case 'approve':
+          // Schválit - přidej SCHVALENA
+          newWorkflowStates.push('SCHVALENA');
+          orderUpdate.stav_objednavky = 'Schválená';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = userId;
+          break;
+
+        case 'reject':
+          // Zamítnout - přidej ZAMITNUTA
+          newWorkflowStates.push('ZAMITNUTA');
+          orderUpdate.stav_objednavky = 'Zamítnutá';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = userId;
+          break;
+
+        case 'postpone':
+          // Odložit - přidej CEKA_SE (také zaznamenat kdo a kdy)
+          newWorkflowStates.push('CEKA_SE');
+          orderUpdate.stav_objednavky = 'Čeká se';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = userId;
+          break;
+
+        default:
+          return;
+      }
+
+      orderUpdate.stav_workflow_kod = JSON.stringify(newWorkflowStates);
+
+      // Zavři dialog
+      setShowApprovalDialog(false);
+      setOrderToApprove(null);
+      setApprovalComment('');
+      setApprovalCommentError('');
+
+      // 🔥 API CALL na pozadí pro update
+      await updateOrder({ token, username, payload: { id: orderToApprove.id, ...orderUpdate } });
+      
+      // Zavolej onActionClick pro refresh celého seznamu
+      if (onActionClick) {
+        onActionClick('refresh');
+      }
+    } catch (error) {
+      console.error('Chyba při schvalování objednávky:', error);
+      setApprovalCommentError('Chyba při ukládání schválení. Zkuste to znovu.');
+    }
+  }, [orderToApprove, approvalComment, token, username, userId, onActionClick]);
+  
   // Handler pro globální expand/collapse všech řádků na stránce
   // MUSÍ být před useMemo pro columns, protože se v něm používá
   const handleToggleAllRows = useCallback(async () => {
@@ -1066,17 +1516,124 @@ const OrdersTableV3 = ({
       {
         id: 'approve',
         header: () => (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
             <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
           </div>
         ),
         cell: ({ row }) => {
           const order = row.original;
-          // TODO: Implementovat logiku schválení
-          return null;
+          
+          // Kontrola workflow stavu
+          let workflowStates = [];
+          try {
+            if (Array.isArray(order.stav_workflow_kod)) {
+              workflowStates = order.stav_workflow_kod;
+            } else if (typeof order.stav_workflow_kod === 'string') {
+              workflowStates = JSON.parse(order.stav_workflow_kod);
+            }
+          } catch (e) {
+            workflowStates = [];
+          }
+          
+          const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+          const lastState = workflowStates.length > 0 
+            ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+                ? workflowStates[workflowStates.length - 1] 
+                : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+              ).toUpperCase()
+            : '';
+          
+          const isAllowedState = allowedStates.includes(lastState);
+          
+          if (!isAllowedState) return null;
+          
+          // Určení ikony podle stavu
+          const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+          const approvedStates = ['SCHVALENA', 'ZAMITNUTA'];
+          const isPending = pendingStates.includes(lastState);
+          const isApproved = approvedStates.includes(lastState);
+          
+          // Použití barev z STATUS_COLORS (jako v dashboardu) + křížek pro zamítnutou
+          let icon, iconColor, hoverBgColor, hoverBorderColor, hoverIconColor;
+          
+          if (isPending) {
+            // Ke schválení - červená + hodiny
+            icon = faHourglassHalf;
+            iconColor = '#dc2626'; // červená
+            hoverBgColor = '#fecaca';
+            hoverBorderColor = '#dc2626';
+            hoverIconColor = '#991b1b';
+          } else if (lastState === 'SCHVALENA') {
+            // Schválená - oranžová + fajfka
+            icon = faCheckCircle;
+            iconColor = '#ea580c'; // oranžová
+            hoverBgColor = '#fed7aa';
+            hoverBorderColor = '#ea580c';
+            hoverIconColor = '#c2410c';
+          } else {
+            // Zamítnutá - šedá + křížek
+            icon = faTimesCircle;
+            iconColor = '#6b7280'; // šedá
+            hoverBgColor = '#e5e7eb';
+            hoverBorderColor = '#6b7280';
+            hoverIconColor = '#4b5563';
+          }
+          
+          return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
+                    console.log('🔍 [APPROVAL] Order detail loaded:', orderDetail);
+                    console.log('🔍 [APPROVAL] Financování:', orderDetail.financovani);
+                    console.log('🔍 [APPROVAL] _enriched:', orderDetail._enriched);
+                    console.log('🔍 [APPROVAL] lp_info:', orderDetail._enriched?.lp_info);
+                    console.log('🔍 [APPROVAL] smlouva_info:', orderDetail._enriched?.smlouva_info);
+                    setOrderToApprove(orderDetail);
+                    setApprovalComment(orderDetail.schvaleni_komentar || '');
+                    setShowApprovalDialog(true);
+                  } catch (error) {
+                    console.error('Chyba při načítání detailu objednávky:', error);
+                  }
+                }}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  color: iconColor,
+                  cursor: 'pointer',
+                  padding: '0.35rem 0.5rem',
+                  fontSize: '1.1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = hoverBgColor;
+                  e.currentTarget.style.borderColor = hoverBorderColor;
+                  e.currentTarget.style.color = hoverIconColor;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.color = iconColor;
+                }}
+                title={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"}
+              >
+                <FontAwesomeIcon icon={icon} />
+              </button>
+            </div>
+          );
         },
-        size: 60,
+        size: 45,
         enableSorting: false,
+        meta: {
+          align: 'center',
+          fixed: true,
+        },
       },
       {
         accessorKey: 'dt_objednavky',
@@ -1130,7 +1687,11 @@ const OrdersTableV3 = ({
                   maxWidth: '300px',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  lineHeight: '1.3',
+                  maxHeight: '2.6em'
                 }}>
                   {order.predmet}
                 </div>
@@ -1575,6 +2136,7 @@ const OrdersTableV3 = ({
   const colSpan = table.getAllColumns().length;
 
   return (
+    <>
     <TableContainer>
       {/* Toolbar s info a reset tlačítky */}
       {(hasActiveSorting || activeFiltersCount > 0) && (
@@ -1615,7 +2177,7 @@ const OrdersTableV3 = ({
             <tr key={headerGroup.id}>
               {headerGroup.headers.map(header => {
                 const columnId = header.column.id;
-                const canHide = columnId !== 'expander' && columnId !== 'actions';
+                const canHide = columnId !== 'expander' && columnId !== 'actions' && columnId !== 'approve';
                 
                 return (
                   <TableHeaderCell
@@ -1892,6 +2454,510 @@ const OrdersTableV3 = ({
         </TableBody>
       </Table>
     </TableContainer>
+
+      {/* 🎯 Schvalovací dialog */}
+      {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
+        <ApprovalDialogOverlay>
+          <ApprovalDialog onClick={(e) => e.stopPropagation()}>
+            <ApprovalDialogHeader>
+              <ApprovalDialogIcon>✅</ApprovalDialogIcon>
+              <ApprovalDialogTitle>
+                Schválení objednávky
+                <span style={{ 
+                  marginLeft: '1rem', 
+                  fontSize: '0.9em', 
+                  fontWeight: 700,
+                  color: '#fbbf24',
+                  background: '#065f46',
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '6px',
+                  border: '2px solid #047857',
+                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                }}>
+                  {orderToApprove.stav_objednavky || '---'}
+                </span>
+                {(orderToApprove.mimoradna_udalost == 1 || orderToApprove.mimoradna_udalost === '1') && (
+                  <span style={{ 
+                    marginLeft: '0.5rem',
+                    fontSize: '1.1em',
+                    display: 'inline-block',
+                    verticalAlign: 'middle',
+                    color: '#dc2626',
+                    fontWeight: 'bold'
+                  }} title="Mimořádná událost">
+                    <FontAwesomeIcon icon={faBoltLightning} />
+                  </span>
+                )}
+              </ApprovalDialogTitle>
+            </ApprovalDialogHeader>
+
+            <ApprovalDialogContent>
+              {/* 2-Column Layout: Levý sloupec = základní info, pravý = financování */}
+              <ApprovalTwoColumnLayout>
+                {/* LEVÝ SLOUPEC - Základní informace */}
+                <ApprovalLeftColumn>
+                  <ApprovalCompactList>
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Číslo:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        <strong>{orderToApprove.cislo_objednavky || orderToApprove.ev_cislo || `#${orderToApprove.id}`}</strong>
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Předmět:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>{orderToApprove.predmet || '---'}</ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Objednatel:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        {(() => {
+                          // V3 používá flat fields: objednatel_jmeno, objednatel_prijmeni, objednatel_titul_pred, objednatel_titul_za
+                          if (orderToApprove.objednatel_jmeno || orderToApprove.objednatel_prijmeni) {
+                            const titul_pred = orderToApprove.objednatel_titul_pred ? orderToApprove.objednatel_titul_pred + ' ' : '';
+                            const jmeno = orderToApprove.objednatel_jmeno || '';
+                            const prijmeni = orderToApprove.objednatel_prijmeni || '';
+                            const titul_za = orderToApprove.objednatel_titul_za ? ', ' + orderToApprove.objednatel_titul_za : '';
+                            return `${titul_pred}${jmeno} ${prijmeni}${titul_za}`.replace(/\s+/g, ' ').trim();
+                          }
+                          return '---';
+                        })()}
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Garant:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        {(() => {
+                          // V3 používá flat fields: garant_jmeno, garant_prijmeni, garant_titul_pred, garant_titul_za
+                          if (orderToApprove.garant_jmeno || orderToApprove.garant_prijmeni) {
+                            const titul_pred = orderToApprove.garant_titul_pred ? orderToApprove.garant_titul_pred + ' ' : '';
+                            const jmeno = orderToApprove.garant_jmeno || '';
+                            const prijmeni = orderToApprove.garant_prijmeni || '';
+                            const titul_za = orderToApprove.garant_titul_za ? ', ' + orderToApprove.garant_titul_za : '';
+                            return `${titul_pred}${jmeno} ${prijmeni}${titul_za}`.replace(/\s+/g, ' ').trim();
+                          }
+                          return '---';
+                        })()}
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    {(() => {
+                      // Parse strediska_kod if it's a string
+                      let strediska_array = orderToApprove.strediska_kod;
+                      if (typeof strediska_array === 'string') {
+                        try {
+                          strediska_array = JSON.parse(strediska_array);
+                        } catch (e) {
+                          strediska_array = null;
+                        }
+                      }
+                      
+                      if (strediska_array && Array.isArray(strediska_array) && strediska_array.length > 0) {
+                        return (
+                          <ApprovalCompactItem>
+                            <ApprovalCompactLabel>Střediska:</ApprovalCompactLabel>
+                            <ApprovalCompactValue>
+                              {orderToApprove._enriched?.strediska && Array.isArray(orderToApprove._enriched.strediska) && orderToApprove._enriched.strediska.length > 0
+                                ? orderToApprove._enriched.strediska.map(s => s.nazev || s.kod).join(', ')
+                                : strediska_array.join(', ')}
+                            </ApprovalCompactValue>
+                          </ApprovalCompactItem>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Max. cena:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        <strong style={{ color: '#0f172a', fontSize: '1.05rem' }}>
+                          {orderToApprove.max_cena_s_dph 
+                            ? `${parseFloat(orderToApprove.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč`
+                            : '---'}
+                        </strong>
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+                  </ApprovalCompactList>
+
+                  {/* Poznámka ke schválení - v levém sloupci */}
+                  <ApprovalSection style={{ marginTop: '1rem' }}>
+                    <ApprovalSectionTitle>📝 Poznámka ke schválení (nepovinná)</ApprovalSectionTitle>
+                    <ApprovalDialogTextarea
+                      $hasError={!!approvalCommentError}
+                      value={approvalComment}
+                      onChange={(e) => {
+                        setApprovalComment(e.target.value);
+                        if (approvalCommentError) {
+                          setApprovalCommentError('');
+                        }
+                      }}
+                      placeholder="Nepovinná poznámka ke schválení (povinná pro Odložit/Zamítnout)..."
+                    />
+                    {approvalCommentError && (
+                      <ApprovalDialogError>{approvalCommentError}</ApprovalDialogError>
+                    )}
+                  </ApprovalSection>
+                </ApprovalLeftColumn>
+
+                {/* PRAVÝ SLOUPEC - Financování (LP/Smlouvy) */}
+                <ApprovalRightColumn>
+                  {/* LP */}
+                  {orderToApprove.financovani?.lp_kody && Array.isArray(orderToApprove.financovani.lp_kody) && orderToApprove.financovani.lp_kody.length > 0 && (
+                    <>
+                      <ApprovalSectionTitle>💰 Limitované přísliby</ApprovalSectionTitle>
+                      {(() => {
+                        const lpInfo = orderToApprove._enriched?.lp_info || [];
+                        
+                        if (lpInfo.length > 0) {
+                          return lpInfo.map((lp, idx) => {
+                            // Výpočet procenta čerpání (plánovaného)
+                            const hodnotaLP = parseFloat(lp.total_limit) || 0;
+                            const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                            const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
+                            const percentCerpani = hodnotaLP > 0 ? Math.round((cerpanoPredpoklad / hodnotaLP) * 100) : 0;
+                            const hasLimit = hodnotaLP > 0;
+                            
+                            return (
+                              <ApprovalLPItem key={idx}>
+                                <ApprovalLPHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{lp.kod} — {lp.nazev}</span>
+                                  {hasLimit && (
+                                    <div style={{
+                                      background: percentCerpani <= 100 ? '#dcfce7' : '#fee2e2',
+                                      color: percentCerpani <= 100 ? '#166534' : '#991b1b',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                      border: `1px solid ${percentCerpani <= 100 ? '#86efac' : '#fca5a5'}`,
+                                      minWidth: '50px',
+                                      textAlign: 'center'
+                                    }}>
+                                      {percentCerpani}%
+                                    </div>
+                                  )}
+                                </ApprovalLPHeader>
+                                <ApprovalLPRow>
+                                  <span>Celkový limit:</span>
+                                  <strong>{lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow>
+                                  <span>Čerpáno (předpokl.):</span>
+                                  <strong>{cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow $highlight>
+                                  <span>Zbývá (předpokl.):</span>
+                                  <strong style={{ color: lp.remaining_budget && parseFloat(lp.remaining_budget) < 0 ? '#dc2626' : '#059669' }}>
+                                    {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                  </strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow>
+                                  <span>Čerpáno (skutečně):</span>
+                                  <strong>{cerpanoSkutecne.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                </ApprovalLPRow>
+                                
+                                {/* Roční plán čerpání - progress bar */}
+                                {hodnotaLP > 0 && (() => {
+                                  const currentMonth = new Date().getMonth();
+                                  const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                  const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                  const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                                  
+                                  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+                                  
+                                  return (
+                                    <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
+                                          {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
+                                        </span>
+                                      </div>
+                                      <div style={{
+                                        display: 'flex',
+                                        width: '100%',
+                                        minHeight: '36px',
+                                        gap: '2px',
+                                        background: '#f1f5f9',
+                                        borderRadius: '4px',
+                                        padding: '3px',
+                                        position: 'relative'
+                                      }}>
+                                        {Array.from({ length: 12 }).map((_, monthIndex) => {
+                                          const isCurrentMonth = monthIndex === currentMonth;
+                                          const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                                          
+                                          let bgColor;
+                                          if (isCurrentMonth) {
+                                            bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                                          } else if (monthIndex < currentMonth) {
+                                            bgColor = '#94a3b8';
+                                          } else {
+                                            bgColor = '#e2e8f0';
+                                          }
+                                          
+                                          const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                                          
+                                          return (
+                                            <div
+                                              key={monthIndex}
+                                              style={{
+                                                flex: 1,
+                                                background: bgColor,
+                                                borderRadius: '3px',
+                                                position: 'relative',
+                                                border: isCurrentMonth ? '2px solid #0f172a' : 'none',
+                                                minHeight: '30px',
+                                                paddingLeft: '1px',
+                                                paddingRight: '1px'
+                                              }}
+                                              title={`${percentCerpani}% / ${planedPercent}%`}
+                                            >
+                                              <div style={{
+                                                position: 'absolute',
+                                                top: '2px',
+                                                right: '3px',
+                                                fontSize: '0.5rem',
+                                                fontWeight: 500,
+                                                opacity: 0.6,
+                                                color: textColor,
+                                                zIndex: 10
+                                              }}>
+                                                {romanNumerals[monthIndex]}
+                                              </div>
+                                              
+                                              <div style={{ 
+                                                position: 'absolute',
+                                                bottom: '0px',
+                                                left: '0',
+                                                right: '0',
+                                                textAlign: 'center',
+                                                fontSize: '0.65rem', 
+                                                fontWeight: 700,
+                                                color: textColor
+                                              }}>
+                                                {planedPercent}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </ApprovalLPRow>
+                                  );
+                                })()}
+                              </ApprovalLPItem>
+                            );
+                          });
+                        } else {
+                          return <div style={{ color: '#64748b', fontSize: '0.875rem' }}>{orderToApprove.financovani.lp_kody.join(', ')}</div>;
+                        }
+                      })()}
+                      {orderToApprove.financovani?.lp_poznamka && (
+                        <div style={{ marginTop: '0.5rem', color: '#64748b', fontSize: '0.875rem' }}>
+                          <strong>Poznámka:</strong> {orderToApprove.financovani.lp_poznamka}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Smlouva */}
+                  {(orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy) && (
+                    <>
+                      <ApprovalSectionTitle style={{ marginTop: orderToApprove.financovani?.lp_kody ? '1rem' : '0' }}>📄 Smlouva</ApprovalSectionTitle>
+                      {(() => {
+                        const smlouvaInfo = orderToApprove._enriched?.smlouva_info;
+                        const cisloSmlouvy = orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy;
+                        
+                        if (smlouvaInfo && smlouvaInfo.hodnota) {
+                          const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
+                          const cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+                          const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((cerpanoPozadovano / hodnotaSmlouvy) * 100) : 0;
+                          const hasStropovaCena = hodnotaSmlouvy > 0;
+                          
+                          return (
+                            <ApprovalLPItem>
+                              <ApprovalLPHeader>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{cisloSmlouvy}</span>
+                                  {hasStropovaCena && (
+                                    <div style={{
+                                      background: percentCerpani <= 100 ? '#dcfce7' : '#fee2e2',
+                                      color: percentCerpani <= 100 ? '#166534' : '#991b1b',
+                                      padding: '0.25rem 0.6rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                      border: `1px solid ${percentCerpani <= 100 ? '#86efac' : '#fca5a5'}`,
+                                      minWidth: '50px',
+                                      textAlign: 'center'
+                                    }}>
+                                      {percentCerpani}%
+                                    </div>
+                                  )}
+                                </div>
+                              </ApprovalLPHeader>
+                              <ApprovalLPRow>
+                                <span>Hodnota smlouvy:</span>
+                                <strong>{parseFloat(smlouvaInfo.hodnota).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                              </ApprovalLPRow>
+                              <ApprovalLPRow>
+                                <span>Čerpáno (požad.):</span>
+                                <strong>{smlouvaInfo.cerpano_pozadovano ? parseFloat(smlouvaInfo.cerpano_pozadovano).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                              </ApprovalLPRow>
+                              <ApprovalLPRow $highlight>
+                                <span>Zbývá (požad.):</span>
+                                <strong style={{ color: smlouvaInfo.zbyva_pozadovano && parseFloat(smlouvaInfo.zbyva_pozadovano) < 0 ? '#dc2626' : '#059669' }}>
+                                  {smlouvaInfo.zbyva_pozadovano ? parseFloat(smlouvaInfo.zbyva_pozadovano).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                </strong>
+                              </ApprovalLPRow>
+                              <ApprovalLPRow>
+                                <span>Čerpáno (skut.):</span>
+                                <strong>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                              </ApprovalLPRow>
+                              
+                              {/* Roční plán čerpání - progress bar */}
+                              {hodnotaSmlouvy > 0 && (() => {
+                                const currentMonth = new Date().getMonth(); // 0-11
+                                const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                                
+                                const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+                                
+                                return (
+                                  <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
+                                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
+                                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
+                                        {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
+                                      </span>
+                                    </div>
+                                    <div style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minHeight: '36px',
+                                      gap: '2px',
+                                      background: '#f1f5f9',
+                                      borderRadius: '4px',
+                                      padding: '3px',
+                                      position: 'relative'
+                                    }}>
+                                      {Array.from({ length: 12 }).map((_, monthIndex) => {
+                                        const isCurrentMonth = monthIndex === currentMonth;
+                                        const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                                        
+                                        let bgColor;
+                                        if (isCurrentMonth) {
+                                          bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                                        } else if (monthIndex < currentMonth) {
+                                          bgColor = '#94a3b8';
+                                        } else {
+                                          bgColor = '#e2e8f0';
+                                        }
+                                        
+                                        const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                                        
+                                        return (
+                                          <div
+                                            key={monthIndex}
+                                            style={{
+                                              flex: 1,
+                                              background: bgColor,
+                                              borderRadius: '3px',
+                                              position: 'relative',
+                                              border: isCurrentMonth ? '2px solid #0f172a' : 'none',
+                                              minHeight: '30px',
+                                              paddingLeft: '1px',
+                                              paddingRight: '1px'
+                                            }}
+                                            title={`${percentCerpani}% / ${planedPercent}%`}
+                                          >
+                                            <div style={{
+                                              position: 'absolute',
+                                              top: '2px',
+                                              right: '3px',
+                                              fontSize: '0.5rem',
+                                              fontWeight: 500,
+                                              opacity: 0.6,
+                                              color: textColor,
+                                              zIndex: 10
+                                            }}>
+                                              {romanNumerals[monthIndex]}
+                                            </div>
+                                            
+                                            <div style={{ 
+                                              position: 'absolute',
+                                              bottom: '0px',
+                                              left: '0',
+                                              right: '0',
+                                              textAlign: 'center',
+                                              fontSize: '0.65rem', 
+                                              fontWeight: 700,
+                                              color: textColor
+                                            }}>
+                                              {planedPercent}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </ApprovalLPRow>
+                                );
+                              })()}
+                            </ApprovalLPItem>
+                          );
+                        } else {
+                          return (
+                            <div style={{ color: '#64748b', fontSize: '0.875rem' }}>
+                              Číslo: <strong>{cisloSmlouvy}</strong>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </>
+                  )}
+                </ApprovalRightColumn>
+              </ApprovalTwoColumnLayout>
+
+              <ApprovalDialogActions>
+                <ApprovalDialogButton onClick={() => {
+                  setShowApprovalDialog(false);
+                  setOrderToApprove(null);
+                  setApprovalComment('');
+                  setApprovalCommentError('');
+                }}>
+                  Storno
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $postpone
+                  onClick={() => handleApprovalAction('postpone')}
+                >
+                  ⏰ Odložit
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $reject
+                  onClick={() => handleApprovalAction('reject')}
+                >
+                  ❌ Zamítnout
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $approve
+                  onClick={() => handleApprovalAction('approve')}
+                >
+                  ✅ Schválit
+                </ApprovalDialogButton>
+              </ApprovalDialogActions>
+            </ApprovalDialogContent>
+          </ApprovalDialog>
+        </ApprovalDialogOverlay>,
+        document.body
+      )}
+    </>
   );
 };
 
