@@ -14,7 +14,7 @@ function debugHierarchy($message) {
     if (strpos(__DIR__, 'erdms-dev') !== false) {
         $timestamp = date('Y-m-d H:i:s');
         $logMessage = "[$timestamp] HIERARCHY: $message\n";
-        file_put_contents('/tmp/hierarchy_debug.log', $logMessage, FILE_APPEND | LOCK_EX);
+        file_put_contents('/var/www/erdms-dev/logs/hierarchy_debug.log', $logMessage, FILE_APPEND | LOCK_EX);
         error_log("HIERARCHY DEBUG: $message");
     }
 }
