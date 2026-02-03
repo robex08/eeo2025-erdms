@@ -280,7 +280,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
 
 function App() {
   const { isMobile } = useDevice();
-  const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, user_id, user } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, user_id, user from AuthContext
+  const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, user_id, user, setIsRefreshingToken } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, user_id, user, setIsRefreshingToken from AuthContext
   const { showToast } = useContext(ToastContext) || {};
   const bgTasksContext = useBgTasksContext();
   const exchangeRatesContext = useExchangeRates(); // ← Nový context pro směnné kurzy
@@ -333,13 +333,27 @@ function App() {
   }, [bgTasks]);
 
   // ✅ TOKEN AUTO-REFRESH: Callback pro automatickou aktualizaci tokenu
-  const handleTokenRefresh = useCallback((newToken) => {
-    setToken(newToken);
-    // Uložit nový token do storage
-    import('./utils/authStorage').then(({ saveAuthData }) => {
-      saveAuthData.token(newToken);
-    });
-  }, [setToken]);
+  const handleTokenRefresh = useCallback(async (newToken) => {
+    try {
+      setIsRefreshingToken(true);
+      
+      // KRITICKÉ: Uložit token SYNCHRONNĚ před nastavením state
+      const { saveAuthData } = await import('./utils/authStorage');
+      await saveAuthData.token(newToken);
+      
+      // Pak teprve aktualizovat state
+      setToken(newToken);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Token byl úspěšně refreshnut a uložen');
+      }
+    } catch (error) {
+      console.error('❌ Chyba při ukládání nového tokenu:', error);
+    } finally {
+      // Počkat chvíli před zrušením flagu (aby probíhající API calls stihly použít nový token)
+      setTimeout(() => setIsRefreshingToken(false), 500);
+    }
+  }, [setToken, setIsRefreshingToken]);
 
   // 💓 User activity tracking:
   // - Keepalive ping každých 5 minut (BEZ validace, jen "user is alive")  

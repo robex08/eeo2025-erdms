@@ -15,17 +15,48 @@ export const api2NoInterceptor = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
-// ✅ Response interceptor - logout při 401
+// ✅ Response interceptor - logout při 401 (s ochranou během token refreshu)
 api2.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
     // Pokud je to 401, uživatel musí být odhlášen
+    // ALE: Počkat pokud právě probíhá token refresh (race condition protection)
     if (error.response?.status === 401 && !originalRequest?._logout_triggered) {
       originalRequest._logout_triggered = true;
       
-      // Trigger authError event pro logout
+      // 🔐 OCHRANA: Pokud probíhá token refresh, počkat chvíli a zkusit znovu
+      try {
+        const isRefreshing = sessionStorage.getItem('token_refreshing') === 'true';
+        if (isRefreshing) {
+          // Počkat 600ms a zkusit request znovu s novým tokenem
+          await new Promise(resolve => setTimeout(resolve, 600));
+          
+          // Zkusit znovu načíst token a zopakovat request
+          try {
+            const { loadAuthData } = await import('../utils/authStorage.js');
+            const newToken = await loadAuthData.token();
+            if (newToken && originalRequest.data) {
+              // Aktualizovat token v requestu
+              const requestData = typeof originalRequest.data === 'string' 
+                ? JSON.parse(originalRequest.data) 
+                : originalRequest.data;
+              requestData.token = newToken;
+              originalRequest.data = JSON.stringify(requestData);
+              
+              // Zopakovat request
+              return api2.request(originalRequest);
+            }
+          } catch (retryError) {
+            console.warn('⚠️ Retry po token refreshu selhal:', retryError);
+          }
+        }
+      } catch (checkError) {
+        console.warn('⚠️ Chyba při kontrole token refresh stavu:', checkError);
+      }
+      
+      // Trigger authError event pro logout (pokud retry selhal nebo neproběhl)
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
