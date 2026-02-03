@@ -773,13 +773,81 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Způsob financování */}
               {(detail.financovani_display || detail.financovani) && (
-                <InfoRow>
-                  <InfoLabel>Způsob financování:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 600, color: '#7c3aed' }}>
-                    {detail.financovani_display || detail.financovani}
-                  </InfoValue>
-                </InfoRow>
+                <>
+                  <InfoRow>
+                    <InfoLabel>Způsob financování:</InfoLabel>
+                    <InfoValue style={{ fontWeight: 600, color: '#7c3aed' }}>
+                      {detail.financovani_display || detail.financovani}
+                    </InfoValue>
+                  </InfoRow>
+
+                  {/* LP kódy s detaily - zobrazit POD způsobem financování */}
+                  {detail.financovani?.lp_nazvy && Array.isArray(detail.financovani.lp_nazvy) && detail.financovani.lp_nazvy.length > 0 && (
+                    <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                      {detail.financovani.lp_nazvy.map((lp, index) => (
+                        <div key={index} style={{
+                          fontSize: '0.9em',
+                          marginBottom: '0.25rem',
+                          paddingLeft: '0.5rem',
+                          borderLeft: '3px solid #7c3aed',
+                          backgroundColor: '#faf5ff',
+                          padding: '0.4rem 0.5rem',
+                          borderRadius: '0 4px 4px 0'
+                        }}>
+                          <span style={{ fontWeight: 600, color: '#7c3aed' }}>
+                            {lp.cislo_lp || lp.kod || '---'}
+                          </span>
+                          {lp.nazev && (
+                            <span style={{ color: '#64748b', marginLeft: '0.5rem' }}>
+                              – {lp.nazev}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
+
+              {/* Další dynamická data financování */}
+              {detail.financovani && typeof detail.financovani === 'object' && (() => {
+                const fin = detail.financovani;
+                const skipKeys = ['typ', 'typ_nazev', 'nazev', 'lp_kody', 'lp_nazvy', 'kod_stavu', 'nazev_stavu', 'label'];
+                const extraKeys = Object.keys(fin).filter(key => !skipKeys.includes(key) && fin[key] != null);
+
+                return extraKeys.map(key => {
+                  const value = fin[key];
+                  const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
+                  const labelMap = {
+                    'cislo': 'Číslo',
+                    'poznamka': 'Poznámka',
+                    'lp_poznamka': 'Poznámka k LP',
+                    'cislo_smlouvy': 'Číslo smlouvy',
+                    'smlouva_cislo': 'Číslo smlouvy',
+                    'poznamka_smlouvy': 'Poznámka smlouvy',
+                    'cislo_pojistne_udalosti': 'Číslo pojistné události',
+                    'poznamka_pojistne_udalosti': 'Poznámka',
+                    'individualni_schvaleni': 'Číslo schválení',
+                    'individualni_poznamka': 'Poznámka',
+                    'individualni_schvaleni_poznamka': 'Poznámka',
+                    'pokladna_cislo': 'Číslo',
+                    'pokladna_poznamka': 'Poznámka',
+                    'castka': 'Částka',
+                    'datum': 'Datum',
+                    'schvalovaci_osoba': 'Schvalující osoba'
+                  };
+                  const label = labelMap[key] || key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+
+                  return (
+                    <InfoRow key={key}>
+                      <InfoLabel>{label}:</InfoLabel>
+                      <InfoValue style={{ fontSize: '0.9em' }}>
+                        {displayValue}
+                      </InfoValue>
+                    </InfoRow>
+                  );
+                });
+              })()}
 
               <div style={{ borderBottom: '1px solid #e5e7eb', margin: '0.75rem 0' }} />
 
@@ -1164,7 +1232,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         {/* Řádek faktury */}
                         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start', marginBottom: '0.25rem' }}>
                           <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>
-                            FA#{faktura.fa_cislo_vema || 'N/A'}
+                            FA VS: {faktura.fa_cislo_vema || 'N/A'}
                           </div>
                           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                             {faktura.vytvoril_jmeno && faktura.vytvoril_prijmeni 
@@ -1371,7 +1439,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   <InvoiceItem key={index}>
                     <InvoiceHeader>
                       <InvoiceNumber>
-                        {invoice.fa_cislo_vema || `Faktura #${invoice.id}`}
+                        FA VS: {invoice.fa_cislo_vema || invoice.id || 'N/A'}
                       </InvoiceNumber>
                       <InvoiceAmount>
                         {formatCurrency(invoice.fa_castka)}
@@ -1389,7 +1457,15 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     )}
                     {invoice.stav && (
                       <InvoiceDetail>
-                        Stav: {invoice.stav}
+                        Stav: {(() => {
+                          const stavMap = {
+                            'VECNA_SPRAVNOST': 'Věcná správnost',
+                            'NOVA': 'Nová',
+                            'ZAPLACENA': 'Zaplacena',
+                            'STORNO': 'Storno'
+                          };
+                          return stavMap[invoice.stav] || invoice.stav;
+                        })()}
                       </InvoiceDetail>
                     )}
                   </InvoiceItem>

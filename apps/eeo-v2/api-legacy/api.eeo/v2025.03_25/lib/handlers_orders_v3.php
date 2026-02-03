@@ -303,19 +303,31 @@ function handle_orders_v3_detail($input, $config) {
                     $typ_nazev = getFinancovaniTypNazev($db, $financovani_obj['typ']);
                     if ($typ_nazev) {
                         $order['financovani_typ_nazev'] = $typ_nazev;
+                        $financovani_obj['typ_nazev'] = $typ_nazev;
                     }
                     
-                    // LP detaily
-                    if ($financovani_obj['typ'] === 'LP' && !empty($financovani_obj['lp_kody'])) {
-                        $lp_nazvy = array();
+                    // LP detaily - univerzálně pro všechny typy financování s LP kódy
+                    if (!empty($financovani_obj['lp_kody']) && is_array($financovani_obj['lp_kody'])) {
+                        $lp_detaily = array();
+                        $lp_nazvy_string = array();
+                        
                         foreach ($financovani_obj['lp_kody'] as $lp_id) {
                             $lp_detail = getLPDetaily($db, $lp_id);
                             if ($lp_detail) {
-                                $lp_nazvy[] = $lp_detail['cislo_lp'] . ' - ' . $lp_detail['nazev_uctu'];
+                                // Pro frontend objekty
+                                $lp_detaily[] = array(
+                                    'id' => $lp_id,
+                                    'cislo_lp' => $lp_detail['cislo_lp'],
+                                    'nazev' => $lp_detail['nazev_uctu']
+                                );
+                                // Pro string zobrazení
+                                $lp_nazvy_string[] = $lp_detail['cislo_lp'] . ' - ' . $lp_detail['nazev_uctu'];
                             }
                         }
-                        if (!empty($lp_nazvy)) {
-                            $order['financovani_lp_nazvy'] = implode(', ', $lp_nazvy);
+                        
+                        if (!empty($lp_detaily)) {
+                            $financovani_obj['lp_nazvy'] = $lp_detaily;
+                            $order['financovani_lp_nazvy'] = implode(', ', $lp_nazvy_string);
                             error_log("✅ Enriched financování LP: " . $order['financovani_lp_nazvy']);
                         }
                     }
@@ -326,19 +338,15 @@ function handle_orders_v3_detail($input, $config) {
                     }
                 }
                 
-                // Celý zobrazovací text pro financování
-                $financovani_display_parts = array();
+                // Celý zobrazovací text pro financování - pouze typ, bez LP kódů
                 if (!empty($order['financovani_typ_nazev'])) {
-                    $financovani_display_parts[] = $order['financovani_typ_nazev'];
-                }
-                if (!empty($order['financovani_lp_nazvy'])) {
-                    $financovani_display_parts[] = $order['financovani_lp_nazvy'];
-                }
-                if (!empty($financovani_display_parts)) {
-                    $order['financovani_display'] = implode(' - ', $financovani_display_parts);
+                    $order['financovani_display'] = $order['financovani_typ_nazev'];
                 } else {
                     $order['financovani_display'] = json_encode($financovani_obj, JSON_UNESCAPED_UNICODE);
                 }
+                
+                // ✅ Přidat parsovaný objekt financovani pro frontend (jako v OrderList25)
+                $order['financovani'] = $financovani_obj;
             }
         }
 
