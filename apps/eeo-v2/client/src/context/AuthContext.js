@@ -46,6 +46,7 @@ export const AuthProvider = ({ children }) => {
   const [needsPasswordChange, setNeedsPasswordChange] = useState(false); // 🔑 Vynucená změna hesla
   const [temporaryPassword, setTemporaryPassword] = useState(''); // 🔑 Dočasné heslo pro vynucenou změnu
   const [tempToken, setTempToken] = useState(null); // 🔑 Dočasný token pro změnu hesla
+  const [isRefreshingToken, setIsRefreshingToken] = useState(false); // 🔄 Flag pro sledování token refreshu
   
   // 🌲 HIERARCHIE WORKFLOW: Stav hierarchie pro aktuálního uživatele
   const [hierarchyStatus, setHierarchyStatus] = useState({
@@ -1046,8 +1047,11 @@ export const AuthProvider = ({ children }) => {
       hasAdminRole, 
       refreshUserDetail,
       hierarchyStatus, // 🌲 HIERARCHIE WORKFLOW
+      setHierarchyStatus, // 🌲 HIERARCHIE: Setter pro hierarchyStatus
       needsPasswordChange, // 🔑 Flag pro vynucenou změnu hesla
-      changeForcePassword // 🔑 Funkce pro změnu hesla
+      changeForcePassword, // 🔑 Funkce pro změnu hesla
+      isRefreshingToken, // 🔄 Flag pro sledování token refreshu
+      setIsRefreshingToken // 🔄 Setter pro isRefreshingToken
     }}>
       {children}
     </AuthContext.Provider>

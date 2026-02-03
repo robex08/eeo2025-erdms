@@ -263,6 +263,8 @@ const MenuDropdownButton = styled.button`
   border: none;
   color: ${({theme}) => theme.colors.primary};
   font-size: 1.05em;
+  line-height: 1.5;
+  min-height: 2.8em;
   padding: 0.4em 0.85em;
   border-radius: 0.8em;
   transition: all 0.22s ease;
@@ -389,6 +391,8 @@ const MenuLinkLeft = styled(Link, {
   text-decoration: none !important;
   color: ${theme.colors.primary};
   font-size: 1.05em;
+  line-height: 1.5;
+  min-height: 2.8em;
   padding: 0.4em 0.85em;
   border-radius: 0.8em;
   transition: all 0.22s ease;
@@ -3074,6 +3078,56 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) }
             
+            { hasAdminRole && hasAdminRole() && (
+              <MenuDropdownWrapper>
+                <MenuDropdownButton 
+                  ref={analyticsButtonRef}
+                  onClick={() => {
+                    if (!analyticsMenuOpen && analyticsButtonRef.current) {
+                      const rect = analyticsButtonRef.current.getBoundingClientRect();
+                      setDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setAnalyticsMenuOpen(!analyticsMenuOpen);
+                  }}
+                  data-open={analyticsMenuOpen}
+                >
+                  <FontAwesomeIcon icon={faChartBar} /> Manažerské analýzy
+                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
+                    {analyticsMenuOpen ? '▴' : '▾'}
+                  </span>
+                </MenuDropdownButton>
+                {analyticsMenuOpen && ReactDOM.createPortal(
+                  <MenuDropdownContent 
+                    ref={analyticsMenuRef}
+                    $open={analyticsMenuOpen}
+                    style={{
+                      top: `${dropdownPosition.top}px`,
+                      left: `${dropdownPosition.left}px`,
+                      minWidth: `${dropdownPosition.width}px`
+                    }}
+                  >
+                    <MenuDropdownItem 
+                      to="/reports" 
+                      onClick={() => setAnalyticsMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faChartBar} /> Reporty
+                    </MenuDropdownItem>
+                    <MenuDropdownItem 
+                      to="/statistics" 
+                      onClick={() => setAnalyticsMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faChartLine} /> Statistiky
+                    </MenuDropdownItem>
+                  </MenuDropdownContent>,
+                  document.body
+                )}
+              </MenuDropdownWrapper>
+            ) }
+            
             {/* 🚀 BETA menu - nové/experimentální funkce - pouze pro ADMINI */}
             { hasAdminRole && hasAdminRole() && (
               <MenuDropdownWrapper>
@@ -3135,56 +3189,6 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3
                       </MenuDropdownItem>
                     )}
-                  </MenuDropdownContent>,
-                  document.body
-                )}
-              </MenuDropdownWrapper>
-            ) }
-            
-            { hasAdminRole && hasAdminRole() && (
-              <MenuDropdownWrapper>
-                <MenuDropdownButton 
-                  ref={analyticsButtonRef}
-                  onClick={() => {
-                    if (!analyticsMenuOpen && analyticsButtonRef.current) {
-                      const rect = analyticsButtonRef.current.getBoundingClientRect();
-                      setDropdownPosition({
-                        top: rect.bottom + 5,
-                        left: rect.left,
-                        width: rect.width
-                      });
-                    }
-                    setAnalyticsMenuOpen(!analyticsMenuOpen);
-                  }}
-                  data-open={analyticsMenuOpen}
-                >
-                  <FontAwesomeIcon icon={faChartBar} /> Manažerské analýzy
-                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
-                    {analyticsMenuOpen ? '▴' : '▾'}
-                  </span>
-                </MenuDropdownButton>
-                {analyticsMenuOpen && ReactDOM.createPortal(
-                  <MenuDropdownContent 
-                    ref={analyticsMenuRef}
-                    $open={analyticsMenuOpen}
-                    style={{
-                      top: `${dropdownPosition.top}px`,
-                      left: `${dropdownPosition.left}px`,
-                      minWidth: `${dropdownPosition.width}px`
-                    }}
-                  >
-                    <MenuDropdownItem 
-                      to="/reports" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faChartBar} /> Reporty
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/statistics" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faChartLine} /> Statistiky
-                    </MenuDropdownItem>
                   </MenuDropdownContent>,
                   document.body
                 )}

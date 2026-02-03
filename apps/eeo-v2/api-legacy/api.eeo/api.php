@@ -2160,6 +2160,52 @@ switch ($endpoint) {
         }
         break;
 
+    
+    // === ORDERS V3 - EXPANDED ROW DETAILS ===
+    // POST /api.eeo/orders-v3/detail - Kompletní detail objednávky
+    case 'orders-v3/detail':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_detail($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/items - Položky objednávky
+    case 'orders-v3/items':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_items($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/invoices - Faktury objednávky
+    case 'orders-v3/invoices':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_invoices($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/attachments - Přílohy objednávky
+    case 'orders-v3/attachments':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_attachments($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // === ORDER V2 - STANDARDIZED API ENDPOINTS ===
     
     // POST /api.eeo/order-v2/list - listing objednavek s filtering (GET deprecated)
