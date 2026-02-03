@@ -320,8 +320,11 @@ function handle_order_v3_list($input, $config, $queries) {
 
         // 4. Parametry paginace
         $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
-        $per_page = isset($input['per_page']) ? max(1, min(100, (int)$input['per_page'])) : 50;
+        $per_page = isset($input['per_page']) ? max(1, min(500, (int)$input['per_page'])) : 50;
         $offset = ($page - 1) * $per_page;
+        
+        // DEBUG: Log pagination params
+        error_log("[OrderV3] Pagination params: page=$page, per_page=$per_page, offset=$offset");
         
         // 5. Rok pro filtrování
         $year = isset($input['year']) ? (int)$input['year'] : date('Y');
@@ -591,6 +594,9 @@ function handle_order_v3_list($input, $config, $queries) {
         $stmt_count->execute($where_params);
         $total_count = (int)$stmt_count->fetchColumn();
         $total_pages = ceil($total_count / $per_page);
+        
+        // DEBUG: Log total calculation
+        error_log("[OrderV3] Total count: $total_count, per_page: $per_page, total_pages: $total_pages");
 
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;

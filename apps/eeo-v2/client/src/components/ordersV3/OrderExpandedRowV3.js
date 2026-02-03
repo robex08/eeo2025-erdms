@@ -21,7 +21,15 @@ import {
   faFileArchive,
   faFile,
   faDownload,
-  faSync
+  faSync,
+  faFilePen,
+  faClock,
+  faShield,
+  faFileContract,
+  faTruck,
+  faXmark,
+  faCircleNotch,
+  faHourglassHalf
 } from '@fortawesome/free-solid-svg-icons';
 
 // =============================================================================
@@ -183,6 +191,67 @@ const InfoValue = styled.div`
   }
 `;
 
+const StatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: ${props => {
+    const colors = {
+      NOVA: 'rgba(219, 234, 254, 0.4)',
+      ODESLANA_KE_SCHVALENI: 'rgba(254, 226, 226, 0.4)',
+      SCHVALENA: 'rgba(254, 215, 170, 0.4)',
+      ZAMITNUTA: 'rgba(229, 231, 235, 0.4)',
+      ROZPRACOVANA: 'rgba(254, 243, 199, 0.4)',
+      ODESLANA: 'rgba(224, 231, 255, 0.4)',
+      POTVRZENA: 'rgba(221, 214, 254, 0.4)',
+      K_UVEREJNENI_DO_REGISTRU: 'rgba(204, 251, 241, 0.4)',
+      UVEREJNENA: 'rgba(209, 250, 229, 0.4)',
+      DOKONCENA: 'rgba(209, 250, 229, 0.4)',
+      ZRUSENA: 'rgba(254, 202, 202, 0.4)',
+      EMPTY: 'transparent',
+    };
+    return colors[props.$status] || 'rgba(241, 245, 249, 0.4)';
+  }};
+  color: ${props => {
+    const colors = {
+      NOVA: '#1e40af',
+      ODESLANA_KE_SCHVALENI: '#dc2626',
+      SCHVALENA: '#ea580c',
+      ZAMITNUTA: '#6b7280',
+      ROZPRACOVANA: '#d97706',
+      ODESLANA: '#4f46e5',
+      POTVRZENA: '#6d28d9',
+      K_UVEREJNENI_DO_REGISTRU: '#0d9488',
+      UVEREJNENA: '#059669',
+      DOKONCENA: '#059669',
+      ZRUSENA: '#dc2626',
+      EMPTY: '#64748b',
+    };
+    return colors[props.$status] || '#64748b';
+  }};
+  border: 1.5px solid ${props => {
+    const colors = {
+      NOVA: '#1e40af',
+      ODESLANA_KE_SCHVALENI: '#dc2626',
+      SCHVALENA: '#ea580c',
+      ZAMITNUTA: '#6b7280',
+      ROZPRACOVANA: '#d97706',
+      ODESLANA: '#4f46e5',
+      POTVRZENA: '#6d28d9',
+      K_UVEREJNENI_DO_REGISTRU: '#0d9488',
+      UVEREJNENA: '#059669',
+      DOKONCENA: '#059669',
+      ZRUSENA: '#dc2626',
+      EMPTY: 'transparent',
+    };
+    return colors[props.$status] || '#94a3b8';
+  }};
+`;
+
 // Loading States
 const LoadingContainer = styled.div`
   display: flex;
@@ -314,6 +383,38 @@ const InvoiceDetail = styled.div`
   font-size: 0.75rem;
   color: #64748b;
   margin-top: 0.25rem;
+`;
+
+const InvoiceStatusBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: ${props => props.$success ? '#dcfce7' : props.$warning ? '#fef3c7' : '#dbeafe'};
+  color: ${props => props.$success ? '#166534' : props.$warning ? '#854d0e' : '#1e40af'};
+  border: 1px solid ${props => props.$success ? '#86efac' : props.$warning ? '#fde047' : '#93c5fd'};
+
+  svg {
+    font-size: 0.75rem;
+  }
+`;
+
+const AttachmentTypeBadge = styled.span`
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
 `;
 
 // Attachments
@@ -539,6 +640,41 @@ const formatTimeOnly = (dateString) => {
   }
 };
 
+// Získání lidsky čitelného stavu objednávky
+const getOrderDisplayStatus = (order) => {
+  // Backend vrací sloupec 'stav_objednavky' který už obsahuje čitelný český název
+  return order?.stav_objednavky || '---';
+};
+
+// Mapování lidského stavu na systémový kód pro barvy
+const mapUserStatusToSystemCode = (userStatus) => {
+  if (userStatus && typeof userStatus === 'string') {
+    if (userStatus.startsWith('Zamítnut')) return 'ZAMITNUTA';
+    if (userStatus.startsWith('Schválen')) return 'SCHVALENA';
+    if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
+    if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
+    if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+  }
+  
+  const mapping = {
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI',
+    'Nová': 'NOVA',
+    'Rozpracovaná': 'ROZPRACOVANA',
+    'Odeslaná dodavateli': 'ODESLANA',
+    'Potvrzená dodavatelem': 'POTVRZENA',
+    'Má být zveřejněna': 'K_UVEREJNENI_DO_REGISTRU',
+    'Uveřejněná': 'UVEREJNENA',
+    'Čeká na potvrzení': 'CEKA_POTVRZENI',
+    'Čeká se': 'CEKA_SE',
+    'Fakturace': 'FAKTURACE',
+    'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Zkontrolována': 'ZKONTROLOVANA',
+    'Smazaná': 'SMAZANA',
+    'Koncept': 'NOVA',
+  };
+  return mapping[userStatus] || 'DEFAULT';
+};
+
 // Formátování data s časem
 const formatDateTime = (dateString) => {
   if (!dateString) return '---';
@@ -623,35 +759,20 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     <ExpandedRow>
       <ExpandedCell colSpan={colSpan}>
         <ExpandedContent>
-          {/* Header s Refresh tlačítkem */}
-          <ContentHeader>
-            <div style={{ 
-              fontSize: '0.875rem', 
-              fontWeight: 600, 
-              color: '#64748b',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}>
-              <FontAwesomeIcon icon={faInfoCircle} style={{ color: '#3b82f6' }} />
-              Detail objednávky #{order.id}
-            </div>
-            {onForceRefresh && (
-              <RefreshButton 
-                onClick={onForceRefresh}
-                title="Znovu načíst data z databáze"
-              >
-                <FontAwesomeIcon icon={faSync} />
-                Obnovit z DB
-              </RefreshButton>
-            )}
-          </ContentHeader>
-
           <Grid>
             {/* 1⃣ ZÁKLADNÍ ÚDAJE OBJEDNÁVKY */}
             <Card>
               <CardTitle>
-                <FontAwesomeIcon icon={faInfoCircle} />
+                {onForceRefresh ? (
+                  <FontAwesomeIcon 
+                    icon={faSync} 
+                    style={{ cursor: 'pointer', color: '#3b82f6' }}
+                    onClick={onForceRefresh}
+                    title="Znovu načíst data z databáze"
+                  />
+                ) : (
+                  <FontAwesomeIcon icon={faInfoCircle} />
+                )}
                 Základní údaje objednávky
               </CardTitle>
 
@@ -675,8 +796,25 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               <InfoRow>
                 <InfoLabel>Stav:</InfoLabel>
-                <InfoValue style={{ fontWeight: 600, color: detail.stav_workflow_barva || '#1e40af' }}>
-                  {detail.stav_workflow_nazev || detail.stav_objednavky || '---'}
+                <InfoValue>
+                  <StatusBadge $status={mapUserStatusToSystemCode(getOrderDisplayStatus(detail))}>
+                    <FontAwesomeIcon 
+                      icon={
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'NOVA' ? faFilePen :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'ODESLANA_KE_SCHVALENI' ? faClock :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'SCHVALENA' ? faShield :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'POTVRZENA' ? faCheckCircle :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'UVEREJNENA' ? faFileContract :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'DOKONCENA' ? faTruck :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'ZRUSENA' ? faXmark :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'ZAMITNUTA' ? faXmark :
+                        mapUserStatusToSystemCode(getOrderDisplayStatus(detail)) === 'ODESLANA' ? faCheckCircle :
+                        faCircleNotch
+                      } 
+                      style={{ fontSize: '12px' }} 
+                    />
+                    <span>{getOrderDisplayStatus(detail)}</span>
+                  </StatusBadge>
                 </InfoValue>
               </InfoRow>
 
@@ -860,8 +998,37 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               <InfoRow>
                 <InfoLabel>Druh objednávky:</InfoLabel>
-                <InfoValue style={{ fontWeight: 500, fontSize: '0.9em' }}>
-                  {detail.druh_objednavky_nazev || detail.druh_objednavky_kod || '---'}
+                <InfoValue style={{ fontWeight: 500, fontSize: '0.9em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span>{detail.druh_objednavky_nazev || detail.druh_objednavky_kod || '---'}</span>
+                  {(() => {
+                    // Debug log
+                    console.log('🔍 Druh objednávky DEBUG:', {
+                      druh_objednavky_nazev: detail.druh_objednavky_nazev,
+                      druh_objednavky_kod: detail.druh_objednavky_kod,
+                      druh_objednavky_atribut: detail.druh_objednavky_atribut,
+                      _enriched_druh: detail._enriched?.druh_objednavky,
+                      full_detail: detail
+                    });
+                    
+                    const isMajetek = detail.druh_objednavky_atribut === 1 || 
+                                     detail._enriched?.druh_objednavky?.atribut_objektu === 1;
+                    
+                    return isMajetek ? (
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '0.15rem 0.5rem',
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.025em'
+                      }}>
+                        Majetek
+                      </span>
+                    ) : null;
+                  })()}
                 </InfoValue>
               </InfoRow>
 
@@ -890,6 +1057,63 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   </InfoRow>
                 </>
               )}
+
+              <div style={{ borderTop: '2px solid #7c3aed', margin: '0.75rem 0' }} />
+
+              {/* DODAVATEL - v rámci Finančních údajů */}
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FontAwesomeIcon icon={faTruck} style={{ color: '#ea580c' }} />
+                Dodavatel
+              </div>
+
+              <InfoRow>
+                <InfoLabel>Název:</InfoLabel>
+                <InfoValue style={{ fontWeight: 600, color: '#ea580c' }}>
+                  {detail.dodavatel_nazev || '---'}
+                </InfoValue>
+              </InfoRow>
+
+              {detail.dodavatel_ico && (
+                <InfoRow>
+                  <InfoLabel>IČO:</InfoLabel>
+                  <InfoValue>{detail.dodavatel_ico}</InfoValue>
+                </InfoRow>
+              )}
+
+              {detail.dodavatel_dic && (
+                <InfoRow>
+                  <InfoLabel>DIČ:</InfoLabel>
+                  <InfoValue>{detail.dodavatel_dic}</InfoValue>
+                </InfoRow>
+              )}
+
+              {detail.dodavatel_adresa && (
+                <InfoRow>
+                  <InfoLabel>Adresa:</InfoLabel>
+                  <InfoValue style={{ fontSize: '0.85em' }}>{detail.dodavatel_adresa}</InfoValue>
+                </InfoRow>
+              )}
+
+              {detail.dodavatel_kontakt_jmeno && (
+                <InfoRow>
+                  <InfoLabel>Kontakt:</InfoLabel>
+                  <InfoValue style={{ fontSize: '0.85em' }}>{detail.dodavatel_kontakt_jmeno}</InfoValue>
+                </InfoRow>
+              )}
+
+              {detail.dodavatel_kontakt_email && (
+                <InfoRow>
+                  <InfoLabel>Email:</InfoLabel>
+                  <InfoValue style={{ fontSize: '0.8em', color: '#6b7280' }}>{detail.dodavatel_kontakt_email}</InfoValue>
+                </InfoRow>
+              )}
+
+              {detail.dodavatel_kontakt_telefon && (
+                <InfoRow>
+                  <InfoLabel>Telefon:</InfoLabel>
+                  <InfoValue style={{ fontSize: '0.85em' }}>{detail.dodavatel_kontakt_telefon}</InfoValue>
+                </InfoRow>
+              )}
             </Card>
 
             {/* 3⃣ ODPOVĚDNÉ OSOBY */}
@@ -898,10 +1122,14 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 <FontAwesomeIcon icon={faInfoCircle} />
                 Odpovědné osoby
               </CardTitle>
+              <CardTitle>
+                <FontAwesomeIcon icon={faInfoCircle} />
+                Odpovědné osoby
+              </CardTitle>
 
               {/* Objednatel */}
               {(detail.objednatel_jmeno || detail.objednatel_prijmeni || detail.uzivatel_jmeno || detail.uzivatel_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     {/* Label role */}
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
@@ -925,7 +1153,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Garant */}
               {(detail.garant_jmeno || detail.garant_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Garant
@@ -944,7 +1172,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Příkazce */}
               {(detail.prikazce_jmeno || detail.prikazce_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Příkazce
@@ -963,7 +1191,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Schvalovatel */}
               {(detail.schvalovatel_jmeno || detail.schvalovatel_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Schvalovatel
@@ -982,7 +1210,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Odesílatel */}
               {(detail.odesilatel_jmeno || detail.odesilatel_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Odesílatel
@@ -1001,7 +1229,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Dodavatel potvrdil */}
               {(detail.dodavatel_potvrdil_jmeno || detail.dodavatel_potvrdil_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Dodavatel potvrdil
@@ -1020,7 +1248,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Zveřejnil */}
               {(detail.zverejnil_jmeno || detail.zverejnil_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Zveřejnil
@@ -1039,7 +1267,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Fakturant */}
               {(detail.fakturant_jmeno || detail.fakturant_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Fakturant
@@ -1058,7 +1286,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* Potvrdil věcnou správnost */}
               {(detail.potvrdil_vecnou_spravnost_jmeno || detail.potvrdil_vecnou_spravnost_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0 1rem', alignItems: 'center' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                       Potvrdil věcnou správnost
@@ -1098,13 +1326,13 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             {/* 4⃣ WORKFLOW KROKY */}
             <Card>
               <CardTitle>
-                <FontAwesomeIcon icon={faInfoCircle} />
-                Workflow kroky
+                <FontAwesomeIcon icon={faProjectDiagram} />
+                Workflow
               </CardTitle>
 
               {/* 1. Vytvořil/Objednatel */}
               {(detail.objednatel_jmeno || detail.objednatel_prijmeni || detail.uzivatel_jmeno || detail.uzivatel_prijmeni) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#3b82f6' }}>
@@ -1128,7 +1356,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* 2. Schválil */}
               {(detail.schvalovatel_jmeno || detail.schvalovatel_prijmeni) && detail.dt_schvaleni && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#059669' }}>
@@ -1150,7 +1378,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* 3. Odeslal dodavateli */}
               {(detail.odesilatel_jmeno || detail.odesilatel_prijmeni || detail.dt_odeslani) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#0891b2' }}>
@@ -1174,7 +1402,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* 4. Dodavatel potvrdil */}
               {(detail.dodavatel_potvrdil_jmeno || detail.dodavatel_potvrdil_prijmeni || detail.dt_akceptace) && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#7c3aed' }}>
@@ -1198,7 +1426,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* 5. Zveřejnil */}
               {(detail.zverejnil_jmeno || detail.zverejnil_prijmeni) && detail.dt_zverejneni && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#f59e0b' }}>
@@ -1220,7 +1448,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* 6.-7. Přidání faktur, ověření věcné správnosti */}
               {detail.faktury && detail.faktury.length > 0 && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#ea580c', marginBottom: '0.5rem' }}>
                     6.-7. Přidání faktur, ověření věcné správnosti
                   </div>
@@ -1250,7 +1478,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         
                         {/* Věcná správnost */}
                         {faktura.dt_potvrzeni_vecne_spravnosti && (
-                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed #cbd5e1' }}>
+                          <div style={{ marginTop: '0.5rem' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                               <div style={{ fontSize: '0.75rem', color: '#0891b2', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                 <span>✓</span>
@@ -1278,7 +1506,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               {/* 7. Dokončil objednávku */}
               {(detail.dokoncil_jmeno || detail.dokoncil_prijmeni) && detail.dt_dokonceni && (
-                <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#16a34a' }}>
@@ -1321,69 +1549,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 </div>
               )}
             </Card>
-
-            {/* 5⃣ DODAVATEL */}
-            <Card>
-              <CardTitle>
-                <FontAwesomeIcon icon={faInfoCircle} />
-                Dodavatel
-              </CardTitle>
-
-              <InfoRow>
-                <InfoLabel>Název:</InfoLabel>
-                <InfoValue style={{ fontWeight: 600 }}>
-                  {detail.dodavatel_nazev || '---'}
-                </InfoValue>
-              </InfoRow>
-
-              {detail.dodavatel_ico && (
-                <InfoRow>
-                  <InfoLabel>IČO:</InfoLabel>
-                  <InfoValue>{detail.dodavatel_ico}</InfoValue>
-                </InfoRow>
-              )}
-
-              {detail.dodavatel_dic && (
-                <InfoRow>
-                  <InfoLabel>DIČ:</InfoLabel>
-                  <InfoValue>{detail.dodavatel_dic}</InfoValue>
-                </InfoRow>
-              )}
-
-              {detail.dodavatel_adresa && (
-                <InfoRow>
-                  <InfoLabel>Adresa:</InfoLabel>
-                  <InfoValue>{detail.dodavatel_adresa}</InfoValue>
-                </InfoRow>
-              )}
-
-              {detail.dodavatel_zastoupeny && (
-                <InfoRow>
-                  <InfoLabel>Zastoupený:</InfoLabel>
-                  <InfoValue>{detail.dodavatel_zastoupeny}</InfoValue>
-                </InfoRow>
-              )}
-
-              {detail.dodavatel_kontakt_jmeno && (
-                <InfoRow>
-                  <InfoLabel>Kontakt:</InfoLabel>
-                  <InfoValue>{detail.dodavatel_kontakt_jmeno}</InfoValue>
-                </InfoRow>
-              )}
-
-              {detail.dodavatel_kontakt_email && (
-                <div style={{ textAlign: 'right', fontSize: '0.85em', color: '#6b7280', marginTop: '-0.3rem', marginBottom: '0.5rem' }}>
-                  {detail.dodavatel_kontakt_email}
-                </div>
-              )}
-
-              {detail.dodavatel_kontakt_telefon && (
-                <InfoRow>
-                  <InfoLabel>Telefon:</InfoLabel>
-                  <InfoValue>{detail.dodavatel_kontakt_telefon}</InfoValue>
-                </InfoRow>
-              )}
-            </Card>
           </Grid>
 
           {/* Bottom Section: Items, Invoices, Attachments */}
@@ -1401,6 +1566,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   <thead>
                     <tr>
                       <ItemsTh style={{ textAlign: 'left' }}>Popis</ItemsTh>
+                      <ItemsTh style={{ textAlign: 'left' }}>Úsek / Budova / Místnost</ItemsTh>
                       <ItemsTh className="numeric">Cena bez DPH</ItemsTh>
                       <ItemsTh className="numeric">Sazba DPH</ItemsTh>
                       <ItemsTh className="numeric">Cena s DPH</ItemsTh>
@@ -1410,6 +1576,9 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {polozky.map((item, index) => (
                       <tr key={index}>
                         <ItemsTd style={{ textAlign: 'left' }}>{item.popis || '---'}</ItemsTd>
+                        <ItemsTd style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b' }}>
+                          {[item.usek_nazev, item.budova_nazev, item.mistnost_nazev].filter(Boolean).join(' / ') || '---'}
+                        </ItemsTd>
                         <ItemsTd className="numeric currency">
                           {formatCurrency(item.cena_bez_dph)}
                         </ItemsTd>
@@ -1435,41 +1604,88 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               {faktury.length === 0 ? (
                 <EmptyState>Žádné faktury</EmptyState>
               ) : (
-                faktury.map((invoice, index) => (
+                faktury.map((invoice, index) => {
+                  // Debug log pro první fakturu
+                  if (index === 0) {
+                    console.log('📋 Faktura data v podřádku:', {
+                      id: invoice.id,
+                      fa_cislo_vema: invoice.fa_cislo_vema,
+                      fa_datum_doruceni: invoice.fa_datum_doruceni,
+                      fa_datum_vystaveni: invoice.fa_datum_vystaveni,
+                      fa_datum_splatnosti: invoice.fa_datum_splatnosti,
+                      full_invoice: invoice
+                    });
+                  }
+                  
+                  return (
                   <InvoiceItem key={index}>
                     <InvoiceHeader>
                       <InvoiceNumber>
                         FA VS: {invoice.fa_cislo_vema || invoice.id || 'N/A'}
                       </InvoiceNumber>
-                      <InvoiceAmount>
-                        {formatCurrency(invoice.fa_castka)}
-                      </InvoiceAmount>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
+                        <InvoiceAmount>
+                          {formatCurrency(invoice.fa_castka)}
+                        </InvoiceAmount>
+                        {invoice.stav && (
+                          <InvoiceStatusBadge 
+                            $success={invoice.stav === 'ZAPLACENA'}
+                            $warning={invoice.stav === 'NEZAPLACENA' || invoice.stav === 'VECNA_SPRAVNOST' || invoice.stav === 'NOVA'}
+                          >
+                            {invoice.stav === 'ZAPLACENA' && <FontAwesomeIcon icon={faCheckCircle} />}
+                            {(invoice.stav === 'NEZAPLACENA' || invoice.stav === 'VECNA_SPRAVNOST' || invoice.stav === 'NOVA') && <FontAwesomeIcon icon={faHourglassHalf} />}
+                            {(() => {
+                              const stavMap = {
+                                'VECNA_SPRAVNOST': 'Věcná správnost',
+                                'NOVA': 'Nová',
+                                'ZAPLACENA': 'Zaplacena',
+                                'NEZAPLACENA': 'Nezaplacena',
+                                'STORNO': 'Storno'
+                              };
+                              return stavMap[invoice.stav] || invoice.stav;
+                            })()}
+                          </InvoiceStatusBadge>
+                        )}
+                      </div>
                     </InvoiceHeader>
-                    {invoice.fa_datum_vystaveni && (
-                      <InvoiceDetail>
-                        Vystaveno: {formatDate(invoice.fa_datum_vystaveni)}
+                    {(invoice.vytvoril_jmeno || invoice.vytvoril_prijmeni) && (
+                      <InvoiceDetail style={{ fontWeight: 500 }}>
+                        <span style={{ color: '#6b7280', fontWeight: 600 }}>Evidoval:</span> <span style={{ color: '#1e293b', fontWeight: 600 }}>{formatUserName(invoice.vytvoril_jmeno, invoice.vytvoril_prijmeni, invoice.vytvoril_titul_pred, invoice.vytvoril_titul_za)}</span>
                       </InvoiceDetail>
                     )}
-                    {invoice.fa_datum_splatnosti && (
+                    {(invoice.fa_datum_doruceni || invoice.fa_datum_vystaveni || invoice.fa_datum_splatnosti) && (
                       <InvoiceDetail>
-                        Splatnost: {formatDate(invoice.fa_datum_splatnosti)}
+                        {invoice.fa_datum_doruceni && (
+                          <span>Doručeno: {formatDate(invoice.fa_datum_doruceni)}</span>
+                        )}
+                        {invoice.fa_datum_doruceni && invoice.fa_datum_vystaveni && (
+                          <span> | </span>
+                        )}
+                        {invoice.fa_datum_vystaveni && (
+                          <span>Vystaveno: {formatDate(invoice.fa_datum_vystaveni)}</span>
+                        )}
+                        {invoice.fa_datum_vystaveni && invoice.fa_datum_splatnosti && (
+                          <span> | </span>
+                        )}
+                        {!invoice.fa_datum_vystaveni && invoice.fa_datum_doruceni && invoice.fa_datum_splatnosti && (
+                          <span> | </span>
+                        )}
+                        {invoice.fa_datum_splatnosti && (
+                          <span>Splatnost: {formatDate(invoice.fa_datum_splatnosti)}</span>
+                        )}
                       </InvoiceDetail>
                     )}
-                    {invoice.stav && (
+                    {invoice.dt_potvrzeni_vecne_spravnosti && (
                       <InvoiceDetail>
-                        Stav: {(() => {
-                          const stavMap = {
-                            'VECNA_SPRAVNOST': 'Věcná správnost',
-                            'NOVA': 'Nová',
-                            'ZAPLACENA': 'Zaplacena',
-                            'STORNO': 'Storno'
-                          };
-                          return stavMap[invoice.stav] || invoice.stav;
-                        })()}
+                        <span style={{ color: '#0891b2', fontWeight: 600 }}>Věcná správnost:</span> <span style={{ color: '#64748b' }}>{formatDateTime(invoice.dt_potvrzeni_vecne_spravnosti)}</span>
+                        {(invoice.potvrdil_vecnou_spravnost_jmeno || invoice.potvrdil_vecnou_spravnost_prijmeni) && (
+                          <span style={{ color: '#0891b2', fontWeight: 500 }}> - {formatUserName(invoice.potvrdil_vecnou_spravnost_jmeno, invoice.potvrdil_vecnou_spravnost_prijmeni, invoice.potvrdil_vecnou_spravnost_titul_pred, invoice.potvrdil_vecnou_spravnost_titul_za)}</span>
+                        )}
                       </InvoiceDetail>
                     )}
                   </InvoiceItem>
-                ))
+                  );
+                })
               )}
             </Card>
 
@@ -1488,12 +1704,17 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     const icon = getFileIcon(fileName);
                     const colors = getFileIconColor(fileName);
                     
+                    // Debug log
+                    if (index === 0) {
+                      console.log('⚡ Příloha data:', attachment);
+                    }
+                    
                     return (
                       <AttachmentItem
                         key={index}
+                        as="a"
                         href={attachment.systemova_cesta || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        download={fileName}
                         onClick={(e) => {
                           if (!attachment.systemova_cesta) {
                             e.preventDefault();
@@ -1506,10 +1727,23 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         <AttachmentInfo>
                           <AttachmentName>
                             {fileName}
+                            {attachment.typ_prilohy && (
+                              <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
+                                {attachment.typ_prilohy}
+                              </AttachmentTypeBadge>
+                            )}
                           </AttachmentName>
                           <AttachmentMeta>
-                            {attachment.typ_prilohy && `${attachment.typ_prilohy}`}
-                            {attachment.velikost_souboru_b && ` • ${Math.round(attachment.velikost_souboru_b / 1024)} KB`}
+                            {(attachment.nahral_jmeno || attachment.nahral_prijmeni) ? (
+                              <span>{formatUserName(attachment.nahral_jmeno, attachment.nahral_prijmeni, attachment.nahral_titul_pred, attachment.nahral_titul_za)}</span>
+                            ) : attachment.nahrano_uzivatel_id ? (
+                              <span>Uživatel #{attachment.nahrano_uzivatel_id}</span>
+                            ) : (
+                              <span>Neznámý uživatel</span>
+                            )}
+                            {attachment.velikost_souboru_b && (
+                              <span> • {Math.round(attachment.velikost_souboru_b / 1024)} KB</span>
+                            )}
                           </AttachmentMeta>
                         </AttachmentInfo>
                         {attachment.systemova_cesta && (
