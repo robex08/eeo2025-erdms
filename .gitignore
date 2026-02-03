@@ -35,3 +35,22 @@ tmp/
 temp/
 *.tar.gz
 logs/
+
+# Data directories - obsahují přílohy, šablony a další data
+# která nepatří do verzovacího systému
+data/
+/var/www/__BCK_PRODUKCE/
+
+# SQL skripty - dočasné utility a debug soubory
+*_PROD.sql
+*_DEV.sql
+debug_*.sql
+fix_*.sql
+test_*.sql
+update_*.sql
+
+# Dokumentace a poznámky - dočasné soubory
+ROCNI_POPLATKY_*.md
+CASHBOOK_*.md
+*_IMPLEMENTATION*.md
+*_PERMISSIONS*.md
