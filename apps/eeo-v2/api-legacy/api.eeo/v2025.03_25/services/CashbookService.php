@@ -99,8 +99,9 @@ class CashbookService {
             // nebo předchozí položky mohly mít špatné zůstatky
             $this->balanceCalculator->recalculateBookBalances($bookId);
             
-            // Možná budeme muset přečíslovat (pokud vkládáme mezi existující položky)
-            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            // 🆕 KRITICKÉ: Přečíslovat celou pokladnu (číslování je per pokladna, ne per uživatel!)
+            // Přečísluje všechny knihy se stejným pokladna_id
+            $this->docNumberService->renumberBookDocuments($bookId);
             
             // Audit log
             $this->auditModel->logAction('polozka', $entryId, 'vytvoreni', $userId, null, $entryData);
@@ -180,8 +181,8 @@ class CashbookService {
             // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku
             $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             
-            // Přečíslovat doklady
-            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            // 🆕 KRITICKÉ: Přečíslovat celou pokladnu (číslování je per pokladna, ne per uživatel!)
+            $this->docNumberService->renumberBookDocuments($entry['pokladni_kniha_id']);
             
             // Audit log
             $this->auditModel->logAction('polozka', $entryId, 'smazani', $userId, $entry, null);
@@ -211,9 +212,8 @@ class CashbookService {
             // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku
             $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             
-            // Načíst knihu pro přečíslování
-            $book = $this->bookModel->getBookById($entry['pokladni_kniha_id']);
-            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            // 🆕 KRITICKÉ: Přečíslovat celou pokladnu (číslování je per pokladna, ne per uživatel!)
+            $this->docNumberService->renumberBookDocuments($entry['pokladni_kniha_id']);
             
             // Audit log
             $this->auditModel->logAction('polozka', $entryId, 'obnoveni', $userId, null, $entry);
