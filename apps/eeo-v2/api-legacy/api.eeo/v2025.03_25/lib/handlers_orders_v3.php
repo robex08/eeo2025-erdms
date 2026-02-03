@@ -294,7 +294,12 @@ function handle_orders_v3_detail($input, $config) {
                     // Pro zobrazení: čárkou oddělený seznam názvů
                     $strediska_nazvy = array_column($strediska_enriched, 'nazev');
                     $order['strediska_nazvy'] = implode(', ', $strediska_nazvy);
-                    $order['strediska_data'] = $strediska_enriched;
+                    
+                    // ✅ Přidat do _enriched jako 'strediska' (ne strediska_data) - kompatibilita s frontend dialogem
+                    if (!isset($order['_enriched'])) {
+                        $order['_enriched'] = array();
+                    }
+                    $order['_enriched']['strediska'] = $strediska_enriched;
                     error_log("✅ Enriched strediska: " . $order['strediska_nazvy']);
                 }
             }
@@ -387,6 +392,13 @@ function handle_orders_v3_detail($input, $config) {
                     error_log("✅ Enriched stav workflow: " . $order['stav_workflow_nazev']);
                 }
             }
+        }
+
+        // 5️⃣ FINANCOVÁNÍ - LP/Smlouvy enrichment s budget info (pro schvalovací dialog)
+        if (!empty($order['financovani'])) {
+            error_log("🎨 [V3 ORDER DETAIL] Enriching financování with LP budget info...");
+            enrichOrderFinancovani($db, $order);
+            error_log("✅ [V3 ORDER DETAIL] Financování enriched");
         }
 
         error_log("🎨 [V3 ORDER DETAIL] Enrichment completed");
