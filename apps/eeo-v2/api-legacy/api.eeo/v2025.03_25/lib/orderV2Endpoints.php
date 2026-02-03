@@ -1735,7 +1735,7 @@ function handle_order_v2_update($input, $config, $queries) {
         error_log("Order V2 UPDATE: Starting notification check for order ID $order_id");
         
         // 🔥 DEBUG: Force immediate debug info
-        file_put_contents('/tmp/debug_order_update.log', date('Y-m-d H:i:s') . " - Starting notification check for order ID $order_id\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/debug_order_update.log', date('Y-m-d H:i:s') . " - Starting notification check for order ID $order_id\n", FILE_APPEND);
         
         // Zjistit, jaká událost nastala podle změny workflow stavu
         require_once __DIR__ . '/notificationHandlers.php';
@@ -1757,7 +1757,7 @@ function handle_order_v2_update($input, $config, $queries) {
         error_log("Order V2 UPDATE: New workflow: " . json_encode($new_workflow_array));
         
         // 🔥 DEBUG: Force immediate debug info
-        file_put_contents('/tmp/debug_order_update.log', date('Y-m-d H:i:s') . " - Old workflow: " . json_encode($old_workflow_array) . " | New workflow: " . json_encode($new_workflow_array) . "\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/debug_order_update.log', date('Y-m-d H:i:s') . " - Old workflow: " . json_encode($old_workflow_array) . " | New workflow: " . json_encode($new_workflow_array) . "\n", FILE_APPEND);
         
         // Helper funkce pro detekci workflow stavu v array
         $hasWorkflowState = function($workflow_array, $state_to_find) {

@@ -1383,21 +1383,21 @@ function handle_notifications_send_dual($input, $config, $queries) {
         }
     }
     
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔄 Starting recipient loop (" . count($all_recipients) . " recipients: from=" . ($has_from ? count($input['from']) : 0) . ", to=" . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
+    file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔄 Starting recipient loop (" . count($all_recipients) . " recipients: from=" . ($has_from ? count($input['from']) : 0) . ", to=" . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
     
     // Projít všechny příjemce
     foreach ($all_recipients as $recipient) {
         $user_id = $recipient['user_id'];
         $recipient_type = $recipient['typ'];
         
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (typ: $recipient_type)\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (typ: $recipient_type)\n", FILE_APPEND);
         if (!$user_id) {
             error_log("⚠️ Prázdné user_id, přeskakuji");
             continue;
         }
         
         // 1. Načíst user data (email + settings)
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔍 Querying user data...\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔍 Querying user data...\n", FILE_APPEND);
         try {
             $stmt_user = $db->prepare("
                 SELECT u.id, u.username, u.email, u.jmeno, u.prijmeni, s.nastaveni_data as nastaveni
@@ -1408,9 +1408,9 @@ function handle_notifications_send_dual($input, $config, $queries) {
             ");
             $stmt_user->execute([$user_id]);
             $user = $stmt_user->fetch();
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ User fetched: " . ($user ? $user['username'] : 'NOT FOUND') . "\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ User fetched: " . ($user ? $user['username'] : 'NOT FOUND') . "\n", FILE_APPEND);
         } catch (Exception $e) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ USER QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ USER QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             throw $e;
         }
         
@@ -1428,22 +1428,22 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // 2. Zkontrolovat nastavení notifikací
         $settings = [];
         if (!empty($user['nastaveni'])) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📋 Parsing settings JSON...\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📋 Parsing settings JSON...\n", FILE_APPEND);
             $decoded = json_decode($user['nastaveni'], true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 $settings = $decoded;
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ Settings parsed OK\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ Settings parsed OK\n", FILE_APPEND);
             } else {
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ⚠️ JSON decode failed: " . json_last_error_msg() . "\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ⚠️ JSON decode failed: " . json_last_error_msg() . "\n", FILE_APPEND);
             }
         } else {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ℹ️ No settings found\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ℹ️ No settings found\n", FILE_APPEND);
         }
         
         $email_enabled = isset($settings['notifikace']['email']) ? (bool)$settings['notifikace']['email'] : true;
         $system_enabled = isset($settings['notifikace']['system']) ? (bool)$settings['notifikace']['system'] : true;
         
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📧 Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF') . "\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📧 Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF') . "\n", FILE_APPEND);
         error_log("📧 User {$user['username']} (ID: $user_id) - Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF'));
         
         $sent_email = false;
@@ -1454,7 +1454,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // Tato funkce odesílá POUZE dual-template emaily s kontrolou nastavení
         
         if ($email_enabled) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (typ: $recipient_type)...\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (typ: $recipient_type)...\n", FILE_APPEND);
             
             // Určit přesný typ šablony: APPROVER_NORMAL, APPROVER_URGENT nebo SUBMITTER
             // from[] = SUBMITTER (zelená informační šablona)
@@ -1467,7 +1467,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $template_type = 'SUBMITTER';
             }
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template typ: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template typ: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
             
             // Extrahuj správnou HTML šablonu podle typu (triple-template: normal/urgent/submitter)
             $email_body = get_email_template_by_recipient($template['email_body'], $template_type);
@@ -1498,13 +1498,13 @@ function handle_notifications_send_dual($input, $config, $queries) {
             $date_formatted = date('d.m.Y H:i');
             
             // Nahraď placeholdery v body
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔄 Replacing placeholders...\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       recipient_name: $recipient_name (user_id: $user_id)\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       approver_name: $approver_name\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       strediska: {$order_data['strediska_display']}\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       financovani: {$order_data['financovani_display']}\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       poznamka: {$order_data['financovani_poznamka']}\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       date: $date_formatted\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔄 Replacing placeholders...\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       recipient_name: $recipient_name (user_id: $user_id)\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       approver_name: $approver_name\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       strediska: {$order_data['strediska_display']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       financovani: {$order_data['financovani_display']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       poznamka: {$order_data['financovani_poznamka']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       date: $date_formatted\n", FILE_APPEND);
             
             $email_body = str_replace(
                 [
@@ -1534,17 +1534,17 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $email_body
             );
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ All 10 placeholders replaced\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ All 10 placeholders replaced\n", FILE_APPEND);
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Calling eeo_mail_send to: {$user['email']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Calling eeo_mail_send to: {$user['email']}\n", FILE_APPEND);
             error_log("📧 Odesílám email na: {$user['email']} (typ: $recipient_type)");
             
             // Odešli email
             try {
                 $mail_result = eeo_mail_send($user['email'], $email_subject, $email_body, ['html' => true]);
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ eeo_mail_send returned: " . json_encode($mail_result) . "\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ eeo_mail_send returned: " . json_encode($mail_result) . "\n", FILE_APPEND);
             } catch (Exception $e) {
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ MAIL ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ MAIL ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
                 throw $e;
             }
             

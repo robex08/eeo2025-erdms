@@ -2100,7 +2100,7 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // 🐛 KRITICKÝ DEBUG - surová data z DB
         if (!empty($faktury)) {
-            file_put_contents('/tmp/invoice_debug.json', json_encode([
+            file_put_contents('/var/www/erdms-dev/logs/invoice_debug.json', json_encode([
                 'first_invoice_raw' => $faktury[0],
                 'fields' => array_keys($faktury[0])
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
@@ -2406,7 +2406,7 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // 🐛 KRITICKÝ DEBUG - zpracovaná data před odesláním
         if (!empty($faktury)) {
-            file_put_contents('/tmp/invoice_debug_processed.json', json_encode([
+            file_put_contents('/var/www/erdms-dev/logs/invoice_debug_processed.json', json_encode([
                 'first_invoice_processed' => $faktury[0],
                 'has_dodavatel_nazev' => isset($faktury[0]['dodavatel_nazev']),
                 'dodavatel_nazev_value' => $faktury[0]['dodavatel_nazev'] ?? 'NOT_SET',
