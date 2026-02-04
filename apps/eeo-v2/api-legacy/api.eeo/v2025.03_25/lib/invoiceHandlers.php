@@ -2202,6 +2202,33 @@ function handle_invoices25_list($input, $config, $queries) {
                 $decoded = json_decode($faktura['rozsirujici_data'], true);
                 $faktura['rozsirujici_data'] = is_array($decoded) ? $decoded : null;
                 
+                // ✅ TŘÍFÁZOVÝ SYSTÉM KONTROLY: Přidat check_status přímo do faktury
+                if (isset($faktura['rozsirujici_data']['kontrola_radku'])) {
+                    $kontrola = $faktura['rozsirujici_data']['kontrola_radku'];
+                    
+                    if (!empty($kontrola['kontrolovano'])) {
+                        $dt_kontroly = isset($kontrola['dt_kontroly']) ? $kontrola['dt_kontroly'] : null;
+                        $dt_aktualizace = isset($faktura['dt_aktualizace']) ? $faktura['dt_aktualizace'] : null;
+                        
+                        if ($dt_kontroly && $dt_aktualizace) {
+                            $ts_kontroly = strtotime($dt_kontroly);
+                            $ts_aktualizace = strtotime($dt_aktualizace);
+                            
+                            if ($ts_kontroly >= $ts_aktualizace) {
+                                $faktura['check_status'] = 'checked_ok';  // ✅ Zelená - zkontrolováno, beze změn
+                            } else {
+                                $faktura['check_status'] = 'checked_modified';  // ⚠️ Oranžová - zkontrolováno, ale upraveno
+                            }
+                        } else {
+                            $faktura['check_status'] = 'checked_ok';  // Pokud nemáme dt_aktualizace, považujeme za OK
+                        }
+                    } else {
+                        $faktura['check_status'] = 'unchecked';  // ⚪ Nezkontrolováno
+                    }
+                } else {
+                    $faktura['check_status'] = 'unchecked';  // ⚪ Nezkontrolováno (žádné kontrola_radku)
+                }
+                
                 // ✨ Doplnit username uživatele, který přiřadil roční poplatek
                 if (isset($faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_id'])) {
                     $userId = (int)$faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_id'];
@@ -2224,6 +2251,7 @@ function handle_invoices25_list($input, $config, $queries) {
                 }
             } else {
                 $faktura['rozsirujici_data'] = null;
+                $faktura['check_status'] = 'unchecked';  // ⚪ Nezkontrolováno (žádné rozsirujici_data)
             }
             
             // Potvrdil věcnou správnost - zkrácené jméno (Bezoušková T.)
@@ -2309,6 +2337,7 @@ function handle_invoices25_list($input, $config, $queries) {
             unset($faktura['spisovka_tracking_id']);
             unset($faktura['spisovka_priloha_id']);
         }
+        unset($faktura); // ⚠️ KRITICKÉ: Zruš referenci z prvního foreach!
         
         // KROK 3: Načíst přílohy pro každou fakturu (enriched data)
         // Získat IDs všech faktur pro batch dotaz
@@ -2404,25 +2433,13 @@ function handle_invoices25_list($input, $config, $queries) {
             $fid = $faktura['id'];
             $faktura['prilohy'] = isset($prilohy_map[$fid]) ? $prilohy_map[$fid] : array();
         }
+        unset($faktura); // ⚠️ KRITICKÉ: Unset reference aby se nepřepsala později
 
         // Vypočítat pagination metadata
         $total_pages = $use_pagination ? (int)ceil($total_count / $per_page) : 1;
         
         // Response - OrderV2 formát s pagination + statistiky + user metadata
         // FE očekává: { status: "ok", faktury: [...], pagination: {...}, statistiky: {...}, user_info: {...} }
-        
-        // 🐛 KRITICKÝ DEBUG - zpracovaná data před odesláním
-        if (!empty($faktury)) {
-            file_put_contents('/var/www/erdms-dev/logs/invoice_debug_processed.json', json_encode([
-                'first_invoice_processed' => $faktury[0],
-                'has_dodavatel_nazev' => isset($faktury[0]['dodavatel_nazev']),
-                'dodavatel_nazev_value' => $faktury[0]['dodavatel_nazev'] ?? 'NOT_SET',
-                'has_dodavatel_ico' => isset($faktury[0]['dodavatel_ico']),
-                'dodavatel_ico_value' => $faktury[0]['dodavatel_ico'] ?? 'NOT_SET',
-                'has_objednavka_je_dokoncena' => isset($faktury[0]['objednavka_je_dokoncena']),
-                'objednavka_je_dokoncena_value' => $faktury[0]['objednavka_je_dokoncena'] ?? 'NOT_SET'
-            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-        }
         
         $response_data = array(
             'status' => 'ok',
@@ -2455,6 +2472,13 @@ function handle_invoices25_list($input, $config, $queries) {
         http_response_code(200);
         // ⚠️ Kompletní ošetření českých znaků pro JSON
         $json_output = json_encode($response_data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        
+        // 🔍 DEBUG - log prvních 3 faktur v JSON response
+        if (!empty($response_data['faktury']) && count($response_data['faktury']) > 0) {
+            $first_invoice = $response_data['faktury'][0];
+            error_log("JSON RESPONSE First Invoice #" . $first_invoice['id'] . ": has_check_status=" . (isset($first_invoice['check_status']) ? 'YES (' . $first_invoice['check_status'] . ')' : 'NO'));
+        }
+        
         if ($json_output === false) {
             // Fallback: pokud JSON encoding selže, vrátit minimální response
             $minimal_response = array(
