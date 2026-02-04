@@ -4018,8 +4018,12 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin.typ === 'LP') {
-            // 🔥 FIX: Filtrovat jen validní řádky (s LP kódem a částkou > 0)
-            const validLpCerpani = (lpCerpani || []).filter(lp => lp.lp_id && lp.lp_cislo && lp.castka > 0);
+            // 🔥 FIX: Filtrovat jen validní řádky (s LP kódem a částkou >= 0, akceptovat i 0 pro zálohové faktury)
+            const validLpCerpani = (lpCerpani || []).filter(lp => {
+              return lp.lp_id && lp.lp_cislo && 
+                     lp.castka !== null && lp.castka !== undefined && lp.castka !== '' && 
+                     !isNaN(parseFloat(lp.castka)) && parseFloat(lp.castka) >= 0;
+            });
             
             if (validLpCerpani.length === 0) {
               showToast && showToast('⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!', 'error');
@@ -4375,11 +4379,12 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin?.typ === 'LP') {
-            // Kontrola LP čerpání - musí být alespoň jeden validní řádek
+            // Kontrola LP čerpání - musí být alespoň jeden validní řádek (akceptovat i 0 pro zálohové faktury)
             const validLpRows = lpCerpani?.filter(row => 
               row.lp_id && 
               row.lp_cislo && 
-              parseFloat(row.castka) > 0
+              row.castka !== null && row.castka !== undefined && row.castka !== '' &&
+              !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0
             ) || [];
             
             if (validLpRows.length === 0) {

@@ -206,7 +206,7 @@ const AmountInput = styled.input`
   border: 1px solid ${props => props.hasError ? '#dc3545' : '#ced4da'};
   border-radius: 6px;
   font-size: 15px; /* Větší font pro lepší čitelnost */
-  font-weight: ${props => (props.value && props.value !== '0' && props.value !== '') ? '600' : '400'}; /* Tučný když je vyplněné */
+  font-weight: ${props => (props.value !== '' && props.value !== null && props.value !== undefined) ? '600' : '400'}; /* Tučný když je vyplněné (včetně 0) */
   text-align: right;
   font-family: inherit; /* Sjednocený font s celou stránkou */
   box-sizing: border-box;
@@ -380,7 +380,8 @@ const formatCurrency = (value) => {
 };
 
 const parseCurrency = (value) => {
-  if (!value) return 0;
+  // ✅ Akceptovat 0 jako validní hodnotu - kontrolovat pouze prázdný string/null/undefined
+  if (value === null || value === undefined || value === '') return 0;
   const cleaned = value.toString().replace(/\s/g, '').replace(',', '.');
   const num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
@@ -396,7 +397,8 @@ const CurrencyAmountInput = React.memo(function CurrencyAmountInput({ value, onC
 
   // Formátování měny
   const formatCurrency = useCallback((val) => {
-    if (!val && val !== 0) return '';
+    // ✅ Akceptovat 0 jako validní hodnotu
+    if (val === null || val === undefined || val === '') return '';
     const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
     if (isNaN(num)) return '';
     return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
@@ -407,13 +409,18 @@ const CurrencyAmountInput = React.memo(function CurrencyAmountInput({ value, onC
     if (isFocused) {
       return localValue;
     }
-    return formatCurrency(value || '');
+    // ✅ Explicitní kontrola - value může být 0, což je validní!
+    const valueToFormat = (value !== null && value !== undefined) ? value : '';
+    const formatted = formatCurrency(valueToFormat);
+    return formatted;
   }, [value, isFocused, localValue, formatCurrency]);
 
   // Synchronizovat localValue s value pouze když není focused
   useEffect(() => {
     if (!isFocused) {
-      setLocalValue(formatCurrency(value || ''));
+      // ✅ Explicitní kontrola - value může být 0, což je validní!
+      const valueToFormat = (value !== null && value !== undefined) ? value : '';
+      setLocalValue(formatCurrency(valueToFormat));
     }
   }, [value, isFocused, formatCurrency]);
 
@@ -421,10 +428,12 @@ const CurrencyAmountInput = React.memo(function CurrencyAmountInput({ value, onC
     const newValue = e.target.value;
     setLocalValue(newValue);
 
-    // Očistit hodnotu a vrátit jako string s tečkou
+    // Očistit hodnotu a vrátit jako číslo (ne string)
     const cleanValue = newValue.replace(/[^\d,.-]/g, '').replace(',', '.');
     const numValue = parseFloat(cleanValue);
-    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+    // ✅ Akceptovat 0 jako validní hodnotu - isNaN kontroluje pouze neplatné vstupy
+    // Vrátit číslo, ne string - aby prop value byl konzistentní
+    const finalValue = isNaN(numValue) ? 0 : numValue;
 
     onChange(finalValue);
   }, [onChange]);
@@ -591,7 +600,8 @@ function LPCerpaniEditor({
           id: item.id || `row_${idx}_${Date.now()}`,
           lp_cislo: item.lp_cislo || '',
           lp_id: item.lp_id || (matchedLP ? matchedLP.id : null),
-          castka: parseFloat(item.castka) || 0,
+          // ✅ Explicitně kontrolovat null/undefined - 0 je validní hodnota!
+          castka: (item.castka !== null && item.castka !== undefined) ? parseFloat(item.castka) : 0,
           poznamka: item.poznamka || '',
           lp_data: matchedLP || null
         };
@@ -609,9 +619,10 @@ function LPCerpaniEditor({
           const prevRow = prevRows[idx];
           if (!prevRow) return true;
           
-          // Pokud jsou oba řádky prázdné (nemají lp_id a castka = 0), považovat za stejné
-          const isPrevEmpty = !prevRow.lp_id && (!prevRow.castka || prevRow.castka === 0);
-          const isNewEmpty = !newRow.lp_id && (!newRow.castka || newRow.castka === 0);
+          // ✅ Řádek je prázdný POUZE když nemá LP ID a částka je null/undefined/prázdná
+          // 0 je VALIDNÍ hodnota pro zálohové faktury!
+          const isPrevEmpty = !prevRow.lp_id && (prevRow.castka === null || prevRow.castka === undefined || prevRow.castka === '');
+          const isNewEmpty = !newRow.lp_id && (newRow.castka === null || newRow.castka === undefined || newRow.castka === '');
           
           if (isPrevEmpty && isNewEmpty) {
             return false; // Oba jsou prázdné → žádná změna
@@ -666,8 +677,12 @@ function LPCerpaniEditor({
 
     const messages = [];
     
-    // Prázdné řádky
-    const emptyRows = rows.filter(r => r.id && !r.lp_id && (!r.castka || r.castka <= 0));
+    // Prázdné řádky - ✅ 0 je validní hodnota!
+    const emptyRows = rows.filter(r => {
+      const hasNoLp = r.id && !r.lp_id;
+      const hasNoCastka = r.castka === null || r.castka === undefined || r.castka === '' || (typeof r.castka === 'string' && r.castka.trim() === '');
+      return hasNoLp && hasNoCastka;
+    });
     if (emptyRows.length > 0) {
       messages.push({
         type: 'error',
@@ -675,11 +690,14 @@ function LPCerpaniEditor({
       });
     }
 
-    // Neúplné řádky
-    const incompleteRows = rows.filter(r => 
-      (r.lp_id && (!r.castka || r.castka <= 0)) || 
-      (!r.lp_id && r.castka > 0)
-    );
+    // Neúplné řádky - ✅ 0 je validní hodnota!
+    const incompleteRows = rows.filter(r => {
+      const hasLp = r.lp_id && r.lp_id !== null;
+      const hasCastka = r.castka !== null && r.castka !== undefined && r.castka !== '' && !isNaN(parseFloat(r.castka));
+      
+      // Má LP ale nemá částku NEBO nemá LP ale má částku
+      return (hasLp && !hasCastka) || (!hasLp && hasCastka);
+    });
     if (incompleteRows.length > 0) {
       messages.push({
         type: 'error',
@@ -708,9 +726,13 @@ function LPCerpaniEditor({
         return row;
       });
       
-      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku >= 0, včetně 0 pro zálohové faktury)
       if (onChange) {
-        const validRows = updated.filter(row => row.lp_id && row.castka && row.castka > 0);
+        const validRows = updated.filter(row => {
+          return row.lp_id && 
+                 row.castka !== null && row.castka !== undefined && row.castka !== '' &&
+                 !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0;
+        });
         setTimeout(() => onChange(validRows), 0);
       }
       
@@ -727,9 +749,13 @@ function LPCerpaniEditor({
           : row
       );
       
-      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku >= 0, včetně 0 pro zálohové faktury)
       if (onChange) {
-        const validRows = updated.filter(row => row.lp_id && row.castka && row.castka > 0);
+        const validRows = updated.filter(row => {
+          return row.lp_id && 
+                 row.castka !== null && row.castka !== undefined && row.castka !== '' &&
+                 !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0;
+        });
         setTimeout(() => onChange(validRows), 0);
       }
       
@@ -742,9 +768,13 @@ function LPCerpaniEditor({
     setRows(prev => {
       const updated = prev.filter(row => row.id !== rowId);
       
-      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku >= 0, včetně 0 pro zálohové faktury)
       if (onChange) {
-        const validRows = updated.filter(row => row.lp_id && row.castka && row.castka > 0);
+        const validRows = updated.filter(row => {
+          return row.lp_id && 
+                 row.castka !== null && row.castka !== undefined && row.castka !== '' &&
+                 !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0;
+        });
         setTimeout(() => onChange(validRows), 0);
       }
       
@@ -774,8 +804,12 @@ function LPCerpaniEditor({
   // Handler pro uložení dat při opuštění pole
   const handleSaveData = useCallback(() => {
     if (onChange) {
-      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
-      const validRows = rows.filter(row => row.lp_id && row.castka && row.castka > 0);
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku >= 0, včetně 0 pro zálohové faktury)
+      const validRows = rows.filter(row => {
+        return row.lp_id && 
+               row.castka !== null && row.castka !== undefined && row.castka !== '' &&
+               !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0;
+      });
       onChange(validRows);
     }
   }, [onChange, rows]);
@@ -874,7 +908,7 @@ function LPCerpaniEditor({
           <FormGroup>
             <label>Částka (Kč)&nbsp;<span style={{color: '#dc2626'}}>*</span></label>
             <CurrencyAmountInput
-              value={row.castka || ''}
+              value={(row.castka !== null && row.castka !== undefined) ? row.castka : ''}
               onChange={(newValue) => handleCastkaChange(row.id, newValue)}
               onBlur={handleSaveData}
               hasError={hasTriedToSubmit && (isEmptyRow || hasCastkaError)}
