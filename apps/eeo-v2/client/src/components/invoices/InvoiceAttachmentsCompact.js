@@ -577,6 +577,12 @@ const InvoiceAttachmentsCompact = ({
   const canEditAttachment = useCallback((attachment) => {
     if (!attachment) return false;
     
+    // 🔒 KRITICKÁ KONTROLA: Pokud je faktura ve stavu DOKONCENA, NIKDO nemůže mazat/editovat přílohy
+    // (včetně SUPERADMIN, ADMINISTRATOR, UCETNI)
+    if (faktura?.stav === 'DOKONCENA') {
+      return false;
+    }
+    
     // Pending/uploading attachments může vždy editovat/mazat (ještě nejsou na serveru)
     if (attachment.status === 'pending' || 
         attachment.status === 'pending_classification' || 
@@ -590,7 +596,7 @@ const InvoiceAttachmentsCompact = ({
     const currentUserUsekId = userDetail?.usek_id;
     const userRoles = userDetail?.roles || [];
     
-    // Admin, SUPERADMIN a UCETNI může vše
+    // Admin, SUPERADMIN a UCETNI může vše (ALE JEN POKUD NENÍ DOKONCENA - kontrola výše)
     const isAdmin = userRoles.some(role => 
       role.kod_role === 'SUPERADMIN' || 
       role.kod_role === 'ADMINISTRATOR' || 
@@ -641,7 +647,7 @@ const InvoiceAttachmentsCompact = ({
       case 'different_department':
         return 'Můžete mazat pouze přílohy od kolegů ze svého úseku';
       case 'invoice_completed':
-        return 'Nelze mazat přílohy u dokončené faktury';
+        return 'Faktura je ve stavu DOKONCENA - nelze upravovat přílohy';
       case 'admin_only':
         return 'Pouze administrátoři mohou mazat tuto přílohu';
       default:
@@ -2757,15 +2763,17 @@ const InvoiceAttachmentsCompact = ({
                         flexShrink: 0
                       }}
                       title={
-                        userDetail?.roles?.some(role => 
-                          role.kod_role === 'SUPERADMIN' || 
-                          role.kod_role === 'ADMINISTRATOR' || 
-                          role.kod_role === 'UCETNI'
-                        ) 
-                          ? "Uzamčeno" 
-                          : (file.nahrano_uzivatel_id && file.nahrano_uzivatel_id !== (userDetail?.uzivatel_id || userDetail?.user_id || userDetail?.id))
-                            ? "Přílohu nahrál jiný uživatel - můžete pouze prohlížet"
-                            : "Přílohy může mazat pouze autor, administrátor nebo účetní"
+                        faktura?.stav === 'DOKONCENA'
+                          ? "Faktura je ve stavu DOKONCENA - nelze upravovat přílohy"
+                          : userDetail?.roles?.some(role => 
+                              role.kod_role === 'SUPERADMIN' || 
+                              role.kod_role === 'ADMINISTRATOR' || 
+                              role.kod_role === 'UCETNI'
+                            ) 
+                              ? "Uzamčeno" 
+                              : (file.nahrano_uzivatel_id && file.nahrano_uzivatel_id !== (userDetail?.uzivatel_id || userDetail?.user_id || userDetail?.id))
+                                ? "Přílohu nahrál jiný uživatel - můžete pouze prohlížet"
+                                : "Přílohy může mazat pouze autor, administrátor nebo účetní"
                       }
                       >
                         🔒

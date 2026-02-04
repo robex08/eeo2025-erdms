@@ -2095,11 +2095,9 @@ export default function InvoiceEvidencePage() {
     }
     
     // 🔥 KONTROLA STAVU FAKTURY: Pokud je faktura DOKONČENÁ, nelze ji editovat
-    // (kromě adminů, INVOICE_MANAGE nebo ÚČETNÍ)
+    // ⚠️ READ-ONLY pro VŠECHNY včetně ADMIN/UCETNI - pouze změna klasifikace povolena
     if (originalFormData.stav === 'DOKONCENA') {
-      const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
-      const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
-      return isAdmin || hasInvoiceManage || hasAccountantRole;
+      return false; // ❌ Fakturu nelze editovat - je DOKONČENÁ
     }
     
     // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
@@ -5538,8 +5536,30 @@ export default function InvoiceEvidencePage() {
                 )}
               </HeaderLeft>
               <HeaderRight>
+                {/* 🔒 NOVÝ: Badge pro DOKONČENOU fakturu (nejvyšší priorita) */}
+                {originalFormData?.stav === 'DOKONCENA' && (
+                  <span style={{ 
+                    marginRight: '1rem',
+                    background: 'rgba(220, 38, 38, 0.15)',
+                    padding: '0.35rem 0.85rem',
+                    borderRadius: '6px',
+                    color: '#dc2626',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    border: '2px solid #dc2626',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    <FontAwesomeIcon icon={faLock} />
+                    DOKONČENÁ - READ-ONLY
+                  </span>
+                )}
+                
                 {/* Badge pro readonly režim */}
-                {isReadOnlyMode && (
+                {isReadOnlyMode && originalFormData?.stav !== 'DOKONCENA' && (
                   <span style={{ 
                     marginRight: '1rem',
                     background: 'rgba(255, 255, 255, 0.95)',
@@ -5555,7 +5575,7 @@ export default function InvoiceEvidencePage() {
                 )}
                 
                 {/* 🔥 NOVÝ: Badge pro uzamčenou fakturu po schválení věcné správnosti */}
-                {!isReadOnlyMode && formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL') && (
+                {!isReadOnlyMode && originalFormData?.stav !== 'DOKONCENA' && formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL') && (
                   <div style={{ 
                     display: 'flex',
                     alignItems: 'center',
@@ -6011,6 +6031,53 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
             </FieldRow>
 
+            {/* 🔒 INFO BOX: Faktura je DOKONČENÁ */}
+            {originalFormData?.stav === 'DOKONCENA' && (
+              <div style={{
+                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+                border: '3px solid #dc2626',
+                borderRadius: '12px',
+                padding: '1.25rem',
+                marginBottom: '1.5rem',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '1rem',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.15)'
+              }}>
+                <FontAwesomeIcon 
+                  icon={faLock} 
+                  style={{ 
+                    color: '#dc2626', 
+                    fontSize: '1.75rem',
+                    marginTop: '0.25rem'
+                  }} 
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    fontSize: '1.1rem', 
+                    color: '#991b1b', 
+                    fontWeight: 700,
+                    marginBottom: '0.5rem'
+                  }}>
+                    🔒 FAKTURA JE DOKONČENÁ
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.95rem', 
+                    color: '#7f1d1d',
+                    lineHeight: '1.6'
+                  }}>
+                    Tato faktura má stav <strong>DOKONCENA</strong> a je v režimu <strong>pouze pro čtení</strong>.
+                    <br/>
+                    ❌ Nelze upravovat žádná pole faktury
+                    <br/>
+                    ❌ Nelze mazat ani měnit klasifikaci příloh
+                    <br/>
+                    ✅ Můžete pouze zobrazit data a přílohy
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* GRID 3x - ŘÁDEK 2: Datum doručení | Datum vystavení | Datum splatnosti */}
             <FieldRow $columns="1fr 1fr 1fr">
               <FieldGroup>
@@ -6390,7 +6457,8 @@ export default function InvoiceEvidencePage() {
                 fa_datum_vystaveni: formData.fa_datum_vystaveni,
                 fa_datum_splatnosti: formData.fa_datum_splatnosti,
                 fa_castka: formData.fa_castka,
-                fa_strediska_kod: formData.fa_strediska_kod
+                fa_strediska_kod: formData.fa_strediska_kod,
+                stav: formData.stav || originalFormData?.stav || 'ZAEVIDOVANA' // 🔒 Přidán stav pro kontrolu DOKONCENA
               }}
               validateInvoiceForAttachments={validateInvoiceForAttachments}
               allUsers={zamestnanci}
@@ -6537,7 +6605,8 @@ export default function InvoiceEvidencePage() {
 
           {/* VAROVÁNÍ: EDITACE faktury vázané na objednávku - nutnost věcné kontroly (pouze pokud je operace možná) */}
           {/* NEZOBRAZOVAT pro readonly režim (věcná kontrola) - varování je irelevantní */}
-          {editingInvoiceId && formData.order_id && orderData && canAddInvoiceToOrder(orderData).allowed && !isReadOnlyMode && (
+          {/* NEZOBRAZOVAT pro DOKONCENA faktury - nelze editovat, takže varování nemá smysl */}
+          {editingInvoiceId && formData.order_id && orderData && canAddInvoiceToOrder(orderData).allowed && !isReadOnlyMode && originalFormData?.stav !== 'DOKONCENA' && (
             <div style={{
               background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
               border: '3px solid #f59e0b',
@@ -6661,6 +6730,8 @@ export default function InvoiceEvidencePage() {
               disabled={
                 loading || 
                 hasOnlyViewPermission || // 🔒 Uživatel s pouze VIEW nemůže ukládat
+                // 🔥 NOVÉ: Faktura se stavem DOKONCENA nelze editovat (jen READ-ONLY)
+                (originalFormData?.stav === 'DOKONCENA') ||
                 // Běžná disabled logika - nelze přidat fakturu k objednávce v zakázaném stavu
                 (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) ||
                 // 🔥 NOVÉ: Readonly uživatelé (INVOICE_MATERIAL_CORRECTNESS) mohou uložit POUZE pokud se změnila věcná správnost
@@ -6669,6 +6740,8 @@ export default function InvoiceEvidencePage() {
               title={
                 hasOnlyViewPermission
                   ? 'Nemáte oprávnění upravovat faktury. Zobrazení je pouze pro čtení.'
+                  : originalFormData?.stav === 'DOKONCENA'
+                  ? '🔒 Faktura je DOKONČENÁ a nelze ji editovat. Všechna pole jsou pouze pro čtení.'
                   : formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed
                   ? canAddInvoiceToOrder(orderData).reason
                   : (isReadOnlyMode && !hasChangedVecnaSpravnost)
