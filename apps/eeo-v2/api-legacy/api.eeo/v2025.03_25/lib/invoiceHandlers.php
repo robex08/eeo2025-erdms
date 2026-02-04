@@ -2268,14 +2268,21 @@ function handle_invoices25_list($input, $config, $queries) {
             
             // 🎯 STAV OBJEDNÁVKY - pro určení barvy prokliku
             $objednavka_je_dokoncena = false;
+            $objednavka_je_zkontrolovana = false;
             if (!empty($faktura['objednavka_stav_workflow_kod'])) {
                 // Stav workflow je uložen jako JSON array, např. ["DOKONCENA"]
                 $workflow_states = json_decode($faktura['objednavka_stav_workflow_kod'], true);
-                if (is_array($workflow_states) && in_array('DOKONCENA', $workflow_states)) {
-                    $objednavka_je_dokoncena = true;
+                if (is_array($workflow_states)) {
+                    if (in_array('DOKONCENA', $workflow_states)) {
+                        $objednavka_je_dokoncena = true;
+                    }
+                    if (in_array('ZKONTROLOVANA', $workflow_states)) {
+                        $objednavka_je_zkontrolovana = true;
+                    }
                 }
             }
             $faktura['objednavka_je_dokoncena'] = $objednavka_je_dokoncena;
+            $faktura['objednavka_je_zkontrolovana'] = $objednavka_je_zkontrolovana;
             
             // Odstraníme pomocné sloupce pro dodavatele a stav
             unset($faktura['objednavka_dodavatel_nazev']);

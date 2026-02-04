@@ -4679,7 +4679,11 @@ switch ($endpoint) {
                 }
                 
                 $result = handleAnnualFeesUpdateItem($pdo, $input, $auth_result);
-                http_response_code($result['status'] === 'error' ? 400 : 200);
+                $response_code = 200;
+                if ($result['status'] === 'error') {
+                    $response_code = isset($result['code']) ? $result['code'] : 400;
+                }
+                http_response_code($response_code);
                 echo json_encode($result);
             } else {
                 http_response_code(405);

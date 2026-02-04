@@ -5523,38 +5523,29 @@ export default function InvoiceEvidencePage() {
             <CollapsibleHeader onClick={() => toggleSection('invoiceData')}>
               <HeaderLeft>
                 <FontAwesomeIcon icon={faCreditCard} />
-                Údaje faktury
-                {editingInvoiceId && (
-                  <span style={{ 
-                    marginLeft: '1rem',
-                    color: 'rgba(255, 255, 255, 0.9)',
-                    fontSize: '0.9rem',
-                    fontWeight: 400
-                  }}>
-                    - Režim úprav #{editingInvoiceId}
-                  </span>
-                )}
+                Údaje faktury{editingInvoiceId && ` #${editingInvoiceId}`}
               </HeaderLeft>
               <HeaderRight>
                 {/* 🔒 NOVÝ: Badge pro DOKONČENOU fakturu (nejvyšší priorita) */}
                 {originalFormData?.stav === 'DOKONCENA' && (
                   <span style={{ 
                     marginRight: '1rem',
-                    background: 'rgba(220, 38, 38, 0.15)',
-                    padding: '0.35rem 0.85rem',
+                    background: '#dc2626',
+                    padding: '0.4rem 1rem',
                     borderRadius: '6px',
-                    color: '#dc2626',
-                    fontSize: '0.85rem',
+                    color: '#ffffff',
+                    fontSize: '0.9rem',
                     fontWeight: 700,
-                    border: '2px solid #dc2626',
+                    border: '2px solid #991b1b',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.5rem',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
+                    letterSpacing: '0.5px',
+                    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.3)'
                   }}>
                     <FontAwesomeIcon icon={faLock} />
-                    DOKONČENÁ - READ-ONLY
+                    DOKONČENÁ
                   </span>
                 )}
                 

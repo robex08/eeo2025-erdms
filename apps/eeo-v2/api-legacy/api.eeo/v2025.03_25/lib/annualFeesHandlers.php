@@ -89,14 +89,32 @@ function isAnnualFeesAdmin($user) {
 }
 
 /**
+ * Kontrola, zda je uživatel ÚČETNÍ (role UCETNI nebo HLAVNI_UCETNI)
+ * @param array $user - Objekt uživatele
+ * @return bool
+ */
+function isAccountant($user) {
+    if (!isset($user['roles']) || !is_array($user['roles'])) {
+        return false;
+    }
+    
+    return in_array('UCETNI', $user['roles']) || in_array('HLAVNI_UCETNI', $user['roles']);
+}
+
+/**
  * Kontrola práv pro VIEW (čtení)
- * ADMIN, ANNUAL_FEES_MANAGE nebo ANNUAL_FEES_VIEW
+ * ADMIN, ÚČETNÍ, nebo jakékoliv právo ANNUAL_FEES_*
+ * 
+ * ⚠️ PRAVIDLO: Pokud má uživatel JAKÉKOLIV právo *_FEE nebo roli ÚČETNÍ,
+ *    vidí VŠECHNY roční poplatky bez omezení hierarchie!
+ * 
  * @param array $user
  * @return bool
  */
 function canViewAnnualFees($user) {
     return isAnnualFeesAdmin($user) || 
-           hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_VIEW', 'ANNUAL_FEES_EDIT', 'ANNUAL_FEES_CREATE']);
+           isAccountant($user) ||
+           hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_VIEW', 'ANNUAL_FEES_EDIT', 'ANNUAL_FEES_CREATE', 'ANNUAL_FEES_DELETE', 'ANNUAL_FEES_ITEM_CREATE', 'ANNUAL_FEES_ITEM_UPDATE', 'ANNUAL_FEES_ITEM_DELETE', 'ANNUAL_FEES_ITEM_PAYMENT']);
 }
 
 /**
@@ -747,30 +765,51 @@ function handleAnnualFeesCreateItem($pdo, $data, $user) {
 // ============================================================================
 
 function handleAnnualFeesUpdateItem($pdo, $data, $user) {
-    // 🔐 KONTROLA PRÁV: EDIT nebo PAYMENT (pokud je změna stavu)
-    // Pokud se mění jen stav na ZAPLACENO, stačí PAYMENT právo
-    $isOnlyPaymentChange = isset($data['stav']) && $data['stav'] === 'ZAPLACENO' && 
-                           count(array_diff_key($data, ['id' => '', 'stav' => '', 'datum_zaplaceni' => '', 'cislo_dokladu' => ''])) === 0;
+    // 🔐 KONTROLA PRÁV: EDIT nebo PAYMENT
+    // 
+    // Pravidla:
+    // 1. ANNUAL_FEES_EDIT nebo ANNUAL_FEES_MANAGE → může editovat VŠE
+    // 2. ANNUAL_FEES_ITEM_PAYMENT (+ VIEW) → může editovat JEN:
+    //    - stav (ZAPLACENO/NEZAPLACENO)
+    //    - datum_zaplaceno
+    //    - cislo_dokladu
+    //
+    // Detekce, zda se mění pouze platební údaje:
+    // Ignorovat systemová pole (token, username) a metadata
+    $paymentFields = ['id', 'stav', 'datum_zaplaceno', 'cislo_dokladu', 'datum_zaplaceni', 'faktura_id'];
+    $systemFields = ['token', 'username', 'aktualizoval_uzivatel_id', 'dt_aktualizace'];
+    $changedFields = array_keys($data);
+    
+    // Odfiltrovat systemová pole
+    $relevantFields = array_diff($changedFields, $systemFields);
+    
+    // Zjistit, zda se mění něco kromě platebních polí
+    $nonPaymentFields = array_diff($relevantFields, $paymentFields);
+    
+    $isOnlyPaymentChange = empty($nonPaymentFields);
+    
+    // 🔍 DEBUG: Logování pro kontrolu
+    error_log("🔍 Payment check - relevant fields: " . implode(', ', $relevantFields));
+    error_log("🔍 Payment check - non-payment fields: " . implode(', ', $nonPaymentFields));
+    error_log("🔍 Payment check - isOnlyPaymentChange: " . ($isOnlyPaymentChange ? 'TRUE' : 'FALSE'));
     
     if ($isOnlyPaymentChange) {
-        // Změna platby - stačí PAYMENT právo
+        // Změna pouze platebních údajů - stačí PAYMENT právo
         if (!canMarkPaymentAnnualFees($user)) {
-            http_response_code(403);
-            echo json_encode([
+            return [
                 'status' => 'error',
-                'message' => 'Nemáte oprávnění k označování plateb'
-            ]);
-            return;
+                'message' => 'Nemáte oprávnění k označování plateb a úpravě platebních údajů',
+                'code' => 403
+            ];
         }
     } else {
-        // Jiná editace - potřeba EDIT právo
+        // Editace ostatních polí - potřeba EDIT právo
         if (!canEditAnnualFees($user)) {
-            http_response_code(403);
-            echo json_encode([
+            return [
                 'status' => 'error',
-                'message' => 'Nemáte oprávnění k editaci položek ročních poplatků'
-            ]);
-            return;
+                'message' => 'Nemáte oprávnění k editaci položek ročních poplatků',
+                'code' => 403
+            ];
         }
     }
     

@@ -12,14 +12,14 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
   // Rozdělit value na operátor a číslo
   // Formát: "=5000" nebo ">1000" nebo "<500"
   const parseValue = (val) => {
-    if (!val) return { operator: '>', number: '' };
+    if (!val) return { operator: '=', number: '' };
     
     const match = val.match(/^([=<>])(.*)$/);
     if (match) {
       return { operator: match[1], number: match[2].trim() };
     }
-    // Pokud není operátor, předpokládej >
-    return { operator: '>', number: val };
+    // Pokud není operátor, předpokládej =
+    return { operator: '=', number: val };
   };
 
   const { operator, number } = parseValue(value);

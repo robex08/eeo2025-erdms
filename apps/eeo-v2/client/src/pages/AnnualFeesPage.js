@@ -1416,13 +1416,23 @@ function AnnualFeesPage() {
   const hasEdit = hasPermission('ANNUAL_FEES_EDIT');
   const hasDelete = hasPermission('ANNUAL_FEES_DELETE');
   const hasItemPayment = hasPermission('ANNUAL_FEES_ITEM_PAYMENT');
+  const hasItemCreate = hasPermission('ANNUAL_FEES_ITEM_CREATE');
+  const hasItemUpdate = hasPermission('ANNUAL_FEES_ITEM_UPDATE');
+  const hasItemDelete = hasPermission('ANNUAL_FEES_ITEM_DELETE');
   
   // Kombinované kontroly
-  const canView = isAdmin || hasManage || hasView || hasEdit || hasCreate;
+  // ⚠️ canView: Pokud má uživatel JAKÉKOLIV právo *_FEE, může vidět modul (backend kontroluje to samé)
+  const canView = isAdmin || hasManage || hasView || hasEdit || hasCreate || hasDelete || hasItemPayment || hasItemCreate || hasItemUpdate || hasItemDelete;
   const canCreate = isAdmin || hasManage || hasCreate;
   const canEdit = isAdmin || hasManage || hasEdit;
   const canDelete = isAdmin || hasManage || (hasDelete && hasEdit); // DELETE jen s EDIT
   const canMarkPayment = isAdmin || hasManage || (hasItemPayment && (hasView || hasEdit));
+  
+  // Práva pro položky (items)
+  const canEditItems = isAdmin || hasManage || hasEdit || hasItemUpdate; // Editace položek (název, částka, datum)
+  const canCreateItems = isAdmin || hasManage || hasCreate || hasItemCreate; // Vytváření položek
+  const canDeleteItems = isAdmin || hasManage || hasDelete || hasItemDelete; // Mazání položek
+
   
   // 📎 STATE PRO PŘÍLOHY
   const [attachments, setAttachments] = useState({}); // { [feeId]: [{id, original_name, ...}] }
@@ -2804,15 +2814,24 @@ function AnnualFeesPage() {
           return;
         }
         
-        // AŽ NYNÍ změnit status na ZAPLACENO
-        dataToSave.stav = 'ZAPLACENO';
-        dataToSave.datum_zaplaceni = dataToSave.datum_zaplaceno;
+        // 🔐 PAYMENT MODE: Poslat JEN payment pole (pro ANNUAL_FEES_ITEM_PAYMENT permission)
+        // Backend kontroluje, že se mění jen tyto pole
+        const paymentOnlyData = {
+          id: itemId, // ID z parametru funkce
+          stav: 'ZAPLACENO',
+          datum_zaplaceno: dataToSave.datum_zaplaceno,
+          datum_zaplaceni: dataToSave.datum_zaplaceno, // alias
+          cislo_dokladu: dataToSave.cislo_dokladu
+        };
+        
+        await handleUpdateItem(itemId, paymentOnlyData);
+      } else {
+        // Vyčistit interní flag
+        delete dataToSave._paymentMode;
+        
+        await handleUpdateItem(itemId, dataToSave);
       }
       
-      // Vyčistit interní flag
-      delete dataToSave._paymentMode;
-      
-      await handleUpdateItem(itemId, dataToSave);
       setEditingItemId(null);
       setEditItemData({});
     } catch (error) {
@@ -4508,107 +4527,115 @@ function AnnualFeesPage() {
                                     ) : (
                                       <>
                                         {item.stav === 'ZAPLACENO' ? (
-                                          <Button 
-                                            variant="secondary" 
-                                            style={{
-                                              padding: '6px 10px', 
-                                              fontSize: '0.85rem', 
-                                              minWidth: 'auto', 
-                                              background: canUndo ? '#f59e0b' : '#9ca3af', 
-                                              color: 'white', 
-                                              borderColor: canUndo ? '#f59e0b' : '#9ca3af',
-                                              opacity: canUndo ? 1 : 0.6,
-                                              cursor: canUndo ? 'pointer' : 'not-allowed'
-                                            }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (!canUndo) return;
-                                              // Při zrušení platby automaticky určit stav podle data splatnosti
-                                              const mockItem = {
-                                                stav: 'NEZAPLACENO',
-                                                datum_splatnosti: item.datum_splatnosti
-                                              };
-                                              const autoStatus = getItemStatusByDate(mockItem);
-                                              handleUpdateItem(item.id, { 
-                                                stav: autoStatus, 
-                                                datum_zaplaceni: null,
-                                                datum_zaplaceno: null,
-                                                faktura_id: null
-                                              });
-                                            }}
-                                            title={canUndo ? 'Vrátit na nezaplaceno' : 'Nejdříve zrušte platbu u následujících položek'}
-                                            disabled={!canUndo}
-                                          >
-                                            <FontAwesomeIcon icon={faUndo} />
-                                          </Button>
+                                          canMarkPayment && (
+                                            <Button 
+                                              variant="secondary" 
+                                              style={{
+                                                padding: '6px 10px', 
+                                                fontSize: '0.85rem', 
+                                                minWidth: 'auto', 
+                                                background: canUndo ? '#f59e0b' : '#9ca3af', 
+                                                color: 'white', 
+                                                borderColor: canUndo ? '#f59e0b' : '#9ca3af',
+                                                opacity: canUndo ? 1 : 0.6,
+                                                cursor: canUndo ? 'pointer' : 'not-allowed'
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!canUndo) return;
+                                                // Při zrušení platby automaticky určit stav podle data splatnosti
+                                                const mockItem = {
+                                                  stav: 'NEZAPLACENO',
+                                                  datum_splatnosti: item.datum_splatnosti
+                                                };
+                                                const autoStatus = getItemStatusByDate(mockItem);
+                                                handleUpdateItem(item.id, { 
+                                                  stav: autoStatus, 
+                                                  datum_zaplaceni: null,
+                                                  datum_zaplaceno: null,
+                                                  faktura_id: null
+                                                });
+                                              }}
+                                              title={canUndo ? 'Vrátit na nezaplaceno' : 'Nejdříve zrušte platbu u následujících položek'}
+                                              disabled={!canUndo}
+                                            >
+                                              <FontAwesomeIcon icon={faUndo} />
+                                            </Button>
+                                          )
                                         ) : (
+                                          canMarkPayment && (
+                                            <Button 
+                                              variant="secondary" 
+                                              style={{
+                                                padding: '6px 10px', 
+                                                fontSize: '0.85rem', 
+                                                minWidth: 'auto', 
+                                                background: canPay ? '#10b981' : '#9ca3af', 
+                                                color: 'white', 
+                                                borderColor: canPay ? '#10b981' : '#9ca3af',
+                                                opacity: canPay ? 1 : 0.6,
+                                                cursor: canPay ? 'pointer' : 'not-allowed'
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!canPay) return;
+                                                // Otevřít edit režim s příznakem, že chceme zaplatit
+                                                const itemForPayment = {...item, _paymentMode: true};
+                                                handleStartEditItem(itemForPayment);
+                                              }}
+                                              title={canPay ? 'Označit jako zaplaceno' : 'Nejdříve zaplaťte předchozí položky'}
+                                              disabled={!canPay}
+                                            >
+                                              <FontAwesomeIcon icon={faMoneyBill} />
+                                            </Button>
+                                          )
+                                        )}
+                                        {canEditItems && (
                                           <Button 
                                             variant="secondary" 
                                             style={{
                                               padding: '6px 10px', 
                                               fontSize: '0.85rem', 
-                                              minWidth: 'auto', 
-                                              background: canPay ? '#10b981' : '#9ca3af', 
-                                              color: 'white', 
-                                              borderColor: canPay ? '#10b981' : '#9ca3af',
-                                              opacity: canPay ? 1 : 0.6,
-                                              cursor: canPay ? 'pointer' : 'not-allowed'
+                                              minWidth: 'auto',
+                                              opacity: item.stav === 'ZAPLACENO' ? 0.4 : 1,
+                                              cursor: item.stav === 'ZAPLACENO' ? 'not-allowed' : 'pointer'
                                             }}
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              if (!canPay) return;
-                                              // Otevřít edit režim s příznakem, že chceme zaplatit
-                                              const itemForPayment = {...item, _paymentMode: true};
-                                              handleStartEditItem(itemForPayment);
+                                              if (item.stav !== 'ZAPLACENO') {
+                                                handleStartEditItem(item);
+                                              }
                                             }}
-                                            title={canPay ? 'Označit jako zaplaceno' : 'Nejdříve zaplaťte předchozí položky'}
-                                            disabled={!canPay}
+                                            title={item.stav === 'ZAPLACENO' ? 'Pro editaci nejdříve zrušte zaplacení' : 'Upravit položku'}
+                                            disabled={item.stav === 'ZAPLACENO'}
                                           >
-                                            <FontAwesomeIcon icon={faMoneyBill} />
+                                            <FontAwesomeIcon icon={faEdit} />
                                           </Button>
                                         )}
-                                        <Button 
-                                          variant="secondary" 
-                                          style={{
-                                            padding: '6px 10px', 
-                                            fontSize: '0.85rem', 
-                                            minWidth: 'auto',
-                                            opacity: item.stav === 'ZAPLACENO' ? 0.4 : 1,
-                                            cursor: item.stav === 'ZAPLACENO' ? 'not-allowed' : 'pointer'
-                                          }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (item.stav !== 'ZAPLACENO') {
-                                              handleStartEditItem(item);
-                                            }
-                                          }}
-                                          title={item.stav === 'ZAPLACENO' ? 'Pro editaci nejdříve zrušte zaplacení' : 'Upravit položku'}
-                                          disabled={item.stav === 'ZAPLACENO'}
-                                        >
-                                          <FontAwesomeIcon icon={faEdit} />
-                                        </Button>
-                                        <Button 
-                                          variant="secondary" 
-                                          style={{
-                                            padding: '6px 10px', 
-                                            fontSize: '0.85rem', 
-                                            minWidth: 'auto',
-                                            color: item.stav === 'ZAPLACENO' ? '#9ca3af' : '#ef4444',
-                                            borderColor: item.stav === 'ZAPLACENO' ? '#9ca3af' : '#ef4444',
-                                            opacity: item.stav === 'ZAPLACENO' ? 0.4 : 1,
-                                            cursor: item.stav === 'ZAPLACENO' ? 'not-allowed' : 'pointer'
-                                          }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (item.stav !== 'ZAPLACENO') {
-                                              handleDeleteItem(item.id, item.nazev_polozky);
-                                            }
-                                          }}
-                                          title={item.stav === 'ZAPLACENO' ? 'Nelze smazat zaplacenou položku' : 'Smazat položku'}
-                                          disabled={item.stav === 'ZAPLACENO'}
-                                        >
-                                          <FontAwesomeIcon icon={faTrash} />
-                                        </Button>
+                                        {canDeleteItems && (
+                                          <Button 
+                                            variant="secondary" 
+                                            style={{
+                                              padding: '6px 10px', 
+                                              fontSize: '0.85rem', 
+                                              minWidth: 'auto',
+                                              color: item.stav === 'ZAPLACENO' ? '#9ca3af' : '#ef4444',
+                                              borderColor: item.stav === 'ZAPLACENO' ? '#9ca3af' : '#ef4444',
+                                              opacity: item.stav === 'ZAPLACENO' ? 0.4 : 1,
+                                              cursor: item.stav === 'ZAPLACENO' ? 'not-allowed' : 'pointer'
+                                            }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (item.stav !== 'ZAPLACENO') {
+                                                handleDeleteItem(item.id, item.nazev_polozky);
+                                              }
+                                            }}
+                                            title={item.stav === 'ZAPLACENO' ? 'Nelze smazat zaplacenou položku' : 'Smazat položku'}
+                                            disabled={item.stav === 'ZAPLACENO'}
+                                          >
+                                            <FontAwesomeIcon icon={faTrash} />
+                                          </Button>
+                                        )}
                                       </>
                                     )}
                                   </div>
