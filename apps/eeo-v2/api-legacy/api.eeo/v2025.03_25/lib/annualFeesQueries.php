@@ -26,9 +26,72 @@ if (!defined('TBL_ROCNI_POPLATKY_PRILOHY')) {
 // 📋 LIST - Seznam ročních poplatků s filtry
 // ============================================================================
 
-function queryAnnualFeesList($pdo, $filters, $limit, $offset) {
+function queryAnnualFeesList($pdo, $filters, $limit, $offset, $user = null) {
     $where = ['rp.aktivni = 1'];
     $params = [];
+    
+    // 🔐 HIERARCHICKÁ KONTROLA PŘÍSTUPU
+    // 1. ADMIN → vidí vše
+    // 2. Role UCETNI/HLAVNI_UCETNI → vidí vše
+    // 3. Má jakékoliv právo ANNUAL_FEES_* → vidí vše
+    // 4. Ostatní → vidí jen své + podřízené
+    $hasFullAccess = false;
+    
+    if ($user) {
+        // ADMIN má vše
+        $isAdmin = (isset($user['is_admin']) && $user['is_admin']) || 
+                   (isset($user['roles']) && (in_array('SUPERADMIN', $user['roles']) || in_array('ADMINISTRATOR', $user['roles'])));
+        
+        // Role UCETNI nebo HLAVNI_UCETNI má vše
+        $hasAccountantRole = isset($user['roles']) && (in_array('UCETNI', $user['roles']) || in_array('HLAVNI_UCETNI', $user['roles']));
+        
+        // Má jakékoliv právo ANNUAL_FEES_* má vše
+        $hasAnnualFeesPermission = false;
+        if (isset($user['permissions']) && is_array($user['permissions'])) {
+            foreach ($user['permissions'] as $perm) {
+                if (isset($perm['kod_prava']) && strpos($perm['kod_prava'], 'ANNUAL_FEES_') === 0) {
+                    $hasAnnualFeesPermission = true;
+                    break;
+                }
+            }
+        }
+        
+        $hasFullAccess = $isAdmin || $hasAccountantRole || $hasAnnualFeesPermission;
+        
+        // Pokud NEMÁ plný přístup → omezit na své + podřízené
+        if (!$hasFullAccess && isset($user['id'])) {
+            // Získat ID podřízených z hierarchie
+            $subordinateIds = [];
+            $hierarchySql = "
+                SELECT podrizeny_id 
+                FROM 25_uzivatele_hierarchie 
+                WHERE nadrizeny_id = :user_id 
+                AND aktivni = 1 
+                AND (dt_do IS NULL OR dt_do >= CURDATE())
+            ";
+            $hierarchyStmt = $pdo->prepare($hierarchySql);
+            $hierarchyStmt->execute([':user_id' => $user['id']]);
+            while ($row = $hierarchyStmt->fetch(PDO::FETCH_ASSOC)) {
+                $subordinateIds[] = (int)$row['podrizeny_id'];
+            }
+            
+            // Přidat sebe + podřízené
+            $accessibleUserIds = array_merge([$user['id']], $subordinateIds);
+            
+            // Filtr na vytvoril_uzivatel_id
+            if (!empty($accessibleUserIds)) {
+                $placeholders = implode(',', array_fill(0, count($accessibleUserIds), '?'));
+                $where[] = "rp.vytvoril_uzivatel_id IN ($placeholders)";
+                foreach ($accessibleUserIds as $uid) {
+                    $params[] = $uid;
+                }
+            } else {
+                // Pokud nemá ani podřízené, vidí jen své
+                $where[] = 'rp.vytvoril_uzivatel_id = ?';
+                $params[] = $user['id'];
+            }
+        }
+    }
 
     // Filtry
     if ($filters['rok']) {

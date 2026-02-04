@@ -8,7 +8,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFileInvoice, faSearch, faFilter, faTimes, faPlus, faEdit, faEye, faTrash,
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
-  faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
+  faCalendarAlt, faCalendarCheck, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
   faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins
@@ -2494,8 +2494,9 @@ const Invoices25List = () => {
         dodavatel_nazev: invoice.dodavatel_nazev || null,
         dodavatel_ico: invoice.dodavatel_ico || null,
         
-        // 🎯 STAV OBJEDNÁVKY - pro zelené/modré zbarvení
+        // 🎯 STAV OBJEDNÁVKY - pro zelené/oranžové/modré zbarvení
         objednavka_je_dokoncena: invoice.objednavka_je_dokoncena || false,
+        objednavka_je_zkontrolovana: invoice.objednavka_je_zkontrolovana || false,
         
         // Vypočítaný status pro UI
         status: getInvoiceStatus(invoice)
@@ -4544,7 +4545,7 @@ const Invoices25List = () => {
                                     alignItems: 'center',
                                     cursor: invoiceTypesLoading ? 'wait' : 'pointer',
                                     opacity: invoiceTypesLoading ? 0.7 : 1,
-                                    color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6',
+                                    color: invoice.objednavka_je_dokoncena ? '#059669' : (invoice.objednavka_je_zkontrolovana ? '#ea580c' : '#3b82f6'),
                                     transition: 'opacity 0.2s'
                                   }}
                                   onClick={() => handleEditOrder(invoice)}
@@ -4556,7 +4557,7 @@ const Invoices25List = () => {
                                     icon={faFileInvoice} 
                                     style={{ 
                                       marginRight: '0.5rem', 
-                                      color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6'
+                                      color: invoice.objednavka_je_dokoncena ? '#059669' : (invoice.objednavka_je_zkontrolovana ? '#ea580c' : '#3b82f6')
                                     }} 
                                   />
                                   {invoice.cislo_objednavky}
@@ -4638,10 +4639,42 @@ const Invoices25List = () => {
                     <TableCell>
                       <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.vytvoril_uzivatel_zkracene ? (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                            {invoice.vytvoril_uzivatel_zkracene}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                              <strong>{invoice.vytvoril_uzivatel_zkracene}</strong>
+                            </div>
+                            {invoice.dt_vytvoreni && (() => {
+                              // Výpočet rozdílu mezi datem vytvoření a splatností
+                              const dtVytvoreni = new Date(invoice.dt_vytvoreni);
+                              const dtSplatnosti = invoice.datum_splatnosti ? new Date(invoice.datum_splatnosti) : null;
+                              
+                              let isWarning = false;
+                              if (dtSplatnosti) {
+                                const diffMs = dtSplatnosti - dtVytvoreni;
+                                const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                                // Pokud je vytvoření max 2 dny před splatností nebo po splatnosti
+                                isWarning = diffDays <= 2;
+                              }
+                              
+                              return (
+                                <div style={{ 
+                                  color: isWarning ? '#991b1b' : '#64748b', 
+                                  fontSize: '0.75rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  background: isWarning ? '#fee2e2' : 'transparent',
+                                  padding: isWarning ? '0.15rem 0.35rem' : '0',
+                                  borderRadius: isWarning ? '3px' : '0',
+                                  fontWeight: isWarning ? '700' : 'normal'
+                                }}>
+                                  <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '0.7rem' }} />
+                                  {formatDateOnly(invoice.dt_vytvoreni)}
+                                </div>
+                              );
+                            })()}
+                          </div>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>—</span>
                         )}
@@ -4692,7 +4725,18 @@ const Invoices25List = () => {
                             </div>
                             {invoice.dt_potvrzeni_vecne_spravnosti && (
                               <div style={{ color: '#64748b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '0.7rem' }} />
+                                <div style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '14px',
+                                  height: '14px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#94a3b8',
+                                  fontSize: '0.55rem'
+                                }}>
+                                  <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
+                                </div>
                                 <span title="Datum potvrzení věcné správnosti" style={{ whiteSpace: 'nowrap' }}>
                                   {formatDateOnly(invoice.dt_potvrzeni_vecne_spravnosti)}
                                 </span>
@@ -4851,26 +4895,38 @@ const Invoices25List = () => {
                             </ActionMenuButton>
                           </TooltipWrapper>
                         )}
-                        {canManageInvoices && (
-                          <TooltipWrapper text={
-                            (invoice.objednavka_id || invoice.smlouva_id) 
-                              ? "Odpojit od objednávky/smlouvy" 
-                              : "Faktura není napojená na objednávku ani smlouvu"
-                          } preferredPosition="left">
-                            <ActionMenuButton 
-                              className="unlink"
-                              onClick={() => handleUnlinkInvoice(invoice)}
-                              disabled={!(invoice.objednavka_id || invoice.smlouva_id)}
-                              title={
-                                (invoice.objednavka_id || invoice.smlouva_id) 
-                                  ? "Odpojit" 
-                                  : "Není napojená"
-                              }
-                            >
-                              <FontAwesomeIcon icon={faUnlink} />
-                            </ActionMenuButton>
-                          </TooltipWrapper>
-                        )}
+                        {canManageInvoices && (() => {
+                          // 🔒 KONTROLA: Zákaz odpojení pokud objednávka nebo faktura je ve stavu DOKONCENA
+                          const isInvoiceCompleted = invoice.stav === 'DOKONCENA';
+                          const isOrderCompleted = invoice.objednavka_je_dokoncena === true || invoice.objednavka_je_dokoncena === 1;
+                          
+                          const isLinked = !!(invoice.objednavka_id || invoice.smlouva_id);
+                          const canUnlink = isLinked && !isInvoiceCompleted && !isOrderCompleted;
+                          
+                          let tooltipText = "Faktura není napojená na objednávku ani smlouvu";
+                          if (isLinked) {
+                            if (isInvoiceCompleted) {
+                              tooltipText = "Nelze odpojit - faktura je ve stavu DOKONČENA";
+                            } else if (isOrderCompleted) {
+                              tooltipText = "Nelze odpojit - objednávka je ve stavu DOKONČENA";
+                            } else {
+                              tooltipText = "Odpojit od objednávky/smlouvy";
+                            }
+                          }
+                          
+                          return (
+                            <TooltipWrapper text={tooltipText} preferredPosition="left">
+                              <ActionMenuButton 
+                                className="unlink"
+                                onClick={() => handleUnlinkInvoice(invoice)}
+                                disabled={!canUnlink}
+                                title={canUnlink ? "Odpojit" : "Nelze odpojit"}
+                              >
+                                <FontAwesomeIcon icon={faUnlink} />
+                              </ActionMenuButton>
+                            </TooltipWrapper>
+                          );
+                        })()}
                         {(canManageInvoices || isAdmin) && (
                           <TooltipWrapper text="Smazat" preferredPosition="left">
                             <ActionMenuButton 

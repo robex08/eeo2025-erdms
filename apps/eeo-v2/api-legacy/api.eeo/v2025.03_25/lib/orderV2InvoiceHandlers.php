@@ -560,9 +560,44 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         }
         
         // ✅ SPECIÁLNÍ ZPRACOVÁNÍ: objednavka_id a smlouva_id - povolí nastavit null pro unlink
+        // ⚠️ KONTROLA: Zákaz odpojení pokud objednávka nebo faktura je ve stavu DOKONCENA
         if (array_key_exists('objednavka_id', $input)) {
+            $new_objednavka_id = !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
+            
+            // Pokud se odpojuje od objednávky (null) a aktuálně je přiřazena
+            if ($new_objednavka_id === null && !empty($current_invoice['objednavka_id'])) {
+                // Kontrola stavu faktury
+                if (!empty($current_invoice['stav']) && $current_invoice['stav'] === 'DOKONCENA') {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'Nelze odpojit fakturu ve stavu DOKONČENA. Prosím změňte nejprve stav faktury.'
+                    ));
+                    return;
+                }
+                
+                // Kontrola stavu objednávky
+                $stmt_check_order = $db->prepare("SELECT stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1");
+                $stmt_check_order->execute(array($current_invoice['objednavka_id']));
+                $check_order = $stmt_check_order->fetch(PDO::FETCH_ASSOC);
+                
+                if ($check_order) {
+                    $workflow_states = json_decode($check_order['stav_workflow_kod'], true);
+                    if (is_array($workflow_states) && in_array('DOKONCENA', $workflow_states)) {
+                        http_response_code(400);
+                        echo json_encode(array(
+                            'status' => 'error',
+                            'message' => 'Nelze odpojit fakturu od objednávky ve stavu DOKONČENA. Prosím změňte nejprve stav objednávky.'
+                        ));
+                        return;
+                    }
+                }
+                
+                error_log("🔓 UNLINK: Odpojování faktury #{$invoice_id} od objednávky #{$current_invoice['objednavka_id']}");
+            }
+            
             $updateFields[] = 'objednavka_id = ?';
-            $updateValues[] = !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
+            $updateValues[] = $new_objednavka_id;
         }
         if (array_key_exists('smlouva_id', $input)) {
             $updateFields[] = 'smlouva_id = ?';
@@ -649,6 +684,121 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         debug_log("✅ UPDATE INVOICE #$invoice_id - Aktualizováno {$stmt->rowCount()} řádků");
         
         // =========================================================================
+        // 🔄 SPECIÁLNÍ LOGIKA: ODPOJENÍ FAKTURY OD OBJEDNÁVKY
+        // =========================================================================
+        // ✅ POŽADAVEK: Po odpojení faktury zkontrolovat zbývající faktury objednávky.
+        //    Pokud objednávka nemá žádnou jinou věcně zkontrolovanou fakturu,
+        //    vrátit workflow do stavu FAKTURACE (odebrat VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA).
+        
+        $detached_from_order_id = null;
+        if (array_key_exists('objednavka_id', $input) && 
+            !empty($current_invoice['objednavka_id']) && 
+            (empty($input['objednavka_id']) || $input['objednavka_id'] === null)) {
+            
+            $detached_from_order_id = (int)$current_invoice['objednavka_id'];
+            error_log("🔓 UNLINK: Faktura #{$invoice_id} byla odpojena od objednávky #{$detached_from_order_id}");
+            
+            try {
+                // Načíst aktuální stav objednávky
+                $sql_order = "SELECT id, stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
+                $stmt_order = $db->prepare($sql_order);
+                $stmt_order->execute(array($detached_from_order_id));
+                $detached_order = $stmt_order->fetch(PDO::FETCH_ASSOC);
+                
+                if ($detached_order) {
+                    // Zkontrolovat zbývající faktury objednávky
+                    $sql_remaining = "SELECT id, vecna_spravnost_potvrzeno FROM " . TBL_FAKTURY . " 
+                                     WHERE objednavka_id = ? AND aktivni = 1 AND id != ?";
+                    $stmt_remaining = $db->prepare($sql_remaining);
+                    $stmt_remaining->execute(array($detached_from_order_id, $invoice_id));
+                    $remaining_invoices = $stmt_remaining->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    // Zjistit, zda existuje alespoň jedna věcně zkontrolovaná faktura
+                    $has_verified_invoice = false;
+                    foreach ($remaining_invoices as $inv) {
+                        if ((int)$inv['vecna_spravnost_potvrzeno'] === 1) {
+                            $has_verified_invoice = true;
+                            break;
+                        }
+                    }
+                    
+                    // Pokud NENÍ žádná věcně zkontrolovaná faktura → vrátit workflow na FAKTURACE
+                    if (!$has_verified_invoice) {
+                        $workflow_states = json_decode($detached_order['stav_workflow_kod'], true);
+                        if (!is_array($workflow_states)) {
+                            $workflow_states = array();
+                        }
+                        
+                        $original_workflow = implode(', ', $workflow_states);
+                        
+                        // Odebrat stavy VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA
+                        $workflow_states = array_values(array_filter($workflow_states, function($s) {
+                            return !in_array($s, array('VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'));
+                        }));
+                        
+                        // Ujistit se, že FAKTURACE je v workflow
+                        if (!in_array('FAKTURACE', $workflow_states)) {
+                            $workflow_states[] = 'FAKTURACE';
+                        }
+                        
+                        // Seřadit workflow podle logického pořadí
+                        $workflowOrder = array(
+                            'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA',
+                            'ROZPRACOVANA', 'ODESLANA', 'ZRUSENA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 
+                            'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
+                        );
+                        
+                        usort($workflow_states, function($a, $b) use ($workflowOrder) {
+                            $indexA = array_search($a, $workflowOrder);
+                            $indexB = array_search($b, $workflowOrder);
+                            $indexA = ($indexA === false) ? 999 : $indexA;
+                            $indexB = ($indexB === false) ? 999 : $indexB;
+                            return $indexA - $indexB;
+                        });
+                        
+                        $new_workflow_json = json_encode(array_values($workflow_states));
+                        
+                        // Nastavit stav_objednavky podle posledního workflow stavu
+                        $last_workflow_code = end($workflow_states);
+                        $stav_objednavky_text = 'Fakturace';
+                        
+                        if ($last_workflow_code === 'FAKTURACE') {
+                            $stav_objednavky_text = 'Fakturace';
+                        } else if ($last_workflow_code === 'UVEREJNENA') {
+                            $stav_objednavky_text = 'Uveřejněna';
+                        } else if ($last_workflow_code === 'SCHVALENA') {
+                            $stav_objednavky_text = 'Schválena';
+                        }
+                        
+                        // Aktualizovat objednávku
+                        $sql_update_order = "UPDATE " . TBL_OBJEDNAVKY . " 
+                                            SET stav_workflow_kod = ?, 
+                                                stav_objednavky = ?,
+                                                dt_aktualizace = NOW(),
+                                                uzivatel_akt_id = ?
+                                            WHERE id = ? AND aktivni = 1";
+                        $stmt_update_order = $db->prepare($sql_update_order);
+                        $stmt_update_order->execute(array(
+                            $new_workflow_json,
+                            $stav_objednavky_text,
+                            $token_data['id'],
+                            $detached_from_order_id
+                        ));
+                        
+                        error_log("🔙 UNLINK: Objednávka #{$detached_from_order_id} nemá žádnou věcně zkontrolovanou fakturu → workflow vráceno na FAKTURACE");
+                        error_log("   Původní workflow: [{$original_workflow}]");
+                        error_log("   Nové workflow: [" . implode(', ', $workflow_states) . "]");
+                    } else {
+                        error_log("✅ UNLINK: Objednávka #{$detached_from_order_id} má ještě " . count($remaining_invoices) . " faktur(u), z toho alespoň jednu věcně zkontrolovanou → workflow se nemění");
+                    }
+                }
+            } catch (Exception $unlink_error) {
+                error_log("⚠️ UNLINK: Chyba při aktualizaci workflow po odpojení faktury: " . $unlink_error->getMessage());
+                // Neblokovat úspěch faktury, jen zalogovat chybu
+            }
+        }
+        
+        // =========================================================================
         // 🔄 AUTOMATICKÁ ZMĚNA WORKFLOW OBJEDNÁVKY PO UPDATE FAKTURY
         // =========================================================================
         // ✅ POŽADAVEK: Pokud uživatel potvrdí věcnou správnost faktury v modulu Faktury,
@@ -659,7 +809,8 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         
         $order_id = (int)$current_invoice['objednavka_id'];
         
-        if ($order_id > 0) {
+        // Pokud byla faktura odpojena, přeskočit běžnou workflow logiku (už jsme ji zpracovali výše)
+        if ($order_id > 0 && $detached_from_order_id === null) {
             try {
                 // Načíst aktuální stav objednávky
                 $sql_order = "SELECT id, stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
