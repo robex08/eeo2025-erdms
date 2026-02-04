@@ -2050,7 +2050,11 @@ const OrdersTableV3 = ({
               <ActionMenuButton
                 className="create-invoice"
                 onClick={() => onActionClick?.('create-invoice', order)}
-                title="Evidovat fakturu"
+                title={
+                  !canCreateInvoice(order)
+                    ? 'Evidování faktury je dostupné pouze ve stavech: Fakturace, Věcná správnost, Zkontrolována (ne v Dokončená)'
+                    : 'Evidovat fakturu k této objednávce'
+                }
                 disabled={!canCreateInvoice(order)}
               >
                 <FontAwesomeIcon icon={faFileInvoice} />

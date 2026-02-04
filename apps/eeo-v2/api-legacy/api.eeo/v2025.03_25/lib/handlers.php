@@ -4733,6 +4733,24 @@ function handle_update_order($input, $config, $queries) {
 
         $db->commit();
 
+        // ✅ WORKFLOW UPDATE: Po vyplnění údajů o zveřejnění automaticky přejít na UVEREJNENA → FAKTURACE
+        if (isset($payload['datum_zverejneni']) || isset($payload['registr_smluv_id'])) {
+            try {
+                require_once __DIR__ . '/orderWorkflowHelpers.php';
+                $registrData = [];
+                if (isset($payload['datum_zverejneni'])) {
+                    $registrData['datum_zverejneni'] = $payload['datum_zverejneni'];
+                }
+                if (isset($payload['registr_smluv_id'])) {
+                    $registrData['registr_smluv_id'] = $payload['registr_smluv_id'];
+                }
+                updateWorkflowAfterRegistrFilled($db, $orderId, $registrData);
+            } catch (Exception $e) {
+                error_log("[WORKFLOW] Chyba při automatickém workflow update po vyplnění registru: " . $e->getMessage());
+                // Pokračovat normálně - není to kritická chyba
+            }
+        }
+
         $orderNumber = isset($existingRow['cislo_objednavky']) && $existingRow['cislo_objednavky'] !== null ? (string)$existingRow['cislo_objednavky'] : '';
         if ($orderNumber === '') {
             // fallback reread (edge)

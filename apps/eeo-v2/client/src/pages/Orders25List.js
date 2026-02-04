@@ -7,12 +7,14 @@ import { DebugContext } from '../context/DebugContext';
 import { ToastContext } from '../context/ToastContext';
 import { loadSettingsFromLocalStorage } from '../services/userSettingsApi';
 import ConfirmDialog from '../components/ConfirmDialog';
+import InvoiceListPopup from '../components/InvoiceListPopup';
 import ModernHelper from '../components/ModernHelper';
 import DatePicker from '../components/DatePicker';
 import OperatorInput from '../components/OperatorInput';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { createDownloadLink25, lockOrder25, unlockOrder25, getDruhyObjednavky25, getStrediska25 } from '../services/api25orders';
 import { getOrderV2, updateOrderV2, listOrdersV2, deleteOrderV2, restoreOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání, obnovu a přílohy
+import { getInvoicesByOrder25 } from '../services/api25invoices';
 import { fetchAllUsers, fetchApprovers, fetchCiselniky, fetchLimitovanePrisliby } from '../services/api2auth';
 import { getDocxSablonyList } from '../services/apiv2Dictionaries';
 import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
@@ -2724,6 +2726,7 @@ const ActionMenuButton = styled.button`
   min-width: 28px;
   min-height: 28px;
   opacity: ${props => props.$disabled ? '0.4' : '1'};
+  position: relative;
 
   /* Prevence blikání ikon */
   svg {
@@ -2760,6 +2763,18 @@ const ActionMenuButton = styled.button`
     color: ${props => props.$disabled ? '#94a3b8' : '#7c3aed'};
     background: ${props => props.$disabled ? 'transparent' : '#f5f3ff'};
   }
+`;
+
+// Badge pro počet faktur na ikoně
+const InvoiceCountBadge = styled.span`
+  position: absolute;
+  top: -2px;
+  right: 0px;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 `;
 
 // Debug Panel Styles
@@ -4701,6 +4716,12 @@ const Orders25List = () => {
   // Filtry pro faktury a přílohy
   const [filterWithInvoices, setFilterWithInvoices] = useState(false);
   const [filterWithAttachments, setFilterWithAttachments] = useState(false);
+
+  // Popup pro seznam faktur
+  const [invoicePopupVisible, setInvoicePopupVisible] = useState(false);
+  const [invoicePopupOrder, setInvoicePopupOrder] = useState(null);
+  const [invoicePopupInvoices, setInvoicePopupInvoices] = useState([]);
+  const [invoicePopupLoading, setInvoicePopupLoading] = useState(false);
 
   // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních objednávek (aktivni = 0)
   // Checkbox viditelný pouze pro ADMIN role
@@ -8505,11 +8526,17 @@ const Orders25List = () => {
                   : row.original.hasLocalDraftChanges 
                   ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro evidování faktury' 
                   : (!canCreateInvoice(row.original) 
-                    ? 'Evidování faktury je dostupné pouze ve stavech: Fakturace, Věcná správnost, Zkontrolována' 
+                    ? 'Evidování faktury je dostupné pouze ve stavech: Fakturace, Věcná správnost, Zkontrolována (ne v Dokončená)' 
                     : 'Evidovat fakturu k této objednávce')
               }
             >
               <FontAwesomeIcon icon={faFileInvoice} />
+              {/* Badge s počtem faktur */}
+              {row.original.faktury_count > 0 && (
+                <InvoiceCountBadge>
+                  {row.original.faktury_count}
+                </InvoiceCountBadge>
+              )}
             </ActionMenuButton>
             {/* 3⃣ GENEROVAT DOCX */}
             <ActionMenuButton
@@ -9381,8 +9408,8 @@ const Orders25List = () => {
       'ZKONTROLOVANA'     // ✅ FÁZE 8 - zkontrolována
     ];
 
-    // ❌ NEPLATNÉ STAVY (stornované/zamítnuté)
-    const invalidStates = ['STORNOVANA', 'ZAMITNUTA'];
+    // ❌ NEPLATNÉ STAVY (stornované/zamítnuté/dokončené)
+    const invalidStates = ['STORNOVANA', 'ZAMITNUTA', 'DOKONCENA'];
 
     let workflowStates = [];
     try {
@@ -10432,7 +10459,7 @@ const Orders25List = () => {
   }, [canDelete, showToast, isAdmin]);
   
   // Handler: Evidovat fakturu
-  const handleCreateInvoice = useCallback((order) => {
+  const handleCreateInvoice = useCallback(async (order) => {
     // ✅ Kontrola zda je objednávka ve správném stavu a má práva
     if (!canCreateInvoice(order)) {
       // Rozlišit důvod zamítnutí
@@ -10451,14 +10478,73 @@ const Orders25List = () => {
     // 🎯 Získat číslo objednávky pro prefill v našeptávači
     const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
     
-    // Navigace do modulu faktur s číslem objednávky v searchTerm
+    // 🔍 Pokud má objednávka faktury, zobraz popup se seznamem
+    const invoiceCount = order.faktury_count || 0;
+    
+    if (invoiceCount > 0) {
+      // Otevři popup a načti faktury
+      setInvoicePopupOrder(order);
+      setInvoicePopupVisible(true);
+      setInvoicePopupLoading(true);
+      setInvoicePopupInvoices([]);
+      
+      try {
+        const invoices = await getInvoicesByOrder25({
+          token,
+          username,
+          objednavka_id: order.id
+        });
+        setInvoicePopupInvoices(invoices || []);
+      } catch (error) {
+        console.error('Chyba při načítání faktur:', error);
+        showToast('Nepodařilo se načíst faktury objednávky', { type: 'error' });
+        setInvoicePopupInvoices([]);
+      } finally {
+        setInvoicePopupLoading(false);
+      }
+    } else {
+      // Navigace do modulu faktur s číslem objednávky v searchTerm
+      navigate('/invoice-evidence', { 
+        state: { 
+          prefillSearchTerm: orderNumber,
+          orderIdForLoad: order.id
+        } 
+      });
+    }
+  }, [token, username, navigate, showToast, hasPermission]);
+
+  // Handlers pro popup se seznamem faktur
+  const handleCloseInvoicePopup = useCallback(() => {
+    setInvoicePopupVisible(false);
+    setInvoicePopupOrder(null);
+    setInvoicePopupInvoices([]);
+  }, []);
+
+  const handleEditInvoiceFromPopup = useCallback((invoice) => {
+    // Zavři popup a naviguj do modulu faktur s předvyplněnou fakturou k editaci
+    setInvoicePopupVisible(false);
+    navigate('/invoice-evidence', { 
+      state: { 
+        editInvoiceId: invoice.id,  // ✅ Správný parametr pro editaci faktury
+        orderIdForLoad: invoicePopupOrder?.id
+      } 
+    });
+  }, [navigate, invoicePopupOrder]);
+
+  const handleAddInvoiceFromPopup = useCallback(() => {
+    // Zavři popup a naviguj do modulu faktur pro vytvoření nové faktury
+    const orderNumber = invoicePopupOrder?.cislo_objednavky || 
+                       invoicePopupOrder?.evidencni_cislo || 
+                       `#${invoicePopupOrder?.id}`;
+    
+    setInvoicePopupVisible(false);
     navigate('/invoice-evidence', { 
       state: { 
         prefillSearchTerm: orderNumber,
-        orderIdForLoad: order.id
+        orderIdForLoad: invoicePopupOrder?.id
       } 
     });
-  }, [navigate, showToast, hasPermission]);
+  }, [navigate, invoicePopupOrder]);
 
   // 🔥 PERFORMANCE: Populate handlers ref for handleActionClick
   // Direct assignment (not useEffect) - happens on every render
@@ -20020,6 +20106,18 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
 
       {/* Moderní Sponka helper - kontextová nápověda pro seznam objednávek */}
       {hasPermission('HELPER_VIEW') && <ModernHelper pageContext="orders" />}
+      
+      {/* Popup se seznamem faktur */}
+      {invoicePopupVisible && (
+        <InvoiceListPopup
+          invoices={invoicePopupInvoices}
+          order={invoicePopupOrder}
+          loading={invoicePopupLoading}
+          onClose={handleCloseInvoicePopup}
+          onEditInvoice={handleEditInvoiceFromPopup}
+          onAddInvoice={handleAddInvoiceFromPopup}
+        />
+      )}
       
       {/* ✅ Konec podmíněného zobrazení pro uživatele s oprávněními */}
       </>

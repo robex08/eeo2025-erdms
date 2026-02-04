@@ -245,4 +245,103 @@ function handleInvoiceWorkflowUpdate($db, $orderId) {
     }
 }
 
+/**
+ * Aktualizuje workflow stav objednávky po vyplnění údajů o zveřejnění
+ * 
+ * Logika:
+ * - Pokud má workflow UVEREJNIT a jsou vyplněny údaje o zveřejnění (datum, idds)
+ * - Přidá UVEREJNENA a FAKTURACE
+ * 
+ * @param PDO $db - Databázové spojení
+ * @param int $orderId - ID objednávky
+ * @param array $updateData - Data která se právě ukládají (datum_zverejneni, registr_smluv_id atd.)
+ * @return bool - Úspěch aktualizace
+ */
+function updateWorkflowAfterRegistrFilled($db, $orderId, $updateData = []) {
+    try {
+        // Načíst aktuální objednávku
+        $stmt = $db->prepare("SELECT stav_workflow_kod, datum_zverejneni, registr_smluv_id FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
+        $stmt->execute();
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            return false;
+        }
+        
+        $workflowStates = parseWorkflowStates($order['stav_workflow_kod']);
+        
+        // Skip pokud workflow neobsahuje UVEREJNIT
+        if (!in_array('UVEREJNIT', $workflowStates)) {
+            return true; // Není chyba, jen nic neděláme
+        }
+        
+        // Skip pokud už má UVEREJNENA
+        if (in_array('UVEREJNENA', $workflowStates)) {
+            return true; // Už je ve správném stavu
+        }
+        
+        // Zkontrolovat zda jsou vyplněny údaje o zveřejnění
+        $datumZverejneni = isset($updateData['datum_zverejneni']) ? $updateData['datum_zverejneni'] : $order['datum_zverejneni'];
+        $registrSmluv = isset($updateData['registr_smluv_id']) ? $updateData['registr_smluv_id'] : $order['registr_smluv_id'];
+        
+        // Pokud nejsou vyplněny údaje, neděláme nic
+        if (empty($datumZverejneni) && empty($registrSmluv)) {
+            return true;
+        }
+        
+        // Přidat UVEREJNENA
+        $workflowStates[] = 'UVEREJNENA';
+        error_log("[WORKFLOW] Přidán stav UVEREJNENA pro objednávku ID {$orderId}");
+        
+        // Automaticky přidat FAKTURACE po UVEREJNENA
+        $workflowStates[] = 'FAKTURACE';
+        error_log("[WORKFLOW] Přidán stav FAKTURACE po UVEREJNENA pro objednávku ID {$orderId}");
+        
+        // Seřadit stavy podle logického pořadí
+        $workflowOrder = [
+            'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA',
+            'ROZPRACOVANA', 'ODESLANA', 'ZRUSENA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 
+            'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
+        ];
+        
+        usort($workflowStates, function($a, $b) use ($workflowOrder) {
+            $indexA = array_search($a, $workflowOrder);
+            $indexB = array_search($b, $workflowOrder);
+            $indexA = ($indexA === false) ? 999 : $indexA;
+            $indexB = ($indexB === false) ? 999 : $indexB;
+            return $indexA - $indexB;
+        });
+        
+        // Odstranit duplicity
+        $workflowStates = array_unique($workflowStates);
+        $workflowStates = array_values($workflowStates);
+        
+        // Uložit zpět jako JSON
+        $newWorkflowCode = json_encode($workflowStates);
+        
+        // Nastavit stav_objednavky podle posledního workflow stavu
+        $newStavObjednavky = getStavObjednavkyFromWorkflow($db, $newWorkflowCode);
+        
+        // Aktualizovat DB
+        $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
+                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky 
+                              WHERE id = :id");
+        $stmt->bindParam(':workflow_kod', $newWorkflowCode, PDO::PARAM_STR);
+        $stmt->bindParam(':stav_objednavky', $newStavObjednavky, PDO::PARAM_STR);
+        $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
+        $result = $stmt->execute();
+        
+        if ($result) {
+            error_log("[WORKFLOW] Aktualizován workflow po vyplnění registru pro objednávku ID {$orderId}: " . $newWorkflowCode . " → stav: {$newStavObjednavky}");
+        }
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("[WORKFLOW] Chyba při aktualizaci workflow po vyplnění registru pro objednávku ID {$orderId}: " . $e->getMessage());
+        return false;
+    }
+}
+
 ?>
