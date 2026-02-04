@@ -40,6 +40,18 @@ $spisovka_config = array(
     'database' => 'spisovka350'
 );
 
+// Regex pro filtrování faktur (s podporou diakritiky a variant)
+// Zachytává: faktura, fa č., fak č., zálohová, vyúčtování, vyúčtovací
+// Všechny varianty: velká/malá písmena, s/bez diakritiky
+define('FAKTURA_REGEX',
+    '[Ff]aktur[aáuúAÁUÚ]|' .
+    '[Ff][Aa][[:space:]\.]\*[cčCČ][[:space:]\.]\?|' .
+    '[Ff][Aa][Kk][[:space:]\.]\*[cčCČ][[:space:]\.]\?|' .
+    '^[Ff][Aa][[:space:]]|' .
+    '[Zz][áaÁA]lohov[áaÁA]|' .
+    '[Vv]y[úuÚU][čcČC]tov[aáácčAÁÁCČ][cčníCČNÍ][íiÍI]'
+);
+
 // Získání request metody a URI
 $request_method = $_SERVER['REQUEST_METHOD'];
 $request_uri = $_SERVER['REQUEST_URI'];
@@ -95,7 +107,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     
     // Sestavení WHERE klauzule pro vyhledávání
     $where_conditions = [
-        "d.nazev REGEXP 'faktur[aáuú]|fa[[:space:]\.]*[cč][[:space:]\.]?|fak[[:space:]\.]*[cč][[:space:]\.]?|^fa[[:space:]]'",
+        "d.nazev REGEXP '" . FAKTURA_REGEX . "'",
         "YEAR(d.datum_vzniku) = ?"
     ];
     $params = [$rok];
@@ -210,7 +222,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     
     // Celkový počet faktur (použít stejné WHERE podmínky bez LIMITu)
     $count_where_conditions = [
-        "nazev REGEXP 'faktur[aáuú]|fa[[:space:]\.]*[cč][[:space:]\.]?|fak[[:space:]\.]*[cč][[:space:]\.]?|^fa[[:space:]]'",
+        "nazev REGEXP '" . FAKTURA_REGEX . "'",
         "YEAR(datum_vzniku) = ?"
     ];
     $count_params = [$rok];

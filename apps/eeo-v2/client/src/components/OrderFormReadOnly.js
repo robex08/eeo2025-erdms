@@ -1193,6 +1193,35 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     </ValueText>
                   </KeyValuePair>
                   
+                  {orderData.dodavatel_zpusob_potvrzeni && (() => {
+                    try {
+                      const zpusob = typeof orderData.dodavatel_zpusob_potvrzeni === 'string' 
+                        ? JSON.parse(orderData.dodavatel_zpusob_potvrzeni) 
+                        : orderData.dodavatel_zpusob_potvrzeni;
+                      
+                      if (zpusob && zpusob.zpusoby && Array.isArray(zpusob.zpusoby) && zpusob.zpusoby.length > 0) {
+                        const zpusobyMap = {
+                          'email': 'E-mail',
+                          'telefon': 'Telefonát',
+                          'podepsana_objednavka': 'Podepsaná objednávka',
+                          'eshop': 'e-Shop'
+                        };
+                        
+                        const zpusobyTexty = zpusob.zpusoby.map(z => zpusobyMap[z] || z);
+                        
+                        return (
+                          <KeyValuePair>
+                            <KeyLabel>Způsob potvrzení</KeyLabel>
+                            <ValueText>{zpusobyTexty.join(', ')}</ValueText>
+                          </KeyValuePair>
+                        );
+                      }
+                    } catch (e) {
+                      console.warn('Chyba při parsování dodavatel_zpusob_potvrzeni:', e);
+                    }
+                    return null;
+                  })()}
+                  
                   <KeyValuePair>
                     <KeyLabel>Potvrdil dodavatel</KeyLabel>
                     <ValueText>
