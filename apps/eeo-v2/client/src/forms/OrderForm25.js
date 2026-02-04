@@ -17943,6 +17943,12 @@ function OrderForm25() {
   };
 
   const handleSaveOrder = async () => {
+    // 🔒 OCHRANA PROTI DVOJKLIKU (race condition prevention)
+    if (isSaving) {
+      console.warn('⚠️ Ukládání již probíhá, ignoruji duplicitní požadavek');
+      return;
+    }
+
     // Vymazat debug konzoli před uložením
     clearDebugLogs();
     addDebugLog('info', 'SAVE', 'order-save-start', 'Začínám ukládání objednávky...');

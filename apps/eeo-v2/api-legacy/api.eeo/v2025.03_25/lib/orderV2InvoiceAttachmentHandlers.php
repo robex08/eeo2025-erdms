@@ -595,6 +595,18 @@ function handle_order_v2_delete_invoice_attachment($input, $config, $queries) {
             return;
         }
         
+        // 🔒 KRITICKÁ KONTROLA: Nelze smazat přílohu faktury ve stavu DOKONCENA
+        if ($attachment['stav'] === 'DOKONCENA') {
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Nelze smazat přílohu faktury ve stavu DOKONCENA',
+                'reason' => 'Faktura je dokončená a nelze ji upravovat'
+            ));
+            error_log("❌ DELETE BLOCKED: Faktura #{$invoice_id} je ve stavu DOKONCENA - mazání přílohy zamítnuto");
+            return;
+        }
+        
         // Kontrola oprávnění pro mazání přílohy
         $invoice_for_check = array('stav' => $attachment['invoice_stav']);
         $permissions = checkAttachmentEditPermission($user_data, $attachment, $invoice_for_check);
@@ -824,6 +836,18 @@ function handle_order_v2_update_invoice_attachment($input, $config, $queries) {
                 'success' => false,
                 'error' => 'Příloha nenalezena'
             ));
+            return;
+        }
+        
+        // 🔒 KRITICKÁ KONTROLA: Nelze upravit přílohu faktury ve stavu DOKONCENA
+        if ($attachment['stav'] === 'DOKONCENA') {
+            http_response_code(403);
+            echo json_encode(array(
+                'success' => false,
+                'error' => 'Nelze upravit klasifikaci přílohy faktury ve stavu DOKONCENA',
+                'reason' => 'Faktura je dokončená a nelze ji upravovat'
+            ));
+            error_log("❌ UPDATE BLOCKED: Faktura #{$invoice_id} je ve stavu DOKONCENA - úprava přílohy zamítnuta");
             return;
         }
         
