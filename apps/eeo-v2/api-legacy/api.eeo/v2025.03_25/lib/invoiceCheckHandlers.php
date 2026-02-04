@@ -278,6 +278,19 @@ function handle_invoice_get_checks($input, $config) {
 
         // 5. Parsování stavů kontrol
         $checks = array();
+        
+        // Načíst dt_aktualizace pro všechny faktury najednou
+        $stmt_dates = $db->prepare("
+            SELECT id, dt_aktualizace 
+            FROM " . TBL_FAKTURY . " 
+            WHERE id IN ($placeholders)
+        ");
+        $stmt_dates->execute($faktura_ids);
+        $dates_map = array();
+        while ($row = $stmt_dates->fetch(PDO::FETCH_ASSOC)) {
+            $dates_map[$row['id']] = $row['dt_aktualizace'];
+        }
+        
         foreach ($faktury as $faktura) {
             $kontrola_stav = array(
                 'kontrolovano' => false,
@@ -292,11 +305,33 @@ function handle_invoice_get_checks($input, $config) {
                     $kontrola_stav = $parsed['kontrola_radku'];
                 }
             }
+            
+            // ✅ TŘÍFÁZOVÝ SYSTÉM: Kontrola, zda po kontrole došlo k update
+            $check_status = 'unchecked';  // Default
+            if ($kontrola_stav['kontrolovano']) {
+                $dt_kontroly = isset($kontrola_stav['dt_kontroly']) ? $kontrola_stav['dt_kontroly'] : null;
+                $dt_aktualizace = isset($dates_map[$faktura['id']]) ? $dates_map[$faktura['id']] : null;
+                
+                if ($dt_kontroly && $dt_aktualizace) {
+                    // Porovnat časové značky
+                    $ts_kontroly = strtotime($dt_kontroly);
+                    $ts_aktualizace = strtotime($dt_aktualizace);
+                    
+                    if ($ts_kontroly >= $ts_aktualizace) {
+                        $check_status = 'checked_ok';  // ✅ Zelená - zkontrolováno, beze změn
+                    } else {
+                        $check_status = 'checked_modified';  // ⚠️ Oranžová - zkontrolováno, ale upraveno
+                    }
+                } else {
+                    $check_status = 'checked_ok';  // Pokud nemáme dt_aktualizace, považujeme za OK
+                }
+            }
 
             $checks[$faktura['id']] = array(
                 'faktura_id' => $faktura['id'],
                 'fa_cislo_vema' => $faktura['fa_cislo_vema'],
-                'kontrola' => $kontrola_stav
+                'kontrola' => $kontrola_stav,
+                'check_status' => $check_status  // unchecked | checked_ok | checked_modified
             );
         }
 

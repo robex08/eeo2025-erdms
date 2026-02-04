@@ -152,6 +152,11 @@ const Container = styled.div`
   box-sizing: border-box;
   overflow: visible;
   isolation: isolate;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 `;
 
 // Year Filter Panel (prominent position above main header)
@@ -1509,6 +1514,10 @@ const Invoices25List = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [invoiceChecks, setInvoiceChecks] = useState({});
+  const [checksLoading, setChecksLoading] = useState(false);
+  
+  // ⚠️ DEPRECATED: Tento stav se již nepoužívá - check_status je přímo v invoice objektu z BE
+  // Ponecháno pro kompatibilitu s toggle funkcionalitou
   const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
@@ -2409,6 +2418,9 @@ const Invoices25List = () => {
         smlouva_id: typeof invoice.smlouva_id === 'string' ? parseInt(invoice.smlouva_id) : invoice.smlouva_id,
         cislo_smlouvy: invoice.cislo_smlouvy || '',
         
+        // ✅ TŘÍFÁZOVÝ SYSTÉM KONTROLY - check_status z BE
+        check_status: invoice.check_status || 'unchecked',
+        
         // Organizace
         organizace_id: invoice.organizace_id || null,
         organizace_nazev: invoice.organizace_nazev || '',
@@ -2609,24 +2621,12 @@ const Invoices25List = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadData]); // showOnlyInactive is already in loadData dependencies
 
-  // Načtení stavů kontrol po načtení faktur
+  // ⚠️ DEPRECATED: Načtení stavů kontrol - již se nepoužívá!
+  // Backend nyní vrací check_status přímo v seznamu faktur
+  // Tento useEffect ponecháno pouze pro případ toggle kontroly (refresh jedné faktury)
   useEffect(() => {
-    const loadChecks = async () => {
-      if (!invoices || invoices.length === 0 || !token || !username) return;
-      
-      try {
-        const ids = invoices.map(inv => inv.id);
-        const response = await getInvoiceChecks(ids, token, username);
-        if (response && response.data) {
-          setInvoiceChecks(response.data);
-        }
-      } catch (err) {
-        console.error('Chyba při načítání stavů kontrol faktur:', err);
-        // Nezobrazujeme toast - není to kritická chyba
-      }
-    };
-
-    loadChecks();
+    // Již se nenačítá automaticky - check_status je v invoice objektu
+    // Tento hook se spustí pouze po toggle kontroly (když se změní invoiceChecks)
   }, [invoices, token, username]);
 
   // Načtení typů faktur z DB (pouze jednou při mount)
@@ -4365,7 +4365,7 @@ const Invoices25List = () => {
                 )}
                 
                 {/* Data rows */}
-                {!error && sortedInvoices.map(invoice => (
+                {!error && sortedInvoices.map((invoice, idx) => (
                   <TableRow 
                     key={invoice.id}
                     data-storno={invoice.stav === 'STORNO' ? 'true' : 'false'}
@@ -4376,58 +4376,77 @@ const Invoices25List = () => {
                   >
                     {/* Kontrola řádku faktury - PRVNÍ SLOUPEC */}
                     <TableCell className="center">
-                      <input
-                        type="checkbox"
-                        checked={invoiceChecks[invoice.id]?.kontrola?.kontrolovano || false}
-                        disabled={!canControlInvoices}
-                        onChange={async (e) => {
-                          e.stopPropagation();
-                          const newState = e.target.checked;
-                          try {
-                            await toggleInvoiceCheck(
-                              invoice.id, 
-                              newState, 
-                              token, 
-                              username
-                            );
-                            // Reload checks pro tuto fakturu
-                            const response = await getInvoiceChecks(
-                              [invoice.id], 
-                              token, 
-                              username
-                            );
-                            setInvoiceChecks(prev => ({...prev, ...response.data}));
-                            
-                            // 📊 Decentní update statistiky kontrolovaných faktur
-                            setStats(prevStats => ({
-                              ...prevStats,
-                              kontrolovano: prevStats.kontrolovano + (newState ? 1 : -1)
-                            }));
-                            
-                            showToast(
-                              newState 
-                                ? '✅ Faktura označena jako zkontrolovaná' 
-                                : '⚪ Kontrola zrušena',
-                              'success'
-                            );
-                          } catch (err) {
-                            console.error('Chyba při změně stavu kontroly:', err);
-                            showToast(err.message || 'Chyba při změně stavu kontroly', 'error');
+                      {(() => {
+                        // ✅ OPTIMALIZACE: check_status a kontrola přichází přímo z BE v invoice objektu
+                        const checkStatus = invoice.check_status || 'unchecked';
+                        const kontrolaData = invoice.rozsirujici_data?.kontrola_radku;
+                        const isChecked = kontrolaData?.kontrolovano || false;
+                        
+                        // ✅ TŘÍFÁZOVÝ SYSTÉM:
+                        // - unchecked: ⚪ Nezkontrolováno
+                        // - checked_ok: ✅ Zkontrolováno, beze změn (zelená)
+                        // - checked_modified: ⚠️ Zkontrolováno, ale upraveno (oranžová)
+                        
+                        let accentColor = '#10b981';  // Default zelená
+                        let tooltipText = '⚪ Nezkontrolováno';
+                        
+                        if (isChecked) {
+                          if (checkStatus === 'checked_modified') {
+                            accentColor = '#f59e0b';  // Oranžová
+                            tooltipText = `⚠️ Zkontrolováno, ale následně upraveno\n\nKontroloval: ${kontrolaData?.kontroloval_cele_jmeno || kontrolaData?.kontroloval_username}\nDatum kontroly: ${kontrolaData?.dt_kontroly}\n\n⚠️ Faktura byla po kontrole upravena!\nPro potvrzení zkontrolujte znovu.`;
+                          } else {
+                            accentColor = '#10b981';  // Zelená
+                            tooltipText = `✅ Zkontrolováno - v pořádku\n\nKontroloval: ${kontrolaData?.kontroloval_cele_jmeno || kontrolaData?.kontroloval_username}\nDatum kontroly: ${kontrolaData?.dt_kontroly}`;
                           }
-                        }}
-                        style={{
-                          cursor: canControlInvoices ? 'pointer' : 'not-allowed',
-                          width: '18px',
-                          height: '18px',
-                          accentColor: '#10b981',
-                          opacity: canControlInvoices ? 1 : 0.5
-                        }}
-                        title={
-                          invoiceChecks[invoice.id]?.kontrola?.kontrolovano
-                            ? `✅ Zkontrolováno\nKontroloval: ${invoiceChecks[invoice.id]?.kontrola?.kontroloval_cele_jmeno || invoiceChecks[invoice.id]?.kontrola?.kontroloval_username}\n${invoiceChecks[invoice.id]?.kontrola?.dt_kontroly}`
-                            : '⚪ Nezkontrolováno'
                         }
-                      />
+                        
+                        return (
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={!canControlInvoices}
+                            onChange={async (e) => {
+                              e.stopPropagation();
+                              const newState = e.target.checked;
+                              try {
+                                await toggleInvoiceCheck(
+                                  invoice.id, 
+                                  newState, 
+                                  token, 
+                                  username
+                                );
+                                
+                                // 📊 Decentní update statistiky kontrolovaných faktur
+                                setStats(prevStats => ({
+                                  ...prevStats,
+                                  kontrolovano: prevStats.kontrolovano + (newState ? 1 : -1)
+                                }));
+                                
+                                showToast(
+                                  newState 
+                                    ? '✅ Faktura označena jako zkontrolovaná' 
+                                    : '⚪ Kontrola zrušena',
+                                  'success'
+                                );
+                                
+                                // 🔄 Refresh dat - reload celého seznamu faktur aby se aktualizoval check_status
+                                loadData();
+                              } catch (err) {
+                                console.error('Chyba při změně stavu kontroly:', err);
+                                showToast(err.message || 'Chyba při změně stavu kontroly', 'error');
+                              }
+                            }}
+                            style={{
+                              cursor: canControlInvoices ? 'pointer' : 'not-allowed',
+                              width: '18px',
+                              height: '18px',
+                              accentColor: accentColor,
+                              opacity: canControlInvoices ? 1 : 0.5
+                            }}
+                            title={tooltipText}
+                          />
+                        );
+                      })()}
                     </TableCell>
                     
                     <TableCell className="center">
