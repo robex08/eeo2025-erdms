@@ -179,18 +179,16 @@ function handle_invoice_toggle_check($input, $config) {
             );
         }
 
-        // 9. Uložení změn do DB
+        // 9. Uložení změn do DB - POUZE rozsirujici_data, NEMĚNIT dt_aktualizace!
+        // Kontrola si ukládá vlastní datum do dt_kontroly, datum aktualizace faktury zůstává beze změny
         $stmt_update = $db->prepare("
             UPDATE " . TBL_FAKTURY . " 
-            SET rozsirujici_data = ?,
-                aktualizoval_uzivatel_id = ?,
-                dt_aktualizace = NOW()
+            SET rozsirujici_data = ?
             WHERE id = ?
         ");
         
         $stmt_update->execute(array(
             json_encode($rozsirujici_data),
-            $token_data['id'],
             $faktura_id
         ));
 
