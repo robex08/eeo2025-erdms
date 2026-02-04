@@ -472,11 +472,15 @@ function Orders25ListV3() {
                                   hasPermission('INVOICE_ADD');
     if (!hasInvoicePermission) return false;
 
+    // ✅ POVOLENÉ STAVY: POUZE Fakturace, Věcná kontrola, Zkontrolováno (NE Dokončená)
     const allowedStates = [
-      'ROZPRACOVANA', 'ODESLANA', 'ODESLANO', 'POTVRZENA', 'UVEREJNIT',
-      'NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST',
-      'ZKONTROLOVANA', 'DOKONCENA'
+      'FAKTURACE',        // ✅ FÁZE 6 - probíhá fakturace
+      'VECNA_SPRAVNOST',  // ✅ FÁZE 7 - kontrola věcné správnosti
+      'ZKONTROLOVANA'     // ✅ FÁZE 8 - zkontrolována
     ];
+
+    // ❌ NEPLATNÉ STAVY (stornované/zamítnuté/dokončené)
+    const invalidStates = ['STORNOVANA', 'ZAMITNUTA', 'DOKONCENA'];
 
     let workflowStates = [];
     try {
@@ -490,6 +494,22 @@ function Orders25ListV3() {
       workflowStates = [];
     }
 
+    // ✅ Zkontroluj zda není stornovaná/zamítnutá/dokončená
+    const hasInvalidState = workflowStates.some(state => {
+      let stavCode = '';
+      if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
+        stavCode = String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim();
+      } else if (typeof state === 'string') {
+        stavCode = String(state).toUpperCase().trim();
+      }
+      return invalidStates.includes(stavCode);
+    });
+
+    if (hasInvalidState) {
+      return false;
+    }
+
+    // ✅ Zkontroluj zda obsahuje alespoň jeden platný stav
     return workflowStates.some(state => {
       let stavCode = '';
       if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
