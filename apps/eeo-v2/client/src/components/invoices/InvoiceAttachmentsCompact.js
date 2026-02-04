@@ -575,21 +575,13 @@ const InvoiceAttachmentsCompact = ({
 
   // 🛡️ Kontrola oprávnění pro editaci/mazání přílohy
   const canEditAttachment = useCallback((attachment) => {
-    // ⚠️ PRIORITA #1: Pokud je readOnly={false}, VŠECHNY přílohy jsou editovatelné!
-    // (Použití v OrderForm25 během editace faktury před uložením objednávky)
-    if (!readOnly) {
-      return true;
-    }
-    
     if (!attachment) return false;
     
-    // Pending attachments může vždy editovat/mazat
-    if (attachment.status === 'pending' || attachment.status === 'pending_classification' || attachment.status === 'pending_upload') {
-      return true;
-    }
-    
-    // ⚠️ DŮLEŽITÉ: Uploading přílohy vždy povolit (probíhá upload)
-    if (attachment.status === 'uploading') {
+    // Pending/uploading attachments může vždy editovat/mazat (ještě nejsou na serveru)
+    if (attachment.status === 'pending' || 
+        attachment.status === 'pending_classification' || 
+        attachment.status === 'pending_upload' || 
+        attachment.status === 'uploading') {
       return true;
     }
     
@@ -598,17 +590,22 @@ const InvoiceAttachmentsCompact = ({
     const currentUserUsekId = userDetail?.usek_id;
     const userRoles = userDetail?.roles || [];
     
-    // Admin a SUPERADMIN může vše
+    // Admin, SUPERADMIN a UCETNI může vše
     const isAdmin = userRoles.some(role => 
-      role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+      role.kod_role === 'SUPERADMIN' || 
+      role.kod_role === 'ADMINISTRATOR' || 
+      role.kod_role === 'UCETNI'
     );
     if (isAdmin) {
       return true;
     }
     
-    // Uživatel s INVOICE_MANAGE může vše
+    // Uživatel s INVOICE_MANAGE nebo INVOICE_FULL_ACCESS může vše
     const directRights = userDetail?.direct_rights || [];
-    const hasInvoiceManage = directRights.some(p => p.kod_prava === 'INVOICE_MANAGE');
+    const hasInvoiceManage = directRights.some(p => 
+      p.kod_prava === 'INVOICE_MANAGE' || 
+      p.kod_prava === 'INVOICE_FULL_ACCESS'
+    );
     if (hasInvoiceManage) {
       return true;
     }
@@ -620,8 +617,8 @@ const InvoiceAttachmentsCompact = ({
     }
     
     // ⚠️ FALLBACK: Pokud příloha nemá nahrano_uzivatel_id (čerstvě uploadnutá před refresh),
-    // POVOLIT editaci (předpokládáme, že ji nahrál aktuální uživatel)
-    if (!uploadedByUserId && attachment.status === 'uploaded' && attachment.serverId) {
+    // A NENÍ na serveru (nemá serverId), POVOLIT editaci (předpokládáme, že ji nahrál aktuální uživatel)
+    if (!uploadedByUserId && !attachment.serverId) {
       return true;
     }
     
@@ -634,7 +631,7 @@ const InvoiceAttachmentsCompact = ({
     }
     
     return false;
-  }, [allUsers, userDetail, readOnly]);
+  }, [allUsers, userDetail]);
 
   // 🛡️ Helper funkce pro zobrazení důvodů oprávnění
   const getPermissionReasonText = useCallback((reason) => {
@@ -2718,8 +2715,8 @@ const InvoiceAttachmentsCompact = ({
                       </button>
                     )}
 
-                    {/* Koš - zobrazit pouze pokud má uživatel oprávnění */}
-                    {!readOnly && (
+                    {/* Koš - zobrazit pouze pokud má uživatel oprávnění k této konkrétní příloze */}
+                    {canEditAttachment(file) && (
                       <button
                         type="button"
                         onClick={() => {
@@ -2750,7 +2747,7 @@ const InvoiceAttachmentsCompact = ({
                     )}
                     
                     {/* Informace o oprávnění - zobrazit důvod pro read-only přílohy */}
-                    {readOnly && (
+                    {!canEditAttachment(file) && file.serverId && (
                       <span style={{
                         color: '#6b7280',
                         fontSize: '0.6875rem',
@@ -2759,7 +2756,17 @@ const InvoiceAttachmentsCompact = ({
                         borderRadius: '3px',
                         flexShrink: 0
                       }}
-                      title="Přílohy jsou uzamčeny po uložení objednávky"
+                      title={
+                        userDetail?.roles?.some(role => 
+                          role.kod_role === 'SUPERADMIN' || 
+                          role.kod_role === 'ADMINISTRATOR' || 
+                          role.kod_role === 'UCETNI'
+                        ) 
+                          ? "Uzamčeno" 
+                          : (file.nahrano_uzivatel_id && file.nahrano_uzivatel_id !== (userDetail?.uzivatel_id || userDetail?.user_id || userDetail?.id))
+                            ? "Přílohu nahrál jiný uživatel - můžete pouze prohlížet"
+                            : "Přílohy může mazat pouze autor, administrátor nebo účetní"
+                      }
                       >
                         🔒
                       </span>
