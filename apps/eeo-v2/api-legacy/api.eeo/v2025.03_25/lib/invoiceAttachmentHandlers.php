@@ -47,15 +47,9 @@ function normalize_invoice_attachment_path($systemova_cesta, $config) {
         require_once __DIR__ . '/environment-utils.php';
         
         // Zkus staré umístění (migrace z legacy systému)
-        $legacy_paths = [
-            '/var/www/eeo2025/doc/prilohy/' . $filename,
-            get_upload_root_path() . $filename
-        ];
-        
-        foreach ($legacy_paths as $legacy_path) {
-            if (file_exists($legacy_path)) {
-                return $legacy_path;
-            }
+        $legacy_path = get_upload_root_path() . $filename;
+        if (file_exists($legacy_path)) {
+            return $legacy_path;
         }
     }
     

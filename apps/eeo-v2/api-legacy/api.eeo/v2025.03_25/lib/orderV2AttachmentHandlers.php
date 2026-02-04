@@ -696,7 +696,7 @@ function handle_order_v2_delete_attachment($input, $config, $queries) {
             } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
                 $basePath = $uploadConfig['relative_path'];
             } else {
-                $basePath = '/var/www/eeo2025/doc/prilohy/';
+                throw new Exception('Upload configuration missing: root_path or relative_path must be set');
             }
             $fullPath = safe_path_join($basePath, $fullPath);
         }
