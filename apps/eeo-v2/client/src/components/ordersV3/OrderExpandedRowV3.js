@@ -1001,15 +1001,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 <InfoValue style={{ fontWeight: 500, fontSize: '0.9em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span>{detail.druh_objednavky_nazev || detail.druh_objednavky_kod || '---'}</span>
                   {(() => {
-                    // Debug log
-                    console.log('🔍 Druh objednávky DEBUG:', {
-                      druh_objednavky_nazev: detail.druh_objednavky_nazev,
-                      druh_objednavky_kod: detail.druh_objednavky_kod,
-                      druh_objednavky_atribut: detail.druh_objednavky_atribut,
-                      _enriched_druh: detail._enriched?.druh_objednavky,
-                      full_detail: detail
-                    });
-                    
                     const isMajetek = detail.druh_objednavky_atribut === 1 || 
                                      detail._enriched?.druh_objednavky?.atribut_objektu === 1;
                     
@@ -1605,18 +1596,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 <EmptyState>Žádné faktury</EmptyState>
               ) : (
                 faktury.map((invoice, index) => {
-                  // Debug log pro první fakturu
-                  if (index === 0) {
-                    console.log('📋 Faktura data v podřádku:', {
-                      id: invoice.id,
-                      fa_cislo_vema: invoice.fa_cislo_vema,
-                      fa_datum_doruceni: invoice.fa_datum_doruceni,
-                      fa_datum_vystaveni: invoice.fa_datum_vystaveni,
-                      fa_datum_splatnosti: invoice.fa_datum_splatnosti,
-                      full_invoice: invoice
-                    });
-                  }
-                  
                   return (
                   <InvoiceItem key={index}>
                     <InvoiceHeader>
@@ -1703,11 +1682,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     const fileName = attachment.originalni_nazev_souboru || 'Příloha';
                     const icon = getFileIcon(fileName);
                     const colors = getFileIconColor(fileName);
-                    
-                    // Debug log
-                    if (index === 0) {
-                      console.log('⚡ Příloha data:', attachment);
-                    }
                     
                     return (
                       <AttachmentItem

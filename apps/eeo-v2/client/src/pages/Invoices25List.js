@@ -4408,19 +4408,53 @@ const Invoices25List = () => {
                             onChange={async (e) => {
                               e.stopPropagation();
                               const newState = e.target.checked;
+                              
+                              // 🎯 OPTIMISTIC UPDATE: Okamžitě aktualizovat lokální stav bez refreshe
+                              const optimisticUpdate = (prevInvoices) => {
+                                return prevInvoices.map(inv => {
+                                  if (inv.id === invoice.id) {
+                                    return {
+                                      ...inv,
+                                      rozsirujici_data: {
+                                        ...inv.rozsirujici_data,
+                                        kontrola_radku: newState ? {
+                                          kontrolovano: true,
+                                          kontroloval_user_id: user_id,
+                                          kontroloval_username: username,
+                                          kontroloval_cele_jmeno: user?.fullName || username,
+                                          dt_kontroly: new Date().toISOString()
+                                        } : {
+                                          kontrolovano: false,
+                                          kontroloval_user_id: null,
+                                          kontroloval_username: null,
+                                          kontroloval_cele_jmeno: null,
+                                          dt_kontroly: null
+                                        }
+                                      },
+                                      check_status: newState ? 'checked_ok' : 'unchecked'
+                                    };
+                                  }
+                                  return inv;
+                                });
+                              };
+                              
+                              // Okamžitě aktualizovat UI
+                              setInvoices(optimisticUpdate);
+                              
+                              // 📊 Update statistiky
+                              setStats(prevStats => ({
+                                ...prevStats,
+                                kontrolovano: prevStats.kontrolovano + (newState ? 1 : -1)
+                              }));
+                              
                               try {
+                                // Provést API volání na pozadí
                                 await toggleInvoiceCheck(
                                   invoice.id, 
                                   newState, 
                                   token, 
                                   username
                                 );
-                                
-                                // 📊 Decentní update statistiky kontrolovaných faktur
-                                setStats(prevStats => ({
-                                  ...prevStats,
-                                  kontrolovano: prevStats.kontrolovano + (newState ? 1 : -1)
-                                }));
                                 
                                 showToast(
                                   newState 
@@ -4429,10 +4463,19 @@ const Invoices25List = () => {
                                   'success'
                                 );
                                 
-                                // 🔄 Refresh dat - reload celého seznamu faktur aby se aktualizoval check_status
-                                loadData();
                               } catch (err) {
                                 console.error('Chyba při změně stavu kontroly:', err);
+                                // Rollback při chybě
+                                setInvoices(prevInvoices => prevInvoices.map(inv => {
+                                  if (inv.id === invoice.id) {
+                                    return invoice; // Vrátit původní stav
+                                  }
+                                  return inv;
+                                }));
+                                setStats(prevStats => ({
+                                  ...prevStats,
+                                  kontrolovano: prevStats.kontrolovano - (newState ? 1 : -1)
+                                }));
                                 showToast(err.message || 'Chyba při změně stavu kontroly', 'error');
                               }
                             }}
