@@ -4132,15 +4132,17 @@ export default function InvoiceEvidencePage() {
                              (orderData?.zpusob_financovani && String(orderData.zpusob_financovani).toLowerCase().includes('lp'));
         
         if (isLPFinancing && lpCerpani && lpCerpani.length > 0) {
+          let validLpCerpani = [];
           try {
             // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
-            const validLpCerpani = lpCerpani.filter(row => {
+            validLpCerpani = lpCerpani.filter(row => {
               const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
               const hasCastka = row.castka && parseFloat(row.castka) > 0;
-              return hasLpId && hasCastka;
+              return hasLpId && hasLpCislo && hasCastka;
             }).map(row => ({
-              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být LP ID jako string
-              lp_cislo: String(row.lp_id).trim(),
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být skutečný LP kód (např. "3401-01")
+              lp_cislo: String(row.lp_cislo).trim(),
               lp_id: parseInt(row.lp_id, 10),
               castka: parseFloat(row.castka),
               poznamka: row.poznamka || ''
@@ -4151,8 +4153,10 @@ export default function InvoiceEvidencePage() {
             }
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
+            console.error('❌ LP čerpání data:', validLpCerpani);
+            const errorMsg = lpError?.response?.data?.message || lpError.message || 'Neznámá chyba';
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
-            showToast && showToast('Věcná správnost uložena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
+            showToast && showToast('Věcná správnost uložena, ale čerpání LP se nepodařilo uložit: ' + errorMsg, 'warning');
           }
         }
 
@@ -4500,32 +4504,8 @@ export default function InvoiceEvidencePage() {
           updateData
         });
         
-        // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro fakturu (pokud je LP financování)
-        
-        if (lpCerpani && lpCerpani.length > 0) {
-          try {
-            // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
-            const validLpCerpani = lpCerpani.filter(row => {
-              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
-              const hasCastka = row.castka && parseFloat(row.castka) > 0;
-              return hasLpId && hasCastka;
-            }).map(row => ({
-              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být LP ID jako string
-              lp_cislo: String(row.lp_id).trim(),
-              lp_id: parseInt(row.lp_id, 10),
-              castka: parseFloat(row.castka),
-              poznamka: row.poznamka || ''
-            }));
-            
-            if (validLpCerpani.length > 0) {
-              await saveFakturaLPCerpani(editingInvoiceId, validLpCerpani, token, username);
-            }
-          } catch (lpError) {
-            console.error('❌ Chyba při ukládání LP čerpání:', lpError);
-            // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
-            showToast && showToast('Faktura uložena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
-          }
-        }
+        // ⚠️ POZNÁMKA: LP čerpání se NEUKLÁDÁ při běžné aktualizaci faktury!
+        // LP čerpání se ukládá POUZE při potvrzení věcné správnosti (viz sekce níže)
         
         setProgress?.(100);
         
@@ -4561,11 +4541,12 @@ export default function InvoiceEvidencePage() {
             // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
             const validLpCerpani = lpCerpani.filter(row => {
               const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
               const hasCastka = row.castka && parseFloat(row.castka) > 0;
-              return hasLpId && hasCastka;
+              return hasLpId && hasLpCislo && hasCastka;
             }).map(row => ({
-              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být LP ID jako string
-              lp_cislo: String(row.lp_id).trim(),
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být skutečný LP kód (např. "3401-01")
+              lp_cislo: String(row.lp_cislo).trim(),
               lp_id: parseInt(row.lp_id, 10),
               castka: parseFloat(row.castka),
               poznamka: row.poznamka || ''
