@@ -151,8 +151,7 @@ function get_order_v2_invoice_upload_path($config, $faktura_id, $user_id) {
     } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // Fallback - použij hardcoded cestu pro tento projekt
-        $basePath = '/var/www/eeo2025/doc/prilohy/';
+        throw new Exception('Upload configuration missing: root_path or relative_path must be set');
     }
     
     // Přidání lomítka na konec pokud chybí
