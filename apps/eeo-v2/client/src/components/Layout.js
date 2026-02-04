@@ -3078,7 +3078,11 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) }
             
-            { hasAdminRole && hasAdminRole() && (
+            {/* Manažerské analýzy - zobrazit pokud má právo k reportům nebo statistikám */}
+            { hasPermission && (
+                hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT') ||
+                hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')
+              ) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={analyticsButtonRef}
@@ -3110,18 +3114,24 @@ const Layout = ({ children }) => {
                       minWidth: `${dropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/reports" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faChartBar} /> Reporty
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/statistics" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faChartLine} /> Statistiky
-                    </MenuDropdownItem>
+                    {/* Reporty - zobrazit pokud má právo */}
+                    {(hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')) && (
+                      <MenuDropdownItem 
+                        to="/reports" 
+                        onClick={() => setAnalyticsMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faChartBar} /> Reporty
+                      </MenuDropdownItem>
+                    )}
+                    {/* Statistiky - zobrazit pokud má právo */}
+                    {(hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')) && (
+                      <MenuDropdownItem 
+                        to="/statistics" 
+                        onClick={() => setAnalyticsMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faChartLine} /> Statistiky
+                      </MenuDropdownItem>
+                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}
