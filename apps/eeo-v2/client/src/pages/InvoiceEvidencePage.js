@@ -4138,7 +4138,8 @@ export default function InvoiceEvidencePage() {
             validLpCerpani = lpCerpani.filter(row => {
               const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
               const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
-              const hasCastka = row.castka && parseFloat(row.castka) > 0;
+              // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
+              const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
               return hasLpId && hasLpCislo && hasCastka;
             }).map(row => ({
               // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být skutečný LP kód (např. "3401-01")
@@ -4542,7 +4543,8 @@ export default function InvoiceEvidencePage() {
             const validLpCerpani = lpCerpani.filter(row => {
               const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
               const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
-              const hasCastka = row.castka && parseFloat(row.castka) > 0;
+              // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
+              const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
               return hasLpId && hasLpCislo && hasCastka;
             }).map(row => ({
               // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být skutečný LP kód (např. "3401-01")
