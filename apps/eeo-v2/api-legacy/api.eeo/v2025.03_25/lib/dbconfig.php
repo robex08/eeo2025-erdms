@@ -35,7 +35,7 @@ return [
         'host' => $_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? getenv('DB_HOST') ?: '10.3.172.11',
         'username' => $_ENV['DB_USER'] ?? $_SERVER['DB_USER'] ?? getenv('DB_USER') ?: 'erdms_user',
         'password' => $_ENV['DB_PASSWORD'] ?? $_SERVER['DB_PASSWORD'] ?? getenv('DB_PASSWORD') ?: 'AhchohTahnoh7eim',
-        'database' => $_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? getenv('DB_NAME') ?: 'eeo2025'  // PROD fallback
+        'database' => $_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? getenv('DB_NAME') ?: 'EEO-OSTRA-DEV'  // DEV fallback - NIKDY nepřipojovat přímo na eeo2025!
     ],
     'upload' => [
         // Root cesta pro nahrávání příloh - environment aware

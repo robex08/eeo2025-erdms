@@ -795,8 +795,9 @@ function insertImportedAttachments($db, $objednavka_id, $oldAttachments, $uzivat
                 $base_url_clean = rtrim($base_url, '/');
                 $systemova_cesta = $base_url_clean . '/' . $soubor;
             } else {
-                // Standardní lokální cesta
-                $systemova_cesta = '/var/www/eeo2025/doc/prilohy/' . $soubor;
+                // Pro import vyžadujeme base_url
+                error_log('Import attachment: missing base_url for file ' . $soubor);
+                continue; // Přeskočíme tuto přílohu
             }
             
             // Typ přílohy - pro importované nastavíme jako "IMPORT"
