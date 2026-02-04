@@ -4,7 +4,7 @@
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální DEV verze:** `2.23` *(aktivní verze)*
+**Aktuální DEV verze:** `2.24` *(aktivní verze)*
 
 ## 🔄 VERSION CHECKING SYSTEM
 
@@ -29,9 +29,9 @@ ERDMS používá **automatický version checking systém** založený na build h
 
 **PŘÍKLAD:**
 ```bash
-# Drobná oprava CSS → Verze zůstane 2.21-DEV
+# Drobná oprava CSS → Verze zůstane 2.24-DEV
 # ALE build hash se změní: c7a2487ddeef → d8e3f9a12b45
-# → Uživatelé dostanou notifikaci "Je dostupná nová verze v2.21-DEV"
+# → Uživatelé dostanou notifikaci "Je dostupná nová verze v2.24-DEV"
 ```
 
 ### 📋 Build Hash Workflow
@@ -297,13 +297,13 @@ cd /var/www/erdms-dev/docs/scripts-shell
 
 | Režim | Command | API Cesta | Databáze | Účel |
 |-------|---------|-----------|----------|------|
-| **HRM (npm start)** | `npm start` | `/api.eeo/` → proxy → `/dev/api.eeo/` | `EEO-OSTRA-DEV` | Lokální vývoj s hot reload |
+| **HMR (npm start)** | `npm start` | `/api.eeo/` → proxy → `/dev/api.eeo/` | `EEO-OSTRA-DEV` | Lokální vývoj s hot reload |
 | **DEV Build** | `./build-eeo-v2.sh --dev` | `/dev/api.eeo/` (přímá) | `EEO-OSTRA-DEV` | Testování na DEV serveru |
 | **PROD Build** | `./build-eeo-v2.sh --prod` | `/api.eeo/` (přímá) | `eeo2025` | Ostrý provoz |
 
 ### 📍 Jak to funguje:
 
-#### 1️⃣ HRM - Lokální vývoj (npm start)
+#### 1️⃣ HMR - Lokální vývoj (npm start)
 ```bash
 cd /var/www/erdms-dev/apps/eeo-v2/client
 npm start
@@ -343,7 +343,7 @@ npm start
 
 | Režim | Patička musí zobrazovat |
 |-------|-------------------------|
-| HRM (npm start) | `API: /dev/api.eeo (proxy)` + `DB: EEO-OSTRA-DEV` |
+| HMR (npm start) | `API: /dev/api.eeo (proxy)` + `DB: EEO-OSTRA-DEV` |
 | DEV Build | `API: /dev/api.eeo` + `DB: EEO-OSTRA-DEV` |
 | PROD Build | `API: /api.eeo` + `DB: eeo2025` |
 
@@ -583,17 +583,17 @@ cd /var/www/erdms-dev/docs/scripts-shell
 
 **ŘEŠENÍ - Kontrolní seznam pro změnu verze:**
 
-1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.23\``
+1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.24\``
 2. ✅ **Client .env soubory:**
-   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.23-DEV`
-   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.23-DEV`
-   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.23`
+   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.24-DEV`
+   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.24-DEV`
+   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.24`
 3. ✅ **Client package.json:**
-   - `"version": "2.23.0"`
-   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.23-DEV`
+   - `"version": "2.24.0"`
+   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.24-DEV`
 4. ✅ **API Legacy .env soubory:**
-   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.23-DEV`
-   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.23`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.24-DEV`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.24`
 
 **🔍 Kde se verze zobrazuje:**
 - **Patička aplikace:** Zobrazuje `v{REACT_APP_VERSION}` vpravo dole
@@ -604,7 +604,7 @@ cd /var/www/erdms-dev/docs/scripts-shell
   - Soubory: `App.js`, `versionChecker.js`, `UpdateNotificationModal.js`
   - ✅ **Načítá dynamicky z `process.env.REACT_APP_VERSION`** - změna verze v .env stačí!
 
-**🔧 CO DĚLAT PŘI ZMĚNĚ VERZE (např. 2.23 → 2.24):**
+**🔧 CO DĚLAT PŘI ZMĚNĚ VERZE (např. 2.24 → 2.25):**
 
 1. **Aktualizuj .env soubory** (6 souborů - viz seznam výše)
 2. **Rebuild aplikace** - build proces načte nové hodnoty z .env
