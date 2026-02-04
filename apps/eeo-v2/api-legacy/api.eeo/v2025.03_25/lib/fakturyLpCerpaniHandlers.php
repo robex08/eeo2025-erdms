@@ -141,10 +141,11 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
         // 4. Validace: součet částek nesmí překročit fa_castka
         $suma = 0;
         foreach ($lp_cerpani as $item) {
-            if (!isset($item['castka']) || (float)$item['castka'] <= 0) {
+            // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
+            if (!isset($item['castka']) || !is_numeric($item['castka']) || (float)$item['castka'] < 0) {
                 $db->rollBack();
                 http_response_code(400);
-                echo json_encode(array('status' => 'error', 'message' => 'Všechny částky musí být > 0'));
+                echo json_encode(array('status' => 'error', 'message' => 'Částka musí být číslo >= 0 (0 je povoleno pro zálohové faktury)'));
                 return;
             }
             
