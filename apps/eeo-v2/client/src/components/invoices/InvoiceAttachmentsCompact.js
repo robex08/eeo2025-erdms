@@ -498,18 +498,52 @@ const InvoiceAttachmentsCompact = ({
         
         // Jinak mergovat: zachovat pending/uploading soubory z lokálního state
         const externalIds = new Set(externalAttachments.map(a => a.id || a.serverId));
-        const pendingLocal = prev.filter(a => 
+        const pendingLocal = prev.filter(a => {
+          // ✅ KRITICKÁ OPRAVA: NEPŘIDÁVAT soubory, které už jsou v externalAttachments
+          // (prevence duplikace při callback → externalAttachments update → useEffect)
+          if (externalIds.has(a.id)) {
+            return false; // Soubor už je v external - přeskočit
+          }
+          
           // Zachovat soubory co jsou pending/uploading/s temp ID
-          a.status === 'pending_upload' || 
-          a.status === 'pending_classification' || 
-          a.status === 'uploading' ||
-          String(a.id || '').startsWith('pending-') ||
-          // A TAKÉ zachovat čerstvě uploadnuté (status='uploaded') co ještě nejsou v external
-          (a.status === 'uploaded' && a.serverId && !externalIds.has(a.serverId))
-        );
+          return (
+            a.status === 'pending_upload' || 
+            a.status === 'pending_classification' || 
+            a.status === 'uploading' ||
+            String(a.id || '').startsWith('pending-') ||
+            // A TAKÉ zachovat čerstvě uploadnuté (status='uploaded') co ještě nejsou v external
+            (a.status === 'uploaded' && a.serverId && !externalIds.has(a.serverId))
+          );
+        });
+        
+        // ✅ KRITICKÁ OPRAVA: DEDUPLIKACE podle ID před kombinací
+        // Zabraňuje množení pending souborů při opakovaných re-renderech
+        const combined = [...externalAttachments, ...pendingLocal];
+        const seenIds = new Set();
+        const deduplicated = combined.filter(a => {
+          if (!a || !a.id) return false;
+          if (seenIds.has(a.id)) {
+            console.warn('⚠️ Duplicitní attachment ID:', a.id, '- odstraňuji');
+            return false;
+          }
+          seenIds.add(a.id);
+          return true;
+        });
+        
+        // ✅ PREVENCE INFINITE LOOP: Porovnat staré a nové pole
+        // Pokud jsou stejné, neaktualizovat (zabrání zbytečným re-renderům)
+        if (prev.length === deduplicated.length) {
+          const areEqual = prev.every((item, idx) => {
+            const newItem = deduplicated[idx];
+            return item.id === newItem?.id && item.status === newItem?.status;
+          });
+          if (areEqual) {
+            return prev; // Žádná změna - neaktualizovat
+          }
+        }
         
         // Kombinovat: external (ze serveru) + pending local (rozpracované)
-        return [...externalAttachments, ...pendingLocal];
+        return deduplicated;
       });
     }
   }, [externalAttachments]);
@@ -540,6 +574,10 @@ const InvoiceAttachmentsCompact = ({
   // 🔧 Helper funkce pro aktualizaci attachments (volá onAttachmentsChange callback)
   // ⚠️ DŮLEŽITÉ: Musí správně fungovat s controlled component pattern
   // ✅ OPRAVA: Používat localAttachments pro okamžité UI updates
+  // ✅ OPRAVA 2: Ref pro prevenci duplicitních callback volání
+  const lastCallbackDataRef = React.useRef(null);
+  const callbackTimeoutRef = React.useRef(null);
+  
   const updateAttachments = useCallback((updater) => {
     // ✅ Pokud je updater funkce, musíme ji zavolat s aktuálními attachments
     // ✅ Pokud je to hodnota, předat ji přímo
@@ -547,24 +585,55 @@ const InvoiceAttachmentsCompact = ({
       // ✅ OPRAVA: Aktualizovat lokální state OKAMŽITĚ pro UI
       setLocalAttachments(prev => {
         const updated = updater(prev || []);
+        
         // ⚠️ DŮLEŽITÉ: Odložit callback do další event loop iterace
-        // Tím se vyhneme React warning "Cannot update component while rendering"
-        setTimeout(() => {
+        // ✅ OPRAVA: Zrušit předchozí timeout (debouncing)
+        if (callbackTimeoutRef.current) {
+          clearTimeout(callbackTimeoutRef.current);
+        }
+        
+        // ✅ DEDUPLIKACE: Porovnat s posledními daty před voláním callbacku
+        callbackTimeoutRef.current = setTimeout(() => {
           if (onAttachmentsChange) {
-            onAttachmentsChange(updated);
+            // Serializovat pro porovnání (jednoduchá kontrola změny)
+            const newDataStr = JSON.stringify(updated.map(a => ({ id: a.id, status: a.status })));
+            
+            if (lastCallbackDataRef.current !== newDataStr) {
+              lastCallbackDataRef.current = newDataStr;
+              onAttachmentsChange(updated);
+            } else {
+              console.log('⏭️ Skip duplicate onAttachmentsChange call');
+            }
           }
-        }, 0);
+          callbackTimeoutRef.current = null;
+        }, 50); // 50ms debounce pro batch updates
+        
         return updated;
       });
     } else {
       // Přímá hodnota
       setLocalAttachments(updater);
+      
       // ⚠️ DŮLEŽITÉ: Odložit callback do další event loop iterace
-      setTimeout(() => {
+      // ✅ OPRAVA: Zrušit předchozí timeout (debouncing)
+      if (callbackTimeoutRef.current) {
+        clearTimeout(callbackTimeoutRef.current);
+      }
+      
+      callbackTimeoutRef.current = setTimeout(() => {
         if (onAttachmentsChange) {
-          onAttachmentsChange(updater);
+          // Serializovat pro porovnání
+          const newDataStr = JSON.stringify(updater.map(a => ({ id: a.id, status: a.status })));
+          
+          if (lastCallbackDataRef.current !== newDataStr) {
+            lastCallbackDataRef.current = newDataStr;
+            onAttachmentsChange(updater);
+          } else {
+            console.log('⏭️ Skip duplicate onAttachmentsChange call');
+          }
         }
-      }, 0);
+        callbackTimeoutRef.current = null;
+      }, 50); // 50ms debounce
     }
   }, [onAttachmentsChange]);
 
@@ -748,9 +817,17 @@ const InvoiceAttachmentsCompact = ({
 
   // 🆕 AUTO-UPLOAD pending příloh když se ID změní z temp na reálné
   const prevFakturaIdRef = React.useRef(fakturaId);
+  
+  // ✅ OPRAVA MNOŽENÍ PŘÍLOH: Ref pro sledování, zda už uploadujeme (prevence duplicit)
+  const isUploadingRef = React.useRef(false);
 
   useEffect(() => {
     const uploadPendingAttachments = async () => {
+      // ✅ PREVENCE DUPLICIT: Pokud už uploadujeme, neuploadovat znovu
+      if (isUploadingRef.current) {
+        return;
+      }
+      
       // Kontrola: ID se změnilo z temp na reálné
       const prevId = prevFakturaIdRef.current;
       const currentId = fakturaId;
@@ -772,6 +849,10 @@ const InvoiceAttachmentsCompact = ({
         prevFakturaIdRef.current = currentId;
         return;
       }
+      
+      // ✅ ZAMKNOUT: Začínáme upload
+      isUploadingRef.current = true;
+      
       // Nahrát každou pending přílohu
       for (const attachment of pendingAttachments) {
         try {
@@ -835,10 +916,13 @@ const InvoiceAttachmentsCompact = ({
 
       // Uložit aktuální ID pro příští porovnání
       prevFakturaIdRef.current = currentId;
+      
+      // ✅ ODEMKNOUT: Upload dokončen
+      isUploadingRef.current = false;
     };
 
     uploadPendingAttachments();
-  }, [fakturaId, attachments]); // Sleduj fakturaId i attachments
+  }, [fakturaId]); // ✅ OPRAVA: Sleduj POUZE fakturaId, NE attachments (prevence infinite loop)
 
   // Načtení příloh ze serveru
   const loadAttachmentsFromServer = async () => {
@@ -1101,9 +1185,12 @@ const InvoiceAttachmentsCompact = ({
         const jeISDOC = isISDOCFile(file.name);
         // ISDOC -> 'ISDOC', ostatní soubory (PDF, JPG, atd.) -> 'FAKTURA' (výchozí)
         const autoKlasifikace = jeISDOC ? 'ISDOC' : 'FAKTURA';
+        
+        // ✅ OPRAVA: Přidat náhodný suffix pro zajištění unikátnosti ID (prevence duplicitních klíčů)
+        const uniqueId = `pending-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`;
 
         return {
-          id: `pending-${Date.now()}-${index}`,
+          id: uniqueId,
           file: file,
           name: file.name,
           size: file.size,
@@ -1138,7 +1225,16 @@ const InvoiceAttachmentsCompact = ({
       
       // ✅ NEJDŘÍV přidat soubory do UI
       updateAttachments(prev => {
-        const updated = [...prev, ...newFiles];
+        // ✅ PREVENCE DUPLICIT: Zkontrolovat že soubory s těmito ID ještě nejsou v attachments
+        const existingIds = new Set(prev.map(a => a.id));
+        const filteredNewFiles = newFiles.filter(f => !existingIds.has(f.id));
+        
+        if (filteredNewFiles.length === 0) {
+          console.warn('⚠️ Všechny soubory už jsou v attachments - přeskakuji');
+          return prev;
+        }
+        
+        const updated = [...prev, ...filteredNewFiles];
         return updated;
       });
 
@@ -1608,25 +1704,6 @@ const InvoiceAttachmentsCompact = ({
         throw new Error('Soubor se nepodařilo nahrát na server - zkontrolujte oprávnění adresáře');
       }
 
-      // Získej ID přílohy z různých možných struktur
-      const attachmentId = response.priloha?.id || 
-                          response.priloha_id || 
-                          response.data?.priloha?.id || 
-                          response.data?.id || 
-                          response.id;
-      
-      // ⚠️ KRITICKÁ VALIDACE: ID přílohy MUSÍ existovat
-      if (!attachmentId) {
-        console.error('❌ Backend nevrátil ID přílohy:', response);
-        throw new Error('Server nevrátil ID přílohy - soubor se možná nenahral');
-      }
-      
-      // ✅ VALIDACE: Zkontrolovat že soubor byl fyzicky nahrán (pokud backend vrací file_exists)
-      if (response.priloha?.file_exists === false || response.data?.file_exists === false) {
-        console.error('❌ Soubor nebyl fyzicky nahrán na server:', response);
-        throw new Error('Soubor se nepodařilo nahrát na server - zkontrolujte oprávnění');
-      }
-
       // Získej údaje o uživateli z response, nebo použij aktuálního uživatele
       const nahrano_uzivatel_id = response.priloha?.nahrano_uzivatel_id || 
                                   response.priloha?.nahrano_uzivatel?.id ||
@@ -1835,13 +1912,13 @@ const InvoiceAttachmentsCompact = ({
             // ✅ Zavřít dialog
             setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
 
+            // 🚀 OPTIMISTIC DELETE - okamžitě odstranit z UI bez bliknutí
+            updateAttachments(prev => prev.filter(f => f.id !== fileId));
+
             // � Notify parent o smazání (pro Spisovka tracking cleanup)
             if (onAttachmentRemoved) {
               onAttachmentRemoved(file);
             }
-
-            // �🔄 RELOAD příloh ze serveru (synchronizace)
-            await loadAttachmentsFromServer();
 
             // ⚠️ POZOR: onAttachmentUploaded se NEvolá při DELETE (není to upload!)
             // Pro autosave po smazání použijte jiný callback nebo hook
@@ -2129,8 +2206,8 @@ const InvoiceAttachmentsCompact = ({
   }, [faktura, validateInvoiceForAttachments, isPokladna]);
 
   // ✅ NOVÁ LOGIKA: Dropzona je VŽDY aktivní (validace probíhá při uploadu)
-  // Disabled pouze když: uploading, loading nebo readOnly
-  const isDropzoneDisabled = uploading || loading || readOnly;
+  // Disabled pouze když: uploading, loading, readOnly NEBO faktura je DOKONCENA
+  const isDropzoneDisabled = uploading || loading || readOnly || faktura?.stav === 'DOKONCENA';
 
   // Drag & Drop handlers
   const handleDragOver = (e) => {
@@ -2652,14 +2729,18 @@ const InvoiceAttachmentsCompact = ({
           </DropZoneIcon>
           <DropZoneText>
             <DropZoneTitle>
-              {uploading
-                ? 'Nahrávám...'
-                : dragging
-                  ? 'Pusťte soubor'
-                  : 'Přetáhněte PDF, ISDOC, JPG, PNG, DOC, DOCX, XLS, XLSX nebo XML (max 10 MB)'}
+              {faktura?.stav === 'DOKONCENA'
+                ? '🔒 Faktura je dokončena - nelze přidávat přílohy'
+                : uploading
+                  ? 'Nahrávám...'
+                  : dragging
+                    ? 'Pusťte soubor'
+                    : 'Přetáhněte PDF, ISDOC, JPG, PNG, DOC, DOCX, XLS, XLSX nebo XML (max 10 MB)'}
             </DropZoneTitle>
             <DropZoneSubtitle>
-              Kliknutím otevřete dialog • Po přidání vyberte typ přílohy
+              {faktura?.stav === 'DOKONCENA'
+                ? 'Pro přidání příloh je nutné fakturu vrátit do stavu NOVA nebo ROZPRACOVANA'
+                : 'Kliknutím otevřete dialog • Po přidání vyberte typ přílohy'}
             </DropZoneSubtitle>
           </DropZoneText>
         </DropZone>
