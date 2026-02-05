@@ -3074,17 +3074,44 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 }
                 
                 // 8. Odeslat email (pokud je povolený)
+                // ✅ KONTROLA GLOBÁLNÍCH A UŽIVATELSKÝCH NASTAVENÍ
+                $userPrefs = getUserNotificationPreferences($db, $recipient['uzivatel_id']);
+                
+                // Aplikovat globální a uživatelské preference na email flag
+                $sendEmailFinal = $recipient['sendEmail'];
+                
+                // Kontrola globálního vypnutí notifikací
+                if (!$userPrefs['enabled']) {
+                    $sendEmailFinal = false;
+                    error_log("   ⚠️ User {$recipient['uzivatel_id']}: notifications disabled globally by system settings");
+                }
+                
+                // Kontrola vypnutí emailových notifikací (globální i uživatelské)
+                if (!$userPrefs['email_enabled']) {
+                    $sendEmailFinal = false;
+                    error_log("   ⚠️ User {$recipient['uzivatel_id']}: email notifications disabled (global or user setting)");
+                }
+                
+                // Kontrola kategorie
+                $kategorie = getObjectTypeFromEvent($eventType);
+                if (isset($userPrefs['categories'][$kategorie]) && !$userPrefs['categories'][$kategorie]) {
+                    $sendEmailFinal = false;
+                    error_log("   ⚠️ User {$recipient['uzivatel_id']}: category '$kategorie' disabled by user");
+                }
+                
                 // DEBUG do DB - kontrola sendEmail flag
                 try {
                     $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
                     $stmt_debug->execute(['Before email check', json_encode([
                         'user_id' => $recipient['uzivatel_id'],
-                        'sendEmail' => $recipient['sendEmail'],
-                        'sendEmail_type' => gettype($recipient['sendEmail'])
+                        'sendEmail_original' => $recipient['sendEmail'],
+                        'sendEmail_final' => $sendEmailFinal,
+                        'userPrefs_enabled' => $userPrefs['enabled'],
+                        'userPrefs_email_enabled' => $userPrefs['email_enabled']
                     ])]);
                 } catch (Exception $e) {}
                 
-                if ($recipient['sendEmail']) {
+                if ($sendEmailFinal) {
                     // DEBUG do DB
                     try {
                         $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
@@ -3113,7 +3140,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                         $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
                         $stmt_debug->execute(['Email SKIPPED', json_encode([
                             'user_id' => $recipient['uzivatel_id'],
-                            'reason' => 'sendEmail = false'
+                            'reason' => 'sendEmail disabled by global/user settings or category filter'
                         ])]);
                     } catch (Exception $e) {}
                 }

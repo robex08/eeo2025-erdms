@@ -192,12 +192,12 @@ export const useDictionaries = ({ token, username, enabled = true }) => {
           }
         })(),
 
-        // 8. Typy faktur
+        // 8. Typy faktur - klasifikace příloh (FAKTURA_TYP)
         (async () => {
           if (signal.aborted) return { key: 'typyFaktur', success: false, cancelled: true };
           try {
             dispatch({ type: DICTIONARIES_ACTIONS.START_LOADING, payload: { key: 'typyFaktur' } });
-            const typyFaktur = await getTypyFaktur25({ token, username }); // ⚠️ TODO: API nepodporuje signal zatím
+            const typyFaktur = await getTypyFaktur25({ token, username }); // Klasifikace příloh
             if (signal.aborted) return { key: 'typyFaktur', success: false, cancelled: true };
             dispatch({ type: DICTIONARIES_ACTIONS.SET_TYPY_FAKTUR, payload: typyFaktur || [] });
             return { key: 'typyFaktur', success: true };
