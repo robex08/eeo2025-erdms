@@ -487,9 +487,30 @@ const InvoiceAttachmentsCompact = ({
   const [localAttachments, setLocalAttachments] = useState([]);
 
   // 🔄 Synchronizovat lokální state s external attachments při změně props
+  // ✅ OPRAVA: MERGOVAT místo přepsat - zachovat lokální uploading/uploaded stavy
   useEffect(() => {
     if (Array.isArray(externalAttachments)) {
-      setLocalAttachments(externalAttachments);
+      setLocalAttachments(prev => {
+        // Pokud je lokální state prázdný, použít external přímo
+        if (!prev || prev.length === 0) {
+          return externalAttachments;
+        }
+        
+        // Jinak mergovat: zachovat pending/uploading soubory z lokálního state
+        const externalIds = new Set(externalAttachments.map(a => a.id || a.serverId));
+        const pendingLocal = prev.filter(a => 
+          // Zachovat soubory co jsou pending/uploading/s temp ID
+          a.status === 'pending_upload' || 
+          a.status === 'pending_classification' || 
+          a.status === 'uploading' ||
+          String(a.id || '').startsWith('pending-') ||
+          // A TAKÉ zachovat čerstvě uploadnuté (status='uploaded') co ještě nejsou v external
+          (a.status === 'uploaded' && a.serverId && !externalIds.has(a.serverId))
+        );
+        
+        // Kombinovat: external (ze serveru) + pending local (rozpracované)
+        return [...externalAttachments, ...pendingLocal];
+      });
     }
   }, [externalAttachments]);
 
@@ -1147,21 +1168,25 @@ const InvoiceAttachmentsCompact = ({
   // Pomocné funkce pro UI styling příloh - STEJNÉ JAKO U OBJEDNÁVEK
   const getFileBorderColor = (file) => {
     if (!file) return '#e5e7eb'; // Default pro undefined
-    if (file.status === 'error') return '#fca5a5';
-    if (!file.klasifikace) return '#fca5a5';
-    if (file.status === 'uploading') return '#f59e0b';
-    if (file.status === 'uploaded') return '#10b981';
+    // ✅ PRIORITY: Status PŘED klasifikací
+    if (file.status === 'uploading') return '#f59e0b';    // Oranžová - probíhá upload
+    if (file.status === 'uploaded') return '#10b981';     // Zelená - úspěšně nahráno
+    if (file.status === 'error') return '#fca5a5';        // Světle červená - chyba
     if (file.status === 'pending_upload') return '#3b82f6'; // Modrá pro čekající
+    // Až pak klasifikace
+    if (!file.klasifikace) return '#fca5a5';              // Červená - chybí klasifikace
     return '#e5e7eb';
   };
 
   const getFileBackgroundColor = (file) => {
     if (!file) return 'white'; // Default pro undefined
-    if (file.status === 'error') return '#fef2f2';
-    if (!file.klasifikace) return '#fef2f2';
-    if (file.status === 'uploading') return '#fffbeb';
-    if (file.status === 'uploaded') return '#f0fdf4';
+    // ✅ PRIORITY: Status PŘED klasifikací
+    if (file.status === 'uploading') return '#fffbeb';    // Světle oranžová - probíhá upload
+    if (file.status === 'uploaded') return '#f0fdf4';     // Světle zelená - úspěšně nahráno
+    if (file.status === 'error') return '#fef2f2';        // Světle červená - chyba
     if (file.status === 'pending_upload') return '#eff6ff'; // Světle modrá pro čekající
+    // Až pak klasifikace
+    if (!file.klasifikace) return '#fef2f2';              // Červená - chybí klasifikace
     return 'white';
   };
 
@@ -1271,8 +1296,9 @@ const InvoiceAttachmentsCompact = ({
         
         // 🆕 Pro ISDOC povolit upload i bez validních polí
         if (!validation?.isValid && !validation?.isISDOC) {
+          const fields = validation?.missingFields?.join(', ') || 'povinná pole';
           showToast&&showToast(
-            `Pro nahrání této přílohy vyplňte nejprve: ${validation?.missingFields?.join(', ') || 'povinná pole'}`,
+            `Pro nahrání této přílohy vyplňte nejprve tato pole: ${fields}.`,
             { type: 'error' }
           );
           return;
@@ -1296,6 +1322,10 @@ const InvoiceAttachmentsCompact = ({
         } : f
       ));
 
+      // 🔄 Proměnné pro rollback (musí být mimo try/catch)
+      let realFakturaId = null;
+      let attachmentId = null;
+
       try {
         // 🎯 CALLBACK: Vytvoř fakturu v DB a získej reálné ID
         if (!onCreateInvoiceInDB) {
@@ -1305,7 +1335,7 @@ const InvoiceAttachmentsCompact = ({
         // Volám onCreateInvoiceInDB callback
         // ❌ ODSTRANĚNO: Toast "Vytvářím fakturu..." - způsoboval spam
         
-        const realFakturaId = await onCreateInvoiceInDB(fakturaId);
+        realFakturaId = await onCreateInvoiceInDB(fakturaId);
         
         // Faktura vytvořena
         
@@ -1347,13 +1377,30 @@ const InvoiceAttachmentsCompact = ({
         // 🔍 DEBUG: Response z backendu
         // RESPONSE
         console.groupEnd();
+        
+        // ✅ KRITICKÁ VALIDACE: Zkontrolovat že upload byl skutečně úspěšný
+        if (!response || response.status === 'error' || response.error) {
+          throw new Error(response?.message || response?.error || 'Chyba při nahrávání souboru na server');
+        }
 
         // Získej ID přílohy z různých možných struktur
-        const attachmentId = response.priloha?.id || 
-                            response.priloha_id || 
-                            response.data?.priloha?.id || 
-                            response.data?.id || 
-                            response.id;
+        attachmentId = response.priloha?.id || 
+                      response.priloha_id || 
+                      response.data?.priloha?.id || 
+                      response.data?.id || 
+                      response.id;
+        
+        // ⚠️ KRITICKÁ VALIDACE: ID přílohy MUSÍ existovat
+        if (!attachmentId) {
+          console.error('❌ Backend nevrátil ID přílohy:', response);
+          throw new Error('Server nevrátil ID přílohy - soubor se možná nenahral');
+        }
+        
+        // ✅ VALIDACE: Zkontrolovat že soubor byl fyzicky nahrán (pokud backend vrací file_exists)
+        if (response.priloha?.file_exists === false || response.data?.file_exists === false) {
+          console.error('❌ Soubor nebyl fyzicky nahrán na server:', response);
+          throw new Error('Soubor se nepodařilo nahrát na server - zkontrolujte oprávnění adresáře');
+        }
 
         // Získej údaje o uživateli z response, nebo použij aktuálního uživatele
         const nahrano_uzivatel_id = response.priloha?.nahrano_uzivatel_id || 
@@ -1366,12 +1413,13 @@ const InvoiceAttachmentsCompact = ({
 
         // Attachment ID (temp upload)
 
-        // Update s server ID
+        // Update s server ID a progress 100%
         updateAttachments(prev => {
           const updated = prev.map(f =>
             f.id === fileId ? {
               ...f,
               status: 'uploaded',
+              progress: 100, // ✅ DŮLEŽITÉ: Nastavit progress na 100%
               serverId: attachmentId,
               klasifikace: klasifikace, // ✅ Uložit klasifikaci pro pozdější porovnání
               faktura_typ_nazev: typPrilohy?.nazev || klasifikace,
@@ -1448,6 +1496,30 @@ const InvoiceAttachmentsCompact = ({
         }
         console.groupEnd();
         
+        // 🔄 ROLLBACK: Pokud byl vytvořen záznam v DB ale soubor se nenahral,
+        // měli bychom se pokusit smazat neplatný záznam
+        if (attachmentId && err.message?.includes('nenahral')) {
+          console.warn('⚠️ Pokus o rollback - mazání neplatného záznamu přílohy:', attachmentId);
+          try {
+            await deleteInvoiceAttachment25({
+              token: token,
+              username: username,
+              faktura_id: realFakturaId,
+              priloha_id: attachmentId,
+              objednavka_id: objednavkaId,
+              hard_delete: 1
+            });
+            console.log('✅ Rollback úspěšný - neplatný záznam smazán');
+          } catch (rollbackErr) {
+            console.error('❌ Rollback selhal:', rollbackErr);
+            // Informovat uživatele o problému
+            showToast&&showToast(
+              '⚠️ Upozornění: Vytvořil se záznam v databázi, ale soubor se nenahral. Kontaktujte administrátora.',
+              { type: 'warning' }
+            );
+          }
+        }
+        
         // Status -> error
         updateAttachments(prev => prev.map(f =>
           f.id === fileId ? { 
@@ -1494,6 +1566,9 @@ const InvoiceAttachmentsCompact = ({
       }));
     }, 150);
     
+    // 🔄 Proměnná pro rollback (musí být mimo try/catch)
+    let attachmentId = null;
+    
     try {
       const response = await uploadInvoiceAttachment25({
         token: token,
@@ -1506,8 +1581,32 @@ const InvoiceAttachmentsCompact = ({
       
       // Upload response
       
+      // ✅ KRITICKÁ VALIDACE: Zkontrolovat že upload byl skutečně úspěšný
+      if (!response || response.status === 'error' || response.error) {
+        throw new Error(response?.message || response?.error || 'Chyba při nahrávání souboru na server');
+      }
+      
       // Najdi název typu přílohy pro zobrazení
       const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === klasifikace);
+      
+      // Získej ID přílohy z různých možných struktur
+      attachmentId = response.priloha?.id || 
+                    response.priloha_id || 
+                    response.data?.priloha?.id || 
+                    response.data?.id || 
+                    response.id;
+      
+      // ⚠️ KRITICKÁ VALIDACE: ID přílohy MUSÍ existovat
+      if (!attachmentId) {
+        console.error('❌ Backend nevrátil ID přílohy:', response);
+        throw new Error('Server nevrátil ID přílohy - soubor se možná nenahral');
+      }
+      
+      // ✅ VALIDACE: Zkontrolovat že soubor byl fyzicky nahrán
+      if (response.priloha?.file_exists === false || response.data?.file_exists === false) {
+        console.error('❌ Soubor nebyl fyzicky nahrán na server:', response);
+        throw new Error('Soubor se nepodařilo nahrát na server - zkontrolujte oprávnění adresáře');
+      }
 
       // Získej ID přílohy z různých možných struktur
       const attachmentId = response.priloha?.id || 
@@ -1515,6 +1614,18 @@ const InvoiceAttachmentsCompact = ({
                           response.data?.priloha?.id || 
                           response.data?.id || 
                           response.id;
+      
+      // ⚠️ KRITICKÁ VALIDACE: ID přílohy MUSÍ existovat
+      if (!attachmentId) {
+        console.error('❌ Backend nevrátil ID přílohy:', response);
+        throw new Error('Server nevrátil ID přílohy - soubor se možná nenahral');
+      }
+      
+      // ✅ VALIDACE: Zkontrolovat že soubor byl fyzicky nahrán (pokud backend vrací file_exists)
+      if (response.priloha?.file_exists === false || response.data?.file_exists === false) {
+        console.error('❌ Soubor nebyl fyzicky nahrán na server:', response);
+        throw new Error('Soubor se nepodařilo nahrát na server - zkontrolujte oprávnění');
+      }
 
       // Získej údaje o uživateli z response, nebo použij aktuálního uživatele
       const nahrano_uzivatel_id = response.priloha?.nahrano_uzivatel_id || 
@@ -1605,15 +1716,47 @@ const InvoiceAttachmentsCompact = ({
       }
 
     } catch (err) {
+      console.group('❌ CHYBA při uploadu s existující fakturou');
+      console.error('Error object:', err);
+      console.error('Error message:', err.message);
+      console.groupEnd();
+      
       // 🛑 ZASTAVIT PROGRESS BAR
       clearInterval(progressInterval);
+      
+      // 🔄 ROLLBACK: Pokud byl vytvořen záznam v DB ale soubor se nenahral,
+      // měli bychom se pokusit smazat neplatný záznam
+      if (attachmentId && err.message?.includes('nenahral')) {
+        console.warn('⚠️ Pokus o rollback - mazání neplatného záznamu přílohy:', attachmentId);
+        try {
+          await deleteInvoiceAttachment25({
+            token: token,
+            username: username,
+            faktura_id: fakturaId,
+            priloha_id: attachmentId,
+            objednavka_id: objednavkaId,
+            hard_delete: 1
+          });
+          console.log('✅ Rollback úspěšný - neplatný záznam smazán');
+        } catch (rollbackErr) {
+          console.error('❌ Rollback selhal:', rollbackErr);
+          // Informovat uživatele o problému
+          showToast&&showToast(
+            '⚠️ Upozornění: Vytvořil se záznam v databázi, ale soubor se nenahral. Kontaktujte administrátora.',
+            { type: 'warning', duration: 8000 }
+          );
+        }
+      }
       
       // Status -> error (pending znovu)
       updateAttachments(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'pending_classification', progress: 0 } : f
       ));
 
-      showToast&&showToast('Nepodařilo se nahrát přílohu', { type: 'error' });
+      showToast&&showToast(
+        err.message || 'Nepodařilo se nahrát přílohu', 
+        { type: 'error' }
+      );
     }
   };
 
@@ -2488,7 +2631,7 @@ const InvoiceAttachmentsCompact = ({
               fontSize: '0.875rem',
               color: '#78350f'
             }}>
-              Pro přidání příloh je nutné vyplnit: {invoiceValidation.missingFields?.join(', ') || 'povinná pole'}
+              Pro přidání příloh je nutné vyplnit tato pole: {invoiceValidation.missingFields?.join(', ') || 'povinná pole'}.
             </div>
           </div>
         </div>
