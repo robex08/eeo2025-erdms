@@ -17505,25 +17505,25 @@ function OrderForm25() {
           if (isLPFinancing && lpData && lpData.lpCerpani && lpData.lpCerpani.length > 0) {
             const lpRows = lpData.lpCerpani;
             
-            // Prázdné řádky
+            // Prázdné řádky (kompletně prázdné - bez LP i částky)
             const emptyRows = lpRows.filter(r => r.id && !r.lp_id && (!r.castka || r.castka <= 0));
             if (emptyRows.length > 0) {
               errors[`vecna_lp_faktura_${index + 1}_empty`] = `Faktura ${index + 1}: Máte ${emptyRows.length} prázdný řádek LP. Vyplňte LP kód a částku nebo jej smažte.`;
             }
             
-            // Neúplné řádky
+            // Neúplné řádky (má LP ale chybí částka NEBO má částku ale chybí LP)
             const incompleteRows = lpRows.filter(r => 
-              (r.lp_id && (!r.castka || r.castka <= 0)) || 
-              (!r.lp_id && r.castka > 0)
+              (r.lp_id && r.castka === null || r.castka === undefined) || 
+              (!r.lp_id && r.castka !== null && r.castka !== undefined)
             );
             if (incompleteRows.length > 0) {
-              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku`;
+              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku (může být i 0 Kč)`;
             }
             
-            // Kontrola alespoň jednoho validního řádku pro LP financování
-            const validRows = lpRows.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
+            // Kontrola alespoň jednoho LP řádku (částka může být i 0)
+            const validRows = lpRows.filter(r => r.lp_id && r.lp_cislo && (r.castka !== null && r.castka !== undefined));
             if (validRows.length === 0) {
-              errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód s částkou`;
+              errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód`;
             }
           }
         });
