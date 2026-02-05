@@ -556,15 +556,37 @@ export async function fetchAllUsers({ token, username, _cacheBust, show_inactive
   }
   const data = response.data;
 
+  // 🔍 DEBUG: Log raw backend response for Users page
+  // 🔍 DEBUG: Log raw backend response for Users page
+  console.log('📊 RAW Backend Response (fetchAllUsers - /users page):', JSON.stringify(data, null, 2));
+
   // Normalize possible response shapes into an array of users
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.data)) return data.data;
-  if (data && Array.isArray(data.users)) return data.users;
-  if (data && data.result && Array.isArray(data.result.users)) return data.result.users;
-  const foundArr = Object.values(data || {}).find(v => Array.isArray(v));
-  if (foundArr) return foundArr;
-  // Fallback: wrap single object
-  return [data];
+  let users = [];
+  if (Array.isArray(data)) users = data;
+  else if (data && Array.isArray(data.data)) users = data.data;
+  else if (data && Array.isArray(data.users)) users = data.users;
+  else if (data && data.result && Array.isArray(data.result.users)) users = data.result.users;
+  else {
+    const foundArr = Object.values(data || {}).find(v => Array.isArray(v));
+    if (foundArr) users = foundArr;
+    else users = [data]; // Fallback: wrap single object
+  }
+
+  // 🔍 DEBUG: Log admin user specifically
+  const adminUser = users.find(u => u.username === 'admin');
+  if (adminUser) {
+    console.log('🔧 ADMIN user from fetchAllUsers:', {
+      id: adminUser.id,
+      username: adminUser.username,
+      dt_posledni_aktivita: adminUser.dt_posledni_aktivita,
+      aktivita_metadata: adminUser.aktivita_metadata,
+      aktivita_metadata_type: typeof adminUser.aktivita_metadata
+    });
+  } else {
+    console.warn('⚠️ Admin user NOT FOUND in fetchAllUsers response');
+  }
+
+  return users;
 }
 
 /**
@@ -1414,6 +1436,7 @@ export async function fetchEmployees({ token, username }) {
         usek_zkr: emp.usek_zkr || '',
         usek_nazev: emp.usek_nazev || '',
         dt_posledni_aktivita: emp.dt_posledni_aktivita || '',
+        aktivita_metadata: emp.aktivita_metadata || null,
         // Normalize aktivni to number: 1 for active, 0 for inactive
         aktivni: emp.aktivni === 1 || emp.aktivni === '1' || emp.aktivni === true ? 1 : 0,
         // Add phonebook visibility status

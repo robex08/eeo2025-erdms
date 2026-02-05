@@ -25,6 +25,7 @@ import { formatDateOnly, prettyDate } from '../utils/format';
 import { useFloatingPanels } from '../hooks/useFloatingPanels';
 import { useGlobalVoiceRecognition } from '../hooks/useGlobalVoiceRecognition';
 import { useTodoAlarms } from '../hooks/useTodoAlarms';
+import useActivityTracking from '../hooks/useActivityTracking'; // ✅ NOVÉ: Activity tracking
 import { FloatingAlarmManager } from './FloatingAlarmPopup';
 import { translateToCz } from '../utils/translate';
 import { useDebugPanel } from '../hooks/useDebugPanel';
@@ -1509,6 +1510,9 @@ const NotificationBellWrapper = ({ userId }) => {
 };
 
 const Layout = ({ children }) => {
+  // ✅ NOVÉ: Activity tracking - automaticky sleduje route změny
+  useActivityTracking();
+
   // RSS vtipy: kompletně odstraněno (na žádost uživatele)
 
   // State pro submenu - Administrace
