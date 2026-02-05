@@ -3388,6 +3388,18 @@ export default function InvoiceEvidencePage() {
           // Zavolat API pro odpojení faktury
           // DEBUG: Odesílám updateData
           // console.log('🔍 UNLINK DEBUG - Odesílám updateData:', {
+          //   objednavka_id: null,
+          //   vecna_spravnost_potvrzeno: 0,
+          //   potvrdil_vecnou_spravnost_id: null,
+          //   dt_vecna_spravnost: null,
+          //   vecna_spravnost_poznamka: '',
+          //   vecna_spravnost_umisteni_majetku: '',
+          //   fa_predana_zam_id: null,
+          //   fa_datum_predani_zam: null,
+          //   fa_datum_vraceni_zam: null
+          // });
+          
+          const updateData = {
             objednavka_id: null,
             vecna_spravnost_potvrzeno: 0,
             potvrdil_vecnou_spravnost_id: null,
@@ -3397,7 +3409,7 @@ export default function InvoiceEvidencePage() {
             fa_predana_zam_id: null,
             fa_datum_predani_zam: null,
             fa_datum_vraceni_zam: null
-          });
+          };
           
           await updateInvoiceV2({
             token,
