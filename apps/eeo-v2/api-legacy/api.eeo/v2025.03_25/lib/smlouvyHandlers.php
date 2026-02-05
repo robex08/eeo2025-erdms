@@ -270,22 +270,27 @@ function validateSmlouvaData($data, $db, $is_insert = true) {
     // IČO validation - ZRUŠENO, akceptujeme jakýkoliv formát
     // (IČO může mít různé formáty, včetně prefixů, mezer atd.)
     
-    // Financial validation - akceptujeme 0 Kč jako validní hodnotu (>= 0)
-    // Hodnoty se normalizují PŘED validací pomocí normalizeFinancialValues()
-    // Takže zde už jen kontrolujeme, že jsou numeric a >= 0
+    // Financial validation - UPRAVENO: akceptujeme prázdné hodnoty při UPDATE (NULL v DB)
+    // Validujeme pouze pokud jsou hodnoty vyplněné
     if ($is_insert || isset($data['hodnota_bez_dph'])) {
-        if (!isset($data['hodnota_bez_dph']) || !is_numeric($data['hodnota_bez_dph'])) {
-            $errors[] = 'Hodnota bez DPH musi byt cislo (po normalizaci)';
-        } elseif ($data['hodnota_bez_dph'] < 0) {
-            $errors[] = 'Hodnota bez DPH nesmi byt zaporna';
+        // Prázdný string nebo NULL je OK při UPDATE (smlouva může mít NULL v DB)
+        if (isset($data['hodnota_bez_dph']) && $data['hodnota_bez_dph'] !== '' && $data['hodnota_bez_dph'] !== null) {
+            if (!is_numeric($data['hodnota_bez_dph'])) {
+                $errors[] = 'Hodnota bez DPH musi byt cislo';
+            } elseif ($data['hodnota_bez_dph'] < 0) {
+                $errors[] = 'Hodnota bez DPH nesmi byt zaporna';
+            }
         }
     }
     
     if ($is_insert || isset($data['hodnota_s_dph'])) {
-        if (!isset($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph'])) {
-            $errors[] = 'Hodnota s DPH musi byt cislo (po normalizaci)';
-        } elseif ($data['hodnota_s_dph'] < 0) {
-            $errors[] = 'Hodnota s DPH nesmi byt zaporna';
+        // Prázdný string nebo NULL je OK při UPDATE (smlouva může mít NULL v DB)
+        if (isset($data['hodnota_s_dph']) && $data['hodnota_s_dph'] !== '' && $data['hodnota_s_dph'] !== null) {
+            if (!is_numeric($data['hodnota_s_dph'])) {
+                $errors[] = 'Hodnota s DPH musi byt cislo';
+            } elseif ($data['hodnota_s_dph'] < 0) {
+                $errors[] = 'Hodnota s DPH nesmi byt zaporna';
+            }
         }
     }
     
@@ -815,10 +820,19 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         
         foreach ($allowed_fields as $field) {
             if (array_key_exists($field, $input)) {
-                // Ošetření NULL hodnot pro platnost_od - pokud je NULL nebo prázdný string, uložíme NULL
-                if ($field === 'platnost_od' && ($input[$field] === null || $input[$field] === '' || $input[$field] === 'null')) {
+                // Ošetření prázdných hodnot
+                // - Pro datumy: '' nebo 'null' → NULL
+                // - Pro finanční hodnoty: '' nebo null → 0 (kvůli decimal sloupci)
+                $date_fields = array('platnost_od');
+                $financial_fields = array('hodnota_bez_dph', 'hodnota_s_dph', 'hodnota_plneni_bez_dph', 'hodnota_plneni_s_dph');
+                
+                if (in_array($field, $date_fields) && ($input[$field] === null || $input[$field] === '' || $input[$field] === 'null')) {
                     $set[] = "$field = :$field";
                     $params[$field] = null;
+                } else if (in_array($field, $financial_fields) && ($input[$field] === null || $input[$field] === '' || $input[$field] === 'null')) {
+                    // Finanční hodnoty - prázdné → 0 (ne NULL)
+                    $set[] = "$field = :$field";
+                    $params[$field] = 0;
                 } else {
                     $set[] = "$field = :$field";
                     $params[$field] = $input[$field];

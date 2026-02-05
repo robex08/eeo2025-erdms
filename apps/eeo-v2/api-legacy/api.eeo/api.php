@@ -155,6 +155,7 @@ define('TBL_POKLADNI_PRIRAZENI', '25a_pokladni_prirazeni');
 
 // DATABASE TABLE NAMES - CORE ENTITIES
 define('TBL_UZIVATELE', '25_uzivatele');
+define('TBL_UZIVATELE_AKTIVITA_LOG', '25_uzivatele_aktivita_log');
 // define('TBL_OBJEDNAVKY_LEGACY', '25_objednavky'); // DEPRECATED - nepoužívá se
 define('TBL_SMLOUVY', '25_smlouvy');
 define('TBL_SMLOUVY_IMPORT_LOG', '25_smlouvy_import_log');
@@ -728,6 +729,25 @@ switch ($endpoint) {
     case 'user/keepalive':
         if ($request_method === 'POST') {
             handle_user_keepalive($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    // ✅ NOVÉ: Activity tracking
+    case 'user/activity/track':
+        if ($request_method === 'POST') {
+            handle_user_activity_track($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'user/activity/history':
+        if ($request_method === 'GET' || $request_method === 'POST') {
+            handle_user_activity_history($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));

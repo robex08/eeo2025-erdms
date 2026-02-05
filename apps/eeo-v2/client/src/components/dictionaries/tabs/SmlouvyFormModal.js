@@ -1018,12 +1018,20 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       }
     }
 
-    if (!formData.hodnota_bez_dph || parseFloat(formData.hodnota_bez_dph) < 0) {
-      newErrors.hodnota_bez_dph = 'Počáteční stav bez DPH je povinný a nesmí být záporný';
+    // Finanční hodnoty - při editaci nejsou povinné (mohou být NULL v DB)
+    // Validujeme pouze pokud jsou vyplněné
+    if (formData.hodnota_bez_dph !== '' && formData.hodnota_bez_dph !== null && formData.hodnota_bez_dph !== undefined) {
+      const hodnota = parseFloat(formData.hodnota_bez_dph);
+      if (isNaN(hodnota) || hodnota < 0) {
+        newErrors.hodnota_bez_dph = 'Hodnota bez DPH nesmí být záporná';
+      }
     }
 
-    if (!formData.hodnota_s_dph || parseFloat(formData.hodnota_s_dph) < 0) {
-      newErrors.hodnota_s_dph = 'Počáteční stav s DPH je povinný a nesmí být záporný';
+    if (formData.hodnota_s_dph !== '' && formData.hodnota_s_dph !== null && formData.hodnota_s_dph !== undefined) {
+      const hodnota = parseFloat(formData.hodnota_s_dph);
+      if (isNaN(hodnota) || hodnota < 0) {
+        newErrors.hodnota_s_dph = 'Hodnota s DPH nesmí být záporná';
+      }
     }
 
     if (formData.ico && !/^\d{8}$/.test(formData.ico)) {
@@ -1047,11 +1055,16 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     try {
       setSaving(true);
 
-      // Příprava dat - ošetření prázdných datumů (poslat null místo prázdného stringu)
+      // Příprava dat - ošetření prázdných hodnot
       const dataToSave = {
         ...formData,
         platnost_od: formData.platnost_od || null,
-        platnost_do: formData.platnost_do || null
+        platnost_do: formData.platnost_do || null,
+        // Finanční hodnoty - prázdné → 0 (ne null)
+        hodnota_bez_dph: formData.hodnota_bez_dph !== '' ? formData.hodnota_bez_dph : 0,
+        hodnota_s_dph: formData.hodnota_s_dph !== '' ? formData.hodnota_s_dph : 0,
+        hodnota_plneni_bez_dph: formData.hodnota_plneni_bez_dph !== '' ? formData.hodnota_plneni_bez_dph : 0,
+        hodnota_plneni_s_dph: formData.hodnota_plneni_s_dph !== '' ? formData.hodnota_plneni_s_dph : 0
       };
 
       if (isEdit) {
@@ -1549,7 +1562,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
             <ThreeColumnRow>
               {/* Počáteční stav bez DPH */}
               <InnerFormField>
-                <Label className="required">Počáteční stav bez DPH (Kč)</Label>
+                <Label>Počáteční stav bez DPH (Kč)</Label>
                 <CurrencyInput
                   fieldName="hodnota_bez_dph"
                   value={formData.hodnota_bez_dph}
@@ -1564,7 +1577,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
 
               {/* Počáteční stav s DPH */}
               <InnerFormField>
-                <Label className="required">Počáteční stav s DPH (Kč)</Label>
+                <Label>Počáteční stav s DPH (Kč)</Label>
                 <CurrencyInput
                   fieldName="hodnota_s_dph"
                   value={formData.hodnota_s_dph}

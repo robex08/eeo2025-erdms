@@ -888,6 +888,26 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                     <ContactIcon><Calendar size={16} /></ContactIcon>
                     <ContactText>
                       Poslední aktivita: {formatDate(employee.dt_posledni_aktivita)}
+                      {(() => {
+                        try {
+                          const metadata = employee.aktivita_metadata 
+                            ? (typeof employee.aktivita_metadata === 'string' 
+                                ? JSON.parse(employee.aktivita_metadata) 
+                                : employee.aktivita_metadata)
+                            : null;
+                          
+                          if (metadata) {
+                            return (
+                              <div style={{ marginTop: '0.25rem', fontSize: '0.8em', opacity: 0.8 }}>
+                                {metadata.last_module && `📍 ${metadata.last_module}`}
+                                {metadata.last_ip && ` • 🌐 ${metadata.last_ip}`}
+                              </div>
+                            );
+                          }
+                        } catch (e) {
+                          return null;
+                        }
+                      })()}
                     </ContactText>
                   </ContactItem>
                 )}
@@ -940,13 +960,35 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                   {employee.dt_posledni_aktivita && (
                     <div style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
                       fontSize: '0.75rem',
                       color: '#6b7280'
                     }}>
-                      <Calendar size={12} />
-                      {formatDate(employee.dt_posledni_aktivita)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Calendar size={12} />
+                        {formatDate(employee.dt_posledni_aktivita)}
+                      </div>
+                      {(() => {
+                        try {
+                          const metadata = employee.aktivita_metadata 
+                            ? (typeof employee.aktivita_metadata === 'string' 
+                                ? JSON.parse(employee.aktivita_metadata) 
+                                : employee.aktivita_metadata)
+                            : null;
+                          
+                          if (metadata) {
+                            return (
+                              <div style={{ paddingLeft: '1.25rem', fontSize: '0.7em', opacity: 0.75 }}>
+                                {metadata.last_module && `📍 ${metadata.last_module}`}
+                                {metadata.last_ip && ` • 🌐 ${metadata.last_ip}`}
+                              </div>
+                            );
+                          }
+                        } catch (e) {
+                          return null;
+                        }
+                      })()}
                     </div>
                   )}
                 </div>

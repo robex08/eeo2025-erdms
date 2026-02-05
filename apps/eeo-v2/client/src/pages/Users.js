@@ -1553,6 +1553,7 @@ const Users = () => {
               .join(', ')
           : (user.group_name || user.nazev_role || 'Bez role'),
         dt_activity: user.dt_activity || user.dt_posledni_aktivita || user.posl_aktivita || null,
+        aktivita_metadata: user.aktivita_metadata || null,
       }));
 
       // Users processed successfully
@@ -3242,57 +3243,97 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                     // Formátovat datum a čas v CZ formátu
                     const dateTimeText = prettyDate(activityTime);
 
+                    // Parse aktivita_metadata
+                    let metadata = null;
+                    try {
+                      if (user.aktivita_metadata) {
+                        metadata = typeof user.aktivita_metadata === 'string' 
+                          ? JSON.parse(user.aktivita_metadata)
+                          : user.aktivita_metadata;
+                      }
+                    } catch (e) {
+                      // Ignore parse errors
+                    }
+
                     return (
                       <div key={index} style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.35rem 0.5rem',
-                        borderRadius: '4px',
-                        transition: 'background 0.2s'
+                        flexDirection: 'column',
+                        gap: '0.25rem',
+                        padding: '0.5rem',
+                        borderRadius: '6px',
+                        transition: 'background 0.2s',
+                        background: 'transparent'
                       }}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 0, 0, 0.02)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <div style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          flexShrink: 0,
-                          background: status === 'active' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#ef4444'
-                        }} />
-                        <div style={{
-                          fontSize: '0.875rem',
-                          color: '#1f2937',
-                          fontWeight: 500,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          flex: 1
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
                         }}>
-                          {user.cele_jmeno}
+                          <div style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            background: status === 'active' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#ef4444'
+                          }} />
+                          <div style={{
+                            fontSize: '0.875rem',
+                            color: '#1f2937',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            flex: 1
+                          }}>
+                            {user.cele_jmeno}
+                          </div>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#9ca3af',
+                            fontWeight: 400,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            minWidth: '150px',
+                            textAlign: 'right'
+                          }}>
+                            {dateTimeText}
+                          </div>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#9ca3af',
+                            fontWeight: 400,
+                            flexShrink: 0,
+                            minWidth: '40px',
+                            textAlign: 'right'
+                          }}>
+                            {timeText}
+                          </div>
                         </div>
-                        <div style={{
-                          fontSize: '0.75rem',
-                          color: '#9ca3af',
-                          fontWeight: 400,
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                          minWidth: '150px',
-                          textAlign: 'right'
-                        }}>
-                          {dateTimeText}
-                        </div>
-                        <div style={{
-                          fontSize: '0.75rem',
-                          color: '#9ca3af',
-                          fontWeight: 400,
-                          flexShrink: 0,
-                          minWidth: '40px',
-                          textAlign: 'right'
-                        }}>
-                          {timeText}
-                        </div>
+                        {metadata && (metadata.last_module || metadata.last_ip) && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            paddingLeft: '1.25rem',
+                            fontSize: '0.75rem',
+                            color: '#6b7280'
+                          }}>
+                            {metadata.last_module && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                📍 {metadata.last_module}
+                              </span>
+                            )}
+                            {metadata.last_ip && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                🌐 {metadata.last_ip}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -3774,6 +3815,46 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                               <InfoLabel>Poslední aktivita:</InfoLabel>
                               <InfoValue>{row.original.dt_activity ? prettyDate(row.original.dt_activity) : 'Nikdy'}</InfoValue>
                             </InfoRow>
+                            {(() => {
+                              try {
+                                const metadata = row.original.aktivita_metadata
+                                  ? (typeof row.original.aktivita_metadata === 'string'
+                                      ? JSON.parse(row.original.aktivita_metadata)
+                                      : row.original.aktivita_metadata)
+                                  : null;
+                                
+                                // Support both old format (last_ip) and new format (last_public_ip, last_local_ip)
+                                const publicIp = metadata?.last_public_ip || metadata?.last_ip;
+                                const localIp = metadata?.last_local_ip;
+                                
+                                if (metadata && (metadata.last_module || publicIp || localIp)) {
+                                  return (
+                                    <>
+                                      {metadata.last_module && (
+                                        <InfoRow>
+                                          <InfoLabel>Modul:</InfoLabel>
+                                          <InfoValue style={{ fontWeight: 500 }}>{metadata.last_module}</InfoValue>
+                                        </InfoRow>
+                                      )}
+                                      {publicIp && (
+                                        <InfoRow>
+                                          <InfoLabel>Veřejná IP:</InfoLabel>
+                                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{publicIp}</InfoValue>
+                                        </InfoRow>
+                                      )}
+                                      {localIp && (
+                                        <InfoRow>
+                                          <InfoLabel>Lokální IP:</InfoLabel>
+                                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{localIp}</InfoValue>
+                                        </InfoRow>
+                                      )}
+                                    </>
+                                  );
+                                }
+                              } catch (e) {
+                                return null;
+                              }
+                            })()}
                           </InfoCard>
 
                           {/* Role a práva - NOVÁ VERZE S UNIKÁTNÍMI PRÁVY */}

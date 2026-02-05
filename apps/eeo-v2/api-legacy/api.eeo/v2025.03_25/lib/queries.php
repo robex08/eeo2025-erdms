@@ -247,6 +247,41 @@ $queries['organizace_update'] = "
 
 $queries['organizace_delete'] = "DELETE FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id";
 
+// === USER ACTIVITY TRACKING QUERIES ===
+
+// Update aktivity s metadata (JSON)
+$queries['uzivatele_update_activity_with_metadata'] = "
+  UPDATE ".TBL_UZIVATELE." 
+  SET 
+    dt_posledni_aktivita = NOW(),
+    aktivita_metadata = :metadata
+  WHERE id = :id
+";
+
+// Insert do activity log
+$queries['uzivatele_activity_log_insert'] = "
+  INSERT INTO ".TBL_UZIVATELE_AKTIVITA_LOG." 
+  (uzivatel_id, ip_address, module_name, module_path, user_agent, session_id) 
+  VALUES 
+  (:uzivatel_id, :ip_address, :module_name, :module_path, :user_agent, :session_id)
+";
+
+// Získání historie aktivity
+$queries['uzivatele_activity_log_select'] = "
+  SELECT 
+    id,
+    ip_address,
+    module_name,
+    module_path,
+    user_agent,
+    session_id,
+    created_at
+  FROM ".TBL_UZIVATELE_AKTIVITA_LOG."
+  WHERE uzivatel_id = :uzivatel_id
+  ORDER BY created_at DESC
+  LIMIT :limit
+";
+
 // Kontrola existence organizace pro FK
 $queries['organizace_check_usage'] = "
     SELECT 
@@ -269,6 +304,7 @@ $queries['uzivatele_select_all'] = "
         u.jmeno,
         u.prijmeni,
         u.dt_posledni_aktivita,
+        u.aktivita_metadata,
         u.titul_za,
         u.email,
         u.telefon,
@@ -296,7 +332,7 @@ $queries['uzivatele_select_all'] = "
     LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
         LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
     WHERE u.id > 0
-    GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+    GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.aktivita_metadata, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
     ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
 ";
 $queries['uzivatele_select_by_id'] = "SELECT * FROM ".TBL_UZIVATELE." WHERE id = :id";
@@ -427,6 +463,7 @@ $queries['uzivatele_detail'] = "
         u.jmeno,
         u.prijmeni,
         u.dt_posledni_aktivita,
+        u.aktivita_metadata,
         u.titul_za,
         u.email,
         u.telefon,
