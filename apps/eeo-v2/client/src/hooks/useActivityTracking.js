@@ -56,24 +56,14 @@ export const useActivityTracking = () => {
         
         pc.onicecandidate = (ice) => {
           if (!ice || !ice.candidate || !ice.candidate.candidate) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('🔍 WebRTC ICE candidate:', ice);
-            }
             return;
           }
           
           const candidate = ice.candidate.candidate;
-          if (process.env.NODE_ENV === 'development') {
-            console.log('🔍 WebRTC candidate string:', candidate);
-          }
-          
           const ipRegex = /([0-9]{1,3}(\.[0-9]{1,3}){3})/;
           const match = ipRegex.exec(candidate);
           if (match && match[1]) {
             const localIp = match[1];
-            if (process.env.NODE_ENV === 'development') {
-              console.log('🔍 Detected IP from WebRTC:', localIp);
-            }
             
             // Skip if already set or if it's a public IP (we want local only)
             if (!ipAddressesRef.current.local && 
@@ -81,9 +71,6 @@ export const useActivityTracking = () => {
                  localIp.startsWith('10.') || 
                  localIp.startsWith('172.'))) {
               ipAddressesRef.current.local = localIp;
-              if (process.env.NODE_ENV === 'development') {
-                console.log('✅ Local IP set:', localIp);
-              }
               pc.close();
             }
           }
@@ -181,20 +168,9 @@ export const useActivityTracking = () => {
         local_ip: ipAddressesRef.current.local
       });
 
-      if (response.data?.status === 'ok' || response.data?.status === 'success') {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('✅ Activity tracked:', module, path);
-        }
-      } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Activity tracking failed:', response.data);
-        }
-      }
+      // Success - no logging needed
     } catch (error) {
       // Tichá chyba - nenarušovat UX
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Activity tracking error:', error);
-      }
     }
   };
 
