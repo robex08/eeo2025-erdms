@@ -39,20 +39,19 @@ export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserI
                  isFakturant || isPotvrdil || isDokoncil || isZverejnil;
   
   // 🐛 DEBUG: Log výsledek pro první objednávky
-  if (order.id <= 20) {
-    // DEBUG: filterMyOrders result
-    // console.log(`🔍 filterMyOrders - Order #${order.id} RESULT:`, {
-      result,
-      matches: { 
-        isObjednatel, isGarant, isSchvalovatel, isPrikazce,
-        isFakturant, isPotvrdil, isDokoncil, isZverejnil
-      },
-      converted_ids: { 
-        objednatelId, uzivatelId, garantId, schvalovatelId, prikazceId,
-        fakturantId, potvrdilId, dokoncilId, zverejnilId
-      }
-    });
-  }
+  // if (order.id <= 20) {
+  //   console.log(`🔍 filterMyOrders - Order #${order.id} RESULT:`, {
+  //     result,
+  //     matches: { 
+  //       isObjednatel, isGarant, isSchvalovatel, isPrikazce,
+  //       isFakturant, isPotvrdil, isDokoncil, isZverejnil
+  //     },
+  //     converted_ids: { 
+  //       objednatelId, uzivatelId, garantId, schvalovatelId, prikazceId,
+  //       fakturantId, potvrdilId, dokoncilId, zverejnilId
+  //     }
+  //   });
+  // }
 
   return result;
 };
