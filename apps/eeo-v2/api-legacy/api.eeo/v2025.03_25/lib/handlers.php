@@ -198,6 +198,111 @@ function generate_new_token($username) {
     return $token;
 }
 
+// =============================================================================
+// USER ACTIVITY TRACKING FUNCTIONS
+// =============================================================================
+
+/**
+ * Aktualizuje aktivitu uživatele s metadata
+ * 
+ * @param PDO $db Database connection
+ * @param array $queries Pole SQL dotazů
+ * @param int $user_id ID uživatele
+ * @param array $metadata Pole s metadaty [ip, module, path, user_agent, session_id]
+ * @return bool True při úspěchu, False při chybě
+ */
+function update_user_activity_with_metadata($db, $queries, $user_id, $metadata) {
+    try {
+        // 1. Připrav JSON metadata
+        $json_metadata = json_encode([
+            'last_public_ip' => $metadata['public_ip'] ?? null,
+            'last_local_ip' => $metadata['local_ip'] ?? null,
+            'last_module' => $metadata['module'] ?? null,
+            'last_path' => $metadata['path'] ?? null,
+            'last_user_agent' => $metadata['user_agent'] ?? null,
+            'session_id' => $metadata['session_id'] ?? null,
+            'updated_at' => date('Y-m-d H:i:s')
+        ], JSON_UNESCAPED_UNICODE);
+
+        // 2. Update 25_uzivatele
+        if (isset($queries['uzivatele_update_activity_with_metadata'])) {
+            $stmt = $db->prepare($queries['uzivatele_update_activity_with_metadata']);
+            $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
+            $stmt->bindParam(':metadata', $json_metadata, PDO::PARAM_STR);
+            $stmt->execute();
+        }
+
+        // 3. Insert do activity log (use public_ip as primary IP)
+        if (isset($queries['uzivatele_activity_log_insert'])) {
+            $ip_for_log = $metadata['public_ip'] ?? $metadata['local_ip'] ?? '';
+            $stmt_log = $db->prepare($queries['uzivatele_activity_log_insert']);
+            $stmt_log->bindParam(':uzivatel_id', $user_id, PDO::PARAM_INT);
+            $stmt_log->bindParam(':ip_address', $ip_for_log, PDO::PARAM_STR);
+            $stmt_log->bindParam(':module_name', $metadata['module'], PDO::PARAM_STR);
+            $stmt_log->bindParam(':module_path', $metadata['path'], PDO::PARAM_STR);
+            $stmt_log->bindParam(':user_agent', $metadata['user_agent'], PDO::PARAM_STR);
+            $stmt_log->bindParam(':session_id', $metadata['session_id'], PDO::PARAM_STR);
+            $stmt_log->execute();
+        }
+
+        return true;
+    } catch (Exception $e) {
+        error_log("update_user_activity_with_metadata error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Získá IP adresu klienta (supports proxy headers)
+ * 
+ * @return string IP adresa nebo prázdný string
+ */
+function get_client_ip() {
+    $ip = '';
+    
+    // Priority: Check proxy headers first (real client IP)
+    // mod_remoteip sets REMOTE_ADDR to real client IP
+    if (!empty($_SERVER['REMOTE_ADDR'])) {
+        $ip = $_SERVER['REMOTE_ADDR'];
+    } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+        $ip = $_SERVER['HTTP_X_REAL_IP'];
+    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        // Fallback: parse X-Forwarded-For manually
+        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        $ip = trim($ips[0]);
+    } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    }
+    
+    // Validate IP address
+    if (filter_var($ip, FILTER_VALIDATE_IP)) {
+        // Convert IPv6 localhost to IPv4
+        if ($ip === '::1') {
+            return '127.0.0.1';
+        }
+        
+        // Extract IPv4 from IPv6-mapped format
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            if (preg_match('/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i', $ip, $matches)) {
+                return $matches[1];
+            }
+        }
+        
+        return $ip;
+    }
+    
+    return '';
+}
+
+/**
+ * Získá User Agent string klienta
+ * 
+ * @return string User agent nebo prázdný string
+ */
+function get_user_agent() {
+    return $_SERVER['HTTP_USER_AGENT'] ?? '';
+}
+
 /**
  * Zkontroluje, zda je token blízko vypršení a měl by být obnoven
  * 
@@ -3311,6 +3416,7 @@ function handle_users_list($input, $config, $queries) {
                     u.jmeno,
                     u.prijmeni,
                     u.dt_posledni_aktivita,
+                    u.aktivita_metadata,
                     u.titul_za,
                     u.email,
                     u.telefon,
@@ -3338,7 +3444,7 @@ function handle_users_list($input, $config, $queries) {
                     LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
                     LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
                 WHERE u.id > 0 AND u.aktivni = :aktivni
-                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.aktivita_metadata, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
                 ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
             ";
             $stmt = $db->prepare($sql);
@@ -7920,3 +8026,140 @@ function handle_old_react_action($input, $config, $queries) {
     }
 }
 
+
+// =============================================================================
+// USER ACTIVITY TRACKING HANDLERS
+// =============================================================================
+
+/**
+ * POST /user/activity/track
+ * Zaznamenává aktivitu uživatele (modul, path, IP, user agent)
+ */
+function handle_user_activity_track($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $module = isset($input['module']) ? trim($input['module']) : '';
+    $path = isset($input['path']) ? trim($input['path']) : '';
+    
+    if (!$token || !$username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    $db = get_db($config);
+    $token_data = verify_token($token, $db);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+        return;
+    }
+
+    try {
+        // Collect IP addresses
+        $public_ip = isset($input['public_ip']) && !empty($input['public_ip']) 
+            ? $input['public_ip'] 
+            : null;
+        
+        $local_ip = isset($input['local_ip']) && !empty($input['local_ip']) 
+            ? $input['local_ip'] 
+            : null;
+        
+        // Get server-detected IP (can be used as fallback)
+        $server_ip = get_client_ip();
+        
+        // If no public IP from frontend, use server-detected
+        if (!$public_ip) {
+            $public_ip = $server_ip;
+        }
+        
+        // If no local IP from frontend and server IP is private/localhost, use it
+        if (!$local_ip && $server_ip) {
+            // Check if server IP is local/private
+            if (preg_match('/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/', $server_ip)) {
+                $local_ip = $server_ip;
+            }
+        }
+        
+        $metadata = [
+            'public_ip' => $public_ip,
+            'local_ip' => $local_ip,
+            'module' => $module,
+            'path' => $path,
+            'user_agent' => get_user_agent(),
+            'session_id' => $input['session_id'] ?? null
+        ];
+
+        $success = update_user_activity_with_metadata($db, $queries, $token_data['id'], $metadata);
+
+        if ($success) {
+            echo json_encode(['status' => 'ok', 'message' => 'Aktivita zaznamenána']);
+        } else {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Chyba při zaznamenávání']);
+        }
+    } catch (Exception $e) {
+        error_log("handle_user_activity_track error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba serveru']);
+    }
+}
+
+/**
+ * GET /user/activity/history
+ * Získá historii aktivity uživatele
+ */
+function handle_user_activity_history($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $target_user_id = isset($input['user_id']) ? (int)$input['user_id'] : 0;
+    $limit = isset($input['limit']) ? (int)$input['limit'] : 100;
+    
+    if ($limit > 1000) $limit = 1000;
+    if ($limit < 1) $limit = 100;
+    
+    if (!$token || !$username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    $db = get_db($config);
+    $token_data = verify_token($token, $db);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+        return;
+    }
+
+    try {
+        
+        if ($target_user_id === 0) {
+            $target_user_id = $token_data['id'];
+        }
+        
+        $is_admin = isset($token_data['is_admin']) && $token_data['is_admin'];
+        if (!$is_admin && $target_user_id !== $token_data['id']) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Nemáte oprávnění']);
+            return;
+        }
+
+        if (isset($queries['uzivatele_activity_log_select'])) {
+            $stmt = $db->prepare($queries['uzivatele_activity_log_select']);
+            $stmt->bindParam(':uzivatel_id', $target_user_id, PDO::PARAM_INT);
+            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $history = $stmt->fetchAll();
+
+            echo json_encode(['status' => 'ok', 'data' => $history, 'count' => count($history)]);
+        } else {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Query není definován']);
+        }
+    } catch (Exception $e) {
+        error_log("handle_user_activity_history error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba serveru']);
+    }
+}

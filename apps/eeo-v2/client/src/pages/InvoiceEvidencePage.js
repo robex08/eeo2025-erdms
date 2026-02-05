@@ -4767,7 +4767,7 @@ export default function InvoiceEvidencePage() {
       // 🔔 NOTIFIKACE: Změna "Předáno komu"
       // Poslat notifikaci když:
       // 1. Editujeme existující fakturu
-      // 2. Změnilo se "Předáno komu" (fa_predana_zam_id)
+      // 2. Změnilo se "Předáno komu" (fa_predana_zam_id) NEBO se resetovala věcná správnost faktury
       // 3. Je nastaveno datum předání (fa_datum_predani_zam) - POVINNÉ
       // 4. NENÍ nastaveno datum vrácení (fa_datum_vraceni_zam)
       // 5. Faktura je připojena k objednávce NEBO smlouvě
@@ -4784,10 +4784,12 @@ export default function InvoiceEvidencePage() {
         const isCreate = !editingInvoiceId; // Nová faktura
         const hasChanged = !isCreate && (originalPredanoKomu !== currentPredanoKomu); // Změna při UPDATE
         
-
+        // 🔥 DŮLEŽITÉ: Pokud se resetovala věcná správnost (změnily se klíčové údaje faktury),
+        // pošli notifikaci znovu aby zaměstnanec znovu zkontroloval materiál
+        const shouldResendNotification = shouldResetVecnaSpravnost && currentPredanoKomu && hasDatePredani && !hasDateVraceni;
         
-        // Pošli notifikaci pokud: (CREATE s fa_predana_zam_id) NEBO (UPDATE a změnilo se)
-        if ((isCreate || hasChanged) && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
+        // Pošli notifikaci pokud: (CREATE s fa_predana_zam_id) NEBO (UPDATE a změnilo se) NEBO (reset věcné správnosti)
+        if ((isCreate || hasChanged || shouldResendNotification) && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
           try {
             const timestamp = new Date().toLocaleString('cs-CZ');
             // PRO OBJEDNÁVKY

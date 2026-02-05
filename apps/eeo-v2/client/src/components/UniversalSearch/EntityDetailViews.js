@@ -32,7 +32,10 @@ import {
   faFileInvoice,
   faTruck,
   faExclamationTriangle,
-  faEye
+  faEye,
+  faClock,
+  faDesktop,
+  faNetworkWired
 } from '@fortawesome/free-solid-svg-icons';
 
 // Pomocná funkce pro bezpečné formátování datumů
@@ -485,6 +488,82 @@ export const UserDetailView = ({ data }) => {
           </InfoGrid>
         </DetailSection>
       )}
+
+      {/* ✅ NOVÁ SEKCE: Poslední aktivita */}
+      {(() => {
+        let activityMeta = null;
+        try {
+          if (data.aktivita_metadata && typeof data.aktivita_metadata === 'string') {
+            activityMeta = JSON.parse(data.aktivita_metadata);
+          } else if (data.aktivita_metadata && typeof data.aktivita_metadata === 'object') {
+            activityMeta = data.aktivita_metadata;
+          }
+        } catch (e) {
+          // Ignorovat chybu parsování
+        }
+
+        if (!data.dt_posledni_aktivita && !activityMeta) return null;
+
+        return (
+          <DetailSection>
+            <SectionTitle>Poslední aktivita</SectionTitle>
+            <InfoGrid>
+              {data.dt_posledni_aktivita && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faClock} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Čas</InfoLabel>
+                    <InfoValue>
+                      {new Date(data.dt_posledni_aktivita).toLocaleString('cs-CZ')}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+
+              {activityMeta?.last_module && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faDesktop} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Modul</InfoLabel>
+                    <InfoValue>{activityMeta.last_module}</InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+
+              {activityMeta?.last_ip && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faNetworkWired} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>IP adresa</InfoLabel>
+                    <InfoValue>{activityMeta.last_ip}</InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+
+              {activityMeta?.last_path && activityMeta.last_path !== activityMeta.last_module && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faFileAlt} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Cesta</InfoLabel>
+                    <InfoValue style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                      {activityMeta.last_path}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+            </InfoGrid>
+          </DetailSection>
+        );
+      })()}
+
       </ContentWrapper>
     </DetailViewWrapper>
   );
