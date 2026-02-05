@@ -4091,14 +4091,20 @@ function OrderForm25() {
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
   
   // 🎯 RETURNTO: Pamatovat si odkud jsme přišli pro návrat při zavření
-  const returnToRef = useRef(location.state?.returnTo || '/orders25-list');
+  // Použít useMemo aby se hodnota aktualizovala synchronně při změně location.state
+  const returnToPath = useMemo(() => {
+    const path = location.state?.returnTo || '/orders25-list';
+    return path;
+  }, [location.state]);
   
-  // Aktualizovat returnTo pokud se změní v location.state (např. při navigaci z faktury)
+  const returnToRef = useRef(returnToPath);
+  
+  // Aktualizovat ref když se změní path
   useEffect(() => {
-    if (location.state?.returnTo) {
-      returnToRef.current = location.state.returnTo;
+    if (returnToPath !== returnToRef.current) {
+      returnToRef.current = returnToPath;
     }
-  }, [location.state?.returnTo]);
+  }, [returnToPath]);
   
   // 🔥 OKAMŽITÝ BROADCAST MenuBaru při mount - podle dostupných dat
   useEffect(() => {
@@ -9397,6 +9403,7 @@ function OrderForm25() {
         setTimeout(() => {
           // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na seznam objednávek s forceReload
           const targetPath = returnToRef.current || '/orders25-list';
+          console.log('🔙 OrderForm25 NAVIGATE (uloženo):', { targetPath, returnToRef: returnToRef.current });
           navigate(targetPath, { state: { forceReload: true }, replace: true });
           
           // 5. Skrýt progress a ukončit ukládání
@@ -16892,6 +16899,7 @@ function OrderForm25() {
 
         // Přesměruj na uloženou cestu (returnTo) nebo fallback na seznam
         const targetPath = returnToRef.current || '/orders25-list';
+        console.log('🔙 OrderForm25 NAVIGATE (dokončená):', { targetPath, returnToRef: returnToRef.current });
         navigate(targetPath, { state: { forceReload: true } });
       } catch (error) {
         showToast && showToast(`Chyba při zavírání: ${error.message}`, { type: 'error' });
@@ -17041,6 +17049,7 @@ function OrderForm25() {
       setCancelWarningMessage('');
 
       const targetPath = returnToRef.current || '/orders25-list';
+      console.log('🔙 OrderForm25 NAVIGATE (koncept zrušen):', { targetPath, returnToRef: returnToRef.current });
       addDebugLog('info', 'CANCEL', 'redirect', `Přesměrovávám na: ${targetPath}`);
 
       // 5. Přesměruj s dostatečným zpožděním, aby se stihly dokončit všechny async operace
@@ -17060,6 +17069,7 @@ function OrderForm25() {
 
       // Přesměruj i přes chybu (lepší než zůstat na formuláři)
       const targetPath = returnToRef.current || '/orders25-list';
+      console.log('🔙 OrderForm25 NAVIGATE (error při zavírání):', { targetPath, returnToRef: returnToRef.current });
       setTimeout(() => {
         navigate(targetPath, { state: { forceReload: true } });
       }, 100);
