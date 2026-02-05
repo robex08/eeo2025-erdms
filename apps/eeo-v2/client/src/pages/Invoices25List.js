@@ -1846,8 +1846,17 @@ const Invoices25List = () => {
       }
 
       // ✅ Není zamčená - naviguj na editaci objednávky
+      console.log('📋 Invoices25List → OrderForm25 (z tabulky):', {
+        orderId: invoice.objednavka_id,
+        returnTo: '/invoices25-list',
+        navigateTo: `/order-form-25?edit=${invoice.objednavka_id}`
+      });
       setIsCheckingLock(false);
-      navigate(`/order-form-25?edit=${invoice.objednavka_id}`);
+      navigate(`/order-form-25?edit=${invoice.objednavka_id}`, {
+        state: {
+          returnTo: '/invoices25-list'
+        }
+      });
 
     } catch (error) {
       console.error('❌ Chyba při kontrole zámku objednávky:', error);
@@ -5951,11 +5960,15 @@ const Invoices25List = () => {
                           <ClickableValue
                             onClick={() => {
                               if (slidePanelInvoice.objednavka_id) {
+                                console.log('📋 Invoices25List → OrderForm25:', {
+                                  orderId: slidePanelInvoice.objednavka_id,
+                                  returnTo: '/invoices25-list',
+                                  navigateTo: `/order-form-25?edit=${slidePanelInvoice.objednavka_id}`
+                                });
                                 setSlidePanelOpen(false);
-                                navigate('/orders25', { 
+                                navigate(`/order-form-25?edit=${slidePanelInvoice.objednavka_id}`, { 
                                   state: { 
-                                    editOrderId: slidePanelInvoice.objednavka_id,
-                                    returnTo: '/invoices25'
+                                    returnTo: '/invoices25-list'
                                   } 
                                 });
                               }

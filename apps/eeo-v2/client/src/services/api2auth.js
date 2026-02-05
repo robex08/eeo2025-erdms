@@ -556,10 +556,6 @@ export async function fetchAllUsers({ token, username, _cacheBust, show_inactive
   }
   const data = response.data;
 
-  // 🔍 DEBUG: Log raw backend response for Users page
-  // 🔍 DEBUG: Log raw backend response for Users page
-  console.log('📊 RAW Backend Response (fetchAllUsers - /users page):', JSON.stringify(data, null, 2));
-
   // Normalize possible response shapes into an array of users
   let users = [];
   if (Array.isArray(data)) users = data;
@@ -570,20 +566,6 @@ export async function fetchAllUsers({ token, username, _cacheBust, show_inactive
     const foundArr = Object.values(data || {}).find(v => Array.isArray(v));
     if (foundArr) users = foundArr;
     else users = [data]; // Fallback: wrap single object
-  }
-
-  // 🔍 DEBUG: Log admin user specifically
-  const adminUser = users.find(u => u.username === 'admin');
-  if (adminUser) {
-    console.log('🔧 ADMIN user from fetchAllUsers:', {
-      id: adminUser.id,
-      username: adminUser.username,
-      dt_posledni_aktivita: adminUser.dt_posledni_aktivita,
-      aktivita_metadata: adminUser.aktivita_metadata,
-      aktivita_metadata_type: typeof adminUser.aktivita_metadata
-    });
-  } else {
-    console.warn('⚠️ Admin user NOT FOUND in fetchAllUsers response');
   }
 
   return users;
