@@ -5082,6 +5082,10 @@ function OrderForm25() {
   });
   const disableAutosaveRef = useRef(false); // 🚀 REF pro OKAMŽITOU kontrolu (bez async delay)
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
+
+  // 🔥 REF pro sledování uploadovaných souborů (prevence duplikace)
+  const uploadedFilesRef = useRef(new Set());
+  const uploadingFilesRef = useRef(new Set());
   
   // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
   const isClosingRef = useRef(false);
@@ -5160,7 +5164,9 @@ function OrderForm25() {
     editing: null, // Faktura being edited
     formData: {
       fa_datum_doruceni: formatDateForPicker(new Date()), // ✅ Správné pole pro datum
+      fa_datum_vystaveni: '', // Datum vystavení - nepovinné
       fa_dorucena: 1, // ✅ Boolean flag (0/1)
+      fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
       fa_castka: '',
       fa_cislo_vema: '',
       fa_strediska_kod: [], // ✅ Správný název pole pro střediska
@@ -7311,6 +7317,8 @@ function OrderForm25() {
                       // 🆕 PŘÍZNAK POKLADNY
                       _isPokladna: isPokladna,
                       rozsirujici_data: rozsirujiciData,
+                      // ✅ TYP FAKTURY - zachovat z DB nebo nastavit výchozí BEZNA
+                      fa_typ: faktura.fa_typ || 'BEZNA',
                       // 🔧 MAPOVÁNÍ 1:1 mezi DB sloupci a FE poli
                       fa_dorucena: faktura.fa_datum_doruceni ? 1 : 0, // ✅ Boolean flag zda má datum doručení
                       fa_splatnost: faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '', // DB -> FE: fa_datum_splatnosti -> fa_splatnost
@@ -8088,7 +8096,9 @@ function OrderForm25() {
       const novaFaktura = {
         id: `temp-${Date.now()}`, // Temporary ID
         objednavka_id: formData.id,
+        fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
         fa_datum_doruceni: dnesniDatum,
+        fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
@@ -8139,6 +8149,16 @@ function OrderForm25() {
       return;
     }
 
+    if (!fakturaFormData.fa_datum_vystaveni || (typeof fakturaFormData.fa_datum_vystaveni === 'string' && fakturaFormData.fa_datum_vystaveni.trim() === '')) {
+      showToast && showToast('Datum vystavení faktury je povinné', { type: 'error' });
+      return;
+    }
+
+    if (!fakturaFormData.fa_typ || (typeof fakturaFormData.fa_typ === 'string' && fakturaFormData.fa_typ.trim() === '')) {
+      showToast && showToast('Typ faktury je povinný', { type: 'error' });
+      return;
+    }
+
     if (fakturaFormData.fa_castka === undefined || fakturaFormData.fa_castka === null || fakturaFormData.fa_castka === '') {
       showToast && showToast('Částka faktury je povinná', { type: 'error' });
       return;
@@ -8170,6 +8190,7 @@ function OrderForm25() {
       ...fakturaFormData,
       id: `temp-${Date.now()}`, // Dočasné ID - BE přiřadí správné při uložení objednávky
       objednavka_id: formData.id,
+      fa_typ: fakturaFormData.fa_typ || 'BEZNA', // ✅ Výchozí typ faktury
       fa_strediska_kod: cleanedStrediska, // ✅ POUŽÍT VYČIŠTĚNÉ STRINGY
       vytvoril_uzivatel_id: user_id,
       vytvoril_jmeno: getUserNameById(user_id),
@@ -8211,7 +8232,9 @@ function OrderForm25() {
 
     setFakturaFormData({
       fa_datum_doruceni: dnesniDatum,
+      fa_datum_vystaveni: '',
       fa_dorucena: 1, // ✅ Boolean flag
+      fa_typ: 'BEZNA',
       fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
       fa_cislo_vema: '',
       fa_strediska_kod: formData.strediska_kod || [],
@@ -8434,7 +8457,9 @@ function OrderForm25() {
       const dnesniDatum = formatDateForPicker(new Date());
       setFakturaFormData({
         fa_datum_doruceni: dnesniDatum,
+        fa_datum_vystaveni: '',
         fa_dorucena: 1,
+        fa_typ: 'BEZNA',
         fa_castka: '',
         fa_cislo_vema: '',
         fa_strediska_kod: formData.strediska_kod || [],
@@ -8746,7 +8771,9 @@ function OrderForm25() {
 
     setFakturaFormData({
       fa_datum_doruceni: faktura.fa_datum_doruceni || dnesniDatum,
+      fa_datum_vystaveni: faktura.fa_datum_vystaveni || '',
       fa_dorucena: faktura.fa_dorucena || 1, // ✅ Boolean flag
+      fa_typ: faktura.fa_typ || 'BEZNA',
       fa_castka: faktura.fa_castka || '', // 🔥 Neauto-vyplňovat při editaci
       fa_cislo_vema: faktura.fa_cislo_vema || '',
       fa_strediska_kod: strediskaArray,
@@ -8766,7 +8793,9 @@ function OrderForm25() {
 
     setFakturaFormData({
       fa_datum_doruceni: dnesniDatum,
+      fa_datum_vystaveni: '',
       fa_dorucena: 1, // ✅ Boolean flag
+      fa_typ: 'BEZNA',
       fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
       fa_cislo_vema: '',
       fa_strediska_kod: formData.strediska_kod || [],
@@ -8798,9 +8827,29 @@ function OrderForm25() {
   const validateInvoiceForAttachments = useCallback((faktura, file = null) => {
     const missingFields = [];
     
+    // ✅ Bezpečnostní kontrola - pokud není faktura, vrátit invalid
+    if (!faktura) {
+      return {
+        isValid: false,
+        valid: false,
+        isISDOC: false,
+        missingFields: ['Faktura'],
+        message: 'Faktura není definována'
+      };
+    }
+    
     // Kontrola povinných polí
+    // ⚠️ DB má sloupec fa_typ (ne fa_typ_faktury)
+    const typFaktury = faktura.fa_typ || faktura.fa_typ_faktury;
+    
+    // ✅ FIX: Kontrola musí být robustnější - akceptovat i prázdný string jako validní hodnotu pro některé typy
+    // Pouze null, undefined nebo skutečně prázdný string po trim() je invalid
+    if (!typFaktury || (typeof typFaktury === 'string' && typFaktury.trim() === '')) {
+      missingFields.push('Typ faktury');
+    }
+    
     if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
-      missingFields.push('Číslo faktury VEMA');
+      missingFields.push('Variabilní symbol');
     }
     
     if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
@@ -8809,6 +8858,10 @@ function OrderForm25() {
     
     if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
       missingFields.push('Datum doručení');
+    }
+    
+    if (!faktura.fa_datum_vystaveni || (typeof faktura.fa_datum_vystaveni === 'string' && faktura.fa_datum_vystaveni.trim() === '')) {
+      missingFields.push('Datum vystavení');
     }
     
     if (!faktura.fa_splatnost || (typeof faktura.fa_splatnost === 'string' && faktura.fa_splatnost.trim() === '')) {
@@ -8838,7 +8891,7 @@ function OrderForm25() {
     // ⚠️ Běžné soubory - vyžadovat vyplněná pole
     if (missingFields.length > 0) {
       return {
-        isValid: false,         // FALSE - blokovat nahrávání
+        isValid: false,
         valid: false,
         isISDOC: false,
         missingFields: missingFields,
@@ -8948,6 +9001,7 @@ function OrderForm25() {
         token,
         username,
         order_id: orderId,
+        fa_typ: faktura.fa_typ || faktura.fa_typ_faktury || 'BEZNA', // ✅ Typ faktury (správný název sloupce)
         fa_cislo_vema: faktura.fa_cislo_vema,
         fa_datum_vystaveni: faktura.fa_datum_doruceni,
         fa_castka: faktura.fa_castka,
@@ -9087,7 +9141,9 @@ function OrderForm25() {
       const firstFaktura = {
         id: `temp-${Date.now()}`,
         objednavka_id: formData.id,
+        fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
         fa_datum_doruceni: dnesniDatum,
+        fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
@@ -14180,6 +14236,18 @@ function OrderForm25() {
 
   // Upload souboru na server Orders25 po klasifikaci
   const uploadFileToServer25 = async (fileId, klasifikace, filePrefix = 'obj-') => {
+    // ✅ KONTROLA DUPLIKACE: Pokud se soubor už uploaduje nebo byl uploadnutý, přeskoč
+    if (uploadingFilesRef.current.has(fileId)) {
+      addDebugLog('warning', 'ATTACHMENTS', 'upload-already-in-progress',
+        `Soubor ${fileId} se již uploaduje - přeskakuji`);
+      return;
+    }
+    if (uploadedFilesRef.current.has(fileId)) {
+      addDebugLog('warning', 'ATTACHMENTS', 'upload-already-done',
+        `Soubor ${fileId} už byl uploadnutý - přeskakuji`);
+      return;
+    }
+    
     const file = formData.prilohy_dokumenty?.find(f => f.id === fileId);
     
     if (!file) {
@@ -14203,10 +14271,14 @@ function OrderForm25() {
     if (file.status === 'uploaded') {
       addDebugLog('info', 'ATTACHMENTS', 'already-uploaded', 
         `Soubor ${file.name} je již nahrán na serveru`);
+      uploadedFilesRef.current.add(fileId);
       return;
     }
 
     try {
+      // Označit jako uploadující se
+      uploadingFilesRef.current.add(fileId);
+      
       // Označ jako nahrávající se v obou state
       setFormData(prev => ({
         ...prev,
@@ -14280,6 +14352,10 @@ function OrderForm25() {
             }
           : f
       ));
+      
+      // Označit jako uploadnutý
+      uploadingFilesRef.current.delete(fileId);
+      uploadedFilesRef.current.add(fileId);
 
       // Toast při úspěšném nahrání na server
       const successMessage = (
@@ -17367,6 +17443,11 @@ function OrderForm25() {
         formData.faktury.forEach((faktura, index) => {
           const fakturaPrefix = `faktura_${index + 1}`;
 
+          // Typ faktury je povinný
+          if (!faktura.fa_typ || (typeof faktura.fa_typ === 'string' && faktura.fa_typ.trim() === '')) {
+            errors[`${fakturaPrefix}_typ`] = `Faktura ${index + 1}: Vyberte typ faktury`;
+          }
+
           // Variabilní symbol je povinný
           if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
             errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Zadejte variabilní symbol faktury`;
@@ -17379,7 +17460,12 @@ function OrderForm25() {
 
           // Datum doručení je povinné - kontroluj fa_datum_doruceni (ne fa_dorucena, to je boolean)
           if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
-            errors[`${fakturaPrefix}_dorucena`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
+            errors[`${fakturaPrefix}_datum_doruceni`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
+          }
+
+          // Datum vystavení je povinné
+          if (!faktura.fa_datum_vystaveni || (typeof faktura.fa_datum_vystaveni === 'string' && faktura.fa_datum_vystaveni.trim() === '')) {
+            errors[`${fakturaPrefix}_datum_vystaveni`] = `Faktura ${index + 1}: Zadejte datum vystavení faktury`;
           }
 
           // Datum splatnosti je povinné
@@ -17690,25 +17776,38 @@ function OrderForm25() {
 
       // �💰 TICHÁ VALIDACE FAKTUR - pouze pro zobrazení červených polí
       // ✅ POUZE validovat faktury ve FÁZI 6+ (když je sekce Fakturace viditelná)
-      if (currentPhase >= 6 && formData.faktury && formData.faktury.length > 0) {
+      const isPlatbaPokladnaObjSilent = formData.financovani?.platba === 'pokladna';
+      const isPlatbaPokladnaDodavatelSilent = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
+      const isPokladnaSilent = isPlatbaPokladnaObjSilent || isPlatbaPokladnaDodavatelSilent;
+
+      if (currentPhase >= 6 && !isPokladnaSilent && formData.faktury && formData.faktury.length > 0) {
         formData.faktury.forEach((faktura, index) => {
           const fakturaPrefix = `faktura_${index + 1}`;
 
+          if (!faktura.fa_typ || (typeof faktura.fa_typ === 'string' && faktura.fa_typ.trim() === '')) {
+            errors[`${fakturaPrefix}_typ`] = `Faktura ${index + 1}: Vyberte typ faktury`;
+          }
+
           if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
-            errors[`${fakturaPrefix}_cislo`] = `Variabilní symbol je povinný`;
+            errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Zadejte variabilní symbol faktury`;
           }
 
           if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
-            errors[`${fakturaPrefix}_castka`] = `Částka je povinná`;
+            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury`;
           }
 
           // Datum doručení - kontroluj fa_datum_doruceni (ne fa_dorucena, to je boolean)
           if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
-            errors[`${fakturaPrefix}_dorucena`] = `Datum doručení je povinné`;
+            errors[`${fakturaPrefix}_datum_doruceni`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
+          }
+
+          // Datum vystavení
+          if (!faktura.fa_datum_vystaveni || (typeof faktura.fa_datum_vystaveni === 'string' && faktura.fa_datum_vystaveni.trim() === '')) {
+            errors[`${fakturaPrefix}_datum_vystaveni`] = `Faktura ${index + 1}: Zadejte datum vystavení faktury`;
           }
 
           if (!faktura.fa_splatnost || (typeof faktura.fa_splatnost === 'string' && faktura.fa_splatnost.trim() === '')) {
-            errors[`${fakturaPrefix}_splatnost`] = `Datum splatnosti je povinné`;
+            errors[`${fakturaPrefix}_splatnost`] = `Faktura ${index + 1}: Zadejte datum splatnosti faktury`;
           }
         });
       }
@@ -18780,6 +18879,9 @@ function OrderForm25() {
         return option.displayName || option.jmeno_prijmeni || `${option.jmeno || ''} ${option.prijmeni || ''}`.trim() || 'Neznámý';
       case 'pageSize':
         return option.label || String(option.value || option);
+      case 'fa_typ':
+        // Typy faktury - použij nazev nebo nazev_stavu
+        return option.nazev || option.nazev_stavu || option.label || String(option);
       default:
         // 🎯 FALLBACK: Pokud field začíná na "polozka_" a končí na "_lp", je to LP položky
         if (field && typeof field === 'string' && field.startsWith('polozka_') && field.endsWith('_lp')) {
@@ -23773,7 +23875,9 @@ function OrderForm25() {
                           const novaFaktura = {
                             id: `temp-${Date.now()}`,
                             objednavka_id: formData.id,
+                            fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
                             fa_datum_doruceni: dnesniDatum,
+                            fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
                             fa_dorucena: 1,
                             fa_castka: '',
                             fa_cislo_vema: '',
@@ -24121,8 +24225,9 @@ function OrderForm25() {
                               {/* Content wrapper pro fakturu */}
                               <div style={{ padding: '1.25rem' }}>
 
-                              {/* INLINE EDITOVATELNÁ POLE - 3 sloupce: datum fixní, zbytek proporcionálně */}
-                              <FormRow style={{gridTemplateColumns: '280px 1fr 1fr'}}>
+                              {/* INLINE EDITOVATELNÁ POLE - 3 sloupce */}
+                              {/* Řádek 1: Datum doručení | Datum vystavení | Datum splatnosti */}
+                              <FormRow style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                                 <FormGroup>
                                   <Label required>Datum doručení</Label>
                                   <DatePicker
@@ -24143,7 +24248,102 @@ function OrderForm25() {
                                       );
                                       updateFaktury(updatedFaktury);
                                     }}
-                                    placeholder="Vyberte datum doručení"
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label required>Datum vystavení</Label>
+                                  <DatePicker
+                                    fieldName={`fa_${index + 1}_datum_vystaveni`}
+                                    value={faktura.fa_datum_vystaveni ?? ''}
+                                    hasError={!!validationErrors[`faktura_${index + 1}_datum_vystaveni`]}
+                                    disabled={shouldLockFaktury}
+                                    onChange={(value) => {
+                                      const updatedFaktury = formData.faktury.map(f =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_datum_vystaveni: value, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label required>Datum splatnosti</Label>
+                                  <DatePicker
+                                    fieldName={`fa_${index + 1}_splatnost`}
+                                    value={(() => {
+                                      // 🔥 Po editaci (_isNew: false) ignoruj fa_datum_splatnosti fallback
+                                      if (faktura._isNew === false) {
+                                        return faktura.fa_splatnost ?? '';
+                                      }
+                                      // Nová faktura - zkus fa_splatnost, pak fa_datum_splatnosti (z DB), pak prázdné
+                                      return faktura.fa_splatnost ?? (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '');
+                                    })()}
+                                    hasError={!!validationErrors[`faktura_${index + 1}_splatnost`]}
+                                    disabled={shouldLockFaktury}
+                                    onChange={(value) => {
+                                      const updatedFaktury = formData.faktury.map(f =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_splatnost: value, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+                              </FormRow>
+
+                              {/* Řádek 2: Typ faktury | Variabilní symbol | Částka */}
+                              <FormRow style={{gridTemplateColumns: '1fr 1fr 1fr'}}>
+                                <FormGroup data-custom-select>
+                                  <LabelWithClear>
+                                    <LabelText required>Typ faktury</LabelText>
+                                    <ClearSelectButton
+                                      type="button"
+                                      $visible={!!faktura.fa_typ}
+                                      onClick={() => {
+                                        const updatedFaktury = formData.faktury.map(f =>
+                                          f.id === faktura.id ? { ...f, fa_typ: 'BEZNA', _isNew: false } : f
+                                        );
+                                        updateFaktury(updatedFaktury);
+                                      }}
+                                      title="Vymazat výběr"
+                                    >
+                                      <X size={12} />
+                                    </ClearSelectButton>
+                                  </LabelWithClear>
+                                  <StableCustomSelect
+                                    value={faktura.fa_typ || 'BEZNA'}
+                                    disabled={shouldLockFaktury}
+                                    hasError={!!validationErrors[`faktura_${index + 1}_typ`]}
+                                    onChange={(selected) => {
+                                      const selectedValue = typeof selected === 'object' ? (selected.value || selected.kod) : selected;
+                                      const updatedFaktury = formData.faktury.map(f =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_typ: selectedValue, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    options={[
+                                      { kod: 'BEZNA', nazev: 'Běžná', value: 'BEZNA' },
+                                      { kod: 'ZALOHOVA', nazev: 'Zálohová', value: 'ZALOHOVA' },
+                                      { kod: 'VYUCTOVACI', nazev: 'Vyúčtovací', value: 'VYUCTOVACI' },
+                                      { kod: 'OPRAVNA', nazev: 'Opravná', value: 'OPRAVNA' },
+                                      { kod: 'DOBROPIS', nazev: 'Dobropis', value: 'DOBROPIS' }
+                                    ]}
+                                    placeholder="-- Vyberte typ --"
+                                    field="fa_typ"
+                                    required={true}
+                                    multiple={false}
+                                    icon={<FileText />}
+                                    getOptionLabel={getOptionLabel}
+                                    getOptionValue={(option) => option.value || option.kod || option}
                                   />
                                 </FormGroup>
 
@@ -24186,39 +24386,14 @@ function OrderForm25() {
                                       );
                                       updateFaktury(updatedFaktury);
                                     }}
-                                    placeholder="25000.50"
+                                    placeholder="25 000,50 Kč"
                                   />
                                 </FormGroup>
                               </FormRow>
 
-                              <FormRow style={{gridTemplateColumns: '280px 1fr'}}>
-                                <FormGroup>
-                                  <Label required>Datum splatnosti</Label>
-                                  <DatePicker
-                                    fieldName={`fa_${index + 1}_splatnost`}
-                                    value={(() => {
-                                      // 🔥 Po editaci (_isNew: false) ignoruj fa_datum_splatnosti fallback
-                                      if (faktura._isNew === false) {
-                                        return faktura.fa_splatnost ?? '';
-                                      }
-                                      // Nová faktura - zkus fa_splatnost, pak fa_datum_splatnosti (z DB), pak prázdné
-                                      return faktura.fa_splatnost ?? (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '');
-                                    })()}
-                                    hasError={!!validationErrors[`faktura_${index + 1}_splatnost`]}
-                                    disabled={shouldLockFaktury}
-                                    onChange={(value) => {
-                                      const updatedFaktury = formData.faktury.map(f =>
-                                        f.id === faktura.id
-                                          ? { ...f, fa_splatnost: value, _isNew: false }
-                                          : f
-                                      );
-                                      updateFaktury(updatedFaktury);
-                                    }}
-                                    placeholder="Vyberte datum splatnosti"
-                                  />
-                                </FormGroup>
-
-                                <FormGroup data-custom-select style={{gridColumn: '2 / -1'}}>
+                              {/* Řádek 3: Střediska (celá šířka) */}
+                              <FormRow>
+                                <FormGroup data-custom-select style={{gridColumn: '1 / -1'}}>
                                   <LabelWithClear>
                                     <LabelText>Střediska</LabelText>
                                     <ClearSelectButton
@@ -24735,7 +24910,9 @@ function OrderForm25() {
                                 const newFaktura = {
                                   id: `temp-${Date.now()}`,
                                   objednavka_id: formData.id,
+                                  fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
                                   fa_datum_doruceni: dnesniDatum,
+                                  fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
                                   fa_dorucena: 1,
                                   fa_castka: '',
                                   fa_cislo_vema: '',
@@ -24759,10 +24936,13 @@ function OrderForm25() {
                                   vecna_spravnost_potvrzeno: 0
                                 };
                                 const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
-                                updateFaktury([...currentFaktury, newFaktura]);
+                                const updatedFaktury = [...currentFaktury, newFaktura];
+                                updateFaktury(updatedFaktury);
                                 setEditingFaktura(newFaktura);
                                 setFakturaFormData({
+                                  fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
                                   fa_datum_doruceni: dnesniDatum,
+                                  fa_datum_vystaveni: dnesniDatum, // ✅ Výchozí datum vystavení
                                   fa_dorucena: 1,
                                   fa_castka: '',
                                   fa_cislo_vema: '',
@@ -27724,7 +27904,7 @@ const StableSelectOption = styled.div`
   padding: ${props => props.level === 0 ? '0.75rem 1rem' : '0.5rem 1rem 0.5rem 2rem'};
   cursor: ${props => props.isHeader ? 'default' : 'pointer'};
   font-size: 0.875rem;
-  color: ${props => props.level === 0 ? '#111827' : '#4b5563'};
+  color: #111827;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -27734,7 +27914,7 @@ const StableSelectOption = styled.div`
   };
   border-left: ${props => props.selected ? '3px solid #3b82f6' : '3px solid transparent'};
   border-bottom: ${props => props.level === 0 ? '1px solid #e5e7eb' : 'none'};
-  font-weight: ${props => props.selected ? '600' : '400'} !important; /* Bold jen pro vybranou možnost */
+  font-weight: 600 !important;
   /* Focusable pro tab navigaci */
   outline: none;
 
@@ -27743,7 +27923,6 @@ const StableSelectOption = styled.div`
       props.isHeader ? '#f3f4f6' :
       props.selected ? '#dbeafe' : '#f8fafc'
     };
-    font-weight: ${props => props.selected ? '600' : '400'} !important; /* Zůstává stejné i při hover */
   }
 
   &:focus {
@@ -27763,7 +27942,7 @@ const StableSelectOption = styled.div`
 
   span {
     padding-left: ${props => (props.level || 0) * 20}px;
-    font-weight: ${props => props.selected ? '600' : '400'} !important; /* Bold jen pro vybranou možnost */
+    font-weight: 600 !important;
   }
 `;
 
@@ -27772,6 +27951,7 @@ const StableSelectValue = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
 `;
 
 // Helper funkce pro normalizaci textu (odstranění diakritiky pro vyhledávání)

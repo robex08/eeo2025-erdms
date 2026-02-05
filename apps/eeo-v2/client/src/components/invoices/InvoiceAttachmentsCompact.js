@@ -482,7 +482,12 @@ const InvoiceAttachmentsCompact = ({
   // � FLAG: Sleduje, zda jsme už jednou načetli přílohy ze serveru (prevence infinite loop)
   const hasLoadedFromServerRef = React.useRef(false);
 
-  // 🔄 LOKÁLNÍ STATE pro attachments - umožňuje okamžité UI aktualizace
+  // � REF: Sleduje ID souborů, které se právě uploadují nebo už byly uploadnuty
+  // Prevence duplikace upload requestů
+  const uploadingFilesRef = React.useRef(new Set());
+  const uploadedFilesRef = React.useRef(new Set());
+
+  // �🔄 LOKÁLNÍ STATE pro attachments - umožňuje okamžité UI aktualizace
   // Synchronizuje se s externalAttachments, ale může se měnit i lokálně
   const [localAttachments, setLocalAttachments] = useState([]);
 
@@ -1087,61 +1092,54 @@ const InvoiceAttachmentsCompact = ({
     // Pro každý ne-ISDOC soubor zkontroluj validaci faktury
     if (nonIsdocFiles.length > 0 && !isPokladna) {
       // Zkontroluj validaci (bez file parametru = kontrola základních polí)
-      const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, categories: {} };
+      const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, missingFields: [] };
       
       if (!validation.isValid) {
         // ⚠️ ZAMÍTNOUT běžné soubory - chybí povinná pole
-        // ✅ Strukturovaná chybová zpráva (PŘESNĚ jako OrderForm25)
-        const errorMessage = (
-          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
-            <div style={{ 
-              fontSize: '15px', 
-              fontWeight: '600', 
-              marginBottom: '12px', 
-              color: '#1a1a1a',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
-              <span>Pro uložení je nutné vyplnit následující položky:</span>
-            </div>
-            {validation.categories && Object.values(validation.categories).map((cat, idx) => 
-              cat.errors.length > 0 && (
-                <div key={idx} style={{ 
-                  marginBottom: '10px',
-                  padding: '10px',
-                  backgroundColor: '#fff1f0',
-                  borderRadius: '4px'
-                }}>
-                  <div style={{ 
-                    fontWeight: '600', 
-                    fontSize: '13px',
-                    color: '#d32f2f',
-                    marginBottom: '6px'
-                  }}>
-                    {cat.label}
-                  </div>
-                  {cat.errors.map((err, errIdx) => (
-                    <div key={errIdx} style={{ 
-                      fontSize: '12px',
-                      color: '#666',
-                      marginLeft: '8px',
-                      marginTop: '4px',
-                      display: 'flex',
-                      alignItems: 'flex-start'
-                    }}>
-                      <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
-                      <span>{err}</span>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-          </div>
-        );
+        const fields = validation?.missingFields || [];
         
-        showToast && showToast(errorMessage, { type: 'error' });
+        if (fields.length > 0) {
+          // ✅ Strukturovaná chybová zpráva s detaily
+          const errorMessage = (
+            <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+              <div style={{ 
+                fontSize: '14px', 
+                fontWeight: '600', 
+                marginBottom: '12px', 
+                color: '#1a1a1a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+                <span>Pro nahrání přílohy vyplňte nejprve tato pole:</span>
+              </div>
+              <div style={{ 
+                fontSize: '13px',
+                color: '#666',
+                marginTop: '6px',
+                backgroundColor: '#fff1f0',
+                padding: '10px',
+                borderRadius: '4px'
+              }}>
+                {fields.map((field, idx) => (
+                  <div key={idx} style={{ 
+                    marginTop: idx > 0 ? '4px' : '0',
+                    display: 'flex',
+                    alignItems: 'flex-start'
+                  }}>
+                    <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                    <span>{field}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+          
+          showToast && showToast(errorMessage, { type: 'error', timeout: 8000 });
+        } else {
+          showToast && showToast('Vyplňte povinná pole faktury', { type: 'error' });
+        }
         return; // Ukončit upload
       }
     }
@@ -1246,6 +1244,7 @@ const InvoiceAttachmentsCompact = ({
           // Sekvenční upload (jako u objednávek) - zabraňuje race conditions
           for (const file of newFiles) {
             try {
+              console.log(`🚀 Spouštím upload souboru ${file.name} (${file.id})`);
               await uploadFileToServer(file.id, file.klasifikace, file);
             } catch (err) {
               console.error(`❌ Chyba při uploadu souboru ${file.name}:`, err);
@@ -1363,6 +1362,19 @@ const InvoiceAttachmentsCompact = ({
 
   // Upload na server
   const uploadFileToServer = async (fileId, klasifikaceOverride = null, fileObj = null) => {
+    // ✅ KONTROLA DUPLIKACE: Pokud se soubor už uploaduje nebo byl uploadnutý, přeskoč
+    if (uploadingFilesRef.current.has(fileId)) {
+      console.warn(`⏭️ uploadFileToServer: Soubor ${fileId} se již uploaduje - přeskakuji`);
+      return;
+    }
+    if (uploadedFilesRef.current.has(fileId)) {
+      console.warn(`⏭️ uploadFileToServer: Soubor ${fileId} už byl uploadnutý - přeskakuji`);
+      return;
+    }
+    
+    // 🔒 Označit jako uploadující se HNED na začátku
+    uploadingFilesRef.current.add(fileId);
+    
     // ✅ DŮLEŽITÉ: Vždy použít fileObj (již obsahuje všechna data včetně File objektu)
     // attachments state může být zastaralý kvůli async aktualizacím
     const file = fileObj;
@@ -1392,11 +1404,48 @@ const InvoiceAttachmentsCompact = ({
         
         // 🆕 Pro ISDOC povolit upload i bez validních polí
         if (!validation?.isValid && !validation?.isISDOC) {
-          const fields = validation?.missingFields?.join(', ') || 'povinná pole';
-          showToast&&showToast(
-            `Pro nahrání této přílohy vyplňte nejprve tato pole: ${fields}.`,
-            { type: 'error' }
-          );
+          const fields = validation?.missingFields || [];
+          if (fields.length > 0) {
+            // ✅ Strukturovaná chybová zpráva s detaily
+            const errorMessage = (
+              <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+                <div style={{ 
+                  fontSize: '14px', 
+                  fontWeight: '600', 
+                  marginBottom: '12px', 
+                  color: '#1a1a1a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+                  <span>Pro nahrání přílohy vyplňte nejprve tato pole:</span>
+                </div>
+                <div style={{ 
+                  fontSize: '13px',
+                  color: '#666',
+                  marginTop: '6px',
+                  backgroundColor: '#fff1f0',
+                  padding: '10px',
+                  borderRadius: '4px'
+                }}>
+                  {fields.map((field, idx) => (
+                    <div key={idx} style={{ 
+                      marginTop: idx > 0 ? '4px' : '0',
+                      display: 'flex',
+                      alignItems: 'flex-start'
+                    }}>
+                      <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                      <span>{field}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+            showToast&&showToast(errorMessage, { type: 'error', timeout: 8000 });
+          } else {
+            showToast&&showToast('Vyplňte povinná pole faktury', { type: 'error' });
+          }
           return;
         }
         
@@ -1517,6 +1566,7 @@ const InvoiceAttachmentsCompact = ({
               status: 'uploaded',
               progress: 100, // ✅ DŮLEŽITÉ: Nastavit progress na 100%
               serverId: attachmentId,
+              faktura_id: realFakturaId, // ✅ Aktualizovat faktura_id na reálné ID
               klasifikace: klasifikace, // ✅ Uložit klasifikaci pro pozdější porovnání
               faktura_typ_nazev: typPrilohy?.nazev || klasifikace,
               nahrano_uzivatel_id: nahrano_uzivatel_id,
@@ -1529,6 +1579,12 @@ const InvoiceAttachmentsCompact = ({
             } : f
           );
           console.log('📎 Nalezena příloha s ID:', attachmentId, 'pro soubor:', file.file.name);
+          
+          // ✅ Zavolat onAttachmentsChange pro propagaci změn do OrderForm25
+          if (onAttachmentsChange) {
+            onAttachmentsChange(updated);
+          }
+          
           return updated;
         });
 
@@ -1579,6 +1635,10 @@ const InvoiceAttachmentsCompact = ({
           onAttachmentUploaded(realFakturaId, uploadedAttachment);
         }
 
+        // ✅ CLEANUP: Přesunout z uploading do uploaded
+        uploadingFilesRef.current.delete(fileId);
+        uploadedFilesRef.current.add(fileId);
+
         return;
 
       } catch (err) {
@@ -1624,6 +1684,9 @@ const InvoiceAttachmentsCompact = ({
             error: err.message || 'Chyba při nahrávání'
           } : f
         ));
+
+        // ❌ CLEANUP: Odebrat z uploading při chybě
+        uploadingFilesRef.current.delete(fileId);
 
         // Lepší error zpráva s názvem souboru
         const fileName = fileObj?.name || 'soubor';
@@ -1792,6 +1855,10 @@ const InvoiceAttachmentsCompact = ({
         onAttachmentUploaded(fakturaId, uploadedAttachment);
       }
 
+      // ✅ CLEANUP: Přesunout z uploading do uploaded
+      uploadingFilesRef.current.delete(fileId);
+      uploadedFilesRef.current.add(fileId);
+
     } catch (err) {
       console.group('❌ CHYBA při uploadu s existující fakturou');
       console.error('Error object:', err);
@@ -1829,6 +1896,9 @@ const InvoiceAttachmentsCompact = ({
       updateAttachments(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'pending_classification', progress: 0 } : f
       ));
+
+      // ❌ CLEANUP: Odebrat z uploading při chybě
+      uploadingFilesRef.current.delete(fileId);
 
       showToast&&showToast(
         err.message || 'Nepodařilo se nahrát přílohu', 
@@ -2189,21 +2259,30 @@ const InvoiceAttachmentsCompact = ({
   };
 
   // 🆕 Validace faktury pro přidání příloh - VYPOČÍTAT PŘED HANDLERS
+  // ✅ FIX: Použít specifické properties jako dependencies místo celého objektu
   const invoiceValidation = useMemo(() => {
     if (isPokladna) {
-      // Pokladní doklad nemá povinné položky
       return { isValid: true, missingFields: [] };
     }
     if (!faktura) {
-      // Pokud není faktura předána, nelze validovat
       return { isValid: false, missingFields: ['Faktura'] };
     }
     if (!validateInvoiceForAttachments) {
-      // Pokud není validační funkce, předpokládáme že je validní (fallback)
       return { isValid: true, missingFields: [] };
     }
     return validateInvoiceForAttachments(faktura);
-  }, [faktura, validateInvoiceForAttachments, isPokladna]);
+  }, [
+    // ✅ Specifické properties místo celého objektu - React detekuje změny hodnot
+    faktura?.fa_typ,
+    faktura?.fa_typ_faktury,
+    faktura?.fa_cislo_vema,
+    faktura?.fa_castka,
+    faktura?.fa_datum_doruceni,
+    faktura?.fa_datum_vystaveni,
+    faktura?.fa_splatnost,
+    validateInvoiceForAttachments,
+    isPokladna
+  ]);
 
   // ✅ NOVÁ LOGIKA: Dropzona je VŽDY aktivní (validace probíhá při uploadu)
   // Disabled pouze když: uploading, loading, readOnly NEBO faktura je DOKONCENA
@@ -2249,58 +2328,52 @@ const InvoiceAttachmentsCompact = ({
         const hasISDOC = attachments.some(a => isISDOCFile(a.filename));
         
         if (!hasISDOC && !isPokladna) {
-          const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, categories: {} };
+          const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, missingFields: [] };
           
           if (!validation.isValid) {
-            const errorMessage = (
-              <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
-                <div style={{ 
-                  fontSize: '15px', 
-                  fontWeight: '600', 
-                  marginBottom: '12px', 
-                  color: '#1a1a1a',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
-                  <span>Pro uložení je nutné vyplnit následující položky:</span>
-                </div>
-                {validation.categories && Object.values(validation.categories).map((cat, idx) => 
-                  cat.errors.length > 0 && (
-                    <div key={idx} style={{ 
-                      marginBottom: '10px',
-                      padding: '10px',
-                      backgroundColor: '#fff1f0',
-                      borderRadius: '4px'
-                    }}>
-                      <div style={{ 
-                        fontWeight: '600', 
-                        fontSize: '13px',
-                        color: '#d32f2f',
-                        marginBottom: '6px'
+            const fields = validation?.missingFields || [];
+            
+            if (fields.length > 0) {
+              // ✅ Strukturovaná chybová zpráva s detaily
+              const errorMessage = (
+                <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+                  <div style={{ 
+                    fontSize: '14px', 
+                    fontWeight: '600', 
+                    marginBottom: '12px', 
+                    color: '#1a1a1a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+                    <span>Pro nahrání příloh ze spisovky vyplňte nejprve tato pole:</span>
+                  </div>
+                  <div style={{ 
+                    fontSize: '13px',
+                    color: '#666',
+                    marginTop: '6px',
+                    backgroundColor: '#fff1f0',
+                    padding: '10px',
+                    borderRadius: '4px'
+                  }}>
+                    {fields.map((field, idx) => (
+                      <div key={idx} style={{ 
+                        marginTop: idx > 0 ? '4px' : '0',
+                        display: 'flex',
+                        alignItems: 'flex-start'
                       }}>
-                        {cat.label}
+                        <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                        <span>{field}</span>
                       </div>
-                      {cat.errors.map((err, errIdx) => (
-                        <div key={errIdx} style={{ 
-                          fontSize: '12px',
-                          color: '#666',
-                          marginLeft: '8px',
-                          marginTop: '4px',
-                          display: 'flex',
-                          alignItems: 'flex-start'
-                        }}>
-                          <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
-                          <span>{err}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                )}
-              </div>
-            );
-            showToast && showToast(errorMessage, { type: 'error' });
+                    ))}
+                  </div>
+                </div>
+              );
+              showToast && showToast(errorMessage, { type: 'error', timeout: 8000 });
+            } else {
+              showToast && showToast('Vyplňte povinná pole faktury', { type: 'error' });
+            }
             return;
           }
         }
@@ -3073,16 +3146,17 @@ const InvoiceAttachmentsCompact = ({
                     border: `1px solid ${!file.klasifikace ? '#fca5a5' : '#d1d5db'}`,
                     borderRadius: '6px',
                     fontSize: '0.875rem',
+                    fontWeight: '600',
                     backgroundColor: readOnly ? '#f3f4f6' : 'white',
-                    color: file.klasifikace ? '#374151' : '#6b7280',
+                    color: file.klasifikace ? '#111827' : '#6b7280',
                     cursor: readOnly ? 'not-allowed' : 'pointer',
                     opacity: readOnly ? 0.6 : 1
                   }}
                   title={readOnly ? 'Přílohy jsou uzamčeny po uložení objednávky' : ''}
                 >
-                  <option value="" style={{ color: '#6b7280' }}>Vyberte...</option>
+                  <option value="" style={{ color: '#6b7280', fontWeight: '400' }}>Vyberte...</option>
                   {fakturaTypyPrilohOptions.map(typ => (
-                    <option key={typ.kod} value={typ.kod}>
+                    <option key={typ.kod} value={typ.kod} style={{ fontWeight: '600', color: '#111827' }}>
                       {typ.nazev}
                     </option>
                   ))}

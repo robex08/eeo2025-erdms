@@ -2968,6 +2968,7 @@ function handle_orders25_update($input, $config, $queries) {
                         fa_dorucena,
                         fa_castka,
                         fa_cislo_vema,
+                        fa_typ,
                         fa_datum_vystaveni,
                         fa_datum_splatnosti,
                         fa_datum_doruceni,
@@ -2977,7 +2978,7 @@ function handle_orders25_update($input, $config, $queries) {
                         vytvoril_uzivatel_id,
                         dt_vytvoreni,
                         aktivni
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
                     
                     $stmt_insert = $db->prepare($sql_insert);
                     $stmt_insert->execute(array(
@@ -2985,6 +2986,7 @@ function handle_orders25_update($input, $config, $queries) {
                         isset($faktura['fa_dorucena']) ? (int)$faktura['fa_dorucena'] : 0,
                         $fa_castka,
                         $fa_cislo_vema,
+                        isset($faktura['fa_typ']) ? $faktura['fa_typ'] : 'BEZNA',
                         isset($faktura['fa_datum_vystaveni']) ? $faktura['fa_datum_vystaveni'] : null,
                         isset($faktura['fa_datum_splatnosti']) ? $faktura['fa_datum_splatnosti'] : null,
                         isset($faktura['fa_datum_doruceni']) ? $faktura['fa_datum_doruceni'] : null,
@@ -3856,6 +3858,7 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         fa_dorucena,
                         fa_castka,
                         fa_cislo_vema,
+                        fa_typ,
                         fa_datum_vystaveni,
                         fa_datum_splatnosti,
                         fa_datum_doruceni,
@@ -3865,7 +3868,7 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         vytvoril_uzivatel_id,
                         dt_vytvoreni,
                         aktivni
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
                     
                     $stmt_insert = $db->prepare($sql_insert);
                     $stmt_insert->execute(array(
@@ -3873,6 +3876,7 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         isset($faktura['fa_dorucena']) ? (int)$faktura['fa_dorucena'] : 0,
                         $fa_castka,
                         $fa_cislo_vema,
+                        isset($faktura['fa_typ']) ? $faktura['fa_typ'] : 'BEZNA',
                         isset($faktura['fa_datum_vystaveni']) ? $faktura['fa_datum_vystaveni'] : null,
                         isset($faktura['fa_datum_splatnosti']) ? $faktura['fa_datum_splatnosti'] : null,
                         isset($faktura['fa_datum_doruceni']) ? $faktura['fa_datum_doruceni'] : null,
