@@ -40,7 +40,8 @@ export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserI
   
   // 🐛 DEBUG: Log výsledek pro první objednávky
   if (order.id <= 20) {
-    console.log(`🔍 filterMyOrders - Order #${order.id} RESULT:`, {
+    // DEBUG: filterMyOrders result
+    // console.log(`🔍 filterMyOrders - Order #${order.id} RESULT:`, {
       result,
       matches: { 
         isObjednatel, isGarant, isSchvalovatel, isPrikazce,
