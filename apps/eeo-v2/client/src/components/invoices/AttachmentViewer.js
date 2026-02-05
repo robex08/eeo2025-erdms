@@ -349,10 +349,7 @@ const AttachmentViewer = ({
                 // Advanced debugging - try to fetch the blob URL directly
                 fetch(attachment.blobUrl)
                   .then(response => {
-                    console.log('🔍 Direct blob fetch - Status:', response.ok ? 'OK' : 'FAILED');
-                    console.log('🔍 Direct blob fetch - Status code:', response.status);
-                    console.log('🔍 Direct blob fetch - Content-Type:', response.headers.get('Content-Type'));
-                    console.log('🔍 Direct blob fetch - Content-Length:', response.headers.get('Content-Length'));
+                    // DEBUG: Direct blob fetch
                     return response.blob();
                   })
                   .then(blob => {
