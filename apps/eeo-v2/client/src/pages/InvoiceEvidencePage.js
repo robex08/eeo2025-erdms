@@ -4486,8 +4486,8 @@ export default function InvoiceEvidencePage() {
       // MUSÍME RESETOVAT věcnou správnost na 0 a vrátit workflow na VECNA_SPRAVNOST
       let shouldResetVecnaSpravnost = false;
       
-      if (editingInvoiceId) {
-        const originalInvoice = invoices.find(inv => inv.id === editingInvoiceId);
+      if (editingInvoiceId && orderData && orderData.faktury) {
+        const originalInvoice = orderData.faktury.find(inv => inv.id === editingInvoiceId);
         
         if (originalInvoice && formData.vecna_spravnost_potvrzeno === 1) {
           // Kontrola změny klíčových polí faktury
