@@ -107,6 +107,7 @@ export const useActivityTracking = () => {
    */
   const getModuleName = (pathname) => {
     const moduleMap = {
+      '/': 'Dashboard',
       '/dashboard': 'Dashboard',
       '/orders25-list': 'Objednávky',
       '/order-form-25': 'Formulář objednávky',
@@ -114,6 +115,8 @@ export const useActivityTracking = () => {
       '/invoice-evidence': 'Evidence faktury',
       '/cash-book': 'Pokladna',
       '/dictionaries': 'Číselníky',
+      '/suppliers': 'Dodavatelé',
+      '/contracts': 'Smlouvy',
       '/address-book': 'Adresář',
       '/notifications': 'Notifikace',
       '/reports': 'Reporty',
@@ -121,10 +124,24 @@ export const useActivityTracking = () => {
       '/profile': 'Profil',
       '/users': 'Správa uživatelů',
       '/debug': 'Debug panel',
-      '/orders': 'Objednávky před 2026'
+      '/orders': 'Objednávky před 2026',
+      '/change-password': 'Změna hesla',
+      '/settings': 'Nastavení'
     };
 
-    return moduleMap[pathname] || 'Aplikace';
+    // Check for exact match first
+    if (moduleMap[pathname]) {
+      return moduleMap[pathname];
+    }
+
+    // Check for partial matches (e.g., /dictionaries/contracts)
+    for (const [key, value] of Object.entries(moduleMap)) {
+      if (pathname.startsWith(key) && key !== '/') {
+        return value;
+      }
+    }
+
+    return 'Aplikace';
   };
 
   /**

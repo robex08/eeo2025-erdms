@@ -4090,6 +4090,16 @@ function OrderForm25() {
   const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
   
+  // 🎯 RETURNTO: Pamatovat si odkud jsme přišli pro návrat při zavření
+  const returnToRef = useRef(location.state?.returnTo || '/orders25-list');
+  
+  // Aktualizovat returnTo pokud se změní v location.state (např. při navigaci z faktury)
+  useEffect(() => {
+    if (location.state?.returnTo) {
+      returnToRef.current = location.state.returnTo;
+    }
+  }, [location.state?.returnTo]);
+  
   // 🔥 OKAMŽITÝ BROADCAST MenuBaru při mount - podle dostupných dat
   useEffect(() => {
     // 🎯 PRIORITA: Zkontrolovat draft NEJDŘÍV (může mít více informací než URL)
@@ -9385,8 +9395,9 @@ function OrderForm25() {
 
         // 3. Počkej 50ms, aby se broadcast propagoval
         setTimeout(() => {
-          // 4. Přepnout na seznam objednávek s forceReload (vynutit načtení z DB)
-          navigate('/orders25-list', { state: { forceReload: true }, replace: true });
+          // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na seznam objednávek s forceReload
+          const targetPath = returnToRef.current || '/orders25-list';
+          navigate(targetPath, { state: { forceReload: true }, replace: true });
           
           // 5. Skrýt progress a ukončit ukládání
           setShowSaveProgress(false);
@@ -16879,8 +16890,9 @@ function OrderForm25() {
           // Ignoruj chybu broadcastu
         }
 
-        // Přesměruj na seznam s force reload z DB
-        navigate('/orders25-list', { state: { forceReload: true } });
+        // Přesměruj na uloženou cestu (returnTo) nebo fallback na seznam
+        const targetPath = returnToRef.current || '/orders25-list';
+        navigate(targetPath, { state: { forceReload: true } });
       } catch (error) {
         showToast && showToast(`Chyba při zavírání: ${error.message}`, { type: 'error' });
       }
@@ -17028,11 +17040,12 @@ function OrderForm25() {
       setShowCancelConfirmModal(false);
       setCancelWarningMessage('');
 
-      addDebugLog('info', 'CANCEL', 'redirect', 'Přesměrovávám na seznam objednávek');
+      const targetPath = returnToRef.current || '/orders25-list';
+      addDebugLog('info', 'CANCEL', 'redirect', `Přesměrovávám na: ${targetPath}`);
 
       // 5. Přesměruj s dostatečným zpožděním, aby se stihly dokončit všechny async operace
       setTimeout(() => {
-        navigate('/orders25-list', { state: { forceReload: true } });
+        navigate(targetPath, { state: { forceReload: true } });
       }, 200);
 
     } catch (error) {
@@ -17046,8 +17059,9 @@ function OrderForm25() {
       setCancelWarningMessage('');
 
       // Přesměruj i přes chybu (lepší než zůstat na formuláři)
+      const targetPath = returnToRef.current || '/orders25-list';
       setTimeout(() => {
-        navigate('/orders25-list', { state: { forceReload: true } });
+        navigate(targetPath, { state: { forceReload: true } });
       }, 100);
     }
   }, [user_id, draftManager, formData.id, token, username, showToast, navigate]);
