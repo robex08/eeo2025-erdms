@@ -861,15 +861,24 @@ export const handleInvoiceChange = (currentWorkflow, hasInvoices, isPokladna = f
   
   // Normální režim fakturace
   if (hasInvoices) {
-    states = addWorkflowState(states, 'FAKTURACE');
+    // ✅ Má faktury → odebrat FAKTURACE (už není ve fázi "čekání na faktury")
+    states = removeWorkflowState(states, 'FAKTURACE');
     
-    // ✅ Pokud je už ve fázi FAKTURACE a uživatel klikne ULOŽIT → posunout na VECNA_SPRAVNOST
-    if (states.includes('FAKTURACE')) {
-      states = addWorkflowState(states, 'VECNA_SPRAVNOST');
-    }
+    // ✅ Přidat VECNA_SPRAVNOST (faktura přidána, čeká se na kontrolu věcné správnosti)
+    states = addWorkflowState(states, 'VECNA_SPRAVNOST');
   } else {
-    // Žádné faktury → odebrat FAKTURACE, VECNA_SPRAVNOST a ZKONTROLOVANA
-    states = states.filter(s => !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'].includes(s));
+    // ✅ DŮLEŽITÉ: Pokud je NEUVEREJNIT nebo UVEREJNENA, FAKTURACE zůstává (i bez faktur zatím)
+    // NEUVEREJNIT → automaticky na FAKTURACE (čeká na přidání faktury)
+    // UVEREJNENA → automaticky na FAKTURACE (čeká na přidání faktury)
+    const maNeuverejnitNeboUverejnena = states.includes('NEUVEREJNIT') || states.includes('UVEREJNENA');
+    
+    if (maNeuverejnitNeboUverejnena) {
+      // Zachovat FAKTURACE, ale odebrat vyšší fáze
+      states = states.filter(s => !['VECNA_SPRAVNOST', 'ZKONTROLOVANA'].includes(s));
+    } else {
+      // Žádné faktury a nejsme v NEUVEREJNIT/UVEREJNENA → odebrat FAKTURACE a vyšší
+      states = states.filter(s => !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'].includes(s));
+    }
   }
   
   return states;
