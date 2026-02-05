@@ -5637,15 +5637,11 @@ function OrderForm25() {
       // Callback když jsou data načtena z DB
       // KRITICKÉ: Nastavit formData s načtenými daty
 
-      // 🔍 DEBUG: RAW CELÉ OBJEDNÁVKY z backendu
-
-      // 🛡️ OCHRANA: Zabránit opakovanému volání onDataLoaded PRO STEJNOU objednávku
+      // �️ OCHRANA: Zabránit opakovanému volání onDataLoaded PRO STEJNOU objednávku
       // ✅ FIX: Kontroluj současný editOrderId, ne jen flag
       const currentEditId = editOrderId || loadedData?.id || 'NEW';
+      
       if (onDataLoadedCalledRef.current === currentEditId) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('⚠️ handleDataLoaded už byl zavolán pro:', currentEditId, '- ignoruji duplicitní volání');
-        }
         return;
       }
 
@@ -6054,6 +6050,12 @@ function OrderForm25() {
 
     // 🚫 ZRUŠENO: Auto-scroll po načtení formuláře (na žádost uživatele)
   }, []);
+
+  // 🔧 FIX: Reset onDataLoadedCalledRef když se mění editOrderId
+  // Zajistí, že při navigaci mezi objednávkami se data správně načtou
+  useEffect(() => {
+    onDataLoadedCalledRef.current = null;
+  }, [editOrderId]);
 
   // Tento hook řídí celou inicializaci formuláře a eliminuje race conditions
   const formController = useFormController({
@@ -6825,13 +6827,25 @@ function OrderForm25() {
     }
     
     // Registr smluv vyplnění - upravit viditelnost podle práv a vyplněných dat
+    // 🔒 PRAVIDLA VIDITELNOSTI:
+    // 1. Má uživatel právo ORDER_PUBLISH_REGISTRY → viditelná podle WorkflowManager
+    // 2. Nemá právo, ale data jsou vyplněná A sekce je zamčená → viditelná jako readonly
+    // 3. Nemá právo, data nejsou vyplněná NEBO sekce není zamčená → SKRYTÁ
     const isRegistrFilled = formData.dt_zverejneni && formData.registr_iddt;
     if (states.registr_smluv_vyplneni) {
+      const workflowVisible = states.registr_smluv_vyplneni.visible;
+      const isLocked = !states.registr_smluv_vyplneni.enabled;
+      
+      // Viditelná jen pokud:
+      // - Má právo (bez ohledu na stav) NEBO
+      // - Nemá právo, ale data jsou vyplněná A sekce je zamčená (readonly režim)
+      const shouldBeVisible = workflowVisible && (
+        canPublishRegistry || (isRegistrFilled && isLocked)
+      );
+      
       states.registr_smluv_vyplneni = {
         ...states.registr_smluv_vyplneni,
-        visible: states.registr_smluv_vyplneni.visible && (
-          canPublishRegistry || isRegistrFilled
-        )
+        visible: shouldBeVisible
       };
     }
     
@@ -7390,7 +7404,46 @@ function OrderForm25() {
 
           // ✅ Ulož draft přes DraftManager s invalidated: false (editace ze seznamu = validní draft)
           draftManager.setCurrentUser(user_id);
+          
+          // 🔍 DEBUG: Co je v localStorage PŘED uložením
+          const lsKey = `order25_draft_${user_id}`;
+          const existingLS = localStorage.getItem(lsKey);
+          if (existingLS) {
+            try {
+              const parsed = JSON.parse(existingLS);
+              console.log('🔍 LOCALSTORAGE PŘED syncWithDatabase:', {
+                má_draft_v_LS: true,
+                stav_workflow_kod_v_LS: parsed.formData?.stav_workflow_kod,
+                timestamp_LS: parsed.timestamp
+              });
+            } catch (e) {
+              console.log('🔍 LOCALSTORAGE chyba parsování:', e);
+            }
+          } else {
+            console.log('🔍 LOCALSTORAGE PŘED syncWithDatabase: PRÁZDNÝ');
+          }
+          
+          console.log('🔍 NAČTENÍ Z DB - PŘED syncWithDatabase:', {
+            stav_workflow_kod_z_DB: dbOrder.stav_workflow_kod,
+            stav_workflow_kod_v_formData: freshDraft.formData.stav_workflow_kod
+          });
+          
           await draftManager.syncWithDatabase(freshDraft.formData, orderId);
+          
+          // 🔍 DEBUG: Co je v localStorage PO uložení
+          const afterLS = localStorage.getItem(lsKey);
+          if (afterLS) {
+            try {
+              const parsed = JSON.parse(afterLS);
+              console.log('🔍 LOCALSTORAGE PO syncWithDatabase:', {
+                stav_workflow_kod_v_LS: parsed.formData?.stav_workflow_kod
+              });
+            } catch (e) {}
+          }
+          
+          console.log('🔍 NAČTENÍ Z DB - PO syncWithDatabase:', {
+            stav_workflow_kod_v_formData: freshDraft.formData.stav_workflow_kod
+          });
 
           // ✅ PŘIDAT: Explicitně ulož metadata pro EDIT mode
           draftManager.saveMetadata({
@@ -7406,16 +7459,11 @@ function OrderForm25() {
           const currentPhaseNum = (() => {
             // Highest phases first
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'DOKONCENA')) return 10;
-            // ZKONTROLOVANA - fáze 10 (před dokončením)
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'ZKONTROLOVANA')) return 10;
-            // VECNA_SPRAVNOST - fáze 9 (věcná správnost)
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'VECNA_SPRAVNOST')) return 9;
-            // Fakturace (fáze 8)
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'FAKTURACE')) return 8;
-            // Registr smluv - FÁZE 7
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'DOKONCENA')) return 9;
+            // ZKONTROLOVANA - fáze 8 (před dokončením)
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'ZKONTROLOVANA')) return 8;
+            // VECNA_SPRAVNOST - fáze 7 (věcná správnost)
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'VECNA_SPRAVNOST')) return 7;
+            // Fakturace - fáze 6
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'FAKTURACE')) return 6;
             // Pokud UVEREJNENA → FÁZE 6 (Fakturace)
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'UVEREJNENA')) return 6;
@@ -8091,8 +8139,8 @@ function OrderForm25() {
       return;
     }
 
-    if (!fakturaFormData.fa_castka || parseFloat(fakturaFormData.fa_castka) <= 0) {
-      showToast && showToast('Částka faktury je povinná a musí být větší než 0', { type: 'error' });
+    if (fakturaFormData.fa_castka === undefined || fakturaFormData.fa_castka === null || fakturaFormData.fa_castka === '') {
+      showToast && showToast('Částka faktury je povinná', { type: 'error' });
       return;
     }
 
@@ -8294,9 +8342,9 @@ function OrderForm25() {
       return;
     }
 
-    if (!fakturaFormData.fa_castka || parseFloat(fakturaFormData.fa_castka) <= 0) {
+    if (fakturaFormData.fa_castka === undefined || fakturaFormData.fa_castka === null || fakturaFormData.fa_castka === '') {
       console.groupEnd();
-      showToast && showToast('Částka faktury je povinná a musí být větší než 0', { type: 'error' });
+      showToast && showToast('Částka faktury je povinná', { type: 'error' });
       return;
     }
 
@@ -8755,7 +8803,7 @@ function OrderForm25() {
       missingFields.push('Číslo faktury VEMA');
     }
     
-    if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
+    if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
       missingFields.push('Částka');
     }
     
@@ -10091,6 +10139,20 @@ function OrderForm25() {
       // Workflow pořadí: KE_SCHVALENI → SCHVALENA → ROZPRACOVANA → ODESLANA → POTVRZENA → UVEREJNENA → FAKTURACE → DOKONCENA
       let workflowStates = [...existingStates]; // Zachovat existující stavy z DB
 
+      // 🔍 DEBUG: Výpis workflow stavu na začátku
+      console.log('🔍 WORKFLOW DEBUG - ZAČÁTEK ULOŽENÍ:', {
+        původní_workflow: formData.stav_workflow_kod,
+        workflowStates: [...workflowStates],
+        ma_byt_zverejnena: formData.ma_byt_zverejnena,
+        dt_zverejneni: formData.dt_zverejneni,
+        registr_iddt: formData.registr_iddt,
+        dodavatel_potvrzeni: formData.dodavatel_zpusob_potvrzeni?.potvrzeni,
+        financovani_platba: formData.financovani?.platba,
+        dodavatel_platba: formData.dodavatel_zpusob_potvrzeni?.platba,
+        faktury_count: formData.faktury?.length || 0,
+        faktury_ids: formData.faktury?.map(f => f.id || 'NEW') || []
+      });
+
       // ✅ KRITICKÉ: Kontrolovat formData.id NEBO formData.id pro rozhodnutí INSERT vs UPDATE
       const hasOrderId = formData.id || formData.id;
 
@@ -10124,233 +10186,163 @@ function OrderForm25() {
         }
       }
 
-      // 2. Schválení/zamítnutí - přepsat JEN vzájemně se vylučující stavy
-      // ✅ POUŽÍVÁ formData.stav_schvaleni POUZE PRO UI LOGIKU (neposílá se do DB!)
-      const approvalChoice = formData.stav_schvaleni; // UI helper
+      // 2. Schválení/zamítnutí - ✅ CENTRALIZOVÁNO v WorkflowManageru
+      const approvalChoice = formData.stav_schvaleni;
 
       if (approvalChoice === 'schvaleno') {
-        // Odstranit POUZE vylučující se schvalovací stavy (CEKA_SE, ZAMITNUTA)
-        workflowStates = workflowStates.filter(s => !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA'].includes(s));
-        if (!workflowStates.includes('SCHVALENA')) {
-          workflowStates.push('SCHVALENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav SCHVALENA');
-        }
+        workflowStates = workflowManager.handleApproval(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleApproval()');
       } else if (approvalChoice === 'neschvaleno') {
-        // Odstranit POUZE vylučující se schvalovací stavy (SCHVALENA, CEKA_SE)
-        // POZOR: Při zamítnutí NEODSTRAŇOVAT další stavy workflow!
-        workflowStates = workflowStates.filter(s => !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA'].includes(s));
-        if (!workflowStates.includes('ZAMITNUTA')) {
-          workflowStates.push('ZAMITNUTA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav ZAMITNUTA');
-        }
+        workflowStates = workflowManager.handleRejection(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleRejection()');
       } else if (approvalChoice === 'ceka_se') {
-        // Odstranit POUZE vylučující se schvalovací stavy (SCHVALENA, ZAMITNUTA)
-        workflowStates = workflowStates.filter(s => !['ODESLANA_KE_SCHVALENI', 'ZAMITNUTA', 'SCHVALENA'].includes(s));
-        if (!workflowStates.includes('CEKA_SE')) {
-          workflowStates.push('CEKA_SE');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav CEKA_SE');
-        }
+        workflowStates = workflowManager.handleWaitingForApproval(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleWaitingForApproval()');
       }
 
-      // 3. ROZPRACOVANA - FÁZE 3 rozpracovaná (vylučuje se s ODESLANA a ZRUSENA)
-      // Pokud jsme ve FÁZI 3 (máme SCHVALENA) a NENÍ zaškrtnutý checkbox "Odesláno" ani "Stornováno"
-      // → přidej ROZPRACOVANA (uživatel pracuje na objednávce, ale ještě ji neodeslal)
-      // ✅ OPRAVA: NEPŘIDÁVAT ROZPRACOVANA při prvním schválení (pouze když už byla SCHVALENA předtím)
+      // 3. ROZPRACOVANA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const wasAlreadyApproved = existingStates?.includes('SCHVALENA') || false;
       const isJustNowApproved = approvalChoice === 'schvaleno' && !wasAlreadyApproved;
 
       if (workflowStates.includes('SCHVALENA') &&
           !formData.stav_odeslano &&
           !formData.stav_stornovano &&
-          !workflowStates.includes('ROZPRACOVANA') &&
-          !isJustNowApproved) {  // ✅ NOVÁ PODMÍNKA: nepřidávat při prvním schválení
-        // Přidat ROZPRACOVANA (indikátor že se na objednávce pracuje)
-        workflowStates.push('ROZPRACOVANA');
+          !isJustNowApproved) {
+        workflowStates = workflowManager.handleWorkInProgress(workflowStates, wasAlreadyApproved);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleWorkInProgress()');
+      } else {
+        // Odebrat ROZPRACOVANA pokud je odesláno nebo stornováno
+        workflowStates = workflowStates.filter(s => s !== 'ROZPRACOVANA');
         addDebugLog('info', 'SAVE', 'workflow-update', '✅ Přidán stav ROZPRACOVANA - objednávka ve FÁZI 3, ještě neodeslaná');
       }
 
-      // 4. ODESLANA - po odeslání dodavateli (nahrazuje ROZPRACOVANA)
-      // ✅ KRITICKÉ: Workflow MUSÍ být ČISTÝ ["SCHVALENA", "ODESLANA"], vymazat vyšší fáze
+      // 4. ODESLANA - po odeslání dodavateli ✅ CENTRALIZOVÁNO v WorkflowManageru
       if (formData.stav_odeslano && !formData.stav_stornovano) {
-        // Nastavit čistý workflow FÁZE 4
-        workflowStates = ['SCHVALENA', 'ODESLANA'];
-        addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Workflow nastaven na čistou FÁZI 4: ["SCHVALENA", "ODESLANA"]');
+        workflowStates = workflowManager.handleSendToSupplier(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleSendToSupplier()');
       } else if (!formData.stav_odeslano && workflowStates.includes('ODESLANA')) {
         // Pokud ODESLANA existuje ale checkbox není zaškrtnutý → vrátit na SCHVALENA
         workflowStates = ['SCHVALENA'];
         addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Workflow vrácen na FÁZI 3: ["SCHVALENA"]');
       }
 
-      // 5. ZRUSENA - při stornování
+      // 5. ZRUSENA - při stornování ✅ CENTRALIZOVÁNO v WorkflowManageru
       if (formData.stav_stornovano) {
-        if (!workflowStates.includes('ZRUSENA')) {
-          workflowStates.push('ZRUSENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav ZRUSENA');
-        }
-        // Při stornování odstranit některé stavy
-        workflowStates = workflowStates.filter(s => !['ROZPRACOVANA', 'ODESLANA', 'POTVRZENA'].includes(s));
+        workflowStates = workflowManager.handleCancellation(workflowStates, true);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleCancellation(true)');
       } else {
-        // Odstranit ZRUSENA pokud není stornováno
-        workflowStates = workflowStates.filter(s => s !== 'ZRUSENA');
+        workflowStates = workflowManager.handleCancellation(workflowStates, false);
       }
 
-      // 6. POTVRZENA - potvrzení od dodavatele
+      // 6. POTVRZENA - potvrzení od dodavatele ✅ CENTRALIZOVÁNO v WorkflowManageru
       const isDodavatelPotvrzeno = formData.dodavatel_zpusob_potvrzeni?.potvrzeni === 'ANO' ||
                                   formData.stav_u_dodavatele === 'potvrzeno';
-      if (isDodavatelPotvrzeno && !formData.stav_stornovano) {
-        if (!workflowStates.includes('POTVRZENA')) {
-          workflowStates.push('POTVRZENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', '✅ Přidán stav POTVRZENA - dodavatel potvrdil ANO');
-        }
-      } else if (!isDodavatelPotvrzeno) {
-        // ✅ Dodavatel potvrdil NE → vrátit na čistou FÁZI 4 (vymazat všechny vyšší fáze)
-        workflowStates = workflowStates.filter(s =>
-          !['POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s)
-        );
-        addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Dodavatel potvrdil NE - workflow vrácen na FÁZI 4, vymazány vyšší fáze');
+      workflowStates = workflowManager.handleSupplierConfirmation(workflowStates, isDodavatelPotvrzeno);
+      if (isDodavatelPotvrzeno) {
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleSupplierConfirmation(true)');
+      } else {
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleSupplierConfirmation(false) - vymazány vyšší fáze');
       }
 
-      // 7. UVEREJNENA - při rozhodnutí o zveřejnění v registru smluv
-      // FÁZE 4: Uživatel s oprávněním rozhodne ANO/NE pomocí checkboxu "Má být zveřejněna"
-      //   - Pokud ma_byt_zverejnena = true → UVEREJNIT → FÁZE 5 (vyplnění datum + IDDT)
-      //   - Pokud ma_byt_zverejnena = false → NEUVEREJNIT → přeskočí FÁZI 5 → rovnou FÁZE 6 (Fakturace)
-
-      // UVEREJNOVÁNÍ - rozhodnutí o zveřejnění
-      // Logika:
-      // - Pokud dodavatel potvrdil (POTVRZENA) a ma_byt_zverejnena === true → přidat stav 'UVEREJNIT' (posun na fázi 5)
-      // - Pokud dodavatel potvrdil a ma_byt_zverejnena === false → přidat stav 'NEUVEREJNIT' (přeskočit na fázi 6 - Fakturace)
-      // - Pokud ma_byt_zverejnena není definováno, považovat za false (defaultní chování)
+      // 7. UVEREJNENA - při rozhodnutí o zveřejnění ✅ ČÁSTEČNĚ CENTRALIZOVÁNO
       if (workflowStates.includes('POTVRZENA') && !formData.stav_stornovano) {
         const maBytZverejnena = formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1;
-
-        if (maBytZverejnena) {
-          // Chceme zveřejnit → přidat UVEREJNIT
+        const hasDatum = formData.dt_zverejneni;
+        const hasIddt = formData.registr_iddt;
+        
+        console.log('🔍 ZVEŘEJNĚNÍ CHECK:', {
+          maBytZverejnena,
+          dt_zverejneni: hasDatum,
+          registr_iddt: hasIddt,
+          workflow_PŘED: [...workflowStates]
+        });
+        
+        // ✅ POUŽÍT WorkflowManager.handlePublishDecision()
+        workflowStates = workflowManager.handlePublishDecision(workflowStates, maBytZverejnena);
+        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handlePublishDecision(${maBytZverejnena})`);
+        
+        // ✅ POUŽÍT WorkflowManager.handlePublishing() pokud jsou data vyplněná
+        if (maBytZverejnena && hasDatum && hasIddt && workflowStates.includes('UVEREJNIT')) {
+          workflowStates = workflowManager.handlePublishing(workflowStates, hasDatum, hasIddt);
+          addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handlePublishing() - UVEREJNIT → UVEREJNENA + FAKTURACE');
+          console.log('✅ ZVEŘEJNĚNÍ DOKONČENO přes WorkflowManager:', workflowStates);
+        }
+        // Cleanup pokud byla data smazána
+        else if (maBytZverejnena && (!hasDatum || !hasIddt) && workflowStates.includes('UVEREJNENA')) {
+          // Vrátit zpět na UVEREJNIT (smazat UVEREJNENA a vyšší fáze)
+          workflowStates = workflowStates.filter(s => !['UVEREJNENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
           if (!workflowStates.includes('UVEREJNIT')) {
-            // Odstraníme případné NEUVEREJNIT/UVEREJNENA pro konzistenci
-            workflowStates = workflowStates.filter(s => s !== 'NEUVEREJNIT' && s !== 'UVEREJNENA');
             workflowStates.push('UVEREJNIT');
-            addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav UVEREJNIT (ma_byt_zverejnena = true)');
           }
-
-          // ✅ NOVÉ: Pokud je UVEREJNIT a zároveň jsou vyplněné datum + IDDT → posun na UVEREJNENA
-          if (workflowStates.includes('UVEREJNIT') && formData.dt_zverejneni && formData.registr_iddt) {
-            // Odstranit UVEREJNIT (už je dokončeno)
-            workflowStates = workflowStates.filter(s => s !== 'UVEREJNIT');
-            // Přidat UVEREJNENA → posun do FÁZE 6
-            if (!workflowStates.includes('UVEREJNENA')) {
-              workflowStates.push('UVEREJNENA');
-              addDebugLog('info', 'SAVE', 'workflow-update', 'Vyplněn registr smluv (datum + IDDT) → odstraněn UVEREJNIT → přidán UVEREJNENA → FÁZE 6');
-            }
-          }
-        } else {
-          // Nemá být zveřejněno (false, 0, undefined, null) → přidat NEUVEREJNIT + FAKTURACE
-          workflowStates = workflowStates.filter(s => s !== 'UVEREJNIT' && s !== 'UVEREJNENA');
-          if (!workflowStates.includes('NEUVEREJNIT')) {
-            workflowStates.push('NEUVEREJNIT');
-            addDebugLog('info', 'SAVE', 'workflow-update', `Přidán stav NEUVEREJNIT (ma_byt_zverejnena = ${formData.ma_byt_zverejnena})`);
-          }
-          // ✅ AUTOMATICKY přidat FAKTURACE (ale ne VECNA_SPRAVNOST - ta se přidá až po přidání faktury)
-          if (!workflowStates.includes('FAKTURACE')) {
-            workflowStates.push('FAKTURACE');
-            addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav FAKTURACE (automaticky po NEUVEREJNIT) → čeká na přidání faktury');
-          }
+          addDebugLog('info', 'SAVE', 'workflow-clean', 'Smazána data zveřejnění → vrácen na UVEREJNIT');
         }
       }
 
-      // Pokud POTVRZENA zmizí nebo je stornováno, odstranit jakékoliv zveřejňovací stavy
+      // Pokud POTVRZENA zmizí, odstranit zveřejňovací stavy
       if (!workflowStates.includes('POTVRZENA') || formData.stav_stornovano) {
         workflowStates = workflowStates.filter(s => !['UVEREJNIT', 'NEUVEREJNIT', 'UVEREJNENA'].includes(s));
-        addDebugLog('info', 'SAVE', 'workflow-update', 'Odebrány zveřejňovací stavy (není POTVRZENA nebo je stornováno)');
       }
 
-      // Určit režim platby (POKLADNA vs FAKTURA) - použito pro workflow větvení
-      const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
-      const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
-      const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
+      // ❌ DEPRECATED: POKLADNA režim - existuje vlastní modul Pokladní knihy
+      // Workflow v OrderForm25 již nepodporuje speciální POKLADNA logiku
 
-      // 🆕 POKLADNA: Po ODESLANA automaticky přidat VECNA_SPRAVNOST (přeskočí POTVRZENÍ, REGISTR, FAKTURACI)
-      // Pro POKLADNA skáčeme přímo z FÁZE 3 (ODESLANA) do FÁZE 7 (VECNA_SPRAVNOST)
-      if (isPokladna &&
-          (workflowStates.includes('ODESLANA') ||
-           workflowStates.includes('POTVRZENA') ||
-           workflowStates.includes('UVEREJNENA') ||
-           workflowStates.includes('NEUVEREJNIT')) &&
-          !formData.stav_stornovano) {
-        if (!workflowStates.includes('VECNA_SPRAVNOST')) {
-          workflowStates.push('VECNA_SPRAVNOST');
-          addDebugLog('info', 'SAVE', 'workflow-update', '🏪 Režim POKLADNA → přidán stav VECNA_SPRAVNOST (přeskočeny fáze 4-6) → FÁZE 7/8');
-        }
+      // 8. FAKTURACE - ✅ CENTRALIZOVÁNO v WorkflowManageru
+      const hasRealInvoices = formData.faktury && formData.faktury.length > 0 && 
+        formData.faktury.some(f => f.id || f.fa_cislo || f.fa_castka);
+      
+      console.log('🔍 FAKTURACE CHECK:', {
+        faktury_count: formData.faktury?.length || 0,
+        má_reálné_faktury: hasRealInvoices
+      });
+      
+      // Nepřidávat faktury pokud jsme ve fázi UVEREJNIT bez dat
+      const jeVeFaziUverejnit = workflowStates.includes('UVEREJNIT') && 
+        !workflowStates.includes('UVEREJNENA') && 
+        !workflowStates.includes('NEUVEREJNIT');
+      
+      if (!jeVeFaziUverejnit) {
+        workflowStates = workflowManager.handleInvoiceChange(workflowStates, hasRealInvoices, false); // isPokladna = false (deprecated)
+        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleInvoiceChange(hasInvoices=${hasRealInvoices}, isPokladna=${isPokladna})`);
       }
 
-      // 8. FAKTURACE - při přidání faktury (pouze když NENÍ pokladna)
-      // ✅ Pokud má objednávka faktury → přidat FAKTURACE (pokud ještě není) + VECNA_SPRAVNOST
-      if (!isPokladna && formData.faktury && formData.faktury.length > 0 && !formData.stav_stornovano) {
-        // Ujisti se že má FAKTURACE
-        if (!workflowStates.includes('FAKTURACE')) {
-          workflowStates.push('FAKTURACE');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav FAKTURACE (má faktury) → FÁZE 6/8');
-        }
-
-        // ✅ Automaticky přidat VECNA_SPRAVNOST (věcná kontrola) po FAKTURACI - AŽ KDYŽ JSOU FAKTURY
-        if (workflowStates.includes('FAKTURACE') && !workflowStates.includes('VECNA_SPRAVNOST')) {
-          workflowStates.push('VECNA_SPRAVNOST');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav VECNA_SPRAVNOST (má faktury) → FÁZE 7/8');
-        }
-      }
-
-      // 8.5. ZKONTROLOVANA - POUZE pokud VŠECHNY faktury mají potvrzenou per-invoice věcnou správnost
-      // ✅ NOVÁ LOGIKA: Kontrola per-invoice checkboxů pro KAŽDOU fakturu
-      // 🔐 WORKFLOW PRAVIDLA:
-      // - INVOICE_MANAGE (fakturant/účetní) → MŮŽE editovat FA → vrací workflow na VECNA_SPRAVNOST
-      // - Garant/Příkazce (bez INVOICE_MANAGE) → MŮŽE potvrdit věcnou → posune na ZKONTROLOVANA
+      // 8.5. ZKONTROLOVANA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
         (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
       
-      if (allFakturyVecneSpravny && !formData.stav_stornovano) {
-        if (!workflowStates.includes('ZKONTROLOVANA')) {
-          workflowStates.push('ZKONTROLOVANA');
-          addDebugLog('info', 'SAVE', 'workflow-update', `✅ VŠECHNY faktury (${formData.faktury.length}x) mají potvrzenou věcnou správnost → přidán stav ZKONTROLOVANA → FÁZE 8/8`);
-        }
-      } else {
-        // ✅ Odebrat ZKONTROLOVANA pokud NENÍ potvrzena věcná správnost VŠECH faktur
-        // Automaticky se vrátí na VECNA_SPRAVNOST → FÁZE 7/8
-        const hadZkontrolovana = workflowStates.includes('ZKONTROLOVANA');
-        workflowStates = workflowStates.filter(s => s !== 'ZKONTROLOVANA');
-        if (hadZkontrolovana) {
-          const nepotvrzeneFaktury = (formData.faktury || []).filter(f => !(f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true)).length;
-          addDebugLog('info', 'SAVE', 'workflow-update', `🔓 NEJSOU potvrzeny všechny faktury (${nepotvrzeneFaktury}x chybí) → odebrán stav ZKONTROLOVANA → návrat na FÁZI 7/8`);
-        }
+      workflowStates = workflowManager.handleQualityConfirmation(workflowStates, allFakturyVecneSpravny);
+      if (allFakturyVecneSpravny) {
+        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleQualityConfirmation(true) - všechny faktury (${formData.faktury.length}x) potvrzeny`);
       }
 
-      // 9. DOKONCENA - při potvrzení finálního dokončení checkboxem
-      // ✅ BEZ kontroly na faktury - objednávka může být dokončená i bez faktur
-      // ✅ Kontrola: obě checkboxy potvrzeny
+      // 9. DOKONCENA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const jeDokonceniPotvrzeno = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
-      // ✅ OPRAVA: Kontrolovat AKTUÁLNÍ stav workflowStates (po přidání ZKONTROLOVANA výše)
       const jeVecnaSprávnostPotvrzena = workflowStates.includes('ZKONTROLOVANA');
+      const mozeDokoncit = jeDokonceniPotvrzeno && jeVecnaSprávnostPotvrzena && !formData.stav_stornovano;
 
-      if (jeDokonceniPotvrzeno && jeVecnaSprávnostPotvrzena && !formData.stav_stornovano) {
-        if (!workflowStates.includes('DOKONCENA')) {
-          workflowStates.push('DOKONCENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav DOKONCENA - objednávka finálně dokončena');
-        }
-
-        // 🆕 Automaticky nastavit dokoncil_id a dt_dokonceni při prvním potvrzení
+      workflowStates = workflowManager.handleCompletion(workflowStates, mozeDokoncit);
+      if (mozeDokoncit) {
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleCompletion(true)');
+        // Automaticky nastavit dokoncil_id při prvním potvrzení
         if (!formData.dokoncil_id) {
           orderData.dokoncil_id = user_id;
-          orderData.dt_dokonceni = getMySQLDateTime(); // ✅ JEDNOTNÝ FORMÁT
-          addDebugLog('info', 'SAVE', 'dokonceni', `Nastaveno dokončení objednávky uživatelem ${user_id}`);
+          orderData.dt_dokonceni = getMySQLDateTime();
+          addDebugLog('info', 'SAVE', 'dokonceni', `Nastaveno dokončení uživatelem ${user_id}`);
         }
-      } else {
-        // Odstranit DOKONCENA pokud checkbox není zaškrtnutý
-        workflowStates = workflowStates.filter(s => s !== 'DOKONCENA');
       }
 
       // FINÁLNÍ KONTROLA A ÚPRAVY
       // Odstraň duplicity (zachovej pořadí)
       workflowStates = [...new Set(workflowStates)];
 
-      // 🔧 KRITICKÁ OPRAVA: Odstranit STARÉ/NEPLATNÉ workflow stavy
+      // � DEBUG: Výpis workflow stavu před seřazením
+      console.log('🔍 WORKFLOW DEBUG - PŘED SEŘAZENÍM:', {
+        workflowStates: [...workflowStates],
+        isPokladna: isPokladna,
+        financovani_platba: formData.financovani?.platba,
+        dodavatel_platba: formData.dodavatel_zpusob_potvrzeni?.platba
+      });
+
+      // �🔧 KRITICKÁ OPRAVA: Odstranit STARÉ/NEPLATNÉ workflow stavy
       // Odstranit K_DOKONCENI - již se nepoužívá, nahrazeno ZKONTROLOVANA + DOKONCENA
       workflowStates = workflowStates.filter(s => s !== 'K_DOKONCENI');
 
@@ -10370,6 +10362,13 @@ function OrderForm25() {
         const indexA = workflowOrder.indexOf(a);
         const indexB = workflowOrder.indexOf(b);
         return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+      });
+
+      // 🔍 DEBUG: Finální workflow před uložením
+      console.log('🔍 WORKFLOW DEBUG - FINÁLNÍ PŘED ULOŽENÍM:', {
+        workflowStates: [...workflowStates],
+        poslední_stav: workflowStates[workflowStates.length - 1],
+        jako_string: JSON.stringify(workflowStates)
       });
 
       orderData.stav_workflow_kod = JSON.stringify(workflowStates);
@@ -17225,13 +17224,16 @@ function OrderForm25() {
       const validationWorkflowCode = currentPhase === 1 ? 'NOVA' : mainWorkflowState;
 
       // ✅ Připrav informaci o viditelnosti a zamčení sekcí
+      // ✅ KRITICKÉ: Použít extendedSectionStates pro registr_smluv_vyplneni, protože ten filtruje podle práv!
+      const registrVyplneniExtended = extendedSectionStates.registr_smluv_vyplneni || registrVyplneniState;
+      
       const sectionStates = {
         phase1: { visible: currentPhase >= 1, locked: shouldLockPhase1Sections },
         phase2: { visible: currentPhase >= 2, locked: shouldLockPhase2Sections },
         financovani: { visible: financovaniState.visible, locked: !financovaniState.enabled }, // Samostatná sekce pro financování
         phase3: { visible: currentPhase >= 3, locked: shouldLockPhase3Sections },
         phase4to6: { visible: currentPhase >= 4, locked: shouldLockPhase4to6Sections },
-        registr_smluv_vyplneni: { visible: registrVyplneniState.visible, locked: isRegistrVyplneniLocked } // FÁZE 5: Zveřejnění
+        registr_smluv_vyplneni: { visible: registrVyplneniExtended.visible, locked: !registrVyplneniExtended.enabled } // FÁZE 5: Zveřejnění - s filtrem práv
       };
 
       // ✅ FIX: Merge errors místo přepsání - jinak ztratíme FÁZE 5 validaci!
@@ -17370,9 +17372,9 @@ function OrderForm25() {
             errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Zadejte variabilní symbol faktury`;
           }
 
-          // Částka je povinná a musí být větší než 0
-          if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
-            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury (musí být větší než 0 Kč)`;
+          // Částka je povinná (může být 0 nebo záporná)
+          if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
+            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury`;
           }
 
           // Datum doručení je povinné - kontroluj fa_datum_doruceni (ne fa_dorucena, to je boolean)
@@ -17696,7 +17698,7 @@ function OrderForm25() {
             errors[`${fakturaPrefix}_cislo`] = `Variabilní symbol je povinný`;
           }
 
-          if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
+          if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
             errors[`${fakturaPrefix}_castka`] = `Částka je povinná`;
           }
 
@@ -27186,22 +27188,40 @@ function OrderForm25() {
           ? formData.stav_workflow_kod
           : (formData.stav_workflow_kod ? [formData.stav_workflow_kod] : []);
 
-        // Odebrat UVEREJNENA (pokud existuje) a přidat UVEREJNIT
-        const updatedStates = currentStates.filter(s => s !== 'UVEREJNENA');
+        // 🔧 FIX: Při odemykání bloku pro UVEREJNIT je nutné odebrat VŠECHNY následující fáze
+        // Povolené stavy pro FÁZI 5 (UVEREJNIT): SCHVALENA, ODESLANA, POTVRZENA, UVEREJNIT
+        const allowedStatesPhase5 = ['SCHVALENA', 'ODESLANA', 'POTVRZENA', 'UVEREJNIT'];
+        const higherPhaseStates = ['UVEREJNENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'];
+        
+        // Odebrat všechny vyšší fáze než FÁZE 5
+        let updatedStates = currentStates.filter(s => !higherPhaseStates.includes(s));
+        
+        // Ujistit se, že jsou tam základní stavy pro FÁZI 5
+        if (!updatedStates.includes('SCHVALENA')) updatedStates.push('SCHVALENA');
+        if (!updatedStates.includes('ODESLANA')) updatedStates.push('ODESLANA');
+        if (!updatedStates.includes('POTVRZENA')) updatedStates.push('POTVRZENA');
+        
+        // Přidat UVEREJNIT na konec
         if (!updatedStates.includes('UVEREJNIT')) {
           updatedStates.push('UVEREJNIT');
         }
 
-        // Ujistit se, že jsou tam základní stavy pro FÁZI 5
-        if (!updatedStates.includes('ODESLANA')) updatedStates.push('ODESLANA');
-        if (!updatedStates.includes('POTVRZENA')) updatedStates.push('POTVRZENA');
-
         setFormData(prev => ({
           ...prev,
-          stav_workflow_kod: updatedStates
+          stav_workflow_kod: updatedStates,
+          // Vymazat data z vyšších fází
+          dt_zverejneni: '',
+          registr_iddt: '',
+          zverejnil_id: null,
+          vecna_spravnost_potvrzeno: 0,
+          dt_potvrzeni_vecne_spravnosti: '',
+          potvrdil_vecnou_spravnost_id: null,
+          potvrzeni_dokonceni_objednavky: 0,
+          dt_dokonceni: '',
+          dokoncil_id: null
         }));
 
-        addDebugLog('info', 'UNLOCK', 'registr-vyplneni', 'Odemčena sekce Registr smluv - nastaveno UVEREJNIT (FÁZE 5)');
+        addDebugLog('info', 'UNLOCK', 'registr-vyplneni', '🔓 Odemčena FÁZE 5 (UVEREJNIT) - odstraněny vyšší fáze (FAKTURACE, VECNA_SPRAVNOST, DOKONCENA)');
 
         // Okamžité uložení
         setTimeout(() => {
@@ -27318,22 +27338,27 @@ function OrderForm25() {
         setShowUnlockFakturaceConfirm(false);
         workflowManager.unlockSection('fakturace');
 
-        // ✅ Odebrat FAKTURACE + VŠE CO NÁSLEDUJE → návrat na FÁZI 6
+        // ✅ Odebrat VŠE CO JE VÝŠE NEŽ FAKTURACE → vrátit na FÁZI 6 (FAKTURACE)
         const currentStates = Array.isArray(formData.stav_workflow_kod)
           ? formData.stav_workflow_kod
           : (formData.stav_workflow_kod ? [formData.stav_workflow_kod] : []);
 
-        // Odebrat FAKTURACE a všechny vyšší stavy
+        // Odebrat pouze VYŠŠÍ stavy než FAKTURACE, FAKTURACE ponechat
         const updatedStates = currentStates.filter(s =>
-          !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s)
+          !['VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s)
         );
+        
+        // Zajistit že FAKTURACE tam je (pro návrat na fázi 6)
+        if (!updatedStates.includes('FAKTURACE')) {
+          updatedStates.push('FAKTURACE');
+        }
 
         setFormData(prev => ({
           ...prev,
           stav_workflow_kod: updatedStates
         }));
 
-        addDebugLog('info', 'UNLOCK', 'fakturace', 'Odemčena sekce Fakturace - odebrány stavy FAKTURACE, KONTROLA, ZKONTROLOVANA, DOKONCENA → FÁZE 6/8');
+        addDebugLog('info', 'UNLOCK', 'fakturace', 'Odemčena sekce Fakturace - odebrány stavy VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA → FÁZE 6 (FAKTURACE)');
 
         // 🔄 Reset vyšších checkboxů
         resetHigherPhaseCheckboxes('fakturace');
@@ -27347,7 +27372,7 @@ function OrderForm25() {
     >
       <p>Opravdu chcete odemknout sekci <strong>Fakturace</strong> pro editaci?</p>
       <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>
-        Budou odebrány stavy <strong>FAKTURACE, VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA</strong> a workflow se vrátí na <strong>FÁZI 6/8</strong>.
+        Budou odebrány stavy <strong>VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA</strong> a workflow se vrátí na <strong>FÁZI 6 (FAKTURACE)</strong>.
       </p>
     </ConfirmDialog>
 

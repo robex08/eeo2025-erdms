@@ -1174,8 +1174,9 @@ const FloatingNavigator = ({
 
     // ✅ Používat section states přímo z WorkflowManager (přes allSectionStates)
     // Všechny podmínky viditelnosti jsou už vyřešené v OrderForm25 (extendedSectionStates)
+    // 🔒 KRITICKÉ: Použít === true, ne !== false, aby undefined = skrytá sekce!
     return {
-      visible: sectionState.visible !== false, // sekce je viditelná
+      visible: sectionState.visible === true, // sekce je viditelná POUZE pokud explicitně true
       enabled: sectionState.enabled !== false  // sekce je enabled (ne disabled)
     };
   }, [allSectionStates]);
