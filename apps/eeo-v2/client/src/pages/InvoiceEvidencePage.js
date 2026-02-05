@@ -4481,10 +4481,34 @@ export default function InvoiceEvidencePage() {
       };
 
       let result;
+      
+      // 🔍 DETEKCE ZMĚN: Pokud se změnily klíčové údaje faktury (částka, VS, datum doručení, datum vystavení),
+      // MUSÍME RESETOVAT věcnou správnost na 0 a vrátit workflow na VECNA_SPRAVNOST
+      let shouldResetVecnaSpravnost = false;
+      
+      if (editingInvoiceId) {
+        const originalInvoice = invoices.find(inv => inv.id === editingInvoiceId);
+        
+        if (originalInvoice && formData.vecna_spravnost_potvrzeno === 1) {
+          // Kontrola změny klíčových polí faktury
+          const keyFieldsChanged = (
+            originalInvoice.fa_castka !== formData.fa_castka ||
+            originalInvoice.fa_cislo_vema !== formData.fa_cislo_vema ||
+            originalInvoice.fa_datum_doruceni !== formData.fa_datum_doruceni ||
+            originalInvoice.fa_datum_vystaveni !== formData.fa_datum_vystaveni ||
+            originalInvoice.fa_datum_splatnosti !== formData.fa_datum_splatnosti
+          );
+          
+          if (keyFieldsChanged) {
+            shouldResetVecnaSpravnost = true;
+          }
+        }
+      }
 
       if (editingInvoiceId) {
         // EDITACE - UPDATE faktury
         // updateInvoiceV2 očekává updateData jako separátní objekt
+        
         const updateData = {
           objednavka_id: formData.order_id || null,
           smlouva_id: formData.smlouva_id || null,
@@ -4501,12 +4525,12 @@ export default function InvoiceEvidencePage() {
           fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
-          // 🆕 VĚCNÁ SPRÁVNOST - přidat všechna pole (opraveno: používat správné názvy z formData)
-          vecna_spravnost_umisteni_majetku: formData.vecna_spravnost_umisteni_majetku || '',
-          vecna_spravnost_poznamka: formData.vecna_spravnost_poznamka || '',
-          vecna_spravnost_potvrzeno: formData.vecna_spravnost_potvrzeno || 0,
-          potvrdil_vecnou_spravnost_id: formData.potvrdil_vecnou_spravnost_id || null,
-          dt_potvrzeni_vecne_spravnosti: formData.dt_potvrzeni_vecne_spravnosti || null
+          // 🆕 VĚCNÁ SPRÁVNOST - RESETOVAT NA 0 pokud se změnily klíčové údaje faktury
+          vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (formData.vecna_spravnost_umisteni_majetku || ''),
+          vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (formData.vecna_spravnost_poznamka || ''),
+          vecna_spravnost_potvrzeno: shouldResetVecnaSpravnost ? 0 : (formData.vecna_spravnost_potvrzeno || 0),
+          potvrdil_vecnou_spravnost_id: shouldResetVecnaSpravnost ? null : (formData.potvrdil_vecnou_spravnost_id || null),
+          dt_potvrzeni_vecne_spravnosti: shouldResetVecnaSpravnost ? null : (formData.dt_potvrzeni_vecne_spravnosti || null)
         };
         
         // 🎯 Progress - aktualizace faktury
@@ -4627,11 +4651,14 @@ export default function InvoiceEvidencePage() {
           
           if (editingInvoiceId && !isAddingOrderToExistingInvoice) {
             // EDITACE existující faktury která UŽ MĚLA objednávku
-            if (currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
+            // 🔥 DŮLEŽITÉ: Pokud se změnily klíčové údaje faktury (částka, VS, datum), MUSÍME vrátit workflow na VECNA_SPRAVNOST
+            if (shouldResetVecnaSpravnost || currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
               // Vrátit zpět na VECNA_SPRAVNOST - musí projít novou kontrolou
-              stavKody.pop(); // Odstraň poslední stav (ZKONTROLOVANA/DOKONCENA)
-              if (currentState === 'DOKONCENA' && stavKody[stavKody.length - 1] === 'ZKONTROLOVANA') {
-                stavKody.pop(); // Odstraň i ZKONTROLOVANA pokud tam je
+              if (currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
+                stavKody.pop(); // Odstraň poslední stav (ZKONTROLOVANA/DOKONCENA)
+                if (currentState === 'DOKONCENA' && stavKody[stavKody.length - 1] === 'ZKONTROLOVANA') {
+                  stavKody.pop(); // Odstraň i ZKONTROLOVANA pokud tam je
+                }
               }
               // Ujisti se že má VECNA_SPRAVNOST
               if (stavKody[stavKody.length - 1] !== 'VECNA_SPRAVNOST') {
@@ -4639,8 +4666,7 @@ export default function InvoiceEvidencePage() {
               }
               needsUpdate = true;
             }
-            // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
-            // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
+            // Pokud je už ve VECNA_SPRAVNOST a nebyly změny, necháme beze změny
           } else {
             // NOVÁ FAKTURA nebo PŘIŘAZENÍ FAKTURY K OBJEDNÁVCE
             if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA') {
