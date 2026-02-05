@@ -1586,11 +1586,7 @@ const OrdersTableV3 = ({
                   e.stopPropagation();
                   try {
                     const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
-                    console.log('🔍 [APPROVAL] Order detail loaded:', orderDetail);
-                    console.log('🔍 [APPROVAL] Financování:', orderDetail.financovani);
-                    console.log('🔍 [APPROVAL] _enriched:', orderDetail._enriched);
-                    console.log('🔍 [APPROVAL] lp_info:', orderDetail._enriched?.lp_info);
-                    console.log('🔍 [APPROVAL] smlouva_info:', orderDetail._enriched?.smlouva_info);
+                    // DEBUG: Order detail loaded with enriched data
                     setOrderToApprove(orderDetail);
                     setApprovalComment(orderDetail.schvaleni_komentar || '');
                     setShowApprovalDialog(true);

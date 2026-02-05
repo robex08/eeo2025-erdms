@@ -3366,7 +3366,8 @@ export default function InvoiceEvidencePage() {
 
   // � Handler: Odpojit fakturu od objednávky
   const handleUnlinkInvoice = useCallback((faktura) => {
-    console.log('🔍 UNLINK DEBUG - handleUnlinkInvoice volán pro fakturu:', faktura);
+    // DEBUG: handleUnlinkInvoice
+    // console.log('🔍 UNLINK DEBUG - handleUnlinkInvoice volán pro fakturu:', faktura);
     setConfirmDialog({
       isOpen: true,
       title: '⚠️ Odpojit fakturu od objednávky?',
@@ -3378,13 +3379,15 @@ export default function InvoiceEvidencePage() {
         `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n\n` +
         `⚠️ Tuto akci NELZE vzít zpět!`,
       onConfirm: async () => {
-        console.log('🔍 UNLINK DEBUG - onConfirm callback spuštěn pro fakturu ID:', faktura.id);
+        // DEBUG: onConfirm callback
+        // console.log('🔍 UNLINK DEBUG - onConfirm callback spuštěn pro fakturu ID:', faktura.id);
         try {
           // Zavřít dialog
           setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
           
           // Zavolat API pro odpojení faktury
-          console.log('🔍 UNLINK DEBUG - Odesílám updateData:', {
+          // DEBUG: Odesílám updateData
+          // console.log('🔍 UNLINK DEBUG - Odesílám updateData:', {
             objednavka_id: null,
             vecna_spravnost_potvrzeno: 0,
             potvrdil_vecnou_spravnost_id: null,

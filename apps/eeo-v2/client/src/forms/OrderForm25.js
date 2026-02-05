@@ -7417,41 +7417,16 @@ function OrderForm25() {
           const lsKey = `order25_draft_${user_id}`;
           const existingLS = localStorage.getItem(lsKey);
           if (existingLS) {
-            try {
-              const parsed = JSON.parse(existingLS);
-              console.log('🔍 LOCALSTORAGE PŘED syncWithDatabase:', {
-                má_draft_v_LS: true,
-                stav_workflow_kod_v_LS: parsed.formData?.stav_workflow_kod,
-                timestamp_LS: parsed.timestamp
-              });
-            } catch (e) {
-              console.log('🔍 LOCALSTORAGE chyba parsování:', e);
-            }
-          } else {
-            console.log('🔍 LOCALSTORAGE PŘED syncWithDatabase: PRÁZDNÝ');
+            // DEBUG: Draft v localStorage před sync
           }
           
-          console.log('🔍 NAČTENÍ Z DB - PŘED syncWithDatabase:', {
-            stav_workflow_kod_z_DB: dbOrder.stav_workflow_kod,
-            stav_workflow_kod_v_formData: freshDraft.formData.stav_workflow_kod
-          });
+          // DEBUG: Načtení z DB před sync
           
           await draftManager.syncWithDatabase(freshDraft.formData, orderId);
           
-          // 🔍 DEBUG: Co je v localStorage PO uložení
-          const afterLS = localStorage.getItem(lsKey);
-          if (afterLS) {
-            try {
-              const parsed = JSON.parse(afterLS);
-              console.log('🔍 LOCALSTORAGE PO syncWithDatabase:', {
-                stav_workflow_kod_v_LS: parsed.formData?.stav_workflow_kod
-              });
-            } catch (e) {}
-          }
+          // DEBUG: localStorage PO syncWithDatabase
           
-          console.log('🔍 NAČTENÍ Z DB - PO syncWithDatabase:', {
-            stav_workflow_kod_v_formData: freshDraft.formData.stav_workflow_kod
-          });
+          // DEBUG: Načtení z DB PO syncWithDatabase
 
           // ✅ PŘIDAT: Explicitně ulož metadata pro EDIT mode
           draftManager.saveMetadata({
@@ -10306,12 +10281,10 @@ function OrderForm25() {
         const hasDatum = formData.dt_zverejneni;
         const hasIddt = formData.registr_iddt;
         
-        console.log('🔍 ZVEŘEJNĚNÍ CHECK:', {
-          maBytZverejnena,
-          dt_zverejneni: hasDatum,
-          registr_iddt: hasIddt,
-          workflow_PŘED: [...workflowStates]
-        });
+        // DEBUG: Zveřejnění check
+        // console.log('🔍 ZVEŘEJNĚNÍ CHECK:', {
+        //   maBytZverejnena, dt_zverejneni: hasDatum, registr_iddt: hasIddt, workflow: workflowStates
+        // });
         
         // ✅ POUŽÍT WorkflowManager.handlePublishDecision()
         workflowStates = workflowManager.handlePublishDecision(workflowStates, maBytZverejnena);
@@ -10346,10 +10319,8 @@ function OrderForm25() {
       const hasRealInvoices = formData.faktury && formData.faktury.length > 0 && 
         formData.faktury.some(f => f.id || f.fa_cislo || f.fa_castka);
       
-      console.log('🔍 FAKTURACE CHECK:', {
-        faktury_count: formData.faktury?.length || 0,
-        má_reálné_faktury: hasRealInvoices
-      });
+      // DEBUG: Fakturace check
+      // console.log('🔍 FAKTURACE CHECK:', { faktury_count, má_reálné_faktury: hasRealInvoices });
       
       // Nepřidávat faktury pokud jsme ve fázi UVEREJNIT bez dat
       const jeVeFaziUverejnit = workflowStates.includes('UVEREJNIT') && 

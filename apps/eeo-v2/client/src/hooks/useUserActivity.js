@@ -129,7 +129,6 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
 
     // Cleanup při unmount
     return () => {
-      console.log('🛑 useUserActivity unmounting - stopping activity tracking & keepalive');
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
