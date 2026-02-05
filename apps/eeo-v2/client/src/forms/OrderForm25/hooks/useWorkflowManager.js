@@ -505,7 +505,17 @@ const calculateCurrentPhase = (formData) => {
     'NOVA': 1
   };
 
-  return stateToPhaseMap[lastState] || 1;
+  const phase = stateToPhaseMap[lastState] || 1;
+  
+  // 🔍 DEBUG: Výpis aktuální fáze
+  console.log('🔍 WORKFLOW MANAGER - CALCULATE PHASE:', {
+    stav_workflow_kod: formData.stav_workflow_kod,
+    workflowStates: workflowStates,
+    lastState: lastState,
+    calculatedPhase: phase
+  });
+
+  return phase;
 };
 
 /**
@@ -656,7 +666,266 @@ const preparePhase4Unlock = (formData) => {
 };
 
 /**
+ * ============================================================================
+ * 🎯 WORKFLOW STATE MANAGEMENT - Centralizované řízení stavů workflow
+ * ============================================================================
+ * 
+ * Tyto metody spravují VŠECHNY přechody mezi stavy workflow.
+ * ŽÁDNÁ jiná část kódu by neměla manipulovat se stav_workflow_kod!
+ */
+
+/**
+ * Základní pořadí stavů workflow
+ */
+const WORKFLOW_ORDER = [
+  'ODESLANA_KE_SCHVALENI',
+  'CEKA_SE',
+  'ZAMITNUTA',
+  'SCHVALENA',
+  'ROZPRACOVANA',
+  'ODESLANA',
+  'ZRUSENA',
+  'POTVRZENA',
+  'UVEREJNIT',
+  'UVEREJNENA',
+  'NEUVEREJNIT',
+  'FAKTURACE',
+  'VECNA_SPRAVNOST',
+  'ZKONTROLOVANA',
+  'DOKONCENA'
+];
+
+/**
+ * Přidá stav do workflow (pokud ještě není)
+ */
+const addWorkflowState = (currentStates, newState) => {
+  const states = Array.isArray(currentStates) ? [...currentStates] : parseWorkflowStates(currentStates);
+  if (!states.includes(newState)) {
+    states.push(newState);
+  }
+  return states;
+};
+
+/**
+ * Odebere stav z workflow
+ */
+const removeWorkflowState = (currentStates, stateToRemove) => {
+  const states = Array.isArray(currentStates) ? [...currentStates] : parseWorkflowStates(currentStates);
+  return states.filter(s => s !== stateToRemove);
+};
+
+/**
+ * Odebere všechny stavy vyšší než zadaný stav (podle WORKFLOW_ORDER)
+ */
+const removeStatesAfter = (currentStates, afterState) => {
+  const states = Array.isArray(currentStates) ? [...currentStates] : parseWorkflowStates(currentStates);
+  const afterIndex = WORKFLOW_ORDER.indexOf(afterState);
+  if (afterIndex === -1) return states;
+  
+  const allowedStates = WORKFLOW_ORDER.slice(0, afterIndex + 1);
+  return states.filter(s => allowedStates.includes(s));
+};
+
+/**
+ * 1️⃣ Schválení objednávky
+ */
+export const handleApproval = (currentWorkflow, skipWaitingStates = false) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  // Odebrat konkurenční stavy
+  states = states.filter(s => !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA'].includes(s));
+  
+  states = addWorkflowState(states, 'SCHVALENA');
+  return states;
+};
+
+/**
+ * 1️⃣B Čeká se na schválení
+ */
+export const handleWaitingForApproval = (currentWorkflow) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  // Odebrat konkurenční stavy
+  states = states.filter(s => !['ODESLANA_KE_SCHVALENI', 'ZAMITNUTA', 'SCHVALENA'].includes(s));
+  
+  states = addWorkflowState(states, 'CEKA_SE');
+  return states;
+};
+
+/**
+ * 2️⃣ Zamítnutí objednávky
+ */
+export const handleRejection = (currentWorkflow) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  // Odebrat SCHVALENA a všechny vyšší stavy
+  states = states.filter(s => !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'UVEREJNIT', 'UVEREJNENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
+  states = addWorkflowState(states, 'ZAMITNUTA');
+  return states;
+};
+
+/**
+ * 3️⃣A Rozpracování schválené objednávky
+ * Přidá ROZPRACOVANA pouze pokud už byla SCHVALENA (editace po schválení)
+ */
+export const handleWorkInProgress = (currentWorkflow, wasAlreadyApproved) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  // Přidat ROZPRACOVANA pouze pokud už byla SCHVALENA předtím
+  if (wasAlreadyApproved && states.includes('SCHVALENA') && !states.includes('ODESLANA')) {
+    states = addWorkflowState(states, 'ROZPRACOVANA');
+  } else {
+    // Jinak odebrat (nemělo by být tam)
+    states = removeWorkflowState(states, 'ROZPRACOVANA');
+  }
+  
+  return states;
+};
+
+/**
+ * 3️⃣B Odeslání dodavateli
+ */
+export const handleSendToSupplier = (currentWorkflow) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  states = addWorkflowState(states, 'SCHVALENA');
+  states = addWorkflowState(states, 'ODESLANA');
+  return states;
+};
+
+/**
+ * 4️⃣ Potvrzení dodavatelem
+ */
+export const handleSupplierConfirmation = (currentWorkflow, isConfirmed) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  if (isConfirmed) {
+    states = addWorkflowState(states, 'POTVRZENA');
+  } else {
+    // Pokud dodavatel NEpotvrdil, vrátit na ODESLANA (odebrat POTVRZENA a vše za ní)
+    states = removeStatesAfter(states, 'ODESLANA');
+  }
+  
+  return states;
+};
+
+/**
+ * 5️⃣ Rozhodnutí o zveřejnění v registru smluv
+ */
+export const handlePublishDecision = (currentWorkflow, shouldPublish) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  // Odstranit předchozí rozhodnutí
+  states = states.filter(s => s !== 'UVEREJNIT' && s !== 'NEUVEREJNIT' && s !== 'UVEREJNENA');
+  
+  if (shouldPublish) {
+    states = addWorkflowState(states, 'UVEREJNIT');
+  } else {
+    states = addWorkflowState(states, 'NEUVEREJNIT');
+    // Automaticky přidat FAKTURACE
+    states = addWorkflowState(states, 'FAKTURACE');
+  }
+  
+  return states;
+};
+
+/**
+ * 6️⃣ Vyplnění registru smluv (datum + IDDT) = skutečné zveřejnění
+ */
+export const handlePublishing = (currentWorkflow, hasDatum, hasIddt) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  if (hasDatum && hasIddt) {
+    // Vyplněno → přejít na UVEREJNENA
+    states = removeWorkflowState(states, 'UVEREJNIT');
+    states = addWorkflowState(states, 'UVEREJNENA');
+    states = addWorkflowState(states, 'FAKTURACE');
+    // Odstranit vyšší fáze (pokud tam byly z předchozích změn)
+    states = states.filter(s => !['VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
+  } else {
+    // Smazáno → vrátit na UVEREJNIT
+    states = removeWorkflowState(states, 'UVEREJNENA');
+    states = states.filter(s => !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
+    states = addWorkflowState(states, 'UVEREJNIT');
+  }
+  
+  return states;
+};
+
+/**
+ * 7️⃣ Přidání/změna faktur
+ * ⚠️ DEPRECATED: isPokladna parameter již není používán (vlastní modul Pokladní knihy)
+ */
+export const handleInvoiceChange = (currentWorkflow, hasInvoices, isPokladna = false) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  // ❌ POKLADNA režim byl DEPRECATED - již se nepoužívá
+  
+  // Normální režim fakturace
+  if (hasInvoices) {
+    states = addWorkflowState(states, 'FAKTURACE');
+    
+    // ✅ Pokud je už ve fázi FAKTURACE a uživatel klikne ULOŽIT → posunout na VECNA_SPRAVNOST
+    if (states.includes('FAKTURACE')) {
+      states = addWorkflowState(states, 'VECNA_SPRAVNOST');
+    }
+  } else {
+    // Žádné faktury → odebrat FAKTURACE, VECNA_SPRAVNOST a ZKONTROLOVANA
+    states = states.filter(s => !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'].includes(s));
+  }
+  
+  return states;
+};
+
+/**
+ * 8️⃣ Potvrzení věcné správnosti (per-invoice checkboxy)
+ */
+export const handleQualityConfirmation = (currentWorkflow, allInvoicesConfirmed) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  if (allInvoicesConfirmed) {
+    // Všechny faktury potvrzeny → ZKONTROLOVANA
+    states = addWorkflowState(states, 'ZKONTROLOVANA');
+  } else {
+    // Některé faktury NEpotvrzeny → odebrat ZKONTROLOVANA
+    states = removeWorkflowState(states, 'ZKONTROLOVANA');
+  }
+  
+  return states;
+};
+
+/**
+ * 9️⃣ Dokončení objednávky
+ */
+export const handleCompletion = (currentWorkflow, isCompleted) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  if (isCompleted) {
+    states = addWorkflowState(states, 'DOKONCENA');
+  } else {
+    states = removeWorkflowState(states, 'DOKONCENA');
+  }
+  
+  return states;
+};
+
+/**
+ * 🔟 Storno objednávky
+ */
+export const handleCancellation = (currentWorkflow, isCancelled) => {
+  let states = parseWorkflowStates(currentWorkflow);
+  
+  if (isCancelled) {
+    states = addWorkflowState(states, 'ZRUSENA');
+  } else {
+    states = removeWorkflowState(states, 'ZRUSENA');
+  }
+  
+  return states;
+};
+
+/**
+ * ============================================================================
  * 🎯 HLAVNÍ HOOK - useWorkflowManager
+ * ============================================================================
  *
  * Poskytuje centralizovaný přístup k workflow logice:
  * - getCurrentPhase() - aktuální fáze (1-10)
@@ -961,6 +1230,20 @@ export const useWorkflowManager = (formData, isArchived = false) => {
     unlockPhase2,              // Odemkne FÁZI 2 (Přílohy) - připraví data
     unlockPhase3,              // Odemkne FÁZI 3 (Financování, Dodavatel...) - připraví data
     unlockPhase4,              // Odemkne FÁZI 4 (Potvrzení dodavatele) - připraví data
+
+    // 🆕 WORKFLOW STATE MANAGEMENT - Centralizované řízení všech přechodů
+    handleApproval,            // Schválení objednávky
+    handleWaitingForApproval,  // Čeká se na schválení (CEKA_SE)
+    handleRejection,           // Zamítnutí objednávky
+    handleWorkInProgress,      // Rozpracování (ROZPRACOVANA)
+    handleSendToSupplier,      // Odeslání dodavateli
+    handleSupplierConfirmation, // Potvrzení dodavatelem
+    handlePublishDecision,     // Rozhodnutí o zveřejnění
+    handlePublishing,          // Vyplnění registru (datum + IDDT)
+    handleInvoiceChange,       // Přidání/změna faktur
+    handleQualityConfirmation, // Potvrzení věcné správnosti
+    handleCompletion,          // Dokončení objednávky
+    handleCancellation,        // Storno objednávky
 
     // Helper functions
     getCurrentPhase: getCurrentPhaseCallback,

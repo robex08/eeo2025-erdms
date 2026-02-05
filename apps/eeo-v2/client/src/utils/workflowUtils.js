@@ -380,10 +380,14 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
   // Pokud je checkbox "Má být zveřejněna" zaškrtnutý, pak jsou POVINNÁ:
   // - dt_zverejneni (Datum zveřejnění VZ)
   // - registr_iddt (Identifikátor IDDT)
+  // 🔒 VALIDACE POUZE pokud je sekce registr_smluv_vyplneni viditelná A odemčená
+  // (což znamená, že uživatel má právo ORDER_PUBLISH_REGISTRY)
   if (formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1) {
     // Zkontroluj, zda je sekce registr_smluv_vyplneni viditelná a odemčená
     const registrSection = sectionStates?.registr_smluv_vyplneni;
-    const shouldValidateRegistr = !registrSection || (registrSection.visible && !registrSection.locked);
+    // ✅ OPRAVA: Validovat POUZE pokud je sekce explicitně viditelná A odemčená
+    // Pokud registrSection není definována, NEVALIDOVAT (uživatel nemá právo)
+    const shouldValidateRegistr = registrSection && registrSection.visible && !registrSection.locked;
     
     if (shouldValidateRegistr) {
       if (!formData.dt_zverejneni || !String(formData.dt_zverejneni).trim()) {
