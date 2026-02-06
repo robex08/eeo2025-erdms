@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DOCX Template Data Handler
  * Speciální endpoint pro generování DOCX šablon s kompletně rozvinutými daty
@@ -12,8 +13,9 @@
  * @return string Naformátovaná částka s mezerou jako tisícovým oddělovačem a jednotkou " Kč"
  */
 function format_cz_currency($value) {
-    // Formátování s 2 des. místy, mezera jako tisícový oddělovač, tečka jako des. oddělovač, jednotka Kč
-    return number_format((float)$value, 2, '.', ' ') . ' Kč';
+    // Formátování s 2 des. místy, mezera jako tisícový oddělovač, ČÁRKA jako des. oddělovač (český standard)
+    // Čárka zabrání MS Word interpretaci čísla jako data (např. 01.02.8157 -> 1. února 8157)
+    return number_format((float)$value, 2, ',', ' ') . ' Kč';
 }
 
 /**
@@ -162,22 +164,22 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
                 pu_poz.nazev_pozice AS prikazce_pozice_nazev,
                 pu_lok.nazev AS prikazce_lokalita_nazev
                 
-            FROM 25a_objednavky o
-            LEFT JOIN 25_uzivatele ob ON o.objednatel_id = ob.id
-            LEFT JOIN 25_pozice ob_poz ON ob.pozice_id = ob_poz.id
-            LEFT JOIN 25_lokality ob_lok ON ob.lokalita_id = ob_lok.id
-            LEFT JOIN 25_uzivatele gu ON o.garant_uzivatel_id = gu.id
-            LEFT JOIN 25_pozice gu_poz ON gu.pozice_id = gu_poz.id
-            LEFT JOIN 25_lokality gu_lok ON gu.lokalita_id = gu_lok.id
-            LEFT JOIN 25_uzivatele cu ON o.uzivatel_id = cu.id
-            LEFT JOIN 25_pozice cu_poz ON cu.pozice_id = cu_poz.id
-            LEFT JOIN 25_lokality cu_lok ON cu.lokalita_id = cu_lok.id
-            LEFT JOIN 25_uzivatele su ON o.schvalovatel_id = su.id
-            LEFT JOIN 25_pozice su_poz ON su.pozice_id = su_poz.id
-            LEFT JOIN 25_lokality su_lok ON su.lokalita_id = su_lok.id
-            LEFT JOIN 25_uzivatele pu ON o.prikazce_id = pu.id
-            LEFT JOIN 25_pozice pu_poz ON pu.pozice_id = pu_poz.id
-            LEFT JOIN 25_lokality pu_lok ON pu.lokalita_id = pu_lok.id
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN " . TBL_UZIVATELE . " ob ON o.objednatel_id = ob.id
+            LEFT JOIN " . TBL_POZICE . " ob_poz ON ob.pozice_id = ob_poz.id
+            LEFT JOIN " . TBL_LOKALITY . " ob_lok ON ob.lokalita_id = ob_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " gu ON o.garant_uzivatel_id = gu.id
+            LEFT JOIN " . TBL_POZICE . " gu_poz ON gu.pozice_id = gu_poz.id
+            LEFT JOIN " . TBL_LOKALITY . " gu_lok ON gu.lokalita_id = gu_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " cu ON o.uzivatel_id = cu.id
+            LEFT JOIN " . TBL_POZICE . " cu_poz ON cu.pozice_id = cu_poz.id
+            LEFT JOIN " . TBL_LOKALITY . " cu_lok ON cu.lokalita_id = cu_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " su ON o.schvalovatel_id = su.id
+            LEFT JOIN " . TBL_POZICE . " su_poz ON su.pozice_id = su_poz.id
+            LEFT JOIN " . TBL_LOKALITY . " su_lok ON su.lokalita_id = su_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " pu ON o.prikazce_id = pu.id
+            LEFT JOIN " . TBL_POZICE . " pu_poz ON pu.pozice_id = pu_poz.id
+            LEFT JOIN " . TBL_LOKALITY . " pu_lok ON pu.lokalita_id = pu_lok.id
             WHERE o.id = :objednavka_id AND o.aktivni = 1
         ";
         
@@ -200,7 +202,7 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
                     jmeno,
                     prijmeni,
                     titul_za
-                FROM 25_uzivatele
+                FROM " . TBL_UZIVATELE . "
                 WHERE id = :vybrany_uzivatel_id AND aktivni = 1
                 LIMIT 1
             ";
@@ -230,7 +232,7 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
                 p.cena_bez_dph,
                 p.sazba_dph,
                 p.cena_s_dph
-            FROM 25a_objednavky_polozky p
+            FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
             WHERE p.objednavka_id = :objednavka_id
             ORDER BY p.id ASC
         ";
@@ -256,8 +258,8 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
                 nu.titul_za AS nahrano_uzivatel_titul_za,
                 nu.email AS nahrano_uzivatel_email
                 
-            FROM 25a_objednavky_prilohy pr
-            LEFT JOIN 25_uzivatele nu ON pr.nahrano_uzivatel_id = nu.id
+            FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr
+            LEFT JOIN " . TBL_UZIVATELE . " nu ON pr.nahrano_uzivatel_id = nu.id
             WHERE pr.objednavka_id = :objednavka_id
             ORDER BY pr.dt_vytvoreni ASC
         ";
@@ -778,25 +780,25 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
                 dk_lok.nazev AS dokoncil_lokalita_nazev,
                 dk_lok.kod AS dokoncil_lokalita_kod
                 
-            FROM 25a_objednavky o
-            LEFT JOIN 25_uzivatele gu ON o.garant_uzivatel_id = gu.id
-            LEFT JOIN 25_lokality gu_lok ON gu.lokalita_id = gu_lok.id
-            LEFT JOIN 25_uzivatele pu ON o.prikazce_id = pu.id
-            LEFT JOIN 25_lokality pu_lok ON pu.lokalita_id = pu_lok.id
-            LEFT JOIN 25_uzivatele su ON o.schvalovatel_id = su.id
-            LEFT JOIN 25_lokality su_lok ON su.lokalita_id = su_lok.id
-            LEFT JOIN 25_uzivatele cu ON o.uzivatel_id = cu.id
-            LEFT JOIN 25_lokality cu_lok ON cu.lokalita_id = cu_lok.id
-            LEFT JOIN 25_uzivatele od ON o.odesilatel_id = od.id
-            LEFT JOIN 25_lokality od_lok ON od.lokalita_id = od_lok.id
-            LEFT JOIN 25_uzivatele fk ON o.fakturant_id = fk.id
-            LEFT JOIN 25_lokality fk_lok ON fk.lokalita_id = fk_lok.id
-            LEFT JOIN 25_uzivatele dp ON o.dodavatel_potvrdil_id = dp.id
-            LEFT JOIN 25_lokality dp_lok ON dp.lokalita_id = dp_lok.id
-            LEFT JOIN 25_uzivatele vs ON o.potvrdil_vecnou_spravnost_id = vs.id
-            LEFT JOIN 25_lokality vs_lok ON vs.lokalita_id = vs_lok.id
-            LEFT JOIN 25_uzivatele dk ON o.dokoncil_id = dk.id
-            LEFT JOIN 25_lokality dk_lok ON dk.lokalita_id = dk_lok.id
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN " . TBL_UZIVATELE . " gu ON o.garant_uzivatel_id = gu.id
+            LEFT JOIN " . TBL_LOKALITY . " gu_lok ON gu.lokalita_id = gu_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " pu ON o.prikazce_id = pu.id
+            LEFT JOIN " . TBL_LOKALITY . " pu_lok ON pu.lokalita_id = pu_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " su ON o.schvalovatel_id = su.id
+            LEFT JOIN " . TBL_LOKALITY . " su_lok ON su.lokalita_id = su_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " cu ON o.uzivatel_id = cu.id
+            LEFT JOIN " . TBL_LOKALITY . " cu_lok ON cu.lokalita_id = cu_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " od ON o.odesilatel_id = od.id
+            LEFT JOIN " . TBL_LOKALITY . " od_lok ON od.lokalita_id = od_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " fk ON o.fakturant_id = fk.id
+            LEFT JOIN " . TBL_LOKALITY . " fk_lok ON fk.lokalita_id = fk_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " dp ON o.dodavatel_potvrdil_id = dp.id
+            LEFT JOIN " . TBL_LOKALITY . " dp_lok ON dp.lokalita_id = dp_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " vs ON o.potvrdil_vecnou_spravnost_id = vs.id
+            LEFT JOIN " . TBL_LOKALITY . " vs_lok ON vs.lokalita_id = vs_lok.id
+            LEFT JOIN " . TBL_UZIVATELE . " dk ON o.dokoncil_id = dk.id
+            LEFT JOIN " . TBL_LOKALITY . " dk_lok ON dk.lokalita_id = dk_lok.id
             WHERE o.id = :objednavka_id AND o.aktivni = 1
         ";
         
@@ -820,7 +822,7 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
                 p.cena_s_dph,
                 p.sazba_dph,
                 '' AS poznamka
-            FROM 25a_objednavky_polozky p
+            FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
             WHERE p.objednavka_id = :objednavka_id
             ORDER BY p.id ASC
         ";
@@ -836,7 +838,7 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
                 pr.originalni_nazev_souboru AS nazev_souboru,
                 pr.typ_prilohy,
                 pr.velikost_souboru_b AS velikost
-            FROM 25a_objednavky_prilohy pr
+            FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr
             WHERE pr.objednavka_id = :objednavka_id
             ORDER BY pr.dt_vytvoreni ASC
         ";
@@ -876,12 +878,12 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
         
         // === SESTAVENÍ VYPOČÍTANÝCH HODNOT ===
         $vypocitane = array(
-            // Ceny - RAW formát
-            'celkova_cena_bez_dph' => number_format($celkova_cena_bez_dph, 2, '.', ''),
-            'celkova_cena_s_dph' => number_format($celkova_cena_s_dph, 2, '.', ''),
-            'vypoctene_dph' => number_format($vypoctene_dph, 2, '.', ''),
+            // Ceny - RAW formát (čárka jako des. oddělovač, mezera jako tisícový = český standard)
+            'celkova_cena_bez_dph' => number_format($celkova_cena_bez_dph, 2, ',', ' '),
+            'celkova_cena_s_dph' => number_format($celkova_cena_s_dph, 2, ',', ' '),
+            'vypoctene_dph' => number_format($vypoctene_dph, 2, ',', ' '),
             
-            // Ceny - S FORMÁTOVÁNÍM (mezera jako tisícový oddělovač)
+            // Ceny - S FORMÁTOVÁNÍM (mezera jako tisícový oddělovač + jednotka Kč)
             'celkova_cena_bez_dph_kc' => format_cz_currency($celkova_cena_bez_dph),
             'celkova_cena_s_dph_kc' => format_cz_currency($celkova_cena_s_dph),
             'vypoctene_dph_kc' => format_cz_currency($vypoctene_dph),
@@ -1006,7 +1008,8 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
             'financovani' => $order['financovani'] ? json_decode($order['financovani'], true) : null,
             'druh_objednavky_kod' => $order['druh_objednavky_kod'] ? $order['druh_objednavky_kod'] : '',
             'stav_workflow_kod' => $order['stav_workflow_kod'] ? $order['stav_workflow_kod'] : '',
-            'dt_predpokladany_termin_dodani' => $order['dt_predpokladany_termin_dodani'] ? $order['dt_predpokladany_termin_dodani'] : '',
+            // ✅ TERMÍN DODÁNÍ - formátovat do CZE formátu DD.MM.YYYY (POUZE pro DOCX)
+            'dt_predpokladany_termin_dodani' => $order['dt_predpokladany_termin_dodani'] ? date('d.m.Y', strtotime($order['dt_predpokladany_termin_dodani'])) : '',
             'misto_dodani' => $order['misto_dodani'] ? $order['misto_dodani'] : '',
             'zaruka' => $order['zaruka'] ? $order['zaruka'] : '',
             

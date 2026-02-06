@@ -1,4 +1,5 @@
 <?php
+
 /**
  * cashboxByPeriodHandler.php
  * Endpoint pro filtrování pokladen podle měsíce/roku
@@ -76,23 +77,37 @@ function handle_cashbox_list_by_period_post($config, $input) {
                   pk.mesic,
                   pk.stav_knihy,
                   pk.koncovy_stav,
+                  pk.pocatecni_stav,
+                  pk.prevod_z_predchoziho,
                   pk.pocet_zaznamu,
+                  (SELECT COALESCE(SUM(z.castka_prijem), 0) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_prijmy,
+                  (SELECT COALESCE(SUM(z.castka_vydaj), 0) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_vydaje,
                   pu.id AS prirazeni_id,
                   pu.uzivatel_id,
                   u.jmeno AS uzivatel_jmeno,
                   u.prijmeni AS uzivatel_prijmeni,
-                  CONCAT(u.jmeno, ' ', u.prijmeni) AS uzivatel_cele_jmeno
-                FROM 25a_pokladny p
-                INNER JOIN 25a_pokladni_knihy pk 
+                  CONCAT(u.jmeno, ' ', u.prijmeni) AS uzivatel_cele_jmeno,
+                  (SELECT COUNT(*) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_prijem > 0 AND z.smazano = 0) AS prijmy_pocet,
+                  (SELECT COUNT(*) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_vydaj > 0 AND z.smazano = 0) AS vydaje_pocet
+                FROM " . TBL_POKLADNY . " p
+                INNER JOIN " . TBL_POKLADNI_KNIHY . " pk 
                   ON pk.pokladna_id = p.id
-                LEFT JOIN 25a_pokladny_uzivatele pu 
+                LEFT JOIN " . TBL_POKLADNY_UZIVATELE . " pu 
                   ON pu.pokladna_id = p.id 
                   AND pu.je_hlavni = 1
                   AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
-                LEFT JOIN 25_uzivatele u 
+                LEFT JOIN " . TBL_UZIVATELE . " u 
                   ON u.id = pu.uzivatel_id
                 WHERE pk.rok = ?
                   AND pk.mesic = ?
+                  AND (
+                    pu.platne_od IS NULL 
+                    OR DATE(CONCAT(pk.rok, '-', LPAD(pk.mesic, 2, '0'), '-01')) >= pu.platne_od
+                  )
             ";
         } else {
             $sql = "
@@ -112,9 +127,19 @@ function handle_cashbox_list_by_period_post($config, $input) {
                   pk.mesic,
                   pk.stav_knihy,
                   pk.koncovy_stav,
-                  pk.pocet_zaznamu
-                FROM 25a_pokladny p
-                INNER JOIN 25a_pokladni_knihy pk 
+                  pk.pocatecni_stav,
+                  pk.prevod_z_predchoziho,
+                  pk.pocet_zaznamu,
+                  (SELECT COALESCE(SUM(z.castka_prijem), 0) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_prijmy,
+                  (SELECT COALESCE(SUM(z.castka_vydaj), 0) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_vydaje,
+                  (SELECT COUNT(*) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_prijem > 0 AND z.smazano = 0) AS prijmy_pocet,
+                  (SELECT COUNT(*) FROM " . TBL_POKLADNI_POLOZKY . " z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_vydaj > 0 AND z.smazano = 0) AS vydaje_pocet
+                FROM " . TBL_POKLADNY . " p
+                INNER JOIN " . TBL_POKLADNI_KNIHY . " pk 
                   ON pk.pokladna_id = p.id
                 WHERE pk.rok = ?
                   AND pk.mesic = ?

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Universal Search - SQL Query Builder
  * PHP 5.6 + MySQL 5.5.43 compatible
@@ -65,7 +66,7 @@ function getSqlSearchUsers() {
         FROM " . TBL_UZIVATELE . " u
         LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
         LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
-        LEFT JOIN 25_lokality l ON u.lokalita_id = l.id
+        LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
         WHERE (
             u.telefon LIKE :query
             OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.telefon, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '') LIKE :query_normalized
@@ -93,6 +94,7 @@ function getSqlSearchUsers() {
                LIKE :query_normalized
         )
         AND (:is_admin = 1 OR u.aktivni = 1 OR :include_inactive = 1)
+        AND (:is_admin = 1 OR u.viditelny_v_tel_seznamu = 1)
         ORDER BY u.prijmeni, u.jmeno
         LIMIT :limit
     ";
@@ -140,8 +142,8 @@ function getSqlSearchOrders2025() {
                 ' ', 
                 COALESCE(u_prikazce.prijmeni, '')
             ) as prikazce,
-            (SELECT COUNT(*) FROM 25a_objednavky_prilohy WHERE objednavka_id = o.id) as pocet_priloh_obj,
-            (SELECT COUNT(*) FROM 25a_objednavky_faktury WHERE objednavka_id = o.id AND aktivni = 1) as pocet_faktur,
+            (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = o.id) as pocet_priloh_obj,
+            (SELECT COUNT(*) FROM " . TBL_FAKTURY . " WHERE objednavka_id = o.id AND aktivni = 1) as pocet_faktur,
             DATE(o.dt_objednavky) as datum_objednavky,
             DATE(o.dt_schvaleni) as datum_schvaleni,
             DATE(o.dt_odeslani) as datum_odeslani,
@@ -393,8 +395,8 @@ function getSqlSearchContracts($filterObjForm = false) {
                 WHEN sm.nazev_firmy LIKE :query THEN 'nazev_firmy'
                 WHEN sm.ico LIKE :query THEN 'ico'
                 WHEN sm.dic LIKE :query THEN 'dic'
-                WHEN us.usek_nazev LIKE :query THEN 'usek_nazev'
-                WHEN us.usek_zkr LIKE :query THEN 'usek_zkr'
+                WHEN COALESCE(us.usek_nazev, '') LIKE :query THEN 'usek_nazev'
+                WHEN COALESCE(us.usek_zkr, '') LIKE :query THEN 'usek_zkr'
                 ELSE 'other'
             END as match_type
         FROM " . TBL_SMLOUVY . " sm
@@ -414,8 +416,8 @@ function getSqlSearchContracts($filterObjForm = false) {
             OR sm.nazev_firmy LIKE :query
             OR sm.ico LIKE :query
             OR sm.dic LIKE :query
-            OR us.usek_nazev LIKE :query
-            OR us.usek_zkr LIKE :query
+            OR COALESCE(us.usek_nazev, '') LIKE :query
+            OR COALESCE(us.usek_zkr, '') LIKE :query
         )
         AND (:is_admin = 1 OR sm.aktivni = 1 OR :include_inactive = 1)
         $objFormFilter
@@ -435,71 +437,226 @@ function getSqlSearchInvoices() {
         SELECT 
             f.id,
             f.fa_cislo_vema,
-            f.fa_cislo_dodavatele,
-            f.variabilni_symbol,
-            f.castka_s_dph,
-            f.datum_vystaveni,
-            f.datum_splatnosti,
-            f.datum_uhrazeni,
-            f.poznamka,
+            f.fa_castka as castka,
+            f.fa_datum_vystaveni as datum_vystaveni,
+            f.fa_datum_splatnosti as datum_splatnosti,
+            f.fa_datum_zaplaceni as datum_uhrazeni,
+            f.fa_poznamka as poznamka,
+            f.fa_typ,
+            f.fa_zaplacena,
+            f.fa_dorucena,
+            f.fa_predana_zam_id,
+            f.fa_datum_predani_zam as datum_predani_zam,
+            f.fa_datum_vraceni_zam as datum_vraceni_zam,
+            f.vytvoril_uzivatel_id,
+            f.dt_vytvoreni as datum_zaevidovani,
             o.cislo_objednavky as objednavka_cislo,
+            sm.cislo_smlouvy as smlouva_cislo,
+            o.dodavatel_nazev,
+            o.dodavatel_ico,
+            d.nazev as dodavatel_nazev_z_ciselniku,
+            d.ico as dodavatel_ico_z_ciselniku,
             CONCAT(
                 COALESCE(u.jmeno, ''), 
                 ' ', 
                 COALESCE(u.prijmeni, '')
             ) as nahrano_kym,
-            f.dt_nahrani,
+            CONCAT(
+                COALESCE(u_predana.jmeno, ''), 
+                ' ', 
+                COALESCE(u_predana.prijmeni, '')
+            ) as predano_kym,
+            f.potvrdil_vecnou_spravnost_id,
+            f.fa_predana_zam_id,
+            f.stav as stav_workflow,
+            CASE 
+                WHEN f.fa_zaplacena = 1 THEN 'zaplaceno'
+                WHEN f.fa_datum_splatnosti < CURDATE() THEN 'po_splatnosti'
+                ELSE 'nezaplaceno'
+            END as stav_platby,
             f.aktivni,
             f.dt_vytvoreni,
             f.dt_aktualizace,
+            GROUP_CONCAT(DISTINCT fp.originalni_nazev_souboru SEPARATOR ', ') as prilohy_nazvy,
+            GROUP_CONCAT(DISTINCT fp.typ_prilohy SEPARATOR ', ') as prilohy_typy,
+            COUNT(DISTINCT fp.id) as pocet_priloh,
             CASE
                 WHEN f.fa_cislo_vema LIKE :query THEN 'fa_cislo_vema'
-                WHEN f.fa_cislo_dodavatele LIKE :query THEN 'fa_cislo_dodavatele'
-                WHEN f.variabilni_symbol LIKE :query THEN 'variabilni_symbol'
-                WHEN f.poznamka LIKE :query THEN 'poznamka'
+                WHEN f.fa_typ LIKE :query THEN 'fa_typ'
+                WHEN f.fa_poznamka LIKE :query THEN 'poznamka'
                 WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                     f.poznamka,
+                     f.fa_poznamka,
                      'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
                      'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
                      'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                      LIKE :query_normalized THEN 'poznamka'
                 WHEN o.cislo_objednavky LIKE :query THEN 'objednavka_cislo'
+                WHEN sm.cislo_smlouvy LIKE :query THEN 'smlouva_cislo'
+                WHEN o.dodavatel_nazev LIKE :query THEN 'dodavatel_nazev'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     o.dodavatel_nazev,
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'dodavatel_nazev'
+                WHEN o.dodavatel_ico LIKE :query THEN 'dodavatel_ico'
+                WHEN d.nazev LIKE :query THEN 'dodavatel_nazev_z_ciselniku'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     d.nazev,
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'dodavatel_nazev_z_ciselniku'
+                WHEN d.ico LIKE :query THEN 'dodavatel_ico_z_ciselniku'
+                WHEN fp.originalni_nazev_souboru LIKE :query THEN 'priloha_nazev'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     fp.originalni_nazev_souboru,
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'priloha_nazev'
+                WHEN fp.typ_prilohy LIKE :query THEN 'priloha_typ'
+                WHEN f.fa_typ LIKE :query THEN 'fa_typ'
+                WHEN CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query THEN 'predano_kym'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni),
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'predano_kym'
+                WHEN CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query THEN 'nahrano_kym'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     CONCAT(u.jmeno, ' ', u.prijmeni),
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'nahrano_kym'
                 ELSE 'other'
             END as match_type
         FROM " . TBL_FAKTURY . " f
         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-        LEFT JOIN " . TBL_UZIVATELE . " u ON f.nahrano_uzivatel_id = u.id
+        LEFT JOIN " . TBL_SMLOUVY . " sm ON f.smlouva_id = sm.id
+        LEFT JOIN " . TBL_UZIVATELE . " u ON f.vytvoril_uzivatel_id = u.id
+        LEFT JOIN " . TBL_UZIVATELE . " u_predana ON f.fa_predana_zam_id = u_predana.id
+        LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+        LEFT JOIN " . TBL_FAKTURY_PRILOHY . " fp ON f.id = fp.faktura_id
         WHERE (
             f.fa_cislo_vema LIKE :query
-            OR f.fa_cislo_dodavatele LIKE :query
-            OR f.variabilni_symbol LIKE :query
-            OR f.poznamka LIKE :query
+            OR f.fa_typ LIKE :query
+            OR f.fa_poznamka LIKE :query
             OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-               f.poznamka,
+               f.fa_poznamka,
                'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
                'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                LIKE :query_normalized
             OR o.cislo_objednavky LIKE :query
+            OR sm.cislo_smlouvy LIKE :query
+            OR o.dodavatel_nazev LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               o.dodavatel_nazev,
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
+            OR o.dodavatel_ico LIKE :query
+            OR d.nazev LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               d.nazev,
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
+            OR d.ico LIKE :query
+            OR fp.originalni_nazev_souboru LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               fp.originalni_nazev_souboru,
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
+            OR fp.typ_prilohy LIKE :query
+            OR CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni),
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
+            OR CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               CONCAT(u.jmeno, ' ', u.prijmeni),
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
         )
-        AND (:is_admin = 1 OR f.aktivni = 1 OR :include_inactive = 1)
-        ORDER BY f.datum_vystaveni DESC
+        AND f.aktivni = 1
+        AND (
+            (f.smlouva_id IS NULL OR f.smlouva_id = 0)
+            OR JSON_EXTRACT(f.rozsirujici_data, '$.rocni_poplatek') IS NOT NULL
+        )
+        AND (
+            (f.objednavka_id IS NULL OR f.objednavka_id = 0)
+            OR JSON_EXTRACT(f.rozsirujici_data, '$.rocni_poplatek') IS NOT NULL
+        )
+        AND (
+            :is_admin = 1
+            OR f.fa_predana_zam_id = :user_id
+            OR f.potvrdil_vecnou_spravnost_id = :user_id
+            OR f.vytvoril_uzivatel_id = :user_id
+            OR o.uzivatel_id = :user_id
+            OR o.uzivatel_akt_id = :user_id
+            OR o.garant_uzivatel_id = :user_id
+            OR o.objednatel_id = :user_id
+            OR o.schvalovatel_id = :user_id
+            OR o.prikazce_id = :user_id
+            OR o.odesilatel_id = :user_id
+            OR o.dodavatel_potvrdil_id = :user_id
+            OR o.zverejnil_id = :user_id
+            OR o.fakturant_id = :user_id
+            OR o.dokoncil_id = :user_id
+            OR o.potvrdil_vecnou_spravnost_id = :user_id
+        )
+        GROUP BY f.id
+        ORDER BY f.fa_datum_vystaveni DESC
         LIMIT :limit
     ";
 }
 
 /**
  * SQL pro vyhledávání v dodavatelích
- * Samostatná entita bez JOINů
+ * OPRAVENO: Filtruje podle visibility (personal, úsek, global) pro non-adminy
  * 
+ * @param bool $isAdmin Pokud true, vrátí SQL bez visibility filtru
  * @return string SQL dotaz
  */
-function getSqlSearchSuppliers() {
-    return "
+function getSqlSearchSuppliers($isAdmin = false) {
+    $baseSelect = "
         SELECT 
             d.id,
             d.nazev,
@@ -510,6 +667,9 @@ function getSqlSearchSuppliers() {
             d.kontakt_jmeno,
             d.kontakt_email,
             d.kontakt_telefon,
+            d.aktivni,
+            d.user_id,
+            d.usek_zkr,
             DATE_FORMAT(d.dt_vytvoreni, '%Y-%m-%d %H:%i:%s') as dt_vytvoreni,
             DATE_FORMAT(d.dt_aktualizace, '%Y-%m-%d %H:%i:%s') as dt_aktualizace,
             CASE
@@ -581,6 +741,25 @@ function getSqlSearchSuppliers() {
                'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                LIKE :query_normalized
+        )";
+    
+    // Admin vidí všechny (pouze aktivni filtr)
+    if ($isAdmin) {
+        return $baseSelect . "
+        AND (:is_admin = 1 OR d.aktivni = 1 OR :include_inactive = 1)
+        ORDER BY d.dt_aktualizace DESC
+        LIMIT :limit
+    ";
+    }
+    
+    // Non-admin: filtrování podle visibility + aktivni
+    // Vrátíme SQL s placeholdery pro úseky, které se dynamicky sestaví v handleru
+    return $baseSelect . "
+        AND (:is_admin = 1 OR d.aktivni = 1 OR :include_inactive = 1)
+        AND (
+            d.user_id = :user_id
+            OR (d.user_id = 0 AND (d.usek_zkr IS NULL OR d.usek_zkr = '' OR d.usek_zkr = '[]'))
+            __USEK_CONDITIONS__
         )
         ORDER BY d.dt_aktualizace DESC
         LIMIT :limit

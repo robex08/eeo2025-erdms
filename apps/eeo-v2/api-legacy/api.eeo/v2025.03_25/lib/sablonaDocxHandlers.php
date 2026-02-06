@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DOCX Šablony - CRUD Handlers
  * Správa šablon DOCX dokumentů
@@ -217,7 +218,17 @@ function handle_sablona_docx_create($input, $config, $queries) {
         $typ_dokumentu = isset($_POST['typ_dokumentu']) ? trim($_POST['typ_dokumentu']) : null;
         $aktivni = isset($_POST['aktivni']) ? intval($_POST['aktivni']) : 1;
         $verze = isset($_POST['verze']) ? trim($_POST['verze']) : '1.0';
-        $castka = isset($_POST['castka']) ? floatval($_POST['castka']) : 0.0;
+        
+        // Částky - rozlišit prázdné vs 0
+        $castka_od = null;
+        if (isset($_POST['castka_od']) && $_POST['castka_od'] !== '' && $_POST['castka_od'] !== null) {
+            $castka_od = floatval($_POST['castka_od']);
+        }
+        
+        $castka_do = null;
+        if (isset($_POST['castka_do']) && $_POST['castka_do'] !== '' && $_POST['castka_do'] !== null) {
+            $castka_do = floatval($_POST['castka_do']);
+        }
         
         // Platnost - pokud není uvedeno, použij defaulty
         $platnost_od = isset($_POST['platnost_od']) && !empty($_POST['platnost_od']) ? $_POST['platnost_od'] : date('Y-m-d');
@@ -262,13 +273,13 @@ function handle_sablona_docx_create($input, $config, $queries) {
         
         // Uložit do databáze
         $sql = "
-            INSERT INTO 25_sablony_docx 
+            INSERT INTO " . TBL_SABLONY_DOCX . " 
             (nazev, popis, typ_dokumentu, nazev_souboru, nazev_souboru_ulozeny, cesta_souboru, 
              velikost_souboru, md5_hash, mapovani_json, platnost_od, platnost_do, aktivni, 
-             vytvoril_uzivatel_id, dt_vytvoreni, aktualizoval_uzivatel_id, dt_aktualizace, verze, castka)
+             vytvoril_uzivatel_id, dt_vytvoreni, aktualizoval_uzivatel_id, dt_aktualizace, verze, castka_od, castka_do)
             VALUES (:nazev, :popis, :typ_dokumentu, :nazev_souboru, :nazev_ulozeny, :cesta, 
                     :velikost, :md5_hash, :mapovani_json, :platnost_od, :platnost_do, :aktivni, 
-                    :vytvoril_id, NOW(), :aktualizoval_id, NOW(), :verze, :castka)
+                    :vytvoril_id, NOW(), :aktualizoval_id, NOW(), :verze, :castka_od, :castka_do)
         ";
         
         $params = array(
@@ -287,7 +298,8 @@ function handle_sablona_docx_create($input, $config, $queries) {
             ':vytvoril_id' => $vytvoril_uzivatel_id,    // Kdo vytvořil (INSERT)
             ':aktualizoval_id' => $upravil_uzivatel_id, // Kdo aktualizoval (INSERT = stejný)
             ':verze' => $verze,
-            ':castka' => $castka
+            ':castka_od' => $castka_od,
+            ':castka_do' => $castka_do
         );
         
         $stmt = $db->prepare($sql);
@@ -340,6 +352,26 @@ function handle_sablona_docx_list($input, $config, $queries) {
             $params[':typ_dokumentu'] = $input['typ_dokumentu'];
         }
         
+        // Filtr podle ceny bez DPH (pro výběr šablony podle ceny objednávky)
+        // Logika: 
+        // - Pokud jsou obě NULL → vždy zobrazit
+        // - Pokud je pouze castka_od → zobrazit pro cenu >= castka_od
+        // - Pokud je pouze castka_do → zobrazit pro cenu <= castka_do  
+        // - Pokud jsou obě vyplněny → zobrazit pro cenu v rozsahu od-do (včetně)
+        if (isset($input['cena_bez_dph']) && $input['cena_bez_dph'] !== '' && $input['cena_bez_dph'] !== null) {
+            $cena = floatval($input['cena_bez_dph']);
+            $where[] = "(
+                (s.castka_od IS NULL AND s.castka_do IS NULL) OR
+                (s.castka_od IS NOT NULL AND s.castka_do IS NULL AND :cena1 >= s.castka_od) OR
+                (s.castka_od IS NULL AND s.castka_do IS NOT NULL AND :cena2 <= s.castka_do) OR
+                (s.castka_od IS NOT NULL AND s.castka_do IS NOT NULL AND :cena3 >= s.castka_od AND :cena4 <= s.castka_do)
+            )";
+            $params[':cena1'] = $cena;
+            $params[':cena2'] = $cena;
+            $params[':cena3'] = $cena;
+            $params[':cena4'] = $cena;
+        }
+        
         // Filtr podle aktuální platnosti
         if (isset($input['pouze_platne']) && $input['pouze_platne'] == '1') {
             $where[] = "(s.platnost_od IS NULL OR s.platnost_od <= CURDATE())";
@@ -361,14 +393,14 @@ function handle_sablona_docx_list($input, $config, $queries) {
                 s.id, s.nazev, s.popis, s.typ_dokumentu, s.nazev_souboru, 
                 s.nazev_souboru_ulozeny, s.cesta_souboru, s.velikost_souboru, s.md5_hash,
                 s.mapovani_json, s.platnost_od, s.platnost_do, s.aktivni, s.usek_omezeni,
-                s.verze, s.poznamka, s.dt_vytvoreni, s.dt_aktualizace, s.castka,
+                s.verze, s.poznamka, s.dt_vytvoreni, s.dt_aktualizace, s.castka_od, s.castka_do,
                 u1.id AS vytvoril_id, 
                 CONCAT(IFNULL(u1.titul_pred, ''), ' ', u1.jmeno, ' ', u1.prijmeni, ' ', IFNULL(u1.titul_za, '')) AS vytvoril_jmeno,
                 u2.id AS aktualizoval_id,
                 CONCAT(IFNULL(u2.titul_pred, ''), ' ', u2.jmeno, ' ', u2.prijmeni, ' ', IFNULL(u2.titul_za, '')) AS aktualizoval_jmeno
-            FROM 25_sablony_docx s
-            LEFT JOIN 25_uzivatele u1 ON s.vytvoril_uzivatel_id = u1.id
-            LEFT JOIN 25_uzivatele u2 ON s.aktualizoval_uzivatel_id = u2.id
+            FROM " . TBL_SABLONY_DOCX . " s
+            LEFT JOIN " . TBL_UZIVATELE . " u1 ON s.vytvoril_uzivatel_id = u1.id
+            LEFT JOIN " . TBL_UZIVATELE . " u2 ON s.aktualizoval_uzivatel_id = u2.id
             WHERE $where_sql
             ORDER BY s.nazev ASC
         ";
@@ -399,7 +431,7 @@ function handle_sablona_docx_list($input, $config, $queries) {
                     // Soubor neexistuje na disku - automaticky deaktivuj šablonu v DB
                     $file_exists_on_disk = false;
                     try {
-                        $stmtDeactivate = $db->prepare("UPDATE 25_sablony_docx SET aktivni = 0 WHERE id = :id");
+                        $stmtDeactivate = $db->prepare("UPDATE " . TBL_SABLONY_DOCX . " SET aktivni = 0 WHERE id = :id");
                         $stmtDeactivate->execute(array(':id' => $row['id']));
                         $aktivni = false; // Změň i v response
                     } catch (Exception $e) {
@@ -425,7 +457,8 @@ function handle_sablona_docx_list($input, $config, $queries) {
                 'usek_omezeni' => $row['usek_omezeni'] ? json_decode($row['usek_omezeni'], true) : null,
                 'verze' => $row['verze'],
                 'poznamka' => $row['poznamka'],
-                'castka' => (float)$row['castka'],
+                'castka_od' => $row['castka_od'] !== null ? (float)$row['castka_od'] : null,
+                'castka_do' => $row['castka_do'] !== null ? (float)$row['castka_do'] : null,
                 'dt_vytvoreni' => $row['dt_vytvoreni'],
                 'dt_aktualizace' => $row['dt_aktualizace'],
                 'mapovani_json' => $row['mapovani_json'] ? json_decode($row['mapovani_json'], true) : null,
@@ -472,9 +505,9 @@ function handle_sablona_docx_by_id($input, $config, $queries) {
                 u2.id AS aktualizoval_id,
                 CONCAT(IFNULL(u2.titul_pred, ''), ' ', u2.jmeno, ' ', u2.prijmeni, ' ', IFNULL(u2.titul_za, '')) AS aktualizoval_jmeno,
                 u2.email AS aktualizoval_email
-            FROM 25_sablony_docx s
-            LEFT JOIN 25_uzivatele u1 ON s.vytvoril_uzivatel_id = u1.id
-            LEFT JOIN 25_uzivatele u2 ON s.aktualizoval_uzivatel_id = u2.id
+            FROM " . TBL_SABLONY_DOCX . " s
+            LEFT JOIN " . TBL_UZIVATELE . " u1 ON s.vytvoril_uzivatel_id = u1.id
+            LEFT JOIN " . TBL_UZIVATELE . " u2 ON s.aktualizoval_uzivatel_id = u2.id
             WHERE s.id = :id
         ";
         
@@ -506,7 +539,8 @@ function handle_sablona_docx_by_id($input, $config, $queries) {
             'usek_omezeni' => $row['usek_omezeni'] ? json_decode($row['usek_omezeni'], true) : null,
             'verze' => $row['verze'],
             'poznamka' => $row['poznamka'],
-            'castka' => (float)$row['castka'],
+            'castka_od' => $row['castka_od'] !== null ? (float)$row['castka_od'] : null,
+            'castka_do' => $row['castka_do'] !== null ? (float)$row['castka_do'] : null,
             'dt_vytvoreni' => $row['dt_vytvoreni'],
             'dt_aktualizace' => $row['dt_aktualizace'],
             'vytvoril' => $row['vytvoril_id'] ? array(
@@ -560,7 +594,7 @@ function handle_sablona_docx_update($input, $config, $queries) {
         $id = intval($input['id']);
         
         // Ověřit existenci záznamu
-        $stmt = $db->prepare("SELECT id FROM 25_sablony_docx WHERE id = :id");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_SABLONY_DOCX . " WHERE id = :id");
         $stmt->execute(array(':id' => $id));
         
         if (!$stmt->fetch()) {
@@ -572,7 +606,12 @@ function handle_sablona_docx_update($input, $config, $queries) {
         $updates = array();
         $params = array(':id' => $id);
         
-        $allowed_fields = array('nazev', 'popis', 'typ_dokumentu', 'aktivni', 'verze', 'poznamka', 'castka');
+        // DEBUG: Logovat příchozí data
+        error_log("=== DOCX UPDATE DEBUG ===");
+        error_log("Input castka_od: " . var_export($input['castka_od'] ?? 'NOT_SET', true));
+        error_log("Input castka_do: " . var_export($input['castka_do'] ?? 'NOT_SET', true));
+        
+        $allowed_fields = array('nazev', 'popis', 'typ_dokumentu', 'aktivni', 'verze', 'poznamka');
         
         foreach ($allowed_fields as $field) {
             // Použití isset() místo !empty() - umožní uložit i 0 hodnoty
@@ -580,6 +619,33 @@ function handle_sablona_docx_update($input, $config, $queries) {
                 $updates[] = "$field = :$field";
                 $params[":$field"] = $input[$field];
             }
+        }
+        
+        // Speciální zpracování pro částky - rozlišit prázdné vs 0
+        if (array_key_exists('castka_od', $input)) {
+            $updates[] = "castka_od = :castka_od";
+            if ($input['castka_od'] !== '' && $input['castka_od'] !== null) {
+                $params[':castka_od'] = floatval($input['castka_od']);
+                error_log("castka_od: ukladam hodnotu " . floatval($input['castka_od']));
+            } else {
+                $params[':castka_od'] = null;
+                error_log("castka_od: ukladam NULL");
+            }
+        } else {
+            error_log("castka_od: NENI v input");
+        }
+        
+        if (array_key_exists('castka_do', $input)) {
+            $updates[] = "castka_do = :castka_do";
+            if ($input['castka_do'] !== '' && $input['castka_do'] !== null) {
+                $params[':castka_do'] = floatval($input['castka_do']);
+                error_log("castka_do: ukladam hodnotu " . floatval($input['castka_do']));
+            } else {
+                $params[':castka_do'] = null;
+                error_log("castka_do: ukladam NULL");
+            }
+        } else {
+            error_log("castka_do: NENI v input");
         }
         
         // JSON mapování - podpora pro oba názvy parametrů
@@ -610,7 +676,7 @@ function handle_sablona_docx_update($input, $config, $queries) {
         $updates[] = "dt_aktualizace = NOW()";
         $params[':uzivatel_id'] = $uzivatel['id'];
         
-        $sql = "UPDATE 25_sablony_docx SET " . implode(", ", $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_SABLONY_DOCX . " SET " . implode(", ", $updates) . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
@@ -672,7 +738,7 @@ function handle_sablona_docx_update_with_file($input, $config, $queries) {
         // Načíst současnou šablonu
         $stmt = $db->prepare("
             SELECT nazev, nazev_souboru_ulozeny, velikost_souboru, md5_hash 
-            FROM 25_sablony_docx 
+            FROM " . TBL_SABLONY_DOCX . " 
             WHERE id = :id
         ");
         $stmt->execute(array(':id' => $id));
@@ -748,12 +814,31 @@ function handle_sablona_docx_update_with_file($input, $config, $queries) {
         $params = array(':id' => $id);
         
         // Základní pole z POST
-        $allowed_fields = array('nazev', 'popis', 'typ_dokumentu', 'aktivni', 'verze', 'castka');
+        $allowed_fields = array('nazev', 'popis', 'typ_dokumentu', 'aktivni', 'verze');
         foreach ($allowed_fields as $field) {
             // Použití array_key_exists místo isset - umožní uložit i 0 hodnoty
             if (array_key_exists($field, $_POST)) {
                 $updates[] = "$field = :$field";
                 $params[":$field"] = $_POST[$field];
+            }
+        }
+        
+        // Speciální zpracování pro částky - rozlišit prázdné vs 0
+        if (array_key_exists('castka_od', $_POST)) {
+            $updates[] = "castka_od = :castka_od";
+            if ($_POST['castka_od'] !== '' && $_POST['castka_od'] !== null) {
+                $params[':castka_od'] = floatval($_POST['castka_od']);
+            } else {
+                $params[':castka_od'] = null;
+            }
+        }
+        
+        if (array_key_exists('castka_do', $_POST)) {
+            $updates[] = "castka_do = :castka_do";
+            if ($_POST['castka_do'] !== '' && $_POST['castka_do'] !== null) {
+                $params[':castka_do'] = floatval($_POST['castka_do']);
+            } else {
+                $params[':castka_do'] = null;
             }
         }
         
@@ -808,7 +893,7 @@ function handle_sablona_docx_update_with_file($input, $config, $queries) {
             api_error(400, 'Žádná data k aktualizaci');
         }
         
-        $sql = "UPDATE 25_sablony_docx SET " . implode(", ", $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_SABLONY_DOCX . " SET " . implode(", ", $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         
@@ -874,7 +959,7 @@ function handle_sablona_docx_reupload($input, $config, $queries) {
         // Načíst současnou šablonu
         $stmt = $db->prepare("
             SELECT nazev, nazev_souboru_ulozeny 
-            FROM 25_sablony_docx 
+            FROM " . TBL_SABLONY_DOCX . " 
             WHERE id = :id
         ");
         $stmt->execute(array(':id' => $id));
@@ -937,7 +1022,7 @@ function handle_sablona_docx_reupload($input, $config, $queries) {
         
         // Aktualizovat jen file info v databázi
         $stmt = $db->prepare("
-            UPDATE 25_sablony_docx 
+            UPDATE " . TBL_SABLONY_DOCX . " 
             SET nazev_souboru = :nazev_souboru,
                 nazev_souboru_ulozeny = :nazev_ulozeny,
                 cesta_souboru = :cesta,
@@ -1018,7 +1103,7 @@ function handle_sablona_docx_delete($input, $config, $queries) {
         $id = intval($input['id']);
         
         // Načíst info o šabloně
-        $stmt = $db->prepare("SELECT nazev_souboru_ulozeny, cesta_souboru, nazev FROM 25_sablony_docx WHERE id = :id");
+        $stmt = $db->prepare("SELECT nazev_souboru_ulozeny, cesta_souboru, nazev FROM " . TBL_SABLONY_DOCX . " WHERE id = :id");
         $stmt->execute(array(':id' => $id));
         $sablona = $stmt->fetch();
         
@@ -1039,7 +1124,7 @@ function handle_sablona_docx_delete($input, $config, $queries) {
         }
         
         // Smazat z databáze (hard delete)
-        $stmt = $db->prepare("DELETE FROM 25_sablony_docx WHERE id = :id");
+        $stmt = $db->prepare("DELETE FROM " . TBL_SABLONY_DOCX . " WHERE id = :id");
         $stmt->execute(array(':id' => $id));
         
         echo json_encode(array(
@@ -1092,7 +1177,7 @@ function handle_sablona_docx_deactivate($input, $config, $queries) {
         $id = intval($input['id']);
         
         // Načíst info o šabloně
-        $stmt = $db->prepare("SELECT nazev FROM 25_sablony_docx WHERE id = :id");
+        $stmt = $db->prepare("SELECT nazev FROM " . TBL_SABLONY_DOCX . " WHERE id = :id");
         $stmt->execute(array(':id' => $id));
         $sablona = $stmt->fetch();
         
@@ -1102,7 +1187,7 @@ function handle_sablona_docx_deactivate($input, $config, $queries) {
         
         // Soft delete - pouze deaktivace
         $stmt = $db->prepare("
-            UPDATE 25_sablony_docx 
+            UPDATE " . TBL_SABLONY_DOCX . " 
             SET aktivni = 0, aktualizoval_uzivatel_id = :uzivatel_id, dt_aktualizace = NOW()
             WHERE id = :id
         ");
@@ -1147,7 +1232,7 @@ function handle_sablona_docx_download($input, $config, $queries) {
         
         $stmt = $db->prepare("
             SELECT nazev_souboru, nazev_souboru_ulozeny, md5_hash
-            FROM 25_sablony_docx 
+            FROM " . TBL_SABLONY_DOCX . " 
             WHERE id = :id AND aktivni = 1
         ");
         $stmt->execute(array(':id' => $id));
@@ -1233,7 +1318,7 @@ function handle_sablona_docx_verify($input, $config, $queries) {
         $stmt = $db->prepare("
             SELECT id, nazev, nazev_souboru, nazev_souboru_ulozeny, velikost_souboru, 
                    md5_hash, aktivni, vytvoril_uzivatel_id, dt_vytvoreni
-            FROM 25_sablony_docx 
+            FROM " . TBL_SABLONY_DOCX . " 
             ORDER BY dt_vytvoreni DESC
         ");
         $stmt->execute();
@@ -1388,7 +1473,7 @@ function handle_sablona_docx_verify_single($input, $config, $queries) {
         $stmt = $db->prepare("
             SELECT id, nazev, nazev_souboru, nazev_souboru_ulozeny, velikost_souboru, 
                    md5_hash, aktivni, vytvoril_uzivatel_id, dt_vytvoreni
-            FROM 25_sablony_docx 
+            FROM " . TBL_SABLONY_DOCX . " 
             WHERE id = :id
         ");
         $stmt->execute(array(':id' => $id));

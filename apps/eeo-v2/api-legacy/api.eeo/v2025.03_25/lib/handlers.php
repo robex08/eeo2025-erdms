@@ -1,12 +1,13 @@
 <?php
+
 // Handlers pro API endpointy
 
 // Debug mode - set to true to enable detailed logging
-define('API_DEBUG_MODE', false);
+define('API_DEBUG_MODE', true);
 
 // Token configuration
-define('TOKEN_LIFETIME', 24 * 3600);           // 24 hodin = 86400 sekund
-define('TOKEN_REFRESH_THRESHOLD', 2 * 3600);   // Obnovit pokud zbývá < 2 hodiny = 7200 sekund
+define('TOKEN_LIFETIME', 12 * 3600);           // 12 hodin = 43200 sekund (zkráceno pro bezpečnost)
+define('TOKEN_REFRESH_THRESHOLD', 10 * 60);    // Obnovit pokud zbývá < 10 minut = 600 sekund
 
 // Připojení k databázi (PDO)
 function get_db($config) {
@@ -39,18 +40,26 @@ function api_error($httpCode, $message, $code = null, $extra = array()) {
 
 // Funkce pro ověření tokenu - optimalizováno pro reuse DB spojení
 function verify_token($token, $db = null) {
-    if (!$token) return false;
+    if (!$token) {
+        return false;
+    }
     
     $decoded = base64_decode($token);
-    if (!$decoded) return false;
+    if (!$decoded) {
+        return false;
+    }
     
     $parts = explode('|', $decoded);
-    if (count($parts) !== 2) return false;
+    if (count($parts) !== 2) {
+        return false;
+    }
     
     list($username, $timestamp) = $parts;
     
     // Kontrola, zda token není starší než 24 hodin
-    if (time() - $timestamp > 86400) return false;
+    if (time() - $timestamp > 86400) {
+        return false;
+    }
     
     // Ověření, že uživatel existuje a je aktivní
     try {
@@ -65,17 +74,17 @@ function verify_token($token, $db = null) {
             ));
         }
         
-        $stmt = $db->prepare("SELECT id, username FROM 25_uzivatele WHERE username = ? AND aktivni = 1");
+        $stmt = $db->prepare("SELECT id, username FROM " . TBL_UZIVATELE . " WHERE username = ? AND aktivni = 1");
         $stmt->execute(array($username));
         $user = $stmt->fetch();
         
-        // DEBUG: Log pro debugging
-        error_log("verify_token debug - username: $username, user found: " . ($user ? 'YES' : 'NO'));
-        
-        if (!$user) return false;
+        if (!$user) {
+            return false;
+        }
         
         return array('id' => (int)$user['id'], 'username' => $username);
     } catch (Exception $e) {
+        error_log("❌ verify_token: Exception: " . $e->getMessage());
         return false;
     }
 }
@@ -90,16 +99,63 @@ function verify_token($token, $db = null) {
  * @return array|false User data array or false on failure
  */
 function verify_token_v2($username, $token, $db = null) {
-    if (!$token || !$username) return false;
+    if (!$token || !$username) {
+        return false;
+    }
     
     // First verify token structure and expiry
     $token_data = verify_token($token, $db);
-    if (!$token_data) return false;
+    if (!$token_data) {
+        return false;
+    }
     
     // Additional check: verify username matches token username
     if ($token_data['username'] !== $username) {
-        error_log("verify_token_v2: Username mismatch - token: {$token_data['username']}, request: {$username}");
         return false;
+    }
+    
+    // V2: Přidat informaci o roli uživatele (pro admin bypass)
+    // ✅ NOVÝ SYSTÉM: Kontrola přes 25_uzivatele_role + 25_role
+    try {
+        // Pokud není předáno DB spojení, vytvoř nové
+        if ($db === null) {
+            $config = require __DIR__ . '/dbconfig.php';
+            $config = $config['mysql'];
+            $db = new PDO("mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4", 
+                         $config['username'], $config['password'], array(
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ));
+        }
+        
+        // ✅ Kontrola admin rolí přes NOVÝ SYSTÉM (25_uzivatele_role + 25_role)
+        $stmt = $db->prepare("
+            SELECT r.kod_role 
+            FROM " . TBL_ROLE . " r
+            INNER JOIN " . TBL_UZIVATELE_ROLE . " ur ON ur.role_id = r.id
+            WHERE ur.uzivatel_id = ?
+        ");
+        $stmt->execute(array($token_data['id']));
+        $roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Admin může být SUPERADMIN nebo ADMINISTRATOR
+        $token_data['is_admin'] = !empty(array_intersect($roles, array('SUPERADMIN', 'ADMINISTRATOR')));
+        $token_data['roles'] = $roles; // ✅ Přidat pole rolí do výstupu
+        
+        // ✅ Načtení uživatelských oprávnění (pro Annual Fees a další moduly)
+        // OPRAVENO: Permissions jsou v 25_role_prava, ne v 25_uzivatele_prava
+        $stmt = $db->prepare("
+            SELECT p.kod_prava, p.popis 
+            FROM " . TBL_ROLE_PRAVA . " rp
+            INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+            WHERE rp.user_id = ? AND rp.aktivni = 1
+        ");
+        $stmt->execute(array($token_data['id']));
+        $token_data['permissions'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+    } catch (Exception $e) {
+        error_log("verify_token_v2: Error loading role - " . $e->getMessage());
+        $token_data['is_admin'] = false;
     }
     
     return $token_data;
@@ -140,6 +196,111 @@ function generate_new_token($username) {
     $timestamp = time();
     $token = base64_encode($username . '|' . $timestamp);
     return $token;
+}
+
+// =============================================================================
+// USER ACTIVITY TRACKING FUNCTIONS
+// =============================================================================
+
+/**
+ * Aktualizuje aktivitu uživatele s metadata
+ * 
+ * @param PDO $db Database connection
+ * @param array $queries Pole SQL dotazů
+ * @param int $user_id ID uživatele
+ * @param array $metadata Pole s metadaty [ip, module, path, user_agent, session_id]
+ * @return bool True při úspěchu, False při chybě
+ */
+function update_user_activity_with_metadata($db, $queries, $user_id, $metadata) {
+    try {
+        // 1. Připrav JSON metadata
+        $json_metadata = json_encode([
+            'last_public_ip' => $metadata['public_ip'] ?? null,
+            'last_local_ip' => $metadata['local_ip'] ?? null,
+            'last_module' => $metadata['module'] ?? null,
+            'last_path' => $metadata['path'] ?? null,
+            'last_user_agent' => $metadata['user_agent'] ?? null,
+            'session_id' => $metadata['session_id'] ?? null,
+            'updated_at' => date('Y-m-d H:i:s')
+        ], JSON_UNESCAPED_UNICODE);
+
+        // 2. Update 25_uzivatele
+        if (isset($queries['uzivatele_update_activity_with_metadata'])) {
+            $stmt = $db->prepare($queries['uzivatele_update_activity_with_metadata']);
+            $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
+            $stmt->bindParam(':metadata', $json_metadata, PDO::PARAM_STR);
+            $stmt->execute();
+        }
+
+        // 3. Insert do activity log (use public_ip as primary IP)
+        if (isset($queries['uzivatele_activity_log_insert'])) {
+            $ip_for_log = $metadata['public_ip'] ?? $metadata['local_ip'] ?? '';
+            $stmt_log = $db->prepare($queries['uzivatele_activity_log_insert']);
+            $stmt_log->bindParam(':uzivatel_id', $user_id, PDO::PARAM_INT);
+            $stmt_log->bindParam(':ip_address', $ip_for_log, PDO::PARAM_STR);
+            $stmt_log->bindParam(':module_name', $metadata['module'], PDO::PARAM_STR);
+            $stmt_log->bindParam(':module_path', $metadata['path'], PDO::PARAM_STR);
+            $stmt_log->bindParam(':user_agent', $metadata['user_agent'], PDO::PARAM_STR);
+            $stmt_log->bindParam(':session_id', $metadata['session_id'], PDO::PARAM_STR);
+            $stmt_log->execute();
+        }
+
+        return true;
+    } catch (Exception $e) {
+        error_log("update_user_activity_with_metadata error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Získá IP adresu klienta (supports proxy headers)
+ * 
+ * @return string IP adresa nebo prázdný string
+ */
+function get_client_ip() {
+    $ip = '';
+    
+    // Priority: Check proxy headers first (real client IP)
+    // mod_remoteip sets REMOTE_ADDR to real client IP
+    if (!empty($_SERVER['REMOTE_ADDR'])) {
+        $ip = $_SERVER['REMOTE_ADDR'];
+    } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+        $ip = $_SERVER['HTTP_X_REAL_IP'];
+    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        // Fallback: parse X-Forwarded-For manually
+        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        $ip = trim($ips[0]);
+    } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    }
+    
+    // Validate IP address
+    if (filter_var($ip, FILTER_VALIDATE_IP)) {
+        // Convert IPv6 localhost to IPv4
+        if ($ip === '::1') {
+            return '127.0.0.1';
+        }
+        
+        // Extract IPv4 from IPv6-mapped format
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            if (preg_match('/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i', $ip, $matches)) {
+                return $matches[1];
+            }
+        }
+        
+        return $ip;
+    }
+    
+    return '';
+}
+
+/**
+ * Získá User Agent string klienta
+ * 
+ * @return string User agent nebo prázdný string
+ */
+function get_user_agent() {
+    return $_SERVER['HTTP_USER_AGENT'] ?? '';
 }
 
 /**
@@ -199,11 +360,13 @@ function handle_users_approvers($input, $config, $queries) {
         // Get users with ORDER APPROVE permission
         $stmt = $db->prepare("
             SELECT DISTINCT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.titul_pred, u.titul_za,
-                   CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as cele_jmeno
-            FROM ".TABLE_UZIVATELE." u
-            JOIN ".TABLE_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
-            JOIN ".TABLE_ROLE_PRAVA." rp ON ur.role_id = rp.role_id
-            JOIN ".TABLE_PRAVA." p ON rp.pravo_id = p.id
+                   CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as cele_jmeno,
+                   u.usek_id, us.usek_zkr
+            FROM ".TBL_UZIVATELE." u
+            LEFT JOIN ".TBL_USEKY." us ON u.usek_id = us.id
+            JOIN ".TBL_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
+            JOIN ".TBL_ROLE_PRAVA." rp ON ur.role_id = rp.role_id
+            JOIN ".TBL_PRAVA." p ON rp.pravo_id = p.id
             WHERE p.kod_prava = 'ORDER_APPROVE' AND u.aktivni = 1
             ORDER BY u.prijmeni, u.jmeno
         ");
@@ -331,7 +494,7 @@ function handle_login($input, $config, $queries) {
                 try {
                     $newHash = password_hash($password, PASSWORD_DEFAULT);
                     if ($newHash) {
-                        $stmtRehash = $db->prepare("UPDATE " . TABLE_UZIVATELE . " SET password_hash = :hash WHERE id = :id");
+                        $stmtRehash = $db->prepare("UPDATE " . TBL_UZIVATELE . " SET password_hash = :hash WHERE id = :id");
                         $stmtRehash->bindParam(':hash', $newHash);
                         $stmtRehash->bindParam(':id', $user['id'], PDO::PARAM_INT);
                         $stmtRehash->execute();
@@ -346,6 +509,22 @@ function handle_login($input, $config, $queries) {
             }
         }
 
+        // ✅ Kontrola vynucené změny hesla - pokud je vynucena_zmena_hesla = 1, vrátíme error + token
+        if (isset($user['vynucena_zmena_hesla']) && (int)$user['vynucena_zmena_hesla'] === 1) {
+            // Vygeneruj dočasný token pro změnu hesla
+            $tempToken = base64_encode($user['username'] . '|' . time());
+            http_response_code(403);
+            echo json_encode(array(
+                'err' => 'Musíte si změnit heslo',
+                'code' => 'FORCE_PASSWORD_CHANGE',
+                'force_password_change' => true,
+                'userId' => $user['id'],
+                'username' => $user['username'],
+                'token' => $tempToken
+            ));
+            return;
+        }
+
         $token = base64_encode($user['username'] . '|' . time());
         unset($user['password_hash']);
         $user['token'] = $token;
@@ -356,6 +535,77 @@ function handle_login($input, $config, $queries) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba databáze: ' . $e->getMessage()));
         exit;
+    }
+}
+
+/**
+ * Token refresh endpoint
+ * Validates old token and issues new one if still valid
+ * 
+ * @param array $input POST data containing username and old_token
+ * @param array $config Database configuration
+ * @param array $queries SQL queries (not used in this handler)
+ * @return void Echoes JSON response
+ */
+function handle_token_refresh($input, $config, $queries) {
+    $username = isset($input['username']) ? trim($input['username']) : '';
+    $old_token = isset($input['old_token']) ? trim($input['old_token']) : '';
+    
+    if (!$username || !$old_token) {
+        http_response_code(400);
+        echo json_encode(array(
+            'err' => 'Chybí username nebo token',
+            'code' => 'MISSING_PARAMS'
+        ));
+        return;
+    }
+    
+    try {
+        // Ověř starý token pomocí verify_token()
+        $token_data = verify_token($old_token);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(array(
+                'err' => 'Neplatný nebo expirovaný token',
+                'code' => 'INVALID_TOKEN'
+            ));
+            return;
+        }
+        
+        // Ověř, že username z tokenu odpovídá username z požadavku
+        if ($token_data['username'] !== $username) {
+            http_response_code(401);
+            echo json_encode(array(
+                'err' => 'Username z tokenu neodpovídá username z požadavku',
+                'code' => 'USERNAME_MISMATCH'
+            ));
+            return;
+        }
+        
+        // Vygeneruj nový token
+        $new_token = base64_encode($username . '|' . time());
+        $expires_at = date('Y-m-d H:i:s', time() + TOKEN_LIFETIME);
+        
+        if (API_DEBUG_MODE) {
+            error_log("Token refresh: username=$username, old_token_valid=yes, new_token_generated");
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'token' => $new_token,
+            'expires_at' => $expires_at,
+            'message' => 'Token refreshed successfully',
+            'lifetime_seconds' => TOKEN_LIFETIME
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array(
+            'err' => 'Server error: ' . $e->getMessage(),
+            'code' => 'SERVER_ERROR'
+        ));
+        error_log("Token refresh error: " . $e->getMessage());
     }
 }
 
@@ -639,27 +889,103 @@ function handle_user_active($input, $config, $queries) {
     }
 }
 
-function handle_user_update_activity($input, $config, $queries) {
-    // Ověření tokenu
+/**
+ * 💓 KEEPALIVE: Jednoduchý ping endpoint - každých 5 minut
+ * 
+ * Účel:
+ * - Zobrazit že user je aktivní/online
+ * - BEZ token validace nebo refresh (rychlý, lightweight)
+ * - BEZ kritických error handlerů
+ * - Minimální DB zátěž (jen UPDATE timestamp)
+ * 
+ * Rozdíl oproti update-activity:
+ * - ŽÁDNÝ token refresh
+ * - ŽÁDNÉ složité kontroly
+ * - Tiché selhání (není kritický)
+ * - Vždy vrací 200 OK (i při chybě)
+ * 
+ * @param array $input - {token, username, timestamp}
+ * @param array $config - DB config
+ * @param array $queries - SQL queries (nepoužívá se)
+ */
+function handle_user_keepalive($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     
-    $token_data = verify_token($token);
-    if (!$token_data) {
-        http_response_code(401);
-        echo json_encode(array('err' => 'Neplatný token', 'status' => 'error', 'message' => 'Token vypršel'));
+    // Minimální validace - jen zkontroluj že nejsou prázdné
+    if (empty($request_username) || empty($token)) {
+        // Tiché selhání - vrátit OK i při chybě
+        echo json_encode(array('status' => 'ok', 'keepalive' => true, 'silentFail' => 'missing_params'));
         exit;
     }
-    
-    // Pro update aktivity použijeme ID z tokenu (přihlášený uživatel)
-    $user_id = $token_data['id'];
-    $username = $token_data['username'];
     
     try {
         $db = get_db($config);
         
+        // MINIMÁLNÍ token check - jen ověřit že existuje, BEZ refresh logiky
+        $checkTokenSQL = "SELECT id, username FROM " . TBL_UZIVATELE . " WHERE username = :username";
+        $stmt = $db->prepare($checkTokenSQL);
+        $stmt->bindParam(':username', $request_username, PDO::PARAM_STR);
+        $stmt->execute();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            // Tiché selhání - user neexistuje
+            echo json_encode(array('status' => 'ok', 'keepalive' => true, 'silentFail' => 'user_not_found'));
+            exit;
+        }
+        
+        // UPDATE aktivity - jen timestamp, nic víc
+        $updateSQL = "UPDATE " . TBL_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
+        $updateStmt = $db->prepare($updateSQL);
+        $updateStmt->bindParam(':id', $user['id'], PDO::PARAM_INT);
+        $updateStmt->execute();
+        
+        // Vždy vrátit OK
+        echo json_encode(array(
+            'status' => 'ok',
+            'keepalive' => true,
+            'timestamp' => date('Y-m-d H:i:s')
+        ));
+        
+    } catch (Exception $e) {
+        // Tiché selhání i při DB chybě - není kritický
+        if (API_DEBUG_MODE) {
+            error_log("Keepalive error (non-critical): " . $e->getMessage());
+        }
+        echo json_encode(array('status' => 'ok', 'keepalive' => true, 'silentFail' => 'db_error'));
+    }
+}
+
+function handle_user_update_activity($input, $config, $queries) {
+    // Ověření tokenu - ✅ POUŽÍVÁ verify_token_v2 (jednotné s ostatními endpointy)
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    
+    if (empty($request_username) || empty($token)) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Chybí username nebo token', 'status' => 'error', 'message' => 'Token vypršel'));
+        exit;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // ✅ verify_token_v2 - jednotná verifikace pro všechny endpointy
+        $token_data = verify_token_v2($request_username, $token, $db);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(array('err' => 'Neplatný token', 'status' => 'error', 'message' => 'Token vypršel'));
+            exit;
+        }
+        
+        // Pro update aktivity použijeme ID z tokenu (přihlášený uživatel)
+        $user_id = $token_data['id'];
+        $username = $token_data['username'];
+        
         // Nejdřív zkontroluj, že uživatel existuje
-        $checkStmt = $db->prepare("SELECT id, username, aktivni FROM " . TABLE_UZIVATELE . " WHERE id = :id");
+        $checkStmt = $db->prepare("SELECT id, username, aktivni FROM " . TBL_UZIVATELE . " WHERE id = :id");
         $checkStmt->bindParam(':id', $user_id, PDO::PARAM_INT);
         $checkStmt->execute();
         $userExists = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -675,7 +1001,7 @@ function handle_user_update_activity($input, $config, $queries) {
         }
         
         // Proveď UPDATE aktivity
-        $updateSQL = "UPDATE " . TABLE_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
+        $updateSQL = "UPDATE " . TBL_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
         
         $stmt = $db->prepare($updateSQL);
         $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
@@ -778,14 +1104,14 @@ function handle_orders_create($input, $config, $queries) {
         // Pokud stav odpovídá schvalovacím stavům (SCHVALENA, ZAMITNUTA, CEKA_SE), nastavíme schválení
         if (isset($params[':stav_id']) && (int)$params[':stav_id'] > 0) {
             try {
-                $stmtSt = $db->prepare("SELECT kod_stavu, typ_objektu FROM ".TABLE_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
+                $stmtSt = $db->prepare("SELECT kod_stavu, typ_objektu FROM ".TBL_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
                 $stmtSt->execute([':id' => (int)$params[':stav_id']]);
                 $stavRow = $stmtSt->fetch();
                 if ($stavRow && strtoupper($stavRow['typ_objektu']) === 'OBJEDNAVKA') {
                     $kod = strtoupper($stavRow['kod_stavu']);
                     if (in_array($kod, array('SCHVALENA','ZAMITNUTA','CEKA_SE'))) {
-                        $stmtUpdSchv = $db->prepare("UPDATE ".TABLE_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalil_uzivatel_id = :u WHERE id = :oid LIMIT 1");
-                        $stmtUpdSchv->execute([':u' => $params[':objednatel_id'], ':oid' => $order_id]);
+                        $stmtUpdSchv = $db->prepare("UPDATE ".TBL_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalovatel_id = :u, uzivatel_akt_id = :akt_id, dt_aktualizace = NOW() WHERE id = :oid LIMIT 1");
+                        $stmtUpdSchv->execute([':u' => $token_data['id'], ':akt_id' => $token_data['id'], ':oid' => $order_id]); // ✅ FIXED: Also set uzivatel_akt_id
                     }
                 }
             } catch (Exception $e) {
@@ -817,7 +1143,7 @@ function handle_orders_create($input, $config, $queries) {
                     ':nazev_souboru' => $attachment['storedName'],
                     ':puvodni_nazev' => $attachment['originalName'],
                     ':velikost' => intval($attachment['size']),
-                    ':typ_prilohy' => $attachment['type']
+                    ':typ_prilohy' => $attachment['typ']
                 ]);
             }
         }
@@ -956,21 +1282,15 @@ function handle_react_action($input, $config, $queries) {
 
 // Send notification email via API (requires token)
 function handle_notify_email($input, $config, $queries) {
-    // DEBUG: Log vše co přijde z frontendu
-    error_log("📧 NOTIFY EMAIL REQUEST: " . json_encode($input));
-    
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
-    error_log("📧 TOKEN: " . substr($token, 0, 20) . "... USERNAME: " . $username);
     
     $token_data = verify_token($token);
     if (!$token_data || ($username && $token_data['username'] !== $username)) {
-        error_log("📧 TOKEN VERIFICATION FAILED!");
         api_error(401, 'Neplatný token', 'UNAUTHORIZED');
         return;
     }
-    error_log("📧 TOKEN OK, user: " . $token_data['username']);
 
     $to = isset($input['to']) ? $input['to'] : '';
     $subject = isset($input['subject']) ? $input['subject'] : '';
@@ -1024,11 +1344,6 @@ function handle_notify_email($input, $config, $queries) {
 function handle_notifications_send_dual($input, $config, $queries) {
     set_time_limit(30); // Max 30 sekund
     
-    // AGRESIVNÍ LOGGING - zajistit, že se zobrazí
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "📧📧 DUAL NOTIFICATION CALLED\n", FILE_APPEND);
-    error_log("📧📧 DUAL NOTIFICATION REQUEST: " . json_encode($input));
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "Input: " . json_encode($input) . "\n", FILE_APPEND);
-    
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
@@ -1036,13 +1351,11 @@ function handle_notifications_send_dual($input, $config, $queries) {
     try {
         $token_data = verify_token($token);
     } catch (Exception $e) {
-        error_log("📧 TOKEN VERIFICATION ERROR: " . $e->getMessage());
         api_error(401, 'Chyba ověření tokenu: ' . $e->getMessage(), 'TOKEN_ERROR');
         return;
     }
     
     if (!$token_data || ($username && $token_data['username'] !== $username)) {
-        error_log("📧 TOKEN VERIFICATION FAILED!");
         api_error(401, 'Neplatný token', 'UNAUTHORIZED');
         return;
     }
@@ -1052,54 +1365,36 @@ function handle_notifications_send_dual($input, $config, $queries) {
     $has_to = !empty($input['to']) && is_array($input['to']);
     
     if (empty($input['order_id']) || (!$has_from && !$has_to)) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ VALIDATION FAILED\n", FILE_APPEND);
         api_error(400, 'Chybí povinné parametry (order_id, from nebo to)', 'MISSING_FIELDS');
         return;
     }
     
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Validation OK (from: " . ($has_from ? count($input['from']) : 0) . ", to: " . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
-    
     require_once __DIR__ . '/email-template-helper.php';
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ email-template-helper loaded\n", FILE_APPEND);
-    
     require_once __DIR__ . '/mail.php';
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ mail.php loaded\n", FILE_APPEND);
     
     try {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔌 Connecting to DB...\n", FILE_APPEND);
         $db = get_db($config);
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ DB connection OK\n", FILE_APPEND);
-        error_log("📧 DB connection OK");
     } catch (Exception $e) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ DB ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         error_log("📧 DB CONNECTION ERROR: " . $e->getMessage());
         api_error(500, 'Chyba připojení k DB: ' . $e->getMessage(), 'DB_ERROR');
         return;
     }
     
-    // Načtení šablony z DB (type = order_status_ke_schvaleni)
+    // Načtení šablony z DB (typ = ORDER_PENDING_APPROVAL)
     try {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
-        $stmt = $db->prepare("SELECT * FROM 25_notification_templates WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = 'ORDER_PENDING_APPROVAL' AND aktivni = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);
-        error_log("📧 Template query executed");
     } catch (Exception $e) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         error_log("📧 TEMPLATE QUERY ERROR: " . $e->getMessage());
         api_error(500, 'Chyba při načítání šablony: ' . $e->getMessage(), 'QUERY_ERROR');
         return;
     }
     
     if (!$template) {
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ Template NOT FOUND\n", FILE_APPEND);
         api_error(404, 'Šablona notifikace nenalezena nebo není aktivní', 'TEMPLATE_NOT_FOUND');
         return;
     }
-    
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template OK: {$template['name']}\n", FILE_APPEND);
-    error_log("📧 Načtena šablona: {$template['name']} (ID: {$template['id']})");
     
     // Sestavení STŘEDISEK (spojit názvy čárkou - frontend už poslal převedené názvy)
     $strediska_display = 'Neuvedeno';
@@ -1126,7 +1421,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $lp_placeholders = implode(',', array_fill(0, count($lp_ids), '?'));
                 
                 try {
-                    $stmt_lp = $db->prepare("SELECT cislo_lp FROM 25_limitovane_prisliby WHERE id IN ($lp_placeholders)");
+                    $stmt_lp = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id IN ($lp_placeholders)");
                     $stmt_lp->execute($lp_ids);
                     $lp_cisla = $stmt_lp->fetchAll(PDO::FETCH_COLUMN);
                     
@@ -1175,55 +1470,53 @@ function handle_notifications_send_dual($input, $config, $queries) {
         'max_price_formatted' => $input['max_price']
     ];
     
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Order data from FE (strediska: $strediska_display, financovani: $financovani_full)\n", FILE_APPEND);
-    
     $results = [];
     $sent_count = 0;
     $in_app_count = 0;
     
-    // Sloučit from (SUBMITTER) a to (APPROVER) do jednoho pole s type označením
+    // Sloučit from (SUBMITTER) a to (APPROVER) do jednoho pole s typ označením
     $all_recipients = [];
     
     if ($has_from) {
         foreach ($input['from'] as $user_id) {
-            $all_recipients[] = ['user_id' => $user_id, 'type' => 'SUBMITTER'];
+            $all_recipients[] = ['user_id' => $user_id, 'typ' => 'SUBMITTER'];
         }
     }
     
     if ($has_to) {
         foreach ($input['to'] as $user_id) {
-            $all_recipients[] = ['user_id' => $user_id, 'type' => 'APPROVER'];
+            $all_recipients[] = ['user_id' => $user_id, 'typ' => 'APPROVER'];
         }
     }
     
-    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔄 Starting recipient loop (" . count($all_recipients) . " recipients: from=" . ($has_from ? count($input['from']) : 0) . ", to=" . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
+    file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔄 Starting recipient loop (" . count($all_recipients) . " recipients: from=" . ($has_from ? count($input['from']) : 0) . ", to=" . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
     
     // Projít všechny příjemce
     foreach ($all_recipients as $recipient) {
         $user_id = $recipient['user_id'];
-        $recipient_type = $recipient['type'];
+        $recipient_type = $recipient['typ'];
         
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (type: $recipient_type)\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (typ: $recipient_type)\n", FILE_APPEND);
         if (!$user_id) {
             error_log("⚠️ Prázdné user_id, přeskakuji");
             continue;
         }
         
         // 1. Načíst user data (email + settings)
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔍 Querying user data...\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔍 Querying user data...\n", FILE_APPEND);
         try {
             $stmt_user = $db->prepare("
                 SELECT u.id, u.username, u.email, u.jmeno, u.prijmeni, s.nastaveni_data as nastaveni
-                FROM 25_uzivatele u
-                LEFT JOIN 25_uzivatel_nastaveni s ON u.id = s.uzivatel_id
+                FROM " . TBL_UZIVATELE . " u
+                LEFT JOIN " . TBL_UZIVATEL_NASTAVENI . " s ON u.id = s.uzivatel_id
                 WHERE u.id = ? 
                 LIMIT 1
             ");
             $stmt_user->execute([$user_id]);
             $user = $stmt_user->fetch();
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ User fetched: " . ($user ? $user['username'] : 'NOT FOUND') . "\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ User fetched: " . ($user ? $user['username'] : 'NOT FOUND') . "\n", FILE_APPEND);
         } catch (Exception $e) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ USER QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ USER QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             throw $e;
         }
         
@@ -1241,22 +1534,22 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // 2. Zkontrolovat nastavení notifikací
         $settings = [];
         if (!empty($user['nastaveni'])) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📋 Parsing settings JSON...\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📋 Parsing settings JSON...\n", FILE_APPEND);
             $decoded = json_decode($user['nastaveni'], true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 $settings = $decoded;
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ Settings parsed OK\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ Settings parsed OK\n", FILE_APPEND);
             } else {
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ⚠️ JSON decode failed: " . json_last_error_msg() . "\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ⚠️ JSON decode failed: " . json_last_error_msg() . "\n", FILE_APPEND);
             }
         } else {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ℹ️ No settings found\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ℹ️ No settings found\n", FILE_APPEND);
         }
         
         $email_enabled = isset($settings['notifikace']['email']) ? (bool)$settings['notifikace']['email'] : true;
         $system_enabled = isset($settings['notifikace']['system']) ? (bool)$settings['notifikace']['system'] : true;
         
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📧 Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF') . "\n", FILE_APPEND);
+        file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📧 Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF') . "\n", FILE_APPEND);
         error_log("📧 User {$user['username']} (ID: $user_id) - Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF'));
         
         $sent_email = false;
@@ -1267,7 +1560,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // Tato funkce odesílá POUZE dual-template emaily s kontrolou nastavení
         
         if ($email_enabled) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (type: $recipient_type)...\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (typ: $recipient_type)...\n", FILE_APPEND);
             
             // Určit přesný typ šablony: APPROVER_NORMAL, APPROVER_URGENT nebo SUBMITTER
             // from[] = SUBMITTER (zelená informační šablona)
@@ -1280,7 +1573,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $template_type = 'SUBMITTER';
             }
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template type: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template typ: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
             
             // Extrahuj správnou HTML šablonu podle typu (triple-template: normal/urgent/submitter)
             $email_body = get_email_template_by_recipient($template['email_body'], $template_type);
@@ -1296,7 +1589,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
             // Načíst jméno příkazce (schvalovatele) pro {approver_name}
             $approver_name = 'Schvalovatel';
             if ($order_data['prikazce_id']) {
-                $stmt_approver = $db->prepare("SELECT jmeno, prijmeni FROM 25_uzivatele WHERE id = ? LIMIT 1");
+                $stmt_approver = $db->prepare("SELECT jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
                 $stmt_approver->execute([$order_data['prikazce_id']]);
                 $approver = $stmt_approver->fetch();
                 if ($approver) {
@@ -1311,13 +1604,13 @@ function handle_notifications_send_dual($input, $config, $queries) {
             $date_formatted = date('d.m.Y H:i');
             
             // Nahraď placeholdery v body
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔄 Replacing placeholders...\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       recipient_name: $recipient_name (user_id: $user_id)\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       approver_name: $approver_name\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       strediska: {$order_data['strediska_display']}\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       financovani: {$order_data['financovani_display']}\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       poznamka: {$order_data['financovani_poznamka']}\n", FILE_APPEND);
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       date: $date_formatted\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔄 Replacing placeholders...\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       recipient_name: $recipient_name (user_id: $user_id)\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       approver_name: $approver_name\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       strediska: {$order_data['strediska_display']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       financovani: {$order_data['financovani_display']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       poznamka: {$order_data['financovani_poznamka']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       date: $date_formatted\n", FILE_APPEND);
             
             $email_body = str_replace(
                 [
@@ -1347,17 +1640,17 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $email_body
             );
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ All 10 placeholders replaced\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ All 10 placeholders replaced\n", FILE_APPEND);
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Calling eeo_mail_send to: {$user['email']}\n", FILE_APPEND);
+            file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Calling eeo_mail_send to: {$user['email']}\n", FILE_APPEND);
             error_log("📧 Odesílám email na: {$user['email']} (typ: $recipient_type)");
             
             // Odešli email
             try {
                 $mail_result = eeo_mail_send($user['email'], $email_subject, $email_body, ['html' => true]);
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ eeo_mail_send returned: " . json_encode($mail_result) . "\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ eeo_mail_send returned: " . json_encode($mail_result) . "\n", FILE_APPEND);
             } catch (Exception $e) {
-                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ MAIL ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+                file_put_contents('/var/www/erdms-dev/logs/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ MAIL ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
                 throw $e;
             }
             
@@ -1407,8 +1700,9 @@ function handle_user_change_password($input, $config, $queries) {
     $old = trim($old);
     $new = trim($new);
 
-    if ($old === '' || $new === '') {
-        api_error(400, 'Chybí staré nebo nové heslo', 'MISSING_FIELDS');
+    // Pro nové heslo musí být vždy zadáno
+    if ($new === '') {
+        api_error(400, 'Chybí nové heslo', 'MISSING_FIELDS');
         return;
     }
     if (strlen($new) < 6) {
@@ -1418,8 +1712,8 @@ function handle_user_change_password($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        // Fetch current stored hash
-        $stmt = $db->prepare("SELECT id, username, password_hash FROM " . TABLE_UZIVATELE . " WHERE id = :id LIMIT 1");
+        // Fetch current stored hash + vynucena_zmena_hesla flag
+        $stmt = $db->prepare("SELECT id, username, password_hash, vynucena_zmena_hesla FROM " . TBL_UZIVATELE . " WHERE id = :id LIMIT 1");
         $stmt->bindParam(':id', $token_data['id'], PDO::PARAM_INT);
         $stmt->execute();
         $user = $stmt->fetch();
@@ -1428,29 +1722,40 @@ function handle_user_change_password($input, $config, $queries) {
             return;
         }
 
-        $stored = isset($user['password_hash']) ? $user['password_hash'] : '';
-        $ok = false;
-
-        // Verify old password (same logic as in handle_login)
-        $bcrypt_prefix = substr($stored, 0, 4);
-        if (in_array($bcrypt_prefix, array('$2y$', '$2a$', '$2b$')) && strlen($stored) >= 59) {
-            if (function_exists('password_verify')) {
-                $ok = password_verify($old, $stored);
-            } else {
-                $ok = (crypt($old, $stored) === $stored);
+        // Pokud má uživatel vynucenou změnu hesla, NEPOTŘEBUJE staré heslo
+        $forceChange = isset($user['vynucena_zmena_hesla']) && (int)$user['vynucena_zmena_hesla'] === 1;
+        
+        // Pokud NENÍ vynucená změna, musí ověřit staré heslo
+        if (!$forceChange) {
+            if ($old === '') {
+                api_error(400, 'Chybí staré heslo', 'MISSING_FIELDS');
+                return;
             }
-        }
-        if (!$ok && preg_match('/^[0-9a-f]{32}$/i', $stored)) {
-            $ok = (md5($old) === $stored);
-        }
-        if (!$ok && $stored !== '') {
-            // legacy plaintext fallback
-            $ok = ($old === $stored);
-        }
+            
+            $stored = isset($user['password_hash']) ? $user['password_hash'] : '';
+            $ok = false;
 
-        if (!$ok) {
-            api_error(400, 'Původní heslo není správné', 'OLD_PASSWORD_INVALID');
-            return;
+            // Verify old password (same logic as in handle_login)
+            $bcrypt_prefix = substr($stored, 0, 4);
+            if (in_array($bcrypt_prefix, array('$2y$', '$2a$', '$2b$')) && strlen($stored) >= 59) {
+                if (function_exists('password_verify')) {
+                    $ok = password_verify($old, $stored);
+                } else {
+                    $ok = (crypt($old, $stored) === $stored);
+                }
+            }
+            if (!$ok && preg_match('/^[0-9a-f]{32}$/i', $stored)) {
+                $ok = (md5($old) === $stored);
+            }
+            if (!$ok && $stored !== '') {
+                // legacy plaintext fallback
+                $ok = ($old === $stored);
+            }
+
+            if (!$ok) {
+                api_error(400, 'Původní heslo není správné', 'OLD_PASSWORD_INVALID');
+                return;
+            }
         }
 
         // Hash new password using password_hash if available, else legacy fallback
@@ -1466,12 +1771,15 @@ function handle_user_change_password($input, $config, $queries) {
             return;
         }
 
-        $stmtU = $db->prepare("UPDATE " . TABLE_UZIVATELE . " SET password_hash = :hash, dt_aktualizace = NOW() WHERE id = :id");
+        $stmtU = $db->prepare("UPDATE " . TBL_UZIVATELE . " SET password_hash = :hash, vynucena_zmena_hesla = 0, dt_aktualizace = NOW() WHERE id = :id");
         $stmtU->bindParam(':hash', $newHash);
         $stmtU->bindParam(':id', $user['id'], PDO::PARAM_INT);
         $stmtU->execute();
 
-        api_ok(array('changed' => true));
+        // Vygeneruj nový token po úspěšné změně hesla
+        $newToken = base64_encode($user['username'] . '|' . time());
+        
+        api_ok(array('changed' => true, 'token' => $newToken));
         return;
     } catch (Exception $e) {
         api_error(500, 'Chyba databáze: ' . $e->getMessage(), 'DB_ERROR');
@@ -1507,17 +1815,29 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         // DB spojení již existuje z verify_token() výše
 
         // Build query to return full LP records with all columns
-        // Accept filtering by usek_id (int) or usek_zkr (string) which joins to TABLE_USEKY
+        // Accept filtering by usek_id (int) or usek_zkr (string) which joins to TBL_USEKY
         $params = array();
         $usekId = isset($input['usek_id']) ? intval($input['usek_id']) : null;
         $usekZkr = isset($input['usek_zkr']) ? trim($input['usek_zkr']) : null;
         $kategorie = isset($input['kategorie']) ? trim($input['kategorie']) : null;
 
         // Unified query builder - always include usek info via LEFT JOIN
+        // Vrátit LP kódy, které jsou platné kdykoliv v aktuálním roce
+        // (tzn. platne_od <= konec roku AND platne_do >= začátek roku)
+        $currentYear = date('Y');
+        $yearStart = $currentYear . '-01-01';
+        $yearEnd = $currentYear . '-12-31';
+        
         $sql = "SELECT lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, lp.cislo_uctu, lp.nazev_uctu, lp.vyse_financniho_kryti, lp.platne_od, lp.platne_do, u.usek_zkr, u.usek_nazev 
-                FROM " . TABLE_LIMITOVANE_PRISLIBY . " lp 
-                LEFT JOIN " . TABLE_USEKY . " u ON lp.usek_id = u.id 
-                WHERE lp.cislo_lp IS NOT NULL";
+                FROM " . TBL_LP_MASTER . " lp 
+                LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id 
+                WHERE lp.cislo_lp IS NOT NULL 
+                AND lp.platne_od <= :year_end 
+                AND lp.platne_do >= :year_start";
+        
+        // Přidat parametry pro rok
+        $params[':year_start'] = $yearStart;
+        $params[':year_end'] = $yearEnd;
 
         // Add filters dynamically
         if ($usekZkr !== null && $usekZkr !== '') {
@@ -1813,7 +2133,7 @@ function handle_dodavatele_search($input, $config, $queries) {
             $params[':ico'] = $ico;
         }
         
-        $sql = "SELECT * FROM " . TABLE_DODAVATELE . " WHERE " . implode(' OR ', $whereConditions) . " ORDER BY nazev";
+        $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE " . implode(' OR ', $whereConditions) . " ORDER BY nazev";
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
@@ -1922,8 +2242,8 @@ function handle_dodavatele_contacts($input, $config, $queries) {
     try {
         // Načti informace o uživateli včetně úseku
         $stmtUser = $db->prepare("SELECT u.id, u.username, us.usek_zkr 
-                                  FROM " . TABLE_UZIVATELE . " u 
-                                  LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id 
+                                  FROM " . TBL_UZIVATELE . " u 
+                                  LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id 
                                   WHERE u.id = :user_id");
         $stmtUser->bindValue(':user_id', $user_id, PDO::PARAM_INT);
         $stmtUser->execute();
@@ -1948,11 +2268,11 @@ function handle_dodavatele_contacts($input, $config, $queries) {
         // Sestavení SQL - buď všechny kontakty nebo filtrované
         if ($load_all) {
             // Načti všechny kontakty bez filtrování
-            $sql = "SELECT * FROM " . TABLE_DODAVATELE . " ORDER BY nazev";
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev";
             $params = array();
         } else {
             // Filtrované načítání (původní logika)
-            $sql = "SELECT * FROM " . TABLE_DODAVATELE . " WHERE 
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE 
                 (user_id = 0) OR 
                 (user_id = :user_id)";
             
@@ -2028,7 +2348,7 @@ function user_has_admin_rights($user_id, $db, $queries) {
             
             foreach ($direct_rights as $right) {
                 $kod = isset($right['kod_prava']) ? $right['kod_prava'] : '';
-                if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'CONTACT_MANAGE_ALL'))) {
+                if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'SUPPLIER_MANAGE'))) {
                     return true;
                 }
             }
@@ -2050,7 +2370,7 @@ function user_has_admin_rights($user_id, $db, $queries) {
                     
                     foreach ($role_rights as $right) {
                         $kod = isset($right['kod_prava']) ? $right['kod_prava'] : '';
-                        if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'CONTACT_MANAGE_ALL'))) {
+                        if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'SUPPLIER_MANAGE'))) {
                             return true;
                         }
                     }
@@ -2101,7 +2421,7 @@ function handle_dodavatele_contacts_admin($input, $config, $queries) {
     
     try {
         // Načti všechny kontakty bez filtrování
-        $sql = "SELECT * FROM " . TABLE_DODAVATELE . " ORDER BY nazev";
+        $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev";
         
         if (API_DEBUG_MODE) {
             error_log("Admin dodavatele contacts SQL: " . $sql);
@@ -2308,7 +2628,7 @@ function handle_dodavatele_update($input, $config, $queries) {
         // Vždy aktualizuj dt_aktualizace
         $updateFields[] = "dt_aktualizace = NOW()";
         
-        $sql = "UPDATE " . TABLE_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE id = :id";
         $params[':id'] = $dodavatel_id;
         
         $stmt = $db->prepare($sql);
@@ -2448,7 +2768,7 @@ function handle_dodavatele_update_by_ico($input, $config, $queries) {
         $updateFields[] = "dt_aktualizace = NOW()";
         
         // Sestav finální SQL
-        $sql = "UPDATE " . TABLE_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE ico = :ico";
+        $sql = "UPDATE " . TBL_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE ico = :ico";
         
         if (API_DEBUG_MODE) {
             error_log("Partial update SQL: " . $sql);
@@ -2764,13 +3084,13 @@ function handle_templates_select($input, $config, $queries) {
         // Build SQL: always include kategorie filter (default 'OBJEDNAVKA'), optionally also typ
         if ($typ !== null && $typ !== '') {
             // filter by both kategorie and typ
-            $sql = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie AND typ = :typ ORDER BY id";
+            $sql = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie AND typ = :typ ORDER BY id";
             $params[':user_id'] = $userId;
             $params[':kategorie'] = $kategorie;
             $params[':typ'] = $typ;
         } else {
             // filter by kategorie only
-            $sql = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie ORDER BY id";
+            $sql = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie ORDER BY id";
             $params[':user_id'] = $userId;
             $params[':kategorie'] = $kategorie;
         }
@@ -2945,7 +3265,7 @@ function handle_templates_update($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "UPDATE " . TABLE_SABLONY_OBJEDNAVEK . " SET " . $set_sql . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_SABLONY_OBJEDNAVEK . " SET " . $set_sql . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         // bind dynamic params
         foreach ($params as $pname => $pval) {
@@ -3096,12 +3416,15 @@ function handle_users_list($input, $config, $queries) {
                     u.jmeno,
                     u.prijmeni,
                     u.dt_posledni_aktivita,
+                    u.aktivita_metadata,
                     u.titul_za,
                     u.email,
                     u.telefon,
                     u.aktivni,
+                    u.vynucena_zmena_hesla,
                     u.dt_vytvoreni,
                     u.dt_aktualizace,
+                    u.viditelny_v_tel_seznamu,
                     
                     IFNULL(p.nazev_pozice, '') as nazev_pozice,
                     p.parent_id as pozice_parent_id,
@@ -3115,13 +3438,13 @@ function handle_users_list($input, $config, $queries) {
                     
                     CONCAT_WS(' ', MIN(u_nadrizeny.titul_pred), MIN(u_nadrizeny.jmeno), MIN(u_nadrizeny.prijmeni), MIN(u_nadrizeny.titul_za)) as nadrizeny_cely_jmeno
 
-                FROM " . TABLE_UZIVATELE . " u
-                    LEFT JOIN " . TABLE_POZICE . " p ON u.pozice_id = p.id
-                    LEFT JOIN " . TABLE_LOKALITY . " l ON u.lokalita_id = l.id
-                    LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id
-                    LEFT JOIN " . TABLE_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
+                FROM " . TBL_UZIVATELE . " u
+                    LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
+                    LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+                    LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+                    LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
                 WHERE u.id > 0 AND u.aktivni = :aktivni
-                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.aktivita_metadata, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
                 ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
             ";
             $stmt = $db->prepare($sql);
@@ -3226,6 +3549,139 @@ function handle_users_list($input, $config, $queries) {
     }
 }
 
+/**
+ * POST - Přepínání viditelnosti uživatele v telefonním seznamu
+ * Endpoint: users/toggle-visibility
+ * POST: {token, username, user_id, viditelny_v_tel_seznamu}
+ */
+function handle_users_toggle_visibility($input, $config, $queries) {
+    // 1. Validace HTTP metody
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    // 2. Parametry z body
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $user_id = $input['user_id'] ?? 0;
+    $viditelny_v_tel_seznamu = $input['viditelny_v_tel_seznamu'] ?? null;
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    if (!$user_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí user_id']);
+        return;
+    }
+
+    if ($viditelny_v_tel_seznamu === null || ($viditelny_v_tel_seznamu !== 0 && $viditelny_v_tel_seznamu !== 1)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Parametr viditelny_v_tel_seznamu musí být 0 nebo 1']);
+        return;
+    }
+
+    // 3. Ověření tokenu
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // Nastavení české časové zóny pro MySQL session
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // 5. Kontrola oprávnění - načtení rolí uživatele
+        $stmt = $db->prepare("
+            SELECT DISTINCT r.kod_role
+            FROM " . TBL_ROLE . " r
+            JOIN " . TBL_UZIVATELE_ROLE . " ur ON r.id = ur.role_id
+            JOIN " . TBL_UZIVATELE . " u ON ur.uzivatel_id = u.id
+            WHERE u.username = ? LIMIT 10
+        ");
+        $stmt->execute([$username]);
+        $user_roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        
+        // Kontrola specifického práva PHONEBOOK_MANAGE
+        $has_permission = false;
+        if (!$is_admin) {
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM " . TBL_UZIVATELE . " u
+                JOIN " . TBL_UZIVATELE_ROLE . " ur ON u.id = ur.uzivatel_id
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id
+                JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
+                WHERE u.username = ? AND p.kod_prava = 'PHONEBOOK_MANAGE'
+                LIMIT 1
+            ");
+            $stmt->execute([$username]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $has_permission = $result && $result['count'] > 0;
+        }
+        
+        if (!$is_admin && !$has_permission) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Nemáte oprávnění pro úpravu viditelnosti zaměstnanců']);
+            return;
+        }
+
+        // 6. Ověření existence uživatele
+        $stmt = $db->prepare("SELECT id, jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+        $stmt->execute([$user_id]);
+        $target_user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$target_user) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Uživatel nenalezen']);
+            return;
+        }
+
+        // 7. UPDATE viditelnost
+        $stmt = $db->prepare("
+            UPDATE " . TBL_UZIVATELE . " 
+            SET viditelny_v_tel_seznamu = ?, dt_aktualizace = NOW() 
+            WHERE id = ?
+        ");
+        $stmt->execute([$viditelny_v_tel_seznamu, $user_id]);
+
+        // 8. Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'user_id' => (int)$user_id,
+                'viditelny_v_tel_seznamu' => (int)$viditelny_v_tel_seznamu,
+                'jmeno' => $target_user['jmeno'],
+                'prijmeni' => $target_user['prijmeni']
+            ],
+            'message' => 'Viditelnost zaměstnance byla úspěšně změněna'
+        ]);
+
+    } catch (Exception $e) {
+        // 9. Error handling
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při zpracování: ' . $e->getMessage()
+        ]);
+    }
+}
+
 function handle_orders_next_number($input, $config, $queries) {
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
@@ -3286,7 +3742,7 @@ function handle_orders_next_number($input, $config, $queries) {
         
         $ico = $org_data['organizace_ico'];
         $usek_zkr = $org_data['usek_zkr'];
-        $current_year = date('Y');
+        $current_year = TimezoneHelper::getCzechDateTime('Y');
         
         // Format numbers with leading zeros to 4 digits
         $formatted_last_used = sprintf('%04d', $last_used_number);
@@ -3587,7 +4043,7 @@ function handle_orders_list($input, $config, $queries) {
         if (!empty($userIds)) {
             $userIds = array_values(array_unique($userIds));
             $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-            $sqlUsers = "SELECT id, titul_pred, jmeno, prijmeni, titul_za, email, telefon FROM " . TABLE_UZIVATELE . " WHERE id IN (" . $placeholders . ")";
+            $sqlUsers = "SELECT id, titul_pred, jmeno, prijmeni, titul_za, email, telefon FROM " . TBL_UZIVATELE . " WHERE id IN (" . $placeholders . ")";
             $stmtUsers = $db->prepare($sqlUsers);
             $stmtUsers->execute($userIds);
             $fetchedUsers = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
@@ -3601,7 +4057,7 @@ function handle_orders_list($input, $config, $queries) {
         if (!empty($dodavIds)) {
             $dodavIds = array_values(array_unique($dodavIds));
             $ph = implode(',', array_fill(0, count($dodavIds), '?'));
-            $sqlDod = "SELECT id, nazev AS dodavatel_nazev, ico, dic FROM " . TABLE_DODAVATELE . " WHERE id IN (" . $ph . ")";
+            $sqlDod = "SELECT id, nazev AS dodavatel_nazev, ico, dic FROM " . TBL_DODAVATELE . " WHERE id IN (" . $ph . ")";
             $stmtDod = $db->prepare($sqlDod);
             $stmtDod->execute($dodavIds);
             foreach ($stmtDod->fetchAll(PDO::FETCH_ASSOC) as $d) {
@@ -3614,7 +4070,7 @@ function handle_orders_list($input, $config, $queries) {
         if (!empty($lokalityIds)) {
             $lokalityIds = array_values(array_unique($lokalityIds));
             $ph = implode(',', array_fill(0, count($lokalityIds), '?'));
-            $sqlLok = "SELECT id, nazev, typ, parent_id FROM " . TABLE_LOKALITY . " WHERE id IN (" . $ph . ")";
+            $sqlLok = "SELECT id, nazev, typ, parent_id FROM " . TBL_LOKALITY . " WHERE id IN (" . $ph . ")";
             $stmtLok = $db->prepare($sqlLok);
             $stmtLok->execute($lokalityIds);
             foreach ($stmtLok->fetchAll(PDO::FETCH_ASSOC) as $l) {
@@ -3628,7 +4084,7 @@ function handle_orders_list($input, $config, $queries) {
             $stavIds = array_values(array_unique($stavIds));
             $ph = implode(',', array_fill(0, count($stavIds), '?'));
             // fetch new schema columns for stavy
-            $sqlStav = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM " . TABLE_CISELNIK_STAVY . " WHERE id IN (" . $ph . ")";
+            $sqlStav = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM " . TBL_CISELNIK_STAVY . " WHERE id IN (" . $ph . ")";
             $stmtStav = $db->prepare($sqlStav);
             $stmtStav->execute($stavIds);
             foreach ($stmtStav->fetchAll(PDO::FETCH_ASSOC) as $s) {
@@ -3789,7 +4245,7 @@ function handle_order_detail($input, $config, $queries) {
 
         // Obohacení schvalil_uzivatel_id o jméno uživatele
         if (!empty($row['schvalil_uzivatel_id'])) {
-            $stmt_user = $db->prepare("SELECT CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM " . TABLE_UZIVATELE . " WHERE id = :user_id AND aktivni = 1");
+            $stmt_user = $db->prepare("SELECT CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM " . TBL_UZIVATELE . " WHERE id = :user_id AND aktivni = 1");
             $stmt_user->bindValue(':user_id', $row['schvalil_uzivatel_id'], PDO::PARAM_INT);
             $stmt_user->execute();
             $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
@@ -3909,7 +4365,7 @@ function handle_create_order($input, $config, $queries) {
                 if ($org_data && $nextResult) {
                     $ico = $org_data['organizace_ico'];
                     $usek_zkr = $org_data['usek_zkr'];
-                    $current_year = date('Y');
+                    $current_year = TimezoneHelper::getCzechDateTime('Y');
                     $formatted_number = sprintf('%04d', $nextResult['next_number']);
                     $orderNumber = 'O-' . $formatted_number . '/' . $ico . '/' . $current_year . '/' . $usek_zkr;
                     
@@ -4030,9 +4486,10 @@ function handle_create_order($input, $config, $queries) {
         $params = [
             ':cislo_objednavky' => $orderNumber,
             ':datum_objednavky' => $datum_objednavky,
-            ':objednatel_id' => $objednatel_id,
-            ':created_by_uzivatel_id' => $objednatel_id,
-            ':updated_by_uzivatel_id' => $objednatel_id,
+            ':uzivatel_id' => $token_data['id'],  // Kdo vytvořil objednávku
+            ':objednatel_id' => $objednatel_id,  // Kdo objednává (obvykle = uzivatel_id)
+            ':created_by_uzivatel_id' => $token_data['id'],
+            ':updated_by_uzivatel_id' => $token_data['id'],
             ':garant_uzivatel_id' => $garant_uzivatel_id,
             ':predmet' => $predmet,
             ':prikazce_id' => $prikazce_id,
@@ -4289,15 +4746,15 @@ function handle_update_order($input, $config, $queries) {
     if ($incomingStavId) {
         try {
             $dbLookup = get_db($config);
-            $stmtSt = $dbLookup->prepare("SELECT kod_stavu, typ_objektu FROM ".TABLE_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
+            $stmtSt = $dbLookup->prepare("SELECT kod_stavu, typ_objektu FROM ".TBL_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
             $stmtSt->execute([':id' => $incomingStavId]);
             $stavRow = $stmtSt->fetch();
             if ($stavRow && strtoupper($stavRow['typ_objektu']) === 'OBJEDNAVKA') {
                 $kod = strtoupper($stavRow['kod_stavu']);
                 if (in_array($kod, ['SCHVALENA','ZAMITNUTA','CEKA_SE'])) {
                     $setParts[] = 'datum_schvaleni = NOW()';
-                    $setParts[] = 'schvalil_uzivatel_id = :schvalil_uzivatel_id';
-                    $params[':schvalil_uzivatel_id'] = $token_data['id'];
+                    $setParts[] = 'schvalovatel_id = :schvalovatel_id';
+                    $params[':schvalovatel_id'] = $token_data['id'];
                 }
                 // stav_datum vždy při změně stavu
                 $setParts[] = 'stav_datum = NOW()';
@@ -4307,12 +4764,14 @@ function handle_update_order($input, $config, $queries) {
         }
     }
 
-    // Always set updated_by_uzivatel_id and dt_aktualizace = NOW()
+    // Always set update tracking fields and dt_aktualizace = NOW()
     $setParts[] = 'updated_by_uzivatel_id = :updated_by_uzivatel_id';
     $params[':updated_by_uzivatel_id'] = $token_data['id'];
+    $setParts[] = 'uzivatel_akt_id = :uzivatel_akt_id';  // ✅ ADDED: Also set new field for consistency
+    $params[':uzivatel_akt_id'] = $token_data['id'];
     $setParts[] = 'dt_aktualizace = NOW()';
 
-    $sql = 'UPDATE '.TABLE_OBJEDNAVKY.' SET '.implode(', ', $setParts).' WHERE id = :id LIMIT 1';
+    $sql = 'UPDATE '.TBL_OBJEDNAVKY.' SET '.implode(', ', $setParts).' WHERE id = :id LIMIT 1';
 
     $debug = (!empty($input['debugSql'])) || (!empty($payload['debugSql']));
     $debugData = [];
@@ -4322,7 +4781,7 @@ function handle_update_order($input, $config, $queries) {
         $db->beginTransaction();
 
         // Ověření existence objednávky
-        $stmtExist = $db->prepare('SELECT id, cislo_objednavky FROM '.TABLE_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
+        $stmtExist = $db->prepare('SELECT id, cislo_objednavky FROM '.TBL_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
         $stmtExist->execute([':id' => $orderId]);
         $existingRow = $stmtExist->fetch();
         if (!$existingRow) {
@@ -4346,11 +4805,11 @@ function handle_update_order($input, $config, $queries) {
         // Položky: úplná náhrada, pokud přišly
         $itemsChanged = false;
         if (isset($payload['polozky']) && is_array($payload['polozky'])) {
-            $stmtDel = $db->prepare('DELETE FROM '.TABLE_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = :oid');
+            $stmtDel = $db->prepare('DELETE FROM '.TBL_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = :oid');
             $stmtDel->execute([':oid' => $orderId]);
             $itemsChanged = true; // i kdyby žádné nové nepřišly, smazali jsme staré
             if ($debug) {
-                $debugData['itemsDelete'] = 'DELETE FROM '.TABLE_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = '.(int)$orderId;
+                $debugData['itemsDelete'] = 'DELETE FROM '.TBL_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = '.(int)$orderId;
             }
             $insertSql = $queries['objednavky_polozky_insert'];
             $stmtItem = $db->prepare($insertSql);
@@ -4380,11 +4839,29 @@ function handle_update_order($input, $config, $queries) {
 
         $db->commit();
 
+        // ✅ WORKFLOW UPDATE: Po vyplnění údajů o zveřejnění automaticky přejít na UVEREJNENA → FAKTURACE
+        if (isset($payload['datum_zverejneni']) || isset($payload['registr_smluv_id'])) {
+            try {
+                require_once __DIR__ . '/orderWorkflowHelpers.php';
+                $registrData = [];
+                if (isset($payload['datum_zverejneni'])) {
+                    $registrData['datum_zverejneni'] = $payload['datum_zverejneni'];
+                }
+                if (isset($payload['registr_smluv_id'])) {
+                    $registrData['registr_smluv_id'] = $payload['registr_smluv_id'];
+                }
+                updateWorkflowAfterRegistrFilled($db, $orderId, $registrData);
+            } catch (Exception $e) {
+                error_log("[WORKFLOW] Chyba při automatickém workflow update po vyplnění registru: " . $e->getMessage());
+                // Pokračovat normálně - není to kritická chyba
+            }
+        }
+
         $orderNumber = isset($existingRow['cislo_objednavky']) && $existingRow['cislo_objednavky'] !== null ? (string)$existingRow['cislo_objednavky'] : '';
         if ($orderNumber === '') {
             // fallback reread (edge)
             try {
-                $stmtNum = $db->prepare('SELECT cislo_objednavky FROM '.TABLE_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
+                $stmtNum = $db->prepare('SELECT cislo_objednavky FROM '.TBL_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
                 $stmtNum->execute([':id' => $orderId]);
                 $tmp = $stmtNum->fetch();
                 if ($tmp && !empty($tmp['cislo_objednavky'])) {
@@ -4428,8 +4905,7 @@ function get_upload_path($config, $objednavka_id, $user_id) {
     } else if (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // Fallback - použij hardcoded cestu pro tento projekt
-        $basePath = '/var/www/eeo2025/doc/prilohy/';
+        throw new Exception('Upload configuration missing: root_path or relative_path must be set');
     }
     
     // Přidání lomítka na konec pokud chybí
@@ -4530,7 +5006,7 @@ function handle_upload_attachment($config, $queries) {
         }
         
         // Kontrola existence objednávky
-        $stmt = $db->prepare("SELECT id FROM ".TABLE_OBJEDNAVKY." WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id FROM ".TBL_OBJEDNAVKY." WHERE id = :id LIMIT 1");
         $stmt->execute(array(':id' => $objednavka_id));
         if (!$stmt->fetch()) {
             api_error(404, 'Objednávka nenalezena');
@@ -4700,7 +5176,7 @@ function handle_get_attachments($config, $queries) {
         if (!empty($userIds)) {
             $userIds = array_unique($userIds);
             $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-            $stmtUsers = $db->prepare("SELECT id, jmeno, prijmeni, email FROM ".TABLE_UZIVATELE." WHERE id IN ($placeholders)");
+            $stmtUsers = $db->prepare("SELECT id, jmeno, prijmeni, email FROM ".TBL_UZIVATELE." WHERE id IN ($placeholders)");
             $stmtUsers->execute($userIds);
             $users = $stmtUsers->fetchAll();
             foreach ($users as $u) {
@@ -4786,7 +5262,7 @@ function handle_verify_attachments($config, $queries) {
         }
         
         // Ověření existence objednávky
-        $stmtOrder = $db->prepare("SELECT id FROM ".TABLE_OBJEDNAVKY." WHERE id = :id LIMIT 1");
+        $stmtOrder = $db->prepare("SELECT id FROM ".TBL_OBJEDNAVKY." WHERE id = :id LIMIT 1");
         $stmtOrder->execute(array(':id' => $objednavka_id));
         if (!$stmtOrder->fetch()) {
             api_error(404, 'Objednávka s ID ' . $objednavka_id . ' nenalezena');
@@ -4978,7 +5454,7 @@ function handle_delete_attachment($config, $queries) {
             $stmt->execute(array(':guid' => $guid));
             $attachment = $stmt->fetch();
         } elseif ($id > 0) {
-            $stmt = $db->prepare("SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE id = :id LIMIT 1");
+            $stmt = $db->prepare("SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE id = :id LIMIT 1");
             $stmt->execute(array(':id' => $id));
             $attachment = $stmt->fetch();
         }
@@ -5080,11 +5556,11 @@ function handle_deactivate_attachment($config, $queries) {
 
         // Deaktivuj přílohu v databázi (soft delete)
         if (!empty($guid)) {
-            $sql = "UPDATE 25a_objednavky_prilohy SET aktivni = 0, dt_aktualizace = NOW() WHERE guid = :guid";
+            $sql = "UPDATE " . TBL_OBJEDNAVKY_PRILOHY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE guid = :guid";
             $stmt = $db->prepare($sql);
             $stmt->execute(array(':guid' => $guid));
         } else {
-            $sql = "UPDATE 25a_objednavky_prilohy SET aktivni = 0, dt_aktualizace = NOW() WHERE id = :id";
+            $sql = "UPDATE " . TBL_OBJEDNAVKY_PRILOHY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE id = :id";
             $stmt = $db->prepare($sql);
             $stmt->execute(array(':id' => $id));
         }
@@ -5278,7 +5754,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         // 2. Načteme všechny číselníky pro překlad ID na názvy
         
         // Lokality
-        $stmt = $db->prepare("SELECT id, nazev, typ FROM ".TABLE_LOKALITY);
+        $stmt = $db->prepare("SELECT id, nazev, typ FROM ".TBL_LOKALITY);
         $stmt->execute();
         $lokality = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $lokalityMap = array();
@@ -5287,7 +5763,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         }
         
         // Uživatelé
-        $stmt = $db->prepare("SELECT id, CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM ".TABLE_UZIVATELE." WHERE aktivni = 1");
+        $stmt = $db->prepare("SELECT id, CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM ".TBL_UZIVATELE." WHERE aktivni = 1");
         $stmt->execute();
         $uzivatele = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $uzivateleMap = array();
@@ -5296,7 +5772,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         }
         
         // Dodavatelé
-        $stmt = $db->prepare("SELECT id, nazev FROM ".TABLE_DODAVATELE);
+        $stmt = $db->prepare("SELECT id, nazev FROM ".TBL_DODAVATELE);
         $stmt->execute();
         $dodavatele = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $dodavateleMap = array();
@@ -5305,7 +5781,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         }
         
         // Stavy
-        $stmt = $db->prepare("SELECT id, nazev_stavu, kod_stavu FROM ".TABLE_CISELNIK_STAVY." WHERE typ_objektu = 'OBJEDNAVKA'");
+        $stmt = $db->prepare("SELECT id, nazev_stavu, kod_stavu FROM ".TBL_CISELNIK_STAVY." WHERE typ_objektu = 'OBJEDNAVKA'");
         $stmt->execute();
         $stavy = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $stavyMap = array();
@@ -5804,7 +6280,7 @@ function handle_organizace_create($input, $config, $queries) {
 
         // Kontrola jedinečnosti IČO
         if (!empty($data['ico'])) {
-            $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE ico = :ico");
+            $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE ico = :ico");
             $check_stmt->bindParam(':ico', $data['ico']);
             $check_stmt->execute();
             $result = $check_stmt->fetch();
@@ -5882,7 +6358,7 @@ function handle_organizace_update($input, $config, $queries) {
         $data = $validation_result['data'];
 
         // Kontrola existence organizace
-        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE id = :id");
+        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id");
         $check_stmt->bindParam(':id', $organizace_id, PDO::PARAM_INT);
         $check_stmt->execute();
         $result = $check_stmt->fetch();
@@ -5895,7 +6371,7 @@ function handle_organizace_update($input, $config, $queries) {
 
         // Kontrola jedinečnosti IČO (kromě současné organizace)
         if (!empty($data['ico'])) {
-            $check_ico_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE ico = :ico AND id != :id");
+            $check_ico_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE ico = :ico AND id != :id");
             $check_ico_stmt->bindParam(':ico', $data['ico']);
             $check_ico_stmt->bindParam(':id', $organizace_id, PDO::PARAM_INT);
             $check_ico_stmt->execute();
@@ -5959,7 +6435,7 @@ function handle_organizace_update($input, $config, $queries) {
             return;
         }
 
-        $sql = "UPDATE ".TABLE_ORGANIZACE." SET " . implode(', ', $update_fields) . " WHERE id = :id";
+        $sql = "UPDATE ".TBL_ORGANIZACE_VIZITKA." SET " . implode(', ', $update_fields) . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
@@ -6004,7 +6480,7 @@ function handle_organizace_delete($input, $config, $queries) {
         $db = get_db($config);
 
         // Kontrola existence organizace
-        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE id = :id");
+        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id");
         $check_stmt->bindParam(':id', $organizace_id, PDO::PARAM_INT);
         $check_stmt->execute();
         $result = $check_stmt->fetch();
@@ -6269,8 +6745,8 @@ function handle_role_detail($input, $config, $queries) {
         // Načtení práv role
         $stmt = $db->prepare("
             SELECT p.id, p.kod_prava, p.popis 
-            FROM " . TABLE_PRAVA . " p
-            INNER JOIN " . TABLE_ROLE_PRAVA . " rp ON p.id = rp.pravo_id
+            FROM " . TBL_PRAVA . " p
+            INNER JOIN " . TBL_ROLE_PRAVA . " rp ON p.id = rp.pravo_id
             WHERE rp.role_id = :role_id
             ORDER BY p.kod_prava
         ");
@@ -6394,7 +6870,7 @@ function handle_lokality_create($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO " . TABLE_LOKALITY . " 
+        $sql = "INSERT INTO " . TBL_LOKALITY . " 
                 (nazev, typ, parent_id) 
                 VALUES (:nazev, :typ, :parent_id)";
         
@@ -6406,7 +6882,7 @@ function handle_lokality_create($input, $config, $queries) {
         
         $new_id = $db->lastInsertId();
         
-        $sql_select = "SELECT * FROM " . TABLE_LOKALITY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_LOKALITY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6457,7 +6933,7 @@ function handle_lokality_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE " . TABLE_LOKALITY . " 
+        $sql = "UPDATE " . TBL_LOKALITY . " 
                 SET nazev = :nazev, 
                     typ = :typ, 
                     parent_id = :parent_id
@@ -6470,7 +6946,7 @@ function handle_lokality_update($input, $config, $queries) {
         $stmt->bindParam(':parent_id', $parent_id, PDO::PARAM_INT);
         $stmt->execute();
         
-        $sql_select = "SELECT * FROM " . TABLE_LOKALITY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_LOKALITY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6513,7 +6989,7 @@ function handle_lokality_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Hard delete - skutečné smazání z databáze
-        $sql = "DELETE FROM " . TABLE_LOKALITY . " WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_LOKALITY . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6562,7 +7038,7 @@ function handle_pozice_create($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO " . TABLE_POZICE . " 
+        $sql = "INSERT INTO " . TBL_POZICE . " 
                 (nazev_pozice, parent_id, usek_id) 
                 VALUES (:nazev_pozice, :parent_id, :usek_id)";
         
@@ -6574,7 +7050,7 @@ function handle_pozice_create($input, $config, $queries) {
         
         $new_id = $db->lastInsertId();
         
-        $sql_select = "SELECT * FROM " . TABLE_POZICE . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_POZICE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6625,7 +7101,7 @@ function handle_pozice_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE " . TABLE_POZICE . " 
+        $sql = "UPDATE " . TBL_POZICE . " 
                 SET nazev_pozice = :nazev_pozice, 
                     parent_id = :parent_id,
                     usek_id = :usek_id
@@ -6638,7 +7114,7 @@ function handle_pozice_update($input, $config, $queries) {
         $stmt->bindParam(':usek_id', $usek_id, PDO::PARAM_INT);
         $stmt->execute();
         
-        $sql_select = "SELECT * FROM " . TABLE_POZICE . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_POZICE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6681,7 +7157,7 @@ function handle_pozice_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Hard delete - skutečné smazání z databáze
-        $sql = "DELETE FROM " . TABLE_POZICE . " WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_POZICE . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6731,7 +7207,7 @@ function handle_useky_create($input, $config, $queries) {
         
         // Kontrola duplicity zkratky
         if (!empty($zkr)) {
-            $sql_check = "SELECT id FROM " . TABLE_USEKY . " WHERE zkr = :zkr LIMIT 1";
+            $sql_check = "SELECT id FROM " . TBL_USEKY . " WHERE zkr = :zkr LIMIT 1";
             $stmt_check = $db->prepare($sql_check);
             $stmt_check->bindParam(':zkr', $zkr);
             $stmt_check->execute();
@@ -6743,7 +7219,7 @@ function handle_useky_create($input, $config, $queries) {
             }
         }
         
-        $sql = "INSERT INTO " . TABLE_USEKY . " (nazev, zkr) VALUES (:nazev, :zkr)";
+        $sql = "INSERT INTO " . TBL_USEKY . " (nazev, zkr) VALUES (:nazev, :zkr)";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':nazev', $nazev);
@@ -6752,7 +7228,7 @@ function handle_useky_create($input, $config, $queries) {
         
         $new_id = $db->lastInsertId();
         
-        $sql_select = "SELECT * FROM " . TABLE_USEKY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_USEKY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6804,7 +7280,7 @@ function handle_useky_update($input, $config, $queries) {
         
         // Kontrola duplicity zkratky (kromě aktuálního záznamu)
         if (!empty($zkr)) {
-            $sql_check = "SELECT id FROM " . TABLE_USEKY . " WHERE zkr = :zkr AND id != :id LIMIT 1";
+            $sql_check = "SELECT id FROM " . TBL_USEKY . " WHERE zkr = :zkr AND id != :id LIMIT 1";
             $stmt_check = $db->prepare($sql_check);
             $stmt_check->bindParam(':zkr', $zkr);
             $stmt_check->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6817,7 +7293,7 @@ function handle_useky_update($input, $config, $queries) {
             }
         }
         
-        $sql = "UPDATE " . TABLE_USEKY . " 
+        $sql = "UPDATE " . TBL_USEKY . " 
                 SET nazev = :nazev, 
                     zkr = :zkr
                 WHERE id = :id";
@@ -6828,7 +7304,7 @@ function handle_useky_update($input, $config, $queries) {
         $stmt->bindParam(':zkr', $zkr);
         $stmt->execute();
         
-        $sql_select = "SELECT * FROM " . TABLE_USEKY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_USEKY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6871,7 +7347,7 @@ function handle_useky_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Hard delete - skutečné smazání z databáze
-        $sql = "DELETE FROM " . TABLE_USEKY . " WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_USEKY . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6913,7 +7389,7 @@ function handle_stavy_list($input, $config, $queries) {
         
         // Query pro stavy
         $sql = "SELECT id, nazev, popis, barva, poradi, aktivni 
-                FROM 25_ciselnik_stavy 
+                FROM " . TBL_CISELNIK_STAVY . " 
                 WHERE aktivni = 1 
                 ORDER BY poradi ASC";
         
@@ -7066,7 +7542,7 @@ function handle_stavy_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "INSERT INTO 25_ciselnik_stavy (typ_objektu, kod_stavu, nazev_stavu, popis, dt_vytvoreni) 
+        $sql = "INSERT INTO " . TBL_CISELNIK_STAVY . " (typ_objektu, kod_stavu, nazev_stavu, popis, dt_vytvoreni) 
                 VALUES (:typ_objektu, :kod_stavu, :nazev_stavu, :popis, NOW())";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':typ_objektu', $typ_objektu);
@@ -7139,7 +7615,7 @@ function handle_stavy_update($input, $config, $queries) {
             return;
         }
         
-        $sql = "UPDATE 25_ciselnik_stavy SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_CISELNIK_STAVY . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
 
@@ -7176,7 +7652,7 @@ function handle_stavy_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "DELETE FROM 25_ciselnik_stavy WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_CISELNIK_STAVY . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $stav_id, PDO::PARAM_INT);
         $stmt->execute();
@@ -7224,7 +7700,7 @@ function handle_role_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "INSERT INTO 25_role (kod_role, nazev_role, popis, dt_vytvoreni) VALUES (:kod_role, :nazev_role, :popis, NOW())";
+        $sql = "INSERT INTO " . TBL_ROLE . " (kod_role, nazev_role, popis, dt_vytvoreni) VALUES (:kod_role, :nazev_role, :popis, NOW())";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':kod_role', $kod_role);
         $stmt->bindParam(':nazev_role', $nazev_role);
@@ -7291,7 +7767,7 @@ function handle_role_update($input, $config, $queries) {
             return;
         }
         
-        $sql = "UPDATE 25_role SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_ROLE . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
 
@@ -7328,7 +7804,7 @@ function handle_role_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "DELETE FROM 25_role WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $role_id, PDO::PARAM_INT);
         $stmt->execute();
@@ -7369,7 +7845,7 @@ function handle_prava_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "INSERT INTO 25_prava (kod_prava, popis, dt_vytvoreni) VALUES (:kod_prava, :popis, NOW())";
+        $sql = "INSERT INTO " . TBL_PRAVA . " (kod_prava, popis, dt_vytvoreni) VALUES (:kod_prava, :popis, NOW())";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':kod_prava', $kod_prava);
         $popis = isset($input['popis']) ? trim($input['popis']) : '';
@@ -7431,7 +7907,7 @@ function handle_prava_update($input, $config, $queries) {
             return;
         }
         
-        $sql = "UPDATE 25_prava SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_PRAVA . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
 
@@ -7468,7 +7944,7 @@ function handle_prava_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "DELETE FROM 25_prava WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_PRAVA . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $pravo_id, PDO::PARAM_INT);
         $stmt->execute();
@@ -7550,3 +8026,140 @@ function handle_old_react_action($input, $config, $queries) {
     }
 }
 
+
+// =============================================================================
+// USER ACTIVITY TRACKING HANDLERS
+// =============================================================================
+
+/**
+ * POST /user/activity/track
+ * Zaznamenává aktivitu uživatele (modul, path, IP, user agent)
+ */
+function handle_user_activity_track($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $module = isset($input['module']) ? trim($input['module']) : '';
+    $path = isset($input['path']) ? trim($input['path']) : '';
+    
+    if (!$token || !$username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    $db = get_db($config);
+    $token_data = verify_token($token, $db);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+        return;
+    }
+
+    try {
+        // Collect IP addresses
+        $public_ip = isset($input['public_ip']) && !empty($input['public_ip']) 
+            ? $input['public_ip'] 
+            : null;
+        
+        $local_ip = isset($input['local_ip']) && !empty($input['local_ip']) 
+            ? $input['local_ip'] 
+            : null;
+        
+        // Get server-detected IP (can be used as fallback)
+        $server_ip = get_client_ip();
+        
+        // If no public IP from frontend, use server-detected
+        if (!$public_ip) {
+            $public_ip = $server_ip;
+        }
+        
+        // If no local IP from frontend and server IP is private/localhost, use it
+        if (!$local_ip && $server_ip) {
+            // Check if server IP is local/private
+            if (preg_match('/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/', $server_ip)) {
+                $local_ip = $server_ip;
+            }
+        }
+        
+        $metadata = [
+            'public_ip' => $public_ip,
+            'local_ip' => $local_ip,
+            'module' => $module,
+            'path' => $path,
+            'user_agent' => get_user_agent(),
+            'session_id' => $input['session_id'] ?? null
+        ];
+
+        $success = update_user_activity_with_metadata($db, $queries, $token_data['id'], $metadata);
+
+        if ($success) {
+            echo json_encode(['status' => 'ok', 'message' => 'Aktivita zaznamenána']);
+        } else {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Chyba při zaznamenávání']);
+        }
+    } catch (Exception $e) {
+        error_log("handle_user_activity_track error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba serveru']);
+    }
+}
+
+/**
+ * GET /user/activity/history
+ * Získá historii aktivity uživatele
+ */
+function handle_user_activity_history($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $target_user_id = isset($input['user_id']) ? (int)$input['user_id'] : 0;
+    $limit = isset($input['limit']) ? (int)$input['limit'] : 100;
+    
+    if ($limit > 1000) $limit = 1000;
+    if ($limit < 1) $limit = 100;
+    
+    if (!$token || !$username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    $db = get_db($config);
+    $token_data = verify_token($token, $db);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+        return;
+    }
+
+    try {
+        
+        if ($target_user_id === 0) {
+            $target_user_id = $token_data['id'];
+        }
+        
+        $is_admin = isset($token_data['is_admin']) && $token_data['is_admin'];
+        if (!$is_admin && $target_user_id !== $token_data['id']) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Nemáte oprávnění']);
+            return;
+        }
+
+        if (isset($queries['uzivatele_activity_log_select'])) {
+            $stmt = $db->prepare($queries['uzivatele_activity_log_select']);
+            $stmt->bindParam(':uzivatel_id', $target_user_id, PDO::PARAM_INT);
+            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $history = $stmt->fetchAll();
+
+            echo json_encode(['status' => 'ok', 'data' => $history, 'count' => count($history)]);
+        } else {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Query není definován']);
+        }
+    } catch (Exception $e) {
+        error_log("handle_user_activity_history error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba serveru']);
+    }
+}

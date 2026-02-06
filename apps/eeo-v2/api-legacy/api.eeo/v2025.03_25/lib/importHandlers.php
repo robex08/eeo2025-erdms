@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Import Handlers for Orders25
  * PHP 5.6 & MySQL 5.5.43 compatible
@@ -321,7 +322,7 @@ function mapDruhSmlouvyKod($druh_sml_id) {
  */
 function checkUserExists($db, $uzivatel_id) {
     try {
-        $stmt = $db->prepare("SELECT id FROM 25_uzivatele WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_UZIVATELE . " WHERE id = :id LIMIT 1");
         $stmt->bindParam(':id', $uzivatel_id, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
@@ -339,7 +340,7 @@ function checkUserExists($db, $uzivatel_id) {
  */
 function checkOrderExists($db, $cislo_objednavky) {
     try {
-        $stmt = $db->prepare("SELECT id, stav_objednavky FROM 25a_objednavky WHERE cislo_objednavky = :cislo LIMIT 1");
+        $stmt = $db->prepare("SELECT id, stav_objednavky FROM " . TBL_OBJEDNAVKY . " WHERE cislo_objednavky = :cislo LIMIT 1");
         $stmt->bindParam(':cislo', $cislo_objednavky, PDO::PARAM_STR);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -453,7 +454,7 @@ function insertImportedOrder($db, $oldOrder, $uzivatel_id) {
         $druh_objednavky_kod = mapDruhSmlouvyKod($druh_sml_id);
         
         // SQL Insert
-        $sql = "INSERT INTO 25a_objednavky (
+        $sql = "INSERT INTO " . TBL_OBJEDNAVKY . " (
             cislo_objednavky, dt_objednavky, predmet, 
             strediska_kod, max_cena_s_dph, financovani,
             druh_objednavky_kod, stav_workflow_kod, stav_objednavky,
@@ -614,7 +615,7 @@ function updateImportedOrder($db, $existing_id, $oldOrder, $uzivatel_id) {
         // Střediska - z poznámky extrahujeme LP kód a použijeme jako střediska_kod
         $strediska_kod = $financovani;
         
-        $sql = "UPDATE 25a_objednavky SET
+        $sql = "UPDATE " . TBL_OBJEDNAVKY . " SET
             predmet = :predmet,
             dt_objednavky = :dt_objednavky,
             strediska_kod = :strediska_kod,
@@ -623,7 +624,7 @@ function updateImportedOrder($db, $existing_id, $oldOrder, $uzivatel_id) {
             druh_objednavky_kod = :druh_objednavky_kod,
             stav_workflow_kod = :stav_workflow_kod,
             stav_objednavky = :stav_objednavky,
-            uzivatel_id = :uzivatel_id,
+            -- uzivatel_id PROTECTED: Do not change original creator during import  
             uzivatel_akt_id = :uzivatel_akt_id,
             garant_uzivatel_id = :garant_uzivatel_id,
             objednatel_id = :objednatel_id,
@@ -655,7 +656,7 @@ function updateImportedOrder($db, $existing_id, $oldOrder, $uzivatel_id) {
         $old_user_id = isset($oldOrder['user_id']) ? intval($oldOrder['user_id']) : $uzivatel_id;
         $old_upd_user_id = isset($oldOrder['upd_user_id']) ? intval($oldOrder['upd_user_id']) : $uzivatel_id;
         
-        $stmt->bindParam(':uzivatel_id', $old_user_id, PDO::PARAM_INT);
+        // $stmt->bindParam(':uzivatel_id', $old_user_id, PDO::PARAM_INT); // REMOVED: uzivatel_id is protected
         $stmt->bindParam(':uzivatel_akt_id', $old_upd_user_id, PDO::PARAM_INT);
         $stmt->bindParam(':garant_uzivatel_id', $old_user_id, PDO::PARAM_INT);  // garant_id = user_id
         $stmt->bindParam(':objednatel_id', $old_user_id, PDO::PARAM_INT);       // objednatel_id = user_id
@@ -692,7 +693,7 @@ function updateImportedOrder($db, $existing_id, $oldOrder, $uzivatel_id) {
  */
 function deleteOrderItems($db, $objednavka_id) {
     try {
-        $stmt = $db->prepare("DELETE FROM 25a_objednavky_polozky WHERE objednavka_id = :objednavka_id");
+        $stmt = $db->prepare("DELETE FROM " . TBL_OBJEDNAVKY_POLOZKY . " WHERE objednavka_id = :objednavka_id");
         $stmt->bindParam(':objednavka_id', $objednavka_id, PDO::PARAM_INT);
         $stmt->execute();
         return true;
@@ -711,7 +712,7 @@ function deleteOrderItems($db, $objednavka_id) {
  */
 function deleteOrderAttachments($db, $objednavka_id) {
     try {
-        $stmt = $db->prepare("DELETE FROM 25a_objednavky_prilohy WHERE objednavka_id = :objednavka_id");
+        $stmt = $db->prepare("DELETE FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = :objednavka_id");
         $stmt->bindParam(':objednavka_id', $objednavka_id, PDO::PARAM_INT);
         $stmt->execute();
         return true;
@@ -741,7 +742,7 @@ function insertImportedOrderItem($db, $objednavka_id, $oldOrder) {
             $cena_s_dph = round($cena_bez_dph * 1.21, 2);
         }
         
-        $sql = "INSERT INTO 25a_objednavky_polozky (
+        $sql = "INSERT INTO " . TBL_OBJEDNAVKY_POLOZKY . " (
             objednavka_id, popis, cena_bez_dph, sazba_dph, cena_s_dph,
             dt_vytvoreni, dt_aktualizace
         ) VALUES (
@@ -794,8 +795,9 @@ function insertImportedAttachments($db, $objednavka_id, $oldAttachments, $uzivat
                 $base_url_clean = rtrim($base_url, '/');
                 $systemova_cesta = $base_url_clean . '/' . $soubor;
             } else {
-                // Standardní lokální cesta
-                $systemova_cesta = '/var/www/eeo2025/doc/prilohy/' . $soubor;
+                // Pro import vyžadujeme base_url
+                error_log('Import attachment: missing base_url for file ' . $soubor);
+                continue; // Přeskočíme tuto přílohu
             }
             
             // Typ přílohy - pro importované nastavíme jako "IMPORT"
@@ -804,7 +806,7 @@ function insertImportedAttachments($db, $objednavka_id, $oldAttachments, $uzivat
             // Velikost souboru - pro import nastavíme 0 (neznámo)
             $velikost_souboru_b = 0;
             
-            $sql = "INSERT INTO 25a_objednavky_prilohy (
+            $sql = "INSERT INTO " . TBL_OBJEDNAVKY_PRILOHY . " (
                 objednavka_id, guid, typ_prilohy, originalni_nazev_souboru, systemova_cesta, 
                 velikost_souboru_b, nahrano_uzivatel_id, dt_vytvoreni
             ) VALUES (

@@ -2,14 +2,14 @@
 /**
  * Model pro přiřazení pokladen k uživatelům
  * 
- * Spravuje tabulku 25a_pokladny_uzivatele
+ * Spravuje tabulky TBL_POKLADNY_UZIVATELE a TBL_POKLADNY
  * - Více pokladen na uživatele
  * - Zástupy (dočasné přiřazení)
  * - Historie přiřazení
  * - Definice číselných řad VPD/PPD
  * 
  * @package CashbookAPI
- * @version 1.0
+ * @version 1.1 (refactored: table constants)
  */
 
 class CashboxAssignmentModel {
@@ -61,13 +61,13 @@ class CashboxAssignmentModel {
                 -- Vypočítané pole pro FE
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
                 
-            FROM 25a_pokladny_uzivatele pu
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
             
             -- ✅ NOVÝ JOIN na pokladny
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             
-            LEFT JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-            LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
         ";
         
         if ($activeOnly) {
@@ -125,13 +125,13 @@ class CashboxAssignmentModel {
                 -- Vypočítané pole
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
                 
-            FROM 25a_pokladny_uzivatele pu
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
             
             -- ✅ NOVÝ JOIN na pokladny
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             
-            LEFT JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-            LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
             WHERE pu.uzivatel_id = :userId
         ";
         
@@ -190,13 +190,13 @@ class CashboxAssignmentModel {
                 -- Vypočítané pole
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
                 
-            FROM 25a_pokladny_uzivatele pu
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
             
             -- ✅ NOVÝ JOIN na pokladny
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             
-            LEFT JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-            LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
             WHERE pu.id = :id
         ";
         
@@ -228,8 +228,8 @@ class CashboxAssignmentModel {
                 p.ppd_od_cislo,
                 p.aktivni AS pokladna_aktivni,
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
-            FROM 25a_pokladny_uzivatele pu
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             WHERE pu.uzivatel_id = :userId
               AND pu.je_hlavni = 1
               AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
@@ -265,8 +265,8 @@ class CashboxAssignmentModel {
                 p.ppd_od_cislo,
                 p.aktivni AS pokladna_aktivni,
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
-            FROM 25a_pokladny_uzivatele pu
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             WHERE pu.uzivatel_id = :userId
               AND p.cislo_pokladny = :cisloPokladny
               AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
@@ -303,7 +303,7 @@ class CashboxAssignmentModel {
         // ========================================================
         
         // 1a) Zkusit najít existující pokladnu podle čísla
-        $sqlFind = "SELECT id FROM 25a_pokladny WHERE cislo_pokladny = ? LIMIT 1";
+        $sqlFind = "SELECT id FROM " . TBL_POKLADNY . " WHERE cislo_pokladny = ? LIMIT 1";
         $stmtFind = $this->db->prepare($sqlFind);
         $stmtFind->execute(array($data['cislo_pokladny']));
         $existing = $stmtFind->fetch(PDO::FETCH_ASSOC);
@@ -319,7 +319,7 @@ class CashboxAssignmentModel {
         } else {
             // 1b) Vytvořit novou pokladnu
             $sqlCreatePokladna = "
-                INSERT INTO 25a_pokladny (
+                INSERT INTO " . TBL_POKLADNY . " (
                     cislo_pokladny,
                     nazev,
                     kod_pracoviste,
@@ -357,7 +357,7 @@ class CashboxAssignmentModel {
         // ========================================================
         
         $sqlCreateAssignment = "
-            INSERT INTO 25a_pokladny_uzivatele (
+            INSERT INTO " . TBL_POKLADNY_UZIVATELE . " (
                 pokladna_id,
                 uzivatel_id,
                 je_hlavni,
@@ -421,7 +421,7 @@ class CashboxAssignmentModel {
         
         if ($vpdPpdChanged) {
             // Zjistit, kolik uživatelů bude ovlivněno
-            $sqlCount = "SELECT COUNT(*) as cnt FROM 25a_pokladny_uzivatele WHERE pokladna_id = ?";
+            $sqlCount = "SELECT COUNT(*) as cnt FROM " . TBL_POKLADNY_UZIVATELE . " WHERE pokladna_id = ?";
             $stmtCount = $this->db->prepare($sqlCount);
             $stmtCount->execute(array($assignment['pokladna_id']));
             $result = $stmtCount->fetch(PDO::FETCH_ASSOC);
@@ -429,7 +429,7 @@ class CashboxAssignmentModel {
             
             // UPDATE pokladny (ovlivní VŠECHNY uživatele)
             $sqlUpdatePokladna = "
-                UPDATE 25a_pokladny
+                UPDATE " . TBL_POKLADNY . "
                 SET 
                     ciselna_rada_vpd = ?,
                     vpd_od_cislo = ?,
@@ -454,7 +454,7 @@ class CashboxAssignmentModel {
         // ========================================================
         
         $sqlUpdateAssignment = "
-            UPDATE 25a_pokladny_uzivatele
+            UPDATE " . TBL_POKLADNY_UZIVATELE . "
             SET
                 je_hlavni = ?,
                 platne_od = ?,
@@ -486,7 +486,7 @@ class CashboxAssignmentModel {
      * @return bool Úspěch operace
      */
     public function deleteAssignment($assignmentId) {
-        $sql = "DELETE FROM 25a_pokladny_uzivatele WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_POKLADNY_UZIVATELE . " WHERE id = :id";
         
         $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':id', $assignmentId, PDO::PARAM_INT);
@@ -503,7 +503,7 @@ class CashboxAssignmentModel {
      */
     private function unsetMainAssignment($userId, $exceptId = null) {
         $sql = "
-            UPDATE 25a_pokladny_uzivatele
+            UPDATE " . TBL_POKLADNY_UZIVATELE . "
             SET je_hlavni = 0
             WHERE uzivatel_id = :userId
               AND je_hlavni = 1
@@ -537,8 +537,8 @@ class CashboxAssignmentModel {
     public function hasOverlappingAssignment($userId, $cisloPokladny, $platneOd, $platneDo, $excludeId = null) {
         $sql = "
             SELECT COUNT(*) as count
-            FROM 25a_pokladny_uzivatele pu
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             WHERE pu.uzivatel_id = :userId
               AND p.cislo_pokladny = :cisloPokladny
               AND (
@@ -586,51 +586,118 @@ class CashboxAssignmentModel {
         try {
             $this->db->beginTransaction();
             
-            // 1. Smazat všechny stávající přiřazení
-            $sqlDelete = "DELETE FROM 25a_pokladny_uzivatele WHERE pokladna_id = ?";
-            $stmtDelete = $this->db->prepare($sqlDelete);
-            $stmtDelete->execute(array($pokladnaId));
-            $deleted = $stmtDelete->rowCount();
+            // ✅ OPRAVA: Místo DELETE+INSERT používáme UPDATE/INSERT logiku
+            // Foreign key z 25a_pokladni_knihy.prirazeni_id na 25a_pokladny_uzivatele.id
+            // zabraňuje smazání záznamů, které mají již vytvořené knihy
             
-            error_log("CASHBOX SYNC: Deleted $deleted users from cashbox $pokladnaId");
+            // 1. Načíst stávající přiřazení
+            $sqlExisting = "SELECT id, uzivatel_id FROM " . TBL_POKLADNY_UZIVATELE . " 
+                           WHERE pokladna_id = ?";
+            $stmtExisting = $this->db->prepare($sqlExisting);
+            $stmtExisting->execute(array($pokladnaId));
+            $existingUsers = $stmtExisting->fetchAll(PDO::FETCH_ASSOC);
             
-            // 2. Vložit nová přiřazení
+            // Mapování: uzivatel_id => id z tabulky
+            $existingMap = array();
+            foreach ($existingUsers as $row) {
+                $existingMap[$row['uzivatel_id']] = $row['id'];
+            }
+            
+            // 2. Zpracovat nové uživatele (UPDATE nebo INSERT)
+            $updated = 0;
             $inserted = 0;
+            $newUserIds = array();
+            
             if (!empty($uzivatele)) {
-                $sqlInsert = "
-                    INSERT INTO 25a_pokladny_uzivatele 
-                    (pokladna_id, uzivatel_id, je_hlavni, platne_od, platne_do, poznamka, vytvoril, vytvoreno)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-                ";
-                $stmtInsert = $this->db->prepare($sqlInsert);
-                
                 foreach ($uzivatele as $u) {
+                    $newUserIds[] = $u['uzivatel_id'];
+                    
                     // platne_do: NULL = navždy, jinak konkrétní datum
                     $platneDo = null;
                     if (isset($u['platne_do']) && !empty($u['platne_do'])) {
                         $platneDo = $u['platne_do'];
                     }
                     
-                    $stmtInsert->execute(array(
-                        $pokladnaId,
-                        $u['uzivatel_id'],
-                        isset($u['je_hlavni']) ? $u['je_hlavni'] : 1,
-                        isset($u['platne_od']) ? $u['platne_od'] : date('Y-m-d'),
-                        $platneDo,
-                        isset($u['poznamka']) ? $u['poznamka'] : '',
-                        $username
-                    ));
-                    $inserted++;
+                    if (isset($existingMap[$u['uzivatel_id']])) {
+                        // UPDATE existujícího záznamu (tabulka nemá sloupce upravil/upraveno)
+                        $sqlUpdate = "
+                            UPDATE " . TBL_POKLADNY_UZIVATELE . "
+                            SET je_hlavni = ?,
+                                platne_od = ?,
+                                platne_do = ?,
+                                poznamka = ?
+                            WHERE id = ?
+                        ";
+                        $stmtUpdate = $this->db->prepare($sqlUpdate);
+                        $stmtUpdate->execute(array(
+                            isset($u['je_hlavni']) ? $u['je_hlavni'] : 1,
+                            isset($u['platne_od']) ? $u['platne_od'] : date('Y-m-d'),
+                            $platneDo,
+                            isset($u['poznamka']) ? $u['poznamka'] : '',
+                            $existingMap[$u['uzivatel_id']]
+                        ));
+                        $updated++;
+                    } else {
+                        // INSERT nového záznamu
+                        $sqlInsert = "
+                            INSERT INTO " . TBL_POKLADNY_UZIVATELE . " 
+                            (pokladna_id, uzivatel_id, je_hlavni, platne_od, platne_do, poznamka, vytvoril, vytvoreno)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                        ";
+                        $stmtInsert = $this->db->prepare($sqlInsert);
+                        $stmtInsert->execute(array(
+                            $pokladnaId,
+                            $u['uzivatel_id'],
+                            isset($u['je_hlavni']) ? $u['je_hlavni'] : 1,
+                            isset($u['platne_od']) ? $u['platne_od'] : date('Y-m-d'),
+                            $platneDo,
+                            isset($u['poznamka']) ? $u['poznamka'] : '',
+                            $username
+                        ));
+                        $inserted++;
+                    }
+                }
+            }
+            
+            // 3. Smazat přiřazení, která již nejsou v novém seznamu
+            // (pouze ty, které NEMAJÍ žádné pokladní knihy)
+            $deleted = 0;
+            foreach ($existingMap as $userId => $assignmentId) {
+                if (!in_array($userId, $newUserIds)) {
+                    // Zkontrolovat, zda má tento záznam nějaké knihy
+                    $sqlCheckBooks = "SELECT COUNT(*) as cnt FROM 25a_pokladni_knihy WHERE prirazeni_id = ?";
+                    $stmtCheck = $this->db->prepare($sqlCheckBooks);
+                    $stmtCheck->execute(array($assignmentId));
+                    $bookCount = $stmtCheck->fetch(PDO::FETCH_ASSOC)['cnt'];
+                    
+                    if ($bookCount == 0) {
+                        // Nemá žádné knihy -> bezpečně smazat
+                        $sqlDelete = "DELETE FROM " . TBL_POKLADNY_UZIVATELE . " WHERE id = ?";
+                        $stmtDelete = $this->db->prepare($sqlDelete);
+                        $stmtDelete->execute(array($assignmentId));
+                        $deleted++;
+                    } else {
+                        // Má knihy -> pouze označit jako neaktivní (soft delete)
+                        error_log("CASHBOX SYNC: Cannot delete assignment $assignmentId (user $userId) - has $bookCount cashbooks");
+                        // Nastavíme platne_do na dnešek = "ukončení přístupu" (bez upravil/upraveno)
+                        $sqlSoftDelete = "UPDATE " . TBL_POKLADNY_UZIVATELE . " 
+                                         SET platne_do = CURDATE()
+                                         WHERE id = ?";
+                        $stmtSoft = $this->db->prepare($sqlSoftDelete);
+                        $stmtSoft->execute(array($assignmentId));
+                        $deleted++; // Počítáme jako "smazaný" (soft delete)
+                    }
                 }
             }
             
             $this->db->commit();
             
-            error_log("CASHBOX SYNC: Inserted $inserted new users to cashbox $pokladnaId");
+            error_log("CASHBOX SYNC (pokladna $pokladnaId): Updated $updated, Inserted $inserted, Deleted/Deactivated $deleted users");
             
             return array(
-                'deleted' => $deleted,
-                'inserted' => $inserted
+                'updated' => $updated,
+                'inserted' => $inserted,
+                'deleted' => $deleted
             );
             
         } catch (Exception $e) {

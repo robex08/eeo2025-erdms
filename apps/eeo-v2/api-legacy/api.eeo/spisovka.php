@@ -5,11 +5,23 @@
  * Read-only přístup k fakturám a jejich přílohám
  */
 
+// ============ ENV DETECTION ============
+define('IS_DEV_SPISOVKA', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
+
 // Error reporting
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-ini_set('error_log', '/tmp/php_spisovka_errors.log');
-error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+if (IS_DEV_SPISOVKA) {
+    // 🐛 DEV - Debug režim
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/var/log/apache2/erdms-dev-php-error.log');
+    error_reporting(E_ALL);
+} else {
+    // PROD - Standard
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/var/www/erdms-dev/logs/php/spisovka-error.log');
+    error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+}
 
 // CORS headers are handled by Apache - do not send them from PHP to avoid duplication
 header("Content-Type: application/json; charset=utf-8");
@@ -26,6 +38,18 @@ $spisovka_config = array(
     'username' => 'erdms_spis',
     'password' => 'SpisRO2024!',
     'database' => 'spisovka350'
+);
+
+// Regex pro filtrování faktur (s podporou diakritiky a variant)
+// Zachytává: faktura, fa č., fak č., zálohová, vyúčtování, vyúčtovací
+// Všechny varianty: velká/malá písmena, s/bez diakritiky
+define('FAKTURA_REGEX',
+    '[Ff]aktur[aáuúAÁUÚ]|' .
+    '[Ff][Aa][[:space:]\.]\*[cčCČ][[:space:]\.]\?|' .
+    '[Ff][Aa][Kk][[:space:]\.]\*[cčCČ][[:space:]\.]\?|' .
+    '^[Ff][Aa][[:space:]]|' .
+    '[Zz][áaÁA]lohov[áaÁA]|' .
+    '[Vv]y[úuÚU][čcČC]tov[aáácčAÁÁCČ][cčníCČNÍ][íiÍI]'
 );
 
 // Získání request metody a URI
@@ -79,6 +103,32 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
     $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
     $rok = isset($_GET['rok']) ? (int)$_GET['rok'] : 2025;
+    $search = isset($_GET['search']) ? trim($_GET['search']) : ''; // 🔍 Fulltext vyhledávání
+    
+    // Sestavení WHERE klauzule pro vyhledávání
+    $where_conditions = [
+        "d.nazev REGEXP '" . FAKTURA_REGEX . "'",
+        "YEAR(d.datum_vzniku) = ?"
+    ];
+    $params = [$rok];
+    
+    // 🔍 Přidat fulltext vyhledávání pokud je zadané
+    if ($search !== '') {
+        $search_like = '%' . strtolower($search) . '%';
+        $where_conditions[] = "(
+            LOWER(d.nazev) LIKE ? OR 
+            LOWER(d.jid) LIKE ? OR 
+            LOWER(d.cislo_jednaci) LIKE ?
+        )";
+        $params[] = $search_like; // pro nazev
+        $params[] = $search_like; // pro jid
+        $params[] = $search_like; // pro cislo_jednaci
+    }
+    
+    $where_sql = implode(' AND ', $where_conditions);
+    $params[] = $limit;
+    $params[] = $offset;
+    
     
     // SQL dotaz - seznam faktur s počtem příloh
     $sql = "
@@ -93,8 +143,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
             COUNT(DISTINCT dtf.file_id) as pocet_priloh
         FROM dokument d
         LEFT JOIN dokument_to_file dtf ON d.id = dtf.dokument_id AND dtf.active = 1
-        WHERE d.nazev LIKE 'fa č. %'
-          AND YEAR(d.datum_vzniku) = ?
+        WHERE $where_sql
         GROUP BY d.id
         ORDER BY d.id DESC
         LIMIT ? OFFSET ?
@@ -106,7 +155,9 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
         send_error(500, 'Chyba přípravy SQL dotazu: ' . $conn->error);
     }
     
-    $stmt->bind_param('iii', $rok, $limit, $offset);
+    // Dynamické bind parametry podle počtu parametrů
+    $types = str_repeat('s', count($params) - 2) . 'ii'; // poslední dva jsou vždy int (limit, offset)
+    $stmt->bind_param($types, ...$params);
     $stmt->execute();
     $result = $stmt->get_result();
     
@@ -169,16 +220,37 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     
     $stmt->close();
     
-    // Celkový počet faktur
+    // Celkový počet faktur (použít stejné WHERE podmínky bez LIMITu)
+    $count_where_conditions = [
+        "nazev REGEXP '" . FAKTURA_REGEX . "'",
+        "YEAR(datum_vzniku) = ?"
+    ];
+    $count_params = [$rok];
+    
+    // 🔍 Přidat fulltext vyhledávání pokud je zadané
+    if ($search !== '') {
+        $search_like = '%' . strtolower($search) . '%';
+        $count_where_conditions[] = "(
+            LOWER(nazev) LIKE ? OR 
+            LOWER(jid) LIKE ? OR 
+            LOWER(cislo_jednaci) LIKE ?
+        )";
+        $count_params[] = $search_like; // pro nazev
+        $count_params[] = $search_like; // pro jid
+        $count_params[] = $search_like; // pro cislo_jednaci
+    }
+    
+    $count_where_sql = implode(' AND ', $count_where_conditions);
+    
     $sql_count = "
         SELECT COUNT(*) as total
         FROM dokument
-        WHERE nazev LIKE 'fa č. %'
-          AND YEAR(datum_vzniku) = ?
+        WHERE $count_where_sql
     ";
     
     $stmt_count = $conn->prepare($sql_count);
-    $stmt_count->bind_param('i', $rok);
+    $count_types = str_repeat('s', count($count_params));
+    $stmt_count->bind_param($count_types, ...$count_params);
     $stmt_count->execute();
     $result_count = $stmt_count->get_result();
     $total_row = $result_count->fetch_assoc();

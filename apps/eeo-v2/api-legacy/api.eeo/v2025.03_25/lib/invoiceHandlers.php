@@ -1,28 +1,27 @@
 <?php
+
 /**
- * Invoice Handlers - Faktury API
+ * Invoice Handlers - Faktury API  
  * PHP 5.6 kompatibilní
- * Všechny endpointy jsou POST s token + username autorizací
  * 
- * ⚠️ DEPRECATED - Pro nový vývoj používej orderV2InvoiceHandlers.php
+ * 🚨 PLNĚ DEPRECATED - POUŽÍVAT POUZE orderV2InvoiceHandlers.php! 🚨
  * 
- * DŮVOD DEPRECATION:
- * - Nejednotný response formát (používá 'err', 'success', 'faktury' místo 'status')
- * - Chybí standardizace (každý endpoint vrací jiný formát)
- * - Omezenější funkcionalita (chybí update/delete příloh)
+ * ⚠️  DŮLEŽITÉ: Frontend byl převeden na čisté V2 API endpointy
+ * ⚠️  Legacy API endpointy nejsou již používány od 21.12.2025
  * 
- * MIGRACE NA V2:
- * - invoices25/by-order        → pouze přes order detail (order-v2/{id})
- * - invoices25/create           → order-v2/{order_id}/invoices/create
- * - invoices25/create-with-att  → order-v2/{order_id}/invoices/create-with-attachment
+ * MIGRACE DOKONČENA:
+ * - invoices25/create           → order-v2/invoices/create (standalone) nebo order-v2/{order_id}/invoices/create
+ * - invoices25/create-with-att  → order-v2/invoices/create-with-attachment (standalone) nebo order-v2/{order_id}/invoices/create-with-attachment  
  * - invoices25/update           → order-v2/invoices/{invoice_id}/update
  * - invoices25/delete           → order-v2/invoices/{invoice_id}/delete
  * - invoices25/attachments/*    → order-v2/invoices/{id}/attachments/*
  * 
- * PONECHÁNO PRO:
- * - Starší objednávky které používají starý upload path
- * - Legacy FE kód který ještě nebyl migrován
- * - Backward compatibility během přechodného období
+ * 🗑️  PLÁN ODEBRÁNÍ:
+ * - Q1 2026: Kompletní odstranění legacy endpointů z api.php
+ * - Q2 2026: Smazání tohoto souboru
+ * 
+ * ✅ PRO NOVÝ VÝVOJ POUŽÍVEJ:
+ * - /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/orderV2InvoiceHandlers.php
  */
 
 require_once 'orderQueries.php';
@@ -35,20 +34,18 @@ require_once 'orderQueries.php';
  * @deprecated Používej order-v2 API pro získání faktur přes order detail
  */
 function handle_invoices25_by_order($input, $config, $queries) {
+    debug_log("START invoices25/by-order", ['objednavka_id' => $input['objednavka_id'] ?? null]);
+    
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     $objednavka_id = isset($input['objednavka_id']) ? (int)$input['objednavka_id'] : 0;
     
     if (!$token || !$request_username || $objednavka_id <= 0) {
+        debug_log("ERROR: Missing parameters", ['token' => !!$token, 'username' => !!$request_username, 'objednavka_id' => $objednavka_id]);
         http_response_code(400);
         echo json_encode([
-            'err' => 'Chybí povinné parametry',
-            'debug' => [
-                'has_token' => !empty($token),
-                'username' => $request_username,
-                'objednavka_id' => $objednavka_id
-            ]
+            'err' => 'Chybí povinné parametry'
         ]);
         return;
     }
@@ -56,13 +53,17 @@ function handle_invoices25_by_order($input, $config, $queries) {
     // Ověř token
     $token_data = verify_token($token);
     if (!$token_data) {
+        debug_log("ERROR: Invalid token");
         http_response_code(401);
         echo json_encode(['err' => 'Neplatný token']);
         return;
     }
     
+    debug_log("Token verified", ['username' => $token_data['username']]);
+    
     // Kontrola uživatele
     if ($token_data['username'] !== $request_username) {
+        debug_log("ERROR: Username mismatch");
         http_response_code(403);
         echo json_encode(['err' => 'Neautorizovaný přístup']);
         return;
@@ -130,7 +131,8 @@ function handle_invoices25_create($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    $objednavka_id = isset($input['objednavka_id']) && !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
+    // ✅ objednavka_id může být NULL (standalone faktura) nebo validní ID objednávky (> 0)
+    $objednavka_id = isset($input['objednavka_id']) && (int)$input['objednavka_id'] > 0 ? (int)$input['objednavka_id'] : null;
     $fa_castka = isset($input['fa_castka']) ? $input['fa_castka'] : null;
     $fa_cislo_vema = isset($input['fa_cislo_vema']) ? trim($input['fa_cislo_vema']) : '';
 
@@ -148,6 +150,9 @@ function handle_invoices25_create($input, $config, $queries) {
             echo json_encode(['err' => 'Chyba připojení k databázi']);
             return;
         }
+        
+        // Nastavit MySQL timezone pro konzistentní datetime handling
+        TimezoneHelper::setMysqlTimezone($db);
 
         // Sestavení INSERT dotazu
         $faktury_table = get_invoices_table_name();
@@ -173,11 +178,13 @@ function handle_invoices25_create($input, $config, $queries) {
             vecna_spravnost_poznamka,
             vecna_spravnost_potvrzeno,
             rozsirujici_data,
+            stav,
             vytvoril_uzivatel_id,
             dt_vytvoreni,
+            dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -244,6 +251,9 @@ function handle_invoices25_create($input, $config, $queries) {
         
         $rozsirujici_data = isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data']) : null;
         $smlouva_id = isset($input['smlouva_id']) && !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null;
+        
+        // ✅ WORKFLOW STAV - výchozí hodnota ZAEVIDOVANA (přidáno 22.12.2025)
+        $stav = isset($input['stav']) ? $input['stav'] : INVOICE_STATUS_REGISTERED;
 
         $stmt->execute([
             $objednavka_id,
@@ -267,10 +277,30 @@ function handle_invoices25_create($input, $config, $queries) {
             $vecna_spravnost_poznamka,
             $vecna_spravnost_potvrzeno,
             $rozsirujici_data,
+            $stav,
             $token_data['id']
         ]);
 
         $new_id = $db->lastInsertId();
+
+        // 🔔 TRIGGER: INVOICE_MATERIAL_CHECK_REQUESTED - pokud má faktura objednávku NEBO předáno komu (s datem) NEBO smlouvu
+        // ⚠️ DŮLEŽITÉ: Stav faktury NEkontrolujeme - faktura NEMÁ workflow! (stav je jen informační poznámka)
+        $hasFaPredana = $fa_predana_zam_id > 0 && !empty($fa_datum_predani_zam);
+        $shouldTrigger = ($objednavka_id > 0 || $hasFaPredana || $smlouva_id > 0);
+        
+        if ($shouldTrigger) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $new_id, $token_data['id']);
+                $reason = [];
+                if ($objednavka_id > 0) $reason[] = "order #{$objednavka_id}";
+                if ($hasFaPredana) $reason[] = "fa_predana_zam #{$fa_predana_zam_id} (datum: {$fa_datum_predani_zam})";
+                if ($smlouva_id > 0) $reason[] = "smlouva #{$smlouva_id}";
+                error_log("🔔 CREATE INVOICE: Triggered INVOICE_MATERIAL_CHECK_REQUESTED for invoice #{$new_id} (" . implode(', ', $reason) . ")");
+            } catch (Exception $e) {
+                error_log("⚠️ CREATE INVOICE: Notification trigger failed: " . $e->getMessage());
+            }
+        }
 
         http_response_code(201);
         echo json_encode([
@@ -324,13 +354,17 @@ function handle_invoices25_update($input, $config, $queries) {
             echo json_encode(['err' => 'Chyba připojení k databázi']);
             return;
         }
-
-        // Ověř, že faktura existuje
-        $faktury_table = get_invoices_table_name();
-        $check_stmt = $db->prepare("SELECT id FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
-        $check_stmt->execute([$faktura_id]);
         
-        if (!$check_stmt->fetch()) {
+        // Nastavit MySQL timezone pro konzistentní datetime handling
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // Ověř, že faktura existuje + načti aktuální data pro detekci změn
+        $faktury_table = get_invoices_table_name();
+        $check_stmt = $db->prepare("SELECT id, stav, objednavka_id, vecna_spravnost_potvrzeno FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
+        $check_stmt->execute([$faktura_id]);
+        $oldInvoiceData = $check_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$oldInvoiceData) {
             http_response_code(404);
             echo json_encode(['err' => 'Faktura nenalezena']);
             return;
@@ -370,15 +404,15 @@ function handle_invoices25_update($input, $config, $queries) {
         }
         if (isset($input['fa_datum_vystaveni'])) {
             $fields[] = 'fa_datum_vystaveni = ?';
-            $values[] = $input['fa_datum_vystaveni'];
+            $values[] = ($input['fa_datum_vystaveni'] === '' || $input['fa_datum_vystaveni'] === null) ? null : $input['fa_datum_vystaveni'];
         }
         if (isset($input['fa_datum_splatnosti'])) {
             $fields[] = 'fa_datum_splatnosti = ?';
-            $values[] = $input['fa_datum_splatnosti'];
+            $values[] = ($input['fa_datum_splatnosti'] === '' || $input['fa_datum_splatnosti'] === null) ? null : $input['fa_datum_splatnosti'];
         }
         if (isset($input['fa_datum_doruceni'])) {
             $fields[] = 'fa_datum_doruceni = ?';
-            $values[] = $input['fa_datum_doruceni'];
+            $values[] = ($input['fa_datum_doruceni'] === '' || $input['fa_datum_doruceni'] === null) ? null : $input['fa_datum_doruceni'];
         }
         // ✅ NORMALIZACE: fa_strediska_kod → JSON array stringů (UPPERCASE)
         if (isset($input['fa_strediska_kod'])) {
@@ -454,8 +488,37 @@ function handle_invoices25_update($input, $config, $queries) {
             $values[] = json_encode($input['rozsirujici_data']);
         }
 
-        // Vždy aktualizuj dt_aktualizace
+        // ✅ WORKFLOW STAV - Přidáno 22.12.2025
+        if (isset($input['stav'])) {
+            $fields[] = 'stav = ?';
+            $values[] = $input['stav'];
+            
+            // AUTOMATIKA: Pokud stav = 'ZAPLACENO' → nastavit fa_zaplacena = 1
+            if ($input['stav'] === INVOICE_STATUS_PAID) {
+                $fields[] = 'fa_zaplacena = ?';
+                $values[] = 1;
+            }
+        }
+        
+        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+            // Načíst aktuální stav faktury
+            $current_check = $db->prepare("SELECT stav FROM `$faktury_table` WHERE id = ?");
+            $current_check->execute([$faktura_id]);
+            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
+            
+            if ($current_row && $current_row['stav'] === INVOICE_STATUS_REGISTERED) {
+                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                $fields[] = 'stav = ?';
+                $values[] = INVOICE_STATUS_VERIFICATION;
+                error_log("🔄 Auto změna stavu: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+            }
+        }
+
+        // Vždy aktualizuj dt_aktualizace a aktualizoval_uzivatel_id
         $fields[] = 'dt_aktualizace = NOW()';
+        $fields[] = 'aktualizoval_uzivatel_id = ?';
+        $values[] = $token_data['id'];
         
         if (empty($fields)) {
             http_response_code(400);
@@ -468,6 +531,175 @@ function handle_invoices25_update($input, $config, $queries) {
         
         $stmt = $db->prepare($sql);
         $stmt->execute($values);
+
+        // ==========================================
+        // 🔔 NOTIFICATION TRIGGERS - Nové události
+        // ==========================================
+        
+        // Načti aktuální user_id z tokenu
+        $currentUserId = $token_data['id'];
+        
+        // TRIGGER 1: INVOICE_UPDATED - Pouze pokud se nezměnil stav (jinak jsou specifické triggery)
+        $stavChanged = isset($input['stav']) && $input['stav'] !== $oldInvoiceData['stav'];
+        $vecnaSpravnostChanged = isset($input['vecna_spravnost_potvrzeno']) && 
+                                  (int)$input['vecna_spravnost_potvrzeno'] === 1 && 
+                                  (int)$oldInvoiceData['vecna_spravnost_potvrzeno'] !== 1;
+        
+        if (!$stavChanged && !$vecnaSpravnostChanged) {
+            // Standardní update bez změny stavu → INVOICE_UPDATED
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_UPDATED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_UPDATED for invoice $faktura_id");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
+        
+        // TRIGGER 2: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se změnil stav na věcnou správnost
+        if ($stavChanged) {
+            $newStav = $input['stav'];
+            
+            // Specifický trigger pro věcnou správnost faktury
+            if (strtoupper($newStav) === 'VECNA_SPRAVNOST') {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+            
+            // Obecný trigger pro ostatní stavy předání
+            $submitStates = ['PREDANA', 'KE_KONTROLE', 'SUBMITTED'];
+            if (in_array(strtoupper($newStav), $submitStates)) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_SUBMITTED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_SUBMITTED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+            
+            // TRIGGER 3: INVOICE_RETURNED - Pokud se změnil stav na vráceno
+            $returnStates = ['VRACENA', 'RETURNED', 'K_DOPLNENI'];
+            if (in_array(strtoupper($newStav), $returnStates)) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_RETURNED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_RETURNED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+            
+            // TRIGGER 4: INVOICE_REGISTRY_PUBLISHED - Pokud se změnil stav na uveřejněno
+            $publishStates = ['UVEREJNENA', 'PUBLISHED'];
+            if (in_array(strtoupper($newStav), $publishStates)) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_REGISTRY_PUBLISHED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_REGISTRY_PUBLISHED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+        }
+        
+        // TRIGGER 5: INVOICE_MATERIAL_CHECK_APPROVED - Pokud se potvrdila věcná správnost
+        if ($vecnaSpravnostChanged) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
+        
+        // TRIGGER 6: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se přiřadila k objednávce
+        $orderAssigned = isset($input['objednavka_id']) && 
+                         !empty($input['objednavka_id']) && 
+                         empty($oldInvoiceData['objednavka_id']);
+        
+        if ($orderAssigned) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (order assigned)");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
+        
+        // TRIGGER 7: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se změnilo fa_predana_zam_id (a je datum_predani)
+        $faPredanaChanged = isset($input['fa_predana_zam_id']) && 
+                            (string)$input['fa_predana_zam_id'] !== (string)$oldInvoiceData['fa_predana_zam_id'];
+        
+        // Načíst aktuální datum_predani (buď z inputu nebo z DB)
+        $currentDatumPredani = isset($input['fa_datum_predani_zam']) ? $input['fa_datum_predani_zam'] : $oldInvoiceData['fa_datum_predani_zam'];
+        $hasDatumPredani = !empty($currentDatumPredani) && $currentDatumPredani !== '0000-00-00';
+        
+        if ($faPredanaChanged && $hasDatumPredani) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (fa_predana_zam_id changed: {$oldInvoiceData['fa_predana_zam_id']} → {$input['fa_predana_zam_id']}, datum: {$currentDatumPredani})");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        } elseif ($faPredanaChanged && !$hasDatumPredani) {
+            error_log("⚠️ SKIP TRIGGER: fa_predana_zam_id changed but fa_datum_predani_zam is missing for invoice $faktura_id");
+        }
+        
+        // TRIGGER 8: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se změnilo smlouva_id
+        $smlouvaChanged = isset($input['smlouva_id']) && 
+                          (string)$input['smlouva_id'] !== (string)$oldInvoiceData['smlouva_id'];
+        
+        if ($smlouvaChanged) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (smlouva_id changed: {$oldInvoiceData['smlouva_id']} → {$input['smlouva_id']})");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+            
+            // ✅ OPRAVA: Aktualizovat stav objednávky na VECNA_SPRAVNOST
+            // Když se přiřadí faktura z modulu Faktury k objednávce, měl by se stav objednávky změnit
+            $orderId = (int)$input['objednavka_id'];
+            $objednavky_table = get_orders_table_name();
+            
+            // Načíst aktuální stav objednávky
+            $order_check = $db->prepare("SELECT id, stav_workflow_kod FROM `$objednavky_table` WHERE id = ?");
+            $order_check->execute([$orderId]);
+            $order_row = $order_check->fetch(PDO::FETCH_ASSOC);
+            
+            if ($order_row) {
+                // Parsovat workflow stavy
+                $workflow_states = json_decode($order_row['stav_workflow_kod'], true);
+                if (!is_array($workflow_states)) {
+                    $workflow_states = [];
+                }
+                
+                // Pokud objednávka je ve stavu FAKTURACE nebo UVEREJNENA a ještě není ve VECNA_SPRAVNOST
+                if ((in_array('FAKTURACE', $workflow_states) || in_array('UVEREJNENA', $workflow_states)) 
+                    && !in_array('VECNA_SPRAVNOST', $workflow_states)) {
+                    
+                    // Přidat stav VECNA_SPRAVNOST
+                    $workflow_states[] = 'VECNA_SPRAVNOST';
+                    $workflow_states = array_unique($workflow_states);
+                    
+                    // Aktualizovat objednávku
+                    $update_order = $db->prepare("UPDATE `$objednavky_table` SET stav_workflow_kod = ?, dt_aktualizace = NOW(), aktualizoval_uzivatel_id = ? WHERE id = ?");
+                    $update_order->execute([json_encode($workflow_states), $currentUserId, $orderId]);
+                    
+                    error_log("✅ Auto změna workflow objednávky #$orderId: přidán stav VECNA_SPRAVNOST (faktura přiřazena z modulu Faktury)");
+                }
+            }
+        }
 
         http_response_code(200);
         echo json_encode([
@@ -531,13 +763,13 @@ function handle_invoices25_delete($input, $config, $queries) {
         if ($hard_delete === 1) {
             // ========== HARD DELETE ==========
             // 1. Načti přílohy před smazáním (abychom věděli, co mazat z disku)
-            $sql_get_prilohy = "SELECT systemova_cesta FROM `25a_faktury_prilohy` WHERE faktura_id = ?";
+            $sql_get_prilohy = "SELECT systemova_cesta FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE faktura_id = ?";
             $stmt_get = $db->prepare($sql_get_prilohy);
             $stmt_get->execute(array($faktura_id));
             $prilohy = $stmt_get->fetchAll(PDO::FETCH_ASSOC);
 
             // 2. Smaž přílohy z databáze
-            $sql_delete_prilohy = "DELETE FROM `25a_faktury_prilohy` WHERE faktura_id = ?";
+            $sql_delete_prilohy = "DELETE FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE faktura_id = ?";
             $stmt_prilohy = $db->prepare($sql_delete_prilohy);
             $stmt_prilohy->execute(array($faktura_id));
 
@@ -582,7 +814,7 @@ function handle_invoices25_delete($input, $config, $queries) {
 
             // 2. Soft delete příloh - nastavíme je jako neaktivní
             // (Přílohy v DB zůstanou, soubory na disku zůstanou)
-            $sql_deactivate_prilohy = "UPDATE `25a_faktury_prilohy` SET dt_aktualizace = NOW() WHERE faktura_id = ?";
+            $sql_deactivate_prilohy = "UPDATE `" . TBL_FAKTURY_PRILOHY . "` SET dt_aktualizace = NOW() WHERE faktura_id = ?";
             $stmt_prilohy = $db->prepare($sql_deactivate_prilohy);
             $stmt_prilohy->execute(array($faktura_id));
 
@@ -648,6 +880,10 @@ function handle_invoices25_by_id($input, $config, $queries) {
             return;
         }
 
+        // 🔧 FIX: Nastavit UTF-8 encoding pro MySQL připojení
+        $db->exec("SET NAMES utf8mb4");
+        $db->exec("SET CHARACTER SET utf8mb4");
+
         $faktury_table = get_invoices_table_name();
         $states_table = get_states_table_name();
         $users_table = get_users_table_name();
@@ -671,7 +907,7 @@ function handle_invoices25_by_id($input, $config, $queries) {
                 u_predana.titul_za as fa_predana_zam_titul_za,
                 u_predana.email as fa_predana_zam_email
             FROM `$faktury_table` f
-            LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+            LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
             LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
             LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
             LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
@@ -697,8 +933,29 @@ function handle_invoices25_by_id($input, $config, $queries) {
             $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
         }
 
+        // � FIX: Ošetření nevalidních UTF-8 znaků před json_encode
+        array_walk_recursive($faktura, function(&$value) {
+            if (is_string($value)) {
+                // Odstranit nevalidní UTF-8 znaky
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+            }
+        });
+
+        // Enkódovat s podporou UTF-8
+        $json_string = json_encode($faktura, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        
+        if (json_last_error() !== JSON_ERROR_NONE || !$json_string) {
+            // Fallback: vrátit error zprávu
+            http_response_code(500);
+            echo json_encode([
+                'err' => 'Chyba při zpracování dat faktury',
+                'detail' => json_last_error_msg()
+            ]);
+            return;
+        }
+        
         http_response_code(200);
-        echo json_encode($faktura);
+        echo $json_string;
 
     } catch (Exception $e) {
         http_response_code(500);
@@ -726,7 +983,8 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
     // Pro multipart/form-data používáme $_POST místo $input
     $token = isset($_POST['token']) ? $_POST['token'] : '';
     $request_username = isset($_POST['username']) ? $_POST['username'] : '';
-    $objednavka_id = isset($_POST['objednavka_id']) && !empty($_POST['objednavka_id']) ? (int)$_POST['objednavka_id'] : null;
+    // ✅ objednavka_id může být NULL (standalone faktura) nebo validní ID objednávky (> 0)
+    $objednavka_id = isset($_POST['objednavka_id']) && (int)$_POST['objednavka_id'] > 0 ? (int)$_POST['objednavka_id'] : null;
     $fa_castka = isset($_POST['fa_castka']) ? $_POST['fa_castka'] : null;
     $fa_cislo_vema = isset($_POST['fa_cislo_vema']) ? trim($_POST['fa_cislo_vema']) : '';
     $typ_prilohy = isset($_POST['typ_prilohy']) ? $_POST['typ_prilohy'] : 'ISDOC';
@@ -830,8 +1088,9 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             rozsirujici_data,
             vytvoril_uzivatel_id,
             dt_vytvoreni,
+            dt_aktualizace,
             aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
 
         $stmt_faktura = $db->prepare($sql_faktura);
         
@@ -886,7 +1145,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
         // 3. VYTVOŘ ZÁZNAM PŘÍLOHY
         $je_isdoc = ($ext === 'isdoc') ? 1 : 0;
 
-        $sql_priloha = "INSERT INTO `25a_faktury_prilohy` (
+        $sql_priloha = "INSERT INTO `" . TBL_FAKTURY_PRILOHY . "` (
             faktura_id,
             objednavka_id,
             guid,
@@ -928,7 +1187,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
                 fp.*,
                 u.jmeno AS nahrano_uzivatel_jmeno,
                 u.prijmeni AS nahrano_uzivatel_prijmeni
-            FROM `25a_faktury_prilohy` fp
+            FROM `" . TBL_FAKTURY_PRILOHY . "` fp
             LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
             WHERE fp.id = ?
         ");
@@ -982,6 +1241,36 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
  * Response: {faktury: [...], pagination: {...}, stats: {...}}
  */
 function handle_invoices25_list($input, $config, $queries) {
+    // ==========================================
+    // 🐛 DEV DEBUG LOGGING - MODUL FAKTUR
+    // ==========================================
+    error_log("╔═══════════════════════════════════════════════════════════");
+    error_log("║ 📋 MODUL FAKTUR - NAČÍTÁNÍ SEZNAMU");
+    error_log("║ Čas: " . date('Y-m-d H:i:s'));
+    error_log("║ Uživatel: " . (isset($input['username']) ? $input['username'] : 'N/A'));
+    error_log("║ Endpoint: invoices25/list");
+    error_log("╚═══════════════════════════════════════════════════════════");
+    
+    // � FORCE WARNING TEST
+    trigger_error("TEST WARNING - Tento warning MUSÍ být v logu!", E_USER_WARNING);
+    
+    // �🐛 DEBUG: Log úplný payload
+    error_log("INVOICE LIST PAYLOAD DEBUG: " . json_encode($input, JSON_UNESCAPED_UNICODE));
+    
+    // 🔍 DEBUG: Specifically log amount filter parameters
+    if (isset($input['castka_gt']) || isset($input['castka_lt']) || isset($input['castka_eq'])) {
+        error_log("🔥 AMOUNT FILTERS DETECTED:");
+        if (isset($input['castka_gt'])) error_log("  castka_gt = " . $input['castka_gt']);
+        if (isset($input['castka_lt'])) error_log("  castka_lt = " . $input['castka_lt']);
+        if (isset($input['castka_eq'])) error_log("  castka_eq = " . $input['castka_eq']);
+    }
+    
+    if (isset($input['filter_dt_aktualizace'])) {
+        error_log("PAYLOAD CONTAINS filter_dt_aktualizace: " . $input['filter_dt_aktualizace']);
+    } else {
+        error_log("PAYLOAD MISSING filter_dt_aktualizace!");
+    }
+    
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
@@ -1037,12 +1326,18 @@ function handle_invoices25_list($input, $config, $queries) {
             'objednavka_id', 'fa_dorucena', 'fa_cislo_vema', 'datum_od', 'datum_do', 
             'stredisko', 'organizace_id', 'usek_id', 'filter_status',
             // Nové filtry pro globální vyhledávání a sloupcové filtry
-            'search_term', 'cislo_objednavky', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
-            'filter_stav', 'filter_vytvoril_uzivatel',
-            // Filtry pro částku a přílohy
-            'castka_min', 'castka_max', 'filter_ma_prilohy',
+            'search_term', 'cislo_objednavky', 'filter_datum_doruceni', 'filter_datum_vystaveni', 'filter_datum_splatnosti', 'filter_dt_aktualizace',
+            'filter_stav', 'filter_vytvoril_uzivatel', 'filter_fa_typ',
+            // Filtry pro částku (operator-based: =, <, >)
+            'castka_gt', 'castka_lt', 'castka_eq', 'filter_ma_prilohy',
             // Filtry pro věcnou kontrolu a předání zaměstnanci
-            'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec'
+            'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
+            // Filtr pro kontrolu řádku
+            'filter_kontrola_radku',
+            // ADMIN FEATURE: Zobrazení pouze neaktivních faktur
+            'show_only_inactive',
+            // ŘAZENÍ - order_by a order_direction  
+            'order_by', 'order_direction'
         );
         foreach ($filter_keys as $key) {
             if (isset($input[$key]) && !isset($filters[$key])) {
@@ -1052,10 +1347,37 @@ function handle_invoices25_list($input, $config, $queries) {
         }
         
         // DEBUG: Log merged filters
-        error_log("Invoices25 LIST: Final filters array: " . json_encode($filters));
+        debug_log("Invoices25 LIST: Final filters array", $filters);
         
-        $where_conditions = array('f.aktivni = 1');
+        // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
+        // Tento filtr je viditelný pouze pro role ADMINISTRATOR a SUPERADMIN
+        // Pokud je show_only_inactive = 1 → zobrazí POUZE neaktivní faktury (soft-deleted)
+        $show_only_inactive = isset($filters['show_only_inactive']) && (int)$filters['show_only_inactive'] === 1;
+        debug_log("Invoices25 LIST: show_only_inactive check", [
+            'isset' => isset($filters['show_only_inactive']),
+            'value' => isset($filters['show_only_inactive']) ? $filters['show_only_inactive'] : null,
+            'result' => $show_only_inactive
+        ]);
+        
+        if ($show_only_inactive) {
+            $where_conditions = array('f.aktivni = 0');
+            debug_log("Invoices25 LIST: ADMIN MODE - showing ONLY inactive invoices (aktivni = 0)");
+        } else {
+            $where_conditions = array('f.aktivni = 1');
+            debug_log("Invoices25 LIST: STANDARD MODE - showing only active invoices (aktivni = 1)");
+        }
         $params = array();
+        
+        // 🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
+        // - Pokud je faktura navázána na objednávku (objednavka_id IS NOT NULL) → objednávka MUSÍ být aktivní
+        // - Pokud je faktura navázána na smlouvu (smlouva_id IS NOT NULL) → smlouva MUSÍ být aktivní
+        // - Faktury bez přiřazení (objednavka_id/smlouva_id = NULL) → zobrazit normálně
+        $where_conditions[] = '(
+            (f.objednavka_id IS NULL OR o.aktivni = 1)
+            AND
+            (f.smlouva_id IS NULL OR sm.aktivni = 1)
+        )';
+        error_log("Invoices25 LIST: Applied validation for active orders and contracts");
         
         // 🔐 USER PERMISSIONS: Načíst role a permissions uživatele (stejný pattern jako Order V2)
         $user_id = (int)$token_data['id'];
@@ -1083,28 +1405,115 @@ function handle_invoices25_list($input, $config, $queries) {
         $user_usek_id = $usek_data ? (int)$usek_data['usek_id'] : null;
         $user_usek_zkr = $usek_data ? $usek_data['usek_zkr'] : null;
         
-        // 🔥 ADMIN CHECK: SUPERADMIN nebo ADMINISTRATOR = plný přístup (vidí VŠE)
-        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        // Načíst permissions uživatele z DB (pro kontrolu INVOICE_MANAGE)
+        $perms_sql = "
+            SELECT DISTINCT p.kod_prava
+            FROM " . TBL_PRAVA . " p
+            WHERE p.kod_prava LIKE 'INVOICE_%'
+            AND p.id IN (
+                -- Přímá práva (user_id v 25_role_prava)
+                SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
+                WHERE rp.user_id = ?
+                
+                UNION
+                
+                -- Práva z rolí (user_id = -1 znamená právo z role)
+                SELECT rp.pravo_id 
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                WHERE ur.uzivatel_id = ?
+            )
+        ";
+        $perms_stmt = $db->prepare($perms_sql);
+        $perms_stmt->execute(array($user_id, $user_id));
+        $user_permissions = array();
+        while ($row = $perms_stmt->fetch(PDO::FETCH_ASSOC)) {
+            $user_permissions[] = $row['kod_prava'];
+        }
+        
+        // Kontrola INVOICE_MANAGE práva
+        $has_invoice_manage = in_array('INVOICE_MANAGE', $user_permissions);
+        
+        // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR, UCETNI, KONTROLOR_FAKTUR nebo INVOICE_MANAGE = plný přístup (vidí VŠE)
+        // Role UCETNI má automatický přístup ke všem fakturám pro účetní operace
+        // Role KONTROLOR_FAKTUR má automatický přístup ke všem fakturám pro kontrolu (readonly)
+        // Právo INVOICE_MANAGE umožňuje správu všech faktur v systému
+        $is_admin = in_array('SUPERADMIN', $user_roles) || 
+                    in_array('ADMINISTRATOR', $user_roles) || 
+                    in_array('UCETNI', $user_roles) ||
+                    in_array('HLAVNI_UCETNI', $user_roles) ||
+                    in_array('KONTROLOR_FAKTUR', $user_roles) ||
+                    $has_invoice_manage;
         
         // DEBUG logging
         error_log("Invoices25 LIST: User $user_id roles: " . implode(', ', $user_roles));
+        error_log("Invoices25 LIST: User $user_id permissions: " . implode(', ', $user_permissions));
         error_log("Invoices25 LIST: User usek_id: " . ($user_usek_id ?: 'NULL') . ", usek_zkr: " . ($user_usek_zkr ?: 'NULL'));
-        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR): " . ($is_admin ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Has INVOICE_MANAGE: " . ($has_invoice_manage ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI/HLAVNI_UCETNI/KONTROLOR_FAKTUR/INVOICE_MANAGE): " . ($is_admin ? 'YES' : 'NO'));
 
-        // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury svých objednávek
+        // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury kde je účastníkem
         if (!$is_admin) {
-            // Najít objednávky uživatele
-            $user_orders_sql = "SELECT id FROM `25a_objednavky` WHERE uzivatel_id = ?";
+            // 🔐 ROZŠÍŘENÁ LOGIKA PRO BĚŽNÉ UŽIVATELE:
+            // 1. Faktury k objednávkám kde je uživatel účastníkem (objednavatel, schvalovatel, příkazce, garant, atd.)
+            // 2. Faktury předané uživateli k věcné kontrole
+            // 3. Faktury které sám vytvořil
+            // 4. U smluv: faktury k smlouvám přiřazeným k úseku uživatele
+            
+            $user_access_conditions = array();
+            $user_access_params = array();
+            
+            // 1️⃣ OBJEDNÁVKY - kde je uživatel účastníkem v jakékoli roli
+            // Sloupce garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id jsou přímo v tabulce 25a_objednavky
+            $user_orders_sql = "
+                SELECT DISTINCT o.id 
+                FROM `" . TBL_OBJEDNAVKY . "` o
+                WHERE (
+                    o.uzivatel_id = ?                     -- vytvořil objednávku
+                    OR o.garant_uzivatel_id = ?           -- je garant objednávky  
+                    OR o.objednatel_id = ?                -- je objednavatel
+                    OR o.schvalovatel_id = ?              -- je schvalovatel
+                    OR o.prikazce_id = ?                  -- je příkazce objednávky
+                    OR o.potvrdil_vecnou_spravnost_id = ? -- potvrdil věcnou správnost objednávky
+                    OR o.fakturant_id = ?                 -- je fakturant
+                )
+            ";
             $user_orders_stmt = $db->prepare($user_orders_sql);
-            $user_orders_stmt->execute(array($user_id));
+            $user_orders_stmt->execute(array($user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id));
             $user_order_ids = array();
             while ($row = $user_orders_stmt->fetch(PDO::FETCH_ASSOC)) {
                 $user_order_ids[] = (int)$row['id'];
             }
             
-            if (empty($user_order_ids)) {
-                // Uživatel nemá žádné objednávky - vrátit prázdný seznam
-                error_log("Invoices25 LIST: User $user_id has NO orders - returning empty list");
+            // 2️⃣ FAKTURY K OBJEDNÁVKÁM - kde je účastníkem
+            if (!empty($user_order_ids)) {
+                $user_access_conditions[] = 'f.objednavka_id IN (' . implode(',', $user_order_ids) . ')';
+                error_log("Invoices25 LIST: User $user_id has access to " . count($user_order_ids) . " orders");
+            }
+            
+            // 3️⃣ FAKTURY PŘEDANÉ K VĚCNÉ KONTROLE (sloupec fa_predana_zam_id přímo v tabulce faktur)
+            $user_access_conditions[] = 'f.fa_predana_zam_id = ?';
+            $user_access_params[] = $user_id;
+            
+            // 4️⃣ FAKTURY POTVRZENÉ UŽIVATELEM (sloupec potvrdil_vecnou_spravnost_id přímo v tabulce faktur)
+            $user_access_conditions[] = 'f.potvrdil_vecnou_spravnost_id = ?';
+            $user_access_params[] = $user_id;
+            
+            // 5️⃣ FAKTURY KTERÉ SAM VYTVOŘIL
+            $user_access_conditions[] = 'f.vytvoril_uzivatel_id = ?';
+            $user_access_params[] = $user_id;
+            
+            // 6️⃣ SMLOUVY - faktury k smlouvám přiřazeným k úseku uživatele
+            if ($user_usek_id) {
+                $user_access_conditions[] = '(f.smlouva_id IS NOT NULL AND sm.usek_id = ?)';
+                $user_access_params[] = $user_usek_id;
+                error_log("Invoices25 LIST: User $user_id - added access to contracts for usek_id: $user_usek_id");
+            }
+            
+            // Sestavit finální podmínku
+            if (empty($user_access_conditions)) {
+                // Uživatel nemá přístup k žádným fakturám
+                error_log("Invoices25 LIST: User $user_id has NO access to any invoices - returning empty list");
                 http_response_code(200);
                 echo json_encode(array(
                     'status' => 'ok', 
@@ -1119,17 +1528,21 @@ function handle_invoices25_list($input, $config, $queries) {
                 return;
             }
             
-            // Filtr: pouze faktury objednávek uživatele NEBO faktury které vytvořil
-            error_log("Invoices25 LIST: User $user_id - applying user isolation (orders: " . count($user_order_ids) . ")");
-            $where_conditions[] = '(f.objednavka_id IN (' . implode(',', $user_order_ids) . ') OR f.vytvoril_uzivatel_id = ?)';
-            $params[] = $user_id;
+            // Přidat podmínku do WHERE
+            $where_conditions[] = '(' . implode(' OR ', $user_access_conditions) . ')';
+            $params = array_merge($params, $user_access_params);
+            
+            error_log("Invoices25 LIST: User $user_id - applying EXTENDED user isolation with " . count($user_access_conditions) . " access conditions");
         } else {
             error_log("Invoices25 LIST: User $user_id IS ADMIN - showing ALL invoices WITHOUT user filter");
         }
 
         // Filtr: year (FE kompatibilita - root level parametr)
+        // Filtruje podle jednoho z datumů (OR): vystavení, doručení nebo splatnost
         if (isset($input['year']) && (int)$input['year'] > 0) {
-            $where_conditions[] = 'YEAR(f.fa_datum_vystaveni) = ?';
+            $where_conditions[] = '(YEAR(f.fa_datum_vystaveni) = ? OR YEAR(f.fa_datum_doruceni) = ? OR YEAR(f.fa_datum_splatnosti) = ?)';
+            $params[] = (int)$input['year'];
+            $params[] = (int)$input['year'];
             $params[] = (int)$input['year'];
         }
 
@@ -1151,15 +1564,19 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . trim($filters['fa_cislo_vema']) . '%';
         }
 
-        // Filtr: datum vystavení - od
+        // Filtr: datum OD - kontroluje vystavení, doručení nebo splatnost (OR)
         if (isset($filters['datum_od']) && !empty($filters['datum_od'])) {
-            $where_conditions[] = 'f.fa_datum_vystaveni >= ?';
+            $where_conditions[] = '(f.fa_datum_vystaveni >= ? OR f.fa_datum_doruceni >= ? OR f.fa_datum_splatnosti >= ?)';
+            $params[] = $filters['datum_od'];
+            $params[] = $filters['datum_od'];
             $params[] = $filters['datum_od'];
         }
 
-        // Filtr: datum vystavení - do
+        // Filtr: datum DO - kontroluje vystavení, doručení nebo splatnost (OR)
         if (isset($filters['datum_do']) && !empty($filters['datum_do'])) {
-            $where_conditions[] = 'f.fa_datum_vystaveni <= ?';
+            $where_conditions[] = '(f.fa_datum_vystaveni <= ? OR f.fa_datum_doruceni <= ? OR f.fa_datum_splatnosti <= ?)';
+            $params[] = $filters['datum_do'];
+            $params[] = $filters['datum_do'];
             $params[] = $filters['datum_do'];
         }
 
@@ -1187,6 +1604,26 @@ function handle_invoices25_list($input, $config, $queries) {
         // SLOUPCOVÉ FILTRY (columnFilters z FE)
         // ========================================================================
         
+        // Filtr: filter_datum_doruceni (přesná shoda na den - datum doručení)
+        if (isset($filters['filter_datum_doruceni']) && !empty($filters['filter_datum_doruceni'])) {
+            $where_conditions[] = 'DATE(f.fa_datum_doruceni) = ?';
+            $params[] = $filters['filter_datum_doruceni'];
+        }
+        
+        // Filtr: filter_dt_aktualizace (přesná shoda na den - datum aktualizace)
+        if (isset($filters['filter_dt_aktualizace']) && !empty($filters['filter_dt_aktualizace'])) {
+            $where_conditions[] = 'DATE(f.dt_aktualizace) = ?';
+            $params[] = $filters['filter_dt_aktualizace'];
+            error_log("Invoices25 LIST: Applying filter_dt_aktualizace = " . $filters['filter_dt_aktualizace']);
+        }
+        
+        // Filtr: filter_fa_typ (typ faktury - přesná shoda)
+        if (isset($filters['filter_fa_typ']) && !empty($filters['filter_fa_typ'])) {
+            $where_conditions[] = 'f.fa_typ = ?';
+            $params[] = strtoupper(trim($filters['filter_fa_typ']));
+            error_log("Invoices25 LIST: Applying filter_fa_typ = " . strtoupper(trim($filters['filter_fa_typ'])));
+        }
+        
         // Filtr: cislo_objednavky (částečná shoda - LIKE)
         // ⚠️ UNIVERSAL: Hledá v čísle objednávky NEBO v čísle smlouvy!
         if (isset($filters['cislo_objednavky']) && trim($filters['cislo_objednavky']) !== '') {
@@ -1209,20 +1646,46 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = $filters['filter_datum_splatnosti'];
         }
         
-        // Filtr: filter_stav (sloupcový filtr stavu - paid/unpaid/overdue)
+        // Filtr: filter_stav (sloupcový filtr stavu workflow)
         // POZNÁMKA: Toto je sloupcový filtr, ne dashboard filter_status!
+        // Podporuje nové workflow stavy: ZAEVIDOVANA, VECNA_SPRAVNOST, V_RESENI, PREDANA_PO, K_ZAPLACENI, ZAPLACENO, DOKONCENA, STORNO
         if (isset($filters['filter_stav']) && !empty($filters['filter_stav'])) {
-            $filter_stav = trim($filters['filter_stav']);
-            switch ($filter_stav) {
-                case 'paid':
-                    $where_conditions[] = 'f.fa_zaplacena = 1';
-                    break;
-                case 'unpaid':
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
-                    break;
-                case 'overdue':
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()';
-                    break;
+            $filter_stav = strtoupper(trim($filters['filter_stav']));
+            
+            // Workflow stavy - přesná shoda ENUM hodnoty
+            $valid_workflow_states = array('ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'DOKONCENA', 'STORNO');
+            if (in_array($filter_stav, $valid_workflow_states)) {
+                $where_conditions[] = 'f.stav = ?';
+                $params[] = $filter_stav;
+                error_log("Invoices25 LIST: Applying filter_stav workflow = " . $filter_stav);
+            }
+            // Zpětná kompatibilita se starými hodnotami (paid/unpaid/overdue)
+            else {
+                $filter_stav_lower = strtolower($filter_stav);
+                switch ($filter_stav_lower) {
+                    case 'paid':
+                        // POUZE stavy ZAPLACENO/DOKONCENA
+                        $where_conditions[] = 'f.stav IN ("ZAPLACENO", "DOKONCENA")';
+                        break;
+                    case 'unpaid':
+                        // Nezaplaceno = všechny kromě ZAPLACENO/DOKONCENA/STORNO (včetně po splatnosti)
+                        $where_conditions[] = 'f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO")';
+                        break;
+                    case 'within_due':
+                        // Ve splatnosti = nezaplacené faktury, které NEJSOU po splatnosti
+                        $where_conditions[] = 'f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
+                        break;
+                    case 'overdue':
+                        // ⚠️ K_ZAPLACENI může být po splatnosti! Pouze ZAPLACENO, DOKONCENA a STORNO jsou výjimky.
+                        $where_conditions[] = '(f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE()';
+                        break;
+                    case 'storno':
+                        $where_conditions[] = 'f.stav = "STORNO"';
+                        break;
+                    case 'vecna_spravnost':
+                        $where_conditions[] = 'f.stav = "VECNA_SPRAVNOST"';
+                        break;
+                }
             }
         }
         
@@ -1236,32 +1699,36 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . $search_user . '%';
         }
         
-        // Filtr: castka_min (minimální částka faktury)
-        error_log("Invoices25 LIST: DEBUG castka_min - isset: " . (isset($filters['castka_min']) ? 'YES' : 'NO') . ", value: " . ($filters['castka_min'] ?? 'NULL') . ", is_numeric: " . (isset($filters['castka_min']) && is_numeric($filters['castka_min']) ? 'YES' : 'NO'));
-        if (isset($filters['castka_min']) && $filters['castka_min'] !== '' && is_numeric($filters['castka_min'])) {
-            $where_conditions[] = 'f.fa_castka >= ?';
-            $params[] = (float)$filters['castka_min'];
-            error_log("Invoices25 LIST: ✅ Applying castka_min filter = " . (float)$filters['castka_min']);
+        // Filtr: castka_gt, castka_lt, castka_eq (operator-based filtrování částky)
+        // Formát z FE: castka_gt = 5000 (větší než), castka_lt = 1000 (menší než), castka_eq = 1234 (rovná se)
+        if (isset($filters['castka_gt']) && $filters['castka_gt'] !== '' && is_numeric($filters['castka_gt'])) {
+            $where_conditions[] = 'f.fa_castka > ?';
+            $params[] = (float)$filters['castka_gt'];
         }
         
-        // Filtr: castka_max (maximální částka faktury)
-        error_log("Invoices25 LIST: DEBUG castka_max - isset: " . (isset($filters['castka_max']) ? 'YES' : 'NO') . ", value: " . ($filters['castka_max'] ?? 'NULL') . ", is_numeric: " . (isset($filters['castka_max']) && is_numeric($filters['castka_max']) ? 'YES' : 'NO'));
-        if (isset($filters['castka_max']) && $filters['castka_max'] !== '' && is_numeric($filters['castka_max'])) {
-            $where_conditions[] = 'f.fa_castka <= ?';
-            $params[] = (float)$filters['castka_max'];
-            error_log("Invoices25 LIST: ✅ Applying castka_max filter = " . (float)$filters['castka_max']);
+        if (isset($filters['castka_lt']) && $filters['castka_lt'] !== '' && is_numeric($filters['castka_lt'])) {
+            $where_conditions[] = 'f.fa_castka < ?';
+            $params[] = (float)$filters['castka_lt'];
+        }
+        
+        if (isset($filters['castka_eq']) && $filters['castka_eq'] !== '' && is_numeric($filters['castka_eq'])) {
+            // Pro rovnost použijeme malou toleranci (0.01 Kč) kvůli floating point aritmetice
+            $where_conditions[] = 'ABS(f.fa_castka - ?) < 0.01';
+            $params[] = (float)$filters['castka_eq'];
         }
         
         // Filtr: filter_ma_prilohy (filtrace podle přítomnosti příloh)
+        // NOTE: Tento filtr se aplikuje pomocí HAVING, ne WHERE (pocet_priloh je agregace)
+        $having_ma_prilohy = null;
         if (isset($filters['filter_ma_prilohy']) && $filters['filter_ma_prilohy'] !== '') {
             if ((int)$filters['filter_ma_prilohy'] === 1) {
                 // Pouze s přílohami
-                $where_conditions[] = 'pocet_priloh > 0';
-                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 1 (s přílohami)");
+                $having_ma_prilohy = 'COUNT(DISTINCT prilohy.id) > 0';
+                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 1 (s přílohami) via HAVING");
             } else if ((int)$filters['filter_ma_prilohy'] === 0) {
                 // Pouze bez příloh
-                $where_conditions[] = '(pocet_priloh = 0 OR pocet_priloh IS NULL)';
-                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 0 (bez příloh)");
+                $having_ma_prilohy = 'COUNT(DISTINCT prilohy.id) = 0';
+                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 0 (bez příloh) via HAVING");
             }
         }
         
@@ -1300,6 +1767,20 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . $search_predano . '%';
         }
         
+        // Filtr: filter_kontrola_radku (kontrola řádku - kontrolovano/nekontrolovano)
+        if (isset($filters['filter_kontrola_radku']) && trim($filters['filter_kontrola_radku']) !== '') {
+            $filter_kontrola = trim($filters['filter_kontrola_radku']);
+            error_log("Invoices25 LIST: Applying filter_kontrola_radku = '$filter_kontrola'");
+            
+            if ($filter_kontrola === 'kontrolovano') {
+                // Pouze kontrolované - JSON obsahuje kontrola.kontrolovano = true
+                $where_conditions[] = 'JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = TRUE';
+            } else if ($filter_kontrola === 'nekontrolovano') {
+                // Pouze nekontrolované - buď JSON neobsahuje kontrola_radku, nebo kontrolovano = false/null
+                $where_conditions[] = '(JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") IS NULL OR JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = FALSE)';
+            }
+        }
+        
         // Filtr: filter_status (dashboard stav faktury - zaplaceno, nezaplaceno, po splatnosti, atd.)
         if (isset($filters['filter_status']) && !empty($filters['filter_status'])) {
             $filter_status = trim($filters['filter_status']);
@@ -1307,29 +1788,74 @@ function handle_invoices25_list($input, $config, $queries) {
             
             switch ($filter_status) {
                 case 'paid':
-                    // Zaplaceno: fa_zaplacena = 1
-                    $where_conditions[] = 'f.fa_zaplacena = 1';
+                    // Zaplaceno: POUZE stavy ZAPLACENO nebo DOKONCENA (fa_zaplacena ignorujeme)
+                    $where_conditions[] = 'f.stav IN ("ZAPLACENO", "DOKONCENA")';
                     break;
                     
                 case 'unpaid':
-                    // Nezaplaceno (ještě NEpřekročily splatnost)
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti >= CURDATE()';
+                    // Nezaplaceno = VŠECHNY faktury kromě ZAPLACENO, DOKONCENA, STORNO (včetně po splatnosti!)
+                    // ⚠️ "Po splatnosti" je subset "Nezaplaceno"
+                    $where_conditions[] = 'f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO")';
+                    break;
+                    
+                case 'within_due':
+                    // Ve splatnosti = Nezaplacené faktury, které NEJSOU po splatnosti
+                    // (datum splatnosti >= dnes NEBO nemají datum splatnosti)
+                    $where_conditions[] = 'f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
                     break;
                     
                 case 'overdue':
-                    // Po splatnosti (nezaplacené a překročily splatnost)
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()';
+                    // Po splatnosti (nezaplacené, nejsou DOKONCENA/ZAPLACENO/STORNO a překročily splatnost)
+                    // ⚠️ K_ZAPLACENI může být po splatnosti! Pouze ZAPLACENO, DOKONCENA a STORNO jsou výjimky.
+                    $where_conditions[] = '(f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA", "STORNO") AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE()';
+                    break;
+                    
+                case 'storno':
+                    // Stornované faktury
+                    $where_conditions[] = 'f.stav = "STORNO"';
+                    break;
+                    
+                case 'vecna_spravnost':
+                    // Faktury ve stavu Věcná správnost
+                    $where_conditions[] = 'f.stav = "VECNA_SPRAVNOST"';
                     break;
                     
                 case 'without_order':
-                    // Bez objednávky
-                    $where_conditions[] = '(f.objednavka_id IS NULL OR f.objednavka_id = 0)';
+                    // Bez objednávky a bez smlouvy (faktury bez přiřazení)
+                    $where_conditions[] = '(f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0)';
                     break;
                     
                 case 'my_invoices':
-                    // Moje faktury (které jsem zaevidoval)
-                    $where_conditions[] = 'f.vytvoril_uzivatel_id = ?';
+                    // Moje faktury (kde se vyskytuju - OR logika: zaevidoval, předáno, věcná správnost)
+                    $where_conditions[] = '(f.vytvoril_uzivatel_id = ? OR f.fa_predana_zam_id = ? OR f.potvrdil_vecnou_spravnost_id = ?)';
                     $params[] = $user_id;
+                    $params[] = $user_id;
+                    $params[] = $user_id;
+                    break;
+                    
+                case 'with_contract':
+                    // Přiřazené ke smlouvě
+                    $where_conditions[] = 'f.smlouva_id IS NOT NULL AND f.smlouva_id > 0';
+                    break;
+                    
+                case 'with_order':
+                    // Přiřazené k objednávce
+                    $where_conditions[] = 'f.objednavka_id IS NOT NULL AND f.objednavka_id > 0';
+                    break;
+                    
+                case 'without_assignment':
+                    // Bez přiřazení (ani OBJ ani SML)
+                    $where_conditions[] = '(f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0)';
+                    break;
+                    
+                case 'from_spisovka':
+                    // Ze Spisovky (má tracking záznam)
+                    $where_conditions[] = 'szl.id IS NOT NULL';
+                    break;
+                    
+                case 'kontrolovano':
+                    // Zkontrolované faktury (kontrola_radku.kontrolovano = true)
+                    $where_conditions[] = 'JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = TRUE';
                     break;
                     
                 default:
@@ -1360,7 +1886,8 @@ function handle_invoices25_list($input, $config, $queries) {
                 'LOWER(CONCAT_WS(" ", u_predana.titul_pred, u_predana.jmeno, u_predana.prijmeni, u_predana.titul_za)) LIKE ?',  // Předáno zaměstnanci ✅ PŘIDÁNO
                 'LOWER(f.fa_poznamka) LIKE ?',                // Poznámka
                 'LOWER(f.fa_strediska_kod) LIKE ?',           // Střediska (JSON jako text)
-                'LOWER(f.fa_typ) LIKE ?'                      // Typ faktury ✅ PŘIDÁNO
+                'LOWER(f.fa_typ) LIKE ?',                     // Typ faktury ✅ PŘIDÁNO
+                'LOWER(f.stav) LIKE ?'                        // Workflow stav ✅ PŘIDÁNO
             );
             
             // Přidání parametrů pro každou search podmínku
@@ -1371,7 +1898,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Spojení všech search podmínek jako OR a přidání jako AND do hlavních podmínek
             $where_conditions[] = '(' . implode(' OR ', $search_conditions) . ')';
             
-            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (12 fields)");
+            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (13 fields)");
         }
 
         // Sestavení WHERE klauzule
@@ -1385,16 +1912,27 @@ function handle_invoices25_list($input, $config, $queries) {
         $stats_sql = "SELECT 
             COUNT(*) as total,
             COALESCE(SUM(f.fa_castka), 0) as celkem_castka,
-            COUNT(CASE WHEN f.fa_zaplacena = 1 THEN 1 END) as pocet_zaplaceno,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 1 THEN f.fa_castka ELSE 0 END), 0) as celkem_zaplaceno,
-            COUNT(CASE WHEN f.fa_zaplacena = 0 THEN 1 END) as pocet_nezaplaceno,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
-            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
-            COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN 1 END) as pocet_moje_faktury,
-            COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury
+            COUNT(CASE WHEN f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN 1 END) as pocet_zaplaceno,
+            COALESCE(SUM(CASE WHEN f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as celkem_zaplaceno,
+            COUNT(CASE WHEN f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') THEN 1 END) as pocet_nezaplaceno,
+            COALESCE(SUM(CASE WHEN f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
+            COUNT(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
+            COALESCE(SUM(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
+            COUNT(CASE WHEN f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL) THEN 1 END) as pocet_ve_splatnosti,
+            COALESCE(SUM(CASE WHEN f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL) THEN f.fa_castka ELSE 0 END), 0) as celkem_ve_splatnosti,
+            COUNT(CASE WHEN f.stav = 'STORNO' THEN 1 END) as pocet_storno,
+            COALESCE(SUM(CASE WHEN f.stav = 'STORNO' THEN f.fa_castka ELSE 0 END), 0) as celkem_storno,
+            COUNT(CASE WHEN f.stav = 'VECNA_SPRAVNOST' THEN 1 END) as pocet_vecna_spravnost,
+            COALESCE(SUM(CASE WHEN f.stav = 'VECNA_SPRAVNOST' THEN f.fa_castka ELSE 0 END), 0) as celkem_vecna_spravnost,
+            COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN 1 END) as pocet_moje_faktury,
+            COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
+            COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
+            COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
+            COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,
+            COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky,
+            COUNT(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 END) as pocet_zkontrolovano
         FROM `$faktury_table` f
-        LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+        LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_obj ON o.uzivatel_id = u_obj.id
@@ -1402,6 +1940,7 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_useky` us_obj ON u_obj.usek_id = us_obj.id
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
+        LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
         WHERE $where_sql";
         
         $stats_stmt = $db->prepare($stats_sql);
@@ -1418,8 +1957,19 @@ function handle_invoices25_list($input, $config, $queries) {
             'celkem_nezaplaceno' => (float)$stats['celkem_nezaplaceno'],
             'pocet_po_splatnosti' => (int)$stats['pocet_po_splatnosti'],
             'celkem_po_splatnosti' => (float)$stats['celkem_po_splatnosti'],
+            'pocet_ve_splatnosti' => (int)$stats['pocet_ve_splatnosti'],
+            'celkem_ve_splatnosti' => (float)$stats['celkem_ve_splatnosti'],
+            'pocet_storno' => (int)$stats['pocet_storno'],
+            'celkem_storno' => (float)$stats['celkem_storno'],
+            'pocet_vecna_spravnost' => (int)$stats['pocet_vecna_spravnost'],
+            'celkem_vecna_spravnost' => (float)$stats['celkem_vecna_spravnost'],
             'pocet_moje_faktury' => (int)$stats['pocet_moje_faktury'],
-            'celkem_moje_faktury' => (float)$stats['celkem_moje_faktury']
+            'celkem_moje_faktury' => (float)$stats['celkem_moje_faktury'],
+            'pocet_s_smlouvou' => (int)$stats['pocet_s_smlouvou'],
+            'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
+            'pocet_bez_prirazeni' => (int)$stats['pocet_bez_prirazeni'],
+            'pocet_ze_spisovky' => (int)$stats['pocet_ze_spisovky'],
+            'pocet_zkontrolovano' => (int)$stats['pocet_zkontrolovano']
         );
         
         // KROK 2: Načíst samotné záznamy
@@ -1427,8 +1977,13 @@ function handle_invoices25_list($input, $config, $queries) {
             f.*,
             o.cislo_objednavky,
             o.uzivatel_id AS objednavka_uzivatel_id,
+            o.dodavatel_nazev AS objednavka_dodavatel_nazev,
+            o.dodavatel_ico AS objednavka_dodavatel_ico,
+            o.stav_workflow_kod AS objednavka_stav_workflow_kod,
             sm.cislo_smlouvy,
             sm.nazev_smlouvy,
+            sm.nazev_firmy AS smlouva_nazev_firmy,
+            sm.ico AS smlouva_ico,
             u_vytvoril.jmeno AS vytvoril_jmeno,
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_vytvoril.titul_pred AS vytvoril_titul_pred,
@@ -1456,30 +2011,100 @@ function handle_invoices25_list($input, $config, $queries) {
             u_predana.jmeno AS fa_predana_zam_jmeno,
             u_predana.prijmeni AS fa_predana_zam_prijmeni,
             u_predana.titul_pred AS fa_predana_zam_titul_pred,
-            u_predana.titul_za AS fa_predana_zam_titul_za
+            u_predana.titul_za AS fa_predana_zam_titul_za,
+            szl.id AS spisovka_tracking_id,
+            szl.dokument_id AS spisovka_dokument_id,
+            szl.spisovka_priloha_id AS spisovka_priloha_id
         FROM `$faktury_table` f
-        LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+        LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_obj ON o.uzivatel_id = u_obj.id
         LEFT JOIN `25_organizace_vizitka` org ON u_obj.organizace_id = org.id
         LEFT JOIN `25_useky` us_obj ON u_obj.usek_id = us_obj.id
-        LEFT JOIN `25a_faktury_prilohy` prilohy ON f.id = prilohy.faktura_id
+        LEFT JOIN `" . TBL_FAKTURY_PRILOHY . "` prilohy ON f.id = prilohy.faktura_id
         LEFT JOIN `25_ciselnik_stavy` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
+        LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
         WHERE $where_sql
-        GROUP BY f.id
-        ORDER BY f.fa_datum_vystaveni DESC, f.id DESC";
+        GROUP BY f.id";
+        
+        // Přidat HAVING pokud je filtr na přílohy
+        if ($having_ma_prilohy !== null) {
+            $sql .= " HAVING $having_ma_prilohy";
+        }
+        
+        // Řazení podle FE parametrů (order_by + order_direction)
+        $order_by = isset($filters['order_by']) ? $filters['order_by'] : 'dt_aktualizace';
+        $order_direction = isset($filters['order_direction']) ? strtoupper($filters['order_direction']) : 'DESC';
+        
+        // Validace order_direction
+        if (!in_array($order_direction, array('ASC', 'DESC'))) {
+            $order_direction = 'DESC';
+        }
+        
+        // Mapování FE pole na DB sloupce + validace
+        $valid_order_fields = array(
+            'dt_aktualizace' => 'f.dt_aktualizace',
+            'cislo_faktury' => 'f.fa_cislo_vema', 
+            'fa_typ' => 'f.fa_typ',
+            'cislo_objednavky' => 'o.cislo_objednavky',
+            'datum_doruceni' => 'f.fa_datum_doruceni',
+            'datum_vystaveni' => 'f.fa_datum_vystaveni',
+            'datum_splatnosti' => 'f.fa_datum_splatnosti',
+            'castka' => 'f.fa_castka',
+            'status' => 'f.stav', // workflow stav faktury (ZAEVIDOVANA, VECNA_SPRAVNOST, atd.)
+            'vytvoril_uzivatel' => 'u_vytvoril.prijmeni',
+            'fa_predana_zam_jmeno' => 'u_predana.prijmeni',
+            'potvrdil_vecnou_spravnost_jmeno' => 'u_vecna.prijmeni',
+            'vecna_spravnost_potvrzeno' => 'f.vecna_spravnost_potvrzeno',
+            'pocet_priloh' => 'pocet_priloh'
+        );
+        
+        if (isset($valid_order_fields[$order_by])) {
+            $db_field = $valid_order_fields[$order_by];
+            $sql .= " ORDER BY $db_field $order_direction, f.id DESC";
+            error_log("Invoices25 LIST: Using ORDER BY: $db_field $order_direction");
+        } else {
+            // Neplatné pole -> default řazení 
+            $sql .= " ORDER BY f.dt_aktualizace DESC, f.id DESC";
+            error_log("Invoices25 LIST: Invalid order_by '$order_by', using default ORDER BY f.dt_aktualizace DESC");
+        }
         
         // Přidat LIMIT pouze pokud FE požaduje stránkování
         if ($use_pagination) {
             $sql .= " LIMIT $per_page OFFSET $offset";
         }
 
+        // 🐛 DEBUG: Sestavit plný SQL dotaz s vloženými parametry (pro test v DB)
+        $debug_sql = $sql;
+        $debug_params_escaped = array();
+        foreach ($params as $param) {
+            if (is_null($param)) {
+                $debug_params_escaped[] = 'NULL';
+            } elseif (is_numeric($param)) {
+                $debug_params_escaped[] = $param;
+            } else {
+                $debug_params_escaped[] = "'" . addslashes($param) . "'";
+            }
+        }
+        // Nahradit ? za skutečné hodnoty (jednoduchá náhrada)
+        foreach ($debug_params_escaped as $param_value) {
+            $debug_sql = preg_replace('/\?/', $param_value, $debug_sql, 1);
+        }
+        
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         $faktury = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // 🐛 KRITICKÝ DEBUG - surová data z DB
+        if (!empty($faktury)) {
+            file_put_contents('/var/www/erdms-dev/logs/invoice_debug.json', json_encode([
+                'first_invoice_raw' => $faktury[0],
+                'fields' => array_keys($faktury[0])
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
 
         // Formátování dat pro FE kompatibilitu
         foreach ($faktury as &$faktura) {
@@ -1513,7 +2138,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Vytvoril uzivatel - zkrácené jméno (Bezoušková T.)
             $vytvoril_jmeno_zkracene = '';
             if (!empty($faktura['vytvoril_jmeno']) && !empty($faktura['vytvoril_prijmeni'])) {
-                $vytvoril_jmeno_zkracene = trim($faktura['vytvoril_prijmeni'] . ' ' . substr($faktura['vytvoril_jmeno'], 0, 1) . '.');
+                $vytvoril_jmeno_zkracene = trim($faktura['vytvoril_prijmeni'] . ' ' . mb_substr($faktura['vytvoril_jmeno'], 0, 1, 'UTF-8') . '.');
             }
             $faktura['vytvoril_uzivatel_zkracene'] = $vytvoril_jmeno_zkracene;
             
@@ -1576,14 +2201,63 @@ function handle_invoices25_list($input, $config, $queries) {
             if (!empty($faktura['rozsirujici_data'])) {
                 $decoded = json_decode($faktura['rozsirujici_data'], true);
                 $faktura['rozsirujici_data'] = is_array($decoded) ? $decoded : null;
+                
+                // ✅ TŘÍFÁZOVÝ SYSTÉM KONTROLY: Přidat check_status přímo do faktury
+                if (isset($faktura['rozsirujici_data']['kontrola_radku'])) {
+                    $kontrola = $faktura['rozsirujici_data']['kontrola_radku'];
+                    
+                    if (!empty($kontrola['kontrolovano'])) {
+                        $dt_kontroly = isset($kontrola['dt_kontroly']) ? $kontrola['dt_kontroly'] : null;
+                        $dt_aktualizace = isset($faktura['dt_aktualizace']) ? $faktura['dt_aktualizace'] : null;
+                        
+                        if ($dt_kontroly && $dt_aktualizace) {
+                            $ts_kontroly = strtotime($dt_kontroly);
+                            $ts_aktualizace = strtotime($dt_aktualizace);
+                            
+                            if ($ts_kontroly >= $ts_aktualizace) {
+                                $faktura['check_status'] = 'checked_ok';  // ✅ Zelená - zkontrolováno, beze změn
+                            } else {
+                                $faktura['check_status'] = 'checked_modified';  // ⚠️ Oranžová - zkontrolováno, ale upraveno
+                            }
+                        } else {
+                            $faktura['check_status'] = 'checked_ok';  // Pokud nemáme dt_aktualizace, považujeme za OK
+                        }
+                    } else {
+                        $faktura['check_status'] = 'unchecked';  // ⚪ Nezkontrolováno
+                    }
+                } else {
+                    $faktura['check_status'] = 'unchecked';  // ⚪ Nezkontrolováno (žádné kontrola_radku)
+                }
+                
+                // ✨ Doplnit username uživatele, který přiřadil roční poplatek
+                if (isset($faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_id'])) {
+                    $userId = (int)$faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_id'];
+                    try {
+                        $stmtUser = $db->prepare("
+                            SELECT CONCAT(prijmeni, ' ', jmeno) as jmeno_cele, 
+                                   CONCAT(prijmeni, ' ', SUBSTRING(jmeno, 1, 1), '.') as jmeno_zkracene
+                            FROM 25_uzivatele 
+                            WHERE id = ?
+                        ");
+                        $stmtUser->execute([$userId]);
+                        $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
+                        if ($user) {
+                            $faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_jmeno'] = $user['jmeno_cele'];
+                            $faktura['rozsirujici_data']['rocni_poplatek']['prirazeno_uzivatelem_jmeno_zkracene'] = $user['jmeno_zkracene'];
+                        }
+                    } catch (Exception $e) {
+                        error_log("Chyba při načítání uživatele pro roční poplatek: " . $e->getMessage());
+                    }
+                }
             } else {
                 $faktura['rozsirujici_data'] = null;
+                $faktura['check_status'] = 'unchecked';  // ⚪ Nezkontrolováno (žádné rozsirujici_data)
             }
             
             // Potvrdil věcnou správnost - zkrácené jméno (Bezoušková T.)
             $potvrdil_vecnou_spravnost_zkracene = '';
             if (!empty($faktura['potvrdil_vecnou_spravnost_jmeno']) && !empty($faktura['potvrdil_vecnou_spravnost_prijmeni'])) {
-                $potvrdil_vecnou_spravnost_zkracene = trim($faktura['potvrdil_vecnou_spravnost_prijmeni'] . ' ' . substr($faktura['potvrdil_vecnou_spravnost_jmeno'], 0, 1) . '.');
+                $potvrdil_vecnou_spravnost_zkracene = trim($faktura['potvrdil_vecnou_spravnost_prijmeni'] . ' ' . mb_substr($faktura['potvrdil_vecnou_spravnost_jmeno'], 0, 1, 'UTF-8') . '.');
             }
             $faktura['potvrdil_vecnou_spravnost_zkracene'] = $potvrdil_vecnou_spravnost_zkracene;
             
@@ -1600,6 +2274,55 @@ function handle_invoices25_list($input, $config, $queries) {
             }
             $faktura['fa_predana_zam_jmeno_cele'] = $predana_jmeno_cele;
             
+            // 🎯 DODAVATEL - sestavit info o dodavateli (přednost má objednávka před smlouvou)
+            // Pokud je faktura přiřazena k objednávce, použij dodavatele z objednávky
+            // Pokud je přiřazena ke smlouvě, použij dodavatele ze smlouvy
+            $dodavatel_nazev = null;
+            $dodavatel_ico = null;
+            
+            if (!empty($faktura['objednavka_dodavatel_nazev'])) {
+                // Dodavatel z objednávky má přednost
+                $dodavatel_nazev = $faktura['objednavka_dodavatel_nazev'];
+                $dodavatel_ico = $faktura['objednavka_dodavatel_ico'];
+            } elseif (!empty($faktura['smlouva_nazev_firmy'])) {
+                // Dodavatel ze smlouvy jako fallback
+                $dodavatel_nazev = $faktura['smlouva_nazev_firmy'];
+                $dodavatel_ico = $faktura['smlouva_ico'];
+            }
+            
+            // Přidat informace o dodavateli do struktury faktury
+            $faktura['dodavatel_nazev'] = $dodavatel_nazev;
+            $faktura['dodavatel_ico'] = $dodavatel_ico;
+            
+            // 🎯 STAV OBJEDNÁVKY - pro určení barvy prokliku
+            $objednavka_je_dokoncena = false;
+            $objednavka_je_zkontrolovana = false;
+            if (!empty($faktura['objednavka_stav_workflow_kod'])) {
+                // Stav workflow je uložen jako JSON array, např. ["DOKONCENA"]
+                $workflow_states = json_decode($faktura['objednavka_stav_workflow_kod'], true);
+                if (is_array($workflow_states)) {
+                    if (in_array('DOKONCENA', $workflow_states)) {
+                        $objednavka_je_dokoncena = true;
+                    }
+                    if (in_array('ZKONTROLOVANA', $workflow_states)) {
+                        $objednavka_je_zkontrolovana = true;
+                    }
+                }
+            }
+            $faktura['objednavka_je_dokoncena'] = $objednavka_je_dokoncena;
+            $faktura['objednavka_je_zkontrolovana'] = $objednavka_je_zkontrolovana;
+            
+            // Odstraníme pomocné sloupce pro dodavatele a stav
+            unset($faktura['objednavka_dodavatel_nazev']);
+            unset($faktura['objednavka_dodavatel_ico']);
+            unset($faktura['smlouva_nazev_firmy']);
+            unset($faktura['smlouva_ico']);
+            unset($faktura['objednavka_stav_workflow_kod']);
+            
+            // Spisovka tracking - přidat informaci o původu ze Spisovky
+            $faktura['from_spisovka'] = !empty($faktura['spisovka_tracking_id']);
+            $faktura['spisovka_dokument_id'] = $faktura['from_spisovka'] ? $faktura['spisovka_dokument_id'] : null;
+            
             // Odstraníme pouze pomocné sloupce (detail už je v vytvoril_uzivatel_detail)
             unset($faktura['vytvoril_jmeno']);
             unset($faktura['vytvoril_prijmeni']);
@@ -1611,7 +2334,10 @@ function handle_invoices25_list($input, $config, $queries) {
             unset($faktura['fa_predana_zam_prijmeni']);
             unset($faktura['fa_predana_zam_titul_pred']);
             unset($faktura['fa_predana_zam_titul_za']);
+            unset($faktura['spisovka_tracking_id']);
+            unset($faktura['spisovka_priloha_id']);
         }
+        unset($faktura); // ⚠️ KRITICKÉ: Zruš referenci z prvního foreach!
         
         // KROK 3: Načíst přílohy pro každou fakturu (enriched data)
         // Získat IDs všech faktur pro batch dotaz
@@ -1632,6 +2358,7 @@ function handle_invoices25_list($input, $config, $queries) {
                 p.systemova_cesta,
                 p.velikost_souboru_b,
                 p.je_isdoc,
+                p.nahrano_uzivatel_id,
                 p.dt_vytvoreni,
                 p.dt_aktualizace,
                 u.jmeno AS nahrano_jmeno,
@@ -1640,7 +2367,7 @@ function handle_invoices25_list($input, $config, $queries) {
                 u.titul_za AS nahrano_titul_za,
                 u.email AS nahrano_email,
                 u.telefon AS nahrano_telefon
-            FROM `25a_faktury_prilohy` p
+            FROM `" . TBL_FAKTURY_PRILOHY . "` p
             LEFT JOIN `25_uzivatele` u ON p.nahrano_uzivatel_id = u.id
             WHERE p.faktura_id IN ($ids_placeholder)
             ORDER BY p.dt_vytvoreni DESC";
@@ -1706,14 +2433,15 @@ function handle_invoices25_list($input, $config, $queries) {
             $fid = $faktura['id'];
             $faktura['prilohy'] = isset($prilohy_map[$fid]) ? $prilohy_map[$fid] : array();
         }
+        unset($faktura); // ⚠️ KRITICKÉ: Unset reference aby se nepřepsala později
 
         // Vypočítat pagination metadata
         $total_pages = $use_pagination ? (int)ceil($total_count / $per_page) : 1;
         
         // Response - OrderV2 formát s pagination + statistiky + user metadata
         // FE očekává: { status: "ok", faktury: [...], pagination: {...}, statistiky: {...}, user_info: {...} }
-        http_response_code(200);
-        echo json_encode(array(
+        
+        $response_data = array(
             'status' => 'ok',
             'faktury' => $faktury,
             'pagination' => array(
@@ -1723,11 +2451,6 @@ function handle_invoices25_list($input, $config, $queries) {
                 'total_pages' => $total_pages
             ),
             'statistiky' => $statistiky,
-            '_debug' => array(
-                'filters_received' => $filters,
-                'castka_min_applied' => isset($filters['castka_min']) ? 'YES (' . $filters['castka_min'] . ')' : 'NO',
-                'castka_max_applied' => isset($filters['castka_max']) ? 'YES (' . $filters['castka_max'] . ')' : 'NO'
-            ),
             'user_info' => array(
                 'user_id' => $user_id,
                 'is_admin' => $is_admin,
@@ -1736,11 +2459,149 @@ function handle_invoices25_list($input, $config, $queries) {
                 'usek_zkr' => $user_usek_zkr,
                 'filter_applied' => !$is_admin
             )
-        ));
+        );
+        
+        // 🛡️ SANITIZACE UTF-8 - předejdeme JSON encoding chybám
+        array_walk_recursive($response_data, function(&$value) {
+            if (is_string($value)) {
+                // Odstranit nevalidní UTF-8 znaky
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+            }
+        });
+        
+        http_response_code(200);
+        // ⚠️ Kompletní ošetření českých znaků pro JSON
+        $json_output = json_encode($response_data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        
+        // 🔍 DEBUG - log prvních 3 faktur v JSON response
+        if (!empty($response_data['faktury']) && count($response_data['faktury']) > 0) {
+            $first_invoice = $response_data['faktury'][0];
+            error_log("JSON RESPONSE First Invoice #" . $first_invoice['id'] . ": has_check_status=" . (isset($first_invoice['check_status']) ? 'YES (' . $first_invoice['check_status'] . ')' : 'NO'));
+        }
+        
+        if ($json_output === false) {
+            // Fallback: pokud JSON encoding selže, vrátit minimální response
+            $minimal_response = array(
+                'status' => 'error',
+                'message' => 'Chyba při kódování dat: ' . json_last_error_msg(),
+                'faktury' => array(),
+                'pagination' => $response_data['pagination']
+            );
+            $json_output = json_encode($minimal_response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+        echo $json_output;
 
     } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání faktur: ' . $e->getMessage()));
+        $error_message = mb_convert_encoding($e->getMessage(), 'UTF-8', 'UTF-8');
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání faktur: ' . $error_message), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+}
+
+/**
+ * POST /invoices25/restore
+ * Obnovení neaktivní faktury (nastavení aktivni = 1)
+ * Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
+ */
+function handle_invoices25_restore($input, $config, $queries) {
+    debug_log("🚀 RESTORE invoices25 STARTED - Input: " . json_encode($input));
+    
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $invoice_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    debug_log("🔑 Token: " . substr($token, 0, 20) . "..., Username: $request_username, Invoice ID: $invoice_id");
+
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($invoice_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID faktury']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // 🔒 ADMIN CHECK - pouze admin může obnovit fakturu
+        $is_admin = isset($token_data['is_admin']) && $token_data['is_admin'] === true;
+        
+        debug_log("🔍 RESTORE invoices25: User {$token_data['username']} (ID {$token_data['id']}), is_admin: " . ($is_admin ? 'TRUE' : 'FALSE'));
+        
+        if (!$is_admin) {
+            http_response_code(403);
+            echo json_encode(['err' => 'Pouze ADMIN může obnovit faktury']);
+            debug_log("⛔ RESTORE invoices25: Uživatel {$token_data['username']} (ID {$token_data['id']}) nemá ADMIN oprávnění");
+            return;
+        }
+
+        $db->beginTransaction();
+
+        // Zkontrolovat, zda faktura existuje (včetně deaktivovaných)
+        $checkStmt = $db->prepare("SELECT * FROM " . TBL_FAKTURY . " WHERE id = :id");
+        $checkStmt->bindParam(':id', $invoice_id, PDO::PARAM_INT);
+        $checkStmt->execute();
+        $invoice = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$invoice) {
+            $db->rollBack();
+            http_response_code(404);
+            echo json_encode(['err' => 'Faktura nebyla nalezena']);
+            debug_log("⛔ RESTORE invoices25: Faktura #$invoice_id neexistuje");
+            return;
+        }
+
+        // Zkontrolovat, zda je deaktivovaná
+        if ($invoice['aktivni'] == 1) {
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['err' => 'Faktura je již aktivní']);
+            debug_log("⚠️ RESTORE invoices25: Faktura #$invoice_id je již aktivní");
+            return;
+        }
+
+        // Restore - nastavit aktivni = 1 a aktualizovat datum
+        $restoreStmt = $db->prepare("UPDATE " . TBL_FAKTURY . " 
+                                     SET aktivni = 1, 
+                                         dt_aktualizace = NOW()
+                                     WHERE id = :id");
+        $restoreStmt->bindParam(':id', $invoice_id, PDO::PARAM_INT);
+        $restoreStmt->execute();
+
+        $db->commit();
+
+        debug_log("✅ RESTORE invoices25: Faktura #$invoice_id (číslo: {$invoice['cislo_faktury']}) byla obnovena uživatelem {$token_data['username']} (ID {$token_data['id']})");
+
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Faktura byla úspěšně obnovena',
+            'data' => [
+                'id' => $invoice_id,
+                'cislo_faktury' => $invoice['cislo_faktury'],
+                'aktivni' => 1,
+                'obnoveno_uzivatelem' => $token_data['id']
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        if (isset($db) && $db->inTransaction()) {
+            $db->rollBack();
+        }
+        http_response_code(500);
+        debug_log("⛔ RESTORE invoices25 ERROR: " . $e->getMessage());
+        echo json_encode(['err' => 'Chyba při obnově faktury: ' . $e->getMessage()]);
     }
 }
 

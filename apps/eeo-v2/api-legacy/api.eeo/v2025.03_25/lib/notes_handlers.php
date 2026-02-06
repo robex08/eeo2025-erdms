@@ -1,4 +1,5 @@
 <?php
+
 // TODO/NOTES API Handlers (Final Design v2025.03_25)
 // Konzistentní API struktura s ostatními endpointy
 
@@ -336,11 +337,11 @@ function handle_user_notes_stats($input, $config, $queries) {
         $stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Dodatečné statistiky
-        $stmt_total = $db->prepare("SELECT COUNT(*) as total_records FROM " . TABLE_UZIVATELE_POZNAMKY);
+        $stmt_total = $db->prepare("SELECT COUNT(*) as total_records FROM " . TBL_UZIVATELE_POZNAMKY);
         $stmt_total->execute();
         $total = $stmt_total->fetch(PDO::FETCH_ASSOC);
         
-        $stmt_active_users = $db->prepare("SELECT COUNT(DISTINCT user_id) as active_users FROM " . TABLE_UZIVATELE_POZNAMKY);
+        $stmt_active_users = $db->prepare("SELECT COUNT(DISTINCT user_id) as active_users FROM " . TBL_UZIVATELE_POZNAMKY);
         $stmt_active_users->execute();
         $active_users = $stmt_active_users->fetch(PDO::FETCH_ASSOC);
         
@@ -992,10 +993,14 @@ function handle_todonotes_load($input, $config, $queries) {
  * Parametry: username, token, typ (TODO|NOTES), obsah, [id]
  */
 function handle_todonotes_save($input, $config, $queries) {
+    // 🔍 DEBUG: Log vstupních parametrů
+    debug_log("📝 TODONOTES SAVE - Received input: " . json_encode($input, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+    
     // Validace povinných parametrů
     $required = ['username', 'token', 'typ', 'obsah'];
     foreach ($required as $param) {
         if (!isset($input[$param])) {
+            debug_log("⛔ TODONOTES SAVE - Missing parameter: $param");
             api_error(400, "Chybí povinný parametr: $param", 'MISSING_PARAMETERS');
             return;
         }
@@ -1065,7 +1070,7 @@ function handle_todonotes_save($input, $config, $queries) {
         } else {
             // INSERT nový záznam (id je null)
             // Nejdřív zkontrolujeme, jestli už náhodou neexistuje (ochrana proti duplicate)
-            $stmt = $db->prepare("SELECT id FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND typ = :typ");
+            $stmt = $db->prepare("SELECT id FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND typ = :typ");
             $stmt->bindValue(':user_id', $user_id, PDO::PARAM_INT);
             $stmt->bindValue(':typ', $typ, PDO::PARAM_STR);
             $stmt->execute();
@@ -1167,7 +1172,7 @@ function handle_todonotes_delete($input, $config, $queries) {
     
     try {
         // Ověření, že záznam existuje a patří uživateli
-        $stmt = $db->prepare("SELECT user_id FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE id = :id AND typ = :typ");
+        $stmt = $db->prepare("SELECT user_id FROM ".TBL_UZIVATELE_POZNAMKY." WHERE id = :id AND typ = :typ");
         $stmt->bindValue(':id', $record_id, PDO::PARAM_INT);
         $stmt->bindValue(':typ', $typ, PDO::PARAM_STR);
         $stmt->execute();
@@ -1184,7 +1189,7 @@ function handle_todonotes_delete($input, $config, $queries) {
         }
         
         // Smazání záznamu
-        $stmt = $db->prepare("DELETE FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE id = :id");
+        $stmt = $db->prepare("DELETE FROM ".TBL_UZIVATELE_POZNAMKY." WHERE id = :id");
         $stmt->bindValue(':id', $record_id, PDO::PARAM_INT);
         $result = $stmt->execute();
         
@@ -1243,7 +1248,7 @@ function handle_todonotes_by_id($input, $config, $queries) {
     
     try {
         // Načtení záznamu
-        $stmt = $db->prepare("SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE id = :id");
+        $stmt = $db->prepare("SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE id = :id");
         $stmt->bindValue(':id', $record_id, PDO::PARAM_INT);
         $stmt->execute();
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1323,7 +1328,7 @@ function handle_todonotes_search($input, $config, $queries) {
     
     try {
         $sql = "SELECT *, MATCH(obsah) AGAINST(:search_term IN BOOLEAN MODE) as match_score 
-                FROM ".TABLE_UZIVATELE_POZNAMKY." 
+                FROM ".TBL_UZIVATELE_POZNAMKY." 
                 WHERE user_id = :user_id 
                 AND MATCH(obsah) AGAINST(:search_term IN BOOLEAN MODE)";
         
@@ -1411,7 +1416,7 @@ function handle_todonotes_with_details($input, $config, $queries) {
     }
     
     try {
-        $sql = "SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id";
+        $sql = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id";
         if ($typ) {
             $sql .= " AND typ = :typ";
         }
@@ -1522,7 +1527,7 @@ function handle_todonotes_recent($input, $config, $queries) {
     try {
         $sql = "SELECT *, 
                 DATEDIFF(NOW(), dt_aktualizace) as days_ago
-                FROM ".TABLE_UZIVATELE_POZNAMKY." 
+                FROM ".TBL_UZIVATELE_POZNAMKY." 
                 WHERE user_id = :user_id 
                 AND dt_aktualizace >= DATE_SUB(NOW(), INTERVAL :days DAY)";
         
@@ -1615,7 +1620,7 @@ function handle_todonotes_stats($input, $config, $queries) {
     
     try {
         // Celkové statistiky
-        $stmt = $db->prepare("SELECT typ, COUNT(*) as total FROM ".TABLE_UZIVATELE_POZNAMKY." GROUP BY typ");
+        $stmt = $db->prepare("SELECT typ, COUNT(*) as total FROM ".TBL_UZIVATELE_POZNAMKY." GROUP BY typ");
         $stmt->execute();
         $overview = ['total_todos' => 0, 'total_notes' => 0, 'total_users' => 0, 'active_users_period' => 0];
         
@@ -1628,7 +1633,7 @@ function handle_todonotes_stats($input, $config, $queries) {
         }
         
         // Počet uživatelů
-        $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as total_users FROM ".TABLE_UZIVATELE_POZNAMKY."");
+        $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as total_users FROM ".TBL_UZIVATELE_POZNAMKY."");
         $stmt->execute();
         $overview['total_users'] = (int)$stmt->fetchColumn();
         
@@ -1638,7 +1643,7 @@ function handle_todonotes_stats($input, $config, $queries) {
         else if ($period === 'year') $period_sql = "1 YEAR";
         
         $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as active_users 
-                             FROM ".TABLE_UZIVATELE_POZNAMKY." 
+                             FROM ".TBL_UZIVATELE_POZNAMKY." 
                              WHERE dt_aktualizace >= DATE_SUB(NOW(), INTERVAL $period_sql)");
         $stmt->execute();
         $overview['active_users_period'] = (int)$stmt->fetchColumn();
@@ -1647,7 +1652,7 @@ function handle_todonotes_stats($input, $config, $queries) {
         $stmt = $db->prepare("SELECT typ, 
                              COUNT(*) as created,
                              SUM(CASE WHEN dt_vytvoreni != dt_aktualizace THEN 1 ELSE 0 END) as updated
-                             FROM ".TABLE_UZIVATELE_POZNAMKY." 
+                             FROM ".TBL_UZIVATELE_POZNAMKY." 
                              WHERE dt_vytvoreni >= DATE_SUB(NOW(), INTERVAL $period_sql)
                              GROUP BY typ");
         $stmt->execute();
@@ -1679,7 +1684,7 @@ function handle_todonotes_stats($input, $config, $queries) {
                                  SUM(CASE WHEN up.typ = 'TODO' THEN 1 ELSE 0 END) as todos_count,
                                  SUM(CASE WHEN up.typ = 'NOTES' THEN 1 ELSE 0 END) as notes_count,
                                  MAX(up.dt_aktualizace) as last_activity
-                                 FROM ".TABLE_UZIVATELE_POZNAMKY." up
+                                 FROM ".TBL_UZIVATELE_POZNAMKY." up
                                  JOIN uzivatele u ON u.id = up.user_id
                                  GROUP BY up.user_id, u.username
                                  ORDER BY last_activity DESC

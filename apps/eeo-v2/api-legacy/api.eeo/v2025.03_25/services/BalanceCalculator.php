@@ -39,8 +39,8 @@ class BalanceCalculator {
             $stmt->execute(array($bookId));
             $entries = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Začít s opening balance (převod z předchozího)
-            $runningBalance = floatval($book['pocatecni_stav']);
+            // ✅ FIX: Začít s převodem z předchozího měsíce (ne pocatecni_stav!)
+            $runningBalance = floatval($book['prevod_z_predchoziho']);
             
             $totalIncome = 0;
             $totalExpense = 0;
@@ -119,10 +119,10 @@ class BalanceCalculator {
             $stmt->execute(array($bookId, $entryDate));
             $lastBeforeEntry = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            // Výchozí balance
+            // ✅ FIX: Výchozí balance z převodu z předchozího (ne pocatecni_stav!)
             $runningBalance = $lastBeforeEntry 
                 ? floatval($lastBeforeEntry['zustatek_po_operaci']) 
-                : floatval($book['pocatecni_stav']);
+                : floatval($book['prevod_z_predchoziho']);
             
             // Načíst položky od daného data
             $stmt = $this->db->prepare("

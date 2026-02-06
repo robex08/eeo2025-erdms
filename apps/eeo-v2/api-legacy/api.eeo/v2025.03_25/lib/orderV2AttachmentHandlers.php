@@ -1,5 +1,4 @@
 <?php
-require_once __DIR__ . "/TimezoneHelper.php";
 /**
  * Order V2 Attachment Handlers - Kompletní správa příloh
  * 
@@ -23,6 +22,9 @@ require_once __DIR__ . '/TimezoneHelper.php';
 
 // Include necessary functions from handlers.php
 if (!function_exists('verify_token')) {
+    require_once __DIR__ . '/handlers.php';
+}
+if (!function_exists('verify_token_v2')) {
     require_once __DIR__ . '/handlers.php';
 }
 if (!function_exists('get_db')) {
@@ -78,9 +80,9 @@ function get_order_v2_upload_path($config, $objednavka_id, $user_id) {
     } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // ✅ Fallback - použij správnou cestu z dbconfig.php
-        // Cesta: /var/www/erdms-data/eeo-v2/prilohy/
-        $basePath = '/var/www/erdms-data/eeo-v2/prilohy/';
+        // ✅ Fallback - použij centrální environment utility
+        require_once __DIR__ . '/environment-utils.php';
+        $basePath = get_upload_root_path();
     }
     
     // Přidání lomítka na konec pokud chybí
@@ -116,7 +118,9 @@ function validate_order_v2_file_upload($config, $file_data) {
             // Obrázky
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
             // Archivy
-            'zip', 'rar', '7z', 'tar', 'gz'
+            'zip', 'rar', '7z', 'tar', 'gz',
+            // Emailové zprávy
+            'eml', 'msg'
         );
     
     // Maximální velikost souboru
@@ -166,20 +170,31 @@ function generate_order_v2_file_guid() {
  * PHP 5.6 + MySQL 5.5.43 compatible
  */
 function handle_order_v2_upload_attachment($input, $config, $queries) {
+    // DEBUG LOGGING
+    error_log("=== ORDER V2 ATTACHMENT UPLOAD START ===");
+    error_log("Input data: " . json_encode($input));
+    error_log("FILES data: " . json_encode($_FILES));
+    error_log("POST data: " . json_encode($_POST));
+    
     // Token authentication
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     $order_id = isset($input['id']) ? $input['id'] : null;
     
+    error_log("Token: " . substr($token, 0, 20) . "..., Username: " . $request_username . ", Order ID: " . $order_id);
+    
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
+        error_log("ERROR: Token validation failed");
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
         return;
     }
     
+    error_log("Token validated for user ID: " . $token_data['id']);
     
     if (!$order_id) {
+        error_log("ERROR: Missing order ID");
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí ID objednávky'));
         return;
@@ -197,26 +212,34 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
     
     // Kontrola uploaded file
     if (!isset($_FILES['file']) || empty($_FILES['file']['name'])) {
+        error_log("ERROR: Missing file in upload. FILES keys: " . implode(', ', array_keys($_FILES)));
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí soubor k nahrání'));
         return;
     }
     
+    error_log("File received: " . $_FILES['file']['name'] . " (" . $_FILES['file']['size'] . " bytes)");
+    
     try {
         $db = get_db($config);
         
         // Kontrola existence objednávky
+        error_log("ORDER V2 ATTACHMENT UPLOAD - Checking order_id: " . $order_id);
         $stmt = $db->prepare("SELECT id FROM " . get_orders_table_name() . " WHERE id = :id AND aktivni = 1");
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-
-    }
+        $numeric_order_id = intval($order_id);
+        error_log("ORDER V2 ATTACHMENT UPLOAD - Numeric ID: " . $numeric_order_id . ", Table: " . get_orders_table_name());
+        if (strpos($order_id, "draft_") === 0) {
+            error_log("ORDER V2 ATTACHMENT UPLOAD - Draft order detected, rejecting");
+            http_response_code(422);
+            echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
+            return;
+        }
         $stmt->bindValue(":id", $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
+        $result = $stmt->fetch();
+        error_log("ORDER V2 ATTACHMENT UPLOAD - Order found: " . ($result ? 'YES' : 'NO'));
         
-        if (!$stmt->fetch()) {
+        if (!$result) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena nebo není aktivní'));
             return;
@@ -295,11 +318,25 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
         
         $attachment_id = $db->lastInsertId();
         
-        // Načtení dt_vytvoreni a dt_aktualizace z DB
-        $selectStmt = $db->prepare("SELECT dt_vytvoreni, dt_aktualizace FROM " . get_order_attachments_table_name() . " WHERE id = :id");
+        // Načtení dt_vytvoreni, dt_aktualizace a informací o uživateli z DB
+        $selectStmt = $db->prepare("
+            SELECT a.dt_vytvoreni, a.dt_aktualizace, 
+                   u.jmeno AS nahrano_uzivatel_jmeno,
+                   u.prijmeni AS nahrano_uzivatel_prijmeni
+            FROM " . get_order_attachments_table_name() . " a
+            LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+            WHERE a.id = :id
+        ");
         $selectStmt->bindValue(':id', $attachment_id, PDO::PARAM_INT);
         $selectStmt->execute();
-        $timestamps = $selectStmt->fetch(PDO::FETCH_ASSOC);
+        $data = $selectStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Sestavení informací o uživateli
+        $nahrano_uzivatel = array(
+            'id' => (int)$token_data['id'],
+            'jmeno' => $data ? $data['nahrano_uzivatel_jmeno'] : null,
+            'prijmeni' => $data ? $data['nahrano_uzivatel_prijmeni'] : null
+        );
         
         // Úspěšná odpověď
         echo json_encode(array(
@@ -314,8 +351,10 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
                 'file_size' => $velikost,
                 'type' => $typ_prilohy,
                 'upload_path' => $finalFileName, // Relativní cesta pro FE
-                'created_at' => $timestamps ? $timestamps['dt_vytvoreni'] : null,
-                'updated_at' => $timestamps ? $timestamps['dt_aktualizace'] : null
+                'created_at' => $data ? $data['dt_vytvoreni'] : null,
+                'updated_at' => $data ? $data['dt_aktualizace'] : null,
+                'uploaded_by_user_id' => (int)$token_data['id'],
+                'nahrano_uzivatel' => $nahrano_uzivatel
             ),
             'message' => 'Příloha byla úspěšně nahrána',
             'meta' => array(
@@ -387,12 +426,6 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
         
         // Kontrola existence objednávky
         $stmt = $db->prepare("SELECT id FROM " . get_orders_table_name() . " WHERE id = :id AND aktivni = 1");
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-        return;
-    }
         $stmt->bindValue(":id", $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
         
@@ -402,44 +435,41 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
             return;
         }
         
-        // Načtení příloh
-        $sql = "SELECT id, guid, typ_prilohy, originalni_nazev_souboru, 
-                       velikost_souboru_b, systemova_cesta, dt_vytvoreni, nahrano_uzivatel_id
-                FROM " . get_order_attachments_table_name() . " 
-                WHERE objednavka_id = :objednavka_id 
-                ORDER BY dt_vytvoreni DESC";
+        // Načtení příloh s informacemi o uživateli
+        $sql = "SELECT a.id, a.guid, a.typ_prilohy, a.originalni_nazev_souboru, 
+                       a.velikost_souboru_b, a.systemova_cesta, a.dt_vytvoreni, a.nahrano_uzivatel_id,
+                       u.jmeno AS nahrano_uzivatel_jmeno,
+                       u.prijmeni AS nahrano_uzivatel_prijmeni
+                FROM " . get_order_attachments_table_name() . " a
+                LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+                WHERE a.objednavka_id = :objednavka_id 
+                ORDER BY a.dt_vytvoreni DESC";
         
         $stmt = $db->prepare($sql);
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-        return;
-    }
         $stmt->bindValue(':objednavka_id', $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
         
         $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Získání base path z konfigurace
+        // Získání base path z konfigurace - stejná logika jako v download handleru
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
-        $basePath = '';
-        if (isset($uploadConfig['root_path']) && !empty($uploadConfig['root_path'])) {
-            $basePath = $uploadConfig['root_path'];
-        } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
-            $basePath = $uploadConfig['relative_path'];
-        } else {
-            $basePath = '/var/www/eeo2025/doc/prilohy/';
-        }
+        require_once __DIR__ . '/environment-utils.php';
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : get_upload_root_path();
         
         // Standardizace výstupu
         $result = array();
         foreach ($attachments as $attachment) {
-            // ✅ OPRAVA: Sestavení plné cesty ze systemova_cesta
-            $fullPath = $attachment['systemova_cesta'];
-            if (strpos($fullPath, '/') !== 0) {
-                // Není to absolutní cesta -> je to pouze název souboru
-                $fullPath = safe_path_join($basePath, $fullPath);
+            // ✅ Sestavení plné cesty - systemova_cesta je pouze název souboru
+            $fullPath = $basePath . $attachment['systemova_cesta'];
+            
+            // ✅ Sestavení informací o uživateli, který nahrál přílohu
+            $nahrano_uzivatel = null;
+            if (!empty($attachment['nahrano_uzivatel_id'])) {
+                $nahrano_uzivatel = array(
+                    'id' => (int)$attachment['nahrano_uzivatel_id'],
+                    'jmeno' => $attachment['nahrano_uzivatel_jmeno'],
+                    'prijmeni' => $attachment['nahrano_uzivatel_prijmeni']
+                );
             }
             
             $result[] = array(
@@ -452,6 +482,7 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
                 'file_size' => (int)$attachment['velikost_souboru_b'],
                 'upload_date' => $attachment['dt_vytvoreni'],
                 'uploaded_by_user_id' => (int)$attachment['nahrano_uzivatel_id'],
+                'nahrano_uzivatel' => $nahrano_uzivatel,
                 'file_exists' => file_exists($fullPath)
             );
         }
@@ -535,10 +566,18 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         
         error_log("🔍 ATTACHMENT FOUND: " . $attachment['originalni_nazev_souboru']);
         
-        // ✅ Sestavení plné cesty - systemova_cesta je jen název souboru
+        // ✅ ENVIRONMENT-AWARE: Přepočítat cestu podle prostředí (DEV/PROD)
+        // Použít basename() - funguje pro staré záznamy (plná cesta) i nové (jen název)
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
-        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : '/var/www/erdms-data/eeo-v2/prilohy/';
-        $fullPath = $basePath . $attachment['systemova_cesta'];
+        require_once __DIR__ . '/environment-utils.php';
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : get_upload_root_path();
+        $filename = basename($attachment['systemova_cesta']);
+        $fullPath = rtrim($basePath, '/') . '/' . $filename;
+        
+        error_log("🔍 [ORDER V2 DOWNLOAD] systemova_cesta: " . $attachment['systemova_cesta']);
+        error_log("🔍 [ORDER V2 DOWNLOAD] basename: $filename");
+        error_log("🔍 [ORDER V2 DOWNLOAD] basePath: $basePath");
+        error_log("🔍 [ORDER V2 DOWNLOAD] fullPath: $fullPath");
         
         // Kontrola existence souboru
         if (!file_exists($fullPath)) {
@@ -664,7 +703,7 @@ function handle_order_v2_delete_attachment($input, $config, $queries) {
             } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
                 $basePath = $uploadConfig['relative_path'];
             } else {
-                $basePath = '/var/www/eeo2025/doc/prilohy/';
+                throw new Exception('Upload configuration missing: root_path or relative_path must be set');
             }
             $fullPath = safe_path_join($basePath, $fullPath);
         }

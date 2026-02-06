@@ -22,9 +22,23 @@ function handle_universal_search($input, $config) {
     $startTime = microtime(true);
     
     try {
+        // ✅ OPRAVA: Nejprve připojení k DB, pak validace tokenu
+        // Připojení k DB
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array(
+                'status' => 'error',
+                'error_code' => 'DB_ERROR',
+                'message' => 'Database connection failed'
+            ));
+            return;
+        }
+        
         // Validace vstupu
         $validation = validateSearchInput($input);
         if (!$validation['valid']) {
+            http_response_code(400);
             echo json_encode(array(
                 'status' => 'error',
                 'error_code' => 'VALIDATION_ERROR',
@@ -40,6 +54,7 @@ function handle_universal_search($input, $config) {
         
         $auth_result = verify_token_v2($username, $token);
         if (!$auth_result) {
+            http_response_code(401);
             echo json_encode(array(
                 'status' => 'error',
                 'error_code' => 'AUTH_ERROR',
@@ -64,20 +79,57 @@ function handle_universal_search($input, $config) {
         // TRUE = pouze smlouvy pro obj. formulář
         $filterObjForm = isset($input['filter_obj_form']) ? normalizeBool($input['filter_obj_form']) : false;
         
-        // Admin check - SUPERADMIN nebo ADMINISTRATOR = plný přístup bez permissions
-        $user_roles = isset($auth_result['roles']) ? $auth_result['roles'] : array();
-        $isAdmin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        // Admin check - používá is_admin z verify_token_v2 (kontroluje SUPERADMIN nebo ADMINISTRATOR role)
+        $isAdmin = isset($auth_result['is_admin']) && $auth_result['is_admin'];
         
         // Pokud je search_all=true, chovej se jako admin (všechny výsledky)
         if ($searchAll) {
             $isAdmin = true;
         }
         
-        // DEBUG logging
-        error_log("UniversalSearch DEBUG: search_all=" . ($searchAll ? 'true' : 'false') . 
-                  ", isAdmin=" . ($isAdmin ? 'true' : 'false') . 
-                  ", user_id=" . $auth_result['id'] . 
-                  ", roles=" . implode(',', $user_roles));
+        // DEBUG logging - DETAILNÍ INFO
+        error_log("🔍 UniversalSearch DEBUG:");
+        error_log("  - Query: '$query'");
+        error_log("  - User ID: " . $auth_result['id']);
+        error_log("  - is_admin from token: " . (isset($auth_result['is_admin']) ? ($auth_result['is_admin'] ? 'TRUE' : 'FALSE') : 'NOT SET'));
+        error_log("  - Final isAdmin: " . ($isAdmin ? 'TRUE' : 'FALSE'));
+        error_log("  - search_all: " . ($searchAll ? 'TRUE' : 'FALSE'));
+        
+        // Získat údaje aktuálního uživatele pro filtrování podle visibility
+        $current_user_id = $auth_result['id'];
+        $current_user_useky = array();
+        
+        if (!$isAdmin) {
+            // Pro non-adminy získáme jejich úseky pro filtrování
+            // ✅ FIX: JOIN s tabulkou useky pro získání usek_zkr (sloupec usek_zkr není v tabulce uzivatele)
+            $sqlUser = "
+                SELECT us.usek_zkr, u.rozsirene_useky
+                FROM " . TBL_UZIVATELE . " u
+                LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+                WHERE u.id = :user_id 
+                LIMIT 1
+            ";
+            $stmtUser = $db->prepare($sqlUser);
+            $stmtUser->bindParam(':user_id', $current_user_id, PDO::PARAM_INT);
+            $stmtUser->execute();
+            $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
+            
+            if ($userData) {
+                // Pokud má rozsirene_useky, použij je
+                if ($userData['rozsirene_useky']) {
+                    $decoded = json_decode($userData['rozsirene_useky'], true);
+                    if (is_array($decoded)) {
+                        $current_user_useky = $decoded;
+                    } else {
+                        $current_user_useky = array($userData['rozsirene_useky']);
+                    }
+                } 
+                // Jinak použij základní usek_zkr z JOINu
+                else if ($userData['usek_zkr']) {
+                    $current_user_useky = array($userData['usek_zkr']);
+                }
+            }
+        }
         
         // Escapujeme query pro LIKE
         $escapedQuery = escapeLikeWildcards($query);
@@ -86,11 +138,7 @@ function handle_universal_search($input, $config) {
         // Normalizovaný query BEZ diakritiky (pro vyhledávání "Novak" → najde "Nováк")
         $normalizedQuery = '%' . escapeLikeWildcards(removeDiacritics($query)) . '%';
         
-        // Připojení k DB
-        $db = get_db($config);
-        if (!$db) {
-            throw new Exception('Database connection failed');
-        }
+        // DB připojení už je vytvořeno výše
         
         // Vyhledávání v jednotlivých kategoriích
         $results = array();
@@ -128,7 +176,7 @@ function handle_universal_search($input, $config) {
             $results['invoices'] = array(
                 'category_label' => getCategoryLabel('invoices'),
                 'total' => 0,
-                'results' => searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin)
+                'results' => searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $auth_result['id'])
             );
             $results['invoices']['total'] = count($results['invoices']['results']);
         }
@@ -137,7 +185,7 @@ function handle_universal_search($input, $config) {
             $results['suppliers'] = array(
                 'category_label' => getCategoryLabel('suppliers'),
                 'total' => 0,
-                'results' => searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin)
+                'results' => searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $current_user_id, $current_user_useky)
             );
             $results['suppliers']['total'] = count($results['suppliers']['results']);
         }
@@ -308,7 +356,11 @@ function searchOrders2025($db, $likeQuery, $normalizedQuery, $limit, $includeIna
  */
 function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $filterObjForm = false) {
     try {
+        error_log("🔍 searchContracts: likeQuery='$likeQuery', filterObjForm=$filterObjForm");
+        
         $sql = getSqlSearchContracts($filterObjForm);
+        error_log("📝 SQL: " . substr($sql, 0, 500));
+        
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
@@ -324,6 +376,7 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
         $stmt->execute();
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        error_log("✅ searchContracts: vrací " . count($results) . " výsledků");
         
         // Přidáme highlight
         foreach ($results as &$row) {
@@ -334,6 +387,7 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
         return $results;
         
     } catch (Exception $e) {
+        error_log("❌ searchContracts ERROR: " . $e->getMessage());
         logSearchError('searchContracts failed: ' . $e->getMessage());
         return array();
     }
@@ -346,20 +400,32 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
  * @param string $likeQuery Escapovaný query s % wildcardy
  * @param int $limit Max počet výsledků
  * @param bool $includeInactive Zahrnout neaktivní
+ * @param int $userId ID uživatele pro permission filtering
  * @return array Pole výsledků
  */
-function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin) {
+function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $userId) {
     try {
+        // DEBUG: Log parameters
+        error_log("📋 searchInvoices called:");
+        error_log("  - likeQuery: '$likeQuery'");
+        error_log("  - isAdmin: " . ($isAdmin ? 'TRUE (1)' : 'FALSE (0)'));
+        error_log("  - userId: $userId");
+        error_log("  - limit: $limit");
+        
         $sql = getSqlSearchInvoices();
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
         $stmt->bindValue(':include_inactive', $includeInactive ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':is_admin', $isAdmin ? 1 : 0, PDO::PARAM_INT);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // DEBUG: Log result count
+        error_log("  ✅ Found " . count($results) . " invoices");
         
         // Přidáme highlight
         foreach ($results as &$row) {
@@ -370,6 +436,8 @@ function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInact
         return $results;
         
     } catch (Exception $e) {
+        error_log("❌ searchInvoices ERROR: " . $e->getMessage());
+        error_log("   SQL Error: " . print_r($stmt->errorInfo(), true));
         logSearchError('searchInvoices failed: ' . $e->getMessage());
         return array();
     }
@@ -377,22 +445,54 @@ function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInact
 
 /**
  * Vyhledá dodavatele
+ * OPRAVENO: Filtruje podle visibility (personal, úsek, global)
  * 
  * @param PDO $db Database connection
  * @param string $likeQuery Escapovaný query s % wildcardy
  * @param int $limit Max počet výsledků
- * @param bool $includeInactive Ignorováno (dodavatelé nemají aktivni flag)
+ * @param bool $includeInactive Pokud false, zobrazí pouze aktivni=1
+ * @param bool $isAdmin Admin vidí všechny dodavatele
+ * @param int $userId ID aktuálního uživatele
+ * @param array $userUseky Pole úseků aktuálního uživatele
  * @return array Pole výsledků
  */
-function searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin) {
+function searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $userId = 0, $userUseky = array()) {
     try {
-        $sql = getSqlSearchSuppliers();
+        $sql = getSqlSearchSuppliers($isAdmin);
+        
+        // Pro non-adminy musíme dynamicky sestavit úsekové podmínky
+        if (!$isAdmin && !empty($userUseky)) {
+            $usekConditions = array();
+            foreach ($userUseky as $idx => $usek) {
+                $usekConditions[] = "d.usek_zkr LIKE :usek_$idx";
+            }
+            $usekConditionsStr = !empty($usekConditions) ? " OR (" . implode(' OR ', $usekConditions) . ")" : "";
+            $sql = str_replace('__USEK_CONDITIONS__', $usekConditionsStr, $sql);
+        } else {
+            $sql = str_replace('__USEK_CONDITIONS__', '', $sql);
+        }
+        
         $stmt = $db->prepare($sql);
         
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
+        $stmt->bindValue(':include_inactive', $includeInactive ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':is_admin', $isAdmin ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        
+        // Pro non-adminy bind visibility parametry
+        if (!$isAdmin) {
+            $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+            
+            // Bind úseky
+            if (!empty($userUseky)) {
+                foreach ($userUseky as $idx => $usek) {
+                    $usekPattern = '%"' . $usek . '"%';
+                    $stmt->bindValue(":usek_$idx", $usekPattern, PDO::PARAM_STR);
+                }
+            }
+        }
+        
         $stmt->execute();
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
