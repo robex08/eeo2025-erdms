@@ -15,18 +15,31 @@ export const api2NoInterceptor = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
-// ✅ Response interceptor - logout při 401 (s ochranou během token refreshu)
+// 🕐 Grace period pro page reload - neodhlašovat okamžitě po načtení stránky
+let pageLoadTimestamp = Date.now();
+const PAGE_LOAD_GRACE_PERIOD = 10000; // 10 sekund
+
+try {
+  if (typeof window !== 'undefined') {
+    // Reset timestamp při každém page reload
+    window.addEventListener('DOMContentLoaded', () => {
+      pageLoadTimestamp = Date.now();
+    });
+  }
+} catch (e) {}
+
+// ✅ Response interceptor - logout při 401 (s ochranou během token refreshu A page reload)
 api2.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Pokud je to 401, uživatel musí být odhlášen
-    // ALE: Počkat pokud právě probíhá token refresh (race condition protection)
+    // Pokud je to 401, MOŽNÁ uživatel musí být odhlášen
+    // ALE: Ochrana během token refreshu A během page reload (prvních 10s)
     if (error.response?.status === 401 && !originalRequest?._logout_triggered) {
       originalRequest._logout_triggered = true;
       
-      // 🔐 OCHRANA: Pokud probíhá token refresh, počkat chvíli a zkusit znovu
+      // 🔐 OCHRANA 1: Pokud probíhá token refresh, počkat a zkusit znovu
       try {
         const isRefreshing = sessionStorage.getItem('token_refreshing') === 'true';
         if (isRefreshing) {
@@ -56,7 +69,39 @@ api2.interceptors.response.use(
         console.warn('⚠️ Chyba při kontrole token refresh stavu:', checkError);
       }
       
-      // Trigger authError event pro logout (pokud retry selhal nebo neproběhl)
+      // 🔐 OCHRANA 2: Grace period po page load - NEODHLAŠUJ během prvních 10s
+      const timeSincePageLoad = Date.now() - pageLoadTimestamp;
+      if (timeSincePageLoad < PAGE_LOAD_GRACE_PERIOD) {
+        // Jsme v prvních 10s po page load - 401 může být false positive
+        // (race condition, server se ještě neprobudil, apod.)
+        // NEODHLAŠUJ - vrať chybu a nech AuthContext.checkToken to vyřešit s cached daty
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔐 401 během page load grace period - NEODHLA��UJI (cached data použita)');
+        }
+        return Promise.reject(error);
+      }
+      
+      // 🔐 OCHRANA 3: Zkontroluj lokálně token expiraci před odhlášením
+      try {
+        const { loadAuthData } = await import('../utils/authStorage.js');
+        const storedToken = await loadAuthData.token();
+        const storedUser = await loadAuthData.user();
+        
+        // Pokud máme v localStorage validní token + user, NEodhlašuj okamžitě
+        // (401 může být dočasná chyba serveru, network glitch, apod.)
+        if (storedToken && storedUser) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔐 401 ale mám validní cached auth data - NEODHLA��UJI');
+          }
+          // Vrať chybu ale NEtriggeruj logout - AuthContext.checkToken použije cached data
+          return Promise.reject(error);
+        }
+      } catch (storageError) {
+        console.warn('⚠️ Chyba při kontrole cached auth dat:', storageError);
+      }
+      
+      // Pokud jsme se dostali sem, 401 je pravděpodobně skutečný auth error
+      // Trigger authError event pro logout
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }

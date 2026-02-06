@@ -484,8 +484,21 @@ function handle_order_v2_download_invoice_attachment($input, $config, $queries) 
             return;
         }
         
+        // ✅ ENVIRONMENT-AWARE: Přepočítat cestu podle prostředí (DEV/PROD)
+        // Použít basename() - funguje pro staré záznamy (plná cesta) i nové (jen název)
+        $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
+        require_once __DIR__ . '/environment-utils.php';
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : get_upload_root_path();
+        $filename = basename($attachment['systemova_cesta']);
+        $fullPath = rtrim($basePath, '/') . '/' . $filename;
+        
+        error_log("🔍 [INVOICE V2 DOWNLOAD] systemova_cesta: " . $attachment['systemova_cesta']);
+        error_log("🔍 [INVOICE V2 DOWNLOAD] basename: $filename");
+        error_log("🔍 [INVOICE V2 DOWNLOAD] basePath: $basePath");
+        error_log("🔍 [INVOICE V2 DOWNLOAD] fullPath: $fullPath");
+        
         // Kontrola existence souboru
-        if (!file_exists($attachment['systemova_cesta'])) {
+        if (!file_exists($fullPath)) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Soubor nebyl nalezen na disku'));
             return;
@@ -521,8 +534,8 @@ function handle_order_v2_download_invoice_attachment($input, $config, $queries) 
         header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
         header('Pragma: public');
         
-        // Výstup souboru
-        readfile($attachment['systemova_cesta']);
+        // Výstup souboru - použít fullPath (ne systemova_cesta přímo)
+        readfile($fullPath);
         
     } catch (Exception $e) {
         error_log("Order V2 DOWNLOAD INVOICE ATTACHMENT Error: " . $e->getMessage());

@@ -61,7 +61,7 @@ export const listManuals = async (token, username) => {
  * @returns {string} - URL pro přístup k PDF
  */
 export const getManualUrl = (filename, token, username) => {
-  const baseUrl = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/dev/api.eeo';
+  const baseUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
   return `${baseUrl}/manuals/download`;
 };
 

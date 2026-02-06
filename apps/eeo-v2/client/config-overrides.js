@@ -1,6 +1,25 @@
 const webpack = require('webpack');
 
 module.exports = function override(config, env) {
+  // ⚡ PERFORMANCE OPTIMIZATIONS
+  if (env === 'development') {
+    // Enable webpack cache for faster rebuilds
+    config.cache = {
+      type: 'filesystem',
+      cacheDirectory: require('path').resolve(__dirname, '.webpack-cache'),
+      buildDependencies: {
+        config: [__filename],
+      },
+    };
+
+    // Optimize resolve - reduce lookup paths
+    config.resolve.modules = ['node_modules'];
+    config.resolve.symlinks = false;
+
+    // Use faster source maps in dev
+    config.devtool = 'eval-cheap-module-source-map';
+  }
+
   // 🌐 DEV SERVER: Konfigurace pro remote development (SSH)
   if (env === 'development') {
     config.devServer = {

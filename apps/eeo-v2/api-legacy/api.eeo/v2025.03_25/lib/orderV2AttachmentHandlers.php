@@ -566,11 +566,18 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         
         error_log("🔍 ATTACHMENT FOUND: " . $attachment['originalni_nazev_souboru']);
         
-        // ✅ Sestavení plné cesty - systemova_cesta je jen název souboru
+        // ✅ ENVIRONMENT-AWARE: Přepočítat cestu podle prostředí (DEV/PROD)
+        // Použít basename() - funguje pro staré záznamy (plná cesta) i nové (jen název)
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
         require_once __DIR__ . '/environment-utils.php';
         $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : get_upload_root_path();
-        $fullPath = $basePath . $attachment['systemova_cesta'];
+        $filename = basename($attachment['systemova_cesta']);
+        $fullPath = rtrim($basePath, '/') . '/' . $filename;
+        
+        error_log("🔍 [ORDER V2 DOWNLOAD] systemova_cesta: " . $attachment['systemova_cesta']);
+        error_log("🔍 [ORDER V2 DOWNLOAD] basename: $filename");
+        error_log("🔍 [ORDER V2 DOWNLOAD] basePath: $basePath");
+        error_log("🔍 [ORDER V2 DOWNLOAD] fullPath: $fullPath");
         
         // Kontrola existence souboru
         if (!file_exists($fullPath)) {

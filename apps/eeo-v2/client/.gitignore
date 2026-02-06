@@ -101,4 +101,4 @@ test-debug/
 
 # Backup directories with embedded git repos
 _BCK_/
-podklady/
+podklady/.webpack-cache/

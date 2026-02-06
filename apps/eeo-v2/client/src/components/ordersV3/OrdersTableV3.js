@@ -60,7 +60,7 @@ const TableContainer = styled.div`
   border: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
 
   /* Optimalizace pro širokoúhlé monitory */
   @media (min-width: 1920px) {
@@ -437,6 +437,8 @@ const TableCell = styled.td`
   color: #1e293b;
   font-size: 0.875rem;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 `;
 
 const ExpandButton = styled.button`
@@ -2445,6 +2447,8 @@ const OrdersTableV3 = ({
                       onRetry={() => loadOrderDetail(order.id)}
                       onForceRefresh={() => refreshDetail(order.id)}
                       colSpan={rowColSpan}
+                      token={token}
+                      username={username}
                     />
                   )}
                 </React.Fragment>
