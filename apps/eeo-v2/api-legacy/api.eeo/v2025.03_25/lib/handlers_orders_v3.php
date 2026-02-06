@@ -199,6 +199,7 @@ function handle_orders_v3_detail($input, $config) {
             f.fa_castka,
             f.stav,
             f.fa_poznamka,
+            f.vecna_spravnost_poznamka,
             f.dt_vytvoreni,
             f.vytvoril_uzivatel_id,
             f.dt_potvrzeni_vecne_spravnosti,
@@ -719,5 +720,137 @@ function handle_orders_v3_attachments($input, $config) {
     } catch (Exception $e) {
         error_log("❌ [V3 ORDER ATTACHMENTS] Error: " . $e->getMessage());
         api_error(500, 'Chyba při načítání příloh objednávky', 'SERVER_ERROR');
+    }
+}
+
+/**
+ * 🔍 Handler: FIND ORDER PAGE V3
+ * 
+ * Najde stránku na které se objednávka nachází (pro scroll po návratu z editace)
+ * Používá stejné filtry a třídění jako hlavní list endpoint
+ * 
+ * @param array $input POST data
+ * @param array $config DB konfigurace
+ * @return void JSON response s page number
+ */
+function handle_orders_v3_find_page($input, $config) {
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $order_id = $input['order_id'] ?? 0;
+    $per_page = $input['per_page'] ?? 50;
+    $year = $input['year'] ?? date('Y');
+    $filters = $input['filters'] ?? [];
+    $sorting = $input['sorting'] ?? [];
+
+    error_log("🔍 [V3 FIND PAGE] Request: order_id=$order_id, per_page=$per_page, year=$year");
+
+    if (!$token || !$username) {
+        api_error(401, 'Chybí autentizační údaje', 'MISSING_AUTH');
+        return;
+    }
+
+    if (!$order_id || !is_numeric($order_id)) {
+        api_error(400, 'Chybí nebo neplatné ID objednávky', 'INVALID_ORDER_ID');
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Ověření tokenu
+        $user = verify_token($token, $db);
+        if (!$user) {
+            api_error(401, 'Neplatný nebo vypršelý token', 'INVALID_TOKEN');
+            return;
+        }
+
+        // Sestavit WHERE podmínky (stejně jako v hlavním list endpointu)
+        $where_conditions = ["YEAR(o.dt_objednavky) = :year"];
+        $where_params = ['year' => $year];
+
+        // Filtry na sloupce
+        if (!empty($filters['cislo_objednavky'])) {
+            $where_conditions[] = "o.cislo_objednavky LIKE :cislo";
+            $where_params['cislo'] = '%' . $filters['cislo_objednavky'] . '%';
+        }
+        if (!empty($filters['dodavatel'])) {
+            $where_conditions[] = "(d.nazev LIKE :dodavatel OR d.ico LIKE :dodavatel)";
+            $where_params['dodavatel'] = '%' . $filters['dodavatel'] . '%';
+        }
+        if (!empty($filters['stav'])) {
+            $where_conditions[] = "o.stav_objednavky LIKE :stav";
+            $where_params['stav'] = '%' . $filters['stav'] . '%';
+        }
+
+        $where_clause = implode(' AND ', $where_conditions);
+
+        // Sestavit ORDER BY (stejně jako v hlavním endpointu)
+        $order_parts = [];
+        if (!empty($sorting) && is_array($sorting)) {
+            foreach ($sorting as $sort) {
+                $col = $sort['id'] ?? '';
+                $dir = ($sort['desc'] ?? false) ? 'DESC' : 'ASC';
+                
+                $column_mapping = [
+                    'dt_objednavky' => 'o.dt_objednavky',
+                    'cislo_objednavky' => 'o.cislo_objednavky',
+                    'dodavatel_nazev' => 'd.nazev',
+                    'stav_objednavky' => 'o.stav_objednavky',
+                    'cena_s_dph' => 'o.cena_vcetne_dph',
+                ];
+                
+                if (isset($column_mapping[$col])) {
+                    $order_parts[] = $column_mapping[$col] . ' ' . $dir;
+                }
+            }
+        }
+        
+        if (empty($order_parts)) {
+            $order_parts[] = 'o.dt_objednavky DESC';
+        }
+        
+        $order_clause = implode(', ', $order_parts);
+
+        // SQL pro nalezení pozice objednávky v celém datasetu
+        $sql = "SELECT position FROM (
+            SELECT 
+                o.id,
+                ROW_NUMBER() OVER (ORDER BY $order_clause) as position
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+            WHERE $where_clause
+        ) ranked
+        WHERE id = :order_id";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute(array_merge($where_params, ['order_id' => $order_id]));
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$result) {
+            // Objednávka nenalezena v datasetu (možná nesplňuje filtry)
+            error_log("⚠️ [V3 FIND PAGE] Order #$order_id not found in filtered dataset");
+            api_ok(null, [
+                'found' => false,
+                'page' => null,
+                'message' => 'Objednávka nenalezena v aktuálních filtrech'
+            ]);
+            return;
+        }
+
+        $position = $result['position'];
+        $page = (int) ceil($position / $per_page);
+
+        error_log("✅ [V3 FIND PAGE] Order #$order_id found at position $position, page $page");
+
+        api_ok(null, [
+            'found' => true,
+            'page' => $page,
+            'position' => $position,
+            'per_page' => $per_page
+        ]);
+
+    } catch (Exception $e) {
+        error_log("❌ [V3 FIND PAGE] Error: " . $e->getMessage());
+        api_error(500, 'Chyba při hledání stránky objednávky', 'SERVER_ERROR');
     }
 }

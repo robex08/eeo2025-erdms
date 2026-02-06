@@ -31,7 +31,8 @@ import {
   faTruck,
   faXmark,
   faCircleNotch,
-  faHourglassHalf
+  faHourglassHalf,
+  faEdit
 } from '@fortawesome/free-solid-svg-icons';
 
 // =============================================================================
@@ -93,7 +94,7 @@ const RefreshButton = styled.button`
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -135,7 +136,7 @@ const Card = styled.div`
 
 const CardTitle = styled.div`
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: #1e293b;
   margin-bottom: 0.75rem;
   display: flex;
@@ -154,7 +155,7 @@ const InfoRow = styled.div`
   gap: 0 1rem;
   align-items: start;
   margin-bottom: 0.5rem;
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
   line-height: 1.4;
 
   &:last-child {
@@ -311,7 +312,7 @@ const RetryButton = styled.button`
 const ItemsTable = styled.table`
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
   margin-top: 0.5rem;
   table-layout: auto;
   overflow-wrap: break-word;
@@ -338,7 +339,7 @@ const ItemsTh = styled.th`
   border-bottom: 2px solid #e2e8f0;
   font-weight: 600;
   color: #475569;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   word-wrap: break-word;
@@ -350,6 +351,7 @@ const ItemsTd = styled.td`
   color: #1e293b;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  vertical-align: top;
 
   &.numeric {
     text-align: right;
@@ -395,7 +397,7 @@ const InvoiceAmount = styled.div`
 `;
 
 const InvoiceDetail = styled.div`
-  font-size: 0.75rem;
+  font-size: 0.9375rem;
   color: #64748b;
   margin-top: 0.25rem;
 `;
@@ -480,7 +482,7 @@ const AttachmentInfo = styled.div`
 
 const AttachmentName = styled.div`
   font-weight: 500;
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
   color: #1e293b;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -488,7 +490,7 @@ const AttachmentName = styled.div`
 `;
 
 const AttachmentMeta = styled.div`
-  font-size: 0.75rem;
+  font-size: 0.9375rem;
   color: #64748b;
   margin-top: 0.125rem;
 `;
@@ -723,7 +725,7 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username }) => {
+const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit }) => {
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
   
@@ -897,16 +899,56 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               </CardTitle>
 
               {/* Číslo objednávky s ID */}
-              <div style={{ marginBottom: '0.75rem', padding: '0.5rem', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.7em', color: '#64748b', marginBottom: '0.25rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Číslo objednávky
-                </div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.1em', color: '#0f172a' }}>
+              <div style={{ 
+                marginBottom: '0.75rem', 
+                padding: '0.5rem', 
+                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
+                borderRadius: '6px', 
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.5em', color: '#0f172a' }}>
                   {detail.cislo_objednavky || '---'}
-                  <sup style={{ fontSize: '0.6em', color: '#94a3b8', fontWeight: 400, marginLeft: '0.3em' }}>
+                  <sup style={{ fontSize: '0.5em', color: '#94a3b8', fontWeight: 400, marginLeft: '0.3em' }}>
                     #{detail.id || '?'}
                   </sup>
                 </div>
+                {canEdit && canEdit(order) && (
+                  <button
+                    onClick={() => onActionClick?.('edit', order)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '36px',
+                      border: '2px solid #3b82f6',
+                      borderRadius: '6px',
+                      background: 'white',
+                      color: '#3b82f6',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      fontSize: '1rem'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = '#eff6ff';
+                      e.currentTarget.style.borderColor = '#2563eb';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = 'white';
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                    title="Editovat objednávku"
+                  >
+                    <FontAwesomeIcon icon={faEdit} />
+                  </button>
+                )}
               </div>
 
               <InfoRow>
@@ -1682,13 +1724,19 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             </Card>
           </Grid>
 
-          {/* Bottom Section: Items and Invoices side by side */}
-          <Grid>
-            {/* 6⃣ POLOŽKY OBJEDNÁVKY */}
-            <Card>
+          {/* Bottom Section: Layout 1|3, 2|3 (Položky | Faktury, Přílohy OBJ | Faktury) */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr',
+            gridTemplateRows: 'auto auto',
+            gap: '0.75rem',
+            marginBottom: '0.75rem'
+          }}>
+            {/* 6⃣ POL OBJ - POLOŽKY OBJEDNÁVKY (1. řádek, levý sloupec) */}
+            <Card style={{ gridColumn: '1', gridRow: '1' }}>
               <CardTitle>
                 <FontAwesomeIcon icon={faBox} />
-                Položky objednávky ({polozky.length})
+                1 | POL OBJ – Položky objednávky ({polozky.length})
               </CardTitle>
               {polozky.length === 0 ? (
                 <EmptyState>Žádné položky</EmptyState>
@@ -1697,7 +1745,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   <thead>
                     <tr>
                       <ItemsTh style={{ textAlign: 'left' }}>Popis</ItemsTh>
-                      <ItemsTh style={{ textAlign: 'left' }}>Úsek / Budova / Místnost</ItemsTh>
                       <ItemsTh className="numeric">Cena bez DPH</ItemsTh>
                       <ItemsTh className="numeric">Sazba DPH</ItemsTh>
                       <ItemsTh className="numeric">Cena s DPH</ItemsTh>
@@ -1708,10 +1755,93 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                       <React.Fragment key={index}>
                         <tr>
                           <ItemsTd style={{ textAlign: 'left' }}>
-                            <div>{item.popis || '---'}</div>
-                            {/* LPPTS tag */}
+                            <div style={{ marginBottom: '0.5rem' }}>{item.popis || '---'}</div>
+                            
+                            {/* Úsek / Budova / Místnost */}
+                            {(item.usek_kod || item.budova_kod || item.mistnost_kod) && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '0.35rem' }}>
+                                {item.usek_kod && (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 8px',
+                                    fontSize: '0.7em',
+                                    fontWeight: 500,
+                                    backgroundColor: '#f3e8ff',
+                                    color: '#6b21a8',
+                                    borderRadius: '4px',
+                                    border: '1px solid #d8b4fe'
+                                  }}>
+                                    Úsek: {item.usek_kod}
+                                  </span>
+                                )}
+                                {item.budova_kod && (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 8px',
+                                    fontSize: '0.7em',
+                                    fontWeight: 500,
+                                    backgroundColor: '#dbeafe',
+                                    color: '#1e40af',
+                                    borderRadius: '4px',
+                                    border: '1px solid #93c5fd'
+                                  }}>
+                                    Budova: {item.budova_kod}
+                                  </span>
+                                )}
+                                {item.mistnost_kod && (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 8px',
+                                    fontSize: '0.7em',
+                                    fontWeight: 500,
+                                    backgroundColor: '#dbeafe',
+                                    color: '#1e40af',
+                                    borderRadius: '4px',
+                                    border: '1px solid #93c5fd'
+                                  }}>
+                                    Místnost: {item.mistnost_kod}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Poznámka lokalizace z JSON */}
+                            {(() => {
+                              try {
+                                const poznamkaData = item.poznamka ? JSON.parse(item.poznamka) : null;
+                                if (poznamkaData?.poznamka_lokalizace) {
+                                  return (
+                                    <div style={{ 
+                                      fontSize: '0.75rem', 
+                                      color: '#64748b',
+                                      marginBottom: '0.35rem',
+                                      fontStyle: 'italic'
+                                    }}>
+                                      <strong>Poznámka:</strong> {poznamkaData.poznamka_lokalizace}
+                                    </div>
+                                  );
+                                }
+                              } catch (e) {
+                                // Pokud poznamka není JSON, zobrazíme ji jako plain text
+                                if (item.poznamka) {
+                                  return (
+                                    <div style={{ 
+                                      fontSize: '0.75rem', 
+                                      color: '#64748b',
+                                      marginBottom: '0.35rem',
+                                      fontStyle: 'italic'
+                                    }}>
+                                      💬 {item.poznamka}
+                                    </div>
+                                  );
+                                }
+                              }
+                              return null;
+                            })()}
+                            
+                            {/* LP kódy */}
                             {item.lppts_cislo && (
-                              <div style={{ marginTop: '6px' }}>
+                              <div>
                                 <span style={{
                                   display: 'inline-block',
                                   padding: '3px 8px',
@@ -1726,56 +1856,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                                 </span>
                               </div>
                             )}
-                          </ItemsTd>
-                          <ItemsTd style={{ textAlign: 'left' }}>
-                            {/* Tagy pro úsek, budovu, místnost */}
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                              {item.usek_kod && (
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '3px 8px',
-                                  fontSize: '0.7em',
-                                  fontWeight: 500,
-                                  backgroundColor: '#f3e8ff',
-                                  color: '#6b21a8',
-                                  borderRadius: '4px',
-                                  border: '1px solid #d8b4fe'
-                                }}>
-                                  Úsek: {item.usek_kod}
-                                </span>
-                              )}
-                              {item.budova_kod && (
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '3px 8px',
-                                  fontSize: '0.7em',
-                                  fontWeight: 500,
-                                  backgroundColor: '#dbeafe',
-                                  color: '#1e40af',
-                                  borderRadius: '4px',
-                                  border: '1px solid #93c5fd'
-                                }}>
-                                  Budova: {item.budova_kod}
-                                </span>
-                              )}
-                              {item.mistnost_kod && (
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '3px 8px',
-                                  fontSize: '0.7em',
-                                  fontWeight: 500,
-                                  backgroundColor: '#dbeafe',
-                                  color: '#1e40af',
-                                  borderRadius: '4px',
-                                  border: '1px solid #93c5fd'
-                                }}>
-                                  Místnost: {item.mistnost_kod}
-                                </span>
-                              )}
-                              {!item.usek_kod && !item.budova_kod && !item.mistnost_kod && (
-                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>---</span>
-                              )}
-                            </div>
                           </ItemsTd>
                           <ItemsTd className="numeric currency">
                             {formatCurrency(item.cena_bez_dph)}
@@ -1794,16 +1874,19 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               )}
             </Card>
 
-            {/* 7⃣ FAKTURY */}
-            <Card>
+            {/* 7⃣ FAKTURY VC. PŘÍLOH (pravý sloupec, přes oba řádky) */}
+            <Card style={{ gridColumn: '2', gridRow: '1 / 3' }}>
               <CardTitle>
                 <FontAwesomeIcon icon={faFileInvoice} />
-                Faktury ({faktury.length})
+                3 | Faktury vc. příloh ({faktury.length})
               </CardTitle>
               {faktury.length === 0 ? (
                 <EmptyState>Žádné faktury</EmptyState>
               ) : (
                 faktury.map((invoice, index) => {
+                  // Přílohy této konkrétní faktury
+                  const invoiceAttachments = invoice.prilohy || [];
+                  
                   return (
                   <InvoiceItem key={index}>
                     <InvoiceHeader>
@@ -1870,178 +1953,188 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         )}
                       </InvoiceDetail>
                     )}
-
-                    {/* Přílohy faktury - pouze počet (detaily jsou v agregované sekci) */}
-                    {invoice.prilohy && invoice.prilohy.length > 0 && (
-                      <InvoiceDetail style={{ marginTop: '0.5rem' }}>
-                        <FontAwesomeIcon icon={faPaperclip} style={{ fontSize: '0.7rem', marginRight: '0.375rem' }} />
-                        <span style={{ fontWeight: 600, color: '#0891b2' }}>
-                          {invoice.prilohy.length} {invoice.prilohy.length === 1 ? 'příloha' : invoice.prilohy.length < 5 ? 'přílohy' : 'příloh'}
-                        </span>
-                        <span style={{ color: '#94a3b8', fontSize: '0.85em', marginLeft: '0.375rem' }}>
-                          (zobrazeno v sekci Přílohy faktur →)
-                        </span>
+                    {invoice.vecna_spravnost_poznamka && (
+                      <InvoiceDetail style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.8rem' }}>
+                        <strong>Poznámka VS:</strong> {invoice.vecna_spravnost_poznamka}
                       </InvoiceDetail>
+                    )}
+                    {invoice.fa_poznamka && (
+                      <InvoiceDetail style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.8rem' }}>
+                        <strong>Poznámka:</strong> {invoice.fa_poznamka}
+                      </InvoiceDetail>
+                    )}
+
+                    {/* 📎 PŘÍLOHY TÉTO FAKTURY - zobrazeny přímo ve struktuře faktura+přílohy */}
+                    {invoiceAttachments.length > 0 && (
+                      <div style={{ 
+                        marginTop: '0.75rem', 
+                        paddingTop: '0.75rem', 
+                        borderTop: '1px solid #e5e7eb'
+                      }}>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          fontWeight: 600, 
+                          color: '#6b7280', 
+                          marginBottom: '0.5rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.375rem'
+                        }}>
+                          <FontAwesomeIcon icon={faPaperclip} />
+                          Přílohy FA VS: {invoice.fa_cislo_vema || invoice.id || 'N/A'} ({invoiceAttachments.length})
+                        </div>
+                        <AttachmentsList>
+                          {invoiceAttachments.map((attachment, attIdx) => {
+                            const fileName = attachment.originalni_nazev_souboru || 'Příloha';
+                            const icon = getFileIcon(fileName);
+                            const colors = getFileIconColor(fileName);
+                            const fileExists = attachment.file_exists !== false;
+                            
+                            return (
+                              <AttachmentItem
+                                key={attIdx}
+                                as="div"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (fileExists) {
+                                    handleDownloadAttachment(attachment, order.id);
+                                  }
+                                }}
+                                style={{
+                                  opacity: fileExists ? 1 : 0.6,
+                                  border: fileExists ? undefined : '1px solid #ef4444',
+                                  cursor: fileExists ? 'pointer' : 'not-allowed'
+                                }}
+                              >
+                                <AttachmentIcon $bg={colors.bg} $color={colors.color}>
+                                  <FontAwesomeIcon icon={icon} />
+                                </AttachmentIcon>
+                                <AttachmentInfo>
+                                  <AttachmentName>
+                                    {!fileExists && (
+                                      <span style={{ color: '#ef4444', marginRight: '6px' }}>
+                                        <FontAwesomeIcon icon={faExclamationTriangle} />
+                                      </span>
+                                    )}
+                                    {fileName}
+                                    {attachment.typ_prilohy && (
+                                      <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
+                                        {attachment.typ_prilohy}
+                                      </AttachmentTypeBadge>
+                                    )}
+                                  </AttachmentName>
+                                  <AttachmentMeta style={{ color: fileExists ? undefined : '#ef4444' }}>
+                                    {!fileExists && <span style={{ fontWeight: 600 }}>⚠️ Soubor nenalezen • </span>}
+                                    {(attachment.nahrano_jmeno || attachment.nahrano_prijmeni) ? (
+                                      <span style={{ fontWeight: 500 }}>{formatUserName(attachment.nahrano_jmeno, attachment.nahrano_prijmeni, attachment.nahrano_titul_pred, attachment.nahrano_titul_za)}</span>
+                                    ) : attachment.nahrano_uzivatel_id ? (
+                                      <span>Uživatel #{attachment.nahrano_uzivatel_id}</span>
+                                    ) : (
+                                      <span>Neznámý uživatel</span>
+                                    )}
+                                    {attachment.dt_vytvoreni && (
+                                      <span style={{ color: '#94a3b8' }}> • {formatDateTime(attachment.dt_vytvoreni)}</span>
+                                    )}
+                                    {attachment.velikost_souboru_b && (
+                                      <span> • {Math.round(attachment.velikost_souboru_b / 1024)} KB</span>
+                                    )}
+                                  </AttachmentMeta>
+                                </AttachmentInfo>
+                                {attachment.systemova_cesta && fileExists && (
+                                  <AttachmentDownload>
+                                    <FontAwesomeIcon icon={faDownload} />
+                                  </AttachmentDownload>
+                                )}
+                              </AttachmentItem>
+                            );
+                          })}
+                        </AttachmentsList>
+                      </div>
                     )}
                   </InvoiceItem>
                   );
                 })
               )}
             </Card>
-          </Grid>
 
-          {/* Attachments section - 2 columns side by side */}
-          <Grid>
-            {/* 8⃣ PŘÍLOHY OBJEDNÁVKY */}
-            <Card>
+            {/* 8⃣ PŘÍLOHY OBJEDNÁVKY (2. řádek, levý sloupec) */}
+            <Card style={{ gridColumn: '1', gridRow: '2' }}>
               <CardTitle>
                 <FontAwesomeIcon icon={faPaperclip} />
-                Přílohy objednávky ({prilohy.length})
+                2 | PRILOH OBJ – Přílohy objednávky ({prilohy.length})
               </CardTitle>
-              {prilohy.length === 0 ? (
-                <EmptyState>Žádné přílohy</EmptyState>
-              ) : (
-                <AttachmentsList>
-                  {prilohy.map((attachment, index) => {
-                    const fileName = attachment.originalni_nazev_souboru || 'Příloha';
-                    const icon = getFileIcon(fileName);
-                    const colors = getFileIconColor(fileName);
-                    const fileExists = attachment.file_exists !== false; // default true pro kompatibilitu
-                    
-                    return (
-                      <AttachmentItem
-                        key={index}
-                        as="div"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (fileExists) {
-                            handleDownloadAttachment(attachment, order.id);
-                          }
-                        }}
-                        style={{
-                          opacity: fileExists ? 1 : 0.6,
-                          border: fileExists ? undefined : '1px solid #ef4444',
-                          cursor: fileExists ? 'pointer' : 'not-allowed'
-                        }}
-                      >
-                        <AttachmentIcon $bg={colors.bg} $color={colors.color}>
-                          <FontAwesomeIcon icon={icon} />
-                        </AttachmentIcon>
-                        <AttachmentInfo>
-                          <AttachmentName>
-                            {!fileExists && (
-                              <span style={{ color: '#ef4444', marginRight: '6px' }}>
-                                <FontAwesomeIcon icon={faExclamationTriangle} />
-                              </span>
-                            )}
-                            {fileName}
-                            {attachment.typ_prilohy && (
-                              <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
-                                {attachment.typ_prilohy}
-                              </AttachmentTypeBadge>
-                            )}
-                          </AttachmentName>
-                          <AttachmentMeta style={{ color: fileExists ? undefined : '#ef4444' }}>
-                            {!fileExists && <span style={{ fontWeight: 600 }}>⚠️ Soubor nenalezen • </span>}
-                            {(attachment.nahral_jmeno || attachment.nahral_prijmeni) ? (
-                              <span>{formatUserName(attachment.nahral_jmeno, attachment.nahral_prijmeni, attachment.nahral_titul_pred, attachment.nahral_titul_za)}</span>
-                            ) : attachment.nahrano_uzivatel_id ? (
-                              <span>Uživatel #{attachment.nahrano_uzivatel_id}</span>
-                            ) : (
-                              <span>Neznámý uživatel</span>
-                            )}
-                            {attachment.velikost_souboru_b && (
-                              <span> • {Math.round(attachment.velikost_souboru_b / 1024)} KB</span>
-                            )}
-                          </AttachmentMeta>
-                        </AttachmentInfo>
-                        {attachment.systemova_cesta && fileExists && (
-                          <AttachmentDownload>
-                            <FontAwesomeIcon icon={faDownload} />
-                          </AttachmentDownload>
-                        )}
-                      </AttachmentItem>
-                    );
-                  })}
-                </AttachmentsList>
-              )}
-            </Card>
-
-            {/* 9⃣ PŘÍLOHY FAKTUR */}
-            <Card>
-              <CardTitle>
-                <FontAwesomeIcon icon={faFileInvoice} />
-                Přílohy faktur ({fakturyPrilohy.length})
-              </CardTitle>
-              {fakturyPrilohy.length === 0 ? (
-                <EmptyState>Žádné přílohy faktur</EmptyState>
-              ) : (
-                <AttachmentsList>
-                  {fakturyPrilohy.map((attachment, index) => {
-                    const fileName = attachment.originalni_nazev_souboru || 'Příloha';
-                    const icon = getFileIcon(fileName);
-                    const colors = getFileIconColor(fileName);
-                    const fileExists = attachment.file_exists !== false;
-                    
-                    return (
-                      <AttachmentItem
-                        key={index}
-                        as="div"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (fileExists) {
-                            handleDownloadAttachment(attachment, order.id);
-                          }
-                        }}
-                        style={{
-                          opacity: fileExists ? 1 : 0.6,
-                          border: fileExists ? undefined : '1px solid #ef4444',
-                          cursor: fileExists ? 'pointer' : 'not-allowed'
-                        }}
-                      >
-                        <AttachmentIcon $bg={colors.bg} $color={colors.color}>
-                          <FontAwesomeIcon icon={icon} />
-                        </AttachmentIcon>
-                        <AttachmentInfo>
-                          <AttachmentName>
-                            {!fileExists && (
-                              <span style={{ color: '#ef4444', marginRight: '6px' }}>
-                                <FontAwesomeIcon icon={faExclamationTriangle} />
-                              </span>
-                            )}
-                            {fileName}
-                            {attachment.typ_prilohy && (
-                              <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
-                                {attachment.typ_prilohy}
-                              </AttachmentTypeBadge>
-                            )}
-                          </AttachmentName>
-                          <AttachmentMeta style={{ color: fileExists ? undefined : '#ef4444' }}>
-                            {!fileExists && <span style={{ fontWeight: 600 }}>⚠️ Soubor nenalezen • </span>}
-                            {/* Info o faktuře místo uživatele */}
-                            <span style={{ fontWeight: 600, color: '#3b82f6' }}>
-                              VS: {attachment.faktura_cislo}
+            {prilohy.length === 0 ? (
+              <EmptyState>Žádné přílohy</EmptyState>
+            ) : (
+              <AttachmentsList>
+                {prilohy.map((attachment, index) => {
+                  const fileName = attachment.originalni_nazev_souboru || 'Příloha';
+                  const icon = getFileIcon(fileName);
+                  const colors = getFileIconColor(fileName);
+                  const fileExists = attachment.file_exists !== false; // default true pro kompatibilitu
+                  
+                  return (
+                    <AttachmentItem
+                      key={index}
+                      as="div"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (fileExists) {
+                          handleDownloadAttachment(attachment, order.id);
+                        }
+                      }}
+                      style={{
+                        opacity: fileExists ? 1 : 0.6,
+                        border: fileExists ? undefined : '1px solid #ef4444',
+                        cursor: fileExists ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      <AttachmentIcon $bg={colors.bg} $color={colors.color}>
+                        <FontAwesomeIcon icon={icon} />
+                      </AttachmentIcon>
+                      <AttachmentInfo>
+                        <AttachmentName>
+                          {!fileExists && (
+                            <span style={{ color: '#ef4444', marginRight: '6px' }}>
+                              <FontAwesomeIcon icon={faExclamationTriangle} />
                             </span>
-                            {(attachment.nahrano_jmeno || attachment.nahrano_prijmeni) && (
-                              <span> • {formatUserName(attachment.nahrano_jmeno, attachment.nahrano_prijmeni, attachment.nahrano_titul_pred, attachment.nahrano_titul_za)}</span>
-                            )}
-                            {attachment.velikost_souboru_b && (
-                              <span> • {Math.round(attachment.velikost_souboru_b / 1024)} KB</span>
-                            )}
-                          </AttachmentMeta>
-                        </AttachmentInfo>
-                        {attachment.systemova_cesta && fileExists && (
-                          <AttachmentDownload>
-                            <FontAwesomeIcon icon={faDownload} />
-                          </AttachmentDownload>
-                        )}
-                      </AttachmentItem>
-                    );
-                  })}
-                </AttachmentsList>
-              )}
-            </Card>
-          </Grid>
+                          )}
+                          {fileName}
+                          {attachment.typ_prilohy && (
+                            <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
+                              {attachment.typ_prilohy}
+                            </AttachmentTypeBadge>
+                          )}
+                        </AttachmentName>
+                        <AttachmentMeta style={{ color: fileExists ? undefined : '#ef4444' }}>
+                          {!fileExists && <span style={{ fontWeight: 600 }}>⚠️ Soubor nenalezen • </span>}
+                          {(attachment.nahral_jmeno || attachment.nahral_prijmeni) ? (
+                            <span style={{ fontWeight: 500 }}>{formatUserName(attachment.nahral_jmeno, attachment.nahral_prijmeni, attachment.nahral_titul_pred, attachment.nahral_titul_za)}</span>
+                          ) : attachment.nahrano_uzivatel_id ? (
+                            <span>Uživatel #{attachment.nahrano_uzivatel_id}</span>
+                          ) : (
+                            <span>Neznámý uživatel</span>
+                          )}
+                          {attachment.dt_vytvoreni && (
+                            <span style={{ color: '#94a3b8' }}> • {formatDateTime(attachment.dt_vytvoreni)}</span>
+                          )}
+                          {attachment.velikost_souboru_b && (
+                            <span> • {Math.round(attachment.velikost_souboru_b / 1024)} KB</span>
+                          )}
+                        </AttachmentMeta>
+                      </AttachmentInfo>
+                      {attachment.systemova_cesta && fileExists && (
+                        <AttachmentDownload>
+                          <FontAwesomeIcon icon={faDownload} />
+                        </AttachmentDownload>
+                      )}
+                    </AttachmentItem>
+                  );
+                })}
+              </AttachmentsList>
+            )}
+          </Card>
+          </div>
 
           {/* Workflow (pokud existuje) */}
           {workflow && workflow.length > 0 && (

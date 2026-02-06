@@ -10,6 +10,7 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
+import { keyframes } from '@emotion/react';
 import {
   flexRender,
   getCoreRowModel,
@@ -48,6 +49,26 @@ import {
   faTrash,
   faSearch,
 } from '@fortawesome/free-solid-svg-icons';
+
+// ============================================================================
+// KEYFRAMES
+// ============================================================================
+
+// 🎯 Animace pro zvýraznění řádku po návratu z editace
+const highlightPulse = keyframes`
+  0% {
+    background-color: #fef3c7;
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+  }
+  50% {
+    background-color: #fde68a;
+    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+`;
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -1285,6 +1306,7 @@ const OrdersTableV3 = ({
   canHardDelete = () => false,
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
+  highlightOrderId = null, // 🎯 ID objednávky k zvýraznění po návratu z editace
 }) => {
   // Hook pro expandované řádky s lazy loading a localStorage persistence
   const {
@@ -2549,9 +2571,18 @@ const OrdersTableV3 = ({
                 rowStyle.backgroundColor = rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb';
               }
               
+              // 🎯 Highlight animace pro právě editovanou objednávku
+              const isHighlighted = highlightOrderId && order.id === highlightOrderId;
+              if (isHighlighted) {
+                rowStyle.animation = `${highlightPulse} 2s ease-out`;
+              }
+              
               return (
                 <React.Fragment key={row.id}>
-                  <tr style={rowStyle}>
+                  <tr 
+                    style={rowStyle}
+                    data-order-id={order.id} // 🎯 Pro scroll targeting
+                  >
                     {row.getVisibleCells().map(cell => (
                       <TableCell
                         key={cell.id}
@@ -2572,6 +2603,8 @@ const OrdersTableV3 = ({
                       colSpan={rowColSpan}
                       token={token}
                       username={username}
+                      onActionClick={onActionClick}
+                      canEdit={canEdit}
                     />
                   )}
                 </React.Fragment>

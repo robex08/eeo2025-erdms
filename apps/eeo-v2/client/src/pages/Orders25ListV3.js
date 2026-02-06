@@ -19,7 +19,7 @@
  */
 
 import React, { useContext, useState, useEffect, lazy, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -45,13 +45,14 @@ import { ToastContext } from '../context/ToastContext';
 
 // API Services
 import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
+import { findOrderPageV3 } from '../services/apiOrdersV3';
 
 // Custom hooks
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
 
 // Components
 import OrdersDashboardV3Full from '../components/ordersV3/OrdersDashboardV3Full';
-import OrdersFiltersV3 from '../components/ordersV3/OrdersFiltersV3';
+import OrdersFiltersV3Full from '../components/ordersV3/OrdersFiltersV3Full';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
 import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 import OrdersTableV3 from '../components/ordersV3/OrdersTableV3';
@@ -386,6 +387,7 @@ function Orders25ListV3() {
   const { showToast: progressShowToast, showProgress, hideProgress } = useContext(ProgressContext);
   const { showToast: toastShowToast } = useContext(ToastContext);
   const navigate = useNavigate();
+  const location = useLocation();
   
   // Prefer ToastContext, fallback to ProgressContext
   const showToast = toastShowToast || progressShowToast;
@@ -640,12 +642,119 @@ function Orders25ListV3() {
     return saved !== null ? JSON.parse(saved) : true;
   });
   
+  // State pro global/fulltext search
+  const [globalFilter, setGlobalFilter] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_globalFilter_${user_id}`);
+    return saved || '';
+  });
+  
   // State pro dialogy
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [docxModalOrder, setDocxModalOrder] = useState(null);
   
   // State pro třídění
   const [sorting, setSorting] = useState([]);
+  
+  // State pro highlight objednávky po návratu z editace
+  const [highlightOrderId, setHighlightOrderId] = useState(null);
+  const [isSearchingForOrder, setIsSearchingForOrder] = useState(false);
+
+  // 🎯 Effect pro highlight a scroll na objednávku po návratu z editace
+  useEffect(() => {
+    const orderIdFromEdit = location.state?.highlightOrderId || location.state?.orderIdFromEdit;
+    
+    if (!orderIdFromEdit || isSearchingForOrder) return;
+    
+    // Async funkce pro vyhledání a scroll na objednávku
+    const findAndScrollToOrder = async () => {
+      setIsSearchingForOrder(true);
+      
+      try {
+        // Nejprve zkontrolovat zda je objednávka již na aktuální stránce
+        const orderOnCurrentPage = orders.find(order => order.id === orderIdFromEdit);
+        
+        if (orderOnCurrentPage) {
+          // Objednávka JE na aktuální stránce - okamžitě highlight a scroll
+          performScrollAndHighlight(orderIdFromEdit);
+          window.history.replaceState({}, document.title);
+          setIsSearchingForOrder(false);
+          return;
+        }
+        
+        // Objednávka NENÍ na aktuální stránce - zavolat API pro nalezení stránky
+        console.log('🔍 Hledám objednávku #' + orderIdFromEdit + ' v datasetu...');
+        
+        const result = await findOrderPageV3({
+          token,
+          username,
+          order_id: orderIdFromEdit,
+          per_page: itemsPerPage,
+          year: selectedYear,
+          filters: columnFilters,
+          sorting: sorting
+        });
+        
+        if (result.found && result.page) {
+          console.log(`✅ Objednávka nalezena na stránce ${result.page}`);
+          
+          // Přepnout na správnou stránku
+          if (result.page !== currentPage) {
+            handlePageChange(result.page);
+            // highlight a scroll se provede až po načtení nové stránky
+            // (další průchod useEffect když se změní orders)
+          } else {
+            // Už jsme na správné stránce, ale orders ještě neobsahují tu objednávku
+            // (může se stát při race condition) - scroll provedeme až po načtení
+          }
+        } else {
+          // Objednávka nenalezena (nesplňuje filtry nebo jiný problém)
+          showToast && showToast(
+            result.message || `Objednávka #${orderIdFromEdit} nenalezena v aktuálních filtrech nebo roce ${selectedYear}.`, 
+            { type: 'info' }
+          );
+          window.history.replaceState({}, document.title);
+          setIsSearchingForOrder(false);
+        }
+        
+      } catch (error) {
+        console.error('❌ Chyba při hledání objednávky:', error);
+        showToast && showToast(
+          `Chyba při hledání objednávky: ${error.message}`, 
+          { type: 'error' }
+        );
+        window.history.replaceState({}, document.title);
+        setIsSearchingForOrder(false);
+      }
+    };
+    
+    // Funkce pro provedení scroll a highlight
+    const performScrollAndHighlight = (orderId) => {
+      setHighlightOrderId(orderId);
+      
+      // Počkat na render a pak scrollovat
+      setTimeout(() => {
+        const rowElement = document.querySelector(`[data-order-id="${orderId}"]`);
+        if (rowElement) {
+          rowElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+          console.log('✅ Scrolloval na objednávku #' + orderId);
+        }
+      }, 300);
+      
+      // Zrušit highlight po 3 sekundách
+      setTimeout(() => {
+        setHighlightOrderId(null);
+      }, 3000);
+    };
+    
+    // Spustit vyhledávání pouze pokud máme načtené orders
+    if (orders.length > 0) {
+      findAndScrollToOrder();
+    }
+    
+  }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedYear, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
 
   // Efekty pro uložení do LocalStorage při změně
   useEffect(() => {
@@ -671,6 +780,12 @@ function Orders25ListV3() {
       localStorage.setItem(`ordersV3_showRowColoring_${user_id}`, JSON.stringify(showRowColoring));
     }
   }, [showRowColoring, user_id]);
+
+  useEffect(() => {
+    if (user_id) {
+      localStorage.setItem(`ordersV3_globalFilter_${user_id}`, globalFilter);
+    }
+  }, [globalFilter, user_id]);
 
   // Handler pro uložení konfigurace sloupců
   const handleSaveColumnConfig = async () => {
@@ -739,7 +854,12 @@ function Orders25ListV3() {
       }
 
       // ✅ Objednávka je dostupná - naviguj na formulář
-      navigate(`/order-form-25?edit=${order.id}`);
+      navigate(`/order-form-25?edit=${order.id}`, { 
+        state: { 
+          returnTo: '/orders25-list-v3',
+          highlightOrderId: order.id // 🎯 Pro scroll a highlight po návratu
+        } 
+      });
       
     } catch (error) {
       console.error('❌ Chyba při kontrole dostupnosti objednávky:', error);
@@ -950,17 +1070,19 @@ function Orders25ListV3() {
       )}
 
       {/* Filters */}
-      {showFilters && (
-        <OrdersFiltersV3
-          filters={columnFilters}
-          onFilterChange={handleColumnFilterChange}
-          onClearAll={handleClearFilters}
-          availableYears={years}
-          availableStates={[]}
-          availableUsers={[]}
-          availableSuppliers={[]}
-        />
-      )}
+      <OrdersFiltersV3Full
+        token={token}
+        username={username}
+        userId={user_id}
+        filters={columnFilters}
+        onFilterChange={handleColumnFilterChange}
+        onClearAll={handleClearFilters}
+        globalFilter={globalFilter}
+        onGlobalFilterChange={setGlobalFilter}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        onHide={() => setShowFilters(false)}
+      />
 
       {/* Loading state */}
       {loading && orders.length === 0 && (
@@ -996,6 +1118,7 @@ function Orders25ListV3() {
         canHardDelete={canHardDelete}
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
+        highlightOrderId={highlightOrderId}
       />
 
       {/* Pagination */}
