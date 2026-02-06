@@ -4093,11 +4093,27 @@ function OrderForm25() {
   // 🎯 RETURNTO: Pamatovat si odkud jsme přišli pro návrat při zavření
   // Použít useMemo aby se hodnota aktualizovala synchronně při změně location.state
   const returnToPath = useMemo(() => {
-    const path = location.state?.returnTo || '/orders25-list';
-    return path;
+    const path = location.state?.returnTo;
+    
+    // Pokud máme explicitní returnTo, použij ho
+    if (path) return path;
+    
+    // Jinak detekuj podle referrer nebo document.referrer
+    const referrer = document.referrer;
+    if (referrer) {
+      if (referrer.includes('/orders25-list-v3')) return '/orders25-list-v3';
+      if (referrer.includes('/faktury') || referrer.includes('/invoices')) return '/faktury';
+      if (referrer.includes('/orders25-list')) return '/orders25-list';
+    }
+    
+    // Default fallback
+    return '/orders25-list';
   }, [location.state]);
   
   const returnToRef = useRef(returnToPath);
+  
+  // 🎯 Pamatovat si highlightOrderId pro návrat zpět na paged seznam
+  const highlightOrderIdRef = useRef(location.state?.highlightOrderId);
   
   // Aktualizovat ref když se změní path
   useEffect(() => {
@@ -9404,7 +9420,13 @@ function OrderForm25() {
           // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na seznam objednávek s forceReload
           const targetPath = returnToRef.current || '/orders25-list';
           console.log('🔙 OrderForm25 NAVIGATE (uloženo):', { targetPath, returnToRef: returnToRef.current });
-          navigate(targetPath, { state: { forceReload: true }, replace: true });
+          navigate(targetPath, { 
+            state: { 
+              forceReload: true,
+              highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+            }, 
+            replace: true 
+          });
           
           // 5. Skrýt progress a ukončit ukládání
           setShowSaveProgress(false);
@@ -16900,7 +16922,12 @@ function OrderForm25() {
         // Přesměruj na uloženou cestu (returnTo) nebo fallback na seznam
         const targetPath = returnToRef.current || '/orders25-list';
         console.log('🔙 OrderForm25 NAVIGATE (dokončená):', { targetPath, returnToRef: returnToRef.current });
-        navigate(targetPath, { state: { forceReload: true } });
+        navigate(targetPath, { 
+          state: { 
+            forceReload: true,
+            highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+          } 
+        });
       } catch (error) {
         showToast && showToast(`Chyba při zavírání: ${error.message}`, { type: 'error' });
       }
@@ -17054,7 +17081,12 @@ function OrderForm25() {
 
       // 5. Přesměruj s dostatečným zpožděním, aby se stihly dokončit všechny async operace
       setTimeout(() => {
-        navigate(targetPath, { state: { forceReload: true } });
+        navigate(targetPath, { 
+          state: { 
+            forceReload: true,
+            highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+          } 
+        });
       }, 200);
 
     } catch (error) {
@@ -17071,7 +17103,12 @@ function OrderForm25() {
       const targetPath = returnToRef.current || '/orders25-list';
       console.log('🔙 OrderForm25 NAVIGATE (error při zavírání):', { targetPath, returnToRef: returnToRef.current });
       setTimeout(() => {
-        navigate(targetPath, { state: { forceReload: true } });
+        navigate(targetPath, { 
+          state: { 
+            forceReload: true,
+            highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+          } 
+        });
       }, 100);
     }
   }, [user_id, draftManager, formData.id, token, username, showToast, navigate]);

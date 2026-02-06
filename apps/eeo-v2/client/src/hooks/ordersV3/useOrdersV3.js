@@ -85,15 +85,29 @@ export function useOrdersV3({
       }
     }
     return {
-      cislo_objednavky: '',
-      predmet: '',
-      dodavatel: '',
-      uzivatel: '',
-      stav: '',
-      datum_od: '',
-      datum_do: '',
-      cena_min: '',
-      cena_max: '',
+      // User filters (multi-select arrays of IDs)
+      objednatel: [],
+      garant: [],
+      prikazce: [],
+      schvalovatel: [],
+      
+      // Status filter (multi-select array of status codes)
+      stav: [],
+      
+      // Date range
+      dateFrom: '',
+      dateTo: '',
+      
+      // Price range
+      amountFrom: '',
+      amountTo: '',
+      
+      // Registry status (boolean)
+      maBytZverejneno: false,
+      byloZverejneno: false,
+      
+      // Extraordinary events (boolean)
+      mimoradneObjednavky: false,
     };
   });
   

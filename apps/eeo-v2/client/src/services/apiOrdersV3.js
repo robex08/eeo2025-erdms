@@ -122,3 +122,48 @@ export async function getOrderItemsV3({
 
   return response.json();
 }
+
+/**
+ * Najde stránku na které se nachází objednávka (pro scroll po návratu z editace)
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.order_id - ID objednávky
+ * @param {number} params.per_page - Záznamů na stránku (výchozí: 50)
+ * @param {number} params.year - Rok objednávek (výchozí: aktuální)
+ * @param {Object} params.filters - Aktuální filtry
+ * @param {Array} params.sorting - Aktuální třídění
+ * @returns {Promise<Object>} Response s page number nebo null
+ */
+export async function findOrderPageV3({
+  token,
+  username,
+  order_id,
+  per_page = 50,
+  year = new Date().getFullYear(),
+  filters = {},
+  sorting = []
+}) {
+  const response = await fetch(`${API_BASE_URL}/order-v3/find-page`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      order_id,
+      per_page,
+      year,
+      filters,
+      sorting
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
