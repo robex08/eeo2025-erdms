@@ -76,7 +76,7 @@ const TableContainer = styled.div`
     font-size: 1rem;
   }
 
-  /* Skrýt scrollbar, ale ponechat funkčnost */
+  /* Skrýt normální scrollbar */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
   
@@ -85,41 +85,49 @@ const TableContainer = styled.div`
   }
 `;
 
-const StickyScrollbarContainer = styled.div`
-  position: sticky;
+const FixedScrollbarContainer = styled.div`
+  position: fixed;
   bottom: 0;
   left: 0;
-  width: 100%;
-  height: 20px;
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
+  right: 0;
+  height: 16px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 2px solid #cbd5e1;
   overflow-x: auto;
   overflow-y: hidden;
-  z-index: 100;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+  z-index: 1000;
+  box-shadow: 0 -3px 10px rgba(0, 0, 0, 0.15);
 
   /* Vlastní scrollbar design */
   &::-webkit-scrollbar {
-    height: 12px;
+    height: 14px;
   }
 
   &::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 6px;
+    background: #e2e8f0;
+    border-radius: 0;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #94a3b8;
-    border-radius: 6px;
-    border: 2px solid #f1f5f9;
+    background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+    border-radius: 0;
+    border: 2px solid #e2e8f0;
     
     &:hover {
-      background: #64748b;
+      background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+    }
+    
+    &:active {
+      background: #1e40af;
     }
   }
+
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #3b82f6 #e2e8f0;
 `;
 
-const StickyScrollbarContent = styled.div`
+const FixedScrollbarContent = styled.div`
   height: 1px;
   pointer-events: none;
 `;
@@ -1296,10 +1304,10 @@ const OrdersTableV3 = ({
   // Ref pro debounce timery
   const filterTimers = useRef({});
   
-  // Refs pro sticky scrollbar synchronizaci
+  // Refs pro fixed scrollbar synchronizaci
   const tableContainerRef = useRef(null);
-  const stickyScrollbarRef = useRef(null);
-  const [showStickyScrollbar, setShowStickyScrollbar] = useState(false);
+  const fixedScrollbarRef = useRef(null);
+  const [showFixedScrollbar, setShowFixedScrollbar] = useState(false);
   
   // State pro drag & drop
   const [draggedColumn, setDraggedColumn] = useState(null);
@@ -1366,38 +1374,38 @@ const OrdersTableV3 = ({
     };
   }, []);
   
-  // Synchronizace sticky scrollbar s hlavní tabulkou
+  // Synchronizace fixed scrollbar s hlavní tabulkou
   useEffect(() => {
     const tableContainer = tableContainerRef.current;
-    const stickyScrollbar = stickyScrollbarRef.current;
+    const fixedScrollbar = fixedScrollbarRef.current;
     
-    if (!tableContainer || !stickyScrollbar) return;
+    if (!tableContainer || !fixedScrollbar) return;
     
     // Zjistit, zda je potřeba scrollbar (obsah je širší než container)
     const checkScrollbarNeeded = () => {
       const isNeeded = tableContainer.scrollWidth > tableContainer.clientWidth;
-      setShowStickyScrollbar(isNeeded);
+      setShowFixedScrollbar(isNeeded);
       
-      // Nastavit šířku obsahu sticky scrollbaru
+      // Nastavit šířku obsahu fixed scrollbaru na šířku tabulky
       if (isNeeded) {
-        const stickyContent = stickyScrollbar.querySelector('div');
-        if (stickyContent) {
-          stickyContent.style.width = `${tableContainer.scrollWidth}px`;
+        const fixedContent = fixedScrollbar.querySelector('div');
+        if (fixedContent) {
+          fixedContent.style.width = `${tableContainer.scrollWidth}px`;
         }
       }
     };
     
-    // Synchronizace scroll pozice: hlavní tabulka -> sticky scrollbar
+    // Synchronizace scroll pozice: hlavní tabulka -> fixed scrollbar
     const syncFromTable = () => {
-      if (stickyScrollbar && tableContainer) {
-        stickyScrollbar.scrollLeft = tableContainer.scrollLeft;
+      if (fixedScrollbar && tableContainer) {
+        fixedScrollbar.scrollLeft = tableContainer.scrollLeft;
       }
     };
     
-    // Synchronizace scroll pozice: sticky scrollbar -> hlavní tabulka
+    // Synchronizace scroll pozice: fixed scrollbar -> hlavní tabulka
     const syncFromScrollbar = () => {
-      if (tableContainer && stickyScrollbar) {
-        tableContainer.scrollLeft = stickyScrollbar.scrollLeft;
+      if (tableContainer && fixedScrollbar) {
+        tableContainer.scrollLeft = fixedScrollbar.scrollLeft;
       }
     };
     
@@ -1410,7 +1418,7 @@ const OrdersTableV3 = ({
     
     // Event listeners
     tableContainer.addEventListener('scroll', syncFromTable);
-    stickyScrollbar.addEventListener('scroll', syncFromScrollbar);
+    fixedScrollbar.addEventListener('scroll', syncFromScrollbar);
     
     // Počáteční kontrola při načtení
     checkScrollbarNeeded();
@@ -1419,7 +1427,7 @@ const OrdersTableV3 = ({
     return () => {
       resizeObserver.disconnect();
       tableContainer.removeEventListener('scroll', syncFromTable);
-      stickyScrollbar.removeEventListener('scroll', syncFromScrollbar);
+      fixedScrollbar.removeEventListener('scroll', syncFromScrollbar);
     };
   }, [data]); // Re-run když se změní data
   
@@ -2573,14 +2581,15 @@ const OrdersTableV3 = ({
         </TableBody>
       </Table>
     </TableContainer>
-    
-    {/* Sticky horizontal scrollbar */}
-    {showStickyScrollbar && (
-      <StickyScrollbarContainer ref={stickyScrollbarRef}>
-        <StickyScrollbarContent />
-      </StickyScrollbarContainer>
-    )}
     </TableWrapper>
+    
+    {/* Fixed horizontal scrollbar - vždy na spodním okraji layoutu */}
+    {showFixedScrollbar && ReactDOM.createPortal(
+      <FixedScrollbarContainer ref={fixedScrollbarRef}>
+        <FixedScrollbarContent />
+      </FixedScrollbarContainer>,
+      document.body
+    )}
 
       {/* 🎯 Schvalovací dialog */}
       {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
