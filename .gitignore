@@ -12,6 +12,11 @@ package-lock.json
 # Build outputs
 dist/
 build/
+build-prod/
+build-dev/
+build_backup*/
+build.backup/
+*.backup
 client/dist/
 
 # Logs
@@ -34,3 +39,50 @@ Thumbs.db
 tmp/
 temp/
 *.tar.gz
+logs/
+
+# Webpack cache - NEVER commit this!
+.webpack-cache/
+**/.webpack-cache/
+
+# Data directories - obsahují přílohy, šablony a další data
+# která nepatří do verzovacího systému
+data/
+/var/www/__BCK_PRODUKCE/
+
+# SQL skripty - dočasné utility a debug soubory
+*_PROD.sql
+*_DEV.sql
+debug_*.sql
+fix_*.sql
+test_*.sql
+update_*.sql
+analyze_*.sql
+check_*.sql
+verify_*.sql
+
+# PHP test a debug soubory
+test_*.php
+debug_*.php
+analyze_*.php
+check_*.php
+verify_*.php
+renumber_*.php
+
+# Dokumentace a poznámky - dočasné soubory
+ROCNI_POPLATKY_*.md
+CASHBOOK_*.md
+*_IMPLEMENTATION*.md
+*_PERMISSIONS*.md
+ANALYZE_*.md
+CHANGELOG*.md
+FIX_*.md
+DEBUG_*.md
+
+# Backup a archivní složky
+backup/
+*backup*/
+*.backup
+archive/
+*.bak
+*.old

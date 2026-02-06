@@ -1,10 +1,28 @@
 <?php
-// TEMPORARY DEBUG - enable error reporting to see 500 error details
-ini_set('display_errors', 0);
-ini_set('display_startup_errors', 1); 
-ini_set('log_errors', 1);
-ini_set('error_log', '/tmp/php_errors.log');
-error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+// ============ ENV DETECTION ============
+// Detekuje DEV/PROD prostředí podle REQUEST_URI
+define('IS_DEV_ENV', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
+define('ENV_NAME', IS_DEV_ENV ? 'DEV' : 'PROD');
+
+// Include custom debug logger (funguje v DEV i PROD, ale loguje pouze v DEV)
+require_once __DIR__ . '/debug_logger.php';
+
+// ============ ERROR LOGGING SETUP ============
+if (IS_DEV_ENV) {
+    // 🐛 DEV - Debug režim s podrobným logováním
+    ini_set('display_errors', 0);  // Bezpečnost - nezobrazovat errory
+    ini_set('display_startup_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/var/www/erdms-dev/logs/php-error.log');
+    error_reporting(E_ALL);  // Všechny chyby včetně notices, warnings
+} else {
+    // PROD - Standard error reporting
+    ini_set('display_errors', 0);
+    ini_set('display_startup_errors', 0); 
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/var/www/erdms-dev/logs/php/prod-error.log');
+    error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+}
 
 // CORS headers are handled by Apache - do not send them from PHP to avoid duplication
 header("Content-Type: application/json; charset=utf-8");
@@ -122,33 +140,122 @@ function cz_get_namedays_list() {
 // DATABASE TABLE NAMES - LP ČERPÁNÍ
 define('TBL_OBJEDNAVKY', '25a_objednavky');
 define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
+define('TBL_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
 define('TBL_POKLADNI_KNIHY', '25a_pokladni_knihy');
 define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
+define('TBL_POKLADNI_POLOZKY_DETAIL', '25a_pokladni_polozky_detail');
 define('TBL_LP_MASTER', '25_limitovane_prisliby');
 define('TBL_LP_CERPANI', '25_limitovane_prisliby_cerpani');
 
+// DATABASE TABLE NAMES - POKLADNY (CASHBOX)
+define('TBL_POKLADNY', '25a_pokladny');
+define('TBL_POKLADNY_UZIVATELE', '25a_pokladny_uzivatele');
+define('TBL_POKLADNI_AUDIT', '25a_pokladni_audit');
+define('TBL_POKLADNI_PRIRAZENI', '25a_pokladni_prirazeni');
+
 // DATABASE TABLE NAMES - CORE ENTITIES
 define('TBL_UZIVATELE', '25_uzivatele');
+define('TBL_UZIVATELE_AKTIVITA_LOG', '25_uzivatele_aktivita_log');
 // define('TBL_OBJEDNAVKY_LEGACY', '25_objednavky'); // DEPRECATED - nepoužívá se
 define('TBL_SMLOUVY', '25_smlouvy');
+define('TBL_SMLOUVY_IMPORT_LOG', '25_smlouvy_import_log');
 define('TBL_FAKTURY', '25a_objednavky_faktury');
+define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
+define('TBL_FAKTURY_LP_CERPANI', '25a_faktury_lp_cerpani');
 define('TBL_DODAVATELE', '25_dodavatele');
+
+// DATABASE TABLE NAMES - ROČNÍ POPLATKY
+define('TBL_ROCNI_POPLATKY', '25a_rocni_poplatky');
+define('TBL_ROCNI_POPLATKY_POLOZKY', '25a_rocni_poplatky_polozky');
+define('TBL_ROCNI_POPLATKY_PRILOHY', '25a_rocni_poplatky_prilohy');
+
+// FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
+define('INVOICE_STATUS_REGISTERED', 'ZAEVIDOVANA');      // Nově vložená z podatelny
+define('INVOICE_STATUS_VERIFICATION', 'VECNA_SPRAVNOST'); // Poslaná k potvrzení věcné správnosti
+define('INVOICE_STATUS_IN_PROGRESS', 'V_RESENI');         // Čeká se na dořešení (nejasnosti)
+define('INVOICE_STATUS_HANDOVER_PO', 'PREDANA_PO');       // Fyzicky na ředitelství (v kolečku)
+define('INVOICE_STATUS_TO_PAY', 'K_ZAPLACENI');           // Předáno HÚ k úhradě (finální)
+define('INVOICE_STATUS_PAID', 'ZAPLACENO');               // Uhrazeno
+define('INVOICE_STATUS_CANCELLED', 'STORNO');             // Stažena dodavatelem
+
+// DATABASE TABLE NAMES - AUTORIZACE & ROLE
+define('TBL_PRAVA', '25_prava');
+define('TBL_ROLE', '25_role');
+define('TBL_ROLE_PRAVA', '25_role_prava');
+define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
+define('TBL_UZIVATELE_PRAVA', '25_uzivatele_prava');
+define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
+
+// DATABASE TABLE NAMES - UŽIVATELÉ (EXTENDED)
+define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
+define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
+
+// DATABASE TABLE NAMES - HIERARCHIE
+define('TBL_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
+define('TBL_HIERARCHIE_PROFILY', '25_hierarchie_profily');
+define('TBL_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
+
+// DATABASE TABLE NAMES - NASTAVENÍ
+define('TBL_NASTAVENI_GLOBALNI', '25a_nastaveni_globalni');
+define('TBL_UZIVATEL_NASTAVENI', '25_uzivatel_nastaveni');
 
 // DATABASE TABLE NAMES - ČÍSELNÍKY
 define('TBL_POZICE', '25_pozice');
 define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');
+// define('TBL_STREDISKA', '25_strediska'); // ❌ TABULKA NEEXISTUJE V DB!
 define('TBL_USEKY', '25_useky');
+define('TBL_LOKALITY', '25_lokality');
+
+// DATABASE TABLE NAMES - ORGANIZACE
+define('TBL_ORGANIZACE_VIZITKA', '25_organizace_vizitka');
+
+// DATABASE TABLE NAMES - DOCX ŠABLONY
+define('TBL_SABLONY_DOCX', '25_sablony_docx');
+define('TBL_DOCX_SABLONY', '25_docx_sablony'); // Alternativní název
+define('TBL_DOCX_MAPOVANI', '25_docx_mapovani');
+define('TBL_DOCX_KATEGORIE', '25_docx_kategorie');
+define('TBL_DOCX_GENEROVANE', '25_docx_generovane');
+define('TBL_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
+
+// DATABASE TABLE NAMES - NOTIFIKACE
+define('TBL_NOTIFIKACE', '25_notifikace');
+define('TBL_NOTIFIKACE_FRONTA', '25_notifikace_fronta');
+define('TBL_NOTIFIKACE_AUDIT', '25_notifikace_audit');
+define('TBL_NOTIFIKACE_PRECTENI', '25_notifikace_precteni');
+define('TBL_NOTIFIKACE_SABLONY', '25_notifikace_sablony');
+define('TBL_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti');
+define('TBL_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni');
+
+// DATABASE TABLE NAMES - CHAT
+define('TBL_CHAT_KONVERZACE', '25_chat_konverzace');
+define('TBL_CHAT_ZPRAVY', '25_chat_zpravy');
+define('TBL_CHAT_UCASTNICI', '25_chat_ucastnici');
+define('TBL_CHAT_REAKCE', '25_chat_reakce');
+define('TBL_CHAT_PRECTENE_ZPRAVY', '25_chat_prectene_zpravy');
+define('TBL_CHAT_ONLINE_STATUS', '25_chat_online_status');
+define('TBL_CHAT_MENTIONS', '25_chat_mentions');
+
+// DATABASE TABLE NAMES - AUDIT
+define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
+
+// DATABASE TABLE NAMES - LIMITOVANÉ PŘÍSLIBY
+define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
+define('TBL_LIMITOVANE_PRISLIBY_CERPANI', '25_limitovane_prisliby_cerpani');
+
+// DATABASE TABLE NAMES - SPISOVKA
+define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
 
 // Načtení konfigurace a dotazů
 $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';
 $config = $_config['mysql'];
 require __DIR__ . '/' . VERSION . '/lib/queries.php';
 require __DIR__ . '/' . VERSION . '/lib/handlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/TimezoneHelper.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderAttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceAttachmentHandlers.php';
-require_once __DIR__ . '/v2025.03_25/lib/invoiceAttachmentHandlersOrderV2.php';
+// require_once __DIR__ . '/v2025.03_25/lib/invoiceAttachmentHandlersOrderV2.php'; // DEPRECATED - replaced by orderV2InvoiceAttachmentHandlers.php
 require_once __DIR__ . '/v2025.03_25/lib/notificationHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/notificationTemplatesHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/ciselnikyHandlers.php';
@@ -156,21 +263,33 @@ require_once __DIR__ . '/v2025.03_25/lib/sablonaDocxHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/docxOrderDataHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/importHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/hierarchyTriggers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2Endpoints.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2AttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2InvoiceHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/orderV2InvoiceAttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2PolozkyLPHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/fakturyLpCerpaniHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
 
 // CASHBOOK - Pokladní knihy
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlersExtended.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashboxByPeriodHandler.php';
 
+// ANNUAL FEES - Roční poplatky
+require_once __DIR__ . '/v2025.03_25/lib/rozsirujiciDataHelper.php';
+require_once __DIR__ . '/v2025.03_25/lib/annualFeesHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/annualFeesAttachmentsHandlers.php';
+
 // USER DETAIL - User detail with statistics
 require_once __DIR__ . '/v2025.03_25/lib/userDetailHandlers.php';
+
+// USER STATS - User statistics for mobile dashboard
+require_once __DIR__ . '/v2025.03_25/lib/userStatsHandlers.php';
 
 // USER SETTINGS - User settings (filters, tiles, export)
 require_once __DIR__ . '/v2025.03_25/lib/userSettingsHandlers.php';
@@ -181,86 +300,101 @@ require_once __DIR__ . '/v2025.03_25/lib/searchHandlers.php';
 // REPORTS - Order V2 Reports
 require_once __DIR__ . '/v2025.03_25/lib/reportsHandlers.php';
 
+// ORDER V3 - Optimized API for React Frontend
+require_once __DIR__ . '/v2025.03_25/lib/orderV3Handlers.php';
+
+// SPISOVKA ZPRACOVANI - Tracking zpracovaných dokumentů ze Spisovka InBox
+require_once __DIR__ . '/v2025.03_25/lib/spisovkaZpracovaniEndpoints.php';
+
+// MANUALS - PDF manuály a nápověda
+require_once __DIR__ . '/v2025.03_25/lib/manualsHandlers.php';
+
+// === CORS PREFLIGHT HANDLER - Handle OPTIONS requests first ===
+// This allows localhost:3000 development to work properly
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    // CORS headers are already set in .htaccess, just return 200 OK
+    http_response_code(200);
+    exit;
+}
+
 // Routing endpointů
 $request_uri = $_SERVER['REQUEST_URI'];
 $request_method = $_SERVER['REQUEST_METHOD'];
 
 // Parse input data - support both JSON and Form data
-$raw_input = file_get_contents('php://input');
-$input = json_decode($raw_input, true);
+// ⚠️ KRITICKÉ: Pro multipart/form-data NESMÍME číst php://input!
+// Multipart data jsou POUZE v $_POST a $_FILES
+$content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+$is_multipart = strpos($content_type, 'multipart/form-data') !== false;
 
-// If JSON parsing failed or no JSON data, use $_POST (form data)
-if (json_last_error() !== JSON_ERROR_NONE || empty($input)) {
+if ($is_multipart) {
+    // Pro multipart použij přímo $_POST (FormData parametry)
     $input = $_POST;
+} else {
+    // Pro JSON nebo application/x-www-form-urlencoded
+    $raw_input = file_get_contents('php://input');
+    $input = json_decode($raw_input, true);
+    
+    // If JSON parsing failed or no JSON data, use $_POST (form data)
+    if (json_last_error() !== JSON_ERROR_NONE || empty($input)) {
+        $input = $_POST;
+    }
+    
+    // ✅ SPECIAL: DELETE requests s JSON payloadem
+    // Axios DELETE s {data: payload} posílá JSON v body, ale PHP neparsuje $_POST pro DELETE
+    if ($request_method === 'DELETE' && !empty($raw_input) && empty($input)) {
+        debug_log("⚠️ DELETE request with raw input, attempting JSON parse");
+        $input = json_decode($raw_input, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            debug_log("❌ JSON parse failed for DELETE request");
+            $input = array();
+        }
+    }
 }
-
-// Debug: log what we received
-error_log("API Input parsing - Content-Type: " . (isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : 'unknown'));
-error_log("API Input data: " . json_encode($input));
 
 // Extrakce endpointu - priorita X-Endpoint header, pak URI
 $endpoint = '';
 if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
     $endpoint = $_SERVER['HTTP_X_ENDPOINT'];
-    error_log("Using X-Endpoint header: $endpoint");
 } else {
     // Normalize request_uri - remove duplicate slashes
     $normalized_uri = preg_replace('#/+#', '/', $request_uri);
     
-    if (preg_match('~/(api\.eeo/)?(.+?)(?:\?.*)?$~', $normalized_uri, $matches)) {
+    if (preg_match('~/(dev/)?api\.eeo/(.+?)(?:\?.*)?$~', $normalized_uri, $matches)) {
         $endpoint = rtrim($matches[2], '/');
-        error_log("Using URI endpoint: $endpoint (normalized from: $request_uri)");
     }
 }
 
-// DEBUG: zobrazíme, co se rozpoznává
-error_log("URI: $request_uri, Endpoint: $endpoint, Method: $request_method, X-Endpoint: " . (isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : 'not set'));
+error_log("DEBUG API: endpoint='$endpoint', method='$request_method', uri='$request_uri'");
 
-// 🔍 CRITICAL DEBUG pro order attachments download
-if (strpos($endpoint, 'attachments') !== false && strpos($endpoint, 'download') !== false) {
-    header('X-Debug-Endpoint: ' . $endpoint);
-    header('X-Debug-Method: ' . $request_method);
-    header('X-Debug-Raw-Input-Length: ' . strlen($raw_input));
-    error_log("🔍 ATTACHMENT DOWNLOAD REQUEST DETECTED:");
-    error_log("  Raw endpoint: [$endpoint]");
-    error_log("  Length: " . strlen($endpoint));
-    error_log("  Request method: $request_method");
-    error_log("  Raw input length: " . strlen($raw_input));
+// 🔧 DEBUG: Log endpoint for DELETE troubleshooting
+if (strpos($endpoint, 'delete') !== false || strpos($endpoint, 'restore') !== false) {
+    error_log("API.PHP DEBUG - Endpoint: '$endpoint' | Method: $request_method | URI: $request_uri");
 }
 
-// 🔥 SPECIAL DEBUG ENDPOINT - pro testování routingu
-if ($endpoint === 'debug-routing') {
-    echo json_encode(array(
-        'status' => 'ok',
-        'debug_info' => array(
-            'REQUEST_URI' => $_SERVER['REQUEST_URI'],
-            'HTTP_X_ENDPOINT' => isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : null,
-            'extracted_endpoint' => $endpoint,
-            'request_method' => $request_method,
-            'matches_from_regex' => isset($matches) ? $matches : null,
-            'raw_input' => $input
-        )
-    ));
-    exit;
-}
-
-// 🔥 TEST INVOICE ATTACHMENTS DEBUG
-if ($endpoint === 'test-invoice-debug') {
-    echo json_encode(array(
-        'status' => 'ok', 
-        'message' => 'Test endpoint works',
-        'functions' => array(
-            'get_invoices_table_name' => function_exists('get_invoices_table_name'),
-            'get_invoice_attachments_table_name' => function_exists('get_invoice_attachments_table_name'),
-            'handle_order_v2_list_invoice_attachments' => function_exists('handle_order_v2_list_invoice_attachments'),
-            'get_db' => function_exists('get_db'),
-            'verify_token' => function_exists('verify_token')
-        ),
-        'table_names' => array(
-            'invoices' => function_exists('get_invoices_table_name') ? get_invoices_table_name() : 'FUNCTION_NOT_EXISTS',
-            'invoice_attachments' => function_exists('get_invoice_attachments_table_name') ? get_invoice_attachments_table_name() : 'FUNCTION_NOT_EXISTS'
-        )
-    ));
+// === VERSION ENDPOINT - GET /api.eeo/version (no auth required) ===
+if ($endpoint === 'version') {
+    if ($request_method === 'GET') {
+        // Get database name from config
+        $db_name = 'unknown';
+        if (getenv('DB_NAME')) {
+            $db_name = getenv('DB_NAME');
+        } elseif (isset($config['database'])) {
+            $db_name = $config['database'];
+        }
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'version' => VERSION,
+            'environment' => ENV_NAME,
+            'database' => $db_name,
+            'last_modified' => date('Y-m-d H:i:s', filemtime(__FILE__)),
+            'timestamp' => filemtime(__FILE__)
+        ));
+    } else {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+    }
     exit;
 }
 
@@ -291,7 +425,152 @@ if ($endpoint === 'nameday') {
     exit;
 }
 
-// Debug removed - back to normal operation
+// === BITCOIN PRICE ENDPOINT - GET /api.eeo/api.php?action=bitcoin/price ===
+if ($endpoint === 'api.php' && isset($_GET['action']) && $_GET['action'] === 'bitcoin/price') {
+    if ($request_method === 'GET') {
+        try {
+            // Cache mechanismus
+            $cacheDir = __DIR__ . '/cache';
+            $cacheFile = $cacheDir . '/bitcoin_price_cache.json';
+            $cacheLifetime = 15 * 60; // 15 minut cache
+            
+            // Vytvořit cache adresář pokud neexistuje
+            if (!is_dir($cacheDir)) {
+                mkdir($cacheDir, 0755, true);
+            }
+            
+            // Kontrola cache
+            if (file_exists($cacheFile)) {
+                $cacheTime = filemtime($cacheFile);
+                if (time() - $cacheTime < $cacheLifetime) {
+                    // Cache je platná - vrátit cached data
+                    $cachedData = file_get_contents($cacheFile);
+                    
+                    // Přidat cache headers
+                    header('X-Cache: HIT');
+                    header('X-Cache-Age: ' . (time() - $cacheTime));
+                    
+                    echo $cachedData;
+                    exit;
+                }
+            }
+            
+            // Načíst fresh data z Yahoo Finance API
+            $symbol = 'BTC-USD';
+            $fromDate = strtotime('2021-01-01');
+            $toDate = time();
+            $interval = '1wk';
+            
+            $yahooUrl = "https://query1.finance.yahoo.com/v8/finance/chart/{$symbol}?period1={$fromDate}&period2={$toDate}&interval={$interval}";
+            
+            // HTTP context s User-Agent
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'header' => [
+                        'User-Agent: Mozilla/5.0 (compatible; ERDMS-API/1.0; PHP)',
+                        'Accept: application/json'
+                    ],
+                    'timeout' => 15
+                ]
+            ]);
+            
+            // HTTP request
+            $response = file_get_contents($yahooUrl, false, $context);
+            
+            if ($response === false) {
+                throw new Exception('Failed to fetch data from Yahoo Finance API');
+            }
+            
+            // Parse JSON
+            $data = json_decode($response, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Invalid JSON response: ' . json_last_error_msg());
+            }
+            
+            if (!isset($data['chart']['result'][0]['timestamp'])) {
+                throw new Exception('Invalid response format - missing timestamp data');
+            }
+            
+            $result = $data['chart']['result'][0];
+            $timestamps = $result['timestamp'];
+            $prices = $result['indicators']['quote'][0]['close'];
+            
+            if (empty($timestamps) || empty($prices)) {
+                throw new Exception('No price data found');
+            }
+            
+            // Zpracování dat
+            $processedData = [];
+            $validPoints = 0;
+            
+            for ($i = 0; $i < count($timestamps); $i++) {
+                $price = isset($prices[$i]) ? $prices[$i] : null;
+                
+                if ($price === null || $price <= 0) {
+                    continue;
+                }
+                
+                $processedData[] = [
+                    'date' => date('c', $timestamps[$i]),
+                    'price' => round($price, 2)
+                ];
+                $validPoints++;
+            }
+            
+            if ($validPoints === 0) {
+                throw new Exception('No valid price points found');
+            }
+            
+            // Aktuální cena
+            $currentPrice = end($processedData)['price'];
+            
+            // Sestavit odpověď
+            $responseData = [
+                'success' => true,
+                'data' => $processedData,
+                'currentPrice' => $currentPrice,
+                'source' => 'Yahoo Finance',
+                'symbol' => $symbol,
+                'interval' => $interval,
+                'dataPoints' => $validPoints,
+                'fromDate' => date('Y-m-d', $fromDate),
+                'toDate' => date('Y-m-d', $toDate),
+                'timestamp' => date('c'),
+                'cacheTTL' => $cacheLifetime
+            ];
+            
+            $jsonResponse = json_encode($responseData);
+            
+            // Uložit do cache
+            file_put_contents($cacheFile, $jsonResponse, LOCK_EX);
+            
+            // Vrátit response
+            header('X-Cache: MISS');
+            echo $jsonResponse;
+            
+        } catch (Exception $e) {
+            // Log error
+            error_log("Bitcoin API Error: " . $e->getMessage());
+            
+            // Vrátit error response
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'message' => 'Failed to fetch Bitcoin price data',
+                'timestamp' => date('c')
+            ]);
+        }
+    } else {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+    }
+    exit;
+}
+
+
 
 // === SUPPORT FOR POST BODY ACTION + OPERATION ROUTING ===
 // Pokud endpoint je "api.php" (nebo prázdný) a v POST body je action + operation,
@@ -307,12 +586,72 @@ if (($endpoint === 'api.php' || $endpoint === '' || $endpoint === 'api.eeo') && 
     }
 }
 
+// Create PDO connection for handlers that need it
+try {
+    $pdo = new PDO(
+        "mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4",
+        $config['username'],
+        $config['password'],
+        array(
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        )
+    );
+} catch (PDOException $e) {
+    error_log("PDO connection failed: " . $e->getMessage());
+    $pdo = null;
+}
+
 // Routing podle endpointu
 switch ($endpoint) {
+    // === TEST LOGGING ENDPOINT - POUZE PRO DEV ===
+    case 'test-logging':
+        error_log("=== TEST LOGGING START ===");
+        error_log("ENV: " . ENV_NAME);
+        error_log("Time: " . date('Y-m-d H:i:s'));
+        error_log("Endpoint: " . $endpoint);
+        error_log("Method: " . $request_method);
+        error_log("PHP error_log setting: " . ini_get('error_log'));
+        error_log("log_errors: " . (ini_get('log_errors') ? 'ON' : 'OFF'));
+        error_log("display_errors: " . (ini_get('display_errors') ? 'ON' : 'OFF'));
+        error_log("error_reporting: " . ini_get('error_reporting'));
+        
+        // Test varování
+        trigger_error("Test WARNING from API", E_USER_WARNING);
+        
+        // Test chyba
+        try {
+            throw new Exception("Test EXCEPTION from API");
+        } catch (Exception $e) {
+            error_log("Caught exception: " . $e->getMessage());
+        }
+        
+        error_log("=== TEST LOGGING END ===");
+        
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Test logging dokončen',
+            'env' => ENV_NAME,
+            'log_file' => ini_get('error_log'),
+            'instructions' => 'Zkontroluj: tail -f /var/log/apache2/erdms-dev-php-error.log'
+        ]);
+        break;
+    
     case 'login':
     case 'user/login':
         if ($request_method === 'POST') {
             handle_login($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    // === TOKEN REFRESH ENDPOINT ===
+    case 'token-refresh':
+        if ($request_method === 'POST') {
+            handle_token_refresh($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));
@@ -369,9 +708,46 @@ switch ($endpoint) {
         }
         break;
     
+    case 'user/active-with-stats':
+        if ($request_method === 'POST') {
+            handle_user_active_with_stats($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
     case 'user/update-activity':
         if ($request_method === 'POST') {
             handle_user_update_activity($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'user/keepalive':
+        if ($request_method === 'POST') {
+            handle_user_keepalive($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    // ✅ NOVÉ: Activity tracking
+    case 'user/activity/track':
+        if ($request_method === 'POST') {
+            handle_user_activity_track($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'user/activity/history':
+        if ($request_method === 'GET' || $request_method === 'POST') {
+            handle_user_activity_history($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));
@@ -613,6 +989,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
+    
+    case 'users/toggle-visibility':
+        if ($request_method === 'POST') {
+            handle_users_toggle_visibility($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
 
     // === USER MANAGEMENT API ENDPOINTS ===
     case 'users/create':
@@ -650,6 +1035,37 @@ switch ($endpoint) {
         require_once 'v2025.03_25/lib/userHandlers.php';
         if ($request_method === 'POST') {
             handle_users_deactivate($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'users/delete':
+        require_once 'v2025.03_25/lib/userHandlers.php';
+        if ($request_method === 'POST') {
+            handle_users_delete($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'users/generate-temp-password':
+        require_once 'v2025.03_25/lib/userHandlers.php';
+        if ($request_method === 'POST') {
+            handle_users_generate_temp_password($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    // === AUTH ENDPOINTS ===
+    case 'auth/generate-and-send-password':
+        require_once 'v2025.03_25/lib/userHandlers.php';
+        if ($request_method === 'POST') {
+            handle_auth_generate_and_send_password($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));
@@ -845,6 +1261,184 @@ switch ($endpoint) {
             $response = handle_hierarchy_remove_relation($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+
+    // ============ ORGANIZAČNÍ HIERARCHIE - NOVÉ ENDPOINTY ============
+    case 'hierarchy/users':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_users_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/locations':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_locations_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/departments':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_departments_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/structure':
+        // DEPRECATED: Redirect to new API
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_load_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/save':
+        // DEPRECATED: Redirect to new API
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_save_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/notification-types':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_notification_types($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    // ==================== GLOBÁLNÍ NASTAVENÍ ====================
+    case 'global-settings':
+        require_once __DIR__ . '/v2025.03_25/lib/globalSettingsHandlers.php';
+        
+        if ($request_method === 'POST') {
+            handle_global_settings($input, $pdo);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'maintenance-status':
+        require_once __DIR__ . '/v2025.03_25/lib/globalSettingsHandlers.php';
+        if ($request_method === 'GET') {
+            handle_maintenance_status_check($config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'maintenance-message':
+        require_once __DIR__ . '/v2025.03_25/lib/globalSettingsHandlers.php';
+        if ($request_method === 'POST') {
+            handle_maintenance_message($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/list':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/create':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_create($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/set-active':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_set_active($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/toggle-active':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_toggle_active($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/delete':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_delete($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/save-structure':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_save_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/load-structure':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_load_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {
             http_response_code(405);
             echo json_encode(array('error' => 'Method not allowed'));
@@ -1554,6 +2148,95 @@ switch ($endpoint) {
         }
         break;
 
+    // === ORDER V3 - OPTIMIZED API FOR REACT FRONTEND ===
+    
+    // POST /api.eeo/order-v3/list - Optimized listing with pagination and stats
+    case 'order-v3/list':
+        if ($request_method === 'POST') {
+            handle_order_v3_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/order-v3/stats - Statistics only (lightweight for dashboard)
+    case 'order-v3/stats':
+        if ($request_method === 'POST') {
+            handle_order_v3_stats($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/order-v3/items - Lazy load order items (subrows)
+    case 'order-v3/items':
+        if ($request_method === 'POST') {
+            handle_order_v3_items($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    
+    // === ORDERS V3 - EXPANDED ROW DETAILS ===
+    // POST /api.eeo/orders-v3/detail - Kompletní detail objednávky
+    case 'orders-v3/detail':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_detail($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/items - Položky objednávky
+    case 'orders-v3/items':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_items($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/invoices - Faktury objednávky
+    case 'orders-v3/invoices':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_invoices($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/attachments - Přílohy objednávky
+    case 'orders-v3/attachments':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_attachments($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/order-v3/find-page - Najde stránku kde je objednávka
+    case 'order-v3/find-page':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_find_page($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // === ORDER V2 - STANDARDIZED API ENDPOINTS ===
     
     // POST /api.eeo/order-v2/list - listing objednavek s filtering (GET deprecated)
@@ -1751,6 +2434,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+    
+    case 'invoices25/restore':
+        if ($request_method === 'POST') {
+            handle_invoices25_restore($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
 
     // === INVOICE ATTACHMENTS API (PŘÍLOHY FAKTUR) ===
     case 'invoices25/attachments/by-invoice':
@@ -1815,11 +2507,62 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+        
+    // ========================================
+    // INVOICES - KONTROLA ŘÁDKŮ (2026-01-20)
+    // ========================================
+    
+    case 'invoices/toggle-check':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
+            handle_invoice_toggle_check($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+        
+    case 'invoices/get-checks':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
+            handle_invoice_get_checks($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
 
     // === NOTIFIKAČNÍ SYSTÉM API ===
     case 'notifications/list':
         if ($request_method === 'POST') {
             handle_notifications_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
+    case 'notifications/get-by-id':
+        if ($request_method === 'POST') {
+            handle_notifications_get_by_id($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
+    case 'notifications/list-for-select':
+        if ($request_method === 'POST') {
+            handle_notifications_list_for_select($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
+    case 'notifications/get-content':
+        if ($request_method === 'POST') {
+            handle_notifications_get_content($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Metoda není povolena'));
@@ -1907,6 +2650,43 @@ switch ($endpoint) {
         }
         break;
     
+    // === MANUALS - PDF MANUÁLY A NÁPOVĚDA ===
+    case 'manuals/list':
+        if ($request_method === 'POST') {
+            handle_manuals_list($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+        
+    case 'manuals/download':
+        if ($request_method === 'POST') {
+            handle_manuals_download($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'manuals/upload':
+        if ($request_method === 'POST') {
+            handle_manuals_upload($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'manuals/delete':
+        if ($request_method === 'POST') {
+            handle_manuals_delete($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
     // === NOVÉ NOTIFIKAČNÍ ENDPOINTY (ROZŠÍŘENÍ 2025) ===
     case 'notifications/preview':
         if ($request_method === 'POST') {
@@ -1929,6 +2709,43 @@ switch ($endpoint) {
     case 'notifications/send-bulk':
         if ($request_method === 'POST') {
             handle_notifications_send_bulk($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+    
+    case 'notifications/event-types/list':
+        if ($request_method === 'POST' || $request_method === 'GET') {
+            handle_notifications_event_types_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+    
+    case 'notifications/user-preferences':
+        if ($request_method === 'GET' || $request_method === 'POST') {
+            handle_notifications_user_preferences($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+    
+    case 'notifications/user-preferences/update':
+        if ($request_method === 'POST') {
+            handle_notifications_user_preferences_update($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+    
+    // === NOTIFIKAČNÍ CENTRUM - TRIGGER ENDPOINT ===
+    case 'notifications/trigger':
+        if ($request_method === 'POST') {
+            handle_notifications_trigger($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Metoda není povolena'));
@@ -2360,6 +3177,34 @@ switch ($endpoint) {
         }
         break;
 
+    // ===== ROČNÍ POPLATKY - ČÍSELNÍKY =====
+    case 'ciselniky/annual-fees-druhy/list':
+        if ($request_method === 'POST') {
+            handle_ciselniky_annual_fees_druhy_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'ciselniky/annual-fees-platby/list':
+        if ($request_method === 'POST') {
+            handle_ciselniky_annual_fees_platby_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'ciselniky/annual-fees-stavy/list':
+        if ($request_method === 'POST') {
+            handle_ciselniky_annual_fees_stavy_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
     // ===== DOCX ŠABLONY API =====
     case 'sablona_docx/list':
         if ($request_method === 'POST') {
@@ -2509,6 +3354,78 @@ switch ($endpoint) {
     default:
         // === ORDER V2 - DYNAMIC ENDPOINTS ===
         
+        // ⚠️ IMPORTANT: Specific endpoints MUST come BEFORE generic /order-v2/{id} pattern
+        // Otherwise "unlock" would be treated as an order ID!
+        
+        // POST /api.eeo/order-v2/unlock - odemknuti objednavky
+        // ⚠️ MUST be before /order-v2/{id} pattern to avoid matching "unlock" as an ID
+        if (preg_match('/^order-v2\/unlock$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_orders25_unlock($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/{id}/lock - zamknuti objednavky pro editaci
+        // ⚠️ MUST be before /order-v2/{id} pattern
+        if (preg_match('/^order-v2\/(\d+)\/lock$/', $endpoint, $matches)) {
+            $order_id = (int)$matches[1];
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_lock($input, $config, $queries, $order_id);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/{id}/unlock - odemknuti konkretni objednavky
+        // ⚠️ MUST be before /order-v2/{id} pattern
+        if (preg_match('/^order-v2\/(\d+)\/unlock$/', $endpoint, $matches)) {
+            $order_id = (int)$matches[1];
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_unlock($input, $config, $queries, $order_id);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
+        // DELETE /api.eeo/order-v2/{id}/delete - smazani objednavky (MUST BE BEFORE generic /{id} route!)
+        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/delete$/', $endpoint, $matches)) {
+            // Support both numeric and string IDs
+            $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
+            
+            if ($request_method === 'POST' || $request_method === 'DELETE') {
+                handle_order_v2_delete($input, $config, $queries);
+                exit; // ✅ FIX: exit místo break v default bloku
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+                exit;
+            }
+        }
+        
+        // POST /api.eeo/order-v2/{id}/restore - obnoveni smazane objednavky (aktivni=0 -> aktivni=1)
+        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/restore$/', $endpoint, $matches)) {
+            $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_restore($input, $config, $queries);
+                exit; // ✅ FIX: exit místo break
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+                exit;
+            }
+        }
+        
         // POST /api.eeo/order-v2/{id} - nacte objednavku podle ID (GET deprecated)
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)$/', $endpoint, $matches)) {
             // Support both numeric and string IDs
@@ -2592,20 +3509,6 @@ switch ($endpoint) {
             break;
         }
         
-        // DELETE /api.eeo/order-v2/{id}/delete - smazani objednavky  
-        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/delete$/', $endpoint, $matches)) {
-            // Support both numeric and string IDs
-            $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
-            
-            if ($request_method === 'POST' || $request_method === 'DELETE') {
-                handle_order_v2_delete($input, $config, $queries);
-            } else {
-                http_response_code(405);
-                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
-            }
-            break;
-        }
-        
         // === ORDER V2 ATTACHMENT ENDPOINTS ===
         
         // POST /api.eeo/order-v2/attachments/list - seznam VSECH priloh objednavek
@@ -2658,21 +3561,13 @@ switch ($endpoint) {
         
         // POST /api.eeo/order-v2/{id}/attachments/{att_id}/download - download prilohy (explicit endpoint)
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/attachments\/(\d+)\/download$/', $endpoint, $matches)) {
-            // 🔍 DEBUG - endpoint SE MATCHUJE!
-            error_log("🎯 MATCH! order-v2 download endpoint");
-            error_log("  matches[1] = " . $matches[1]);
-            error_log("  matches[2] = " . $matches[2]);
-            error_log("  input before merge: " . json_encode($input));
-            
             // Support both numeric and string IDs for order
             // ⚠️ FIX: Pokud $input je prázdné, použij $raw_input (už načtený na začátku)
             if (empty($input) || (!isset($input['token']) && !isset($input['username']))) {
-                error_log("  input is empty or missing token/username, trying to parse raw_input");
                 if (!empty($raw_input)) {
                     $parsed = json_decode($raw_input, true);
                     if (is_array($parsed)) {
                         $input = $parsed;
-                        error_log("  Parsed from raw_input: " . json_encode($input));
                     }
                 }
             }
@@ -2680,8 +3575,6 @@ switch ($endpoint) {
             // Přidat parametry z URL
             $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             $input['attachment_id'] = (int)$matches[2];
-            
-            error_log("  Final input: " . json_encode($input));
             
             if ($request_method === 'POST' || $request_method === 'GET') {
                 handle_order_v2_download_attachment($input, $config, $queries);
@@ -2757,7 +3650,35 @@ switch ($endpoint) {
         
         // === ORDER V2 INVOICE MANAGEMENT ENDPOINTS ===
         
-        // POST /api.eeo/order-v2/{order_id}/invoices/create-with-attachment - vytvoří fakturu s přílohou
+        debug_log("🔍 Checking ORDER V2 INVOICE endpoints - endpoint: {$endpoint}, method: {$request_method}");
+        
+        // POST /api.eeo/order-v2/invoices/create-with-attachment - vytvoří STANDALONE fakturu s přílohou (bez objednávky)
+        if (preg_match('/^order-v2\/invoices\/create-with-attachment$/', $endpoint, $matches)) {
+            $input['order_id'] = null; // Standalone faktura
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_create_invoice_with_attachment($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/invoices/create - vytvoří STANDALONE fakturu bez přílohy (bez objednávky)
+        if (preg_match('/^order-v2\/invoices\/create$/', $endpoint, $matches)) {
+            $input['order_id'] = null; // Standalone faktura
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_create_invoice($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/{order_id}/invoices/create-with-attachment - vytvoří fakturu s přílohou PRO OBJEDNÁVKU
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/invoices\/create-with-attachment$/', $endpoint, $matches)) {
             // Support both numeric and string IDs for order
             $input['order_id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
@@ -2771,7 +3692,7 @@ switch ($endpoint) {
             break;
         }
         
-        // POST /api.eeo/order-v2/{order_id}/invoices/create - vytvoří fakturu bez přílohy
+        // POST /api.eeo/order-v2/{order_id}/invoices/create - vytvoří fakturu bez přílohy PRO OBJEDNÁVKU
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/invoices\/create$/', $endpoint, $matches)) {
             // Support both numeric and string IDs for order
             $input['order_id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
@@ -2886,15 +3807,37 @@ switch ($endpoint) {
         }
         
         // PUT /api.eeo/order-v2/invoices/{invoice_id}/attachments/{att_id}/update - update metadata prilohy faktury
-        if (preg_match('/^order-v2\/invoices\/([a-zA-Z0-9_-]+)\/attachments\/(\d+)\/update$/', $endpoint, $matches)) {
+        if (preg_match('/^order-v2\/invoices\/([a-zA-Z0-9_-]+)\/attachments\/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
             $input['invoice_id'] = $matches[1];
-            $input['attachment_id'] = (int)$matches[2];
+            $input['attachment_id'] = $matches[2]; // Může být číslo nebo pending-xxx
             
             if ($request_method === 'PUT' || $request_method === 'POST') {
                 handle_order_v2_update_invoice_attachment($input, $config, $queries);
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use PUT or POST.'));
+            }
+            break;
+        }
+
+        // POST /api.eeo/faktury/lp-cerpani/save - uložit LP čerpání na faktuře
+        if ($endpoint === 'faktury/lp-cerpani/save') {
+            if ($request_method === 'POST') {
+                handle_save_faktura_lp_cerpani($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/faktury/lp-cerpani/get - načíst LP čerpání faktury
+        if ($endpoint === 'faktury/lp-cerpani/get') {
+            if ($request_method === 'POST') {
+                handle_get_faktura_lp_cerpani($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
             }
             break;
         }
@@ -2914,9 +3857,11 @@ switch ($endpoint) {
 
         // DELETE /api.eeo/order-v2/invoices/{invoice_id} - delete faktury (RESTful DELETE)
         if (preg_match('/^order-v2\/invoices\/(\d+)$/', $endpoint, $matches)) {
+            debug_log("🗑️ DELETE invoice - endpoint matched: order-v2/invoices/{$matches[1]}, method: {$request_method}");
             $input['invoice_id'] = (int)$matches[1];
             
             if ($request_method === 'DELETE' || $request_method === 'POST') {
+                debug_log("🗑️ Calling handle_order_v2_delete_invoice with input: " . json_encode($input));
                 handle_order_v2_delete_invoice($input, $config, $queries);
             } else {
                 http_response_code(405);
@@ -2949,6 +3894,17 @@ switch ($endpoint) {
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/invoices/check-duplicate - kontrola duplicity čísla faktury
+        if ($endpoint === 'order-v2/invoices/check-duplicate') {
+            if ($request_method === 'POST') {
+                handle_order_v2_check_duplicate_invoice($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
             }
             break;
         }
@@ -3107,8 +4063,34 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/cashbook-force-recalculate - ADMIN force přepočet zůstatků položek
+        // ⚠️ UTILITY - přepočítá zustatek_po_operaci všech položek v knize od počátečního stavu
+        if ($endpoint === 'cashbook-force-recalculate') {
+            if ($request_method === 'POST') {
+                handle_cashbook_force_recalculate_post($config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-recalculate-january - ADMIN přepočet všech lednových knih pokladny
+        // ⚠️ UTILITY - přepočítá zustatek_po_operaci všech položek v lednových knihách dané pokladny
+        if ($endpoint === 'cashbox-recalculate-january') {
+            if ($request_method === 'POST') {
+                handle_cashbox_recalculate_january_post($config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // POST /api.eeo/cashbook-lp-summary - přehled čerpání LP kódů (včetně multi-LP)
         if ($endpoint === 'cashbook-lp-summary') {
+            error_log("🔵 API.PHP: cashbook-lp-summary REQUEST - method=$request_method");
+            error_log("🔵 API.PHP: INPUT DATA: " . json_encode($input));
             if ($request_method === 'POST') {
                 handle_cashbook_lp_summary_post($config, $input);
             } else {
@@ -3344,6 +4326,28 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/cashbox-lp-requirement-update - nastavit LP kod povinnost
+        if ($endpoint === 'cashbox-lp-requirement-update') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_update_post($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-lp-requirement-get - ziskat LP kod povinnost
+        if ($endpoint === 'cashbox-lp-requirement-get') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_get_post($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // === LIMITOVANÉ PŘÍSLIBY - ČERPÁNÍ API ===
         
         // POST /api.eeo/limitovane-prisliby/prepocet - přepočet čerpání LP
@@ -3360,14 +4364,13 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Získat parametry - preferuje lp_id, fallback na cislo_lp
                 $lp_id = isset($input['lp_id']) ? (int)$input['lp_id'] : null;
@@ -3378,16 +4381,20 @@ switch ($endpoint) {
                 if ($lp_id || $cislo_lp) {
                     // Pokud je cislo_lp, převést na lp_id
                     if (!$lp_id && $cislo_lp) {
-                        $cislo_lp_safe = mysqli_real_escape_string($conn, $cislo_lp);
-                        $sql_get_id = "SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = '$cislo_lp_safe' LIMIT 1";
-                        $result_id = mysqli_query($conn, $sql_get_id);
-                        if ($result_id && mysqli_num_rows($result_id) > 0) {
-                            $row_id = mysqli_fetch_assoc($result_id);
-                            $lp_id = (int)$row_id['id'];
-                        } else {
-                            http_response_code(404);
-                            echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' neexistuje"));
-                            $conn->close();
+                        try {
+                            $stmt = $pdo->prepare("SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = ? LIMIT 1");
+                            $stmt->execute([$cislo_lp]);
+                            $row_id = $stmt->fetch(PDO::FETCH_ASSOC);
+                            if ($row_id) {
+                                $lp_id = (int)$row_id['id'];
+                            } else {
+                                http_response_code(404);
+                                echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' neexistuje"));
+                                break;
+                            }
+                        } catch (PDOException $e) {
+                            http_response_code(500);
+                            echo json_encode(array('status' => 'error', 'message' => 'Chyba databáze: ' . $e->getMessage()));
                             break;
                         }
                     }
@@ -3395,264 +4402,25 @@ switch ($endpoint) {
                     // Přepočet jednoho LP podle ID
                     $lp_id = (int)$lp_id;
                     
-                    // KROK 1: Získat metadata o LP podle ID
-                    $sql_meta = "
-                        SELECT 
-                            lp.id as lp_id,
-                            lp.cislo_lp,
-                            lp.kategorie,
-                            lp.usek_id,
-                            lp.user_id,
-                            YEAR(MIN(lp.platne_od)) as rok,
-                            SUM(lp.vyse_financniho_kryti) as celkovy_limit,
-                            COUNT(*) as pocet_zaznamu,
-                            (COUNT(*) > 1) as ma_navyseni,
-                            MIN(lp.platne_od) as nejstarsi_platnost,
-                            MAX(lp.platne_do) as nejnovejsi_platnost
-                        FROM " . TBL_LP_MASTER . " lp
-                        WHERE lp.id = $lp_id
-                        GROUP BY lp.id, lp.cislo_lp, lp.kategorie, lp.usek_id, lp.user_id
-                        LIMIT 1
-                    ";
+                    // Použít PDO handler funkci - PŘEDAT ROK PARAMETR!
+                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok);
                     
-                    $result_meta = mysqli_query($conn, $sql_meta);
-                    
-                    if (!$result_meta || mysqli_num_rows($result_meta) === 0) {
-                        http_response_code(404);
-                        echo json_encode(array('status' => 'error', 'message' => "LP ID '$lp_id' neexistuje"));
-                        $conn->close();
-                        break;
-                    }
-                    
-                    $meta = mysqli_fetch_assoc($result_meta);
-                    $cislo_lp_safe = mysqli_real_escape_string($conn, $meta['cislo_lp']);
-                    
-                    // KROK 2: REZERVACE - parsovat JSON a dělit max_cena_s_dph (POUZE SCHVALENA)
-                    $sql_rezervace = "
-                        SELECT obj.id, obj.max_cena_s_dph, obj.financovani
-                        FROM " . TBL_OBJEDNAVKY . " obj
-                        WHERE obj.financovani IS NOT NULL
-                        AND obj.financovani != ''
-                        AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                        AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
-                        AND DATE(obj.dt_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
-                    ";
-                    
-                    $result_rez = mysqli_query($conn, $sql_rezervace);
-                    $rezervovano = 0;
-                    
-                    if ($result_rez) {
-                        while ($row = mysqli_fetch_assoc($result_rez)) {
-                            $financovani = json_decode($row['financovani'], true);
-                            
-                            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
-                                $lp_ids = $financovani['lp_kody'];
-                                
-                                // Normalizovat pole na inty pro porovnání
-                                $lp_ids_int = array_map('intval', $lp_ids);
-                                
-                                if (in_array($lp_id, $lp_ids_int)) {
-                                    $pocet_lp = count($lp_ids);
-                                    $podil = $pocet_lp > 0 ? ((float)$row['max_cena_s_dph'] / $pocet_lp) : 0;
-                                    $rezervovano += $podil;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KROK 3: PŘEDPOKLAD - parsovat JSON a dělit SUM(cena_s_dph) (SCHVALENA BEZ faktury)
-                    $sql_predpoklad = "
-                        SELECT obj.id, obj.financovani, SUM(pol.cena_s_dph) as suma_cena
-                        FROM " . TBL_OBJEDNAVKY . " obj
-                        INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON obj.id = pol.objednavka_id
-                        WHERE obj.financovani IS NOT NULL
-                        AND obj.financovani != ''
-                        AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                        AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
-                        AND DATE(obj.dt_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
-                        AND NOT EXISTS (
-                            SELECT 1 FROM 25a_objednavky_faktury fakt 
-                            WHERE fakt.objednavka_id = obj.id
-                        )
-                        GROUP BY obj.id, obj.financovani
-                    ";
-                    
-                    $result_pred = mysqli_query($conn, $sql_predpoklad);
-                    $predpokladane_cerpani = 0;
-                    
-                    if ($result_pred) {
-                        while ($row = mysqli_fetch_assoc($result_pred)) {
-                            $financovani = json_decode($row['financovani'], true);
-                            
-                            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
-                                $lp_ids = $financovani['lp_kody'];
-                                
-                                // Normalizovat pole na inty pro porovnání
-                                $lp_ids_int = array_map('intval', $lp_ids);
-                                
-                                if (in_array($lp_id, $lp_ids_int)) {
-                                    $pocet_lp = count($lp_ids);
-                                    $podil = $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
-                                    $predpokladane_cerpani += $podil;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KROK 4: SKUTEČNOST - parsovat JSON a dělit SUM(fa_castka) z faktur
-                    $sql_fakturovano = "
-                        SELECT obj.id, obj.financovani, SUM(fakt.fa_castka) as suma_faktur
-                        FROM " . TBL_OBJEDNAVKY . " obj
-                        INNER JOIN 25a_objednavky_faktury fakt ON obj.id = fakt.objednavka_id
-                        WHERE obj.financovani IS NOT NULL
-                        AND obj.financovani != ''
-                        AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                        AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
-                        AND DATE(obj.dt_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
-                        GROUP BY obj.id, obj.financovani
-                    ";
-                    
-                    $result_fakt = mysqli_query($conn, $sql_fakturovano);
-                    $fakturovano = 0;
-                    
-                    if ($result_fakt) {
-                        while ($row = mysqli_fetch_assoc($result_fakt)) {
-                            $financovani = json_decode($row['financovani'], true);
-                            
-                            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
-                                $lp_ids = $financovani['lp_kody'];
-                                
-                                // Normalizovat pole na inty pro porovnání
-                                $lp_ids_int = array_map('intval', $lp_ids);
-                                
-                                if (in_array($lp_id, $lp_ids_int)) {
-                                    $pocet_lp = count($lp_ids);
-                                    $podil = $pocet_lp > 0 ? ((float)$row['suma_faktur'] / $pocet_lp) : 0;
-                                    $fakturovano += $podil;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KROK 5: Čerpání z pokladny (pouze VÝDAJE - příjmy nenavyšují limit příslib)
-                    $sql_pokladna = "
-                        SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
-                        FROM " . TBL_POKLADNI_KNIHY . " pkn
-                        JOIN " . TBL_POKLADNI_POLOZKY . " pol ON pkn.id = pol.pokladni_kniha_id
-                        WHERE pol.lp_kod = '$cislo_lp_safe'
-                        AND pkn.rok = {$meta['rok']}
-                        AND pkn.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
-                    ";
-                    
-                    $result_pokl = mysqli_query($conn, $sql_pokladna);
-                    $cerpano_pokladna = 0;
-                    
-                    if ($result_pokl) {
-                        $row = mysqli_fetch_assoc($result_pokl);
-                        $cerpano_pokladna = (float)$row['cerpano_pokl'];
-                    }
-                    
-                    $skutecne_cerpano = $fakturovano + $cerpano_pokladna;
-                    
-                    // KROK 6: Vypočítat zůstatky a procenta
-                    $celkovy_limit = (float)$meta['celkovy_limit'];
-                    
-                    $zbyva_rezervace = $celkovy_limit - $rezervovano;
-                    $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
-                    $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano;
-                    
-                    $procento_rezervace = $celkovy_limit > 0 ? round(($rezervovano / $celkovy_limit) * 100, 2) : 0;
-                    $procento_predpoklad = $celkovy_limit > 0 ? round(($predpokladane_cerpani / $celkovy_limit) * 100, 2) : 0;
-                    $procento_skutecne = $celkovy_limit > 0 ? round(($skutecne_cerpano / $celkovy_limit) * 100, 2) : 0;
-                    
-                    // KROK 7: Upsert do agregační tabulky
-                    $sql_upsert = "
-                        INSERT INTO " . TBL_LP_CERPANI . " 
-                        (cislo_lp, kategorie, usek_id, user_id, rok, 
-                         celkovy_limit, 
-                         rezervovano, predpokladane_cerpani, skutecne_cerpano, cerpano_pokladna,
-                         zbyva_rezervace, zbyva_predpoklad, zbyva_skutecne,
-                         procento_rezervace, procento_predpoklad, procento_skutecne,
-                         pocet_zaznamu, ma_navyseni, posledni_prepocet)
-                        VALUES (
-                            '$cislo_lp_safe',
-                            '{$meta['kategorie']}',
-                            {$meta['usek_id']},
-                            {$meta['user_id']},
-                            {$meta['rok']},
-                            $celkovy_limit,
-                            $rezervovano,
-                            $predpokladane_cerpani,
-                            $skutecne_cerpano,
-                            $cerpano_pokladna,
-                            $zbyva_rezervace,
-                            $zbyva_predpoklad,
-                            $zbyva_skutecne,
-                            $procento_rezervace,
-                            $procento_predpoklad,
-                            $procento_skutecne,
-                            {$meta['pocet_zaznamu']},
-                            {$meta['ma_navyseni']},
-                            NOW()
-                        )
-                        ON DUPLICATE KEY UPDATE
-                            celkovy_limit = $celkovy_limit,
-                            rezervovano = $rezervovano,
-                            predpokladane_cerpani = $predpokladane_cerpani,
-                            skutecne_cerpano = $skutecne_cerpano,
-                            cerpano_pokladna = $cerpano_pokladna,
-                            zbyva_rezervace = $zbyva_rezervace,
-                            zbyva_predpoklad = $zbyva_predpoklad,
-                            zbyva_skutecne = $zbyva_skutecne,
-                            procento_rezervace = $procento_rezervace,
-                            procento_predpoklad = $procento_predpoklad,
-                            procento_skutecne = $procento_skutecne,
-                            pocet_zaznamu = {$meta['pocet_zaznamu']},
-                            ma_navyseni = {$meta['ma_navyseni']},
-                            posledni_prepocet = NOW()
-                    ";
-                    
-                    $result = mysqli_query($conn, $sql_upsert);
-                    
-                    if (!$result) {
+                    if (!$result_handler['success']) {
                         http_response_code(500);
-                        echo json_encode(array('status' => 'error', 'message' => 'Chyba při uložení: ' . mysqli_error($conn)));
-                        $conn->close();
+                        echo json_encode(array('status' => 'error', 'message' => $result_handler['error']));
                         break;
                     }
                     
                     echo json_encode(array(
                         'status' => 'ok',
                         'message' => 'Přepočet dokončen',
-                        'cislo_lp' => $cislo_lp,
+                        'lp_id' => $lp_id,
+                        'cislo_lp' => $result_handler['cislo_lp'],
                         'rok' => $rok,
-                        'data' => array(
-                            'cislo_lp' => $cislo_lp,
-                            'kategorie' => $meta['kategorie'],
-                            'usek_id' => (int)$meta['usek_id'],
-                            'user_id' => (int)$meta['user_id'],
-                            'rok' => (int)$meta['rok'],
-                            'celkovy_limit' => (float)$celkovy_limit,
-                            
-                            'rezervovano' => (float)$rezervovano,
-                            'predpokladane_cerpani' => (float)$predpokladane_cerpani,
-                            'skutecne_cerpano' => (float)$skutecne_cerpano,
-                            'cerpano_pokladna' => (float)$cerpano_pokladna,
-                            
-                            'zbyva_rezervace' => (float)$zbyva_rezervace,
-                            'zbyva_predpoklad' => (float)$zbyva_predpoklad,
-                            'zbyva_skutecne' => (float)$zbyva_skutecne,
-                            
-                            'procento_rezervace' => (float)$procento_rezervace,
-                            'procento_predpoklad' => (float)$procento_predpoklad,
-                            'procento_skutecne' => (float)$procento_skutecne,
-                            
-                            'pocet_zaznamu' => (int)$meta['pocet_zaznamu'],
-                            'ma_navyseni' => (int)$meta['ma_navyseni'],
-                            'posledni_prepocet' => date('Y-m-d H:i:s')
-                        ),
+                        'data' => $result_handler['data'],
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'timestamp' => date('Y-m-d H:i:s')
                         )
@@ -3660,33 +4428,48 @@ switch ($endpoint) {
                     
                 } else {
                     // Přepočet všech LP pro daný rok - získáme ID místo cislo_lp
+                    global $pdo;
+                    
+                    if (!$pdo) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
+                        break;
+                    }
+                    
+                    // ===== OPRAVA: Kontrolovat interval platnosti [platne_od, platne_do]
+                    // LP je platné v roce, pokud se interval [platne_od, platne_do] PŘEKRÝVÁ s rokem
+                    $rok_start = $rok . '-01-01';
+                    $rok_end = $rok . '-12-31';
+                    
                     $sql_kody = "
                         SELECT DISTINCT id, cislo_lp
                         FROM " . TBL_LP_MASTER . "
-                        WHERE YEAR(platne_od) = $rok
+                        WHERE platne_od <= :rok_end
+                          AND (platne_do IS NULL OR platne_do >= :rok_start)
                         ORDER BY cislo_lp
                     ";
                     
-                    $result_kody = mysqli_query($conn, $sql_kody);
-                    
-                    if (!$result_kody) {
+                    try {
+                        $stmt_kody = $pdo->prepare($sql_kody);
+                        $stmt_kody->execute([':rok_start' => $rok_start, ':rok_end' => $rok_end]);
+                        $lp_list = $stmt_kody->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
                         http_response_code(500);
-                        echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP'));
-                        $conn->close();
+                        echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . $e->getMessage()));
                         break;
                     }
                     
                     $updated = 0;
                     $failed = 0;
                     
-                    // Použít handler funkci pro každé LP
-                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+                    // Použít PDO handler funkci pro každé LP
+                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
                     
-                    while ($row = mysqli_fetch_assoc($result_kody)) {
+                    foreach ($lp_list as $row) {
                         $lp_id_batch = (int)$row['id'];
-                        $result_handler = prepocetCerpaniPodleIdLP($conn, $lp_id_batch);
+                        $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id_batch);
                         
-                        if ($result_handler['status'] === 'ok') {
+                        if ($result_handler['success']) {
                             $updated++;
                         } else {
                             $failed++;
@@ -3703,13 +4486,15 @@ switch ($endpoint) {
                             SUM(skutecne_cerpano) as celkem_skutecne,
                             SUM(cerpano_pokladna) as celkem_pokladna
                         FROM " . TBL_LP_CERPANI . "
-                        WHERE rok = $rok
+                        WHERE rok = :rok
                     ";
                     
-                    $result_stats = mysqli_query($conn, $sql_stats);
-                    $stats = null;
-                    if ($result_stats) {
-                        $stats = mysqli_fetch_assoc($result_stats);
+                    try {
+                        $stmt_stats = $pdo->prepare($sql_stats);
+                        $stmt_stats->execute([':rok' => $rok]);
+                        $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        $stats = null;
                     }
                     
                     echo json_encode(array(
@@ -3721,7 +4506,7 @@ switch ($endpoint) {
                             'statistika' => $stats
                         ),
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'timestamp' => date('Y-m-d H:i:s')
                         ),
@@ -3729,10 +4514,478 @@ switch ($endpoint) {
                     ));
                 }
                 
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // ===========================================================================
+        // ANNUAL FEES - Roční poplatky (Evidence ročních poplatků pod smlouvami)
+        // ===========================================================================
+        
+        // POST /api.eeo/annual-fees/list - seznam ročních poplatků s filtry
+        if ($endpoint === 'annual-fees/list') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesList($pdo, $input, $auth_result);
+                $response_code = 200;
+                if ($result['status'] === 'error') {
+                    $response_code = isset($result['code']) ? $result['code'] : 400;
+                }
+                http_response_code($response_code);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/detail - detail ročního poplatku včetně položek
+        if ($endpoint === 'annual-fees/detail') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesDetail($pdo, $input, $auth_result);
+                $response_code = 200;
+                if ($result['status'] === 'error') {
+                    $response_code = isset($result['code']) ? $result['code'] : 400;
+                }
+                http_response_code($response_code);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/create - vytvoření s automatickým generováním položek (V3 standard)
+        if ($endpoint === 'annual-fees/create') {
+            if ($request_method === 'POST') {
+                // Parse vstupních dat podle PHPAPI.prompt.md
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                // Validace auth parametrů podle PHPAPI.prompt.md
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                // Ověření tokenu (V3 standard)
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                // Kontrola DB připojení
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                // Volání handleru (nový handler echuje response přímo podle PHPAPI.prompt.md)
+                handleAnnualFeesCreate($pdo, $input, $auth_result);
+                
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/update - aktualizace hlavičky
+        if ($endpoint === 'annual-fees/update') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesUpdate($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/create-item - vytvoření nové manuální položky
+        if ($endpoint === 'annual-fees/create-item') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesCreateItem($pdo, $input, $auth_result);
+                http_response_code($result['status'] === 'error' ? 400 : 200);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/update-item - aktualizace jedné položky
+        if ($endpoint === 'annual-fees/update-item') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesUpdateItem($pdo, $input, $auth_result);
+                $response_code = 200;
+                if ($result['status'] === 'error') {
+                    $response_code = isset($result['code']) ? $result['code'] : 400;
+                }
+                http_response_code($response_code);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/delete-item - smazání jedné položky
+        if ($endpoint === 'annual-fees/delete-item') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeesDeleteItem($pdo, $input, $auth_result);
+                // Handler už sám řídí response - nepotřebujeme další echo
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/delete - soft delete ročního poplatku (V3 standard)
+        if ($endpoint === 'annual-fees/delete') {
+            if ($request_method === 'POST') {
+                // Parse vstupních dat podle PHPAPI.prompt.md
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                // Validace auth parametrů podle PHPAPI.prompt.md
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                // Ověření tokenu (V3 standard - stále používá verify_token_v2)
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                // Kontrola DB připojení
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                // Volání handleru (nový handler echuje response přímo podle PHPAPI.prompt.md)
+                handleAnnualFeesDelete($pdo, $input, $auth_result);
+                
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/stats - statistiky ročních poplatků
+        if ($endpoint === 'annual-fees/stats') {
+            if ($request_method === 'POST') {
+                $token = isset($input['token']) ? $input['token'] : '';
+                $username = isset($input['username']) ? $input['username'] : '';
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['status' => 'error', 'message' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                handleAnnualFeesStats($pdo, $input, $auth_result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // ========================================================================
+        // ANNUAL FEES - PŘÍLOHY (Attachments)
+        // ========================================================================
+        
+        // POST /api.eeo/annual-fees/attachments/upload - nahrání přílohy
+        if ($endpoint === 'annual-fees/attachments/upload') {
+            error_log("=== API.PHP: annual-fees/attachments/upload endpoint HIT ===");
+            error_log("Request method: " . $request_method);
+            error_log("POST data: " . json_encode($_POST));
+            error_log("FILES data: " . json_encode($_FILES));
+            
+            if ($request_method === 'POST') {
+                // Token a username z POST (pro multipart/form-data)
+                $token = $_POST['token'] ?? '';
+                $username = $_POST['username'] ?? '';
+                
+                error_log("Token: " . substr($token, 0, 20) . "...");
+                error_log("Username: " . $username);
+                
+                if (!$token || !$username) {
+                    error_log("Missing token or username");
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                error_log("Calling verify_token_v2...");
+                $auth_result = verify_token_v2($username, $token);
+                error_log("verify_token_v2 result: " . ($auth_result ? 'SUCCESS' : 'FAILED'));
+                
+                if (!$auth_result) {
+                    error_log("Auth failed");
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    error_log("PDO not available");
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                error_log("Calling handleAnnualFeeAttachmentUpload...");
+                // Zpracování uploadu (input obsahuje $_POST data + rocni_poplatek_id)
+                $input = $_POST;
+                $result = handleAnnualFeeAttachmentUpload($pdo, $input, $auth_result);
+                error_log("Handler result: " . json_encode($result));
+                
+                http_response_code($result['success'] ? 200 : 400);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/attachments/list - seznam příloh
+        if ($endpoint === 'annual-fees/attachments/list') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeeAttachmentsList($pdo, $input, $auth_result);
+                
+                http_response_code($result['success'] ? 200 : 400);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/attachments/download - stažení přílohy
+        if ($endpoint === 'annual-fees/attachments/download') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    exit;
+                }
+                
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    exit;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    exit;
+                }
+                
+                // Handler sám odešle soubor a ukončí skript
+                handleAnnualFeeAttachmentDownload($pdo, $input, $auth_result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
+            }
+            break;
+        }
+        
+        // POST /api.eeo/annual-fees/attachments/delete - smazání přílohy
+        if ($endpoint === 'annual-fees/attachments/delete') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $token = $input['token'] ?? '';
+                $username = $input['username'] ?? '';
+                
+                if (!$token || !$username) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Chybí token nebo username']);
+                    break;
+                }
+                
+                $auth_result = verify_token_v2($username, $token);
+                
+                if (!$auth_result) {
+                    http_response_code(401);
+                    echo json_encode(['success' => false, 'error' => 'Neautorizovaný přístup']);
+                    break;
+                }
+                
+                if (!$pdo) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Chyba připojení k databázi']);
+                    break;
+                }
+                
+                $result = handleAnnualFeeAttachmentDelete($pdo, $input, $auth_result);
+                
+                http_response_code($result['success'] ? 200 : 400);
+                echo json_encode($result);
+            } else {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => 'Method not allowed. Use POST.']);
             }
             break;
         }
@@ -3751,59 +5004,70 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 $rok = isset($input['rok']) ? (int)$input['rok'] : (int)date('Y');
                 $log = array();
                 
                 // KROK 1: Vymazat staré záznamy z tabulky čerpání pro daný rok
-                $sql_delete = "DELETE FROM " . TBL_LP_CERPANI . " WHERE rok = $rok";
-                
-                if (mysqli_query($conn, $sql_delete)) {
-                    $deleted_count = mysqli_affected_rows($conn);
+                try {
+                    $stmt_delete = $pdo->prepare("DELETE FROM " . TBL_LP_CERPANI . " WHERE rok = ?");
+                    $stmt_delete->execute([$rok]);
+                    $deleted_count = $stmt_delete->rowCount();
                     $log[] = "Vymazáno $deleted_count starých záznamů čerpání pro rok $rok";
-                } else {
+                } catch (PDOException $e) {
                     http_response_code(500);
-                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání starých záznamů: ' . mysqli_error($conn)));
-                    $conn->close();
+                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání starých záznamů: ' . $e->getMessage()));
                     break;
                 }
                 
-                // KROK 2: Provést kompletní přepočet všech kódů LP pomocí handler funkce
-                $sql_kody = "
-                    SELECT DISTINCT id, cislo_lp
-                    FROM " . TBL_LP_MASTER . "
-                    WHERE YEAR(platne_od) = $rok
-                    ORDER BY cislo_lp
-                ";
+                // KROK 2: Provést kompletní přepočet všech kódů LP pomocí PDO handler funkce
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
                 
-                $result_kody = mysqli_query($conn, $sql_kody);
-                
-                if (!$result_kody) {
+                try {
+                    // ===== OPRAVA: Kontrolovat interval platnosti [platne_od, platne_do]
+                    // LP je platné v roce, pokud se interval [platne_od, platne_do] PŘEKRÝVÁ s rokem
+                    // - LP s platne_od = 2025-12-31 a platne_do = 2026-01-31 je platné i v 2026
+                    // - LP s platne_od = 2026-01-01 a platne_do = 2026-12-31 je platné v 2026
+                    // - LP s platne_od = 2025-01-01 a platne_do = 2026-12-31 je platné v 2026
+                    
+                    $rok_start = $rok . '-01-01';
+                    $rok_end = $rok . '-12-31';
+                    
+                    $stmt_kody = $pdo->prepare("
+                        SELECT DISTINCT id, cislo_lp
+                        FROM " . TBL_LP_MASTER . "
+                        WHERE platne_od <= ? 
+                          AND (platne_do IS NULL OR platne_do >= ?)
+                        ORDER BY cislo_lp
+                    ");
+                    $stmt_kody->execute([$rok_end, $rok_start]);
+                    $lp_list = $stmt_kody->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    // DEBUG: Zaznamenat počet LP k inicializaci
+                    $log[] = "Rok: $rok | Interval: $rok_start až $rok_end | Počet LP k inicializaci: " . count($lp_list);
+                    
+                } catch (PDOException $e) {
                     http_response_code(500);
-                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . mysqli_error($conn)));
-                    $conn->close();
+                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . $e->getMessage()));
                     break;
                 }
                 
                 $updated = 0;
                 $failed = 0;
                 
-                // Použít handler funkci pro každé LP
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
-                
-                while ($row = mysqli_fetch_assoc($result_kody)) {
+                // Použít PDO handler funkci pro každé LP - PŘEDAT ROK PARAMETR!
+                foreach ($lp_list as $row) {
                     $lp_id_batch = (int)$row['id'];
-                    $result_handler = prepocetCerpaniPodleIdLP($conn, $lp_id_batch);
+                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id_batch, $rok);
                     
-                    if ($result_handler['status'] === 'ok') {
+                    if ($result_handler['success']) {
                         $updated++;
                     } else {
                         $failed++;
@@ -3817,33 +5081,33 @@ switch ($endpoint) {
                 $log[] = "Inicializace dokončena";
                 
                 // KROK 3: Získat statistiku z agregační tabulky
-                $sql_stats = "
-                    SELECT 
-                        COUNT(*) as celkem_kodu,
-                        SUM(celkovy_limit) as celkovy_limit,
-                        SUM(rezervovano) as celkem_rezervovano,
-                        SUM(predpokladane_cerpani) as celkem_predpoklad,
-                        SUM(skutecne_cerpano) as celkem_skutecne,
-                        SUM(cerpano_pokladna) as celkem_pokladna,
-                        SUM(zbyva_rezervace) as celkem_zbyva_rezervace,
-                        SUM(zbyva_predpoklad) as celkem_zbyva_predpoklad,
-                        SUM(zbyva_skutecne) as celkem_zbyva_skutecne,
-                        AVG(procento_rezervace) as prumerne_procento_rezervace,
-                        AVG(procento_predpoklad) as prumerne_procento_predpoklad,
-                        AVG(procento_skutecne) as prumerne_procento_skutecne,
-                        SUM(pocet_zaznamu) as celkem_zaznamu,
-                        SUM(ma_navyseni) as pocet_s_navysenim,
-                        COUNT(CASE WHEN zbyva_rezervace < 0 THEN 1 END) as prekroceno_rezervace,
-                        COUNT(CASE WHEN zbyva_predpoklad < 0 THEN 1 END) as prekroceno_predpoklad,
-                        COUNT(CASE WHEN zbyva_skutecne < 0 THEN 1 END) as prekroceno_skutecne
-                    FROM " . TBL_LP_CERPANI . "
-                    WHERE rok = $rok
-                ";
-                
-                $result_stats = mysqli_query($conn, $sql_stats);
-                $stats = null;
-                if ($result_stats) {
-                    $stats = mysqli_fetch_assoc($result_stats);
+                try {
+                    $stmt_stats = $pdo->prepare("
+                        SELECT 
+                            COUNT(*) as celkem_kodu,
+                            SUM(celkovy_limit) as celkovy_limit,
+                            SUM(rezervovano) as celkem_rezervovano,
+                            SUM(predpokladane_cerpani) as celkem_predpoklad,
+                            SUM(skutecne_cerpano) as celkem_skutecne,
+                            SUM(cerpano_pokladna) as celkem_pokladna,
+                            SUM(zbyva_rezervace) as celkem_zbyva_rezervace,
+                            SUM(zbyva_predpoklad) as celkem_zbyva_predpoklad,
+                            SUM(zbyva_skutecne) as celkem_zbyva_skutecne,
+                            AVG(procento_rezervace) as prumerne_procento_rezervace,
+                            AVG(procento_predpoklad) as prumerne_procento_predpoklad,
+                            AVG(procento_skutecne) as prumerne_procento_skutecne,
+                            SUM(pocet_zaznamu) as celkem_zaznamu,
+                            SUM(ma_navyseni) as pocet_s_navysenim,
+                            COUNT(CASE WHEN zbyva_rezervace < 0 THEN 1 END) as prekroceno_rezervace,
+                            COUNT(CASE WHEN zbyva_predpoklad < 0 THEN 1 END) as prekroceno_predpoklad,
+                            COUNT(CASE WHEN zbyva_skutecne < 0 THEN 1 END) as prekroceno_skutecne
+                        FROM " . TBL_LP_CERPANI . "
+                        WHERE rok = ?
+                    ");
+                    $stmt_stats->execute([$rok]);
+                    $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+                } catch (PDOException $e) {
+                    $stats = null;
                 }
                 
                 echo json_encode(array(
@@ -3856,14 +5120,12 @@ switch ($endpoint) {
                         'log' => $log
                     ),
                     'meta' => array(
-                        'version' => 'v3.0',
+                        'version' => 'v2.0',
                         'tri_typy_cerpani' => true,
                         'timestamp' => date('Y-m-d H:i:s')
                     ),
                     'message' => 'Inicializace čerpání LP úspěšně dokončena'
                 ));
-                
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -3885,73 +5147,76 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry dotazu (z $input)
                 $cislo_lp = isset($input['cislo_lp']) ? $input['cislo_lp'] : null;
                 $user_id = isset($input['user_id']) ? (int)$input['user_id'] : null;
                 $usek_id = isset($input['usek_id']) ? (int)$input['usek_id'] : null;
+                $requesting_user_id = isset($input['requesting_user_id']) ? (int)$input['requesting_user_id'] : null;
                 $rok = isset($input['rok']) ? (int)$input['rok'] : (int)date('Y');
                 // Flexibilní kontrola isAdmin (boolean true nebo string "true")
                 $is_admin = isset($input['isAdmin']) && ($input['isAdmin'] === true || $input['isAdmin'] === 'true' || $input['isAdmin'] === 1);
                 
-                // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE bez filtrování
+                // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE z agregované tabulky
+                // OPRAVA: Používat skutecne_cerpano (faktury) a cerpano_pokladna přímo z agregace
                 if ($is_admin) {
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.usek_id,
-                            c.user_id,
-                            c.rok,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            c.posledni_prepocet,
-                            u.prijmeni,
-                            u.jmeno,
-                            us.usek_nazev
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                        LEFT JOIN 25_useky us ON c.usek_id = us.id
-                        WHERE c.rok = $rok
-                        ORDER BY c.kategorie, c.cislo_lp
-                    ";
-                    
-                    $result = mysqli_query($conn, $sql);
-                    $lp_list = array();
-                    
-                    if ($result === false) {
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.usek_id,
+                                c.user_id,
+                                c.rok,
+                                c.celkovy_limit,
+                                (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                -- Z agregované tabulky: skutecne_cerpano = faktury
+                                c.skutecne_cerpano,
+                                -- Z agregované tabulky: cerpano_pokladna = pokladna
+                                c.cerpano_pokladna,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.zbyva_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.procento_skutecne,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                c.posledni_prepocet,
+                                u.prijmeni,
+                                u.jmeno,
+                                us.usek_nazev
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                            LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            WHERE c.rok = ?
+                            ORDER BY c.kategorie, c.cislo_lp
+                        ");
+                        $stmt->execute([$rok]);
+                        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
                         echo json_encode(array(
                             'status' => 'error',
                             'message' => 'SQL error',
-                            'error' => mysqli_error($conn)
+                            'error' => $e->getMessage()
                         ));
-                        exit;
+                        break;
                     }
                     
-                    while ($row = mysqli_fetch_assoc($result)) {
+                    $lp_list = array();
+                    foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'cislo_lp' => $row['cislo_lp'],
@@ -3985,7 +5250,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $lp_list,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'admin_mode' => true,
                             'count' => count($lp_list),
@@ -3993,7 +5258,6 @@ switch ($endpoint) {
                         )
                     ));
                     
-                    $conn->close();
                     break;
                 }
                 
@@ -4001,54 +5265,54 @@ switch ($endpoint) {
                 
                 if ($cislo_lp) {
                     // REŽIM 1: Konkrétní kód LP
-                    $cislo_lp_safe = mysqli_real_escape_string($conn, $cislo_lp);
-                    
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.usek_id,
-                            c.user_id,
-                            c.rok,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            c.posledni_prepocet,
-                            u.prijmeni,
-                            u.jmeno,
-                            us.usek_nazev
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                        LEFT JOIN 25_useky us ON c.usek_id = us.id
-                        WHERE c.cislo_lp = '$cislo_lp_safe'
-                        AND c.rok = $rok
-                        LIMIT 1
-                    ";
-                    
-                    $result = mysqli_query($conn, $sql);
-                    
-                    if (!$result || mysqli_num_rows($result) === 0) {
-                        http_response_code(404);
-                        echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' nebyl nalezen pro rok $rok"));
-                        $conn->close();
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.usek_id,
+                                c.user_id,
+                                c.rok,
+                                c.celkovy_limit,
+                                (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                c.skutecne_cerpano,
+                                c.cerpano_pokladna,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.zbyva_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.procento_skutecne,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                c.posledni_prepocet,
+                                u.prijmeni,
+                                u.jmeno,
+                                us.usek_nazev
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                            LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            WHERE c.cislo_lp = ?
+                            AND c.rok = ?
+                            LIMIT 1
+                        ");
+                        $stmt->execute([$cislo_lp, $rok]);
+                        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
                         break;
                     }
                     
-                    $row = mysqli_fetch_assoc($result);
+                    if (!$row) {
+                        http_response_code(404);
+                        echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' nebyl nalezen pro rok $rok"));
+                        break;
+                    }
                     
                     $data = array(
                         'id' => (int)$row['id'],
@@ -4085,47 +5349,54 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $data,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'timestamp' => date('Y-m-d H:i:s')
                         )
                     ));
                     
                 } elseif ($user_id) {
-                    // REŽIM 2: Všechna LP pro uživatele
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            us.usek_nazev
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_useky us ON c.usek_id = us.id
-                        WHERE c.user_id = $user_id
-                        AND c.rok = $rok
-                        ORDER BY c.kategorie, c.cislo_lp
-                    ";
+                    // REŽIM 2: Všechna LP pro uživatele - z agregované tabulky
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.celkovy_limit,
+                                (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                -- Z agregované tabulky: skutecne_cerpano = faktury
+                                c.skutecne_cerpano,
+                                -- Z agregované tabulky: cerpano_pokladna = pokladna
+                                c.cerpano_pokladna,
+                                c.zbyva_skutecne,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.procento_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                us.usek_nazev
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            WHERE c.user_id = ?
+                            AND c.rok = ?
+                            ORDER BY c.kategorie, c.cislo_lp
+                        ");
+                        $stmt->execute([$user_id, $rok]);
+                        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
+                        break;
+                    }
                     
-                    $result = mysqli_query($conn, $sql);
                     $lp_list = array();
-                    
-                    while ($row = mysqli_fetch_assoc($result)) {
+                    foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'cislo_lp' => $row['cislo_lp'],
@@ -4154,7 +5425,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $lp_list,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'count' => count($lp_list),
                             'timestamp' => date('Y-m-d H:i:s')
@@ -4162,41 +5433,103 @@ switch ($endpoint) {
                     ));
                     
                 } elseif ($usek_id) {
-                    // REŽIM 3: Všechna LP pro úsek
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            u.prijmeni,
-                            u.jmeno
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                        WHERE c.usek_id = $usek_id
-                        AND c.rok = $rok
-                        ORDER BY c.kategorie, c.cislo_lp
-                    ";
+                    // REŽIM 3: Všechna LP pro úsek + LP ze kterých uživatel čerpal (i z jiných úseků)
+                    try {
+                        // Pokud je requesting_user_id, přidat UNION s LP ze kterých čerpal
+                        if ($requesting_user_id) {
+                            // LP úseku + LP ze kterých uživatel čerpal - z agregované tabulky
+                            $stmt = $pdo->prepare("
+                                SELECT DISTINCT
+                                    c.id,
+                                    c.cislo_lp,
+                                    c.kategorie,
+                                    c.celkovy_limit,
+                                    (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                    (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                    c.rezervovano,
+                                    c.predpokladane_cerpani,
+                                    -- Z agregované tabulky: skutecne_cerpano = faktury
+                                    c.skutecne_cerpano,
+                                    -- Z agregované tabulky: cerpano_pokladna = pokladna
+                                    c.cerpano_pokladna,
+                                    c.zbyva_skutecne,
+                                    c.zbyva_rezervace,
+                                    c.zbyva_predpoklad,
+                                    c.procento_skutecne,
+                                    c.procento_rezervace,
+                                    c.procento_predpoklad,
+                                    c.pocet_zaznamu,
+                                    c.ma_navyseni,
+                                    u.prijmeni,
+                                    u.jmeno
+                                FROM " . TBL_LP_CERPANI . " c
+                                LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                                WHERE (c.usek_id = ? OR c.cislo_lp IN (
+                                    -- LP ze kterých uživatel čerpal z objednávek
+                                    SELECT lp.cislo_lp
+                                    FROM 25a_objednavky o
+                                    JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
+                                    JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
+                                    WHERE o.uzivatel_id = ?
+                                    
+                                    UNION
+                                    
+                                    -- LP ze kterých uživatel čerpal z pokladny
+                                    SELECT d.lp_kod
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE k.uzivatel_id = ?
+                                      AND d.lp_kod IS NOT NULL
+                                      AND d.lp_kod != ''
+                                ))
+                                AND c.rok = ?
+                                ORDER BY c.kategorie, c.cislo_lp
+                            ");
+                            $stmt->execute([$usek_id, $requesting_user_id, $requesting_user_id, $rok]);
+                        } else {
+                            // Jen LP úseku (bez requesting_user_id) - z agregované tabulky
+                            $stmt = $pdo->prepare("
+                                SELECT 
+                                    c.id,
+                                    c.cislo_lp,
+                                    c.kategorie,
+                                    c.celkovy_limit,
+                                    (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                    (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                    c.rezervovano,
+                                    c.predpokladane_cerpani,
+                                    -- Z agregované tabulky: skutecne_cerpano = faktury
+                                    c.skutecne_cerpano,
+                                    -- Z agregované tabulky: cerpano_pokladna = pokladna
+                                    c.cerpano_pokladna,
+                                    c.zbyva_skutecne,
+                                    c.zbyva_rezervace,
+                                    c.zbyva_predpoklad,
+                                    c.procento_skutecne,
+                                    c.procento_rezervace,
+                                    c.procento_predpoklad,
+                                    c.pocet_zaznamu,
+                                    c.ma_navyseni,
+                                    u.prijmeni,
+                                    u.jmeno
+                                FROM " . TBL_LP_CERPANI . " c
+                                LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                                WHERE c.usek_id = ?
+                                AND c.rok = ?
+                                ORDER BY c.kategorie, c.cislo_lp
+                            ");
+                            $stmt->execute([$usek_id, $rok]);
+                        }
+                        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
+                        break;
+                    }
                     
-                    $result = mysqli_query($conn, $sql);
                     $lp_list = array();
-                    
-                    while ($row = mysqli_fetch_assoc($result)) {
+                    foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'cislo_lp' => $row['cislo_lp'],
@@ -4228,7 +5561,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $lp_list,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'count' => count($lp_list),
                             'timestamp' => date('Y-m-d H:i:s')
@@ -4240,7 +5573,6 @@ switch ($endpoint) {
                     echo json_encode(array('status' => 'error', 'message' => 'Chybí parametr cislo_lp, user_id nebo usek_id'));
                 }
                 
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET.'));
@@ -4262,14 +5594,13 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry
                 $lp_id = isset($input['lp_id']) ? (int)$input['lp_id'] : null;
@@ -4277,20 +5608,19 @@ switch ($endpoint) {
                 if (!$lp_id) {
                     http_response_code(400);
                     echo json_encode(array('status' => 'error', 'message' => 'Parametr lp_id je povinný'));
-                    $conn->close();
                     break;
                 }
                 
-                // Zavolat handler funkci
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
-                $result = getCerpaniPodleUzivatele($conn, $lp_id);
+                // Zavolat PDO handler funkci
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                $result = getCerpaniPodleUzivatele_PDO($pdo, $lp_id);
                 
-                if ($result['status'] === 'error') {
+                if (isset($result['success']) && !$result['success']) {
                     http_response_code(404);
+                    echo json_encode(array('status' => 'error', 'message' => $result['error']));
+                } else {
+                    echo json_encode(array('status' => 'ok', 'data' => $result));
                 }
-                
-                echo json_encode($result);
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4312,14 +5642,13 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry
                 $usek_id = isset($input['usek_id']) ? (int)$input['usek_id'] : null;
@@ -4328,20 +5657,18 @@ switch ($endpoint) {
                 if (!$usek_id) {
                     http_response_code(400);
                     echo json_encode(array('status' => 'error', 'message' => 'Parametr usek_id je povinný'));
-                    $conn->close();
                     break;
                 }
                 
-                // Zavolat handler funkci
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
-                $result = getCerpaniPodleUseku($conn, $usek_id, $rok);
+                // Zavolat PDO handler funkci
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                $result = getCerpaniPodleUseku_PDO($pdo, $usek_id, $rok);
                 
                 if ($result['status'] === 'error') {
                     http_response_code(404);
                 }
                 
                 echo json_encode($result);
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4363,14 +5690,14 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                try {
+                    $db = get_db($config);
+                } catch (Exception $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry
                 $vytvoril_user_id = isset($input['user_id']) ? (int)$input['user_id'] : null;
@@ -4379,16 +5706,20 @@ switch ($endpoint) {
                 if (!$vytvoril_user_id) {
                     http_response_code(400);
                     echo json_encode(array('status' => 'error', 'message' => 'Parametr user_id je povinný'));
-                    $conn->close();
                     break;
                 }
                 
                 // Načíst usek_id uživatele pro flag je_z_meho_useku
                 $user_usek_id = null;
-                $sql_user = "SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = $vytvoril_user_id LIMIT 1";
-                $result_user = mysqli_query($conn, $sql_user);
-                if ($result_user && $user_row = mysqli_fetch_assoc($result_user)) {
-                    $user_usek_id = (int)$user_row['usek_id'];
+                try {
+                    $stmt = $db->prepare("SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = :user_id LIMIT 1");
+                    $stmt->execute(['user_id' => $vytvoril_user_id]);
+                    $user_row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($user_row) {
+                        $user_usek_id = (int)$user_row['usek_id'];
+                    }
+                } catch (Exception $e) {
+                    // non-fatal
                 }
                 
                 // KROK 0: Načíst všechna LP metadata z agregační tabulky
@@ -4404,11 +5735,18 @@ switch ($endpoint) {
                         us.usek_nazev
                     FROM " . TBL_LP_CERPANI . " c
                     LEFT JOIN 25_useky us ON c.usek_id = us.id
-                    WHERE c.rok = $rok
+                    WHERE c.rok = :rok
                 ";
-                $result_all_lp = mysqli_query($conn, $sql_all_lp);
-                while ($lp_row = mysqli_fetch_assoc($result_all_lp)) {
-                    $lp_metadata[$lp_row['cislo_lp']] = $lp_row;
+                try {
+                    $stmt = $db->prepare($sql_all_lp);
+                    $stmt->execute(['rok' => $rok]);
+                    while ($lp_row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $lp_metadata[$lp_row['cislo_lp']] = $lp_row;
+                    }
+                    // Pokud žádná LP metadata nejsou, je to OK - user prostě nemá LP
+                } catch (Exception $e) {
+                    error_log("LP metadata query error: " . $e->getMessage());
+                    // Pokračuj s prázdným array - není to fatální chyba
                 }
                 
                 // KROK 1: Najít všechny objednávky kde se uživatele týká (objednatel, garant, vytvořil)
@@ -4422,35 +5760,37 @@ switch ($endpoint) {
                         obj.dt_vytvoreni
                     FROM " . TBL_OBJEDNAVKY . " obj
                     WHERE (
-                        obj.uzivatel_id = $vytvoril_user_id 
-                        OR obj.garant_uzivatel_id = $vytvoril_user_id
+                        obj.uzivatel_id = :user_id1
+                        OR obj.garant_uzivatel_id = :user_id2
                     )
                     AND obj.financovani IS NOT NULL
                     AND obj.financovani != ''
                     AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                    AND YEAR(obj.dt_vytvoreni) = $rok
+                    AND YEAR(obj.dt_vytvoreni) = :rok
                     AND obj.aktivni = 1
                     ORDER BY obj.dt_vytvoreni DESC
                 ";
                 
-                $result_orders = mysqli_query($conn, $sql_orders);
-                
-                if (!$result_orders) {
-                    http_response_code(500);
-                    echo json_encode(array(
-                        'status' => 'error',
-                        'message' => 'SQL error',
-                        'error' => mysqli_error($conn)
-                    ));
-                    $conn->close();
-                    break;
+                try {
+                    $stmt = $db->prepare($sql_orders);
+                    $stmt->execute([
+                        'user_id1' => $vytvoril_user_id,
+                        'user_id2' => $vytvoril_user_id,
+                        'rok' => $rok
+                    ]);
+                    $result_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    // Pokud user nemá objednávky, je to OK - vrátíme prázdné pole
+                } catch (Exception $e) {
+                    error_log("LP orders query error for user $vytvoril_user_id: " . $e->getMessage());
+                    // Pokračuj s prázdným polem - není to fatální chyba
+                    $result_orders = array();
                 }
                 
                 // KROK 2: Agregovat čerpání podle LP
                 $lp_cerpani = array(); // cislo_lp => data
                 $objednavky_list = array();
                 
-                while ($order = mysqli_fetch_assoc($result_orders)) {
+                foreach ($result_orders as $order) {
                     $financovani = json_decode($order['financovani'], true);
                     
                     if (!$financovani || $financovani['typ'] !== 'LP' || !isset($financovani['lp_kody'])) {
@@ -4469,30 +5809,39 @@ switch ($endpoint) {
                     $rezervace_podil = $je_schvalena ? ((float)$order['max_cena_s_dph'] / $pocet_lp) : 0;
                     
                     // Načíst faktury pro skutečnost
-                    $sql_invoices = "
-                        SELECT SUM(fa_castka) as suma_faktur
-                        FROM " . TBL_FAKTURY . "
-                        WHERE objednavka_id = {$order['id']}
-                        AND aktivni = 1
-                    ";
-                    $result_invoices = mysqli_query($conn, $sql_invoices);
-                    $invoices_row = mysqli_fetch_assoc($result_invoices);
-                    $suma_faktur = $invoices_row ? (float)$invoices_row['suma_faktur'] : 0;
-                    $skutecne_podil = $suma_faktur / $pocet_lp;
+                    try {
+                        $stmt_inv = $db->prepare("
+                            SELECT SUM(fa_castka) as suma_faktur
+                            FROM " . TBL_FAKTURY . "
+                            WHERE objednavka_id = :order_id
+                            AND aktivni = 1
+                        ");
+                        $stmt_inv->execute(['order_id' => $order['id']]);
+                        $invoices_row = $stmt_inv->fetch(PDO::FETCH_ASSOC);
+                        $suma_faktur = $invoices_row ? (float)$invoices_row['suma_faktur'] : 0;
+                        $skutecne_podil = $suma_faktur / $pocet_lp;
+                    } catch (Exception $e) {
+                        $suma_faktur = 0;
+                        $skutecne_podil = 0;
+                    }
                     
                     // Načíst položky objednávky pro předpoklad (POUZE pokud není faktura)
                     $predpoklad_podil = 0;
                     if ($je_schvalena && $suma_faktur == 0) {
-                        $sql_items = "
-                            SELECT SUM(cena_s_dph) as suma_polozek
-                            FROM " . TBL_OBJEDNAVKY_POLOZKY . "
-                            WHERE objednavka_id = {$order['id']}
-                            AND aktivni = 1
-                        ";
-                        $result_items = mysqli_query($conn, $sql_items);
-                        $items_row = mysqli_fetch_assoc($result_items);
-                        $suma_polozek = $items_row ? (float)$items_row['suma_polozek'] : 0;
-                        $predpoklad_podil = $suma_polozek / $pocet_lp;
+                        try {
+                            $stmt_items = $db->prepare("
+                                SELECT SUM(cena_s_dph) as suma_polozek
+                                FROM " . TBL_OBJEDNAVKY_POLOZKY . "
+                                WHERE objednavka_id = :order_id
+                                AND aktivni = 1
+                            ");
+                            $stmt_items->execute(['order_id' => $order['id']]);
+                            $items_row = $stmt_items->fetch(PDO::FETCH_ASSOC);
+                            $suma_polozek = $items_row ? (float)$items_row['suma_polozek'] : 0;
+                            $predpoklad_podil = $suma_polozek / $pocet_lp;
+                        } catch (Exception $e) {
+                            $predpoklad_podil = 0;
+                        }
                     }
                     
                     // Přidat k objednávkám
@@ -4510,9 +5859,13 @@ switch ($endpoint) {
                     foreach ($lp_ids as $lp_id) {
                         // Načíst cislo_lp z master tabulky
                         $lp_id_int = (int)$lp_id;
-                        $sql_lp_kod = "SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = $lp_id_int LIMIT 1";
-                        $result_lp_kod = mysqli_query($conn, $sql_lp_kod);
-                        $lp_kod_row = mysqli_fetch_assoc($result_lp_kod);
+                        try {
+                            $stmt_lp = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = :lp_id LIMIT 1");
+                            $stmt_lp->execute(['lp_id' => $lp_id_int]);
+                            $lp_kod_row = $stmt_lp->fetch(PDO::FETCH_ASSOC);
+                        } catch (Exception $e) {
+                            continue;
+                        }
                         
                         if (!$lp_kod_row) continue;
                         
@@ -4567,22 +5920,19 @@ switch ($endpoint) {
                 
                 // KROK 3: Detekovat čerpání z pokladny (pokud uživatel pokladnu má)
                 foreach ($lp_cerpani as $cislo_lp => $data) {
-                    $cislo_lp_safe = mysqli_real_escape_string($conn, $cislo_lp);
-                    
-                    $sql_pokladna = "
-                        SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
-                        FROM " . TBL_POKLADNI_KNIHY . " pkn
-                        JOIN " . TBL_POKLADNI_POLOZKY . " pol ON pkn.id = pol.pokladni_kniha_id
-                        WHERE pol.lp_kod = '$cislo_lp_safe'
-                        AND pkn.rok = $rok
-                        AND pkn.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
-                    ";
-                    
-                    $result_pokl = mysqli_query($conn, $sql_pokladna);
-                    if ($result_pokl) {
-                        $pokl_row = mysqli_fetch_assoc($result_pokl);
+                    try {
+                        $stmt_pokl = $db->prepare("
+                            SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
+                            FROM " . TBL_POKLADNI_KNIHY . " pkn
+                            JOIN " . TBL_POKLADNI_POLOZKY . " pol ON pkn.id = pol.pokladni_kniha_id
+                            WHERE pol.lp_kod = :lp_kod
+                            AND pkn.rok = :rok
+                            AND pkn.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
+                        ");
+                        $stmt_pokl->execute(['lp_kod' => $cislo_lp, 'rok' => $rok]);
+                        $pokl_row = $stmt_pokl->fetch(PDO::FETCH_ASSOC);
                         $lp_cerpani[$cislo_lp]['moje_pokladna'] = (float)$pokl_row['cerpano_pokl'];
-                    } else {
+                    } catch (Exception $e) {
                         $lp_cerpani[$cislo_lp]['moje_pokladna'] = 0;
                     }
                 }
@@ -4613,7 +5963,7 @@ switch ($endpoint) {
                         'objednavky' => $objednavky_list
                     ),
                     'meta' => array(
-                        'version' => 'v3.0',
+                        'version' => 'v3.0-PDO',
                         'tri_typy_cerpani' => true,
                         'user_id' => $vytvoril_user_id,
                         'rok' => $rok,
@@ -4622,8 +5972,6 @@ switch ($endpoint) {
                         'timestamp' => date('Y-m-d H:i:s')
                     )
                 ));
-                
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4717,6 +6065,137 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/ciselniky/smlouvy/inicializace
+        // Inicializace systému čerpání - přepočítá všechny smlouvy a vrátí statistiky
+        if ($endpoint === 'ciselniky/smlouvy/inicializace') {
+            if ($request_method === 'POST') {
+                handle_ciselniky_smlouvy_inicializace($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/ciselniky/smlouvy/import-csv
+        // CSV/Excel import smluv - parsuje soubor a normalizuje "platnost_do" na 31.12.2099 pokud chybí
+        if ($endpoint === 'ciselniky/smlouvy/import-csv') {
+            if ($request_method === 'POST') {
+                handle_ciselniky_smlouvy_import_csv($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // ===============================================
+        // SPISOVKA ZPRACOVÁNÍ - Tracking dokumentů
+        // ===============================================
+        
+        // GET/POST /api.eeo/spisovka-zpracovani/list
+        if ($endpoint === 'spisovka-zpracovani/list') {
+            if ($request_method === 'GET' || $request_method === 'POST') {
+                handle_spisovka_zpracovani_list($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET or POST.'));
+            }
+            break;
+        }
+        
+        // GET/POST /api.eeo/spisovka-zpracovani/stats
+        if ($endpoint === 'spisovka-zpracovani/stats') {
+            if ($request_method === 'GET' || $request_method === 'POST') {
+                handle_spisovka_zpracovani_stats($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET or POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/spisovka-zpracovani/mark
+        if ($endpoint === 'spisovka-zpracovani/mark') {
+            if ($request_method === 'POST') {
+                handle_spisovka_zpracovani_mark($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/spisovka-zpracovani/delete
+        if ($endpoint === 'spisovka-zpracovani/delete') {
+            if ($request_method === 'POST') {
+                handle_spisovka_zpracovani_delete($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // GET /api.eeo/bitcoin/price - Bitcoin ceny pro Easter egg (bez autentizace)
+        if ($endpoint === 'bitcoin/price') {
+            if ($request_method === 'GET') {
+                handle_bitcoin_price($_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET.'));
+            }
+            break;
+        }
+
+        // ===============================================
+        // CASHBOOK API - Pokladní knihy
+        // ===============================================
+        
+        // POST /api.eeo/cashbox-lp-requirement-update
+        if ($endpoint === 'cashbox-lp-requirement-update') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_update_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-lp-requirement-get
+        if ($endpoint === 'cashbox-lp-requirement-get') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_get_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbook-list
+        if ($endpoint === 'cashbook-list') {
+            if ($request_method === 'POST') {
+                handle_cashbook_list_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-assignments-all
+        if ($endpoint === 'cashbox-assignments-all') {
+            if ($request_method === 'POST') {
+                handle_cashbook_assignments_all_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // Fallback - endpoint not found
         http_response_code(404);
         echo json_encode(array(
@@ -4728,4 +6207,148 @@ switch ($endpoint) {
             )
         ));
         break;
+}
+
+/**
+ * Bitcoin Price Handler - Easter egg endpoint
+ * GET /api.eeo/bitcoin/price
+ * Načte historické Bitcoin ceny z Yahoo Finance API (proxy pro CORS)
+ */
+function handle_bitcoin_price($config) {
+    try {
+        // Cache mechanismus
+        $cacheDir = __DIR__ . '/cache';
+        $cacheFile = $cacheDir . '/bitcoin_price_cache.json';
+        $cacheLifetime = 15 * 60; // 15 minut cache
+        
+        // Vytvořit cache adresář pokud neexistuje
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+        
+        // Kontrola cache
+        if (file_exists($cacheFile)) {
+            $cacheTime = filemtime($cacheFile);
+            if (time() - $cacheTime < $cacheLifetime) {
+                // Cache je platná - vrátit cached data
+                $cachedData = file_get_contents($cacheFile);
+                
+                // Přidat cache headers
+                header('X-Cache: HIT');
+                header('X-Cache-Age: ' . (time() - $cacheTime));
+                
+                echo $cachedData;
+                return;
+            }
+        }
+        
+        // Načíst fresh data z Yahoo Finance API
+        $symbol = 'BTC-USD';
+        $fromDate = strtotime('2021-01-01');
+        $toDate = time();
+        $interval = '1wk';
+        
+        $yahooUrl = "https://query1.finance.yahoo.com/v8/finance/chart/{$symbol}?period1={$fromDate}&period2={$toDate}&interval={$interval}";
+        
+        // HTTP context s User-Agent
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => [
+                    'User-Agent: Mozilla/5.0 (compatible; ERDMS-API/1.0; PHP)',
+                    'Accept: application/json',
+                    'Accept-Encoding: gzip, deflate'
+                ],
+                'timeout' => 15
+            ]
+        ]);
+        
+        // HTTP request
+        $response = file_get_contents($yahooUrl, false, $context);
+        
+        if ($response === false) {
+            throw new Exception('Failed to fetch data from Yahoo Finance API');
+        }
+        
+        // Parse JSON
+        $data = json_decode($response, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Invalid JSON response: ' . json_last_error_msg());
+        }
+        
+        if (!isset($data['chart']['result'][0]['timestamp'])) {
+            throw new Exception('Invalid response format - missing timestamp data');
+        }
+        
+        $result = $data['chart']['result'][0];
+        $timestamps = $result['timestamp'];
+        $prices = $result['indicators']['quote'][0]['close'];
+        
+        if (empty($timestamps) || empty($prices)) {
+            throw new Exception('No price data found');
+        }
+        
+        // Zpracování dat
+        $processedData = [];
+        $validPoints = 0;
+        
+        for ($i = 0; $i < count($timestamps); $i++) {
+            $price = isset($prices[$i]) ? $prices[$i] : null;
+            
+            if ($price === null || $price <= 0) {
+                continue;
+            }
+            
+            $processedData[] = [
+                'date' => date('c', $timestamps[$i]),
+                'price' => round($price, 2)
+            ];
+            $validPoints++;
+        }
+        
+        if ($validPoints === 0) {
+            throw new Exception('No valid price points found');
+        }
+        
+        // Aktuální cena
+        $currentPrice = end($processedData)['price'];
+        
+        // Sestavit odpověď
+        $response = [
+            'success' => true,
+            'data' => $processedData,
+            'currentPrice' => $currentPrice,
+            'source' => 'Yahoo Finance',
+            'symbol' => $symbol,
+            'interval' => $interval,
+            'dataPoints' => $validPoints,
+            'fromDate' => date('Y-m-d', $fromDate),
+            'toDate' => date('Y-m-d', $toDate),
+            'timestamp' => date('c'),
+            'cacheTTL' => $cacheLifetime
+        ];
+        
+        $jsonResponse = json_encode($response, JSON_PRETTY_PRINT);
+        
+        // Uložit do cache
+        file_put_contents($cacheFile, $jsonResponse, LOCK_EX);
+        
+        // Vrátit response
+        header('X-Cache: MISS');
+        echo $jsonResponse;
+        
+    } catch (Exception $e) {
+        // Log error
+        error_log("Bitcoin API Error: " . $e->getMessage());
+        
+        // Vrátit error response
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'message' => 'Failed to fetch Bitcoin price data',
+            'timestamp' => date('c')
+        ]);
+    }
 }
