@@ -173,8 +173,16 @@ function handle_orders_v3_detail($input, $config) {
             p.cena_bez_dph,
             p.sazba_dph,
             p.cena_s_dph,
-            p.dt_vytvoreni
+            p.usek_kod,
+            p.budova_kod,
+            p.mistnost_kod,
+            p.poznamka,
+            p.lp_id,
+            p.dt_vytvoreni,
+            lp.cislo_lp as lppts_cislo,
+            lp.nazev_uctu as lppts_nazev
         FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
+        LEFT JOIN " . TBL_LIMITOVANE_PRISLIBY . " lp ON p.lp_id = lp.id
         WHERE p.objednavka_id = :order_id
         ORDER BY p.id ASC";
 
@@ -216,6 +224,72 @@ function handle_orders_v3_detail($input, $config) {
         $stmt_invoices->execute(['order_id' => $order_id]);
         $invoices = $stmt_invoices->fetchAll(PDO::FETCH_ASSOC);
 
+        // Načtení příloh faktur - opravené názvy sloupců podle skutečné DB struktury
+        $sql_invoice_attachments = "SELECT 
+            fp.id,
+            fp.faktura_id,
+            fp.objednavka_id,
+            fp.guid,
+            fp.typ_prilohy,
+            fp.originalni_nazev_souboru,
+            fp.systemova_cesta,
+            fp.velikost_souboru_b,
+            fp.je_isdoc,
+            fp.isdoc_parsed,
+            fp.isdoc_data_json,
+            fp.nahrano_uzivatel_id,
+            fp.dt_vytvoreni,
+            fp.dt_aktualizace,
+            u.jmeno as nahrano_jmeno,
+            u.prijmeni as nahrano_prijmeni,
+            u.email as nahrano_email,
+            u.titul_pred as nahrano_titul_pred,
+            u.titul_za as nahrano_titul_za
+        FROM " . TBL_FAKTURY_PRILOHY . " fp
+        LEFT JOIN " . TBL_UZIVATELE . " u ON fp.nahrano_uzivatel_id = u.id
+        INNER JOIN " . TBL_FAKTURY . " f ON fp.faktura_id = f.id
+        WHERE f.objednavka_id = :order_id
+        ORDER BY fp.dt_vytvoreni DESC";
+
+        $stmt_invoice_attachments = $db->prepare($sql_invoice_attachments);
+        $stmt_invoice_attachments->execute(['order_id' => $order_id]);
+        $invoice_attachments = $stmt_invoice_attachments->fetchAll(PDO::FETCH_ASSOC);
+
+        // ✅ Kontrola existence souborů pro fakturní přílohy
+        // ENVIRONMENT-AWARE: Použít aktuální UPLOAD_ROOT_PATH z .env (DEV/PROD)
+        $upload_root = $config['upload']['root_path'] ?? '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+        error_log("🔍 [V3 ORDER DETAIL] Upload root: $upload_root");
+        
+        foreach ($invoice_attachments as &$attachment) {
+            $systemova_cesta = $attachment['systemova_cesta'] ?? '';
+            
+            if (empty($systemova_cesta)) {
+                $file_path = '';
+            } else {
+                // UNIVERZÁLNÍ: Vždy použít jen název souboru (basename) + aktuální upload root
+                // Funguje pro staré záznamy s plnou cestou i nové s jen názvem
+                // Příklad: /var/www/erdms-platform/.../fa-xxx.pdf -> fa-xxx.pdf -> /var/www/erdms-dev/.../fa-xxx.pdf
+                $filename = basename($systemova_cesta);
+                $file_path = rtrim($upload_root, '/') . '/' . $filename;
+            }
+            
+            $attachment['file_exists'] = !empty($file_path) && file_exists($file_path);
+            error_log("🔍 FA priloha: " . basename($systemova_cesta) . " -> exists: " . ($attachment['file_exists'] ? 'YES' : 'NO') . " (env-aware path: $file_path)");
+        }
+        unset($attachment); // Uvolnění reference
+
+        // Přiřazení příloh k fakturám
+        foreach ($invoices as &$invoice) {
+            $invoice['prilohy'] = [];
+            foreach ($invoice_attachments as $attachment) {
+                if ($attachment['faktura_id'] == $invoice['id']) {
+                    $invoice['prilohy'][] = $attachment;
+                }
+            }
+            $invoice['prilohy_count'] = count($invoice['prilohy']);
+        }
+        unset($invoice); // Uvolnění reference
+
         // Načtení příloh objednávky
         $sql_attachments = "SELECT 
             p.id,
@@ -239,6 +313,24 @@ function handle_orders_v3_detail($input, $config) {
         $stmt_attachments = $db->prepare($sql_attachments);
         $stmt_attachments->execute(['order_id' => $order_id]);
         $attachments = $stmt_attachments->fetchAll(PDO::FETCH_ASSOC);
+
+        // ✅ Kontrola existence souborů pro objednávkové přílohy
+        // ENVIRONMENT-AWARE: Použít stejný upload root jako pro FA přílohy
+        foreach ($attachments as &$attachment) {
+            $systemova_cesta = $attachment['systemova_cesta'] ?? '';
+            
+            if (empty($systemova_cesta)) {
+                $file_path = '';
+            } else {
+                // UNIVERZÁLNÍ: Vždy použít jen název souboru (basename) + aktuální upload root
+                $filename = basename($systemova_cesta);
+                $file_path = rtrim($upload_root, '/') . '/' . $filename;
+            }
+            
+            $attachment['file_exists'] = !empty($file_path) && file_exists($file_path);
+            error_log("🔍 OBJ priloha: " . basename($systemova_cesta) . " -> exists: " . ($attachment['file_exists'] ? 'YES' : 'NO') . " (env-aware path: $file_path)");
+        }
+        unset($attachment); // Uvolnění reference
 
         // Načtení workflow kroků - DEAKTIVOVÁNO (tabulka workflow_kroky neexistuje v DB)
         $workflow_steps = [];

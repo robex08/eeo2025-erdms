@@ -56,6 +56,38 @@ const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
 );
 
+// ⏳ Loading fallback for lazy-loaded routes
+const RouteLoadingFallback = () => (
+  <div css={css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 1rem;
+  `}>
+    <div css={css`
+      width: 50px;
+      height: 50px;
+      border: 4px solid #e5e7eb;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    `} />
+    <div css={css`
+      font-size: 1rem;
+      color: #6b7280;
+      font-weight: 500;
+    `}>
+      Načítám komponentu...
+    </div>
+  </div>
+);
+
 // 🔐 Logout redirect listener - sleduje změnu isLoggedIn a přesměrovává na login
 function LogoutRedirectListener({ isLoggedIn }) {
   const navigate = useNavigate();
@@ -604,7 +636,7 @@ function App() {
   if (isMobile) {
     return (
       <Router basename={process.env.PUBLIC_URL || ''}>
-        <Suspense fallback={<div style={{display:'none'}}></div>}>
+        <Suspense fallback={<RouteLoadingFallback />}>
           {!isLoggedIn ? (
             <MobileLoginPage />
           ) : (
@@ -626,7 +658,7 @@ function App() {
               <LogoutRedirectListener isLoggedIn={isLoggedIn} />
               {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
               <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} hasPermission={hasPermission} userDetail={userDetail} />
-              <Suspense fallback={<div style={{display:'none'}}></div>}>
+              <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
                   {!isLoggedIn && <Route path="*" element={<Navigate to="/login" replace />} />}
                   <Route

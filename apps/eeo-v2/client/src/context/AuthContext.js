@@ -525,7 +525,23 @@ export const AuthProvider = ({ children }) => {
           const storedDetail = await loadAuthData.userDetail();
           const storedPerms = await loadAuthData.userPermissions();
 
+          // 🔐 PŘEDCHOZÍ KONTROLA: Zkontroluj lokální expiraci tokenu PŘED voláním API
+          // Zabraň zbytečným API callům pokud token už expiroval lokálně
+          try {
+            const tokenData = await loadAuthData.token();
+            if (!tokenData) {
+              // Token není v localStorage -> logout
+              logout('token_missing');
+              setLoading(false);
+              return;
+            }
+            // Token je validní lokálně, pokračuj s API validací
+          } catch (tokenCheckError) {
+            console.warn('⚠️ Chyba při kontrole lokální expirace tokenu:', tokenCheckError);
+          }
+
           // Zkus validovat token na backendu
+          // Pokud selže (401, network error, ...), použij cached data níže v catch bloku
           await getUserDetailApi2(storedUser.username, storedToken, storedUser.id);
 
           // Pokud je userDetail v localStorage, použij ho
@@ -613,7 +629,7 @@ export const AuthProvider = ({ children }) => {
             console.warn('⚠️ Chyba při startu token refresh timeru:', error);
           }
         } catch (error) {
-          // ⚠️ KRITICKÁ LOGIKA: Rozpoznej TYP chyby
+          // ⚠️ KRITICKÁ LOGIKA: Rozpoznej TYP chyby a chovej se VELMI KONZERVATIVNĚ
 
           // Zkontroluj typ chyby - rozpoznej skutečné auth errory (401, 403) vs network errors
           const isAuthError = error.response?.status === 401 ||
@@ -636,42 +652,56 @@ export const AuthProvider = ({ children }) => {
                                      error.response?.status >= 500 ||
                                      error.status >= 500;
 
-          if (isAuthError) {
-            // Skutečný auth error (401/403) - token je neplatný, odhlásit
-            logout('token_invalid');
-            setLoading(false);
-          } else if (isNetworkError || isCorsOrServerError) {
-            // Network/server error - použij cached data, NEODHLAŠUJ
+          // 🔐 KRITICKÉ: Zkontroluj, jestli máme cached data před jakýmkoliv rozhodnutím o logout
+          const storedDetail = await loadAuthData.userDetail();
+          const storedPerms = await loadAuthData.userPermissions();
+          
+          const hasCachedData = storedDetail && storedUser && storedToken;
 
-            const storedDetail = await loadAuthData.userDetail();
-            if (storedDetail) {
+          if (isAuthError) {
+            // 401/403 během page load - může být false positive
+            // Pokud máme CACHED data, použij je a NEODHLA��UJ okamžitě
+            if (hasCachedData) {
               setUserDetail(storedDetail);
               setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
-              try {
-                const storedPerms = await loadAuthData.userPermissions();
-                if (storedPerms && storedPerms.length > 0) {
-                  setUserPermissions(storedPerms);
-                  setExpandedPermissions(storedPerms); // 🔐 Inicializovat
-                }
-              } catch {}
+              if (storedPerms && storedPerms.length > 0) {
+                setUserPermissions(storedPerms);
+                setExpandedPermissions(storedPerms);
+              }
+              setIsLoggedIn(true);
+              setLoading(false);
+              
+              if (process.env.NODE_ENV === 'development') {
+                console.log('⚠️ API vrátilo 401 při page load, ale používám cached data → ZŮSTÁVÁM přihlášen');
+              }
+            } else {
+              // Žádná cached data + 401 = skutečný auth error
+              logout('token_invalid');
+              setLoading(false);
+            }
+          } else if (isNetworkError || isCorsOrServerError) {
+            // Network/server error - použij cached data, NEODHLAŠUJ
+            if (hasCachedData) {
+              setUserDetail(storedDetail);
+              setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
+              if (storedPerms && storedPerms.length > 0) {
+                setUserPermissions(storedPerms);
+                setExpandedPermissions(storedPerms);
+              }
+              setIsLoggedIn(true);
             }
             setLoading(false);
             // NEZAVOL logout() - nechej uživatele přihlášeného
           } else {
-            // Jiná chyba - buď opatrný
-
-            // Pokus se použít cached data
-            const storedDetail = await loadAuthData.userDetail();
-            if (storedDetail) {
+            // Jiná chyba - použij cached data pokud existují, jinak odhlásit
+            if (hasCachedData) {
               setUserDetail(storedDetail);
               setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
-              try {
-                const storedPerms = await loadAuthData.userPermissions();
-                if (storedPerms && storedPerms.length > 0) {
-                  setUserPermissions(storedPerms);
-                  setExpandedPermissions(storedPerms); // 🔐 Inicializovat
-                }
-              } catch {}
+              if (storedPerms && storedPerms.length > 0) {
+                setUserPermissions(storedPerms);
+                setExpandedPermissions(storedPerms);
+              }
+              setIsLoggedIn(true);
               setLoading(false);
             } else {
               // Žádná cached data - odhlásit

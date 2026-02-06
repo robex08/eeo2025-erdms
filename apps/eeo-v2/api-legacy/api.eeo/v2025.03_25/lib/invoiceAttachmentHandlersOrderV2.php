@@ -735,13 +735,11 @@ function handle_order_v2_download_invoice_attachment($input, $config, $queries) 
             return;
         }
         
-        // Sestavit absolutní cestu k souboru
-        $systemova_cesta = $attachment['systemova_cesta'];
-        if (substr($systemova_cesta, 0, 1) === '/') {
-            $file_path = $systemova_cesta;
-        } else {
-            $file_path = $_SERVER['DOCUMENT_ROOT'] . '/' . $systemova_cesta;
-        }
+        // ✅ ENVIRONMENT-AWARE: Použít basename + aktuální UPLOAD_ROOT_PATH z .env
+        // Funguje pro staré záznamy (plná cesta) i nové (jen název)
+        $upload_root = $config['upload']['root_path'] ?? '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+        $filename = basename($attachment['systemova_cesta']);
+        $file_path = rtrim($upload_root, '/') . '/' . $filename;
         
         // Kontrola existence souboru
         if (!file_exists($file_path)) {

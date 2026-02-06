@@ -1080,17 +1080,23 @@ function handle_order_v3_items($input, $config, $queries) {
         // Načíst položky
         $sql_items = "
             SELECT 
-                id,
-                nazev,
-                mnozstvi,
-                jednotka,
-                cena_za_jednotku,
-                castka_celkem,
-                poznamka,
-                dt_vytvoreni
-            FROM " . TBL_OBJEDNAVKY_POLOZKY . "
-            WHERE objednavka_id = ? AND aktivni = 1
-            ORDER BY id ASC
+                p.id,
+                p.popis,
+                p.cena_bez_dph,
+                p.sazba_dph,
+                p.cena_s_dph,
+                p.usek_kod,
+                p.budova_kod,
+                p.mistnost_kod,
+                p.poznamka,
+                p.lp_id,
+                p.dt_vytvoreni,
+                lp.cislo_lp as lppts_cislo,
+                lp.nazev_uctu as lppts_nazev
+            FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
+            LEFT JOIN " . TBL_LIMITOVANE_PRISLIBY . " lp ON p.lp_id = lp.id
+            WHERE p.objednavka_id = ? AND p.aktivni = 1
+            ORDER BY p.id ASC
         ";
         
         $stmt_items = $db->prepare($sql_items);

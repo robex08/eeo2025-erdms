@@ -422,12 +422,15 @@ function handle_orders25_download_attachment($config, $queries) {
             api_error(404, 'Příloha nenalezena');
         }
 
-        // Kontrola existence souboru
-        $filePath = $attachment['systemova_cesta'];
+        // ✅ ENVIRONMENT-AWARE: Použít basename + aktuální UPLOAD_ROOT_PATH z .env
+        // Funguje pro staré záznamy (plná cesta) i nové (jen název)
+        $upload_root = $config['upload']['root_path'] ?? '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+        $filename = basename($attachment['systemova_cesta']);
+        $filePath = rtrim($upload_root, '/') . '/' . $filename;
         $originalName = $attachment['originalni_nazev_souboru'];
         
         // Kontrola, zda je systemova_cesta URL (začíná http:// nebo https://)
-        $isUrl = (stripos($filePath, 'http://') === 0 || stripos($filePath, 'https://') === 0);
+        $isUrl = (stripos($attachment['systemova_cesta'], 'http://') === 0 || stripos($attachment['systemova_cesta'], 'https://') === 0);
         
         // Pro importované přílohy - speciální zpracování
         if (isset($attachment['typ_prilohy']) && $attachment['typ_prilohy'] === 'IMPORT') {

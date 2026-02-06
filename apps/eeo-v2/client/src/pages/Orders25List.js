@@ -7330,10 +7330,40 @@ const Orders25List = () => {
 
         const order = row.original;
         let financovaniText = '';
+        let detailText = '';
 
         // STEJNÁ LOGIKA JAKO V PODŘÁDKU
         if (order.financovani && typeof order.financovani === 'object') {
           financovaniText = order.financovani.typ_nazev || order.financovani.typ || '';
+          
+          // Získat detail podle typu financování
+          const typ = order.financovani.typ || '';
+          
+          // LP - zobrazit jen LP kódy (bez popisů)
+          if (typ === 'LP') {
+            // Priorita 1: lp_nazvy array (enriched data) - ale použij jen kódy
+            if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+              const lpKody = order.financovani.lp_nazvy
+                .map(lp => lp.cislo_lp || lp.kod || '')
+                .filter(Boolean);
+              
+              if (lpKody.length > 0) {
+                detailText = lpKody.join(', ');
+              }
+            }
+            // Fallback: lp_kody array
+            else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
+              detailText = order.financovani.lp_kody.join(', ');
+            }
+          }
+          // Smlouva - zobrazit číslo smlouvy
+          else if (typ === 'SMLOUVA') {
+            detailText = order.financovani.cislo_smlouvy || '';
+          }
+          // Individuální schválení - zobrazit číslo individuálního schválení
+          else if (typ === 'INDIVIDUALNI_SCHVALENI') {
+            detailText = order.financovani.individualni_schvaleni || '';
+          }
         }
 
         // Pokud je prázdný, hledej "---"
@@ -7342,11 +7372,13 @@ const Orders25List = () => {
           return normalizedFilter === '---' || normalizedFilter === '';
         }
 
-        // Case-insensitive a bez diakritiky
-        const normalizedText = removeDiacritics(String(financovaniText).toLowerCase());
+        // Case-insensitive a bez diakritiky - hledej v typu financování i v detailu
         const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+        const normalizedFinancovani = removeDiacritics(String(financovaniText).toLowerCase());
+        const normalizedDetail = detailText ? removeDiacritics(String(detailText).toLowerCase()) : '';
 
-        return normalizedText.includes(normalizedFilter);
+        // Hledej v hlavním textu NEBO v detailu (LP kódy, smlouva, atd.)
+        return normalizedFinancovani.includes(normalizedFilter) || normalizedDetail.includes(normalizedFilter);
       },
       cell: ({ row }) => {
         const order = row.original;
@@ -7397,6 +7429,9 @@ const Orders25List = () => {
           }
         }
 
+        // Priorita zvýraznění: column filter > global filter
+        const highlightFilter = columnFilters.zpusob_financovani || globalFilter;
+
         return (
           <div style={{
             textAlign: 'left',
@@ -7409,8 +7444,8 @@ const Orders25List = () => {
               fontWeight: 600,
               color: '#7c3aed'
             }}>
-              {globalFilter
-                ? highlightText(displayText, globalFilter)
+              {highlightFilter
+                ? highlightText(displayText, highlightFilter)
                 : displayText
               }
             </div>
@@ -7421,8 +7456,8 @@ const Orders25List = () => {
                 marginTop: '2px',
                 fontWeight: 500
               }}>
-                {globalFilter
-                  ? highlightText(detailText, globalFilter)
+                {highlightFilter
+                  ? highlightText(detailText, highlightFilter)
                   : detailText
                 }
               </div>
