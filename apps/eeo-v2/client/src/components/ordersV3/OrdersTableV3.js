@@ -53,6 +53,11 @@ import {
 // STYLED COMPONENTS
 // ============================================================================
 
+const TableWrapper = styled.div`
+  position: relative;
+  width: 100%;
+`;
+
 const TableContainer = styled.div`
   width: 100%;
   border-radius: 8px;
@@ -70,6 +75,53 @@ const TableContainer = styled.div`
   @media (min-width: 2560px) {
     font-size: 1rem;
   }
+
+  /* Skrýt scrollbar, ale ponechat funkčnost */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  
+  &::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+`;
+
+const StickyScrollbarContainer = styled.div`
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  z-index: 100;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+
+  /* Vlastní scrollbar design */
+  &::-webkit-scrollbar {
+    height: 12px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 6px;
+    border: 2px solid #f1f5f9;
+    
+    &:hover {
+      background: #64748b;
+    }
+  }
+`;
+
+const StickyScrollbarContent = styled.div`
+  height: 1px;
+  pointer-events: none;
 `;
 
 const Table = styled.table`
@@ -1244,6 +1296,11 @@ const OrdersTableV3 = ({
   // Ref pro debounce timery
   const filterTimers = useRef({});
   
+  // Refs pro sticky scrollbar synchronizaci
+  const tableContainerRef = useRef(null);
+  const stickyScrollbarRef = useRef(null);
+  const [showStickyScrollbar, setShowStickyScrollbar] = useState(false);
+  
   // State pro drag & drop
   const [draggedColumn, setDraggedColumn] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
@@ -1308,6 +1365,63 @@ const OrdersTableV3 = ({
       Object.values(filterTimers.current).forEach(clearTimeout);
     };
   }, []);
+  
+  // Synchronizace sticky scrollbar s hlavní tabulkou
+  useEffect(() => {
+    const tableContainer = tableContainerRef.current;
+    const stickyScrollbar = stickyScrollbarRef.current;
+    
+    if (!tableContainer || !stickyScrollbar) return;
+    
+    // Zjistit, zda je potřeba scrollbar (obsah je širší než container)
+    const checkScrollbarNeeded = () => {
+      const isNeeded = tableContainer.scrollWidth > tableContainer.clientWidth;
+      setShowStickyScrollbar(isNeeded);
+      
+      // Nastavit šířku obsahu sticky scrollbaru
+      if (isNeeded) {
+        const stickyContent = stickyScrollbar.querySelector('div');
+        if (stickyContent) {
+          stickyContent.style.width = `${tableContainer.scrollWidth}px`;
+        }
+      }
+    };
+    
+    // Synchronizace scroll pozice: hlavní tabulka -> sticky scrollbar
+    const syncFromTable = () => {
+      if (stickyScrollbar && tableContainer) {
+        stickyScrollbar.scrollLeft = tableContainer.scrollLeft;
+      }
+    };
+    
+    // Synchronizace scroll pozice: sticky scrollbar -> hlavní tabulka
+    const syncFromScrollbar = () => {
+      if (tableContainer && stickyScrollbar) {
+        tableContainer.scrollLeft = stickyScrollbar.scrollLeft;
+      }
+    };
+    
+    // Observer pro změny velikosti (resize, nová data)
+    const resizeObserver = new ResizeObserver(() => {
+      checkScrollbarNeeded();
+    });
+    
+    resizeObserver.observe(tableContainer);
+    
+    // Event listeners
+    tableContainer.addEventListener('scroll', syncFromTable);
+    stickyScrollbar.addEventListener('scroll', syncFromScrollbar);
+    
+    // Počáteční kontrola při načtení
+    checkScrollbarNeeded();
+    
+    // Cleanup
+    return () => {
+      resizeObserver.disconnect();
+      tableContainer.removeEventListener('scroll', syncFromTable);
+      stickyScrollbar.removeEventListener('scroll', syncFromScrollbar);
+    };
+  }, [data]); // Re-run když se změní data
   
   // Handler pro toggle expandování
   // Handler pro rozbalení řádku s lazy loading
@@ -2139,7 +2253,8 @@ const OrdersTableV3 = ({
 
   return (
     <>
-    <TableContainer>
+    <TableWrapper>
+    <TableContainer ref={tableContainerRef}>
       {/* Toolbar s info a reset tlačítky */}
       {(hasActiveSorting || activeFiltersCount > 0) && (
         <TableToolbar>
@@ -2458,6 +2573,14 @@ const OrdersTableV3 = ({
         </TableBody>
       </Table>
     </TableContainer>
+    
+    {/* Sticky horizontal scrollbar */}
+    {showStickyScrollbar && (
+      <StickyScrollbarContainer ref={stickyScrollbarRef}>
+        <StickyScrollbarContent />
+      </StickyScrollbarContainer>
+    )}
+    </TableWrapper>
 
       {/* 🎯 Schvalovací dialog */}
       {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
