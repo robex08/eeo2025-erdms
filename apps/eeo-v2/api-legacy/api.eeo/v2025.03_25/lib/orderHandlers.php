@@ -1,5 +1,6 @@
 <?php
 
+
 require_once 'dbconfig.php';
 require_once 'orderQueries.php';
 
@@ -74,28 +75,37 @@ function getUserDataForLockInfo($db, $user_id) {
  */
 function validateAndParseOrderItems($input) {
     $items = [];
+    $errors = [];
     
     // Kontrola, zda existují položky v input datech - podporujeme oba formáty
     $polozky_data = null;
     
     if (isset($input['polozky'])) {
         $polozky_data = $input['polozky'];
+        error_log("validateAndParseOrderItems: Našel jsem 'polozky' v inputu");
     } elseif (isset($input['polozky_objednavky'])) {
         $polozky_data = $input['polozky_objednavky'];
+        error_log("validateAndParseOrderItems: Našel jsem 'polozky_objednavky' v inputu");
+    } else {
+        error_log("validateAndParseOrderItems: Nenašel jsem ani 'polozky' ani 'polozky_objednavky' v inputu");
     }
     
     if ($polozky_data !== null) {
+        error_log("validateAndParseOrderItems: polozky_data type = " . gettype($polozky_data) . ", count = " . (is_array($polozky_data) ? count($polozky_data) : 'N/A'));
+        
         // Pokud je to JSON string, dekódujeme
         if (is_string($polozky_data)) {
+            error_log("validateAndParseOrderItems: Dekóduji JSON string");
             $polozky_data = json_decode($polozky_data, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                return false; // Chybný JSON
+                error_log("validateAndParseOrderItems: JSON dekódování selhalo - " . json_last_error_msg());
+                return ['valid' => false, 'errors' => ['Chybný formát JSON pro položky objednávky']]; // Chybný JSON
             }
         }
         
         // Kontrola, že je to pole nebo objekt s polem 'polozky'
         if (!is_array($polozky_data)) {
-            return false;
+            return ['valid' => false, 'errors' => ['Položky objednávky musí být ve formátu pole']];
         }
         
         // Pokud je struktura {"polozky": [...]} (FE formát)
@@ -124,7 +134,20 @@ function validateAndParseOrderItems($input) {
                 'lp_id' => isset($item['lp_id']) && $item['lp_id'] > 0 ? intval($item['lp_id']) : null
             ];
             
+            // ✅ VALIDACE DÉLKY LOKALIZAČNÍCH KÓDŮ (max 20 znaků v DB)
+            $item_number = $index + 1;
+            if ($validatedItem['usek_kod'] !== null && mb_strlen($validatedItem['usek_kod']) > 20) {
+                $errors[] = "Položka #{$item_number}: Kód ÚSEKU je příliš dlouhý (max. 20 znaků, zadáno: " . mb_strlen($validatedItem['usek_kod']) . ")";
+            }
+            if ($validatedItem['budova_kod'] !== null && mb_strlen($validatedItem['budova_kod']) > 20) {
+                $errors[] = "Položka #{$item_number}: Kód BUDOVY je příliš dlouhý (max. 20 znaků, zadáno: " . mb_strlen($validatedItem['budova_kod']) . ")";
+            }
+            if ($validatedItem['mistnost_kod'] !== null && mb_strlen($validatedItem['mistnost_kod']) > 20) {
+                $errors[] = "Položka #{$item_number}: Kód MÍSTNOSTI je příliš dlouhý (max. 20 znaků, zadáno: " . mb_strlen($validatedItem['mistnost_kod']) . ")";
+            }
+            
             // Pokud není zadána cena s DPH, vypočítáme ji
+            // ✅ Bezpečné pro DPH 0%: (1 + 0/100) = 1, tedy cena_s_dph = cena_bez_dph
             if ($validatedItem['cena_s_dph'] <= 0 && $validatedItem['cena_bez_dph'] > 0) {
                 $validatedItem['cena_s_dph'] = $validatedItem['cena_bez_dph'] * (1 + $validatedItem['sazba_dph'] / 100);
             }
@@ -150,11 +173,22 @@ function validateAndParseOrderItems($input) {
             // Přidáme pouze položky s popisem
             if (!empty($validatedItem['popis'])) {
                 $items[] = $validatedItem;
+            } else {
+                error_log("validateAndParseOrderItems: Položka #{$index} přeskočena - prázdný popis");
             }
         }
     }
     
-    return $items;
+    // ✅ Vrátit chyby pokud nějaké vznikly
+    if (!empty($errors)) {
+        error_log("validateAndParseOrderItems: VALIDACE SELHALA - " . count($errors) . " chyb");
+        return ['valid' => false, 'errors' => $errors];
+    }
+    
+    // ✅ Zpětná kompatibilita: pokud jsou validní položky, vrátit pole, jinak false
+    $result = empty($items) ? false : $items;
+    error_log("validateAndParseOrderItems: Vracím " . (is_array($result) ? count($result) . " položek" : "FALSE (žádné validní položky)"));
+    return $result;
 }
 
 /**
@@ -191,7 +225,13 @@ function insertOrderItems($db, $order_id, $items) {
             $params[":usek_kod_{$index}"] = $item['usek_kod'];
             $params[":budova_kod_{$index}"] = $item['budova_kod'];
             $params[":mistnost_kod_{$index}"] = $item['mistnost_kod'];
-            $params[":poznamka_{$index}"] = $item['poznamka'];
+            
+            // ✅ Uložit poznamka jako JSON s poznamka_lokalizace
+            $poznamkaJson = json_encode([
+                'poznamka_lokalizace' => isset($item['poznamka']) ? $item['poznamka'] : ''
+            ], JSON_UNESCAPED_UNICODE);
+            $params[":poznamka_{$index}"] = $poznamkaJson;
+            
             // LP na úrovni položky
             $params[":lp_id_{$index}"] = isset($item['lp_id']) ? $item['lp_id'] : null;
         }
@@ -260,27 +300,59 @@ function loadOrderItems($db, $order_id) {
         $stmt = $db->prepare($query);
         $stmt->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
         $stmt->execute();
-        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $allItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        error_log("loadOrderItems: Found " . count($items) . " items for order_id = " . $order_id);
+        error_log("loadOrderItems: Found " . count($allItems) . " total items (main + sub) for order_id = " . $order_id);
         
-        // Obohacení každé položky o parsovaná data z poznámky
-        foreach ($items as &$item) {
-            // Přidání parsovaných dat z poznámky pro pohodlí FE (přejmenováno na poznamka_umisteni)
+        // 🔥 STRUKTURA PODŘÁDKŮ: Rozdělení na hlavní položky a podřádky
+        $mainItems = array();
+        $subItemsMap = array(); // [parent_item_id => [subitems]]
+        
+        foreach ($allItems as &$item) {
+            // ✅ poznamka vrátit jako plain text (extrahovat poznamka_lokalizace z JSON)
             if (!empty($item['poznamka'])) {
                 $poznamkaData = json_decode($item['poznamka'], true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($poznamkaData)) {
-                    $item['poznamka_umisteni'] = $poznamkaData;
+                    // ✅ Extrahovat poznamka_lokalizace a vrátit jako plain string
+                    $item['poznamka'] = isset($poznamkaData['poznamka_lokalizace']) ? $poznamkaData['poznamka_lokalizace'] : '';
                 } else {
-                    $item['poznamka_umisteni'] = null;
+                    // Není validní JSON → nech to jak je (fallback pro stará data)
+                    // už je to string, tak OK
                 }
             } else {
-                $item['poznamka_umisteni'] = null;
+                $item['poznamka'] = '';
+            }
+            
+            // Rozdělení na hlavní a podřádky podle parent_item_id
+            if (empty($item['parent_item_id']) || $item['parent_item_id'] === null) {
+                // Hlavní položka
+                $item['podradky'] = array(); // Inicializuj prázdné pole podřádků
+                $mainItems[] = $item;
+            } else {
+                // Podřádek - přidej do mapy podle parent_item_id
+                $parentId = $item['parent_item_id'];
+                if (!isset($subItemsMap[$parentId])) {
+                    $subItemsMap[$parentId] = array();
+                }
+                $subItemsMap[$parentId][] = $item;
             }
         }
+        unset($item);
         
-        return $items;
+        // ✅ PŘIŘAZENÍ PODŘÁDKŮ k hlavním položkám
+        foreach ($mainItems as &$mainItem) {
+            if (isset($mainItem['id']) && isset($subItemsMap[$mainItem['id']])) {
+                $mainItem['podradky'] = $subItemsMap[$mainItem['id']];
+                error_log("loadOrderItems: Main item ID {$mainItem['id']} has " . count($mainItem['podradky']) . " sub-items");
+            }
+        }
+        unset($mainItem);
+        
+        error_log("loadOrderItems: Returning " . count($mainItems) . " main items with nested sub-items for order_id = " . $order_id);
+        
+        return $mainItems;
     } catch (Exception $e) {
+        error_log("loadOrderItems: Error - " . $e->getMessage());
         return [];
     }
 }
@@ -362,6 +434,27 @@ function enrichOrderWithItems($db, &$order) {
 }
 
 /**
+ * Načte LP čerpání pro konkrétní fakturu
+ * @param PDO $db - Databázové spojení
+ * @param int $faktura_id - ID faktury
+ * @return array - Pole LP čerpání [{lp_cislo, lp_id, castka, poznamka}]
+ */
+function loadInvoiceLpCerpani($db, $faktura_id) {
+    try {
+        $sql = "SELECT lp_cislo, lp_id, castka, poznamka 
+                FROM 25a_faktury_lp_cerpani 
+                WHERE faktura_id = ? 
+                ORDER BY id";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$faktura_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        error_log("loadInvoiceLpCerpani: Error loading LP cerpani for invoice $faktura_id: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
  * Přidá položky k více objednávkám
  * @param PDO $db - Databázové spojení
  * @param array $orders - Reference na pole objednávek (bude upraveno)
@@ -423,7 +516,7 @@ function loadOrderInvoices($db, $order_id) {
     $states_table = get_states_table_name();
     $users_table = get_users_table_name();
     
-    // JOIN s číselníkem stavů pro získání názvu typu faktury + uživatel věcné kontroly
+    // JOIN s číselníkem stavů pro získání názvu typu faktury + uživatel věcné kontroly + uživatel který vytvořil fakturu
     $stmt = $db->prepare("
         SELECT 
             f.*,
@@ -431,15 +524,47 @@ function loadOrderInvoices($db, $order_id) {
             s.popis as fa_typ_popis,
             u_vecna.jmeno as potvrdil_vecnou_spravnost_jmeno,
             u_vecna.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
-            u_vecna.email as potvrdil_vecnou_spravnost_email
+            u_vecna.email as potvrdil_vecnou_spravnost_email,
+            u_vecna.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
+            u_vecna.titul_za as potvrdil_vecnou_spravnost_titul_za,
+            u_vytvoril.id as vytvoril_uzivatel_id,
+            u_vytvoril.jmeno as vytvoril_uzivatel_jmeno,
+            u_vytvoril.prijmeni as vytvoril_uzivatel_prijmeni,
+            u_vytvoril.email as vytvoril_uzivatel_email,
+            u_vytvoril.titul_pred as vytvoril_uzivatel_titul_pred,
+            u_vytvoril.titul_za as vytvoril_uzivatel_titul_za,
+            CONCAT_WS(' ', 
+                NULLIF(u_vytvoril.titul_pred, ''),
+                u_vytvoril.jmeno, 
+                u_vytvoril.prijmeni,
+                NULLIF(u_vytvoril.titul_za, '')
+            ) as vytvoril_uzivatel_cele_jmeno
         FROM `$faktury_table` f
         LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
-        WHERE f.objednavka_id = ? 
+        LEFT JOIN `$users_table` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
+        WHERE f.objednavka_id = ? AND f.aktivni = 1
         ORDER BY f.id ASC
     ");
     $stmt->execute([$order_id]);
     $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // ✅ STRUKTURACE UŽIVATELSKÝCH DAT: Převést flat data na nested objekty
+    foreach ($invoices as &$invoice) {
+        // Pokud existují data o uživateli který vytvořil fakturu, vytvořit objekt
+        if (!empty($invoice['vytvoril_uzivatel_id'])) {
+            $invoice['vytvoril_uzivatel'] = [
+                'id' => $invoice['vytvoril_uzivatel_id'],
+                'jmeno' => $invoice['vytvoril_uzivatel_jmeno'],
+                'prijmeni' => $invoice['vytvoril_uzivatel_prijmeni'],
+                'email' => $invoice['vytvoril_uzivatel_email'],
+                'titul_pred' => $invoice['vytvoril_uzivatel_titul_pred'],
+                'titul_za' => $invoice['vytvoril_uzivatel_titul_za'],
+                'cele_jmeno' => $invoice['vytvoril_uzivatel_cele_jmeno']
+            ];
+        }
+    }
+    unset($invoice); // Break reference
     
     // ✅ NORMALIZACE: fa_strediska_kod → array stringů (BEZ MODIFIKACE)
     foreach ($invoices as &$invoice) {
@@ -459,11 +584,13 @@ function loadOrderInvoices($db, $order_id) {
             $invoice['fa_strediska_kod'] = array();
         }
         
-        // ✅ PŘIDÁNO: Načtení příloh faktury
+        // ✅ PŘIDÁNO: Načtení příloh faktury a LP čerpání
         if (isset($invoice['id'])) {
             $invoice['prilohy'] = loadInvoiceAttachments($db, $invoice['id']);
+            $invoice['lp_cerpani'] = loadInvoiceLpCerpani($db, $invoice['id']);
         } else {
             $invoice['prilohy'] = array();
+            $invoice['lp_cerpani'] = array();
         }
     }
     
@@ -505,6 +632,37 @@ function enrichOrderWithInvoices($db, &$order) {
         }
     }
     $order['faktury_celkova_castka_s_dph'] = $celkova_castka_faktur_s_dph;
+    
+    // 🆕 Vypočítat celkovou cenu objednávky podle priority: faktury > položky > max cena
+    $order['celkova_cena_s_dph'] = calculateOrderTotalPrice($order);
+}
+
+/**
+ * Vypočítá celkovou cenu objednávky s DPH podle priority:
+ * 1. Faktury (pokud existují)
+ * 2. Položky (pokud existují)  
+ * 3. Max cena s DPH (fallback)
+ * 
+ * @param array $order - Objednávka s načtenými fakturami a položkami
+ * @return float - Celková cena s DPH
+ */
+function calculateOrderTotalPrice($order) {
+    // 1. PRIORITA: Faktury (pokud existují)
+    if (isset($order['faktury_celkova_castka_s_dph']) && $order['faktury_celkova_castka_s_dph'] > 0) {
+        return (float)$order['faktury_celkova_castka_s_dph'];
+    }
+    
+    // 2. PRIORITA: Položky (pokud existují)
+    if (isset($order['polozky_celkova_cena_s_dph']) && $order['polozky_celkova_cena_s_dph'] > 0) {
+        return (float)$order['polozky_celkova_cena_s_dph'];
+    }
+    
+    // 3. FALLBACK: Max cena s DPH (schválený limit)
+    if (isset($order['max_cena_s_dph']) && is_numeric($order['max_cena_s_dph'])) {
+        return (float)$order['max_cena_s_dph'];
+    }
+    
+    return 0.0;
 }
 
 /**
@@ -571,7 +729,7 @@ function getFinancovaniTypNazev($db, $kod) {
     if (empty($kod)) return null;
     
     try {
-        $stmt = $db->prepare("SELECT nazev_stavu FROM 25_ciselnik_stavy WHERE typ_objektu = 'FINANCOVANI_ZDROJ' AND kod_stavu = :kod AND aktivni = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT nazev_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'FINANCOVANI_ZDROJ' AND kod_stavu = :kod AND aktivni = 1 LIMIT 1");
         $stmt->bindParam(':kod', $kod, PDO::PARAM_STR);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -591,7 +749,7 @@ function getLPDetaily($db, $lp_id) {
     if (empty($lp_id)) return null;
     
     try {
-        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM 25_limitovane_prisliby WHERE id = :lp_id LIMIT 1");
+        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
         $stmt->bindParam(':lp_id', $lp_id, PDO::PARAM_INT);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -602,12 +760,96 @@ function getLPDetaily($db, $lp_id) {
 }
 
 /**
- * Obohacení financování o lidský název typu a LP názvů
+ * Načte informace o zbývajícím budgetu LP z tabulky čerpání
+ * @param PDO $db - Databázové spojení
+ * @param int $lp_id - ID z tabulky 25_limitovane_prisliby
+ * @return array|null - Array s celkovy_limit, zbyva_predpoklad nebo null
+ */
+function getLPBudgetInfo($db, $lp_id) {
+    if (empty($lp_id)) return null;
+    
+    try {
+        // Nejdříve získáme cislo_lp z master tabulky
+        $stmt = $db->prepare("SELECT cislo_lp FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
+        $stmt->bindParam(':lp_id', $lp_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $lp_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$lp_data) return null;
+        
+        // Pak načteme data z tabulky čerpání podle cislo_lp a AKTUÁLNÍHO roku (ne roku platnosti LP)
+        $current_year = intval(date('Y'));
+        $stmt2 = $db->prepare("
+            SELECT celkovy_limit, zbyva_predpoklad, zbyva_skutecne, predpokladane_cerpani, skutecne_cerpano
+            FROM " . TBL_LP_CERPANI . " 
+            WHERE cislo_lp = :cislo_lp AND rok = :rok 
+            LIMIT 1
+        ");
+        $stmt2->bindParam(':cislo_lp', $lp_data['cislo_lp'], PDO::PARAM_STR);
+        $stmt2->bindParam(':rok', $current_year, PDO::PARAM_INT);
+        $stmt2->execute();
+        $result = $stmt2->fetch(PDO::FETCH_ASSOC);
+        
+        return $result ? $result : null;
+    } catch (Exception $e) {
+        error_log("getLPBudgetInfo Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Načíst čerpání smlouvy podle čísla smlouvy
+ * @param PDO $db - Databázové spojení
+ * @param string $cislo_smlouvy - Číslo smlouvy
+ * @return array|null - Data čerpání smlouvy nebo null
+ */
+function getSmlouvaCerpaniInfo($db, $cislo_smlouvy) {
+    if (empty($cislo_smlouvy)) return null;
+    
+    try {
+        $stmt = $db->prepare("
+            SELECT 
+                hodnota_s_dph as hodnota,
+                cerpano_pozadovano,
+                cerpano_planovano,
+                cerpano_skutecne,
+                zbyva_pozadovano,
+                zbyva_planovano,
+                zbyva_skutecne,
+                procento_pozadovano,
+                procento_planovano,
+                procento_skutecne
+            FROM " . TBL_SMLOUVY . " 
+            WHERE cislo_smlouvy = :cislo_smlouvy 
+            AND aktivni = 1
+            LIMIT 1
+        ");
+        $stmt->bindParam(':cislo_smlouvy', $cislo_smlouvy, PDO::PARAM_STR);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $result ? $result : null;
+    } catch (Exception $e) {
+        error_log("getSmlouvaCerpaniInfo Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Obohacení financování o lidský název typu a LP názvů + zbývající budget
  * @param PDO $db - Databázové spojení
  * @param array $order - Reference na objednávku (bude upravena)
  * @return void
  */
 function enrichOrderFinancovani($db, &$order) {
+    // 🔥 FIX: Pokud je financování JSON string, naparsovat ho na array
+    if (isset($order['financovani']) && is_string($order['financovani'])) {
+        $decoded = json_decode($order['financovani'], true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $order['financovani'] = $decoded;
+        }
+    }
+    
     if (isset($order['financovani']) && is_array($order['financovani'])) {
         // Přidat název typu financování
         if (isset($order['financovani']['typ'])) {
@@ -617,16 +859,34 @@ function enrichOrderFinancovani($db, &$order) {
             }
         }
         
-        // Přidat LP detaily (cislo_lp a nazev_uctu)
+        // Přidat LP detaily (cislo_lp, nazev_uctu a zbývající budget)
         if (isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
             $lp_detaily = array();
+            
+            // Vytvořit _enriched sekci pro LP info s budgetem (pro frontend dialog)
+            $lp_info_enriched = array();
+            
             foreach ($order['financovani']['lp_kody'] as $lp_id) {
                 $lp = getLPDetaily($db, $lp_id);
+                
                 if ($lp) {
                     $lp_detaily[] = array(
                         'id' => $lp_id,
                         'cislo_lp' => $lp['cislo_lp'],
                         'nazev' => $lp['nazev_uctu']
+                    );
+                    
+                    // Načíst zbývající budget z tabulky čerpání
+                    $budget_info = getLPBudgetInfo($db, $lp_id);
+                    $lp_info_enriched[] = array(
+                        'id' => $lp_id,
+                        'kod' => $lp['cislo_lp'],
+                        'nazev' => $lp['nazev_uctu'],
+                        'remaining_budget' => $budget_info ? $budget_info['zbyva_predpoklad'] : null,
+                        'total_limit' => $budget_info ? $budget_info['celkovy_limit'] : null,
+                        'cerpano_predpoklad' => $budget_info ? $budget_info['predpokladane_cerpani'] : null,
+                        'cerpano_skutecne' => $budget_info ? $budget_info['skutecne_cerpano'] : null,
+                        'zbyva_skutecne' => $budget_info ? $budget_info['zbyva_skutecne'] : null
                     );
                 } else {
                     $lp_detaily[] = array(
@@ -634,9 +894,65 @@ function enrichOrderFinancovani($db, &$order) {
                         'cislo_lp' => null,
                         'nazev' => null
                     );
+                    
+                    $lp_info_enriched[] = array(
+                        'id' => $lp_id,
+                        'kod' => null,
+                        'nazev' => null,
+                        'remaining_budget' => null,
+                        'total_limit' => null
+                    );
                 }
             }
+            
             $order['financovani']['lp_nazvy'] = $lp_detaily;
+            
+            // Přidat enriched LP info do _enriched sekce
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            $order['_enriched']['lp_info'] = $lp_info_enriched;
+        }
+        
+        // 🆕 Přidat info o smlouvě (číslo a čerpání)
+        if (isset($order['financovani']['cislo_smlouvy']) && !empty($order['financovani']['cislo_smlouvy'])) {
+            $cislo_smlouvy = $order['financovani']['cislo_smlouvy'];
+            error_log("DEBUG enrichOrderFinancovani: Nacitam smlouvu cislo: " . $cislo_smlouvy);
+            $smlouva_cerpani = getSmlouvaCerpaniInfo($db, $cislo_smlouvy);
+            error_log("DEBUG enrichOrderFinancovani: Vysledek getSmlouvaCerpaniInfo: " . json_encode($smlouva_cerpani));
+            
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            
+            if ($smlouva_cerpani) {
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => $smlouva_cerpani['hodnota'],
+                    'cerpano_pozadovano' => $smlouva_cerpani['cerpano_pozadovano'],
+                    'cerpano_planovano' => $smlouva_cerpani['cerpano_planovano'],
+                    'cerpano_skutecne' => $smlouva_cerpani['cerpano_skutecne'],
+                    'zbyva_pozadovano' => $smlouva_cerpani['zbyva_pozadovano'],
+                    'zbyva_planovano' => $smlouva_cerpani['zbyva_planovano'],
+                    'zbyva_skutecne' => $smlouva_cerpani['zbyva_skutecne']
+                );
+                error_log("DEBUG enrichOrderFinancovani: Pridano smlouva_info do _enriched");
+            } else {
+                error_log("DEBUG enrichOrderFinancovani: Smlouva nenalezena v DB pro cislo: " . $cislo_smlouvy);
+                // Smlouva nenalezena v DB
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => null,
+                    'cerpano_pozadovano' => null,
+                    'cerpano_planovano' => null,
+                    'cerpano_skutecne' => null,
+                    'zbyva_pozadovano' => null,
+                    'zbyva_planovano' => null,
+                    'zbyva_skutecne' => null
+                );
+            }
+        } else {
+            error_log("DEBUG enrichOrderFinancovani: Cislo smlouvy neni nastaveno nebo je prazdne. financovani: " . json_encode($order['financovani'] ?? null));
         }
     }
 }
@@ -711,7 +1027,7 @@ function loadUserById($db, $user_id) {
     if (!$user_id) return null;
     
     try {
-        $stmt = $db->prepare("SELECT id, username, jmeno, prijmeni, email, telefon, titul_pred, titul_za, aktivni FROM 25_uzivatele WHERE id = :id AND id > 0");
+        $stmt = $db->prepare("SELECT id, username, jmeno, prijmeni, email, telefon, titul_pred, titul_za, aktivni FROM " . TBL_UZIVATELE . " WHERE id = :id AND id > 0");
         $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetch(PDO::FETCH_ASSOC);
@@ -773,7 +1089,7 @@ function loadStrediskaByKod($db, $strediska_kod) {
         $placeholders = implode(',', array_fill(0, count($search_values), '?'));
         
         $sql = "SELECT kod_stavu as kod, nazev_stavu as nazev, popis, aktivni 
-                FROM 25_ciselnik_stavy 
+                FROM " . TBL_CISELNIK_STAVY . " 
                 WHERE typ_objektu = 'STREDISKA' AND kod_stavu IN ($placeholders)
                 ORDER BY nazev_stavu";
         $stmt = $db->prepare($sql);
@@ -809,7 +1125,7 @@ function loadStavByKod($db, $kod_stavu) {
     
     try {
         // DŮLEŽITÉ: NEFILTRUJEME podle aktivni=1, aby se načetly i stavy archivovaných objednávek
-        $stmt = $db->prepare("SELECT kod_stavu, nazev_stavu, popis, aktivni FROM 25_ciselnik_stavy WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
+        $stmt = $db->prepare("SELECT kod_stavu, nazev_stavu, popis, aktivni FROM " . TBL_CISELNIK_STAVY . " WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
         $stmt->bindParam(':kod', $kod_stavu, PDO::PARAM_STR);
         $stmt->execute();
         $stav = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -864,7 +1180,7 @@ function loadDruhObjednavkyByKod($db, $druh_kod) {
     
     try {
         // Načteme z 25_ciselnik_stavy kde typ_objektu='DRUH_OBJEDNAVKY'
-        $stmt = $db->prepare("SELECT kod_stavu as kod, nazev_stavu as nazev, popis FROM 25_ciselnik_stavy WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :druh LIMIT 1");
+        $stmt = $db->prepare("SELECT kod_stavu as kod, nazev_stavu as nazev, popis, atribut_objektu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :druh LIMIT 1");
         $stmt->bindParam(':druh', $druh_kod, PDO::PARAM_STR);
         $stmt->execute();
         $druh = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -873,7 +1189,8 @@ function loadDruhObjednavkyByKod($db, $druh_kod) {
             return array(
                 'kod' => $druh['kod'],
                 'nazev' => $druh['nazev'],
-                'popis' => isset($druh['popis']) ? $druh['popis'] : null
+                'popis' => isset($druh['popis']) ? $druh['popis'] : null,
+                'atribut_objektu' => isset($druh['atribut_objektu']) ? (int)$druh['atribut_objektu'] : 0
             );
         }
         
@@ -969,25 +1286,28 @@ function normalizeDatetime($datetime_value, $include_time = true) {
     if ($datetime_value === '') {
         return null;
     }
+
+    // DEBUG: Log input value
+    error_log("🔍 normalizeDatetime INPUT: " . $datetime_value);
     
     try {
         // Pokud je zadán pouze datum bez času, přidáme čas
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $datetime_value)) {
             if ($include_time) {
-                // Pouze datum → přidáme aktuální český čas (respektuje letní/zimní čas)
-                $datetime_value .= ' ' . TimezoneHelper::getCzechDateTime('H:i:s');
+                // Pouze datum → přidáme aktuální čas (MySQL timezone je už správně nastavená)
+                $datetime_value .= ' ' . date('H:i:s');
             }
             // Pro pouze datum pole vracíme bez změny
         }
         // Pokud je zadán datum + čas, validujeme formát
         else if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $datetime_value)) {
-            // KRITICKÁ OPRAVA: FE posílá čas v UTC, musíme konvertovat na Europe/Prague
-            // Použití TimezoneHelper pro konzistentní konverzi
-            $datetime_value = TimezoneHelper::convertUtcToCzech($datetime_value);
+            // Frontend už posílá čas v české timezone - NEKONVERTOVAT znovu!
+            // Použij hodnotu tak, jak je
+            // $datetime_value je už správně
         }
-        // Jiné formáty (ISO 8601, apod.) - konvertuj přes TimezoneHelper
-        else {
-            // TimezoneHelper zvládá ISO 8601 (2025-11-14T18:50:57Z) i další formáty
+        // ISO 8601 formáty (YYYY-MM-DDTHH:mm:ssZ nebo s timezone) - konvertuj pouze ty
+        else if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/', $datetime_value)) {
+            // Pouze ISO 8601 s timezone označením konvertujeme
             $converted = TimezoneHelper::convertUtcToCzech($datetime_value);
             if ($converted !== null) {
                 $datetime_value = $converted;
@@ -1000,10 +1320,17 @@ function normalizeDatetime($datetime_value, $include_time = true) {
                 return null;
             }
         }
+        // Ostatní formáty - nechej beze změny
+        else {
+            // Neznámý formát - nechej tak jak je
+        }
         
+        // DEBUG: Log final value
+        error_log("🔍 normalizeDatetime OUTPUT: " . $datetime_value);
         return $datetime_value;
         
     } catch (Exception $e) {
+        error_log("🔍 normalizeDatetime ERROR: " . $e->getMessage());
         return null;
     }
 }
@@ -1037,7 +1364,7 @@ function getStavObjednavkyFromWorkflow($db, $stav_workflow_kod) {
         }
         
         // Najdeme název stavu v číselníku
-        $stmt = $db->prepare("SELECT nazev_stavu FROM 25_ciselnik_stavy WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
+        $stmt = $db->prepare("SELECT nazev_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
         $stmt->bindParam(':kod', $posledni_stav, PDO::PARAM_STR);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1157,7 +1484,38 @@ function enrichOrderWithCodebooks($db, &$order) {
     
     // Druh objednávky
     if (isset($order['druh_objednavky_kod']) && $order['druh_objednavky_kod']) {
-        $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $order['druh_objednavky_kod']);
+        $druh_value = $order['druh_objednavky_kod'];
+        
+        // 🔥 FIX: Pokud je druh_objednavky_kod JSON objekt, extrahuj kod_stavu
+        if (is_string($druh_value)) {
+            $decoded = json_decode($druh_value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                // Je to JSON objekt - použij přímo pro enrichment
+                $enriched['druh_objednavky'] = array(
+                    'kod' => isset($decoded['kod_stavu']) ? $decoded['kod_stavu'] : (isset($decoded['kod']) ? $decoded['kod'] : ''),
+                    'nazev' => isset($decoded['nazev_stavu']) ? $decoded['nazev_stavu'] : (isset($decoded['nazev']) ? $decoded['nazev'] : ''),
+                    'popis' => isset($decoded['popis']) ? $decoded['popis'] : null
+                );
+            } else {
+                // Je to plain string (kód) - načti z databáze
+                $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $druh_value);
+            }
+        } else {
+            // Není string - pravděpodobně už je to pole
+            $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $druh_value);
+        }
+    }
+    
+    // Enrichment pro faktury (potvrdil_vecnou_spravnost)
+    if (isset($order['faktury']) && is_array($order['faktury'])) {
+        foreach ($order['faktury'] as &$faktura) {
+            $faktura_enriched = array();
+            if (isset($faktura['potvrdil_vecnou_spravnost_id']) && $faktura['potvrdil_vecnou_spravnost_id']) {
+                $faktura_enriched['potvrdil_vecnou_spravnost'] = loadUserById($db, $faktura['potvrdil_vecnou_spravnost_id']);
+            }
+            $faktura['_enriched'] = $faktura_enriched;
+        }
+        unset($faktura); // Uvolnění reference
     }
     
     // Přidáme enriched data k objednávce
@@ -1202,8 +1560,19 @@ function handle_orders25_list($input, $config, $queries) {
     // Volitelný rok a měsíc/interval měsíců pro filtrování podle dt_vytvoreni
     $rok = isset($input['rok']) && $input['rok'] !== '' ? (int)$input['rok'] : null;
     
+    // Volitelné datum od/do filtry (formát YYYY-MM-DD)
+    $datum_od = isset($input['datum_od']) && $input['datum_od'] !== '' ? $input['datum_od'] : null;
+    $datum_do = isset($input['datum_do']) && $input['datum_do'] !== '' ? $input['datum_do'] : null;
+    
     // Volitelný parametr archivovano (1 = jen archivované objednávky se stavem ARCHIVOVANO)
     $archivovano = isset($input['archivovano']) && $input['archivovano'] == 1 ? 1 : 0;
+    
+    // � ADMIN FEATURE: show_only_inactive (zobrazit POUZE neaktivní objednávky)
+    // Pokud je show_only_inactive = 1 → zobrazí POUZE neaktivní objednávky (soft-deleted, aktivni=0)
+    $show_only_inactive = isset($input['show_only_inactive']) && (int)$input['show_only_inactive'] === 1;
+    
+    // �📋 Volitelný filtr podle stavu objednávky (např. 'FAKTURACE')
+    $stav_objednavky = isset($input['stav_objednavky']) && $input['stav_objednavky'] !== '' ? trim($input['stav_objednavky']) : null;
     
     // Parsing měsíce - může být jednotlivý (10) nebo interval (10-12)
     $mesic_od = null;
@@ -1234,38 +1603,75 @@ function handle_orders25_list($input, $config, $queries) {
         }
     }
 
-    // Dynamické sestavení SQL dotazu s filtrem pro archivované objednávky
-    $sql = "SELECT * FROM 25a_objednavky WHERE aktivni = 1";
+    // Dynamické sestavení SQL dotazu s filtrem pro aktivní/neaktivní objednávky
+    // 🔧 ADMIN: Pokud je show_only_inactive=1, zobraz POUZE neaktivní (aktivni=0)
+    // Jinak standardně pouze aktivní (aktivni=1)
+    if ($show_only_inactive) {
+        $sql = "SELECT o.* FROM " . TBL_OBJEDNAVKY . " o WHERE o.aktivni = 0";
+    } else {
+        $sql = "SELECT o.* FROM " . TBL_OBJEDNAVKY . " o WHERE o.aktivni = 1";
+    }
     
-    if ($rok !== null) {
-        $sql .= " AND YEAR(dt_vytvoreni) = :rok";
-    }
-    if ($mesic_od !== null) {
-        $sql .= " AND MONTH(dt_vytvoreni) >= :mesic_od";
-    }
-    if ($mesic_do !== null) {
-        $sql .= " AND MONTH(dt_vytvoreni) <= :mesic_do";
+    // Datum od/do má přednost před rok/měsíc filtrováním
+    if ($datum_od !== null && $datum_do !== null) {
+        $sql .= " AND DATE(o.dt_vytvoreni) >= :datum_od AND DATE(o.dt_vytvoreni) <= :datum_do";
+    } else if ($datum_od !== null) {
+        $sql .= " AND DATE(o.dt_vytvoreni) >= :datum_od";
+    } else if ($datum_do !== null) {
+        $sql .= " AND DATE(o.dt_vytvoreni) <= :datum_do";
+    } else {
+        // Pokud nejsou datum filtry, použij rok/měsíc filtry
+        if ($rok !== null) {
+            $sql .= " AND YEAR(o.dt_vytvoreni) = :rok";
+        }
+        if ($mesic_od !== null) {
+            $sql .= " AND MONTH(o.dt_vytvoreni) >= :mesic_od";
+        }
+        if ($mesic_do !== null) {
+            $sql .= " AND MONTH(o.dt_vytvoreni) <= :mesic_do";
+        }
     }
     
     // Pokud archivovano NENÍ nastaveno, vyloučíme archivované objednávky
     if ($archivovano == 0) {
-        $sql .= " AND stav_objednavky != 'ARCHIVOVANO'";
+        $sql .= " AND o.stav_objednavky != 'ARCHIVOVANO'";
     }
     // Pokud archivovano = 1, necháme všechny objednávky (i archivované)
     
-    $sql .= " ORDER BY dt_vytvoreni DESC";
+    // 📋 Filtr podle konkrétního stavu objednávky
+    if ($stav_objednavky !== null) {
+        $sql .= " AND o.stav_objednavky = :stav_objednavky";
+    }
+    
+    $sql .= " ORDER BY o.dt_vytvoreni DESC";
 
     // Select all orders with optional year/month filter
     $stmt = $db->prepare($sql);
     
-    if ($rok !== null) {
-        $stmt->bindParam(':rok', $rok, PDO::PARAM_INT);
+    // Bind datum parametry pokud jsou nastaveny
+    if ($datum_od !== null) {
+        $stmt->bindParam(':datum_od', $datum_od, PDO::PARAM_STR);
     }
-    if ($mesic_od !== null) {
-        $stmt->bindParam(':mesic_od', $mesic_od, PDO::PARAM_INT);
+    if ($datum_do !== null) {
+        $stmt->bindParam(':datum_do', $datum_do, PDO::PARAM_STR);
     }
-    if ($mesic_do !== null) {
-        $stmt->bindParam(':mesic_do', $mesic_do, PDO::PARAM_INT);
+    
+    // Bind rok/měsíc parametry pouze pokud nejsou datum filtry
+    if ($datum_od === null && $datum_do === null) {
+        if ($rok !== null) {
+            $stmt->bindParam(':rok', $rok, PDO::PARAM_INT);
+        }
+        if ($mesic_od !== null) {
+            $stmt->bindParam(':mesic_od', $mesic_od, PDO::PARAM_INT);
+        }
+        if ($mesic_do !== null) {
+            $stmt->bindParam(':mesic_do', $mesic_do, PDO::PARAM_INT);
+        }
+    }
+    
+    // 📋 Bind parametr pro stav objednávky
+    if ($stav_objednavky !== null) {
+        $stmt->bindParam(':stav_objednavky', $stav_objednavky, PDO::PARAM_STR);
     }
     
         $stmt->execute();
@@ -1279,6 +1685,12 @@ function handle_orders25_list($input, $config, $queries) {
         
         // Přidání enriched číselníků k objednávkám  
         enrichOrdersWithCodebooks($db, $orders);
+        
+        // 🔥 Přidání enriched financování (načtení názvů LP z tabulky 25_limitovane_prisliby)
+        foreach ($orders as &$order) {
+            enrichOrderFinancovani($db, $order);
+        }
+        unset($order); // Uvolnění reference
 
         echo json_encode([
             'status' => 'ok',
@@ -1441,6 +1853,9 @@ function handle_orders25_by_id($input, $config, $queries) {
         // Přidání enriched číselníků k objednávce
         enrichOrderWithCodebooks($db, $order);
         
+        // 🔥 Přidání enriched financování (načtení názvů LP z tabulky 25_limitovane_prisliby)
+        enrichOrderFinancovani($db, $order);
+        
         // NOVÉ: Sestavení lock_info objektu z dat dotazu
         // DŮLEŽITÉ: locked = true POUZE když je zamčená JINÝM uživatelem (lock_status === 'locked')
         // Pokud lock_status === 'owned', locked = false (protože JÁ ji mohu editovat)
@@ -1572,7 +1987,7 @@ function handle_orders25_by_user($input, $config, $queries) {
         if ($user_id <= 0) {
             // Admin režim - všechny objednávky
             // Dynamické sestavení SQL dotazu
-            $sql = "SELECT * FROM 25a_objednavky WHERE aktivni = 1";
+            $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1";
             
             if ($rok !== null) {
                 $sql .= " AND YEAR(dt_vytvoreni) = :rok";
@@ -1602,7 +2017,7 @@ function handle_orders25_by_user($input, $config, $queries) {
             }
         } else {
             // User režim - objednávky kde je user objednatel nebo garant
-            $sql = "SELECT * FROM 25a_objednavky WHERE aktivni = 1 AND (objednatel_id = :uzivatel_id OR garant_uzivatel_id = :uzivatel_id)";
+            $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1 AND (objednatel_id = :uzivatel_id OR garant_uzivatel_id = :uzivatel_id)";
             
             if ($rok !== null) {
                 $sql .= " AND YEAR(dt_vytvoreni) = :rok";
@@ -1842,9 +2257,9 @@ function handle_orders25_insert($input, $config, $queries) {
         // ✅ GARANTUJEME: $final_order_number NIKDY není NULL v tomto bodě
 
         // Partial insert - pouze povinné a zadané hodnoty
-        // Použít TimezoneHelper pro správný český čas (respektuje letní/zimní čas)
-        $current_date = TimezoneHelper::getCzechDateTime('Y-m-d');
-        $current_datetime = TimezoneHelper::getCzechDateTime();
+        // Použít obyčejný date() - MySQL timezone je už nastavená správně přes TimezoneHelper::setMysqlTimezone()
+        $current_date = date('Y-m-d');
+        $current_datetime = date('Y-m-d H:i:s');
         
         // ✅ NORMALIZACE: strediska_kod → JSON array stringů (UPPERCASE)
         $strediska_kod_normalized = 'NEZADANO';
@@ -1926,7 +2341,7 @@ function handle_orders25_insert($input, $config, $queries) {
                     // Re-encode s čistou strukturou
                     $financovaniData = array('typ' => isset($parsed['typ']) ? $parsed['typ'] : (isset($parsed['kod_stavu']) ? $parsed['kod_stavu'] : null));
                     
-                    foreach (array('lp_kody', 'lp_kod', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
+                    foreach (array('lp_kody', 'lp_kod', 'lp_poznamka', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
                         if (isset($parsed[$key])) {
                             $financovaniData[$key] = $parsed[$key];
                         }
@@ -1957,9 +2372,13 @@ function handle_orders25_insert($input, $config, $queries) {
             }
         }
         
+        // DEBUG: Log timezone info před vytvořením objednávky  
+        error_log("🔍 DEBUG dt_objednavky CREATE: current_datetime=" . $current_datetime . ", input_dt_objednavky=" . (isset($input['dt_objednavky']) ? $input['dt_objednavky'] : 'NOT_SET'));
+        error_log("🔍 DEBUG timezone: server_time=" . date('Y-m-d H:i:s') . ", php_timezone=" . date_default_timezone_get());
+        
         $orderData = [
             ':cislo_objednavky' => $final_order_number,
-            ':dt_objednavky' => normalizeDatetime(isset($input['dt_objednavky']) ? $input['dt_objednavky'] : $current_datetime, true),
+            ':dt_objednavky' => isset($input['dt_objednavky']) ? $input['dt_objednavky'] : $current_datetime,
             ':predmet' => isset($input['predmet']) ? $input['predmet'] : 'Návrh objednávky',
             ':strediska_kod' => $strediska_kod_normalized,
             ':max_cena_s_dph' => isset($input['max_cena_s_dph']) ? $input['max_cena_s_dph'] : null,
@@ -2357,6 +2776,9 @@ function handle_orders25_update($input, $config, $queries) {
                     // Backwards compatibility
                     $financovaniData['lp_kody'] = $input['financovani']['lp_kod'];
                 }
+                if (isset($input['financovani']['lp_poznamka'])) {
+                    $financovaniData['lp_poznamka'] = $input['financovani']['lp_poznamka'];
+                }
                 
                 if (isset($input['financovani']['cislo_smlouvy'])) {
                     $financovaniData['cislo_smlouvy'] = $input['financovani']['cislo_smlouvy'];
@@ -2385,7 +2807,7 @@ function handle_orders25_update($input, $config, $queries) {
                     // Re-encode s čistou strukturou
                     $financovaniData = array('typ' => isset($parsed['typ']) ? $parsed['typ'] : (isset($parsed['kod_stavu']) ? $parsed['kod_stavu'] : null));
                     
-                    foreach (array('lp_kody', 'lp_kod', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
+                    foreach (array('lp_kody', 'lp_kod', 'lp_poznamka', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
                         if (isset($parsed[$key])) {
                             $financovaniData[$key] = $parsed[$key];
                         }
@@ -2416,10 +2838,13 @@ function handle_orders25_update($input, $config, $queries) {
             }
         }
         
+        // DEBUG: Log timezone info před UPDATE objednávky
+        error_log("🔍 DEBUG dt_objednavky UPDATE: order_id=" . $order_id . ", input_dt_objednavky=" . (isset($input['dt_objednavky']) ? $input['dt_objednavky'] : 'NOT_SET'));
+        
         $updateData = [
             ':id' => $order_id,
             ':cislo_objednavky' => isset($input['cislo_objednavky']) ? $input['cislo_objednavky'] : null,
-            ':dt_objednavky' => normalizeDatetime(isset($input['dt_objednavky']) ? $input['dt_objednavky'] : null, true),
+            ':dt_objednavky' => isset($input['dt_objednavky']) ? $input['dt_objednavky'] : null,
             ':predmet' => isset($input['predmet']) ? $input['predmet'] : '',
             ':strediska_kod' => $strediska_kod_normalized,
             ':max_cena_s_dph' => isset($input['max_cena_s_dph']) ? $input['max_cena_s_dph'] : null,
@@ -2503,6 +2928,20 @@ function handle_orders25_update($input, $config, $queries) {
                         continue; // Přeskoč neplatnou fakturu
                     }
                     
+                    // 🔒 BEZPEČNOSTNÍ KONTROLA: Neexistuje už faktura se stejným číslem?
+                    // Pokud ano, NEPŘIŘAZOVAT ji k této objednávce - může být z minula!
+                    if (!empty($fa_cislo_vema)) {
+                        $check_sql = "SELECT id, objednavka_id FROM `$faktury_table` WHERE fa_cislo_vema = ? AND aktivni = 1 LIMIT 1";
+                        $check_stmt = $db->prepare($check_sql);
+                        $check_stmt->execute(array($fa_cislo_vema));
+                        $existing_faktura = $check_stmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($existing_faktura) {
+                            error_log("⚠️ BEZPEČNOST: Faktura #{$existing_faktura['id']} s číslem '$fa_cislo_vema' už existuje (přiřazena k obj #{$existing_faktura['objednavka_id']}). NEPŘIŘAZUJI k nové objednávce #{$order_id}!");
+                            continue; // Přeskoč - nepřiřazuj existující fakturu!
+                        }
+                    }
+                    
                     // Zpracuj fa_strediska_kod - array → JSON, string → přímo
                     $fa_strediska_value = null;
                     if (isset($faktura['fa_strediska_kod'])) {
@@ -2529,6 +2968,7 @@ function handle_orders25_update($input, $config, $queries) {
                         fa_dorucena,
                         fa_castka,
                         fa_cislo_vema,
+                        fa_typ,
                         fa_datum_vystaveni,
                         fa_datum_splatnosti,
                         fa_datum_doruceni,
@@ -2538,7 +2978,7 @@ function handle_orders25_update($input, $config, $queries) {
                         vytvoril_uzivatel_id,
                         dt_vytvoreni,
                         aktivni
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
                     
                     $stmt_insert = $db->prepare($sql_insert);
                     $stmt_insert->execute(array(
@@ -2546,6 +2986,7 @@ function handle_orders25_update($input, $config, $queries) {
                         isset($faktura['fa_dorucena']) ? (int)$faktura['fa_dorucena'] : 0,
                         $fa_castka,
                         $fa_cislo_vema,
+                        isset($faktura['fa_typ']) ? $faktura['fa_typ'] : 'BEZNA',
                         isset($faktura['fa_datum_vystaveni']) ? $faktura['fa_datum_vystaveni'] : null,
                         isset($faktura['fa_datum_splatnosti']) ? $faktura['fa_datum_splatnosti'] : null,
                         isset($faktura['fa_datum_doruceni']) ? $faktura['fa_datum_doruceni'] : null,
@@ -2554,6 +2995,29 @@ function handle_orders25_update($input, $config, $queries) {
                         $rozsirujici_value,
                         $current_user_id
                     ));
+                    
+                    // ✅ AKTUALIZACE: Pokud je to první faktura, nastav fakturant_id v objednávce
+                    // Kontrola, zda objednávka už nemá nastaveného fakturanta
+                    $stmt_check = $db->prepare("SELECT fakturant_id FROM `25a_objednavky` WHERE id = ?");
+                    $stmt_check->execute(array($order_id));
+                    $order_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order_data['fakturant_id']) {
+                        // První faktura - nastav fakturanta a datum přidání první faktury
+                        // 🔧 FIX: Použij TimezoneHelper místo NOW() pro správnou timezone
+                        $current_time = TimezoneHelper::getCzechDateTime();
+                        $stmt_update_order = $db->prepare("
+                            UPDATE `25a_objednavky` 
+                            SET fakturant_id = ?,
+                                dt_faktura_pridana = ?,
+                                dt_aktualizace = ?,
+                                uzivatel_akt_id = ?
+                            WHERE id = ?
+                        ");
+                        $stmt_update_order->execute(array($current_user_id, $current_time, $current_time, $current_user_id, $order_id));
+                        
+                        error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
+                    }
                     
                 } else {
                     // ========== UPDATE existující faktura ==========
@@ -2882,9 +3346,9 @@ function handle_orders25_partial_insert($input, $config, $queries) {
         }
 
         // Pouze zadané hodnoty - ostatní NULL nebo výchozí hodnoty
-        // Použít TimezoneHelper pro správný český čas (respektuje letní/zimní čas)
-        $current_date = TimezoneHelper::getCzechDateTime('Y-m-d');
-        $current_datetime = TimezoneHelper::getCzechDateTime();
+        // Použít obyčejný date() - MySQL timezone je už nastavená správně přes TimezoneHelper::setMysqlTimezone()
+        $current_date = date('Y-m-d');
+        $current_datetime = date('Y-m-d H:i:s');
         
         $fields = [];
         $values = [];
@@ -3091,6 +3555,21 @@ function handle_orders25_partial_insert($input, $config, $queries) {
         $items_errors = [];
         
         $order_items = validateAndParseOrderItems($input);
+        
+        // ✅ Zpracování chyb validace položek
+        if (is_array($order_items) && isset($order_items['valid']) && $order_items['valid'] === false) {
+            // Validace selhala - vrátit chyby
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error', 
+                'error_code' => 'VALIDATION_ERROR',
+                'message' => 'Chyba validace položek objednávky',
+                'errors' => $order_items['errors']
+            ));
+            return;
+        }
+        
         if ($order_items !== false && !empty($order_items)) {
             if (insertOrderItems($db, $order_id, $order_items)) {
                 $items_processed = count($order_items);
@@ -3301,6 +3780,21 @@ function handle_orders25_partial_update($input, $config, $queries) {
         // Kontrola, zda jsou v input datech položky k aktualizaci (oba formáty)
         if (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
             $order_items = validateAndParseOrderItems($input);
+            
+            // ✅ Zpracování chyb validace položek
+            if (is_array($order_items) && isset($order_items['valid']) && $order_items['valid'] === false) {
+                // Validace selhala - vrátit chyby
+                $db->rollBack();
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error', 
+                    'error_code' => 'VALIDATION_ERROR',
+                    'message' => 'Chyba validace položek objednávky',
+                    'errors' => $order_items['errors']
+                ));
+                return;
+            }
+            
             if ($order_items !== false) {
                 // saveOrderItems() nejprve smaže všechny stávající položky, pak vloží nové
                 if (saveOrderItems($db, $order_id, $order_items)) {
@@ -3364,6 +3858,7 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         fa_dorucena,
                         fa_castka,
                         fa_cislo_vema,
+                        fa_typ,
                         fa_datum_vystaveni,
                         fa_datum_splatnosti,
                         fa_datum_doruceni,
@@ -3373,7 +3868,7 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         vytvoril_uzivatel_id,
                         dt_vytvoreni,
                         aktivni
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
                     
                     $stmt_insert = $db->prepare($sql_insert);
                     $stmt_insert->execute(array(
@@ -3381,6 +3876,7 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         isset($faktura['fa_dorucena']) ? (int)$faktura['fa_dorucena'] : 0,
                         $fa_castka,
                         $fa_cislo_vema,
+                        isset($faktura['fa_typ']) ? $faktura['fa_typ'] : 'BEZNA',
                         isset($faktura['fa_datum_vystaveni']) ? $faktura['fa_datum_vystaveni'] : null,
                         isset($faktura['fa_datum_splatnosti']) ? $faktura['fa_datum_splatnosti'] : null,
                         isset($faktura['fa_datum_doruceni']) ? $faktura['fa_datum_doruceni'] : null,
@@ -3392,6 +3888,27 @@ function handle_orders25_partial_update($input, $config, $queries) {
                     
                     $invoices_processed++;
                     $invoices_updated = true;
+                    
+                    // ✅ AKTUALIZACE: Pokud je to první faktura, nastav fakturant_id v objednávce
+                    // Kontrola, zda objednávka už nemá nastaveného fakturanta
+                    $stmt_check = $db->prepare("SELECT fakturant_id FROM `25a_objednavky` WHERE id = ?");
+                    $stmt_check->execute(array($order_id));
+                    $order_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order_data['fakturant_id']) {
+                        // První faktura - nastav fakturanta a datum přidání první faktury
+                        $stmt_update_order = $db->prepare("
+                            UPDATE `25a_objednavky` 
+                            SET fakturant_id = ?,
+                                dt_faktura_pridana = NOW(),
+                                dt_aktualizace = NOW(),
+                                uzivatel_akt_id = ?
+                            WHERE id = ?
+                        ");
+                        $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
+                        
+                        error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
+                    }
                     
                 } else {
                     // ========== UPDATE existující faktura ==========
@@ -3680,8 +4197,8 @@ function handle_orders25_delete($input, $config, $queries) {
         try {
             $stmtInvPaths = $db->prepare("
                 SELECT fp.systemova_cesta 
-                FROM 25a_faktury_prilohy fp
-                INNER JOIN 25a_objednavky_faktury f ON fp.faktura_id = f.id
+                FROM " . TBL_FAKTURY_PRILOHY . " fp
+                INNER JOIN " . TBL_FAKTURY . " f ON fp.faktura_id = f.id
                 WHERE f.objednavka_id = :objednavka_id
             ");
             $stmtInvPaths->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
@@ -3700,8 +4217,8 @@ function handle_orders25_delete($input, $config, $queries) {
         // 4. Delete INVOICE attachments from database (CASCADE od faktur to nesmaže soubory!)
         try {
             $stmtDelInvAtt = $db->prepare("
-                DELETE fp FROM 25a_faktury_prilohy fp
-                INNER JOIN 25a_objednavky_faktury f ON fp.faktura_id = f.id
+                DELETE fp FROM " . TBL_FAKTURY_PRILOHY . " fp
+                INNER JOIN " . TBL_FAKTURY . " f ON fp.faktura_id = f.id
                 WHERE f.objednavka_id = :objednavka_id
             ");
             $stmtDelInvAtt->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
@@ -4545,7 +5062,8 @@ function handle_orders25_lock($input, $config, $queries) {
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    // Support both 'id' and 'orderId' for backwards compatibility
+    $order_id = isset($input['id']) ? (int)$input['id'] : (isset($input['orderId']) ? (int)$input['orderId'] : 0);
 
     $token_data = verify_token($token);
     if (!$token_data) {
@@ -4668,11 +5186,16 @@ function handle_orders25_lock($input, $config, $queries) {
  * Endpoint: orders25/unlock
  */
 function handle_orders25_unlock($input, $config, $queries) {
+    error_log('🔓 [UNLOCK HANDLER] START - input keys: ' . json_encode(array_keys($input)));
+    
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    // Support both 'id' and 'orderId' for backwards compatibility
+    $order_id = isset($input['id']) ? (int)$input['id'] : (isset($input['orderId']) ? (int)$input['orderId'] : 0);
     $force_unlock = isset($input['force']) ? (bool)$input['force'] : false;
+    
+    error_log('🔓 [UNLOCK HANDLER] Parsed values - order_id: ' . $order_id . ', username: ' . $request_username . ', force: ' . ($force_unlock ? 'true' : 'false'));
 
     $token_data = verify_token($token);
     if (!$token_data) {
@@ -5245,9 +5768,10 @@ function handle_orders25_add_invoice($input, $config, $queries) {
         if ($stmt->execute()) {
             echo json_encode([
                 'status' => 'ok',
-                'message' => 'Faktura byla úspěšně přidána k objednávce',
+                'message' => 'Faktura ' . $cislo_faktury . ' byla úspěšně přidána k objednávce ' . $order['cislo_objednavky'],
                 'data' => [
                     'order_id' => $order_id,
+                    'order_number' => $order['cislo_objednavky'],
                     'added_by_user_id' => $current_user_id,
                     'cislo_faktury' => $cislo_faktury,
                     'datum_faktury' => $datum_faktury,
@@ -5370,5 +5894,176 @@ function handle_orders25_complete_order($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['err' => 'Chyba při dokončování objednávky: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * 🔒 LOCK objednávky pro editaci
+ * POST /order-v2/{id}/lock
+ */
+function handle_order_v2_lock($input, $config, $queries, $order_id) {
+    try {
+        $token = isset($input['token']) ? $input['token'] : '';
+        $request_username = isset($input['username']) ? $input['username'] : '';
+        
+        $db = get_db($config);
+        $token_data = verify_token_v2($request_username, $token, $db);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný nebo chybějící token']);
+            return;
+        }
+        
+        $current_user_id = $token_data['id'];
+        
+        $force = isset($input['force']) && $input['force'] === true;
+        
+        // Kontrola zda objednávka existuje
+        $stmt = $db->prepare("SELECT id, zamek_uzivatel_id, dt_zamek FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->execute([':id' => $order_id]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Objednávka nenalezena']);
+            return;
+        }
+        
+        // Kontrola zda je už zamčená jiným uživatelem
+        if ($order['zamek_uzivatel_id'] && $order['zamek_uzivatel_id'] != $current_user_id) {
+            // Už je zamčená jiným
+            if (!$force) {
+                // Získat jméno uživatele
+                $user_data = getUserDataForLockInfo($db, $order['zamek_uzivatel_id']);
+                
+                http_response_code(423); // 423 Locked
+                echo json_encode([
+                    'status' => 'error',
+                    'code' => 'LOCKED',
+                    'message' => 'Objednávka je zamčená uživatelem: ' . $user_data['fullname'],
+                    'lock_info' => [
+                        'locked_by_user_id' => $order['zamek_uzivatel_id'],
+                        'locked_by_user_fullname' => $user_data['fullname'],
+                        'locked_by_user_email' => $user_data['email'],
+                        'locked_by_user_telefon' => $user_data['telefon'],
+                        'locked_at' => $order['dt_zamek']
+                    ]
+                ]);
+                return;
+            }
+            
+            // Force unlock - pouze pro SUPERADMIN/ADMINISTRATOR
+            if (!$token_data['is_admin']) {
+                http_response_code(403);
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'Pouze administrátor může převzít zamčenou objednávku'
+                ]);
+                return;
+            }
+        }
+        
+        // Zamkni objednávku
+        $lock_stmt = $db->prepare(lockOrderQuery());
+        $lock_stmt->execute([
+            ':id' => $order_id,
+            ':user_id' => $current_user_id
+        ]);
+        
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Objednávka zamčena pro editaci',
+            'data' => [
+                'order_id' => $order_id,
+                'locked_by_user_id' => $current_user_id,
+                'locked_at' => date('Y-m-d H:i:s')
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při zamykání: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * 🔓 UNLOCK objednávky
+ * POST /order-v2/{id}/unlock
+ */
+function handle_order_v2_unlock($input, $config, $queries, $order_id) {
+    try {
+        $token = isset($input['token']) ? $input['token'] : '';
+        $request_username = isset($input['username']) ? $input['username'] : '';
+        
+        $db = get_db($config);
+        $token_data = verify_token_v2($request_username, $token, $db);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný nebo chybějící token']);
+            return;
+        }
+        
+        $current_user_id = $token_data['id'];
+        
+        // Kontrola zda objednávka existuje
+        $stmt = $db->prepare("SELECT id, zamek_uzivatel_id FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->execute([':id' => $order_id]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Objednávka nenalezena']);
+            return;
+        }
+        
+        // Normalizace zamek_uzivatel_id (NULL nebo 0 = nezamčeno)
+        $locked_by = (int)$order['zamek_uzivatel_id'];
+        
+        // Pokud je objednávka nezamčená, můžeme rovnou vrátit success (idempotence)
+        if (!$locked_by) {
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'ok',
+                'message' => 'Objednávka nebyla zamčená',
+                'data' => [
+                    'order_id' => $order_id,
+                    'was_locked' => false,
+                    'unlocked_at' => date('Y-m-d H:i:s')
+                ]
+            ]);
+            return;
+        }
+        
+        // Může odemknout pouze ten, kdo zamkl, nebo admin
+        if ($locked_by != $current_user_id && !$token_data['is_admin']) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nemůžete odemknout objednávku zamčenou jiným uživatelem'
+            ]);
+            return;
+        }
+        
+        // Odemkni
+        $unlock_stmt = $db->prepare(unlockOrderQuery());
+        $unlock_stmt->execute([':id' => $order_id]);
+        
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Objednávka odemčena',
+            'data' => [
+                'order_id' => $order_id,
+                'was_locked' => true,
+                'unlocked_at' => date('Y-m-d H:i:s')
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při odemykání: ' . $e->getMessage()]);
     }
 }

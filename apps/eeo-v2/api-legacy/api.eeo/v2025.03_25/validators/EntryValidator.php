@@ -21,14 +21,14 @@ class EntryValidator {
      * Validovat LP povinnost podle typu dokladu
      * LP je POVINNÝ pouze pro VÝDAJE, pro PŘÍJMY není povinný
      */
-    public function validateLpRequired(string $typDokladu, array $detailItems): bool {
+    public function validateLpRequired(string $typDokladu, array $detailItems, bool $lpKodPovinny = false): bool {
         // Pro PŘÍJMY není LP povinný (dotace pokladny)
         if ($typDokladu === 'prijem') {
             return true;
         }
         
-        // Pro VÝDAJE je LP POVINNÝ na všech detail položkách
-        if ($typDokladu === 'vydaj') {
+        // ✅ FIX: LP povinnost závisí na nastavení pokladny, ne automaticky pro všechny výdaje
+        if ($typDokladu === 'vydaj' && $lpKodPovinny) {
             if (empty($detailItems)) {
                 throw new Exception('Výdaj musí mít alespoň jednu detail položku s LP kódem');
             }
@@ -134,13 +134,13 @@ class EntryValidator {
     /**
      * Validovat kompletní záznam s multi-LP
      */
-    public function validateEntryWithDetails(array $masterData, array $detailItems, int $rok): array {
+    public function validateEntryWithDetails(array $masterData, array $detailItems, int $rok, bool $lpKodPovinny = false): array {
         $errors = [];
         $warnings = [];
         
         try {
             // 1. LP povinnost
-            $this->validateLpRequired($masterData['typ_dokladu'], $detailItems);
+            $this->validateLpRequired($masterData['typ_dokladu'], $detailItems, $lpKodPovinny);
             
             // 2. Součet částek
             $castka_celkem = $masterData['castka_celkem'] 
@@ -190,8 +190,8 @@ class EntryValidator {
             $errors[] = 'datum_zapisu musí být platné datum ve formátu YYYY-MM-DD';
         }
         
-        // Povinné pole: obsah_zapisu
-        if (empty($data['obsah_zapisu'])) {
+        // Povinné pole: obsah_zapisu (prázdný string je povolen)
+        if (!isset($data['obsah_zapisu'])) {
             $errors[] = 'obsah_zapisu je povinný';
         } elseif (strlen($data['obsah_zapisu']) > 500) {
             $errors[] = 'obsah_zapisu může mít maximálně 500 znaků';

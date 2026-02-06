@@ -74,6 +74,9 @@ class LPCalculationService {
      * @return array Agregované čerpání podle LP kódů za celý rok
      */
     public function recalculateLPForUserYear(int $userId, int $year): array {
+        // OPRAVA: LP je vázáno na vedoucího (userId), ale ČERPAT JÍ MŮŽE KDOKOLIV!
+        // Nejdříve získáme všechny LP kódy, které má daný uživatel jako vedoucího
+        // DŮLEŽITÉ: Musíme filtrovat podle roku nebo brát všechny LP kódy bez ohledu na rok
         $sql = "
             SELECT 
                 lp_data.lp_kod,
@@ -84,7 +87,7 @@ class LPCalculationService {
                 MIN(lp_data.datum_zapisu) as prvni_datum,
                 MAX(lp_data.datum_zapisu) as posledni_datum
             FROM (
-                -- Multi-LP: detail položky
+                -- Multi-LP: detail položky - KTERÝKOLI uživatel může čerpat LP vedoucího
                 SELECT 
                     d.lp_kod,
                     d.castka,
@@ -94,8 +97,7 @@ class LPCalculationService {
                 FROM 25a_pokladni_polozky_detail d
                 JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
                 JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
-                WHERE k.uzivatel_id = ?
-                  AND k.rok = ?
+                WHERE k.rok = ?
                   AND p.typ_dokladu = 'vydaj'
                   AND p.smazano = 0
                   AND d.lp_kod IS NOT NULL
@@ -103,7 +105,7 @@ class LPCalculationService {
                 
                 UNION ALL
                 
-                -- Single-LP: staré záznamy bez detailů
+                -- Single-LP: staré záznamy BEZ detailů - KTERÝKOLI uživatel může čerpat LP vedoucího
                 SELECT 
                     p.lp_kod,
                     COALESCE(p.castka_vydaj, p.castka_celkem) as castka,
@@ -112,8 +114,7 @@ class LPCalculationService {
                     p.datum_zapisu
                 FROM 25a_pokladni_polozky p
                 JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
-                WHERE k.uzivatel_id = ?
-                  AND k.rok = ?
+                WHERE k.rok = ?
                   AND p.typ_dokladu = 'vydaj'
                   AND p.smazano = 0
                   AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
@@ -125,7 +126,7 @@ class LPCalculationService {
         ";
         
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$userId, $year, $userId, $year]);
+        $stmt->execute([$year, $year]);
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -206,25 +207,85 @@ class LPCalculationService {
      * @param int $year Rok
      * @return array LP kódy s čerpáním a limity
      */
-    public function getLPSummaryWithLimits(int $userId, int $year): array {
-        // 1. Získat čerpání z pokladny
-        $cerpani = $this->recalculateLPForUserYear($userId, $year);
+    /**
+     * Získat přehled čerpání LP s limity podle oprávnění
+     * 
+     * @param int|null $userId ID uživatele (null = všichni)
+     * @param int $year Rok
+     * @param string $viewMode Režim zobrazení: 'all', 'department', 'own'
+     * @param int|null $usekId ID úseku (jen pro režim 'department')
+     * @return array Agregovaný přehled čerpání s limity
+     */
+    public function getLPSummaryWithLimits($userId, int $year, $viewMode = 'own', $usekId = null): array {
+        // 1. Získat čerpání z pokladny podle režimu
+        if ($viewMode === 'all') {
+            // ADMIN - všechny knihy všech uživatelů
+            $cerpani = $this->recalculateLPForAllUsersYear($year);
+        } else if ($viewMode === 'department' && $usekId) {
+            // Příkazce - všechny knihy v rámci úseku
+            $cerpani = $this->recalculateLPForDepartmentYear($usekId, $year);
+        } else {
+            // Běžný uživatel - jen jeho knihy
+            $cerpani = $this->recalculateLPForUserYear($userId, $year);
+        }
         
-        // 2. Získat limity z číselníku
-        $sql = "
-            SELECT 
-                c.cislo_lp,
-                c.celkovy_limit,
-                c.skutecne_cerpano,
-                c.zbyva_skutecne,
-                u.usek_nazev as nazev_uctu
-            FROM 25_limitovane_prisliby_cerpani c
-            LEFT JOIN 25_useky u ON u.id = c.usek_id
-            WHERE c.rok = ?
-        ";
+        // 2. Získat limity z číselníku podle režimu
+        if ($viewMode === 'all') {
+            // ADMIN - všechny LP kódy
+            $sql = "
+                SELECT 
+                    c.id,
+                    c.cislo_lp,
+                    c.celkovy_limit,
+                    c.skutecne_cerpano,
+                    c.zbyva_skutecne,
+                    u.usek_nazev as nazev_uctu,
+                    uz.jmeno,
+                    uz.prijmeni
+                FROM 25_limitovane_prisliby_cerpani c
+                LEFT JOIN 25_useky u ON u.id = c.usek_id
+                LEFT JOIN 25_uzivatele uz ON uz.id = c.user_id
+                WHERE c.rok = ?
+            ";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$year]);
+        } else if ($viewMode === 'department' && $usekId) {
+            // Příkazce - LP kódy jeho úseku
+            $sql = "
+                SELECT 
+                    c.id,
+                    c.cislo_lp,
+                    c.celkovy_limit,
+                    c.skutecne_cerpano,
+                    c.zbyva_skutecne,
+                    u.usek_nazev as nazev_uctu,
+                    uz.jmeno,
+                    uz.prijmeni
+                FROM 25_limitovane_prisliby_cerpani c
+                LEFT JOIN 25_useky u ON u.id = c.usek_id
+                LEFT JOIN 25_uzivatele uz ON uz.id = c.user_id
+                WHERE c.rok = ? AND c.usek_id = ?
+            ";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$year, $usekId]);
+        } else {
+            // Běžný uživatel - jen jeho LP kódy
+            $sql = "
+                SELECT 
+                    c.id,
+                    c.cislo_lp,
+                    c.celkovy_limit,
+                    c.skutecne_cerpano,
+                    c.zbyva_skutecne,
+                    u.usek_nazev as nazev_uctu
+                FROM 25_limitovane_prisliby_cerpani c
+                LEFT JOIN 25_useky u ON u.id = c.usek_id
+                WHERE c.rok = ? AND c.user_id = ?
+            ";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$year, $userId]);
+        }
         
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$year]);
         $limity = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // 3. Indexovat limity podle LP kódu
@@ -233,13 +294,19 @@ class LPCalculationService {
             $limityIndex[$limit['cislo_lp']] = $limit;
         }
         
-        // 4. Spojit čerpání s limity
+        // 4. Spojit čerpání s limity - zobrazit jen LP které mají limit
         $result = [];
         foreach ($cerpani as $item) {
             $lpKod = $item['lp_kod'];
             $limit = $limityIndex[$lpKod] ?? null;
             
+            // Přeskočit LP kódy které nejsou v limits (nemají záznam v číselníku)
+            if (!$limit) {
+                continue;
+            }
+            
             $result[] = [
+                'id' => intval($limit['id']),
                 'lp_kod' => $lpKod,
                 'cerpano_pokladna' => floatval($item['celkem_vydano']),
                 'pocet_dokladu' => intval($item['pocet_dokladu']),
@@ -253,6 +320,8 @@ class LPCalculationService {
                 'skutecne_cerpano_celkem' => $limit ? floatval($limit['skutecne_cerpano']) : null,
                 'zbyva' => $limit ? floatval($limit['zbyva_skutecne']) : null,
                 'nazev_uctu' => $limit['nazev_uctu'] ?? null,
+                'spravce_jmeno' => isset($limit['jmeno']) ? $limit['jmeno'] : null,
+                'spravce_prijmeni' => isset($limit['prijmeni']) ? $limit['prijmeni'] : null,
                 
                 // Výpočty
                 'procento_cerpani' => $limit && $limit['celkovy_limit'] > 0 
@@ -265,5 +334,125 @@ class LPCalculationService {
         }
         
         return $result;
+    }
+    
+    /**
+     * Přepočítat čerpání LP pro všechny uživatele v daném roce (ADMIN režim)
+     */
+    private function recalculateLPForAllUsersYear(int $year): array {
+        $sql = "
+            SELECT 
+                lp_data.lp_kod,
+                SUM(lp_data.castka) as celkem_vydano,
+                COUNT(DISTINCT lp_data.kniha_id) as pocet_knih,
+                COUNT(DISTINCT lp_data.polozka_id) as pocet_dokladu,
+                COUNT(*) as pocet_polozek,
+                MIN(lp_data.datum_zapisu) as prvni_datum,
+                MAX(lp_data.datum_zapisu) as posledni_datum
+            FROM (
+                -- Multi-LP: detail položky
+                SELECT 
+                    d.lp_kod,
+                    d.castka,
+                    p.id as polozka_id,
+                    k.id as kniha_id,
+                    p.datum_zapisu
+                FROM 25a_pokladni_polozky_detail d
+                JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                WHERE k.rok = ?
+                  AND p.typ_dokladu = 'vydaj'
+                  AND p.smazano = 0
+                  AND d.lp_kod IS NOT NULL
+                  AND d.lp_kod != ''
+                
+                UNION ALL
+                
+                -- Single-LP: staré záznamy
+                SELECT 
+                    p.lp_kod,
+                    COALESCE(p.castka_vydaj, p.castka_celkem) as castka,
+                    p.id as polozka_id,
+                    k.id as kniha_id,
+                    p.datum_zapisu
+                FROM 25a_pokladni_polozky p
+                JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                WHERE k.rok = ?
+                  AND p.typ_dokladu = 'vydaj'
+                  AND p.smazano = 0
+                  AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                  AND p.lp_kod IS NOT NULL
+                  AND p.lp_kod != ''
+            ) as lp_data
+            GROUP BY lp_data.lp_kod
+            ORDER BY lp_data.lp_kod
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$year, $year]);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * Přepočítat čerpání LP pro všechny knihy v úseku (Příkazce režim)
+     */
+    private function recalculateLPForDepartmentYear(int $usekId, int $year): array {
+        $sql = "
+            SELECT 
+                lp_data.lp_kod,
+                SUM(lp_data.castka) as celkem_vydano,
+                COUNT(DISTINCT lp_data.kniha_id) as pocet_knih,
+                COUNT(DISTINCT lp_data.polozka_id) as pocet_dokladu,
+                COUNT(*) as pocet_polozek,
+                MIN(lp_data.datum_zapisu) as prvni_datum,
+                MAX(lp_data.datum_zapisu) as posledni_datum
+            FROM (
+                -- Multi-LP: detail položky
+                SELECT 
+                    d.lp_kod,
+                    d.castka,
+                    p.id as polozka_id,
+                    k.id as kniha_id,
+                    p.datum_zapisu
+                FROM 25a_pokladni_polozky_detail d
+                JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                JOIN 25_uzivatele u ON k.uzivatel_id = u.id
+                WHERE k.rok = ?
+                  AND u.usek_id = ?
+                  AND p.typ_dokladu = 'vydaj'
+                  AND p.smazano = 0
+                  AND d.lp_kod IS NOT NULL
+                  AND d.lp_kod != ''
+                
+                UNION ALL
+                
+                -- Single-LP: staré záznamy
+                SELECT 
+                    p.lp_kod,
+                    COALESCE(p.castka_vydaj, p.castka_celkem) as castka,
+                    p.id as polozka_id,
+                    k.id as kniha_id,
+                    p.datum_zapisu
+                FROM 25a_pokladni_polozky p
+                JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                JOIN 25_uzivatele u ON k.uzivatel_id = u.id
+                WHERE k.rok = ?
+                  AND u.usek_id = ?
+                  AND p.typ_dokladu = 'vydaj'
+                  AND p.smazano = 0
+                  AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                  AND p.lp_kod IS NOT NULL
+                  AND p.lp_kod != ''
+            ) as lp_data
+            GROUP BY lp_data.lp_kod
+            ORDER BY lp_data.lp_kod
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$year, $usekId, $year, $usekId]);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }

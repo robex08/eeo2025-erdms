@@ -1,6 +1,6 @@
 <?php
 
-define("VERSION_OBJEDNAVKY", 'r_objednavky');
+define("VERSION_OBJEDNAVKY", 'objednavky0123');
 define("VERSION_PRILOHY", 'r_pripojene_odokumenty');
 
 

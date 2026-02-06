@@ -110,12 +110,14 @@ class OrderV2Handler {
             }
         }
         
-        // ========== BOOLEAN POLE ==========
+        // ========== BOOLEAN POLE - PŘEVOD NA INTEGER 0/1 ==========
+        // 🔧 NORMALIZACE: Vždy posíláme 0 nebo 1 (integer), NIKDY string '0' nebo boolean
         
         $boolFields = array('aktivni', 'potvrzeni_dokonceni_objednavky', 'potvrzeni_vecne_spravnosti');
         foreach ($boolFields as $field) {
             if (isset($rawData[$field])) {
-                $result[$field] = (bool)$rawData[$field];
+                // Explicitně převést na integer 0 nebo 1
+                $result[$field] = $rawData[$field] ? 1 : 0;
             }
         }
         
@@ -215,7 +217,7 @@ class OrderV2Handler {
      * @param array $standardData Standardizovaná data z FE
      * @return array Data připravená pro INSERT/UPDATE do DB
      */
-    public function transformToDB($standardData) {
+    public function transformToDB($standardData, $isUpdate = false) {
         if (!$standardData) {
             return array();
         }
@@ -233,13 +235,34 @@ class OrderV2Handler {
             'lock_info',            // Virtuální pole (sestavené ze zamek_* polí)
             'enriched_data',        // Virtuální pole (JOIN data)
             'items',                // Alias pro polozky
-            'attachments'           // Alias pro prilohy
+            'attachments',          // Alias pro prilohy
+            'storno_provedl',       // 🛑 DEPRECATED: Pole neexistuje v DB (používáme odesilatel_id)
+            'datum_storna',         // 🛑 DEPRECATED: Pole neexistuje v DB (používáme dt_odeslani)
+            'stav_stornovano',      // 🛑 DEPRECATED: Pole neexistuje v DB (používáme workflow ZRUSENA)
+            'storno_uzivatel_id'    // 🛑 DEPRECATED: Pole neexistuje v DB (používáme odesilatel_id)
         );
+        
+        // 🔒 ONLY during UPDATE: Block core IDs from being changed
+        if ($isUpdate) {
+            $blacklistedFields[] = 'uzivatel_id';   // Technical creator - never update from frontend
+            $blacklistedFields[] = 'objednatel_id'; // Business orderer - never update from frontend  
+        }
         
         $result = array();
         foreach ($standardData as $key => $value) {
             if (!in_array($key, $authFields) && !in_array($key, $blacklistedFields)) {
-                $result[$key] = $value;
+                // 🔧 FIELD MAPPING: frontend → database column names
+                if ($key === 'schvalil_uzivatel_id') {
+                    // Frontend posílá schvalil_uzivatel_id, ale DB má schvalovatel_id
+                    $result['schvalovatel_id'] = $value;
+                } elseif ($key === 'storno_uzivatel_id') {
+                    // 🛑 DEPRECATED: storno_uzivatel_id neexistuje v DB
+                    // Používáme odesilatel_id pro OBOJÍ (odeslání i storno)
+                    // IGNOROVAT - nepřepisovat odesilatel_id z frontendu
+                    error_log("WARNING: Frontend poslal deprecated pole storno_uzivatel_id - IGNOROVÁNO");
+                } else {
+                    $result[$key] = $value;
+                }
             }
         }
         
@@ -281,6 +304,9 @@ class OrderV2Handler {
                 } elseif (isset($standardData['financovani']['lp_kod']) && is_array($standardData['financovani']['lp_kod'])) {
                     // Backwards compatibility
                     $financovaniData['lp_kody'] = $standardData['financovani']['lp_kod'];
+                }
+                if (isset($standardData['financovani']['lp_poznamka'])) {
+                    $financovaniData['lp_poznamka'] = $standardData['financovani']['lp_poznamka'];
                 }
                 
                 if (isset($standardData['financovani']['cislo_smlouvy'])) {
@@ -415,25 +441,46 @@ class OrderV2Handler {
         
         foreach ($datetimeFields as $field) {
             if (isset($standardData[$field]) && $standardData[$field] !== null && $standardData[$field] !== '') {
-                // Try to parse ISO 8601 format back to MySQL datetime
-                $dt = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $standardData[$field]);
-                if (!$dt) {
-                    $dt = DateTime::createFromFormat('Y-m-d H:i:s', $standardData[$field]);
+                // 🔥 FIX: Frontend už posílá LOKÁLNÍ ČESKÝ ČAS (ne UTC)!
+                // NEKONVERTOVAT! Pouze zajistit správný MySQL formát (Y-m-d H:i:s)
+                $dt = false;
+                
+                // ISO format s millisekundami: 2026-01-09T00:49:44.125Z
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/', $standardData[$field])) {
+                    $dt = DateTime::createFromFormat('Y-m-d\TH:i:s.v\Z', $standardData[$field]);
                 }
-                // Pokud přišlo jen datum bez času (Y-m-d), přidej aktuální čas
-                if (!$dt) {
-                    $dt = DateTime::createFromFormat('Y-m-d', $standardData[$field]);
-                    if ($dt) {
-                        // Přidej aktuální čas
-                        $now = new DateTime();
-                        $dt->setTime($now->format('H'), $now->format('i'), $now->format('s'));
-                    }
+                
+                // ISO format bez millisekundy: 2026-01-09T00:49:44Z nebo 2026-01-09T00:49:44
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/', $standardData[$field])) {
+                    $cleaned = rtrim($standardData[$field], 'Z');
+                    $dt = DateTime::createFromFormat('Y-m-d\TH:i:s', $cleaned);
                 }
+                
+                // Standard MySQL format: 2026-01-09 00:49:44
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $standardData[$field])) {
+                    // ✅ UŽ JE V SPRÁVNÉM FORMÁTU - jen zkopírovat
+                    $result[$field] = $standardData[$field];
+                    continue;
+                }
+                
+                // Pokud přišlo jen datum bez času (Y-m-d), přidej půlnoc
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2}$/', $standardData[$field])) {
+                    $result[$field] = $standardData[$field] . ' 00:00:00';
+                    continue;
+                }
+                
                 if ($dt) {
+                    // Konvertuj do MySQL formátu
                     $result[$field] = $dt->format('Y-m-d H:i:s');
                 } else {
-                    // Pokud selže parsing, nech původní hodnotu
-                    $result[$field] = $standardData[$field];
+                    // Last resort - pokus o strtotime
+                    $timestamp = strtotime($standardData[$field]);
+                    if ($timestamp !== false) {
+                        $result[$field] = date('Y-m-d H:i:s', $timestamp);
+                    } else {
+                        // Fallback - current timestamp
+                        $result[$field] = date('Y-m-d H:i:s');
+                    }
                 }
             }
         }
@@ -616,8 +663,8 @@ class OrderV2Handler {
             return get_users_table_name();
         }
         
-        // Fallback
-        return '25_uzivatele';
+        // Fallback - použít TBL_ konstantu
+        return TBL_UZIVATELE;
     }
     
     private function getOrdersTableName() {
@@ -626,8 +673,8 @@ class OrderV2Handler {
             return get_orders_table_name();
         }
         
-        // Fallback
-        return '25a_objednavky';
+        // Fallback - použít TBL_ konstantu
+        return TBL_OBJEDNAVKY;
     }
     
     /**
@@ -716,7 +763,7 @@ class OrderV2Handler {
             
             $lastUsedNumber = (int)$result['last_used_number'];
             $nextNumber = $lastUsedNumber + 1;
-            $currentYear = date('Y');
+            $currentYear = TimezoneHelper::getCzechDateTime('Y');
             
             // Formátování čísel s nulami
             $formattedLastUsed = sprintf('%04d', $lastUsedNumber);

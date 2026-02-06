@@ -1,7 +1,7 @@
 <?php
 /**
  * CashbookEntryModel.php
- * Model pro práci s položkami pokladní knihy (25a_pokladni_polozky)
+ * Model pro práci s položkami pokladní knihy (TBL_POKLADNI_POLOZKY (25a_pokladni_polozky))
  * PHP 8.4+ s podporou multi-LP detail položek
  */
 
@@ -25,7 +25,7 @@ class CashbookEntryModel {
     public function getDetailItems(int $entryId): array {
         $stmt = $this->db->prepare("
             SELECT * 
-            FROM 25a_pokladni_polozky_detail
+            FROM " . TBL_POKLADNI_POLOZKY_DETAIL . "
             WHERE polozka_id = ?
             ORDER BY poradi ASC
         ");
@@ -42,7 +42,7 @@ class CashbookEntryModel {
      */
     public function insertDetailItem(int $entryId, int $poradi, array $data): int {
         $stmt = $this->db->prepare("
-            INSERT INTO 25a_pokladni_polozky_detail (
+            INSERT INTO " . TBL_POKLADNI_POLOZKY_DETAIL . " (
                 polozka_id, poradi, popis, castka, lp_kod, lp_popis, poznamka, vytvoreno
             ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
         ");
@@ -78,11 +78,12 @@ class CashbookEntryModel {
             $fields[] = "castka = ?";
             $params[] = $data['castka'];
         }
-        if (isset($data['lp_kod'])) {
+        // ✅ FIX: array_key_exists místo isset - aby se dalo nastavit lp_kod na NULL
+        if (array_key_exists('lp_kod', $data)) {
             $fields[] = "lp_kod = ?";
             $params[] = $data['lp_kod'];
         }
-        if (isset($data['lp_popis'])) {
+        if (array_key_exists('lp_popis', $data)) {
             $fields[] = "lp_popis = ?";
             $params[] = $data['lp_popis'];
         }
@@ -98,7 +99,7 @@ class CashbookEntryModel {
         $fields[] = "aktualizovano = NOW()";
         $params[] = $detailId;
         
-        $sql = "UPDATE 25a_pokladni_polozky_detail SET " . implode(', ', $fields) . " WHERE id = ?";
+        $sql = "UPDATE " . TBL_POKLADNI_POLOZKY_DETAIL . " SET " . implode(', ', $fields) . " WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($params);
     }
@@ -109,7 +110,7 @@ class CashbookEntryModel {
      * @return bool
      */
     public function deleteDetailItems(int $entryId): bool {
-        $stmt = $this->db->prepare("DELETE FROM 25a_pokladni_polozky_detail WHERE polozka_id = ?");
+        $stmt = $this->db->prepare("DELETE FROM " . TBL_POKLADNI_POLOZKY_DETAIL . " WHERE polozka_id = ?");
         return $stmt->execute([$entryId]);
     }
     
@@ -234,7 +235,7 @@ class CashbookEntryModel {
                 e.*,
                 u.username AS created_by_username,
                 CONCAT(u.jmeno, ' ', u.prijmeni) AS created_by_name
-            FROM 25a_pokladni_polozky e
+            FROM " . TBL_POKLADNI_POLOZKY . " e
             LEFT JOIN 25_uzivatele u ON e.vytvoril = u.id
             WHERE e.pokladni_kniha_id = ?
         ";
@@ -259,7 +260,7 @@ class CashbookEntryModel {
                 e.*,
                 u.username AS created_by_username,
                 CONCAT(u.jmeno, ' ', u.prijmeni) AS created_by_name
-            FROM 25a_pokladni_polozky e
+            FROM " . TBL_POKLADNI_POLOZKY . " e
             LEFT JOIN 25_uzivatele u ON e.vytvoril = u.id
             WHERE e.id = ?
         ");
@@ -272,7 +273,7 @@ class CashbookEntryModel {
      */
     public function createEntry($data, $userId) {
         $sql = "
-            INSERT INTO 25a_pokladni_polozky (
+            INSERT INTO " . TBL_POKLADNI_POLOZKY . " (
                 pokladni_kniha_id, datum_zapisu, cislo_dokladu, cislo_poradi_v_roce, typ_dokladu,
                 obsah_zapisu, komu_od_koho, castka_prijem, castka_vydaj, castka_celkem,
                 zustatek_po_operaci, lp_kod, lp_popis, poznamka,
@@ -339,11 +340,12 @@ class CashbookEntryModel {
             $fields[] = "ma_detail = ?";
             $params[] = $data['ma_detail'];
         }
-        if (isset($data['lp_kod'])) {
+        // ✅ FIX: array_key_exists místo isset - aby se dalo nastavit lp_kod na NULL
+        if (array_key_exists('lp_kod', $data)) {
             $fields[] = "lp_kod = ?";
             $params[] = $data['lp_kod'];
         }
-        if (isset($data['lp_popis'])) {
+        if (array_key_exists('lp_popis', $data)) {
             $fields[] = "lp_popis = ?";
             $params[] = $data['lp_popis'];
         }
@@ -373,7 +375,7 @@ class CashbookEntryModel {
         $params[] = $userId;
         $params[] = $entryId;
         
-        $sql = "UPDATE 25a_pokladni_polozky SET " . implode(', ', $fields) . " WHERE id = ?";
+        $sql = "UPDATE " . TBL_POKLADNI_POLOZKY . " SET " . implode(', ', $fields) . " WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($params);
     }
@@ -383,7 +385,7 @@ class CashbookEntryModel {
      */
     public function updateEntryBalance($entryId, $balance) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_polozky 
+            UPDATE " . TBL_POKLADNI_POLOZKY . " 
             SET zustatek_po_operaci = ? 
             WHERE id = ?
         ");
@@ -395,7 +397,7 @@ class CashbookEntryModel {
      */
     public function updateDocumentNumber($entryId, $documentNumber) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_polozky 
+            UPDATE " . TBL_POKLADNI_POLOZKY . " 
             SET cislo_dokladu = ? 
             WHERE id = ?
         ");
@@ -407,7 +409,7 @@ class CashbookEntryModel {
      */
     public function deleteEntry($entryId, $userId) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_polozky 
+            UPDATE " . TBL_POKLADNI_POLOZKY . " 
             SET smazano = 1, smazano_kdy = NOW(), smazano_kym = ? 
             WHERE id = ?
         ");
@@ -419,7 +421,7 @@ class CashbookEntryModel {
      */
     public function restoreEntry($entryId) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_polozky 
+            UPDATE " . TBL_POKLADNI_POLOZKY . " 
             SET smazano = 0, smazano_kdy = NULL, smazano_kym = NULL 
             WHERE id = ?
         ");
@@ -430,7 +432,7 @@ class CashbookEntryModel {
      * Trvale smazat položku (hard delete) - pouze pro admin
      */
     public function hardDeleteEntry($entryId) {
-        $stmt = $this->db->prepare("DELETE FROM 25a_pokladni_polozky WHERE id = ?");
+        $stmt = $this->db->prepare("DELETE FROM " . TBL_POKLADNI_POLOZKY . " WHERE id = ?");
         return $stmt->execute(array($entryId));
     }
     
@@ -440,8 +442,8 @@ class CashbookEntryModel {
     public function getEntriesByTypeAndYear($year, $type, $userId) {
         $stmt = $this->db->prepare("
             SELECT e.* 
-            FROM 25a_pokladni_polozky e
-            JOIN 25a_pokladni_knihy b ON e.pokladni_kniha_id = b.id
+            FROM " . TBL_POKLADNI_POLOZKY . " e
+            JOIN " . TBL_POKLADNI_KNIHY . " b ON e.pokladni_kniha_id = b.id
             WHERE b.rok = ? 
               AND b.uzivatel_id = ?
               AND e.typ_dokladu = ?
@@ -456,7 +458,7 @@ class CashbookEntryModel {
      * Získat počet položek v knize
      */
     public function getEntryCount($bookId, $includeDeleted = false) {
-        $sql = "SELECT COUNT(*) as count FROM 25a_pokladni_polozky WHERE pokladni_kniha_id = ?";
+        $sql = "SELECT COUNT(*) as count FROM " . TBL_POKLADNI_POLOZKY . " WHERE pokladni_kniha_id = ?";
         
         if (!$includeDeleted) {
             $sql .= " AND smazano = 0";

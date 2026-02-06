@@ -41,94 +41,8 @@ function checkAdminPermission($token_data) {
 // API HANDLERY PRO TEMPLATES CRUD
 // ==========================================
 
-/**
- * Seznam všech notifikačních šablon
- * POST /notifications/templates/list
- */
-function handle_notifications_templates_list($input, $config, $queries) {
-    $token = isset($input['token']) ? $input['token'] : '';
-    $request_username = isset($input['username']) ? $input['username'] : '';
-
-    $token_data = verify_token_v2($request_username, $token);
-    if (!$token_data) {
-        http_response_code(401);
-        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
-        return;
-    }
-
-    // Kontrola oprávnění
-    if (!checkAdminPermission($token_data)) {
-        http_response_code(403);
-        echo json_encode(['err' => 'Nemáte oprávnění pro správu šablon']);
-        return;
-    }
-
-    try {
-        $db = get_db($config);
-        
-        // Parametry
-        $active_only = isset($input['active_only']) ? (bool)$input['active_only'] : false;
-        $search = isset($input['search']) ? trim($input['search']) : '';
-        
-        // Sestavení dotazu
-        $where_conditions = [];
-        $params = [];
-        
-        if ($active_only) {
-            $where_conditions[] = "active = 1";
-        }
-        
-        if (!empty($search)) {
-            $where_conditions[] = "(type LIKE :search OR name LIKE :search)";
-            $params[':search'] = "%{$search}%";
-        }
-        
-        $where_sql = !empty($where_conditions) 
-            ? "WHERE " . implode(' AND ', $where_conditions) 
-            : "";
-        
-        $sql = "SELECT * FROM 25_notification_templates 
-                {$where_sql}
-                ORDER BY type ASC";
-        
-        $stmt = $db->prepare($sql);
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-        $stmt->execute();
-        
-        $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Formátování pro frontend
-        $result = array_map(function($t) {
-            return [
-                'id' => (int)$t['id'],
-                'type' => $t['type'],
-                'name' => $t['name'],
-                'email_subject' => $t['email_subject'],
-                'email_body' => $t['email_body'],
-                'app_title' => $t['app_title'],
-                'app_message' => $t['app_message'],
-                'send_email_default' => (bool)$t['send_email_default'],
-                'priority_default' => $t['priority_default'],
-                'active' => (bool)$t['active'],
-                'dt_created' => $t['dt_created'],
-                'dt_updated' => $t['dt_updated']
-            ];
-        }, $templates);
-        
-        echo json_encode([
-            'status' => 'ok',
-            'data' => $result,
-            'total' => count($result)
-        ]);
-        
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['err' => 'Chyba při načítání šablon: ' . $e->getMessage()]);
-        error_log("[Templates] Exception in handle_notifications_templates_list: " . $e->getMessage());
-    }
-}
+// NOTE: handle_notifications_templates_list() is defined in notificationHandlers.php
+// to avoid function redeclaration error
 
 /**
  * Detail jedné šablony
@@ -155,7 +69,7 @@ function handle_notifications_templates_detail($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $stmt = $db->prepare("SELECT * FROM 25_notification_templates WHERE id = ?");
+        $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $stmt->execute([$template_id]);
         $template = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -165,18 +79,18 @@ function handle_notifications_templates_detail($input, $config, $queries) {
             return;
         }
         
-        // Formátování
+        // Formátování - ponechat české názvy
         $result = [
             'id' => (int)$template['id'],
-            'type' => $template['type'],
-            'name' => $template['name'],
-            'email_subject' => $template['email_subject'],
-            'email_body' => $template['email_body'],
-            'app_title' => $template['app_title'],
-            'app_message' => $template['app_message'],
-            'send_email_default' => (bool)$template['send_email_default'],
-            'priority_default' => $template['priority_default'],
-            'active' => (bool)$template['active'],
+            'typ' => $template['typ'],
+            'nazev' => $template['nazev'],
+            'email_predmet' => $template['email_predmet'],
+            'email_telo' => $template['email_telo'],
+            'app_nadpis' => $template['app_nadpis'],
+            'app_zprava' => $template['app_zprava'],
+            'email_vychozi' => (bool)$template['email_vychozi'],
+            'priorita_vychozi' => $template['priorita_vychozi'],
+            'aktivni' => (bool)$template['aktivni'],
             'dt_created' => $template['dt_created'],
             'dt_updated' => $template['dt_updated']
         ];
@@ -215,7 +129,7 @@ function handle_notifications_templates_create($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    $required_fields = ['type', 'name'];
+    $required_fields = ['typ', 'nazev'];
     foreach ($required_fields as $field) {
         if (empty($input[$field])) {
             http_response_code(400);
@@ -227,9 +141,9 @@ function handle_notifications_templates_create($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        // Kontrola, zda type již neexistuje
-        $stmt = $db->prepare("SELECT id FROM 25_notification_templates WHERE type = ?");
-        $stmt->execute([$input['type']]);
+        // Kontrola, zda typ již neexistuje
+        $stmt = $db->prepare("SELECT id FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = ?");
+        $stmt->execute([$input['typ']]);
         if ($stmt->fetch()) {
             http_response_code(400);
             echo json_encode(['err' => 'Šablona s tímto typem již existuje']);
@@ -239,22 +153,22 @@ function handle_notifications_templates_create($input, $config, $queries) {
         // Příprava dat
         $current_time = TimezoneHelper::getCzechDateTime();
         
-        $sql = "INSERT INTO 25_notification_templates (
-                    type, name, email_subject, email_body, app_title, app_message,
-                    send_email_default, priority_default, active, dt_created
+        $sql = "INSERT INTO " . TBL_NOTIFIKACE_SABLONY . " (
+                    typ, nazev, email_predmet, email_telo, app_nadpis, app_message,
+                    odeslat_email_default, priorita_vychozi, aktivni, dt_created
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $stmt = $db->prepare($sql);
         $result = $stmt->execute([
-            $input['type'],
-            $input['name'],
-            isset($input['email_subject']) ? $input['email_subject'] : null,
-            isset($input['email_body']) ? $input['email_body'] : null,
-            isset($input['app_title']) ? $input['app_title'] : null,
+            $input['typ'],
+            $input['nazev'],
+            isset($input['email_predmet']) ? $input['email_predmet'] : null,
+            isset($input['email_telo']) ? $input['email_telo'] : null,
+            isset($input['app_nadpis']) ? $input['app_nadpis'] : null,
             isset($input['app_message']) ? $input['app_message'] : null,
-            isset($input['send_email_default']) ? (int)$input['send_email_default'] : 0,
-            isset($input['priority_default']) ? $input['priority_default'] : 'normal',
-            isset($input['active']) ? (int)$input['active'] : 1,
+            isset($input['odeslat_email_default']) ? (int)$input['odeslat_email_default'] : 0,
+            isset($input['priorita_vychozi']) ? $input['priorita_vychozi'] : 'normal',
+            isset($input['aktivni']) ? (int)$input['aktivni'] : 1,
             $current_time
         ]);
         
@@ -266,7 +180,7 @@ function handle_notifications_templates_create($input, $config, $queries) {
         
         echo json_encode([
             'status' => 'ok',
-            'message' => 'Šablona byla vytvořena',
+            'zprava' => 'Šablona byla vytvořena',
             'template_id' => (int)$template_id
         ]);
         
@@ -310,7 +224,7 @@ function handle_notifications_templates_update($input, $config, $queries) {
         $db = get_db($config);
         
         // Kontrola existence
-        $stmt = $db->prepare("SELECT id FROM 25_notification_templates WHERE id = ?");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $stmt->execute([$template_id]);
         if (!$stmt->fetch()) {
             http_response_code(404);
@@ -323,8 +237,8 @@ function handle_notifications_templates_update($input, $config, $queries) {
         $params = [];
         
         $allowed_fields = [
-            'name', 'email_subject', 'email_body', 'app_title', 'app_message',
-            'send_email_default', 'priority_default', 'active'
+            'nazev', 'email_predmet', 'email_telo', 'app_nadpis', 'app_message',
+            'odeslat_email_default', 'priorita_vychozi', 'aktivni'
         ];
         
         foreach ($allowed_fields as $field) {
@@ -332,7 +246,7 @@ function handle_notifications_templates_update($input, $config, $queries) {
                 $update_fields[] = "$field = ?";
                 
                 // Speciální zpracování pro boolean hodnoty
-                if (in_array($field, ['send_email_default', 'active'])) {
+                if (in_array($field, ['odeslat_email_default', 'aktivni'])) {
                     $params[] = (int)$input[$field];
                 } else {
                     $params[] = $input[$field];
@@ -353,7 +267,7 @@ function handle_notifications_templates_update($input, $config, $queries) {
         // Přidat template_id na konec
         $params[] = $template_id;
         
-        $sql = "UPDATE 25_notification_templates 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_SABLONY . " 
                 SET " . implode(', ', $update_fields) . "
                 WHERE id = ?";
         
@@ -366,7 +280,7 @@ function handle_notifications_templates_update($input, $config, $queries) {
         
         echo json_encode([
             'status' => 'ok',
-            'message' => 'Šablona byla aktualizována'
+            'zprava' => 'Šablona byla aktualizována'
         ]);
         
     } catch (Exception $e) {
@@ -409,7 +323,7 @@ function handle_notifications_templates_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Kontrola existence
-        $stmt = $db->prepare("SELECT type FROM 25_notification_templates WHERE id = ?");
+        $stmt = $db->prepare("SELECT typ FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $stmt->execute([$template_id]);
         $template = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -420,18 +334,18 @@ function handle_notifications_templates_delete($input, $config, $queries) {
         }
         
         // Smazání
-        $stmt = $db->prepare("DELETE FROM 25_notification_templates WHERE id = ?");
+        $stmt = $db->prepare("DELETE FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $result = $stmt->execute([$template_id]);
         
         if (!$result) {
             throw new Exception('DELETE selhal');
         }
         
-        error_log("[Templates] Deleted template ID: $template_id, type: {$template['type']}");
+        error_log("[Templates] Deleted template ID: $template_id, typ: {$template['typ']}");
         
         echo json_encode([
             'status' => 'ok',
-            'message' => 'Šablona byla smazána'
+            'zprava' => 'Šablona byla smazána'
         ]);
         
     } catch (Exception $e) {
@@ -474,8 +388,8 @@ function handle_notifications_templates_deactivate($input, $config, $queries) {
         $db = get_db($config);
         
         $current_time = TimezoneHelper::getCzechDateTime();
-        $stmt = $db->prepare("UPDATE 25_notification_templates 
-                             SET active = 0, dt_updated = ? 
+        $stmt = $db->prepare("UPDATE " . TBL_NOTIFIKACE_SABLONY . " 
+                             SET aktivni = 0, dt_updated = ? 
                              WHERE id = ?");
         $result = $stmt->execute([$current_time, $template_id]);
         
@@ -487,7 +401,7 @@ function handle_notifications_templates_deactivate($input, $config, $queries) {
         
         echo json_encode([
             'status' => 'ok',
-            'message' => 'Šablona byla deaktivována'
+            'zprava' => 'Šablona byla deaktivována'
         ]);
         
     } catch (Exception $e) {
@@ -529,8 +443,8 @@ function handle_notifications_templates_activate($input, $config, $queries) {
         $db = get_db($config);
         
         $current_time = TimezoneHelper::getCzechDateTime();
-        $stmt = $db->prepare("UPDATE 25_notification_templates 
-                             SET active = 1, dt_updated = ? 
+        $stmt = $db->prepare("UPDATE " . TBL_NOTIFIKACE_SABLONY . " 
+                             SET aktivni = 1, dt_updated = ? 
                              WHERE id = ?");
         $result = $stmt->execute([$current_time, $template_id]);
         
@@ -542,7 +456,7 @@ function handle_notifications_templates_activate($input, $config, $queries) {
         
         echo json_encode([
             'status' => 'ok',
-            'message' => 'Šablona byla aktivována'
+            'zprava' => 'Šablona byla aktivována'
         ]);
         
     } catch (Exception $e) {

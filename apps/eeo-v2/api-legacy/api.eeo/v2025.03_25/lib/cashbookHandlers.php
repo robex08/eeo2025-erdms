@@ -1,4 +1,5 @@
 <?php
+
 /**
  * cashbookHandlers.php
  * Handlery pro Cashbook (Pokladní kniha) API
@@ -43,16 +44,23 @@ function handle_cashbook_list_post($config, $input) {
             return api_error(401, 'Chybí username nebo token');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
         
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
+        
         // Načíst filtry z inputu
         $filters = array(
             'uzivatel_id' => isset($input['uzivatel_id']) ? $input['uzivatel_id'] : null,
+            'pokladna_ids' => isset($input['pokladna_ids']) ? $input['pokladna_ids'] : null,
             'rok' => isset($input['rok']) ? $input['rok'] : null,
             'mesic' => isset($input['mesic']) ? $input['mesic'] : null,
             'uzavrena' => isset($input['uzavrena']) ? $input['uzavrena'] : null,
@@ -60,20 +68,30 @@ function handle_cashbook_list_post($config, $input) {
             'limit' => isset($input['limit']) ? $input['limit'] : 50
         );
         
-        // Kontrola oprávnění
+        // ✅ OPRAVA: Načíst pokladny uživatele místo filtru podle uzivatel_id
         $permissions = new CashbookPermissions($userData, $db);
         
-        // Pokud uživatel nemá oprávnění READ_ALL, může vidět pouze vlastní knihy
-        if (!$permissions->canReadCashbook(null)) {
-            // Nemá ani OWN oprávnění
-            if (!$permissions->canReadCashbook($userData['id'])) {
-                return api_error(403, 'Nedostatečná oprávnění');
+        // Pokud není explicitně zadán filtr pokladen ANI uživatele, načíst VŠECHNY pokladny uživatele
+        if (empty($filters['pokladna_ids']) && empty($filters['uzivatel_id'])) {
+            // Načíst všechny pokladny, ke kterým má uživatel přístup
+            $stmt = $db->prepare("
+                SELECT DISTINCT pokladna_id 
+                FROM " . TBL_POKLADNY_UZIVATELE . " 
+                WHERE uzivatel_id = ? 
+                  AND (platne_do IS NULL OR platne_do >= CURDATE())
+            ");
+            $stmt->execute(array($userData['id']));
+            $userPokladny = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            if (empty($userPokladny)) {
+                // Uživatel nemá přístup k žádné pokladně
+                return api_ok(array('books' => array(), 'pagination' => array(
+                    'current_page' => 1, 'per_page' => 50, 'total_records' => 0, 'total_pages' => 0
+                )));
             }
-            // Omezit na vlastní knihy
-            $filters['uzivatel_id'] = $userData['id'];
-        } elseif (empty($filters['uzivatel_id'])) {
-            // Pokud má READ_ALL, ale není specifikován uzivatel_id, zobrazit vlastní
-            $filters['uzivatel_id'] = $userData['id'];
+            
+            // Filtrovat podle pokladen uživatele
+            $filters['pokladna_ids'] = $userPokladny;
         }
         
         // Načíst knihy
@@ -83,10 +101,10 @@ function handle_cashbook_list_post($config, $input) {
         // 🆕 AUTOMATICKÁ OPRAVA NULOVÝCH PŘEVODŮ V SEZNAMU
         foreach ($result['books'] as &$book) {
             if ((floatval($book['prevod_z_predchoziho']) == 0 || $book['prevod_z_predchoziho'] === null) 
-                && $book['pokladna_id'] && $book['uzivatel_id']) {
+                && $book['pokladna_id']) {
                 
+                // ✅ OPRAVENO: getPreviousMonthBalance má 3 parametry (pokladnaId, year, month)
                 $prevTransfer = $bookModel->getPreviousMonthBalance(
-                    $book['uzivatel_id'], 
                     $book['pokladna_id'], 
                     $book['rok'], 
                     $book['mesic']
@@ -125,12 +143,18 @@ function handle_cashbook_get_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -140,10 +164,36 @@ function handle_cashbook_get_post($config, $input) {
             return api_error(404, 'Pokladní kniha nenalezena');
         }
         
-        // Kontrola oprávnění
+        // Kontrola oprávnění - předat pokladna_id pro kontrolu přiřazení
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canReadCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canReadCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
+        }
+        
+        // 🆕 Kontrola platnosti přiřazení pokladny - uživatel nesmí přistoupit k měsíci před datem přiřazení
+        if ($book['uzivatel_id'] == $userData['id']) {
+            $stmt = $db->prepare("
+                SELECT platne_od, platne_do
+                FROM " . TBL_POKLADNY_UZIVATELE . "
+                WHERE uzivatel_id = ? 
+                  AND pokladna_id = ?
+                  AND (platne_do IS NULL OR platne_do >= CURDATE())
+                ORDER BY platne_od ASC
+                LIMIT 1
+            ");
+            $stmt->execute(array($userData['id'], $book['pokladna_id']));
+            $assignment = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($assignment && $assignment['platne_od']) {
+                // Vytvořit datum posledního dne požadovaného měsíce
+                $requestedMonthEnd = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $book['rok'], $book['mesic'])));
+                
+                // Pokud je celý požadovaný měsíc před datem přiřazení, zamítnout
+                // (např. měsíc končí 2026-01-31, přiřazení od 2026-02-01 → zamítnout)
+                if ($requestedMonthEnd < $assignment['platne_od']) {
+                    return api_error(403, 'Nemáte oprávnění k této pokladně v daném období. Pokladna vám byla přiřazena až od ' . date('j.n.Y', strtotime($assignment['platne_od'])));
+                }
+            }
         }
         
                 // 🆕 PARAMETR force_recalc pro přepočet převodu z předchozího měsíce
@@ -157,9 +207,9 @@ function handle_cashbook_get_post($config, $input) {
         if ($forceRecalc == 1 
             || (floatval($book['prevod_z_predchoziho']) == 0 || $book['prevod_z_predchoziho'] === null)) {
             
-            if ($book['pokladna_id'] && $book['uzivatel_id']) {
+            if ($book['pokladna_id']) {
+                // ✅ OPRAVENO: getPreviousMonthBalance má 3 parametry (pokladnaId, year, month)
                 $prevTransfer = $bookModel->getPreviousMonthBalance(
-                    $book['uzivatel_id'], 
                     $book['pokladna_id'], 
                     $book['rok'], 
                     $book['mesic']
@@ -254,29 +304,59 @@ function handle_cashbook_create_post($config, $input) {
             return api_error(401, 'Chybí username nebo token');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
         
-        // Kontrola oprávnění
-        $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canCreateBook()) {
-            return api_error(403, 'Nedostatečná oprávnění pro vytváření pokladní knihy');
-        }
+        // DB připojení až po autentizaci
+
         
-        // Validace
+        $db = get_db($config);
+        
+        
+        
+        // Validace dat nejdříve (potřebujeme pokladna_id)
         $validator = new CashbookValidator();
         $data = $validator->validateCreate($input);
         
-        // Kontrola, zda kniha pro dané období již neexistuje
+        // Kontrola oprávnění - nyní s pokladna_id pro kontrolu přiřazení
+        $permissions = new CashbookPermissions($userData, $db);
+        if (!$permissions->canCreateBook($data['pokladna_id'])) {
+            return api_error(403, 'Nedostatečná oprávnění pro vytváření pokladní knihy. Musíte mít oprávnění CASH_BOOK_CREATE nebo být přiřazeni k této pokladně.');
+        }
+        
+        // 🆕 Kontrola platnosti přiřazení - nelze vytvořit knihu pro měsíc před přiřazením pokladny
+        if ($data['uzivatel_id'] == $userData['id'] && isset($data['pokladna_id'])) {
+            $stmt = $db->prepare("
+                SELECT platne_od, platne_do
+                FROM " . TBL_POKLADNY_UZIVATELE . "
+                WHERE uzivatel_id = ? 
+                  AND pokladna_id = ?
+                  AND (platne_do IS NULL OR platne_do >= CURDATE())
+                ORDER BY platne_od ASC
+                LIMIT 1
+            ");
+            $stmt->execute(array($userData['id'], $data['pokladna_id']));
+            $assignment = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($assignment && $assignment['platne_od']) {
+                $requestedMonthStart = sprintf('%04d-%02d-01', $data['rok'], $data['mesic']);
+                
+                if ($requestedMonthStart < $assignment['platne_od']) {
+                    return api_error(403, 'Nelze vytvořit pokladní knihu pro měsíc před přiřazením pokladny. Pokladna vám byla přiřazena až od ' . date('j.n.Y', strtotime($assignment['platne_od'])));
+                }
+            }
+        }
+        
+        // ✅ SPRÁVNĚ: Kontrola, zda kniha pro danou POKLADNU a období již neexistuje
+        // JEDNA společná kniha pro celou pokladnu!
         $bookModel = new CashbookModel($db);
-        $existing = $bookModel->getBookByUserPeriod($data['uzivatel_id'], $data['rok'], $data['mesic']);
+        $existing = $bookModel->getBookByPeriod($data['pokladna_id'], $data['rok'], $data['mesic']);
         
         if ($existing) {
-            return api_error(400, 'Pokladní kniha pro toto období již existuje');
+            return api_error(400, 'Pokladní kniha pro pokladnu č.' . $data['cislo_pokladny'] . ' v tomto období již existuje');
         }
         
         // Vytvořit knihu
@@ -291,7 +371,12 @@ function handle_cashbook_create_post($config, $input) {
             
             $db->commit();
             
+            // ✅ OPRAVA: Vrátiť celý book objekt, nie len ID
+            $bookModel = new CashbookModel($db);
+            $createdBook = $bookModel->getBookById($bookId);
+            
             return api_ok(array(
+                'book' => $createdBook,
                 'book_id' => $bookId,
                 'message' => 'Pokladní kniha byla úspěšně vytvořena'
             ));
@@ -322,12 +407,18 @@ function handle_cashbook_update_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -339,7 +430,7 @@ function handle_cashbook_update_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -366,7 +457,6 @@ function handle_cashbook_update_post($config, $input) {
                     $book['rok'],
                     $book['mesic']
                 );
-                error_log("Kaskádový přepočet: aktualizováno $updatedMonths následujících měsíců");
             }
             
             // Audit log
@@ -404,12 +494,18 @@ function handle_cashbook_close_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -447,29 +543,8 @@ function handle_cashbook_close_post($config, $input) {
             }
             
             // === PŘEPOČET LIMITOVANÝCH PŘÍSLIBŮ ===
-            // TODO: Implementovat přepočet LP po uzavření měsíce
-            // Prozatím zakomentováno kvůli kompatibilitě PDO/mysqli
-            /*
-            if ($akce === 'uzavrit_mesic' || $akce === 'zamknout_spravcem') {
-                // Získat všechna LP použitá v položkách této knihy
-                $sql_lp = "
-                    SELECT DISTINCT lp_kod 
-                    FROM " . TABLE_POKLADNI_POLOZKY . " 
-                    WHERE pokladni_kniha_id = :book_id
-                    AND lp_kod IS NOT NULL
-                    AND lp_kod != ''
-                ";
-                
-                $stmt_lp = $db->prepare($sql_lp);
-                $stmt_lp->bindValue(':book_id', $input['book_id']);
-                $stmt_lp->execute();
-                
-                // Přepočítat každé LP (vyžaduje mysqli connection)
-                while ($row_lp = $stmt_lp->fetch(PDO::FETCH_ASSOC)) {
-                    // prepocetCerpaniPodleCislaLP($mysqli_conn, $row_lp['lp_kod']);
-                }
-            }
-            */
+            // ✅ LP přepočty jsou nyní automatické v background tasků
+            // Tato funkcionalita je nyní řešena v limitovanePrislibyCerpaniHandlers_v2_pdo.php
             
             // Commit transakce až po všech operacích
             $db->commit();
@@ -503,12 +578,18 @@ function handle_cashbook_reopen_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -582,12 +663,18 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -603,8 +690,27 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(403, 'Nedostatečná oprávnění pro vytváření položek');
         }
         
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění pro editaci této knihy');
+        }
+        
+        // ✅ KONTROLA LP KÓDU POVINNOSTI podle nastavení pokladny
+        $lpKodPovinny = isset($book['pokladna_lp_kod_povinny']) && ($book['pokladna_lp_kod_povinny'] == 1 || $book['pokladna_lp_kod_povinny'] === '1');
+        $isExpense = isset($input['castka_vydaj']) && floatval($input['castka_vydaj']) > 0;
+        $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
+        
+        // Pokud je LP povinný a jde o výdaj bez detail položek, musí mít LP kód
+        if ($lpKodPovinny && $isExpense && !$hasDetailItems && empty($input['lp_kod'])) {
+            return api_error(400, 'LP kód je povinný u výdajů pro tuto pokladnu');
+        }
+        
+        // Pokud má detail položky a LP je povinný, všechny musí mít LP kód
+        if ($lpKodPovinny && $hasDetailItems) {
+            foreach ($input['detail_items'] as $idx => $item) {
+                if (empty($item['lp_kod'])) {
+                    return api_error(400, 'LP kód je povinný u všech detail položek pro tuto pokladnu');
+                }
+            }
         }
         
         // 🆕 DETEKCE MULTI-LP: Pokud existuje detail_items, použít nový flow
@@ -616,17 +722,14 @@ function handle_cashbook_entry_create_post($config, $input) {
             // 🆕 MULTI-LP FLOW - model má vlastní transakci
             $validator = new EntryValidator($db);
             
-            // Validace multi-LP
-            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+            // ✅ FIX: Předat lpKodPovinny flag do validátoru
+            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok'], $lpKodPovinny);
             
             if (!$validation['valid']) {
                 return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
             }
             
-            // Varování logovat (ne blokovat)
-            if (!empty($validation['warnings'])) {
-                error_log("LP warnings: " . implode(', ', $validation['warnings']));
-            }
+            // Varování jsou součástí response
             
             // 🔧 Vygenerovat číslo dokladu a pořadové číslo
             require_once __DIR__ . '/../services/DocumentNumberService.php';
@@ -641,7 +744,8 @@ function handle_cashbook_entry_create_post($config, $input) {
             // 🔧 Vypočítat zůstatek po operaci
             require_once __DIR__ . '/../services/BalanceCalculator.php';
             $balanceCalculator = new BalanceCalculator($db);
-            $amount = $input['castka_celkem'];
+            // ✅ OPRAVA: Spočítat celkovou částku z detail_items (ne z frontendu)
+            $amount = array_sum(array_column($input['detail_items'], 'castka'));
             $balance = $balanceCalculator->calculateNewEntryBalance(
                 $input['book_id'],
                 $amount,
@@ -721,12 +825,18 @@ function handle_cashbook_entry_update_post($config, $input) {
             return api_error(400, 'Chybí entry_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst položku
         $entryModel = new CashbookEntryModel($db);
@@ -742,32 +852,65 @@ function handle_cashbook_entry_update_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
-        // 🆕 DETEKCE MULTI-LP
+        // ✅ KONTROLA LP KÓDU POVINNOSTI podle nastavení pokladny
+        $lpKodPovinny = isset($book['pokladna_lp_kod_povinny']) && ($book['pokladna_lp_kod_povinny'] == 1 || $book['pokladna_lp_kod_povinny'] === '1');
+        $isExpense = isset($input['castka_vydaj']) && floatval($input['castka_vydaj']) > 0;
         $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
         
+        // Pokud je LP povinný a jde o výdaj bez detail položek, musí mít LP kód
+        if ($lpKodPovinny && $isExpense && !$hasDetailItems && empty($input['lp_kod'])) {
+            return api_error(400, 'LP kód je povinný u výdajů pro tuto pokladnu');
+        }
+        
+        // Pokud má detail položky a LP je povinný, všechny musí mít LP kód
+        if ($lpKodPovinny && $hasDetailItems) {
+            foreach ($input['detail_items'] as $idx => $item) {
+                if (empty($item['lp_kod'])) {
+                    return api_error(400, 'LP kód je povinný u všech detail položek pro tuto pokladnu');
+                }
+            }
+        }
+        
+        // 🆕 DETEKCE MULTI-LP: Pokud existuje detail_items klíč (i když prázdné pole), použít multi-LP flow
+        // ✅ FIX: Prázdné pole [] znamená "smazat detail položky", ne "použít starý flow"
+        $hasDetailItemsKey = isset($input['detail_items']) && is_array($input['detail_items']);
+        
         // Aktualizovat
-        if ($hasDetailItems) {
-            // 🆕 MULTI-LP UPDATE - model má vlastní transakci
+        if ($hasDetailItemsKey) {
+            // 🆕 MULTI-LP UPDATE - model má vlastní transakci (i pro prázdné pole)
             $validator = new EntryValidator($db);
             
-            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+            // ✅ FIX: Předat lpKodPovinny flag do validátoru
+            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok'], $lpKodPovinny);
             
             if (!$validation['valid']) {
                 return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
             }
             
-            if (!empty($validation['warnings'])) {
-                error_log("LP warnings: " . implode(', ', $validation['warnings']));
-            }
+            // Varování jsou součástí response
             
-            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model
-            $masterData = array_merge($input, [
-                'pokladni_kniha_id' => $input['book_id']
-            ]);
+            // ✅ FIX: Pokud je detail_items prázdné, NEMĚNIT částku - použít původní z payloadu
+            // Prázdné detail_items = "smazat rozpad LP", ale zachovat původní částku
+            if (empty($input['detail_items'])) {
+                // Použít částky z payloadu (původní hodnoty)
+                $masterData = array_merge($input, [
+                    'pokladni_kniha_id' => $input['book_id']
+                ]);
+            } else {
+                // ✅ OPRAVA: Spočítat celkovou částku z detail_items a nastavit správně castka_prijem/castka_vydaj
+                $amount = array_sum(array_column($input['detail_items'], 'castka'));
+                
+                // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model + nastavit správné částky
+                $masterData = array_merge($input, [
+                    'pokladni_kniha_id' => $input['book_id'],
+                    'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
+                    'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
+                ]);
+            }
             
             // Update master + details (model má vlastní transakci)
             $entryModel->updateEntryWithDetails($input['entry_id'], $masterData, $input['detail_items'], $userData['id']);
@@ -798,6 +941,11 @@ function handle_cashbook_entry_update_post($config, $input) {
             );
         }
         
+        // ✅ FIX: Přepočítat čerpání LP kódů po změně detail položek
+        require_once __DIR__ . '/../services/LPCalculationService.php';
+        $lpService = new LPCalculationService($db);
+        $lpService->recalculateLPForUserYear($book['uzivatel_id'], $book['rok']);
+        
         return api_ok(array(
             'entry' => $updatedEntry,
             'message' => 'Položka byla úspěšně aktualizována'
@@ -825,7 +973,8 @@ function handle_cashbook_entry_delete_post($config, $input) {
         }
         
         $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
@@ -842,6 +991,12 @@ function handle_cashbook_entry_delete_post($config, $input) {
         // Načíst knihu
         $bookModel = new CashbookModel($db);
         $book = $bookModel->getBookById($entry['pokladni_kniha_id']);
+        
+        if (!$book) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Book not found']);
+            exit;
+        }
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
@@ -877,7 +1032,8 @@ function handle_cashbook_entry_delete_post($config, $input) {
         
     } catch (Exception $e) {
         error_log("handle_cashbook_entry_delete_post error: " . $e->getMessage());
-        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+        
+        return api_error(500, 'Chyba při mazání položky');
     }
 }
 
@@ -896,12 +1052,18 @@ function handle_cashbook_entry_restore_post($config, $input) {
             return api_error(400, 'Chybí entry_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst položku
         $entryModel = new CashbookEntryModel($db);
@@ -917,7 +1079,7 @@ function handle_cashbook_entry_restore_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -958,12 +1120,18 @@ function handle_cashbook_audit_log_post($config, $input) {
             return api_error(400, 'Chybí book_id');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
@@ -975,7 +1143,7 @@ function handle_cashbook_audit_log_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canReadCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canReadCashbook($book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -1024,12 +1192,18 @@ function handle_cashbook_force_renumber_post($config, $input) {
             return api_error(400, 'Chybí year');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+
+        
+        $db = get_db($config);
+        
+        
         
         // ⚠️ KRITICKÁ KONTROLA - pouze admin s CASH_BOOK_MANAGE
         $permissions = new CashbookPermissions($userData, $db);
@@ -1079,36 +1253,64 @@ function handle_cashbook_force_renumber_post($config, $input) {
  */
 function handle_cashbook_lp_summary_post($config, $input) {
     try {
-        // Ověření tokenu
+        
+        // ✅ OrderV2 Standard: Ověření tokenu z body parametrů
         if (empty($input['username']) || empty($input['token'])) {
             return api_error(401, 'Chybí username nebo token');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        // ✅ OrderV2 Standard: verify_token_v2 BEZ předání $db (nechť si vytvoří vlastní připojení)
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
         
+        // DB připojení až po autentizaci
+        $db = get_db($config);
+        
         // Parametry
-        $userId = isset($input['user_id']) ? intval($input['user_id']) : $userData['id'];
         $year = isset($input['year']) ? intval($input['year']) : intval(date('Y'));
         
-        // Kontrola oprávnění - může vidět své LP nebo admin všechny
+        // Zjistit oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if ($userId !== $userData['id'] && !$permissions->canReadCashbook($userId)) {
-            return api_error(403, 'Nedostatečná oprávnění');
+        
+        // Určit režim zobrazení podle oprávnění
+        $viewMode = 'own'; // Default: jen vlastní knihy
+        $filterUserId = $userData['id'];
+        $filterUsekId = null;
+        
+        // 1. ADMIN nebo CASH_BOOK_MANAGE nebo CASH_BOOK_READ_ALL - vidí VŠE
+        $isSuperAdmin = isset($userData['super_admin']) && $userData['super_admin'] == 1;
+        $hasManage = $permissions->hasPermission('CASH_BOOK_MANAGE');
+        $hasReadAll = $permissions->hasPermission('CASH_BOOK_READ_ALL');
+        
+        if ($isSuperAdmin || $hasManage || $hasReadAll) {
+            $viewMode = 'all';
+            $filterUserId = null; // Null = všichni uživatelé
+        }
+        // 2. Příkazce (PRIKAZCE_OPERACE) - vidí všechny LP kódy v rámci svého úseku
+        else if ($permissions->hasRole('PRIKAZCE_OPERACE')) {
+            $viewMode = 'department';
+            $filterUsekId = isset($userData['usek_id']) ? $userData['usek_id'] : null;
+            $filterUserId = null;
+        }
+        // 3. Běžný uživatel - vidí jen své knihy
+        else {
+            $viewMode = 'own';
+            $filterUserId = $userData['id'];
         }
         
         require_once __DIR__ . '/../services/LPCalculationService.php';
         $lpService = new LPCalculationService($db);
         
-        // Získat přehled čerpání LP s limity
-        $summary = $lpService->getLPSummaryWithLimits($userId, $year);
+        // Získat přehled čerpání LP podle režimu
+        $summary = $lpService->getLPSummaryWithLimits($filterUserId, $year, $viewMode, $filterUsekId);
         
         return api_ok([
-            'user_id' => $userId,
+            'view_mode' => $viewMode,
+            'filter_user_id' => $filterUserId,
+            'filter_usek_id' => $filterUsekId,
             'year' => $year,
             'lp_summary' => $summary,
             'count' => count($summary)
@@ -1132,7 +1334,7 @@ function handle_cashbook_lp_summary_post($config, $input) {
  */
 function handle_cashbook_lp_detail_post($config, $input) {
     try {
-        // Ověření tokenu
+        // ✅ OrderV2 Standard: Ověření tokenu z body parametrů
         if (empty($input['username']) || empty($input['token'])) {
             return api_error(401, 'Chybí username nebo token');
         }
@@ -1141,12 +1343,15 @@ function handle_cashbook_lp_detail_post($config, $input) {
             return api_error(400, 'Chybí lp_kod');
         }
         
-        $db = get_db($config);
-        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        // ✅ OrderV2 Standard: verify_token_v2 BEZ předání $db
+        $userData = verify_token_v2($input['username'], $input['token']);
         
         if (!$userData) {
             return api_error(401, 'Neplatný token');
         }
+        
+        // DB připojení až po autentizaci
+        $db = get_db($config);
         
         // Parametry
         $lpKod = $input['lp_kod'];

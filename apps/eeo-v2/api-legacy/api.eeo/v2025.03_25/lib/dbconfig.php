@@ -1,24 +1,58 @@
 <?php
 // Konfigurace databáze pro API
+
+// ============================================
+// NAČTENÍ .ENV SOUBORU
+// ============================================
+$env_file = __DIR__ . '/../../.env';
+if (file_exists($env_file)) {
+    $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        // Skip comments
+        if (strpos(trim($line), '#') === 0) {
+            continue;
+        }
+        
+        // Parse KEY=VALUE
+        if (strpos($line, '=') !== false) {
+            list($key, $value) = explode('=', $line, 2);
+            $key = trim($key);
+            $value = trim($value);
+            
+            // OPRAVENO: Set do $_ENV i putenv pro FastCGI kompatibilitu
+            $_ENV[$key] = $value;
+            $_SERVER[$key] = $value;
+            putenv("$key=$value");
+        }
+    }
+}
+
+// ============================================
+// DATABÁZOVÁ KONFIGURACE Z .ENV
+// ============================================
 return [
     'mysql' => [
-        'host' => '10.3.172.11', // Remote DB server
-        'username' => 'erdms_user', // Nový uživatel pro eeo2025
-        'password' => 'AhchohTahnoh7eim', // Heslo z .env
-        'database' => 'eeo2025' // Nová databáze
+        'host' => $_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? getenv('DB_HOST') ?: '10.3.172.11',
+        'username' => $_ENV['DB_USER'] ?? $_SERVER['DB_USER'] ?? getenv('DB_USER') ?: 'erdms_user',
+        'password' => $_ENV['DB_PASSWORD'] ?? $_SERVER['DB_PASSWORD'] ?? getenv('DB_PASSWORD') ?: 'AhchohTahnoh7eim',
+        'database' => $_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? getenv('DB_NAME') ?: 'EEO-OSTRA-DEV'  // DEV fallback - NIKDY nepřipojovat přímo na eeo2025!
     ],
     'upload' => [
-        // Root cesta pro nahrávání příloh - jednotná pro dev i produkci
-        'root_path' => '/var/www/erdms-data/eeo-v2/prilohy/',
+        // Root cesta pro nahrávání příloh - environment aware
+        // DEV: /var/www/erdms-dev/data/eeo-v2/prilohy/
+        // PROD: /var/www/erdms-platform/data/eeo-v2/prilohy/
+        'root_path' => $_ENV['UPLOAD_ROOT_PATH'] ?? $_SERVER['UPLOAD_ROOT_PATH'] ?? getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/',
         
         // Alternativní relativní cesta (stejná jako root_path)
-        'relative_path' => '/var/www/erdms-data/eeo-v2/prilohy/',
+        'relative_path' => $_ENV['UPLOAD_ROOT_PATH'] ?? $_SERVER['UPLOAD_ROOT_PATH'] ?? getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/',
         
-        // Cesta pro DOCX šablony
-        'docx_templates_path' => '/var/www/erdms-data/eeo-v2/sablony/',
+        // Cesta pro DOCX šablony - environment aware
+        // DEV: /var/www/erdms-dev/data/eeo-v2/sablony/
+        // PROD: /var/www/erdms-platform/data/eeo-v2/sablony/
+        'docx_templates_path' => $_ENV['DOCX_TEMPLATES_PATH'] ?? $_SERVER['DOCX_TEMPLATES_PATH'] ?? getenv('DOCX_TEMPLATES_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/sablony/',
         
-        // Maximální velikost souboru v bajtech (20MB)
-        'max_file_size' => 20 * 1024 * 1024,
+        // Maximální velikost souboru v bajtech (50MB)
+        'max_file_size' => 50 * 1024 * 1024,
         
         // Povolené přípony souborů
         'allowed_extensions' => [
@@ -37,7 +71,7 @@ return [
         ],
         
         // Struktura adresářů - jak organizovat soubory
-        // ✅ PLOCHÁ STRUKTURA - všechny soubory přímo v /var/www/erdms-data/eeo-v2/prilohy/
+        // ✅ PLOCHÁ STRUKTURA - všechny soubory přímo v /var/www/erdms-dev/data/eeo-v2/prilohy/
         // Rozlišení: faktury = fa-*, objednávky = obj-* v názvu souboru
         'directory_structure' => [
             'by_date' => false,       // ❌ Nerozdělit podle data - plochá struktura

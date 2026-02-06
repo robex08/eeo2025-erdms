@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Invoice Attachment Handlers - Přílohy faktur API
  * PHP 5.6 kompatibilní, MySQL 5.5.43
@@ -15,6 +16,48 @@
 require_once __DIR__ . '/TimezoneHelper.php';
 
 /**
+ * Normalizuje cestu k příloze faktury podle prostředí
+ * Historicky byly cesty ukládány absolutně, nyní potřebujeme dynamicky měnit podle ENV
+ * 
+ * @param string $systemova_cesta Cesta z databáze (může být /var/www/eeo2025/..., /var/www/erdms-data/..., nebo jen název)
+ * @param array $config Konfigurace s upload cestami
+ * @return string Normalizovaná plná cesta pro aktuální prostředí
+ */
+function normalize_invoice_attachment_path($systemova_cesta, $config) {
+    // Pokud cesta neexistuje, vrátíme přímo
+    if (empty($systemova_cesta)) {
+        return $systemova_cesta;
+    }
+    
+    // Pokud cesta existuje a je validní, použijeme ji
+    if (file_exists($systemova_cesta)) {
+        return $systemova_cesta;
+    }
+    
+    // Extrahuj pouze název souboru z jakékoliv cesty
+    $filename = basename($systemova_cesta);
+    
+    // Použij aktuální upload root path z konfigurace (environment aware)
+    $current_upload_path = $config['upload']['root_path'];
+    $normalized_path = $current_upload_path . $filename;
+    
+    // Zkusíme ještě alternativní cesty, pokud soubor na nové cestě neexistuje
+    if (!file_exists($normalized_path)) {
+        // Načti centrální environment utility
+        require_once __DIR__ . '/environment-utils.php';
+        
+        // Zkus staré umístění (migrace z legacy systému)
+        $legacy_path = get_upload_root_path() . $filename;
+        if (file_exists($legacy_path)) {
+            return $legacy_path;
+        }
+    }
+    
+    // Vrátíme normalizovanou cestu (i když neexistuje - pro error handling)
+    return $normalized_path;
+}
+
+/**
  * POST - Načte přílohy konkrétní faktury
  * Endpoint: invoices25/attachments/by-invoice
  * POST: {token, username, faktura_id}
@@ -29,12 +72,7 @@ function handle_invoices25_attachments_by_invoice($input, $config, $queries) {
     if (!$token || !$request_username || $faktura_id <= 0) {
         http_response_code(400);
         echo json_encode([
-            'err' => 'Chybí povinné parametry',
-            'debug' => [
-                'has_token' => !empty($token),
-                'username' => $request_username,
-                'faktura_id' => $faktura_id
-            ]
+            'err' => 'Chybí povinné parametry'
         ]);
         return;
     }
@@ -81,7 +119,7 @@ function handle_invoices25_attachments_by_invoice($input, $config, $queries) {
             u.titul_za AS nahrano_titul_za,
             u.email AS nahrano_email,
             u.telefon AS nahrano_telefon
-        FROM `25a_faktury_prilohy` fp
+        FROM `" . TBL_FAKTURY_PRILOHY . "` fp
         LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
         WHERE fp.faktura_id = ?
         ORDER BY fp.dt_vytvoreni ASC";
@@ -199,8 +237,8 @@ function handle_invoices25_attachments_by_order($input, $config, $queries) {
             u.titul_za AS nahrano_titul_za,
             u.email AS nahrano_email,
             u.telefon AS nahrano_telefon
-        FROM `25a_faktury_prilohy` fp
-        LEFT JOIN `25a_objednavky_faktury` f ON fp.faktura_id = f.id
+        FROM `" . TBL_FAKTURY_PRILOHY . "` fp
+        LEFT JOIN `" . TBL_FAKTURY . "` f ON fp.faktura_id = f.id
         LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
         WHERE fp.objednavka_id = ?
         ORDER BY fp.faktura_id ASC, fp.dt_vytvoreni ASC";
@@ -251,7 +289,7 @@ function handle_invoices25_attachments_by_order($input, $config, $queries) {
             SUM(fp.velikost_souboru_b) AS celkova_velikost_b,
             SUM(CASE WHEN fp.je_isdoc = 1 THEN 1 ELSE 0 END) AS pocet_isdoc,
             MAX(fp.dt_vytvoreni) AS posledni_priloha_dt
-        FROM `25a_faktury_prilohy` fp
+        FROM `" . TBL_FAKTURY_PRILOHY . "` fp
         WHERE fp.objednavka_id = ?";
         
         $stats_stmt = $db->prepare($stats_sql);
@@ -370,7 +408,7 @@ function handle_invoices25_attachments_upload($input, $config, $queries) {
         }
 
         // Validace že faktura patří k objednávce
-        $check_sql = "SELECT COUNT(*) FROM `25a_objednavky_faktury` WHERE id = ? AND objednavka_id = ?";
+        $check_sql = "SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` WHERE id = ? AND objednavka_id = ?";
         $check_stmt = $db->prepare($check_sql);
         $check_stmt->execute([$faktura_id, $objednavka_id]);
         if ($check_stmt->fetchColumn() == 0) {
@@ -414,7 +452,7 @@ function handle_invoices25_attachments_upload($input, $config, $queries) {
         $je_isdoc = ($ext === 'isdoc') ? 1 : 0;
 
         // Vlož záznam do DB
-        $insert_sql = "INSERT INTO `25a_faktury_prilohy` (
+        $insert_sql = "INSERT INTO `" . TBL_FAKTURY_PRILOHY . "` (
             faktura_id,
             objednavka_id,
             guid,
@@ -451,7 +489,7 @@ function handle_invoices25_attachments_upload($input, $config, $queries) {
             u.titul_za AS nahrano_titul_za,
             u.email AS nahrano_email,
             u.telefon AS nahrano_telefon
-        FROM `25a_faktury_prilohy` fp
+        FROM `" . TBL_FAKTURY_PRILOHY . "` fp
         LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
         WHERE fp.id = ?";
         
@@ -549,7 +587,7 @@ function handle_invoices25_attachments_download($input, $config, $queries) {
         }
 
         // Načti přílohu
-        $sql = "SELECT * FROM `25a_faktury_prilohy` WHERE id = ? LIMIT 1";
+        $sql = "SELECT * FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE id = ? LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([$priloha_id]);
         $priloha = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -563,8 +601,8 @@ function handle_invoices25_attachments_download($input, $config, $queries) {
             return;
         }
 
-        // systemova_cesta je již plná fyzická cesta (stejně jako u objednávek)
-        $full_path = $priloha['systemova_cesta'];
+        // ✅ Normalizuj cestu podle prostředí (DEV/PROD aware)
+        $full_path = normalize_invoice_attachment_path($priloha['systemova_cesta'], $config);
 
         // Kontrola existence souboru
         if (!file_exists($full_path)) {
@@ -648,7 +686,7 @@ function handle_invoices25_attachments_delete($input, $config, $queries) {
         }
 
         // Načti přílohu před smazáním
-        $sql = "SELECT * FROM `25a_faktury_prilohy` WHERE id = ? LIMIT 1";
+        $sql = "SELECT * FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE id = ? LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([$priloha_id]);
         $priloha = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -659,14 +697,14 @@ function handle_invoices25_attachments_delete($input, $config, $queries) {
             return;
         }
 
-        // systemova_cesta je již plná fyzická cesta
-        $full_path = $priloha['systemova_cesta'];
+        // ✅ Normalizuj cestu podle prostředí (DEV/PROD aware)
+        $full_path = normalize_invoice_attachment_path($priloha['systemova_cesta'], $config);
         if (file_exists($full_path)) {
             unlink($full_path);
         }
 
         // Smaž záznam z DB
-        $delete_sql = "DELETE FROM `25a_faktury_prilohy` WHERE id = ? LIMIT 1";
+        $delete_sql = "DELETE FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE id = ? LIMIT 1";
         $delete_stmt = $db->prepare($delete_sql);
         $delete_stmt->execute([$priloha_id]);
 
@@ -733,7 +771,7 @@ function handle_invoices25_attachments_update($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
 
         // Zkontroluj existenci přílohy
-        $check_sql = "SELECT id FROM `25a_faktury_prilohy` WHERE id = ? LIMIT 1";
+        $check_sql = "SELECT id FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE id = ? LIMIT 1";
         $check_stmt = $db->prepare($check_sql);
         $check_stmt->execute([$priloha_id]);
         if (!$check_stmt->fetch()) {
@@ -769,7 +807,7 @@ function handle_invoices25_attachments_update($input, $config, $queries) {
         // Přidej ID na konec
         $update_params[] = $priloha_id;
 
-        $update_sql = "UPDATE `25a_faktury_prilohy` SET " . implode(', ', $update_fields) . " WHERE id = ? LIMIT 1";
+        $update_sql = "UPDATE `" . TBL_FAKTURY_PRILOHY . "` SET " . implode(', ', $update_fields) . " WHERE id = ? LIMIT 1";
         $update_stmt = $db->prepare($update_sql);
         $update_stmt->execute($update_params);
 
@@ -778,7 +816,7 @@ function handle_invoices25_attachments_update($input, $config, $queries) {
             fp.*,
             u.jmeno AS nahrano_uzivatel_jmeno,
             u.prijmeni AS nahrano_uzivatel_prijmeni
-        FROM `25a_faktury_prilohy` fp
+        FROM `" . TBL_FAKTURY_PRILOHY . "` fp
         LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
         WHERE fp.id = ?";
         
@@ -849,9 +887,9 @@ function handle_invoices25_attachments_by_id($input, $config, $queries) {
             u.jmeno AS nahrano_uzivatel_jmeno,
             u.prijmeni AS nahrano_uzivatel_prijmeni,
             f.fa_cislo_vema
-        FROM `25a_faktury_prilohy` fp
+        FROM `" . TBL_FAKTURY_PRILOHY . "` fp
         LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
-        LEFT JOIN `25a_objednavky_faktury` f ON fp.faktura_id = f.id
+        LEFT JOIN `" . TBL_FAKTURY . "` f ON fp.faktura_id = f.id
         WHERE fp.id = ?
         LIMIT 1";
         
@@ -872,8 +910,9 @@ function handle_invoices25_attachments_by_id($input, $config, $queries) {
         $priloha['je_isdoc'] = (int)$priloha['je_isdoc'] === 1;
         $priloha['isdoc_parsed'] = (int)$priloha['isdoc_parsed'] === 1;
         
-        // Kontrola existence souboru (systemova_cesta je plná fyzická cesta)
-        $priloha['soubor_existuje'] = file_exists($priloha['systemova_cesta']);
+        // ✅ Kontrola existence souboru s normalizovanou cestou (DEV/PROD aware)
+        $full_path = normalize_invoice_attachment_path($priloha['systemova_cesta'], $config);
+        $priloha['soubor_existuje'] = file_exists($full_path);
 
         http_response_code(200);
         echo json_encode([

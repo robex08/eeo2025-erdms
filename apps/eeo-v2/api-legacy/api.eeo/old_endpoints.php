@@ -51,10 +51,10 @@ try {
                 exit;
             }
 
-            // Replace placeholders
-            $query = str_replace(':tab_obj', $tabulka_obj, $query);
-            $query = str_replace(':tbl_oprilohy', $tabulka_opriloh, $query);
-            $query = str_replace(':tbl_objMD', $tabulka_objMD, $query);
+            // Replace placeholders (both standalone and with table references like :tab_obj.id)
+            $query = str_replace([':tab_obj', ':tbl_oprilohy', ':tbl_objMD'], 
+                                [$tabulka_obj, $tabulka_opriloh, $tabulka_objMD], 
+                                $query);
 
             $stmt = $pdo->prepare($query);
             $stmt->bindParam(':yearFrom', $yearFrom);

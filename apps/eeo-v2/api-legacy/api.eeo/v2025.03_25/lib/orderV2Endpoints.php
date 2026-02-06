@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Order V2 Endpoints - Standardized API Implementation
  * 
@@ -19,8 +20,9 @@
 require_once __DIR__ . '/orderQueries.php';
 require_once __DIR__ . '/OrderV2Handler.php';
 require_once __DIR__ . '/TimezoneHelper.php';
-require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
 require_once __DIR__ . '/smlouvyHandlers.php';
+require_once __DIR__ . '/hierarchyOrderFilters.php';
 
 /**
  * GET /api/order-v2/{id}
@@ -32,19 +34,10 @@ function handle_order_v2_get($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $order_id = isset($input['id']) ? $input['id'] : null;
     
-    // Connect to database for token verification
-    $db = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-    if ($db->connect_error) {
-        http_response_code(500);
-        echo json_encode(array('status' => 'error', 'message' => 'Database connection failed'));
-        return;
-    }
-    
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
-        $db->close();
         return;
     }
     
@@ -103,16 +96,31 @@ function handle_order_v2_get($input, $config, $queries) {
             return;
         }
         
+        // 🌲 HIERARCHIE WORKFLOW: Zkontrolovat, zda uživatel může vidět tuto objednávku
+        require_once __DIR__ . '/hierarchyOrderFilters.php';
+        
+        // Vytvoř PDO spojení pro hierarchy check a enrichment
+        $pdo = get_db($config);
+        
+        if (!canUserViewOrder($numeric_order_id, $current_user_id, $pdo)) {
+            error_log("Order V2 GET: User $current_user_id cannot view order $numeric_order_id (hierarchy restriction)");
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu'
+            ));
+            return;
+        }
+        
         // Volitelný enrichment (pokud parametr enriched=1)
         $is_enriched = false;
         if (isset($input['enriched']) && $input['enriched'] == 1) {
-            $db = get_db($config);
-            enrichOrderWithItems($db, $order);
-            enrichOrderWithInvoices($db, $order);
-            enrichOrderWithCodebooks($db, $order);
-            enrichOrderFinancovani($db, $order);
-            enrichOrderRegistrSmluv($db, $order);
-            enrichOrderWithWorkflowUsers($db, $order);
+            enrichOrderWithItems($pdo, $order);
+            enrichOrderWithInvoices($pdo, $order);
+            enrichOrderWithCodebooks($pdo, $order);
+            enrichOrderFinancovani($pdo, $order);
+            enrichOrderRegistrSmluv($pdo, $order);
+            enrichOrderWithWorkflowUsers($pdo, $order);
             
             $is_enriched = true;
         }
@@ -156,8 +164,8 @@ function getUserRoles($user_id, $db) {
     try {
         $sql = "
             SELECT DISTINCT r.kod_role
-            FROM 25_role r
-            JOIN 25_uzivatele_role ur ON r.id = ur.role_id
+            FROM " . TBL_ROLE . " r
+            JOIN " . TBL_UZIVATELE_ROLE . " ur ON r.id = ur.role_id
             WHERE ur.uzivatel_id = :user_id
         ";
         
@@ -185,6 +193,54 @@ function getUserRoles($user_id, $db) {
  * @param PDO $db Databázové spojení
  * @return array Pole permissions (kod_prava)
  */
+/**
+ * Získá všechny user ID kolegů ze stejného úseku (usek_id)
+ * 
+ * Pomocná funkce pro department-based subordinate permissions.
+ * Použití: ORDER_READ_SUBORDINATE, ORDER_EDIT_SUBORDINATE
+ * 
+ * @param int $user_id ID uživatele
+ * @param PDO $db Database connection
+ * @return array Pole user IDs ze stejného úseku
+ */
+function getUserDepartmentColleagueIds($user_id, $db) {
+    try {
+        // Načíst usek_id aktuálního uživatele
+        $sql = "SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = :user_id LIMIT 1";
+        $stmt = $db->prepare($sql);
+        $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user || empty($user['usek_id'])) {
+            error_log("Order V2 getDepartmentColleagues: User $user_id has no usek_id assigned");
+            return array();
+        }
+        
+        $usek_id = $user['usek_id'];
+        error_log("Order V2 getDepartmentColleagues: User $user_id is in usek $usek_id");
+        
+        // Načíst všechny kolegy ze stejného úseku
+        $sql = "SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id = :usek_id AND aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->bindParam(':usek_id', $usek_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $colleague_ids = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $colleague_ids[] = $row['id'];
+        }
+        
+        error_log("Order V2 getDepartmentColleagues: Found " . count($colleague_ids) . " colleagues in usek $usek_id");
+        
+        return $colleague_ids;
+        
+    } catch (Exception $e) {
+        error_log("Order V2 getDepartmentColleagues ERROR: " . $e->getMessage());
+        return array();
+    }
+}
+
 function getUserOrderPermissions($user_id, $db) {
     try {
         // SQL pro získání všech ORDER permissions uživatele (přímé + role + zastupování)
@@ -195,19 +251,19 @@ function getUserOrderPermissions($user_id, $db) {
         // MySQL 5.5.43 kompatibilní SQL - bez složitých EXISTS subqueries
         $sql = "
             SELECT DISTINCT p.kod_prava
-            FROM 25_prava p
+            FROM " . TBL_PRAVA . " p
             WHERE p.kod_prava LIKE 'ORDER_%'
             AND p.id IN (
                 -- Přímá práva (user_id v 25_role_prava)
-                SELECT rp.pravo_id FROM 25_role_prava rp 
+                SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
                 WHERE rp.user_id = :user_id
                 
                 UNION
                 
                 -- Práva z rolí (user_id = -1 znamená právo z role)
                 SELECT rp.pravo_id 
-                FROM 25_uzivatele_role ur
-                JOIN 25_role_prava rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
                 WHERE ur.uzivatel_id = :user_id
             )
         ";
@@ -285,12 +341,6 @@ function handle_order_v2_list($input, $config, $queries) {
         // 🔥 KRITICKÉ FIX: Načítanie user rolí pre SUPERADMIN/ADMINISTRATOR detekciu 
         $user_roles = getUserRoles($current_user_id, $db);
         
-        // 🔥 DEBUG: Explicitní log permissions
-        error_log("=== ORDER V2 DEBUG: User $current_user_id ===");
-        error_log("Raw permissions array: " . print_r($user_permissions, true));
-        error_log("Raw roles array: " . print_r($user_roles, true));
-        error_log("in_array('ORDER_OLD', permissions): " . (in_array('ORDER_OLD', $user_permissions) ? 'TRUE' : 'FALSE'));
-        
         // Pagination parametry - volitelné, bez limitu vrátí všechny záznamy
         $limit = isset($input['limit']) ? (int)$input['limit'] : null;
         $offset = isset($input['offset']) ? (int)$input['offset'] : 0;
@@ -303,11 +353,22 @@ function handle_order_v2_list($input, $config, $queries) {
         // Základní WHERE podmínka
         $whereConditions = array();
         
-        // Filter: aktivni objednávky (vždy)
-        $whereConditions[] = "o.aktivni = 1";
-        
-        // � KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
+        // 🔥 KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
         $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        
+        // 🔧 ADMIN FEATURE: Filter pro zobrazení POUZE neaktivních objednávek (aktivni = 0)
+        // Pouze pro ADMIN uživatele
+        $showOnlyInactive = isset($input['show_only_inactive']) && $input['show_only_inactive'] == 1;
+        
+        if ($isAdminByRole && $showOnlyInactive) {
+            // ADMIN chce vidět POUZE smazané objednávky (aktivni = 0)
+            $whereConditions[] = "o.aktivni = 0";
+            error_log("Order V2 LIST: ADMIN filter - showing ONLY inactive orders (aktivni = 0)");
+        } else {
+            // Standardní filtr - pouze aktivní objednávky (aktivni = 1)
+            $whereConditions[] = "o.aktivni = 1";
+            error_log("Order V2 LIST: Standard filter - showing only active orders (aktivni = 1)");
+        }
         
         // 🔐 PERMISSIONS: Načtení ORDER_* permissions pro detailní kontrolu
         $hasOrderManage = in_array('ORDER_MANAGE', $user_permissions);
@@ -316,34 +377,142 @@ function handle_order_v2_list($input, $config, $queries) {
         $hasOrderApproveAll = in_array('ORDER_APPROVE_ALL', $user_permissions);
         $hasOrderEditAll = in_array('ORDER_EDIT_ALL', $user_permissions);
         $hasOrderDeleteAll = in_array('ORDER_DELETE_ALL', $user_permissions);
-        
-        // 🔥 KRITICKÉ FIX: Full admin = POUZE role SUPERADMIN nebo ADMINISTRATOR
-        // ORDER_*_ALL permissions NEJSOU admin práva! Jsou to jen rozšířená práva pro konkrétní operace.
-        $isFullAdmin = $isAdminByRole;
-        
-        // 🔥 ORDER_OLD = Speciální právo pro přístup k VŠEM archivovaným objednávkám
         $hasOrderOld = in_array('ORDER_OLD', $user_permissions);
         
-        // 🔥 ORDER_*_ALL = Rozšířená práva (vidí všechny objednávky, ale bez archivovaných pokud nemá ORDER_OLD)
+        // 🔥 CRITICAL: Definice $hasReadAllPermissions PŘED použitím!
         $hasReadAllPermissions = $hasOrderReadAll || $hasOrderViewAll;
         $hasWriteAllPermissions = $hasOrderEditAll || $hasOrderDeleteAll || $hasOrderApproveAll;
         
+        // 🔥 KRITICKÉ FIX: Full admin = POUZE role SUPERADMIN nebo ADMINISTRATOR
+        $isFullAdmin = $isAdminByRole;
+        
         error_log("Order V2 LIST: Role check - SUPERADMIN/ADMINISTRATOR: " . ($isAdminByRole ? 'YES' : 'NO'));
-        error_log("Order V2 LIST: Permission check - ORDER_MANAGE: " . ($hasOrderManage ? 'YES' : 'NO') . 
-                  ", ORDER_READ_ALL: " . ($hasOrderReadAll ? 'YES' : 'NO') . 
+        error_log("Order V2 LIST: Permission check - ORDER_READ_ALL: " . ($hasOrderReadAll ? 'YES' : 'NO') . 
                   ", ORDER_VIEW_ALL: " . ($hasOrderViewAll ? 'YES' : 'NO') .
+                  ", hasReadAllPermissions: " . ($hasReadAllPermissions ? 'YES' : 'NO'));
+        
+        // 🌲 VISIBILITY FILTERS: Kombinace role-based + hierarchie + department (OR logika)
+        // ============================================================================
+        // 🎯 NOVÁ LOGIKA (2026-01-19):
+        // - Role-based filtr (12 polí) = ZÁKLAD (base viditelnost)
+        // - Hierarchie = ROZŠÍŘENÍ (přidává viditelnost OR metodou)
+        // - Department subordinate = ROZŠÍŘENÍ (přidává viditelnost OR metodou)
+        // - Výsledek: (role-based) OR (hierarchie) OR (department) = MAX viditelnost
+        
+        $visibilityConditions = [];
+        $hierarchyApplied = false;
+        $departmentFilterApplied = false;
+        
+        // Aplikuje se POUZE pro non-admins BEZ ORDER_READ_ALL
+        if (!$isFullAdmin && !$hasReadAllPermissions) {
+            
+            // 1️⃣ ROLE-BASED FILTER (12 polí) - ZÁKLAD pro všechny
+            // ========================================================
+            error_log("📋 VISIBILITY: Building role-based filter (BASE) for user $current_user_id");
+            
+            $roleBasedCondition = "(
+                o.uzivatel_id = :role_user_id
+                OR o.objednatel_id = :role_user_id
+                OR o.garant_uzivatel_id = :role_user_id
+                OR o.schvalovatel_id = :role_user_id
+                OR o.prikazce_id = :role_user_id
+                OR o.uzivatel_akt_id = :role_user_id
+                OR o.odesilatel_id = :role_user_id
+                OR o.dodavatel_potvrdil_id = :role_user_id
+                OR o.zverejnil_id = :role_user_id
+                OR o.fakturant_id = :role_user_id
+                OR o.dokoncil_id = :role_user_id
+                OR o.potvrdil_vecnou_spravnost_id = :role_user_id
+            )";
+            
+            $visibilityConditions[] = $roleBasedCondition;
+            $params['role_user_id'] = $current_user_id;
+            error_log("✅ VISIBILITY: Role-based filter added as BASE");
+            
+            // 2️⃣ HIERARCHIE - ROZŠÍŘENÍ (pokud je aktivní a uživatel v profilu)
+            // ========================================================
+            error_log("🔍 HIERARCHY CHECK: Checking if user $current_user_id is in hierarchy profile");
+            global $HIERARCHY_DEBUG_INFO;
+            $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
+            error_log("🔍 HIERARCHY CHECK: Result=" . ($hierarchyFilter === null ? 'NULL' : 'FILTER'));
+            
+            if ($hierarchyFilter !== null) {
+                $visibilityConditions[] = $hierarchyFilter;
+                $hierarchyApplied = true;
+                error_log("✅ HIERARCHY: Filter ADDED as OR extension (expands visibility)");
+            } else {
+                error_log("ℹ️ HIERARCHY: Not applied (user not in profile or no relationships)");
+            }
+            
+            // 3️⃣ DEPARTMENT SUBORDINATE - ROZŠÍŘENÍ (pokud má právo)
+            // ========================================================
+            $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
+            $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
+            
+            if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
+                error_log("🔍 DEPARTMENT CHECK: User has subordinate permissions");
+                $departmentColleagueIds = getUserDepartmentColleagueIds($current_user_id, $db);
+                
+                if (!empty($departmentColleagueIds)) {
+                    $departmentColleagueIdsStr = implode(',', array_map('intval', $departmentColleagueIds));
+                    
+                    $departmentCondition = "(
+                        o.uzivatel_id IN ($departmentColleagueIdsStr)
+                        OR o.objednatel_id IN ($departmentColleagueIdsStr)
+                        OR o.garant_uzivatel_id IN ($departmentColleagueIdsStr)
+                        OR o.schvalovatel_id IN ($departmentColleagueIdsStr)
+                        OR o.prikazce_id IN ($departmentColleagueIdsStr)
+                        OR o.uzivatel_akt_id IN ($departmentColleagueIdsStr)
+                        OR o.odesilatel_id IN ($departmentColleagueIdsStr)
+                        OR o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr)
+                        OR o.zverejnil_id IN ($departmentColleagueIdsStr)
+                        OR o.fakturant_id IN ($departmentColleagueIdsStr)
+                        OR o.dokoncil_id IN ($departmentColleagueIdsStr)
+                        OR o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr)
+                    )";
+                    
+                    $visibilityConditions[] = $departmentCondition;
+                    $departmentFilterApplied = true;
+                    
+                    $permission_type = $hasOrderEditSubordinate ? 'ORDER_EDIT_SUBORDINATE' : 'ORDER_READ_SUBORDINATE';
+                    error_log("✅ DEPARTMENT: Filter ADDED as OR extension for " . count($departmentColleagueIds) . " colleagues ($permission_type)");
+                } else {
+                    error_log("ℹ️ DEPARTMENT: User has no colleagues in department");
+                }
+            }
+            
+            // 4️⃣ KOMBINACE S OR LOGIKOU
+            // ========================================================
+            // Spojíme všechny podmínky s OR → uživatel vidí objednávky z KTERÉHOKOLIV filtru
+            if (!empty($visibilityConditions)) {
+                if (count($visibilityConditions) == 1) {
+                    // Jen role-based (žádné rozšíření)
+                    $whereConditions[] = $visibilityConditions[0];
+                    error_log("📊 VISIBILITY RESULT: Only role-based filter (no extensions)");
+                } else {
+                    // Role-based + rozšíření (hierarchie/department) spojené s OR
+                    $combinedFilter = "(" . implode(" OR ", $visibilityConditions) . ")";
+                    $whereConditions[] = $combinedFilter;
+                    error_log("📊 VISIBILITY RESULT: Combined " . count($visibilityConditions) . " filters with OR logic");
+                    error_log("   - Role-based: YES");
+                    error_log("   - Hierarchy: " . ($hierarchyApplied ? 'YES (extends)' : 'NO'));
+                    error_log("   - Department: " . ($departmentFilterApplied ? 'YES (extends)' : 'NO'));
+                }
+            }
+            
+        } else if ($isFullAdmin) {
+            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING all visibility filters");
+        } else if ($hasReadAllPermissions) {
+            error_log("✅ READ_ALL BYPASS: User has ORDER_READ_ALL/VIEW_ALL - SKIPPING all visibility filters");
+        }
+        // ============================================================================
+        
+        // 🔥 Kontrola parametru archivovano z FE
+        $includeArchived = isset($input['archivovano']) && $input['archivovano'] == 1;
+        
+        error_log("Order V2 LIST: Permission check - ORDER_MANAGE: " . ($hasOrderManage ? 'YES' : 'NO') . 
                   ", ORDER_APPROVE_ALL: " . ($hasOrderApproveAll ? 'YES' : 'NO') .
                   ", ORDER_OLD: " . ($hasOrderOld ? 'YES' : 'NO'));
-        error_log("Order V2 LIST: Final admin status - isFullAdmin: " . ($isFullAdmin ? 'YES' : 'NO') . 
-                  " (ONLY by ROLE, not by permissions)");
-        error_log("Order V2 LIST: Extended permissions - hasReadAllPermissions: " . ($hasReadAllPermissions ? 'YES' : 'NO') . 
-                  ", hasOrderOld: " . ($hasOrderOld ? 'YES' : 'NO'));
-        
-        // 🔥 KRITICKÉ: Logika filtrování podle ORDER_OLD a rolí
-        // ORDER_OLD = PRÁVO vidět archivované, ale respektuje parametr archivovano z FE
-        
-        // Kontrola parametru archivovano z FE
-        $includeArchived = isset($input['archivovano']) && $input['archivovano'] == 1;
         
         if ($hasOrderOld && $includeArchived) {
             // 🔥 ORDER_OLD + archivovano=1 = Vidí VŠECHNY archivované objednávky BEZ role filtru
@@ -412,48 +581,74 @@ function handle_order_v2_list($input, $config, $queries) {
             }
             
         } else {
-            // 🔥 Běžný uživatel (ORDER_READ_OWN) - aplikuj 12-role WHERE filter
-            error_log("Order V2 LIST: Regular user (ORDER_READ_OWN) - applying role-based filter for user ID: $current_user_id");
+            // 🔥 Běžný uživatel bez speciálních práv
+            // Viditelnost už byla nastavena výše přes visibility filters (role-based + hierarchie + department)
+            // Zde jen řešíme archivované objednávky
             
-            // Multi-role WHERE podmínka podle všech 12 user ID polí
-            $roleBasedCondition = "(
-                o.uzivatel_id = :role_user_id
-                OR o.objednatel_id = :role_user_id
-                OR o.garant_uzivatel_id = :role_user_id
-                OR o.schvalovatel_id = :role_user_id
-                OR o.prikazce_id = :role_user_id
-                OR o.uzivatel_akt_id = :role_user_id
-                OR o.odesilatel_id = :role_user_id
-                OR o.dodavatel_potvrdil_id = :role_user_id
-                OR o.zverejnil_id = :role_user_id
-                OR o.fakturant_id = :role_user_id
-                OR o.dokoncil_id = :role_user_id
-                OR o.potvrdil_vecnou_spravnost_id = :role_user_id
-            )";
-            
-            $whereConditions[] = $roleBasedCondition;
-            $params['role_user_id'] = $current_user_id;
-            
-            // Běžný user: archivované jen pokud archivovano=1
             if (!$includeArchived) {
                 $whereConditions[] = "o.stav_objednavky != 'ARCHIVOVANO'";
                 error_log("Order V2 LIST: Regular user - excluding archived orders (archivovano=0 or not set)");
             } else {
-                error_log("Order V2 LIST: Regular user - including archived orders where user has role (archivovano=1)");
+                error_log("Order V2 LIST: Regular user - including archived orders where user has visibility (archivovano=1)");
             }
         }
         
-        // Filter: podle data od-do
-        if (isset($input['datum_od']) && !empty($input['datum_od'])) {
-            $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
-            $params['datum_od'] = $input['datum_od'];
-            error_log("Order V2 LIST: Date filter FROM: " . $input['datum_od']);
-        }
+        // 🔥 KRITICKÉ FIX: Podpora pro 'rok' a 'mesic' parametry z frontendu
+        // Frontend posílá { rok: 2026 } nebo { rok: 2026, mesic: "1" } nebo { rok: 2026, mesic: "10-12" }
+        // Backend musí převést na datum_od a datum_do
         
-        if (isset($input['datum_do']) && !empty($input['datum_do'])) {
-            $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
-            $params['datum_do'] = $input['datum_do'];
-            error_log("Order V2 LIST: Date filter TO: " . $input['datum_do']);
+        if (isset($input['rok']) && !empty($input['rok'])) {
+            $rok = (int)$input['rok'];
+            
+            if (isset($input['mesic']) && !empty($input['mesic'])) {
+                // Konkrétní měsíc nebo rozsah měsíců
+                $mesic = $input['mesic'];
+                
+                if (strpos($mesic, '-') !== false) {
+                    // Rozsah měsíců (např. "10-12" = říjen až prosinec)
+                    list($mesic_od, $mesic_do) = explode('-', $mesic);
+                    $mesic_od = (int)$mesic_od;
+                    $mesic_do = (int)$mesic_do;
+                    
+                    $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+                    $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+                    $params['datum_od'] = sprintf('%04d-%02d-01', $rok, $mesic_od);
+                    $params['datum_do'] = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $rok, $mesic_do)));
+                    
+                    error_log("Order V2 LIST: Year-Month RANGE filter: rok=$rok, mesic=$mesic_od-$mesic_do");
+                    error_log("Order V2 LIST: Converted to datum_od=" . $params['datum_od'] . ", datum_do=" . $params['datum_do']);
+                } else {
+                    // Jeden měsíc
+                    $mesic_cislo = (int)$mesic;
+                    
+                    $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+                    $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+                    $params['datum_od'] = sprintf('%04d-%02d-01', $rok, $mesic_cislo);
+                    $params['datum_do'] = date('Y-m-t', strtotime($params['datum_od']));
+                    
+                    error_log("Order V2 LIST: Year-Month filter: rok=$rok, mesic=$mesic_cislo");
+                    error_log("Order V2 LIST: Converted to datum_od=" . $params['datum_od'] . ", datum_do=" . $params['datum_do']);
+                }
+            } else {
+                // Celý rok bez měsíce
+                $whereConditions[] = "YEAR(o.dt_objednavky) = :rok_filter";
+                $params['rok_filter'] = $rok;
+                
+                error_log("Order V2 LIST: Year filter: rok=$rok");
+            }
+        } else {
+            // Fallback na datum_od a datum_do (původní logika)
+            if (isset($input['datum_od']) && !empty($input['datum_od'])) {
+                $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+                $params['datum_od'] = $input['datum_od'];
+                error_log("Order V2 LIST: Date filter FROM: " . $input['datum_od']);
+            }
+            
+            if (isset($input['datum_do']) && !empty($input['datum_do'])) {
+                $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+                $params['datum_do'] = $input['datum_do'];
+                error_log("Order V2 LIST: Date filter TO: " . $input['datum_do']);
+            }
         }
         
         error_log("Order V2 LIST: All filters applied, whereConditions: " . json_encode($whereConditions));
@@ -522,14 +717,44 @@ function handle_order_v2_list($input, $config, $queries) {
             $noFilterConditions = array("o.aktivni = 1");
             
             // Pridaj len dátumové filtre (bez role/permission filtrov)
-            if (isset($input['datum_od']) && !empty($input['datum_od'])) {
-                $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
-                $noFilterParams['datum_od_nf'] = $input['datum_od'];
-            }
-            
-            if (isset($input['datum_do']) && !empty($input['datum_do'])) {
-                $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
-                $noFilterParams['datum_do_nf'] = $input['datum_do'];
+            // Podpor jak rok/mesic tak datum_od/datum_do
+            if (isset($input['rok']) && !empty($input['rok'])) {
+                $rok = (int)$input['rok'];
+                
+                if (isset($input['mesic']) && !empty($input['mesic'])) {
+                    $mesic = $input['mesic'];
+                    
+                    if (strpos($mesic, '-') !== false) {
+                        list($mesic_od, $mesic_do) = explode('-', $mesic);
+                        $mesic_od = (int)$mesic_od;
+                        $mesic_do = (int)$mesic_do;
+                        
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
+                        $noFilterParams['datum_od_nf'] = sprintf('%04d-%02d-01', $rok, $mesic_od);
+                        $noFilterParams['datum_do_nf'] = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $rok, $mesic_do)));
+                    } else {
+                        $mesic_cislo = (int)$mesic;
+                        
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
+                        $noFilterParams['datum_od_nf'] = sprintf('%04d-%02d-01', $rok, $mesic_cislo);
+                        $noFilterParams['datum_do_nf'] = date('Y-m-t', strtotime($noFilterParams['datum_od_nf']));
+                    }
+                } else {
+                    $noFilterConditions[] = "YEAR(o.dt_objednavky) = :rok_filter_nf";
+                    $noFilterParams['rok_filter_nf'] = $rok;
+                }
+            } else {
+                if (isset($input['datum_od']) && !empty($input['datum_od'])) {
+                    $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
+                    $noFilterParams['datum_od_nf'] = $input['datum_od'];
+                }
+                
+                if (isset($input['datum_do']) && !empty($input['datum_do'])) {
+                    $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
+                    $noFilterParams['datum_do_nf'] = $input['datum_do'];
+                }
             }
             
             // Archivované filter (ak frontend nepožadoval archivované, vyfiltruj ich)
@@ -651,22 +876,14 @@ function handle_order_v2_list($input, $config, $queries) {
                 ),
                 'filters_applied' => count($params),
                 'timestamp' => $apiTimestamp,
-                // 🔥 NOVÉ: Počty pre analýzu admin filtrovania
-                'admin_analysis' => array(
-                    'total_with_filters' => (int)$totalCount,
-                    'total_without_permission_filters' => (int)$totalWithoutPermissionFilters,
-                    'is_admin_by_role' => $isAdminByRole,
-                    'is_full_admin' => $isFullAdmin,
-                    'has_order_old' => $hasOrderOld,
-                    'has_order_read_all' => $hasOrderReadAll,
-                    'has_read_all_permissions' => $hasReadAllPermissions,
-                    'role_filter_applied' => !$isFullAdmin && !$hasOrderOld,
-                    'filter_difference' => (int)($totalWithoutPermissionFilters - $totalCount),
-                    'raw_permissions' => $user_permissions,
-                    'raw_roles' => $user_roles,
-                    'debug_in_array_order_old' => in_array('ORDER_OLD', $user_permissions),
-                    'debug_in_array_order_read_all' => in_array('ORDER_READ_ALL', $user_permissions),
-                    'debug_permissions_count' => count($user_permissions)
+                'debug' => array(
+                    'user_id' => $current_user_id,
+                    'is_admin' => $isAdminByRole,
+                    'hierarchy_applied' => $hierarchyApplied,
+                    'permissions' => $user_permissions,
+                    'roles' => $user_roles,
+                    'sql_preview' => substr($sql, 0, 500),
+                    'params' => $params
                 )
             )
         ));
@@ -894,6 +1111,7 @@ function handle_order_v2_create($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         $dbData['dt_vytvoreni'] = TimezoneHelper::getCzechDateTime();
         $dbData['aktivni'] = 1;
+        $dbData['uzivatel_id'] = $auth_result['id']; // ✅ CRITICAL FIX: Set creator ID from auth
         
         // OPRAVA: Pokud není nastaveno dt_objednavky, použij aktuální datum a čas
         if (!isset($dbData['dt_objednavky']) || $dbData['dt_objednavky'] === '' || $dbData['dt_objednavky'] === null) {
@@ -969,6 +1187,8 @@ function handle_order_v2_create($input, $config, $queries) {
  * Update objednávky se standardizovanými daty
  */
 function handle_order_v2_update($input, $config, $queries) {
+    error_log("=== Order V2 UPDATE START === Order ID: " . (isset($input['id']) ? $input['id'] : 'N/A'));
+    
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
@@ -976,6 +1196,7 @@ function handle_order_v2_update($input, $config, $queries) {
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
+        error_log("Order V2 UPDATE: Auth failed");
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
         return;
@@ -983,10 +1204,13 @@ function handle_order_v2_update($input, $config, $queries) {
     
     
     if ($order_id <= 0) {
+        error_log("Order V2 UPDATE: Invalid order ID: $order_id");
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
         return;
     }
+    
+    error_log("Order V2 UPDATE: Auth OK, user_id=" . $auth_result['id'] . ", order_id=$order_id");
     
     try {
         $handler = new OrderV2Handler($config);
@@ -1011,15 +1235,60 @@ function handle_order_v2_update($input, $config, $queries) {
             return;
         }
         
-        // Detekce partial update pro archivaci - ŽÁDNÁ VALIDACE
-        $is_archivation_update = false;
+        // 🔥 DETEKCE PARTIAL UPDATE - různé scénáře bez úplné validace
+        $is_partial_update = false;
+        $skip_items_validation = false;
+        
+        // Scénář 1: Archivace - jen změna stavu
         if (isset($input['stav_workflow_kod']) && is_array($input['stav_workflow_kod']) && 
             count($input['stav_workflow_kod']) === 1 && $input['stav_workflow_kod'][0] === 'ARCHIVOVANO') {
-            $is_archivation_update = true;
+            $is_partial_update = true;
+            $skip_items_validation = true;
+            error_log("Order V2 UPDATE: Detected ARCHIVATION partial update - skipping full validation");
         }
         
-        // Validace vstupních dat - přeskočit pro archivaci
-        if (!$is_archivation_update) {
+        // Scénář 2: Admin odemkl UZAVŘENOU objednávku k ex post opravě
+        // Ex post oprava = objednávka je POUZE v locked state BEZ editovatelných stavů (ROZPRACOVANA, NOVA)
+        $locked_states = ['SCHVALENA', 'ODESLAN_DODAVATELI', 'ZKONTROLOVANA', 'VECNA_SPRAVNOST', 'FAKTURACE', 'DOKONCENA'];
+        $editable_states = ['ROZPRACOVANA', 'NOVA'];
+        $is_ex_post_edit = false;
+        
+        if (isset($existingOrder['stav_workflow_kod']) && is_array($existingOrder['stav_workflow_kod'])) {
+            $has_locked_state = false;
+            $has_editable_state = false;
+            
+            foreach ($existingOrder['stav_workflow_kod'] as $state) {
+                if (in_array($state, $locked_states)) {
+                    $has_locked_state = true;
+                }
+                if (in_array($state, $editable_states)) {
+                    $has_editable_state = true;
+                }
+            }
+            
+            // Ex post oprava = má locked state ALE NEMÁ editovatelný stav
+            if ($has_locked_state && !$has_editable_state) {
+                $is_ex_post_edit = true;
+                error_log("Order V2 UPDATE: Order $order_id is EX POST EDIT (locked without editable state)");
+            } elseif ($has_locked_state && $has_editable_state) {
+                error_log("Order V2 UPDATE: Order $order_id has locked state BUT ALSO editable state - NORMAL WORKFLOW");
+            }
+        }
+        
+        // 🔥 Ex post oprava: Skipni validaci položek JEN pokud frontend NEPOSLAL položky
+        // Normální workflow (má ROZPRACOVANA/NOVA): VŽDY zpracuj položky pokud je frontend poslal
+        $frontend_sent_items = array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input);
+        
+        if ($is_ex_post_edit && !$frontend_sent_items) {
+            $skip_items_validation = true;
+            $is_partial_update = true;
+            error_log("Order V2 UPDATE: Ex post edit WITHOUT items in payload - enabling partial update mode");
+        } elseif ($is_ex_post_edit && $frontend_sent_items) {
+            error_log("Order V2 UPDATE: Ex post edit WITH items in payload - WILL SAVE items");
+        }
+        
+        // Validace vstupních dat - přeskočit pro partial updates
+        if (!$is_partial_update) {
             $validation = $handler->validateOrderDataForUpdate($input);
             if (!$validation['valid']) {
                 http_response_code(400);
@@ -1030,10 +1299,12 @@ function handle_order_v2_update($input, $config, $queries) {
                 ));
                 return;
             }
+        } else {
+            error_log("Order V2 UPDATE: Partial update detected - skipping full data validation");
         }
         
         // Transformace dat pro DB
-        $dbData = $handler->transformToDB($input);
+        $dbData = $handler->transformToDB($input, true); // ✅ isUpdate = true
         
         $db = get_db($config);
         $db->beginTransaction();
@@ -1041,7 +1312,23 @@ function handle_order_v2_update($input, $config, $queries) {
         // Automatické nastavení - timezone handling PO inicializaci DB
         TimezoneHelper::setMysqlTimezone($db);
         $dbData['dt_aktualizace'] = TimezoneHelper::getCzechDateTime();
-        // $dbData['uzivatel_akt_id'] = $current_user_id; // Commented out - sloupec možná neexistuje v produkci
+        $dbData['uzivatel_akt_id'] = $current_user_id; // ✅ FIXED: Set user who updated the order
+        
+        // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu na SCHVALENA
+        if (isset($dbData['stav_workflow_kod'])) {
+            $new_workflow_decoded = json_decode($dbData['stav_workflow_kod'], true);
+            $old_workflow_array = isset($existingOrder['stav_workflow_kod']) && is_array($existingOrder['stav_workflow_kod']) 
+                ? $existingOrder['stav_workflow_kod'] 
+                : array();
+            
+            // Pokud se přidává SCHVALENA stav (dříve nebyl, teď je)
+            if (is_array($new_workflow_decoded) && in_array('SCHVALENA', $new_workflow_decoded) &&
+                !in_array('SCHVALENA', $old_workflow_array)) {
+                $dbData['dt_schvaleni'] = TimezoneHelper::getCzechDateTime();
+                $dbData['schvalovatel_id'] = $current_user_id; // Nastavit schvalovatele
+                error_log("Order V2 UPDATE: Auto-setting dt_schvaleni=" . $dbData['dt_schvaleni'] . " and schvalovatel_id=$current_user_id for order $order_id");
+            }
+        }
         
         try {
             // ========== UPDATE HLAVNÍ OBJEDNÁVKY ==========
@@ -1049,7 +1336,8 @@ function handle_order_v2_update($input, $config, $queries) {
             $values = array();
             
             foreach ($dbData as $key => $value) {
-                if ($key !== 'id') { // ID neměníme
+                // ✅ CRITICAL FIX: Never update core IDs (creator/orderer) or id
+                if ($key !== 'id' && $key !== 'uzivatel_id' && $key !== 'objednatel_id') {
                     $setParts[] = "`{$key}` = :{$key}";
                     $values[$key] = $value;
                 }
@@ -1069,10 +1357,51 @@ function handle_order_v2_update($input, $config, $queries) {
             $items_processed = 0;
             $items_updated = false;
             
+            // � DEBUG: Zalogovat informace o položkách v inputu
+            $has_polozky = array_key_exists('polozky', $input);
+            $has_polozky_objednavky = array_key_exists('polozky_objednavky', $input);
+            error_log("Order V2 UPDATE [{$order_id}]: DEBUG položky - has_polozky=" . ($has_polozky ? 'YES' : 'NO') . ", has_polozky_objednavky=" . ($has_polozky_objednavky ? 'YES' : 'NO'));
+            
+            if ($has_polozky) {
+                $polozky_count = is_array($input['polozky']) ? count($input['polozky']) : 'NOT_ARRAY';
+                error_log("Order V2 UPDATE [{$order_id}]: polozky count = {$polozky_count}");
+                if (is_array($input['polozky']) && count($input['polozky']) > 0) {
+                    error_log("Order V2 UPDATE [{$order_id}]: polozky[0] = " . json_encode($input['polozky'][0]));
+                }
+            }
+            
+            if ($has_polozky_objednavky) {
+                $polozky_objednavky_count = is_array($input['polozky_objednavky']) ? count($input['polozky_objednavky']) : 'NOT_ARRAY';
+                error_log("Order V2 UPDATE [{$order_id}]: polozky_objednavky count = {$polozky_objednavky_count}");
+                if (is_array($input['polozky_objednavky']) && count($input['polozky_objednavky']) > 0) {
+                    error_log("Order V2 UPDATE [{$order_id}]: polozky_objednavky[0] = " . json_encode($input['polozky_objednavky'][0]));
+                }
+            }
+            
+            // �🔥 SKIP validace položek pro partial updates (admin mění zamčenou objednávku)
+            if ($skip_items_validation) {
+                error_log("Order V2 UPDATE: Skipping items validation/update (partial update mode)");
+                // Položky se neaktualizují, zůstávají původní
+            }
             // Kontrola, zda jsou v input datech položky k aktualizaci
-            if (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
+            elseif (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
                 // Validace a parsování položek (lp_id je součástí validateAndParseOrderItems)
                 $order_items = validateAndParseOrderItems($input);
+                
+                // ✅ Zpracování chyb validace položek
+                if (is_array($order_items) && isset($order_items['valid']) && $order_items['valid'] === false) {
+                    // Validace selhala - vrátit chyby
+                    $db->rollBack();
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error', 
+                        'error_code' => 'VALIDATION_ERROR',
+                        'message' => 'Chyba validace položek objednávky',
+                        'errors' => $order_items['errors']
+                    ));
+                    return;
+                }
+                
                 if ($order_items !== false) {
                     // saveOrderItems pattern: smaž stávající + vlož nové
                     if (saveOrderV2Items($db, $order_id, $order_items)) {
@@ -1082,7 +1411,8 @@ function handle_order_v2_update($input, $config, $queries) {
                         throw new Exception('Chyba při aktualizaci položek objednávky');
                     }
                 } else {
-                    throw new Exception('Nevalidní formát položek objednávky');
+                    // Prázdné položky nebo chybný formát - ale můžeme pokračovat pro partial update
+                    error_log("Order V2 UPDATE: Empty or invalid items format, but continuing (may be partial update)");
                 }
             }
             
@@ -1096,7 +1426,7 @@ function handle_order_v2_update($input, $config, $queries) {
             $invoices_updated = false;
             
             if (isset($input['faktury']) && is_array($input['faktury'])) {
-                $faktury_table = get_invoices_table_name(); // 25a_objednavky_faktury
+                $faktury_table = get_invoices_table_name(); // TBL_FAKTURY (25a_objednavky_faktury)
                 
                 foreach ($input['faktury'] as $faktura) {
                     $faktura_id = isset($faktura['id']) ? (int)$faktura['id'] : null;
@@ -1178,6 +1508,28 @@ function handle_order_v2_update($input, $config, $queries) {
                         $invoices_processed++;
                         $invoices_updated = true;
                         
+                        // ✅ AKTUALIZACE: Pokud je to první faktura, nastav fakturant_id v objednávce
+                        // Kontrola, zda objednávka už nemá nastaveného fakturanta
+                        $stmt_check = $db->prepare("SELECT fakturant_id FROM `25a_objednavky` WHERE id = ?");
+                        $stmt_check->execute(array($order_id));
+                        $order_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                        
+                        if (!$order_data['fakturant_id']) {
+                            // První faktura - nastav fakturanta a datum přidání první faktury
+                            $orders_table = get_orders_table_name();
+                            $stmt_update_order = $db->prepare("
+                                UPDATE `{$orders_table}` 
+                                SET fakturant_id = ?,
+                                    dt_faktura_pridana = NOW(),
+                                    dt_aktualizace = NOW(),
+                                    uzivatel_akt_id = ?
+                                WHERE id = ?
+                            ");
+                            $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
+                            
+                            error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
+                        }
+                        
                     } else {
                         // ========== UPDATE existující faktura ==========
                         $update_fields = array();
@@ -1257,12 +1609,28 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_values[] = $faktura['dt_potvrzeni_vecne_spravnosti'];
                         }
                         
+                        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+                        // Stejná logika jako v InvoiceEvidence modulu
+                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] === 1) {
+                            // Načíst aktuální stav faktury
+                            $current_check = $db->prepare("SELECT stav FROM `{$faktury_table}` WHERE id = ?");
+                            $current_check->execute(array($faktura_id));
+                            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
+                            
+                            if ($current_row && $current_row['stav'] === 'ZAEVIDOVANA') {
+                                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                                $update_fields[] = 'stav = ?';
+                                $update_values[] = 'VECNA_SPRAVNOST';
+                                error_log("🔄 [OrderV2] Auto změna stavu faktury #{$faktura_id}: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+                            }
+                        }
+                        
                         // Pokud jsou nějaká pole k aktualizaci
                         if (!empty($update_fields)) {
                             // Automatické pole
                             $update_fields[] = 'dt_aktualizace = NOW()';
-                            // $update_fields[] = 'uzivatel_akt_id = ?'; // Commented out - sloupec možná neexistuje v produkci
-                            // $update_values[] = $current_user_id;
+                            $update_fields[] = 'aktualizoval_uzivatel_id = ?'; // ✅ FIXED: faktury mají aktualizoval_uzivatel_id, ne uzivatel_akt_id
+                            $update_values[] = $current_user_id;
                             
                             // ID faktury na konec
                             $update_values[] = $faktura_id;
@@ -1288,7 +1656,7 @@ function handle_order_v2_update($input, $config, $queries) {
                 // Získat LP kódy z JSON financovani (PŘED COMMIT)
                 $sql_lp = "
                     SELECT financovani 
-                    FROM 25a_objednavky 
+                    FROM " . TBL_OBJEDNAVKY . " 
                     WHERE id = :order_id
                 ";
                 
@@ -1319,23 +1687,12 @@ function handle_order_v2_update($input, $config, $queries) {
         // === PO COMMITU: Přepočty a načtení dat ===
         // Tyto operace jsou už mimo transakci, takže případná chyba nezpůsobí rollback
         
-        // Přepočítat LP kódy (s novým mysqli spojením)
+        // Přepočítat LP kódy (použít existující PDO spojení)
         if (!empty($lp_codes)) {
-            $mysqli_conn = new mysqli(
-                $config['host'],
-                $config['username'],
-                $config['password'],
-                $config['database']
-            );
-            
-            if (!$mysqli_conn->connect_error) {
-                $mysqli_conn->set_charset('utf8');
-                
-                foreach ($lp_codes as $lp_id) {
-                    prepocetCerpaniPodleIdLP($mysqli_conn, $lp_id);
-                }
-                
-                $mysqli_conn->close();
+            foreach ($lp_codes as $lp_id) {
+                // ✅ Přepočítat bez explicitního roku - funkce sama určí primární rok LP
+                // Pro LP přecházející přes roky (2025-12-31 až 2026-12-31) se použije rok 2026
+                prepocetCerpaniPodleIdLP_PDO($db, $lp_id, null);
             }
         }
         
@@ -1352,7 +1709,7 @@ function handle_order_v2_update($input, $config, $queries) {
                 }
             } else {
                 // Zkontrolovat existující financování (pokud nebylo aktualizováno)
-                $sql_check_fin = "SELECT financovani FROM 25a_objednavky WHERE id = :order_id";
+                $sql_check_fin = "SELECT financovani FROM " . TBL_OBJEDNAVKY . " WHERE id = :order_id";
                 $stmt_check = $db->prepare($sql_check_fin);
                 $stmt_check->bindValue(':order_id', $order_id);
                 $stmt_check->execute();
@@ -1373,6 +1730,44 @@ function handle_order_v2_update($input, $config, $queries) {
         enrichOrderWithItems($db, $updatedOrder);
         enrichOrderWithInvoices($db, $updatedOrder);
         enrichOrderWithCodebooks($db, $updatedOrder);
+        
+        // === NOTIFIKAČNÍ SYSTÉM ===
+        error_log("Order V2 UPDATE: Starting notification check for order ID $order_id");
+        
+        // 🔥 DEBUG: Force immediate debug info
+        file_put_contents('/var/www/erdms-dev/logs/debug_order_update.log', date('Y-m-d H:i:s') . " - Starting notification check for order ID $order_id\n", FILE_APPEND);
+        
+        // Zjistit, jaká událost nastala podle změny workflow stavu
+        require_once __DIR__ . '/notificationHandlers.php';
+        
+        // $existingOrder má stav_workflow_kod jako ARRAY (po transformFromDB)
+        // $dbData má stav_workflow_kod jako JSON STRING (po transformToDB)
+        // Převedu oba na arraye pro porovnání
+        $old_workflow_array = isset($existingOrder['stav_workflow_kod']) && is_array($existingOrder['stav_workflow_kod']) 
+            ? $existingOrder['stav_workflow_kod'] 
+            : array();
+        
+        $new_workflow_array = array();
+        if (isset($dbData['stav_workflow_kod'])) {
+            $decoded = json_decode($dbData['stav_workflow_kod'], true);
+            $new_workflow_array = is_array($decoded) ? $decoded : array();
+        }
+        
+        error_log("Order V2 UPDATE: Old workflow: " . json_encode($old_workflow_array));
+        error_log("Order V2 UPDATE: New workflow: " . json_encode($new_workflow_array));
+        
+        // 🔥 DEBUG: Force immediate debug info
+        file_put_contents('/var/www/erdms-dev/logs/debug_order_update.log', date('Y-m-d H:i:s') . " - Old workflow: " . json_encode($old_workflow_array) . " | New workflow: " . json_encode($new_workflow_array) . "\n", FILE_APPEND);
+        
+        // Helper funkce pro detekci workflow stavu v array
+        $hasWorkflowState = function($workflow_array, $state_to_find) {
+            return is_array($workflow_array) && in_array($state_to_find, $workflow_array);
+        };
+        
+        // ✅ NOTIFIKACE: Nyní se posílají CENTRÁLNĚ přes frontend triggerNotification()
+        // Backend už neposílá automatické notifikace při změně workflow stavu.
+        // Frontend explicitně volá /notifications/trigger s hierarchií.
+        error_log("Order V2 UPDATE: Notification check complete for order ID $order_id (handled by frontend)");
         
         // Sestavení zprávy o úspěšné aktualizaci
         $message_parts = array('Objednávka byla úspěšně aktualizována');
@@ -1407,7 +1802,10 @@ function handle_order_v2_update($input, $config, $queries) {
             'line' => $e->getLine(),
             'trace' => $e->getTraceAsString()
         );
+        error_log("=== Order V2 UPDATE ERROR === Order ID: $order_id");
         error_log("Order V2 UPDATE Error [" . basename(__FILE__) . ":" . __LINE__ . "]: " . json_encode($error_details));
+        error_log("Order V2 UPDATE Error Message: " . $e->getMessage());
+        error_log("Order V2 UPDATE Error File: " . $e->getFile() . " Line: " . $e->getLine());
         http_response_code(500);
         echo json_encode(array('status' => 'error', 'message' => 'Chyba při aktualizaci objednávky: ' . $e->getMessage()));
     }
@@ -1422,6 +1820,7 @@ function handle_order_v2_delete($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    $hard_delete = isset($input['hard_delete']) && $input['hard_delete'] === true;
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
@@ -1430,6 +1829,15 @@ function handle_order_v2_delete($input, $config, $queries) {
         return;
     }
     
+    // 🔒 HARD DELETE - pouze admin
+    if ($hard_delete) {
+        $isAdmin = isset($auth_result['is_admin']) && $auth_result['is_admin'];
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k trvalému smazání objednávky'));
+            return;
+        }
+    }
     
     if ($order_id <= 0) {
         http_response_code(400);
@@ -1441,8 +1849,8 @@ function handle_order_v2_delete($input, $config, $queries) {
         $handler = new OrderV2Handler($config);
         $current_user_id = $auth_result['id'];
         
-        // Ověř že objednávka existuje
-        $existingOrder = $handler->getOrderById($order_id, $current_user_id);
+        // Ověř že objednávka existuje (includeArchived=true aby fungovalo i na neaktivní objednávky)
+        $existingOrder = $handler->getOrderById($order_id, $current_user_id, true);
         if (!$existingOrder) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
@@ -1460,28 +1868,123 @@ function handle_order_v2_delete($input, $config, $queries) {
             return;
         }
         
-        // Soft delete - nastavíme aktivni = 0
-        $sql = "UPDATE " . get_orders_table_name() . " 
-                SET aktivni = 0, dt_aktualizace = :dt_aktualizace 
-                WHERE id = :id";
-        
         $db = get_db($config);
         TimezoneHelper::setMysqlTimezone($db);
-        $stmt = $db->prepare($sql);
-        $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
-        $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
-        $stmt->execute();
         
-        echo json_encode(array(
-            'status' => 'ok',
-            'message' => 'Objednávka byla úspěšně smazána',
-            'meta' => array(
-                'version' => 'v2',
-                'deleted_id' => $order_id,
-                'soft_delete' => true,
-                'timestamp' => TimezoneHelper::getApiTimestamp()
-            )
-        ));
+        if ($hard_delete) {
+            // HARD DELETE - fyzické smazání z databáze (pouze admin)
+            // ⚠️ MUSÍ se provádět v pořadí kvůli FK constraints!
+            
+            $db->beginTransaction();
+            try {
+                // 1. Odpojit faktury od objednávky (faktury zůstávají, jen se odpojí)
+                // Faktury jsou samostatné entity a nesmí se mazat!
+                $stmt = $db->prepare("UPDATE " . TBL_FAKTURY . " SET objednavka_id = NULL WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $detachedInvoices = $stmt->rowCount();
+                
+                // 2. Načíst přílohy objednávky před smazáním (pro mazání souborů z disku)
+                $stmt = $db->prepare("SELECT id, systemova_cesta FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // 3. Smazat fyzické soubory příloh z disku
+                $deletedFiles = 0;
+                $failedFiles = 0;
+                $missingFiles = 0;
+                $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
+                $basePath = '';
+                if (isset($uploadConfig['root_path']) && !empty($uploadConfig['root_path'])) {
+                    $basePath = $uploadConfig['root_path'];
+                } else {
+                    // Fallback z environment
+                    require_once __DIR__ . '/environment-utils.php';
+                    $basePath = get_upload_root_path();
+                }
+                
+                foreach ($attachments as $att) {
+                    $fullPath = $att['systemova_cesta'];
+                    // Pokud není absolutní cesta, doplň base path
+                    if (strpos($fullPath, '/') !== 0) {
+                        $fullPath = rtrim($basePath, '/') . '/' . ltrim($fullPath, '/');
+                    }
+                    
+                    if (file_exists($fullPath)) {
+                        if (@unlink($fullPath)) {
+                            $deletedFiles++;
+                        } else {
+                            $failedFiles++;
+                            error_log("HARD DELETE: Nepodařilo se smazat soubor: $fullPath");
+                        }
+                    } else {
+                        // Soubor neexistuje - pouze poznamenat, není to chyba
+                        $missingFiles++;
+                    }
+                }
+                
+                // 4. Smazat položky objednávky
+                $stmt = $db->prepare("DELETE FROM " . TBL_OBJEDNAVKY_POLOZKY . " WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $deletedItems = $stmt->rowCount();
+                
+                // 5. Smazat přílohy objednávky z databáze
+                $stmt = $db->prepare("DELETE FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = :id");
+                $stmt->execute([':id' => $order_id]);
+                $deletedAttachments = $stmt->rowCount();
+                
+                // 6. Nakonec smazat samotnou objednávku
+                $stmt = $db->prepare("DELETE FROM " . get_orders_table_name() . " WHERE id = :id");
+                $stmt->execute([':id' => $order_id]);
+                
+                $db->commit();
+                
+                $response = array(
+                    'status' => 'ok',
+                    'message' => 'Objednávka byla trvale smazána',
+                    'meta' => array(
+                        'version' => 'v2',
+                        'deleted_id' => $order_id,
+                        'hard_delete' => true,
+                        'detached_invoices' => $detachedInvoices,
+                        'deleted_items' => $deletedItems,
+                        'deleted_attachments' => $deletedAttachments,
+                        'deleted_files' => $deletedFiles,
+                        'missing_files' => $missingFiles,
+                        'timestamp' => TimezoneHelper::getApiTimestamp()
+                    )
+                );
+                
+                if ($failedFiles > 0) {
+                    $response['warning'] = "Některé soubory se nepodařilo smazat z disku ($failedFiles). Pravděpodobně problém s oprávněními.";
+                }
+                
+                echo json_encode($response);
+            } catch (Exception $e) {
+                $db->rollBack();
+                throw $e;
+            }
+        } else {
+            // SOFT DELETE - nastavíme aktivni = 0
+            $sql = "UPDATE " . get_orders_table_name() . " 
+                    SET aktivni = 0, dt_aktualizace = :dt_aktualizace 
+                    WHERE id = :id";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
+            $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            echo json_encode(array(
+                'status' => 'ok',
+                'message' => 'Objednávka byla úspěšně smazána',
+                'meta' => array(
+                    'version' => 'v2',
+                    'deleted_id' => $order_id,
+                    'soft_delete' => true,
+                    'timestamp' => TimezoneHelper::getApiTimestamp()
+                )
+            ));
+        }
         
     } catch (Exception $e) {
         $error_details = array(
@@ -1493,6 +1996,88 @@ function handle_order_v2_delete($input, $config, $queries) {
         error_log("Order V2 DELETE Error [" . basename(__FILE__) . ":" . __LINE__ . "]: " . json_encode($error_details));
         http_response_code(500);
         echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * POST /api/order-v2/{id}/restore
+ * Obnovení smazané objednávky (aktivni = 0 → aktivni = 1)
+ * Pouze pro ADMIN
+ */
+function handle_order_v2_restore($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    // 🔒 ADMIN CHECK - pouze admin může obnovovat
+    $isAdmin = isset($auth_result['is_admin']) && $auth_result['is_admin'];
+    if (!$isAdmin) {
+        http_response_code(403);
+        echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k obnovení objednávky'));
+        return;
+    }
+    
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        TimezoneHelper::setMysqlTimezone($db);
+        
+        // Ověř že objednávka existuje a je neaktivní
+        $checkSql = "SELECT id, aktivni FROM " . get_orders_table_name() . " WHERE id = :id";
+        $checkStmt = $db->prepare($checkSql);
+        $checkStmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+        $checkStmt->execute();
+        $order = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
+            return;
+        }
+        
+        if ($order['aktivni'] == 1) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka není smazaná (už je aktivní)'));
+            return;
+        }
+        
+        // Restore - nastavíme aktivni = 1
+        $sql = "UPDATE " . get_orders_table_name() . " 
+                SET aktivni = 1, dt_aktualizace = :dt_aktualizace 
+                WHERE id = :id";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
+        $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Objednávka byla úspěšně obnovena',
+            'meta' => array(
+                'version' => 'v2',
+                'restored_id' => $order_id,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 RESTORE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při obnovení objednávky: ' . $e->getMessage()));
     }
 } 
 
@@ -1776,7 +2361,7 @@ function handle_order_v2_get_dt_aktualizace($input, $config, $queries) {
 // ========== ORDER V2 ITEMS MANAGEMENT FUNCTIONS ==========
 
 /**
- * Vloží položky objednávky pro Order V2 (25a_objednavky_polozky)
+ * Vloží položky objednávky pro Order V2 (TBL_OBJEDNAVKY_POLOZKY (25a_objednavky_polozky))
  * Batch insert pro lepší výkon - PHP 5.6 kompatibilní
  * @param PDO $db - Databázové spojení
  * @param int $order_id - ID objednávky
@@ -1860,7 +2445,26 @@ function updateOrderV2Items($db, $order_id, $items) {
  * Přidá pole 'lp_options' s LP kódy, které může uživatel vybrat pro položky.
  * Filtruje podle objednavka_data.lp_kody (pokud existují).
  * 
- * @param mysqli $db - Database connection
+ * @param PDO $db - Database connection
  * @param array &$order - Reference na objednávku (modifikuje se)
  */
+function enrichOrderWithLPOptions($db, &$order) {
+    try {
+        $lp_options = array();
+        
+        // Získat LP kódy z financování objednávky
+        if (isset($order['financovani']) && isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
+            $lp_options = $order['financovani']['lp_kody'];
+        }
+        
+        // Přidat do objednávky
+        $order['lp_options'] = $lp_options;
+        
+    } catch (Exception $e) {
+        error_log("enrichOrderWithLPOptions Error: " . $e->getMessage());
+        $order['lp_options'] = array();
+    }
+}
+
+?>
 

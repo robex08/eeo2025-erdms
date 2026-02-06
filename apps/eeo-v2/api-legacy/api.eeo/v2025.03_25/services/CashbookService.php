@@ -94,11 +94,14 @@ class CashbookService {
             // Vložit položku
             $entryId = $this->entryModel->createEntry($entryData, $userId);
             
-            // Přepočítat všechny následující balances
-            $this->balanceCalculator->recalculateBalancesAfterDate($bookId, $data['datum_zapisu']);
+            // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku, ne jen od data!
+            // Důvod: calculateNewEntryBalance() může mít neaktuální pocatecni_stav
+            // nebo předchozí položky mohly mít špatné zůstatky
+            $this->balanceCalculator->recalculateBookBalances($bookId);
             
-            // Možná budeme muset přečíslovat (pokud vkládáme mezi existující položky)
-            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            // 🆕 KRITICKÉ: Přečíslovat celou pokladnu (číslování je per pokladna, ne per uživatel!)
+            // Přečísluje všechny knihy se stejným pokladna_id
+            $this->docNumberService->renumberBookDocuments($bookId);
             
             // Audit log
             $this->auditModel->logAction('polozka', $entryId, 'vytvoreni', $userId, null, $entryData);
@@ -138,8 +141,8 @@ class CashbookService {
             
             // Pokud se změnila částka nebo datum, přepočítat balances
             if (isset($data['castka_prijem']) || isset($data['castka_vydaj']) || isset($data['datum_zapisu'])) {
-                $recalcDate = isset($data['datum_zapisu']) ? $data['datum_zapisu'] : $entry['datum_zapisu'];
-                $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $recalcDate);
+                // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku místo jen od data
+                $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             }
             
             // Audit log
@@ -175,11 +178,11 @@ class CashbookService {
             // Soft delete
             $this->entryModel->deleteEntry($entryId, $userId);
             
-            // Přepočítat balances
-            $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $entry['datum_zapisu']);
+            // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku
+            $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             
-            // Přečíslovat doklady
-            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            // 🆕 KRITICKÉ: Přečíslovat celou pokladnu (číslování je per pokladna, ne per uživatel!)
+            $this->docNumberService->renumberBookDocuments($entry['pokladni_kniha_id']);
             
             // Audit log
             $this->auditModel->logAction('polozka', $entryId, 'smazani', $userId, $entry, null);
@@ -206,12 +209,11 @@ class CashbookService {
             // Obnovit
             $this->entryModel->restoreEntry($entryId);
             
-            // Přepočítat balances
-            $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $entry['datum_zapisu']);
+            // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku
+            $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             
-            // Načíst knihu pro přečíslování
-            $book = $this->bookModel->getBookById($entry['pokladni_kniha_id']);
-            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            // 🆕 KRITICKÉ: Přečíslovat celou pokladnu (číslování je per pokladna, ne per uživatel!)
+            $this->docNumberService->renumberBookDocuments($entry['pokladni_kniha_id']);
             
             // Audit log
             $this->auditModel->logAction('polozka', $entryId, 'obnoveni', $userId, null, $entry);
@@ -252,6 +254,15 @@ class CashbookService {
                 array('stav_knihy' => 'aktivni'), 
                 array('stav_knihy' => 'uzavrena_uzivatelem'));
             
+            // 🔔 NOTIFICATION TRIGGER: CASHBOOK_MONTH_CLOSED
+            try {
+                require_once __DIR__ . '/../lib/notificationHandlers.php';
+                triggerNotification($this->db, 'CASHBOOK_MONTH_CLOSED', $bookId, $userId);
+                error_log("🔔 Triggered: CASHBOOK_MONTH_CLOSED for book $bookId");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+            
             return array(
                 'status' => 'ok',
                 'message' => 'Měsíc byl uzavřen. Čeká na schválení správce.'
@@ -287,6 +298,15 @@ class CashbookService {
             $this->auditModel->logAction('kniha', $bookId, 'zamknuti', $adminId, 
                 array('stav_knihy' => 'uzavrena_uzivatelem'), 
                 array('stav_knihy' => 'zamknuta_spravcem'));
+            
+            // 🔔 NOTIFICATION TRIGGER: CASHBOOK_MONTH_LOCKED (URGENT!)
+            try {
+                require_once __DIR__ . '/../lib/notificationHandlers.php';
+                triggerNotification($this->db, 'CASHBOOK_MONTH_LOCKED', $bookId, $adminId);
+                error_log("🔔 Triggered: CASHBOOK_MONTH_LOCKED for book $bookId");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
             
             return array(
                 'status' => 'ok',

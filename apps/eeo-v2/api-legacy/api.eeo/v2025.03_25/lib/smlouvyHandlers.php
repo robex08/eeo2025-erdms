@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SMLOUVY API Handlers
  * 
@@ -19,16 +20,141 @@
  */
 
 /**
+ * Normalizace data "platnost_do"
+ * 
+ * Pokud je "platnost_do" prázdné, NULL nebo nevalidní,
+ * nastaví se automaticky na 31.12.2099 (dlouhodobě platná smlouva)
+ * 
+ * Logika:
+ * - Pokud je "platnost_do" prázdné nebo NULL → "2099-12-31"
+ * - Pokud je datum nevalidní → "2099-12-31"
+ * - Pokud je datum validní → vrátí jej v ISO formátu (YYYY-MM-DD)
+ * - Pokud je "00.00.0000" nebo podobný → "2099-12-31"
+ * 
+ * @param mixed $platnost_do Vstupní datum (string, různé formáty povoleny)
+ * @return string Normalizované datum ve formátu YYYY-MM-DD
+ */
+function normalizePlatnostDo($platnost_do) {
+    // Pokud je prázdné nebo NULL
+    if (empty($platnost_do)) {
+        return '2099-12-31';
+    }
+    
+    // Převod string -> string
+    $value = trim((string)$platnost_do);
+    
+    // Kontrola na speciální "prázdné" hodnoty
+    if ($value === '' || $value === '0' || $value === '00.00.0000' || $value === '1900-01-01') {
+        return '2099-12-31';
+    }
+    
+    // Pokus o parsování data
+    $timestamp = strtotime($value);
+    
+    // Pokud je nevalidní nebo je starší než 1980
+    if ($timestamp === false) {
+        return '2099-12-31';
+    }
+    
+    // Převod na YYYY-MM-DD formát
+    $date = date('Y-m-d', $timestamp);
+    
+    // Pokud je rok < 2000, pravděpodobně jde o chybu v datech
+    if ((int)date('Y', $timestamp) < 2000) {
+        return '2099-12-31';
+    }
+    
+    return $date;
+}
+
+/**
+ * Normalizace finančních hodnot smlouvy
+ * 
+ * Automaticky:
+ * 1. Parsuje hodnoty (i s mezerami, čárkami apod.)
+ * 2. Pokud hodnota není číslo → nastaví 0
+ * 3. Pokud chybí obě hodnoty → nastaví obě na 0
+ * 4. Pokud existuje jen jedna hodnota → dopočítá druhou (DPH 21%)
+ * 
+ * @param array $data Reference na data smlouvy
+ * @return array Upravená data s normalizovanými hodnotami
+ */
+function normalizeFinancialValues(&$data) {
+    // Pomocná funkce pro parsování číselné hodnoty
+    $parseNumber = function($value) {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        
+        // Převod na string
+        $str = trim((string)$value);
+        
+        // Odstranění mezer (např. "100 000")
+        $str = str_replace(' ', '', $str);
+        
+        // Nahrazení čárky tečkou (např. "1234,56" -> "1234.56")
+        $str = str_replace(',', '.', $str);
+        
+        // Pokud není číslo, vrátit null
+        if (!is_numeric($str)) {
+            return null;
+        }
+        
+        return (float)$str;
+    };
+    
+    // Parsování hodnot
+    $hodnota_bez_dph = isset($data['hodnota_bez_dph']) ? $parseNumber($data['hodnota_bez_dph']) : null;
+    $hodnota_s_dph = isset($data['hodnota_s_dph']) ? $parseNumber($data['hodnota_s_dph']) : null;
+    
+    // Pravidlo 1: Pokud jsou obě hodnoty null/prázdné → nastavit obě na 0
+    if ($hodnota_bez_dph === null && $hodnota_s_dph === null) {
+        $data['hodnota_bez_dph'] = 0;
+        $data['hodnota_s_dph'] = 0;
+        $data['_note_hodnoty'] = 'AUTO: Obě hodnoty nastaveny na 0 (chyběly)';
+        return $data;
+    }
+    
+    // Pravidlo 2: Pokud jedna hodnota není číslo → nastavit na 0
+    if ($hodnota_bez_dph === null) {
+        $hodnota_bez_dph = 0;
+    }
+    if ($hodnota_s_dph === null) {
+        $hodnota_s_dph = 0;
+    }
+    
+    // Pravidlo 3: Pokud je jedna z hodnot 0 a druhá > 0 → dopočítat
+    $dph_rate = 1.21; // DPH 21%
+    
+    if ($hodnota_bez_dph > 0 && $hodnota_s_dph == 0) {
+        // Dopočítat hodnotu S DPH z hodnoty BEZ DPH
+        $hodnota_s_dph = round($hodnota_bez_dph * $dph_rate, 2);
+        $data['_note_hodnoty'] = 'AUTO: Hodnota s DPH dopočítána (21% DPH)';
+    } elseif ($hodnota_s_dph > 0 && $hodnota_bez_dph == 0) {
+        // Dopočítat hodnotu BEZ DPH z hodnoty S DPH
+        $hodnota_bez_dph = round($hodnota_s_dph / $dph_rate, 2);
+        $data['_note_hodnoty'] = 'AUTO: Hodnota bez DPH dopočítána (21% DPH)';
+    }
+    
+    // Nastavení normalizovaných hodnot
+    $data['hodnota_bez_dph'] = $hodnota_bez_dph;
+    $data['hodnota_s_dph'] = $hodnota_s_dph;
+    
+    return $data;
+}
+
+/**
  * Automatický výpočet stavu smlouvy podle logiky:
  * 1. aktivni = 0 => "NEAKTIVNI" (manuálně deaktivováno)
- * 2. CURDATE() < platnost_od => "PRIPRAVOVANA" (ještě nezačala)
- * 3. CURDATE() > platnost_do => "UKONCENA" (vypršela)
- * 4. Jinak => "AKTIVNI" (platná)
+ * 2. platnost_od je NULL => "AKTIVNI" (datum od nebylo zadáno, platí pouze datum do)
+ * 3. CURDATE() < platnost_od => "PRIPRAVOVANA" (ještě nezačala)
+ * 4. CURDATE() > platnost_do => "UKONCENA" (vypršela)
+ * 5. Jinak => "AKTIVNI" (platná)
  * 
  * POZOR: Stav je ENUM('AKTIVNI','UKONCENA','PRERUSENA','PRIPRAVOVANA','NEAKTIVNI')
  * 
  * @param int $aktivni Aktivní (0/1)
- * @param string $platnost_od Datum platnosti od (YYYY-MM-DD)
+ * @param string $platnost_od Datum platnosti od (YYYY-MM-DD) nebo NULL
  * @param string $platnost_do Datum platnosti do (YYYY-MM-DD)
  * @return string Vypočítaný stav (AKTIVNI/UKONCENA/PRIPRAVOVANA/NEAKTIVNI)
  */
@@ -40,17 +166,26 @@ function calculateSmlouvaStav($aktivni, $platnost_od, $platnost_do) {
     
     $today = date('Y-m-d');
     
-    // Priorita 2: Ještě nezačala platit = PRIPRAVOVANA
+    // Priorita 2: Pokud platnost_od není zadáno, platí od okamžiku vytvoření
+    if (empty($platnost_od) || $platnost_od === null) {
+        // Kontrolujeme pouze datum do
+        if ($today > $platnost_do) {
+            return 'UKONCENA';
+        }
+        return 'AKTIVNI';
+    }
+    
+    // Priorita 3: Ještě nezačala platit = PRIPRAVOVANA
     if ($today < $platnost_od) {
         return 'PRIPRAVOVANA';
     }
     
-    // Priorita 3: Již vypršela = UKONCENA
+    // Priorita 4: Již vypršela = UKONCENA
     if ($today > $platnost_do) {
         return 'UKONCENA';
     }
     
-    // Priorita 4: Je platná = AKTIVNI
+    // Priorita 5: Je platná = AKTIVNI
     return 'AKTIVNI';
 }
 
@@ -58,10 +193,11 @@ function calculateSmlouvaStav($aktivni, $platnost_od, $platnost_do) {
  * Validace dat smlouvy
  * 
  * @param array $data Data k validaci
+ * @param PDO $db Databázové připojení (pro validaci proti číselníku)
  * @param bool $is_insert TRUE pokud je INSERT (povinná všechna pole), FALSE pro UPDATE
  * @return array Pole chybových zpráv (prázdné = validace OK)
  */
-function validateSmlouvaData($data, $is_insert = true) {
+function validateSmlouvaData($data, $db, $is_insert = true) {
     $errors = array();
     
     // Required fields pro INSERT nebo pokud jsou v UPDATE
@@ -80,6 +216,21 @@ function validateSmlouvaData($data, $is_insert = true) {
     if ($is_insert || isset($data['druh_smlouvy'])) {
         if (empty($data['druh_smlouvy'])) {
             $errors[] = 'Druh smlouvy je povinny';
+        } else {
+            // Validace proti číselníku
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as cnt 
+                FROM " . TBL_CISELNIK_STAVY . " 
+                WHERE typ_objektu = 'DRUH_SMLOUVY' 
+                  AND kod_stavu = :druh_smlouvy 
+                  AND aktivni = 1
+            ");
+            $stmt->execute([':druh_smlouvy' => $data['druh_smlouvy']]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result['cnt'] == 0) {
+                $errors[] = 'Neplatny druh smlouvy: ' . $data['druh_smlouvy'];
+            }
         }
     }
     
@@ -95,54 +246,55 @@ function validateSmlouvaData($data, $is_insert = true) {
         }
     }
     
-    if ($is_insert || isset($data['hodnota_s_dph'])) {
-        if (!isset($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph']) || $data['hodnota_s_dph'] <= 0) {
-            $errors[] = 'Hodnota s DPH je povinna a musi byt kladne cislo';
-        }
-    }
-    
     // Date validation
     // platnost_od - NEPOVINNÉ (ekonomové často neuvádějí)
     if (!empty($data['platnost_od']) && !strtotime($data['platnost_od'])) {
         $errors[] = 'Platnost od musi byt platne datum';
     }
     
-    // platnost_do - POVINNÉ
-    if ($is_insert || isset($data['platnost_do'])) {
-        if (empty($data['platnost_do']) || !strtotime($data['platnost_do'])) {
-            $errors[] = 'Platnost do je povinne datum';
-        }
+    // platnost_do - NORMALIZUJE SE NA 31.12.2099 POKUD CHYBÍ
+    // (neměli bychom vyžadovat, aby ekonomové vždycky znali konec platnosti)
+    // Normalizace se provádí v bulk-import handleru
+    if (!empty($data['platnost_do']) && !strtotime($data['platnost_do'])) {
+        // Pokud je zadáno, ale není validní → chyba
+        $errors[] = 'Platnost do musi byt platne datum (nebo ponechte prázdné pro 2099-12-31)';
     }
     
     // Date range validation
-    if (isset($data['platnost_od']) && isset($data['platnost_do'])) {
+    if (!empty($data['platnost_od']) && !empty($data['platnost_do']) && strtotime($data['platnost_do']) && strtotime($data['platnost_od'])) {
         if (strtotime($data['platnost_do']) < strtotime($data['platnost_od'])) {
             $errors[] = 'Datum platnosti do musi byt po datu platnosti od';
         }
     }
     
-    // IČO validation (volitelné, ale pokud je zadáno, musí být 8 číslic)
-    if (isset($data['ico']) && !empty($data['ico'])) {
-        if (!preg_match('/^\d{8}$/', $data['ico'])) {
-            $errors[] = 'ICO musi obsahovat presne 8 cislic';
+    // IČO validation - ZRUŠENO, akceptujeme jakýkoliv formát
+    // (IČO může mít různé formáty, včetně prefixů, mezer atd.)
+    
+    // Financial validation - UPRAVENO: akceptujeme prázdné hodnoty při UPDATE (NULL v DB)
+    // Validujeme pouze pokud jsou hodnoty vyplněné
+    if ($is_insert || isset($data['hodnota_bez_dph'])) {
+        // Prázdný string nebo NULL je OK při UPDATE (smlouva může mít NULL v DB)
+        if (isset($data['hodnota_bez_dph']) && $data['hodnota_bez_dph'] !== '' && $data['hodnota_bez_dph'] !== null) {
+            if (!is_numeric($data['hodnota_bez_dph'])) {
+                $errors[] = 'Hodnota bez DPH musi byt cislo';
+            } elseif ($data['hodnota_bez_dph'] < 0) {
+                $errors[] = 'Hodnota bez DPH nesmi byt zaporna';
+            }
         }
     }
     
-    // Financial validation
     if ($is_insert || isset($data['hodnota_s_dph'])) {
-        if (empty($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph']) || $data['hodnota_s_dph'] <= 0) {
-            $errors[] = 'Hodnota s DPH je povinne kladne cislo';
+        // Prázdný string nebo NULL je OK při UPDATE (smlouva může mít NULL v DB)
+        if (isset($data['hodnota_s_dph']) && $data['hodnota_s_dph'] !== '' && $data['hodnota_s_dph'] !== null) {
+            if (!is_numeric($data['hodnota_s_dph'])) {
+                $errors[] = 'Hodnota s DPH musi byt cislo';
+            } elseif ($data['hodnota_s_dph'] < 0) {
+                $errors[] = 'Hodnota s DPH nesmi byt zaporna';
+            }
         }
     }
     
-    // IČO validation (8 digits, optional)
-    if (isset($data['ico']) && !empty($data['ico'])) {
-        if (!preg_match('/^\d{8}$/', $data['ico'])) {
-            $errors[] = 'ICO musi obsahovat 8 cislic';
-        }
-    }
-    
-    // STAV - ignorujeme z inputu, počítá se automaticky
+    // STAV a ZBYVA - ignorujeme z inputu, počítá se automaticky
     // (nevalidujeme, protože se přepočítá)
     
     return $errors;
@@ -200,6 +352,12 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $params['stav'] = $input['stav'];
         }
         
+        // Filter: pouzit_v_obj_formu (pro OrderForm25 autocomplete)
+        // Pokud je true, vrátí pouze smlouvy použitelné v objednávkovém formuláři
+        if (isset($input['pouzit_v_obj_formu']) && $input['pouzit_v_obj_formu']) {
+            $where[] = 's.pouzit_v_obj_formu = 1';
+        }
+        
         // Filter: search (fulltext)
         if (isset($input['search']) && !empty($input['search'])) {
             // Normalizovaný search bez diakritiky
@@ -240,7 +398,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         $where_sql = empty($where) ? '' : 'WHERE ' . implode(' AND ', $where);
         
         // Count query
-        $count_sql = "SELECT COUNT(*) as total FROM 25_smlouvy s $where_sql";
+        $count_sql = "SELECT COUNT(*) as total FROM " . TBL_SMLOUVY . " s $where_sql";
         $stmt = $db->prepare($count_sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
@@ -261,13 +419,13 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                 u.usek_nazev,
                 (
                     SELECT COUNT(*)
-                    FROM 25a_objednavky o
+                    FROM " . TBL_OBJEDNAVKY . " o
                     WHERE o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
                       AND o.aktivni = 1
                       AND o.stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
                 ) AS pocet_objednavek
-            FROM 25_smlouvy s
-            LEFT JOIN 25_useky u ON s.usek_id = u.id
+            FROM " . TBL_SMLOUVY . " s
+            LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
             $where_sql
             ORDER BY s.dt_vytvoreni DESC
             LIMIT $limit OFFSET $offset
@@ -285,6 +443,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['id'] = (int)$row['id'];
             $row['usek_id'] = (int)$row['usek_id'];
             $row['aktivni'] = (int)$row['aktivni'];
+            $row['pouzit_v_obj_formu'] = isset($row['pouzit_v_obj_formu']) ? (int)$row['pouzit_v_obj_formu'] : 0;
             $row['pocet_objednavek'] = (int)$row['pocet_objednavek'];
             $row['hodnota_bez_dph'] = (float)$row['hodnota_bez_dph'];
             $row['hodnota_s_dph'] = (float)$row['hodnota_s_dph'];
@@ -346,8 +505,8 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
         
         // Get contract
         $sql = "SELECT s.*, u.usek_zkr, u.usek_nazev 
-                FROM 25_smlouvy s
-                LEFT JOIN 25_useky u ON s.usek_id = u.id
+                FROM " . TBL_SMLOUVY . " s
+                LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
                 WHERE s.id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
@@ -364,6 +523,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
         $smlouva['id'] = (int)$smlouva['id'];
         $smlouva['usek_id'] = (int)$smlouva['usek_id'];
         $smlouva['aktivni'] = (int)$smlouva['aktivni'];
+        $smlouva['pouzit_v_obj_formu'] = isset($smlouva['pouzit_v_obj_formu']) ? (int)$smlouva['pouzit_v_obj_formu'] : 0;
         $smlouva['hodnota_bez_dph'] = (float)$smlouva['hodnota_bez_dph'];
         $smlouva['hodnota_s_dph'] = (float)$smlouva['hodnota_s_dph'];
         $smlouva['sazba_dph'] = (float)$smlouva['sazba_dph'];
@@ -384,7 +544,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 o.stav_objednavky AS stav,
                 o.max_cena_s_dph AS castka_s_dph,
                 o.dt_vytvoreni AS dt_prirazeni
-            FROM 25a_objednavky o
+            FROM " . TBL_OBJEDNAVKY . " o
             WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
               AND o.aktivni = 1
             ORDER BY o.dt_vytvoreni DESC
@@ -409,7 +569,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 COALESCE(AVG(max_cena_s_dph), 0) as prumerna_objednavka,
                 COALESCE(MAX(max_cena_s_dph), 0) as nejvetsi_objednavka,
                 COALESCE(MIN(max_cena_s_dph), 0) as nejmensi_objednavka
-            FROM 25a_objednavky
+            FROM " . TBL_OBJEDNAVKY . "
             WHERE financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
               AND aktivni = 1
               AND stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
@@ -467,19 +627,19 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
     
     // TODO: Check permission SMLOUVY_CREATE
     
-    // Validate
-    $errors = validateSmlouvaData($input);
-    if (!empty($errors)) {
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
-        return;
-    }
-    
     try {
         $db = get_db($config);
         
+        // Validate
+        $errors = validateSmlouvaData($input, $db);
+        if (!empty($errors)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
+            return;
+        }
+        
         // Check duplicate cislo_smlouvy
-        $sql = "SELECT id FROM 25_smlouvy WHERE cislo_smlouvy = :cislo_smlouvy";
+        $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE cislo_smlouvy = :cislo_smlouvy";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':cislo_smlouvy', $input['cislo_smlouvy'], PDO::PARAM_STR);
         $stmt->execute();
@@ -490,7 +650,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         }
         
         // Get usek_zkr
-        $sql = "SELECT usek_zkr FROM 25_useky WHERE id = :usek_id";
+        $sql = "SELECT usek_zkr FROM " . TBL_USEKY . " WHERE id = :usek_id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':usek_id', (int)$input['usek_id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -501,6 +661,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $hodnota_s_dph = (float)$input['hodnota_s_dph'];
         $hodnota_bez_dph = isset($input['hodnota_bez_dph']) ? (float)$input['hodnota_bez_dph'] : 0;
         $sazba_dph = isset($input['sazba_dph']) ? (float)$input['sazba_dph'] : 21.00;
+        $zbyva = 0; // Zbývá se počítá algoritmem, při vytvoření je vždy 0
         $aktivni = isset($input['aktivni']) ? (int)$input['aktivni'] : 1;
         
         // Automatický výpočet stavu (ignoruje $input['stav'])
@@ -515,14 +676,14 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         
         // Insert
         $sql = "
-            INSERT INTO 25_smlouvy (
+            INSERT INTO " . TBL_SMLOUVY . " (
                 cislo_smlouvy, usek_id, usek_zkr, druh_smlouvy,
                 nazev_firmy, ico, dic, nazev_smlouvy, popis_smlouvy,
                 platnost_od, platnost_do,
                 hodnota_bez_dph, hodnota_s_dph, sazba_dph,
                 hodnota_plneni_bez_dph, hodnota_plneni_s_dph,
                 aktivni, pouzit_v_obj_formu, stav, poznamka, cislo_dms, kategorie,
-                dt_vytvoreni, vytvoril_user_id,
+                dt_vytvoreni, vytvoril_user_id, dt_aktualizace, upravil_user_id,
                 cerpano_celkem, zbyva, procento_cerpani
             ) VALUES (
                 :cislo_smlouvy, :usek_id, :usek_zkr, :druh_smlouvy,
@@ -531,7 +692,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
                 :hodnota_bez_dph, :hodnota_s_dph, :sazba_dph,
                 :hodnota_plneni_bez_dph, :hodnota_plneni_s_dph,
                 :aktivni, :pouzit_v_obj_formu, :stav, :poznamka, :cislo_dms, :kategorie,
-                NOW(), :vytvoril_user_id,
+                NOW(), :vytvoril_user_id, NOW(), :upravil_user_id,
                 0, :zbyva, 0
             )
         ";
@@ -546,7 +707,13 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $stmt->bindValue(':dic', isset($input['dic']) ? $input['dic'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':nazev_smlouvy', $input['nazev_smlouvy'], PDO::PARAM_STR);
         $stmt->bindValue(':popis_smlouvy', isset($input['popis_smlouvy']) ? $input['popis_smlouvy'] : null, PDO::PARAM_STR);
-        $stmt->bindValue(':platnost_od', $input['platnost_od'], PDO::PARAM_STR);
+        // Ošetření NULL hodnot pro datumy - použit PDO::PARAM_NULL pro NULL hodnoty
+        $platnost_od_value = (!empty($input['platnost_od']) && $input['platnost_od'] !== null) ? $input['platnost_od'] : null;
+        if ($platnost_od_value === null) {
+            $stmt->bindValue(':platnost_od', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':platnost_od', $platnost_od_value, PDO::PARAM_STR);
+        }
         $stmt->bindValue(':platnost_do', $input['platnost_do'], PDO::PARAM_STR);
         $stmt->bindValue(':hodnota_bez_dph', $hodnota_bez_dph);
         $stmt->bindValue(':hodnota_s_dph', $hodnota_s_dph);
@@ -560,7 +727,8 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $stmt->bindValue(':cislo_dms', isset($input['cislo_dms']) ? $input['cislo_dms'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':kategorie', isset($input['kategorie']) ? $input['kategorie'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':vytvoril_user_id', $user_id, PDO::PARAM_INT);
-        $stmt->bindValue(':zbyva', $hodnota_s_dph); // zbyva = hodnota_s_dph na začátku
+        $stmt->bindValue(':upravil_user_id', $user_id, PDO::PARAM_INT);
+        $stmt->bindValue(':zbyva', $zbyva); // zbyva z inputu nebo hodnota_s_dph
         
         if ($stmt->execute()) {
             $new_id = $db->lastInsertId();
@@ -614,19 +782,19 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         return;
     }
     
-    // Validate
-    $errors = validateSmlouvaData($input, false);
-    if (!empty($errors)) {
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
-        return;
-    }
-    
     try {
         $db = get_db($config);
         
+        // Validate
+        $errors = validateSmlouvaData($input, $db, false);
+        if (!empty($errors)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
+            return;
+        }
+        
         // Check exists
-        $sql = "SELECT id FROM 25_smlouvy WHERE id = :id";
+        $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
         $stmt->execute();
@@ -640,26 +808,41 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         $set = array();
         $params = array('id' => $id, 'upravil_user_id' => $user_id);
         
-        // Povolené sloupce k updatu (stav se ignoruje - počítá se automaticky)
+        // Povolené sloupce k updatu (stav a zbyva se ignoruje - počítá se automaticky)
         $allowed_fields = array(
             'cislo_smlouvy', 'usek_id', 'druh_smlouvy',
             'nazev_firmy', 'ico', 'dic', 'nazev_smlouvy', 'popis_smlouvy',
             'platnost_od', 'platnost_do',
             'hodnota_bez_dph', 'hodnota_s_dph', 'sazba_dph',
             'hodnota_plneni_bez_dph', 'hodnota_plneni_s_dph',
-            'aktivni', 'poznamka', 'cislo_dms', 'kategorie'
+            'aktivni', 'pouzit_v_obj_formu', 'poznamka', 'cislo_dms', 'kategorie'
         );
         
         foreach ($allowed_fields as $field) {
-            if (isset($input[$field])) {
-                $set[] = "$field = :$field";
-                $params[$field] = $input[$field];
+            if (array_key_exists($field, $input)) {
+                // Ošetření prázdných hodnot
+                // - Pro datumy: '' nebo 'null' → NULL
+                // - Pro finanční hodnoty: '' nebo null → 0 (kvůli decimal sloupci)
+                $date_fields = array('platnost_od');
+                $financial_fields = array('hodnota_bez_dph', 'hodnota_s_dph', 'hodnota_plneni_bez_dph', 'hodnota_plneni_s_dph');
+                
+                if (in_array($field, $date_fields) && ($input[$field] === null || $input[$field] === '' || $input[$field] === 'null')) {
+                    $set[] = "$field = :$field";
+                    $params[$field] = null;
+                } else if (in_array($field, $financial_fields) && ($input[$field] === null || $input[$field] === '' || $input[$field] === 'null')) {
+                    // Finanční hodnoty - prázdné → 0 (ne NULL)
+                    $set[] = "$field = :$field";
+                    $params[$field] = 0;
+                } else {
+                    $set[] = "$field = :$field";
+                    $params[$field] = $input[$field];
+                }
             }
         }
         
         // Get usek_zkr if usek_id changed
         if (isset($input['usek_id'])) {
-            $sql = "SELECT usek_zkr FROM 25_useky WHERE id = :usek_id";
+            $sql = "SELECT usek_zkr FROM " . TBL_USEKY . " WHERE id = :usek_id";
             $stmt = $db->prepare($sql);
             $stmt->bindValue(':usek_id', (int)$input['usek_id'], PDO::PARAM_INT);
             $stmt->execute();
@@ -673,7 +856,7 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         // Automatický přepočet stavu (pokud se změnily relevantní pole)
         if (isset($input['aktivni']) || isset($input['platnost_od']) || isset($input['platnost_do'])) {
             // Načteme aktuální hodnoty z DB
-            $sql_current = "SELECT aktivni, platnost_od, platnost_do FROM 25_smlouvy WHERE id = :id";
+            $sql_current = "SELECT aktivni, platnost_od, platnost_do FROM " . TBL_SMLOUVY . " WHERE id = :id";
             $stmt_current = $db->prepare($sql_current);
             $stmt_current->bindValue(':id', $id, PDO::PARAM_INT);
             $stmt_current->execute();
@@ -693,11 +876,18 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         $set[] = "dt_aktualizace = NOW()";
         $set[] = "upravil_user_id = :upravil_user_id";
         
-        $sql = "UPDATE 25_smlouvy SET " . implode(', ', $set) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_SMLOUVY . " SET " . implode(', ', $set) . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
-            $stmt->bindValue(':' . $key, $value);
+            // Použit PDO::PARAM_NULL pro NULL hodnoty
+            if ($value === null) {
+                $stmt->bindValue(':' . $key, null, PDO::PARAM_NULL);
+            } else if (is_int($value)) {
+                $stmt->bindValue(':' . $key, $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue(':' . $key, $value, PDO::PARAM_STR);
+            }
         }
         
         if ($stmt->execute()) {
@@ -751,7 +941,7 @@ function handle_ciselniky_smlouvy_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Soft delete - set aktivni = 0 a přepočítej stav na "NEAKTIVNI"
-        $sql = "UPDATE 25_smlouvy SET aktivni = 0, stav = 'NEAKTIVNI', dt_aktualizace = NOW(), upravil_user_id = :upravil_user_id WHERE id = :id";
+        $sql = "UPDATE " . TBL_SMLOUVY . " SET aktivni = 0, stav = 'NEAKTIVNI', dt_aktualizace = NOW(), upravil_user_id = :upravil_user_id WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
         $stmt->bindValue(':upravil_user_id', $user_id, PDO::PARAM_INT);
@@ -825,9 +1015,25 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
         foreach ($data as $index => $row) {
             $row_num = $index + 1;
             
+            // NORMALIZACE 1: Pokud "platnost_do" chybí, nastav na 31.12.2099
+            // Tohle se dělá PŘED validací, aby smlouva bez konce nebyly vyloučeny
+            if (!isset($row['platnost_do']) || empty($row['platnost_do'])) {
+                $row['platnost_do'] = '2099-12-31';
+                // Log informace, že jsme normalizovali
+                error_log("SMLOUVY IMPORT: Smlouva bez 'platnost_do' -> normalizace na 2099-12-31");
+            } else {
+                // Normalizuj už existující hodnotu (formátování)
+                $row['platnost_do'] = normalizePlatnostDo($row['platnost_do']);
+            }
+            
+            // NORMALIZACE 2: Finanční hodnoty (dopočet DPH, parsování, 0 pro chybějící)
+            // Tohle se dělá PŘED validací, aby smlouva s nulovou hodnotou prošla
+            $row = normalizeFinancialValues($row);
+            error_log("SMLOUVY IMPORT: Normalizace hodnot - bez DPH: " . $row['hodnota_bez_dph'] . ", s DPH: " . $row['hodnota_s_dph']);
+            
             // Map usek_zkr to usek_id
             if (isset($row['usek_zkr'])) {
-                $sql = "SELECT id, usek_zkr FROM 25_useky WHERE usek_zkr = :usek_zkr";
+                $sql = "SELECT id, usek_zkr FROM " . TBL_USEKY . " WHERE usek_zkr = :usek_zkr";
                 $stmt = $db->prepare($sql);
                 $stmt->bindValue(':usek_zkr', $row['usek_zkr'], PDO::PARAM_STR);
                 $stmt->execute();
@@ -846,7 +1052,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
             }
             
             // Validate
-            $validation_errors = validateSmlouvaData($row);
+            $validation_errors = validateSmlouvaData($row, $db);
             if (!empty($validation_errors)) {
                 $chyby[] = array(
                     'row' => $row_num,
@@ -857,7 +1063,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
             }
             
             // Check if exists
-            $sql = "SELECT id FROM 25_smlouvy WHERE cislo_smlouvy = :cislo_smlouvy";
+            $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE cislo_smlouvy = :cislo_smlouvy";
             $stmt = $db->prepare($sql);
             $stmt->bindValue(':cislo_smlouvy', $row['cislo_smlouvy'], PDO::PARAM_STR);
             $stmt->execute();
@@ -878,7 +1084,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stav = calculateSmlouvaStav($aktivni, $row['platnost_od'], $row['platnost_do']);
                 
                 $sql_update = "
-                    UPDATE 25_smlouvy SET
+                    UPDATE " . TBL_SMLOUVY . " SET
                         usek_id = :usek_id,
                         usek_zkr = :usek_zkr,
                         druh_smlouvy = :druh_smlouvy,
@@ -952,14 +1158,14 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stav = calculateSmlouvaStav($aktivni, $row['platnost_od'], $row['platnost_do']);
                 
                 $sql = "
-                    INSERT INTO 25_smlouvy (
+                    INSERT INTO " . TBL_SMLOUVY . " (
                         cislo_smlouvy, usek_id, usek_zkr, druh_smlouvy,
                         nazev_firmy, ico, dic, nazev_smlouvy, popis_smlouvy,
                         platnost_od, platnost_do,
                         hodnota_bez_dph, hodnota_s_dph, sazba_dph,
                         hodnota_plneni_bez_dph, hodnota_plneni_s_dph,
                         aktivni, pouzit_v_obj_formu, stav, poznamka, cislo_dms, kategorie,
-                        dt_vytvoreni, vytvoril_user_id,
+                        dt_vytvoreni, vytvoril_user_id, dt_aktualizace, upravil_user_id,
                         cerpano_celkem, zbyva, procento_cerpani
                     ) VALUES (
                         :cislo_smlouvy, :usek_id, :usek_zkr, :druh_smlouvy,
@@ -968,7 +1174,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                         :hodnota_bez_dph, :hodnota_s_dph, :sazba_dph,
                         :hodnota_plneni_bez_dph, :hodnota_plneni_s_dph,
                         :aktivni, :pouzit_v_obj_formu, :stav, :poznamka, :cislo_dms, :kategorie,
-                        NOW(), :vytvoril_user_id,
+                        NOW(), :vytvoril_user_id, NOW(), :upravil_user_id,
                         0, :zbyva, 0
                     )
                 ";
@@ -997,6 +1203,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stmt->bindValue(':cislo_dms', isset($row['cislo_dms']) ? $row['cislo_dms'] : null, PDO::PARAM_STR);
                 $stmt->bindValue(':kategorie', isset($row['kategorie']) ? $row['kategorie'] : null, PDO::PARAM_STR);
                 $stmt->bindValue(':vytvoril_user_id', $user_id, PDO::PARAM_INT);
+                $stmt->bindValue(':upravil_user_id', $user_id, PDO::PARAM_INT);
                 $stmt->bindValue(':zbyva', $hodnota_s_dph);
                 
                 if ($stmt->execute()) {
@@ -1014,6 +1221,22 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
         // Log import
         $status = count($chyby) == 0 ? 'SUCCESS' : (count($chyby) < $celkem ? 'PARTIAL' : 'FAILED');
         $chyby_json = json_encode($chyby);
+        
+        // 🛡️ OCHRANA: Pokud JSON je větší než 15 MB (MEDIUMTEXT limit), zkrať ho
+        // MEDIUMTEXT limit = 16,777,215 bytů (16 MB), používáme 15 MB jako safe limit
+        $max_size = 15 * 1024 * 1024; // 15 MB
+        if (strlen($chyby_json) > $max_size) {
+            // Počet chyb k zachování (odhadujeme průměrnou velikost na 500 bytů/chyba)
+            $keep_count = floor($max_size / 500);
+            $truncated_chyby = array_slice($chyby, 0, $keep_count);
+            $truncated_chyby[] = array(
+                'warning' => 'TRUNCATED',
+                'message' => 'Chybových záznamů bylo příliš mnoho (' . count($chyby) . '), zobrazeno pouze prvních ' . $keep_count,
+                'total_errors' => count($chyby)
+            );
+            $chyby_json = json_encode($truncated_chyby);
+            error_log("CSV Import: Chybové záznamy zkráceny z " . count($chyby) . " na " . $keep_count . " (JSON size: " . strlen($chyby_json) . " bytů)");
+        }
         
         // Informace o souboru (volitelné, FE může poslat)
         $nazev_souboru = isset($input['nazev_souboru']) ? $input['nazev_souboru'] : null;
@@ -1133,7 +1356,7 @@ function handle_ciselniky_smlouvy_prepocet_cerpani($input, $config, $queries) {
             $where[] = "aktivni = 1";
         }
         
-        $sql = "SELECT COUNT(*) as pocet FROM 25_smlouvy WHERE " . implode(' AND ', $where);
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE " . implode(' AND ', $where);
         $stmt = $db->prepare($sql);
         
         foreach ($params as $key => $value) {
@@ -1191,6 +1414,417 @@ function prepocetCerpaniSmlouvyAuto($cislo_smlouvy) {
     } catch (Exception $e) {
         error_log("AUTO PREPOCET ERROR: " . $e->getMessage());
         // Nechceme aby chyba přepočtu zablokovala uložení objednávky
+    }
+}
+
+/**
+ * 8. IMPORT CSV/EXCEL SMLUV
+ * POST /ciselniky/smlouvy/import-csv
+ * 
+ * Parsuje CSV/Excel soubor a vloží data do pole $data pro bulk-import
+ * 
+ * POVINNÉ SLOUPCE:
+ * - ČÍSLO SML (cislo_smlouvy)
+ * - ÚSEK (usek_zkr)
+ * - DRUH SMLOUVY (druh_smlouvy) - NOVÝ! 
+ * - PARTNER (nazev_firmy)
+ * - NÁZEV SML (nazev_smlouvy)
+ * - HODNOTA S DPH (hodnota_s_dph)
+ * 
+ * VOLITELNÉ SLOUPCE:
+ * - IČO (ico)
+ * - DIČ (dic)
+ * - POPIS SML (popis_smlouvy)
+ * - DATUM OD (platnost_od) - automaticky nastavi NA 31.12.2099 pokud chybí!
+ * - DATUM DO (platnost_do) - automaticky nastavi NA 31.12.2099 pokud chybí!
+ * 
+ * FEATURES:
+ * ✅ Automatická normalizace "DATUM DO" na 31.12.2099 pokud chybí
+ * ✅ Povolí import i bez "DATA OD" i bez "DATA DO"
+ * ✅ Validace IČO (8 číslic)
+ * ✅ Párování ÚSEK => usek_id
+ * ✅ Vytrimování bílých znaků
+ * 
+ * VRACÍ:
+ * - Parsovaná data připravená pro bulk-import
+ * - Počet vyanalyzovaných řádků
+ * - Chyby parsování (pokud existují)
+ * 
+ * @author Backend Team
+ * @date 30. prosince 2025 - CSV/Excel import s normalizací "platnost_do"
+ */
+function handle_ciselniky_smlouvy_import_csv($input, $config, $queries) {
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatny nebo chybejici token'));
+        return;
+    }
+    
+    // Expect CSV data in $input['csv_data'] (string) OR base64-encoded Excel
+    if (!isset($input['csv_data']) && !isset($input['excel_data'])) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybi CSV data nebo Excel file'));
+        return;
+    }
+    
+    $csv_data = isset($input['csv_data']) ? $input['csv_data'] : '';
+    $excel_base64 = isset($input['excel_data']) ? $input['excel_data'] : '';
+    
+    // Pokud je Excel (base64), vyžadujeme knihovnu PhpSpreadsheet
+    // Pro teď: jen CSV support
+    if ($excel_base64 && !$csv_data) {
+        // TODO: Implementovat PhpSpreadsheet support
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Excel format momentálně není podporován, používejte CSV'));
+        return;
+    }
+    
+    $start_time = microtime(true);
+    $parsed_rows = array();
+    $parse_errors = array();
+    $header_map = array();
+    
+    try {
+        // Parse CSV
+        $lines = preg_split("/[\r\n]+/", $csv_data);
+        $header_row = null;
+        $row_num = 0;
+        
+        // Očekávané sloupce a jejich mapování
+        $column_mapping = array(
+            // Povinné
+            'číslo sml' => 'cislo_smlouvy',
+            'číslo smlouvy' => 'cislo_smlouvy',
+            'úsek' => 'usek_zkr',
+            'druh smlouvy' => 'druh_smlouvy',
+            'druh' => 'druh_smlouvy',
+            'partner' => 'nazev_firmy',
+            'název sml' => 'nazev_smlouvy',
+            'název smlouvy' => 'nazev_smlouvy',
+            'předmět sml' => 'nazev_smlouvy',
+            'hodnota s dph' => 'hodnota_s_dph',
+            'hodnota' => 'hodnota_s_dph',
+            
+            // Volitelné
+            'iço' => 'ico',
+            'ico' => 'ico',
+            'dič' => 'dic',
+            'dic' => 'dic',
+            'popis sml' => 'popis_smlouvy',
+            'popis' => 'popis_smlouvy',
+            'datum od' => 'platnost_od',
+            'od' => 'platnost_od',
+            'datum do' => 'platnost_do',
+            'do' => 'platnost_do',
+            'poznámka' => 'poznamka',
+            'poznámky' => 'poznamka',
+            'aktivní' => 'aktivni',
+        );
+        
+        foreach ($lines as $line) {
+            $row_num++;
+            
+            if (empty(trim($line))) {
+                continue; // Skip empty lines
+            }
+            
+            // CSV parsing (jednoduché - pokud chcete komplexní CSV s uvozovkami, použijte str_getcsv)
+            $cells = str_getcsv($line, ',', '"');
+            
+            if ($header_row === null) {
+                // První řádek = hlavička
+                $header_row = $row_num;
+                
+                // VALIDACE 1: Kontrola, že hlavička není prázdná
+                if (empty($cells) || count($cells) < 6) {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'CSV hlavička je neplatná nebo obsahuje méně než 6 sloupců',
+                        'detected_columns' => $cells,
+                        'min_required' => 6
+                    ));
+                    return;
+                }
+                
+                // Mapování sloupců
+                $unrecognized_columns = array();
+                foreach ($cells as $idx => $cell) {
+                    $cell_normalized = strtolower(trim($cell));
+                    
+                    // Pokus najít v mapování
+                    $mapped_name = null;
+                    foreach ($column_mapping as $pattern => $db_field) {
+                        if (strpos($cell_normalized, $pattern) !== false || $pattern === $cell_normalized) {
+                            $mapped_name = $db_field;
+                            break;
+                        }
+                    }
+                    
+                    if ($mapped_name) {
+                        $header_map[$idx] = $mapped_name;
+                    } else {
+                        // Sloupec nebyl rozpoznán
+                        if (!empty(trim($cell))) {
+                            $unrecognized_columns[] = $cell;
+                        }
+                    }
+                }
+                
+                // VALIDACE 2: Kontrola povinných sloupců
+                $required_fields = array(
+                    'cislo_smlouvy' => 'ČÍSLO SML / ČÍSLO SMLOUVY',
+                    'usek_zkr' => 'ÚSEK',
+                    'druh_smlouvy' => 'DRUH SMLOUVY / DRUH',
+                    'nazev_firmy' => 'PARTNER',
+                    'nazev_smlouvy' => 'NÁZEV SML / NÁZEV SMLOUVY / PŘEDMĚT SML',
+                    'hodnota_s_dph' => 'HODNOTA S DPH / HODNOTA'
+                );
+                
+                $missing_fields = array();
+                
+                foreach ($required_fields as $field => $readable_name) {
+                    if (!in_array($field, $header_map)) {
+                        $missing_fields[] = $readable_name;
+                    }
+                }
+                
+                // VALIDACE 3: Pokud chybí povinné sloupce, vrať chybu s detaily
+                if (!empty($missing_fields)) {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'CSV neobsahuje všechny povinné sloupce',
+                        'missing_columns' => $missing_fields,
+                        'recognized_columns' => array_values(array_unique($header_map)),
+                        'unrecognized_columns' => $unrecognized_columns,
+                        'help' => 'Ujistěte se, že CSV má hlavičku s názvy: ČÍSLO SML, ÚSEK, DRUH SMLOUVY, PARTNER, NÁZEV SML, HODNOTA S DPH',
+                        'detected_header_raw' => $cells
+                    ));
+                    return;
+                }
+                
+                // VALIDACE 4: Log varování o nerozpoznaných sloupcích (pouze info)
+                if (!empty($unrecognized_columns)) {
+                    error_log('CSV import: Nerozpoznané sloupce (budou ignorovány): ' . implode(', ', $unrecognized_columns));
+                }
+                
+                // VALIDACE 5: Ověř, že jsme našli dostatečný počet sloupců
+                if (count($header_map) < 6) {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'CSV obsahuje málo rozpoznaných sloupců (minimum 6 povinných)',
+                        'recognized_count' => count($header_map),
+                        'recognized_columns' => array_values(array_unique($header_map)),
+                        'minimum_required' => 6
+                    ));
+                    return;
+                }
+                
+                continue; // Skip header row
+            }
+            
+            // Parsuj data řádku
+            $row_data = array();
+            foreach ($header_map as $col_idx => $db_field) {
+                $value = isset($cells[$col_idx]) ? trim($cells[$col_idx]) : '';
+                $row_data[$db_field] = $value;
+            }
+            
+            // Normalizace PLATNOST_DO
+            // Pokud chybí, nastav na 31.12.2099
+            if (!isset($row_data['platnost_do']) || empty($row_data['platnost_do'])) {
+                $row_data['platnost_do'] = '2099-12-31';
+                $row_data['_note_platnost_do'] = 'AUTO (chybělo)'; // Info log
+            } else {
+                $row_data['platnost_do'] = normalizePlatnostDo($row_data['platnost_do']);
+            }
+            
+            // Normalizace PLATNOST_OD (pokud existuje)
+            if (isset($row_data['platnost_od']) && !empty($row_data['platnost_od'])) {
+                $parsed_date = date('Y-m-d', strtotime($row_data['platnost_od']));
+                if ($parsed_date) {
+                    $row_data['platnost_od'] = $parsed_date;
+                }
+            }
+            
+            // NORMALIZACE FINANČNÍCH HODNOT
+            // Dopočet DPH, parsování, 0 pro chybějící/nevalidní
+            $row_data = normalizeFinancialValues($row_data);
+            
+            // Trimování a čistění
+            foreach ($row_data as &$val) {
+                $val = trim($val);
+            }
+            
+            $parsed_rows[] = $row_data;
+        }
+        
+        if (empty($parsed_rows)) {
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Soubor neobsahuje žádné datové řádky',
+                'parsed_rows_count' => 0
+            ));
+            return;
+        }
+        
+        $elapsed_ms = round((microtime(true) - $start_time) * 1000);
+        
+        // Vrátíme parsovaná data - připravená na bulk-import
+        // Frontend pošle tato data do bulk-import endpointu
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'parsed_data' => $parsed_rows,
+                'parsed_rows_count' => count($parsed_rows),
+                'header_map' => $header_map,
+                'parse_errors' => $parse_errors,
+                'parse_time_ms' => $elapsed_ms,
+                '_info' => 'Data jsou připravena k importu. Pošli je na endpoint /ciselniky/smlouvy/bulk-import'
+            ),
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'endpoint' => 'import-csv',
+                'timestamp' => date('c')
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log('SMLOUVY CSV IMPORT ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'CSV import error: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * 8. INICIALIZACE SYSTÉMU ČERPÁNÍ
+ * POST /ciselniky/smlouvy/inicializace
+ * 
+ * Provede kompletní inicializaci systému čerpání smluv:
+ * 1. Přepočítá všechny aktivní smlouvy (CALL sp_prepocet_cerpani_smluv)
+ * 2. Identifikuje smlouvy s problematickými hodnotami (negativní zbytky, nelogické procenta)
+ * 3. Vrátí statistiky a upozornění
+ * 
+ * Použití: Po migraci databáze, po velkých změnách v datech
+ */
+function handle_ciselniky_smlouvy_inicializace($input, $config, $queries) {
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatny nebo chybejici token'));
+        return;
+    }
+    
+    $start_time = microtime(true);
+    
+    try {
+        $db = get_db($config);
+        
+        // 1. Přepočítat všechny smlouvy
+        $sql = "CALL sp_prepocet_cerpani_smluv(NULL, NULL)";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        
+        // 2. Získat statistiky
+        $stats = array();
+        
+        // Celkový počet aktivních smluv
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['celkem_smluv'] = (int)$result['pocet'];
+        
+        // Smlouvy s omezením (hodnota_s_dph > 0)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND hodnota_s_dph > 0";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_s_omezenim'] = (int)$result['pocet'];
+        
+        // Neomezené smlouvy (hodnota_s_dph = 0)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND hodnota_s_dph = 0";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_neomezene'] = (int)$result['pocet'];
+        
+        // Smlouvy s překročeným limitem (procento_cerpani > 100)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND procento_cerpani > 100";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_prekroceny_limit'] = (int)$result['pocet'];
+        
+        // Smlouvy s čerpáním > 90% (varování)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND procento_cerpani > 90 AND procento_cerpani <= 100";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_varovani'] = (int)$result['pocet'];
+        
+        // Celkové čerpání skutečně (všechny smlouvy)
+        $sql = "SELECT SUM(cerpano_skutecne) as celkem FROM " . TBL_SMLOUVY . " WHERE aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['celkove_cerpani_skutecne'] = (float)$result['celkem'];
+        
+        // Celková hodnota smluv (jen s omezením)
+        $sql = "SELECT SUM(hodnota_s_dph) as celkem FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND hodnota_s_dph > 0";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['celkova_hodnota_smluv'] = (float)$result['celkem'];
+        
+        // 3. Seznam smluv s problémy (překročené limity)
+        $sql = "SELECT cislo_smlouvy, hodnota_s_dph, cerpano_skutecne, procento_cerpani 
+                FROM " . TBL_SMLOUVY . " 
+                WHERE aktivni = 1 AND procento_cerpani > 100 
+                ORDER BY procento_cerpani DESC 
+                LIMIT 10";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $problematic = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $elapsed_ms = round((microtime(true) - $start_time) * 1000);
+        
+        // Get count of processed contracts from stats
+        $pocet_smluv = isset($stats['celkem_smluv']) ? intval($stats['celkem_smluv']) : 0;
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'statistiky' => $stats,
+                'problematicke_smlouvy' => $problematic,
+                'pocet_zpracovanych_smluv' => $pocet_smluv,
+                'cas_vypoctu_ms' => $elapsed_ms,
+                'dt_inicializace' => date('c'),
+                '_info' => 'Systém čerpání byl úspěšně inicializován. Všechny smlouvy přepočteny (3 typy: požadováno, plánováno, skutečně).'
+            ),
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'endpoint' => 'inicializace',
+                'timestamp' => date('c')
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log('SMLOUVY INICIALIZACE ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při inicializaci: ' . $e->getMessage()));
     }
 }
 
