@@ -739,12 +739,39 @@ function handle_order_v3_list($input, $config, $queries) {
                     
                     // Mapování sloupců
                     $column_map = array(
+                        // Datumy
                         'dt_objednavky' => 'o.dt_objednavky',
+                        'dt_vytvoreni' => 'o.dt_vytvoreni',
                         'dt_aktualizace' => 'o.dt_aktualizace',
+                        'dt_zverejneni' => 'o.dt_zverejneni',
+                        
+                        // Základní info
                         'cislo_objednavky' => 'o.cislo_objednavky',
-                        'dodavatel_nazev' => 'd.nazev',
+                        'predmet' => 'o.predmet',
+                        
+                        // Dodavatel
+                        'dodavatel_nazev' => 'COALESCE(o.dodavatel_nazev, d.nazev)',
+                        'dodavatel_ico' => 'COALESCE(o.dodavatel_ico, d.ico)',
+                        
+                        // Osoby
+                        'objednatel_jmeno' => 'u1.prijmeni',
+                        'garant_jmeno' => 'u2.prijmeni',
+                        'prikazce_jmeno' => 'u3.prijmeni',
+                        'schvalovatel_jmeno' => 'u4.prijmeni',
+                        
+                        // Ceny
                         'max_cena_s_dph' => 'o.max_cena_s_dph',
-                        'cena_s_dph' => 'o.cena_s_dph'
+                        'cena_s_dph' => 'cena_s_dph',
+                        'faktury_celkova_castka_s_dph' => 'faktury_celkova_castka_s_dph',
+                        
+                        // Stavy
+                        'stav_objednavky' => 'o.stav_objednavky',
+                        'mimoradna_udalost' => 'o.mimoradna_udalost',
+                        
+                        // Počty
+                        'pocet_polozek' => 'pocet_polozek',
+                        'pocet_priloh' => 'pocet_priloh',
+                        'pocet_faktur' => 'pocet_faktur'
                     );
                     
                     if (isset($column_map[$column])) {
