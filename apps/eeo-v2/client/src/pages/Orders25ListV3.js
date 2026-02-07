@@ -1157,7 +1157,6 @@ function Orders25ListV3() {
           title={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'}
         >
           <FontAwesomeIcon icon={faPalette} />
-          {showRowColoring ? 'Vypnout' : 'Zapnout'} barevné řádky
         </ToggleButton>
 
         {/* Konfigurace sloupců */}
