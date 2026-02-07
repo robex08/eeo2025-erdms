@@ -19,6 +19,12 @@
 
 require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
+require_once __DIR__ . '/hierarchyOrderFilters.php';
+
+// Import Order V2 permissions functions for compatibility
+if (file_exists(__DIR__ . '/orderV2Endpoints.php')) {
+    require_once __DIR__ . '/orderV2Endpoints.php';
+}
 
 /**
  * Vypočítá datový rozsah podle zvoleného období
@@ -727,15 +733,140 @@ function handle_order_v3_list($input, $config, $queries) {
             }
         }
 
+        // ========================================================================
+        // USER PERMISSIONS - Order V2 COMPATIBLE IMPLEMENTATION
+        // ========================================================================
+        // 🎯 PODLE ZADÁNÍ: "naprosto identicky vc. zohledneni prip. org heirachie"
+        // Používáme STEJNOU logiku jako Order V2 pro maximální kompatibilitu!
+        // ========================================================================
+        
+        // Načtení user permissions a rolí (Order V2 compatible)
+        $user_permissions = function_exists('getUserOrderPermissions') ? 
+            getUserOrderPermissions($user_id, $db) : [];
+        $user_roles = function_exists('getUserRoles') ? 
+            getUserRoles($user_id, $db) : [];
+            
+        error_log("[OrderV3] User permissions: " . json_encode($user_permissions));
+        error_log("[OrderV3] User roles: " . json_encode($user_roles));
+        
+        // Check admin role (SUPERADMIN nebo ADMINISTRATOR)
+        $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        
+        // Check read all permissions
+        $hasOrderReadAll = in_array('ORDER_READ_ALL', $user_permissions);
+        $hasOrderViewAll = in_array('ORDER_VIEW_ALL', $user_permissions);
+        $hasReadAllPermissions = $hasOrderReadAll || $hasOrderViewAll;
+        
+        // Final admin status
+        $is_admin_v2 = $isAdminByRole || $hasReadAllPermissions;
+        
+        error_log("[OrderV3] Admin check - by role: " . ($isAdminByRole ? 'YES' : 'NO') . 
+                  ", by permissions: " . ($hasReadAllPermissions ? 'YES' : 'NO') . 
+                  ", FINAL: " . ($is_admin_v2 ? 'ADMIN' : 'USER'));
+        
+        if (!$is_admin_v2 && $user_id > 0) {
+            // ========================================================================
+            // NON-ADMIN USERS: Order V2 Compatible Visibility Logic
+            // ========================================================================
+            
+            $visibilityConditions = [];
+            
+            // 1️⃣ ROLE-BASED FILTER (12 polí) - ZÁKLAD
+            error_log("[OrderV3] Building role-based filter (12 fields) for user $user_id");
+            
+            $roleBasedCondition = "(
+                o.uzivatel_id = :role_user_id
+                OR o.objednatel_id = :role_user_id
+                OR o.garant_uzivatel_id = :role_user_id
+                OR o.schvalovatel_id = :role_user_id
+                OR o.prikazce_id = :role_user_id
+                OR o.uzivatel_akt_id = :role_user_id
+                OR o.odesilatel_id = :role_user_id
+                OR o.dodavatel_potvrdil_id = :role_user_id
+                OR o.zverejnil_id = :role_user_id
+                OR o.fakturant_id = :role_user_id
+                OR o.dokoncil_id = :role_user_id
+                OR o.potvrdil_vecnou_spravnost_id = :role_user_id
+            )";
+            
+            $visibilityConditions[] = $roleBasedCondition;
+            $where_params[] = $user_id; // role_user_id
+            
+            // 2️⃣ HIERARCHIE - ROZŠÍŘENÍ (pokud je aktivní)
+            if (function_exists('applyHierarchyFilterToOrders')) {
+                error_log("[OrderV3] Checking hierarchy filter for user $user_id");
+                $hierarchyFilter = applyHierarchyFilterToOrders($user_id, $db);
+                
+                if ($hierarchyFilter !== null) {
+                    $visibilityConditions[] = $hierarchyFilter;
+                    error_log("[OrderV3] Hierarchy filter ADDED (expands visibility)");
+                } else {
+                    error_log("[OrderV3] Hierarchy filter NOT applied");
+                }
+            }
+            
+            // 3️⃣ DEPARTMENT SUBORDINATE - ROZŠÍŘENÍ
+            $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
+            $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
+            
+            if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
+                if (function_exists('getUserDepartmentColleagueIds')) {
+                    error_log("[OrderV3] Building department filter for user $user_id");
+                    $departmentColleagueIds = getUserDepartmentColleagueIds($user_id, $db);
+                    
+                    if (!empty($departmentColleagueIds)) {
+                        $departmentColleagueIdsStr = implode(',', array_map('intval', $departmentColleagueIds));
+                        
+                        $departmentCondition = "(
+                            o.uzivatel_id IN ($departmentColleagueIdsStr)
+                            OR o.objednatel_id IN ($departmentColleagueIdsStr)
+                            OR o.garant_uzivatel_id IN ($departmentColleagueIdsStr)
+                            OR o.schvalovatel_id IN ($departmentColleagueIdsStr)
+                            OR o.prikazce_id IN ($departmentColleagueIdsStr)
+                            OR o.uzivatel_akt_id IN ($departmentColleagueIdsStr)
+                            OR o.odesilatel_id IN ($departmentColleagueIdsStr)
+                            OR o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr)
+                            OR o.zverejnil_id IN ($departmentColleagueIdsStr)
+                            OR o.fakturant_id IN ($departmentColleagueIdsStr)
+                            OR o.dokoncil_id IN ($departmentColleagueIdsStr)
+                            OR o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr)
+                        )";
+                        
+                        $visibilityConditions[] = $departmentCondition;
+                        error_log("[OrderV3] Department filter ADDED for " . count($departmentColleagueIds) . " colleagues");
+                    }
+                }
+            }
+            
+            // 4️⃣ KOMBINACE S OR LOGIKOU - Order V2 compatible
+            if (!empty($visibilityConditions)) {
+                if (count($visibilityConditions) == 1) {
+                    // Jen role-based
+                    $where_conditions[] = $visibilityConditions[0];
+                    error_log("[OrderV3] Visibility: Only role-based filter applied");
+                } else {
+                    // Role-based + rozšíření
+                    $combinedFilter = "(" . implode(" OR ", $visibilityConditions) . ")";
+                    $where_conditions[] = $combinedFilter;
+                    error_log("[OrderV3] Visibility: Combined " . count($visibilityConditions) . " filters with OR logic");
+                }
+            }
+            
+        } else {
+            error_log("[OrderV3] ADMIN mode - showing ALL orders (Order V2 compatible)");
+        }
+
         $where_sql = implode(' AND ', $where_conditions);
 
         // 9. Sestavit ORDER BY
+        error_log("[OrderV3] Sorting params received: " . json_encode($sorting));
         $order_by_parts = array();
         if (!empty($sorting)) {
             foreach ($sorting as $sort) {
                 if (isset($sort['id'])) {
                     $column = $sort['id'];
                     $direction = isset($sort['desc']) && $sort['desc'] ? 'DESC' : 'ASC';
+                    error_log("[OrderV3] Processing sort: column='{$column}', direction='{$direction}'");
                     
                     // Mapování sloupců
                     $column_map = array(
@@ -775,7 +906,11 @@ function handle_order_v3_list($input, $config, $queries) {
                     );
                     
                     if (isset($column_map[$column])) {
-                        $order_by_parts[] = $column_map[$column] . ' ' . $direction;
+                        $mapped_column = $column_map[$column];
+                        $order_by_parts[] = $mapped_column . ' ' . $direction;
+                        error_log("[OrderV3] Mapped sort: '{$column}' -> '{$mapped_column} {$direction}'");
+                    } else {
+                        error_log("[OrderV3] WARNING: Unmapped sort column: '{$column}'");
                     }
                 }
             }
@@ -783,10 +918,12 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Výchozí třídění
         if (empty($order_by_parts)) {
-            $order_by_parts[] = 'o.dt_aktualizace DESC';
+            $order_by_parts[] = 'o.dt_objednavky DESC';
+            error_log("[OrderV3] Using default sort: o.dt_objednavky DESC");
         }
         
         $order_by_sql = implode(', ', $order_by_parts);
+        error_log("[OrderV3] Final ORDER BY: {$order_by_sql}");
 
         // 10. Spočítat celkový počet záznamů
         $sql_count = "
@@ -811,7 +948,12 @@ function handle_order_v3_list($input, $config, $queries) {
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;
         if ($page === 1) {
-            $stats = getOrderStatsWithPeriod($db, $period, $user_id, $where_sql, $where_params);
+            // Pokud je admin, předáme admin mode flag
+            $stats_where_sql = $where_sql;
+            if ($is_admin_v2) {
+                $stats_where_sql = $stats_where_sql ? $stats_where_sql . " AND __ADMIN_MODE__" : "__ADMIN_MODE__";
+            }
+            $stats = getOrderStatsWithPeriod($db, $period, $user_id, $stats_where_sql, $where_params);
         }
 
         // 12. Hlavní query pro data
@@ -963,6 +1105,11 @@ function handle_order_v3_list($input, $config, $queries) {
 function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql = null, $filtered_where_params = array()) {
     $period_range = calculatePeriodRange($period);
     
+    error_log("[OrderV3 STATS] User ID: {$user_id}, Period: {$period}");
+    if ($period_range) {
+        error_log("[OrderV3 STATS] Period range: {$period_range['date_from']} to {$period_range['date_to']}");
+    }
+    
     // Sestavit WHERE podmínky
     $where_conditions = array();
     $where_params = array();
@@ -975,6 +1122,50 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
         $where_conditions[] = "o.dt_objednavky BETWEEN ? AND ?";
         $where_params[] = $period_range['date_from'];
         $where_params[] = $period_range['date_to'];
+    }
+    
+    // 3. CRITICAL: User permissions - PŘESNĚ DLE ORDER25LIST
+    // ✅ KONTROLA ADMIN PRÁV - pokud není admin, filtrujem
+    
+    // Pokud $filtered_where_sql obsahuje admin bypass marker, nepoužíváme user permissions  
+    $admin_bypass = ($filtered_where_sql && strpos($filtered_where_sql, '__ADMIN_MODE__') !== false);
+    
+    if (!$admin_bypass && $user_id > 0) {
+        // Non-admin user - Order V2 compatible permissions
+        // POUŽÍVÁME STEJNÝCH 12 POLÍ jako v hlavní funkci!
+        error_log("[OrderV3 STATS] NON-ADMIN mode - applying Order V2 compatible 12-field filter");
+        $where_conditions[] = "(
+            o.uzivatel_id = ? OR
+            o.objednatel_id = ? OR
+            o.garant_uzivatel_id = ? OR
+            o.schvalovatel_id = ? OR
+            o.prikazce_id = ? OR
+            o.uzivatel_akt_id = ? OR
+            o.odesilatel_id = ? OR
+            o.dodavatel_potvrdil_id = ? OR
+            o.zverejnil_id = ? OR
+            o.fakturant_id = ? OR
+            o.dokoncil_id = ? OR
+            o.potvrdil_vecnou_spravnost_id = ?
+        )";
+        // Přidat 12x user_id do parametrů
+        for ($i = 0; $i < 12; $i++) {
+            $where_params[] = $user_id;
+        }
+        error_log("[OrderV3 STATS] NON-ADMIN mode - 12-field filter applied for user_id={$user_id}");
+    } else {
+        if ($admin_bypass) {
+            // Odstranit __ADMIN_MODE__ z filtered_where_sql pro skutečný SQL
+            if ($filtered_where_sql) {
+                $filtered_where_sql = str_replace('__ADMIN_MODE__', '', $filtered_where_sql);
+                $filtered_where_sql = str_replace('AND AND', 'AND', $filtered_where_sql);
+                $filtered_where_sql = trim($filtered_where_sql, ' AND');
+                if (empty($filtered_where_sql)) {
+                    $filtered_where_sql = null;
+                }
+            }
+            error_log("[OrderV3 STATS] ADMIN mode - showing ALL orders (like orders25/list)");
+        }
     }
     
     // 3. Dodatečné filtry (pokud jsou předané)
@@ -1098,11 +1289,14 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
         WHERE $where_clause
     ";
     
-    // Parametry: user_id (4x) + date_params + filtered_params
+    // Parametry: user_id (4x pro "moje objednávky" count) + where_params
     $stmt_params = array_merge(array($user_id, $user_id, $user_id, $user_id), $where_params);
+    error_log("[OrderV3 STATS] SQL params count: " . count($stmt_params) . ", values: " . json_encode($stmt_params));
     $stmt_stats = $db->prepare($sql_stats);
     $stmt_stats->execute($stmt_params);
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+    
+    error_log("[OrderV3 STATS] Basic stats: total={$stats['total']}, nove={$stats['nove']}");
     
     // Celková cena s DPH
     $sql_total_amount = "
@@ -1133,6 +1327,10 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
     $amount_result = $stmt_amount->fetch(PDO::FETCH_ASSOC);
     
     $stats['total_amount'] = floatval($amount_result['total_amount']);
+    error_log("[OrderV3 STATS] Total amount calculated: {$stats['total_amount']}");
+    
+    // ⚠️ FRONTEND COMPATIBILITY: Duplicates for camelCase
+    $stats['totalAmount'] = $stats['total_amount'];
     
     return $stats;
 }

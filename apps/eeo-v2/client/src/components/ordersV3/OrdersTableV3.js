@@ -1783,12 +1783,12 @@ const OrdersTableV3 = ({
         header: 'Datum',
         cell: ({ row }) => {
           const order = row.original;
-          const lastModified = order.dt_aktualizace || order.dt_objednavky;
+          const lastModified = order.dt_objednavky; // datum aktualizace
           const created = order.dt_vytvoreni || order.dt_objednavky;
           
           return (
             <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
-              <div>{formatDateOnly(lastModified)}</div>
+              <div style={{ fontWeight: 'bold' }}>{formatDateOnly(lastModified)}</div>
               <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{formatDateOnly(created)}</div>
               <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
                 {created ? new Date(created).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -1823,7 +1823,7 @@ const OrdersTableV3 = ({
               {order.predmet && (
                 <div style={{
                   fontSize: '1em',
-                  fontWeight: 600,
+                  fontWeight: 'normal',
                   color: '#1e293b',
                   marginTop: '4px',
                   maxWidth: '300px',

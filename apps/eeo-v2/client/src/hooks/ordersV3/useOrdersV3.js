@@ -5,9 +5,38 @@
  * Centralizovaná logika pro načítání dat, filtrování, pagination a caching
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listOrdersV3 } from '../../services/apiOrdersV3';
+
+/**
+ * Vypočítá celkovou cenu objednávky s DPH podle priority
+ * STEJNÁ LOGIKA JAKO V ORDERS25LIST!
+ * 1. PRIORITA: Faktury - skutečně utracené peníze
+ * 2. PRIORITA: Položky - objednané ale nefakturované 
+ * 3. PRIORITA: Max cena ke schválení - schválený limit
+ */
+function getOrderTotalPriceWithDPH(order) {
+  // 1. PRIORITA: Faktury
+  if (order.faktury_celkova_castka_s_dph != null && order.faktury_celkova_castka_s_dph !== '') {
+    const value = parseFloat(order.faktury_celkova_castka_s_dph);
+    if (!isNaN(value) && value > 0) return value;
+  }
+  
+  // 2. PRIORITA: Položky
+  if (order.cena_s_dph != null && order.cena_s_dph !== '') {
+    const value = parseFloat(order.cena_s_dph);
+    if (!isNaN(value) && value > 0) return value;
+  }
+  
+  // 3. PRIORITA: Max cena ke schválení
+  if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
+    const value = parseFloat(order.max_cena_s_dph);
+    if (!isNaN(value) && value > 0) return value;
+  }
+  
+  return 0;
+}
 
 /**
  * Hlavní hook pro Orders V3
@@ -114,20 +143,41 @@ export function useOrdersV3({
   });
   
   // Dashboard filtry
-  const [dashboardFilters, setDashboardFilters] = useState({
-    filter_status: '', // 'NOVA', 'SCHVALENA', atd.
-    filter_my_orders: false,
-    filter_archivovano: false,
+  const [dashboardFilters, setDashboardFilters] = useState(() => {
+    if (!userId) {
+      return {
+        filter_status: '',
+        filter_my_orders: false,
+        filter_archivovano: false,
+      };
+    }
+    
+    try {
+      const saved = localStorage.getItem(`ordersV3_dashboardFilters_${userId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log('🔄 Načteny dashboard filtry z localStorage:', parsed.filter_status);
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('Chyba při načítání dashboard filtrů z localStorage:', e);
+    }
+    
+    return {
+      filter_status: '',
+      filter_my_orders: false,
+      filter_archivovano: false,
+    };
   });
   
   // ============================================================================
   // STATE - Statistiky (z BE)
   // ============================================================================
   
-  const [stats, setStats] = useState({
+  // Celkové stats (unfiltered) - zůstanou stabilní
+  const [unfilteredStats, setUnfilteredStats] = useState({
     total: 0,
     totalAmount: 0,
-    filteredTotalAmount: 0,
     nova: 0,
     ke_schvaleni: 0,
     schvalena: 0,
@@ -142,6 +192,7 @@ export function useOrdersV3({
     fakturace: 0,
     vecna_spravnost: 0,
     dokoncena: 0,
+    dokoncenaAmount: 0,
     zrusena: 0,
     smazana: 0,
     archivovano: 0,
@@ -150,6 +201,9 @@ export function useOrdersV3({
     mimoradneUdalosti: 0,
     mojeObjednavky: 0,
   });
+  
+  // Aktuální stats (pro filtrované výsledky) 
+  const [currentStats, setCurrentStats] = useState(null);
   
   // ============================================================================
   // STATE - Table Configuration (pro drag&drop, hide/show columns)
@@ -212,13 +266,13 @@ export function useOrdersV3({
         console.warn('Failed to load column order:', err);
       }
     }
-    // Výchozí pořadí - DŮLEŽITÉ: financovani MUSÍ být hned za cislo_objednavky!
+    // Výchozí pořadí
     const defaultOrder = [
       'expander',
       'approve',
       'dt_objednavky',
       'cislo_objednavky',
-      'financovani',  // ← MUSÍ být na 5. místě!
+      'financovani',  // ← MUSÍ být na 6. místě!
       'objednatel_garant',
       'prikazce_schvalovatel',
       'dodavatel_nazev',
@@ -234,10 +288,25 @@ export function useOrdersV3({
   });
   
   // ============================================================================
-  // STATE - Expanded rows (pro lazy loading subrows)
+  // STATE - Expanded rows (pro lazy loading subrows) - s localStorage
   // ============================================================================
   
-  const [expandedRows, setExpandedRows] = useState({});
+  const [expandedRows, setExpandedRows] = useState(() => {
+    // Načíst z localStorage (per user)
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`ordersV3_expandedRows_${userId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // console.log('📋 Orders V3: Loaded expanded rows from localStorage:', parsed);
+          return parsed;
+        }
+      } catch (err) {
+        console.warn('Failed to load expanded rows:', err);
+      }
+    }
+    return {};
+  });
   const [subRowsData, setSubRowsData] = useState({}); // Cache pro načtené detaily
   
   // ============================================================================
@@ -266,11 +335,33 @@ export function useOrdersV3({
     }
   }, [userId, columnFilters]);
   
+  // Uložit dashboardFilters do localStorage
+  useEffect(() => {
+    if (userId && dashboardFilters) {
+      localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(dashboardFilters));
+      console.log('💾 Dashboard filtry uloženy do localStorage:', dashboardFilters.filter_status);
+    }
+  }, [userId, dashboardFilters]);
+  
+  // Uložit expandedRows do localStorage
+  useEffect(() => {
+    if (userId) {
+      localStorage.setItem(`ordersV3_expandedRows_${userId}`, JSON.stringify(expandedRows));
+      // console.log('💾 Expanded rows uloženy do localStorage:', expandedRows);
+    }
+  }, [userId, expandedRows]);
+  
   // ============================================================================
-  // REF - Debounce timers
+  // REF - Debounce timers a aktuální hodnoty
   // ============================================================================
   
   const filterDebounceTimers = useRef({});
+  const currentDashboardFilters = useRef(dashboardFilters);
+  
+  // Update ref při změně
+  useEffect(() => {
+    currentDashboardFilters.current = dashboardFilters;
+  }, [dashboardFilters]);
   
   // ============================================================================
   // FUNKCE - Načítání dat
@@ -407,20 +498,21 @@ export function useOrdersV3({
       // Převést filtry na backend formát
       const activeFilters = convertFiltersForBackend(columnFilters);
       
-      // Přidat dashboard filtr pro workflow stav
-      if (dashboardFilters.filter_status) {
+      // Přidat dashboard filtr pro workflow stav (z REF pro aktuální hodnotu)
+      const currentDashboard = currentDashboardFilters.current;
+      if (currentDashboard.filter_status) {
         // Speciální filtry
-        if (dashboardFilters.filter_status === 'moje_objednavky') {
+        if (currentDashboard.filter_status === 'moje_objednavky') {
           activeFilters.moje_objednavky = true;
-        } else if (dashboardFilters.filter_status === 'mimoradne_udalosti') {
+        } else if (currentDashboard.filter_status === 'mimoradne_udalosti') {
           activeFilters.mimoradne_udalosti = true;
-        } else if (dashboardFilters.filter_status === 's_fakturou') {
+        } else if (currentDashboard.filter_status === 's_fakturou') {
           activeFilters.s_fakturou = true;
-        } else if (dashboardFilters.filter_status === 's_prilohami') {
+        } else if (currentDashboard.filter_status === 's_prilohami') {
           activeFilters.s_prilohami = true;
         } else {
           // Jinak je to workflow stav
-          activeFilters.stav_workflow = dashboardFilters.filter_status;
+          activeFilters.stav_workflow = currentDashboard.filter_status;
         }
       }
       
@@ -455,8 +547,21 @@ export function useOrdersV3({
         
         // Stats (pouze pro page=1)
         if (response.data.stats) {
-          // console.log('📊 RAW BACKEND STATS:', JSON.stringify(response.data.stats, null, 2));
-          setStats(response.data.stats);
+          console.log('📊 RAW BACKEND STATS:', JSON.stringify(response.data.stats, null, 2));
+          
+          // Pokud NEJSOU aktivní dashboard filtry, uložit jako unfilteredStats
+          const currentDashboard = currentDashboardFilters.current;
+          const hasActiveDashboardFilters = !!currentDashboard.filter_status;
+          
+          if (!hasActiveDashboardFilters) {
+            console.log('📊 Saving unfiltered stats (no dashboard filter):', response.data.stats.totalAmount);
+            setUnfilteredStats(response.data.stats);
+            setCurrentStats(response.data.stats);
+          } else {
+            console.log('📊 Saving current filtered stats:', response.data.stats.totalAmount);
+            setCurrentStats(response.data.stats);
+            // unfilteredStats zůstávají nedotčené!
+          }
         }
         
         // console.log('✅ Orders set to state:', response.data.orders?.length || 0, 'items');
@@ -479,7 +584,7 @@ export function useOrdersV3({
     itemsPerPage,
     selectedPeriod,
     columnFilters,
-    dashboardFilters,
+    // dashboardFilters ODSTRANĚNO - jinak by se volal loadOrders při každé změně!
     sorting,
     convertFiltersForBackend,
     showProgress,
@@ -571,18 +676,59 @@ export function useOrdersV3({
   
   /**
    * Změní dashboard filtr (status cards)
-   * @param {string} filterType - Typ filtru: 'nova', 'schvalena', 'moje_objednavky', atd.
+   * @param {string|null} filterType - Typ filtru: 'nova', 'schvalena', 'moje_objednavky', atd., nebo null pro reset
    */
-  const handleDashboardFilterChange = useCallback((filterType) => {
-    const isCurrentlyActive = dashboardFilters.filter_status === filterType;
+  const handleDashboardFilterChange = useCallback(async (filterType) => {
+    console.log('🎯 Dashboard filter change:', filterType);
     
-    setDashboardFilters(prev => ({
-      ...prev,
-      filter_status: isCurrentlyActive ? '' : filterType,
-    }));
+    // Pokud je filterType null, resetuj filtry
+    if (filterType === null) {
+      const newFilters = {
+        filter_status: '',
+        filter_my_orders: false,
+        filter_archivovano: false,
+      };
+      setDashboardFilters(newFilters);
+      
+      // Uložit do localStorage
+      if (userId) {
+        localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(newFilters));
+      }
+      
+      setCurrentPage(1);
+      
+      // Manuální reload dat bez filtru
+      await loadOrders();
+      return;
+    }
+    
+    setDashboardFilters(prev => {
+      const isCurrentlyActive = prev.filter_status === filterType;
+      const newStatus = isCurrentlyActive ? '' : filterType;
+      console.log('🎯 Setting filter_status:', newStatus);
+      
+      const newFilters = {
+        ...prev,
+        filter_status: newStatus,
+      };
+      
+      // Uložit do localStorage
+      if (userId) {
+        localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(newFilters));
+      }
+      
+      return newFilters;
+    });
     
     setCurrentPage(1); // Reset na první stránku
-  }, [dashboardFilters.filter_status]);
+    
+    // DŮLEŽITÉ: Manuálně zavolat loadOrders() pro okamžitý refresh
+    // Ale počkat si na setState - použij setTimeout nebo useEffect
+    setTimeout(() => {
+      loadOrders();
+    }, 50);
+    
+  }, [userId, loadOrders]);
   
   /**
    * Vyčistí VŠECHNY filtry a localStorage
@@ -637,8 +783,13 @@ export function useOrdersV3({
     // Vymazat filtry z localStorage
     if (userId) {
       localStorage.removeItem(`ordersV3_columnFilters_${userId}`);
+      localStorage.removeItem(`ordersV3_expandedRows_${userId}`);
       console.log('✅ Filtry vymazány z localStorage');
     }
+    
+    // Reset expanded rows state
+    setExpandedRows({});
+    setSubRowsData({});
     
     // Reset dashboard filtrů
     setDashboardFilters({
@@ -796,32 +947,42 @@ export function useOrdersV3({
   const handleToggleRow = useCallback(async (orderId) => {
     const isExpanded = expandedRows[orderId];
     
-    setExpandedRows(prev => ({
-      ...prev,
-      [orderId]: !isExpanded,
-    }));
-    
-    // Pokud rozbalujeme a ještě nemáme data, načíst je
-    if (!isExpanded && !subRowsData[orderId]) {
-      try {
-        // console.log('📋 Loading subrow data for order:', orderId);
-        
-        // TODO: Implementovat načítání detailu
-        // const detail = await getOrderDetail(orderId, token, username);
-        
-        // PLACEHOLDER
-        const mockDetail = {
-          items: [],
-          invoices: [],
-          attachments: [],
-        };
-        
-        setSubRowsData(prev => ({
-          ...prev,
-          [orderId]: mockDetail,
-        }));
-      } catch (err) {
-        console.error('❌ Error loading subrow data:', err);
+    if (isExpanded) {
+      // Sbalujeme - odstraníme z objektu
+      setExpandedRows(prev => {
+        const newState = { ...prev };
+        delete newState[orderId];
+        return newState;
+      });
+    } else {
+      // Rozbalujeme - přidáme do objektu
+      setExpandedRows(prev => ({
+        ...prev,
+        [orderId]: true,
+      }));
+      
+      // Pokud rozbalujeme a ještě nemáme data, načíst je
+      if (!subRowsData[orderId]) {
+        try {
+          // console.log('📋 Loading subrow data for order:', orderId);
+          
+          // TODO: Implementovat načítání detailu
+          // const detail = await getOrderDetail(orderId, token, username);
+          
+          // PLACEHOLDER
+          const mockDetail = {
+            items: [],
+            invoices: [],
+            attachments: [],
+          };
+          
+          setSubRowsData(prev => ({
+            ...prev,
+            [orderId]: mockDetail,
+          }));
+        } catch (err) {
+          console.error('❌ Error loading subrow data:', err);
+        }
       }
     }
   }, [expandedRows, subRowsData, token, username]);
@@ -831,11 +992,23 @@ export function useOrdersV3({
   // ============================================================================
   
   /**
-   * Načíst data při změně závislostí
+   * Načíst data při prvním načtení a změně základních parametrů
+   * POZOR: NE při změně dashboardFilters! To by mazalo unfiltered stats
    */
   useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+    if (token && username) {
+      loadOrders();
+    }
+  }, [
+    token,
+    username,
+    currentPage,
+    itemsPerPage,
+    selectedPeriod,
+    columnFilters,
+    // POZOR: dashboardFilters NENÍ v závislosti!
+    // Pro změnu dashboard filtrů se volá loadOrders() ručně v handleDashboardFilterChange
+  ]);
   
   /**
    * Cleanup debounce timers
@@ -849,6 +1022,40 @@ export function useOrdersV3({
   }, []);
   
   // ============================================================================
+  // COMPUTED STATS - Rozšířené statistiky z aktuálně načtených dat
+  // ============================================================================
+  
+  const enhancedStats = useMemo(() => {
+    // ZÁKLAD jsou VŽDY unfilteredStats (celkové hodnoty)
+    const baseStats = { ...unfilteredStats };
+    
+    // Počítej filteredAmount z aktuálně načtených orders 
+    const filteredTotalAmount = orders.reduce((sum, order) => {
+      const amount = getOrderTotalPriceWithDPH(order);
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    
+    // Pro dokončenou částku použij currentStats pokud jsou k dispozici
+    if (currentStats?.dokoncenaAmount) {
+      baseStats.dokoncenaAmount = currentStats.dokoncenaAmount;
+    }
+    
+    console.log('📊 Enhanced stats computation:', {
+      totalAmount: baseStats.totalAmount,
+      filteredTotalAmount,
+      filteredCount: orders.length,
+      dokoncenaAmount: baseStats.dokoncenaAmount
+    });
+    
+    // Rozšířené stats
+    return {
+      ...baseStats,
+      filteredTotalAmount,
+      filteredCount: orders.length
+    };
+  }, [unfilteredStats, currentStats, orders]);
+
+  // ============================================================================
   // RETURN
   // ============================================================================
   
@@ -857,7 +1064,7 @@ export function useOrdersV3({
     orders,
     loading,
     error,
-    stats,
+    stats: enhancedStats,
     
     // Pagination
     currentPage,
@@ -892,6 +1099,9 @@ export function useOrdersV3({
     // Actions
     loadOrders,
     navigate,
+    
+    // Utils
+    getOrderTotalPriceWithDPH,
   };
 }
 
