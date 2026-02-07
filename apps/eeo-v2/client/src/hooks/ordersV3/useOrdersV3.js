@@ -51,6 +51,7 @@ function getOrderTotalPriceWithDPH(order) {
  * @param {Function} params.showProgress - Progress callback
  * @param {Function} params.hideProgress - Hide progress callback
  * @param {Array} params.sorting - Sorting array [{ id: 'column', desc: true/false }]
+ * @param {string} params.globalFilter - Global fulltext search filter
  * @returns {Object} State a funkce pro práci s objednávkami
  */
 export function useOrdersV3({ 
@@ -59,7 +60,8 @@ export function useOrdersV3({
   userId,
   showProgress, 
   hideProgress,
-  sorting = []
+  sorting = [],
+  globalFilter = ''
 }) {
   const navigate = useNavigate();
   
@@ -186,8 +188,22 @@ export function useOrdersV3({
    * Převede filtry z frontendu na formát pro backend API
    * Mapuje názvy a převádí pole ID na správné parametry
    */
-  const convertFiltersForBackend = useCallback((filters) => {
+  const convertFiltersForBackend = useCallback((filters, globalFilterValue) => {
+    console.log('🔄 Converting filters for backend:', {
+      filters,
+      filterKeys: Object.keys(filters),
+      filterValues: Object.values(filters),
+      globalFilterValue,
+      stavValue: filters.stav,
+      stavType: typeof filters.stav
+    });
+    
     const backendFilters = {};
+    
+    // ✨ GLOBAL FILTER - fulltext search ve všech polích
+    if (globalFilterValue && globalFilterValue.trim()) {
+      backendFilters.fulltext_search = globalFilterValue.trim();
+    }
     
     // Pole ID uživatelů - backend očekává pole ID
     if (filters.objednatel && Array.isArray(filters.objednatel) && filters.objednatel.length > 0) {
@@ -203,9 +219,19 @@ export function useOrdersV3({
       backendFilters.schvalovatel = filters.schvalovatel;
     }
     
-    // Status - pole workflow kódů
-    if (filters.stav && Array.isArray(filters.stav) && filters.stav.length > 0) {
-      backendFilters.stav = filters.stav;
+    // Status - pole workflow kódů (select posílá KÓD přímo z číselníku)
+    if (filters.stav) {
+      // ✅ Select filter posílá KÓD přímo (např. "FAKTURACE", "POTVRZENA")
+      let stavArray = [];
+      if (typeof filters.stav === 'string') {
+        stavArray = [filters.stav.trim()];
+      } else if (Array.isArray(filters.stav) && filters.stav.length > 0) {
+        stavArray = filters.stav.map(s => String(s).trim());
+      }
+      
+      if (stavArray.length > 0) {
+        backendFilters.stav = stavArray;
+      }
     }
     
     // Datumové rozsahy
@@ -299,14 +325,22 @@ export function useOrdersV3({
   /**
    * ✅ OPTIMALIZACE: Načte objednávky přes deduplicated API handler
    */
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (globalFilterValue = '') => {
     if (!token || !username) {
       console.warn('⚠️ useOrdersV3: Missing token or username');
       return;
     }
     
-    // Převést filtry na backend formát
-    const activeFilters = convertFiltersForBackend(columnFilters);
+    console.log('🔄 useOrdersV3: loadOrders called', {
+      currentPage,
+      itemsPerPage,
+      selectedPeriod,
+      hasColumnFilters: Object.keys(columnFilters || {}).length > 0,
+      dashboardFilters: currentDashboardFilters.current
+    });
+    
+    // Převést filtry na backend formát - ✨ včetně globalFilter
+    const activeFilters = convertFiltersForBackend(columnFilters, globalFilterValue);
     
     // Přidat dashboard filtr z REF (aktuální hodnota)
     const currentDashboard = currentDashboardFilters.current;
@@ -325,6 +359,16 @@ export function useOrdersV3({
     }
     
     // ✅ Volání optimalizované API funkce s cache a deduplication
+    console.log('📤 API Request payload:', {
+      token,
+      username,
+      page: currentPage,
+      per_page: itemsPerPage,
+      period: selectedPeriod,
+      filters: activeFilters,
+      sorting: sorting,
+    });
+    
     return fetchData({
       token,
       username,
@@ -344,6 +388,7 @@ export function useOrdersV3({
     sorting,
     convertFiltersForBackend,
     fetchData,
+    // Note: globalFilter not in deps, passed as parameter
   ]);
   
   // ============================================================================
@@ -367,7 +412,7 @@ export function useOrdersV3({
       'cislo_objednavky': 'cislo_objednavky',
       'predmet': 'predmet',
       'dodavatel_nazev': 'dodavatel_nazev',
-      'stav_objednavky': 'stav_workflow',
+      'stav_objednavky': 'stav', // Mapuje na filters.stav pre backend
       'dt_objednavky': 'datum_od', // Date column - bude potřeba speciální handling
       'objednatel_garant': 'objednatel_jmeno', // Hledá v objednatel i garant
       'prikazce_schvalovatel': 'prikazce_jmeno', // Hledá v příkazce i schvalovatel
@@ -466,22 +511,13 @@ export function useOrdersV3({
     
     setCurrentPage(1);
     
-    // DŮLEŽITÉ: Aktualizovat REF PŘED voláním loadOrders()
+    // DŮLEŽITÉ: Aktualizovat REF PŘED nastavením state
     currentDashboardFilters.current = newFilters;
     
-    try {
-      // Načíst data s novými filtry (AWAIT - čekat na dokončení!)
-      await loadOrders();
-      
-      // TEPRV NYNÍ aktualizovat state (po načtení dat)
-      setDashboardFilters(newFilters);
-      
-    } catch (error) {
-      console.error('❌ Chyba při načítání dat s novým filtrem:', error);
-      // V případě chyby neměnit stav
-    }
+    // ✅ POUZE nastavit state - useEffect si zařídí načtení dat
+    setDashboardFilters(newFilters);
     
-  }, [userId, dashboardFilters, loadOrders]);
+  }, [userId, dashboardFilters]); // ✅ Removed globalFilter - useEffect handle vše
   
   /**
    * Vyčistí VŠECHNY filtry a localStorage
@@ -639,11 +675,13 @@ export function useOrdersV3({
   /**
    * Načíst data při prvním načtení a změně základních parametrů
    * POZOR: NE při změně dashboardFilters! To by mazalo unfiltered stats
+   * POZOR: NE při změně globalFilter! To se řeší ručně
    */
   useEffect(() => {
     if (token && username) {
-      loadOrders();
+      loadOrders(globalFilter); // ✅ Používej globalFilter i v základním načtení
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     token,
     username,
@@ -651,8 +689,10 @@ export function useOrdersV3({
     itemsPerPage,
     selectedPeriod,
     columnFilters,
-    // POZOR: dashboardFilters NENÍ v závislosti!
-    // Pro změnu dashboard filtrů se volá loadOrders() ručně v handleDashboardFilterChange
+    dashboardFilters, // ✅ Added back - but loadOrders not in deps
+    globalFilter, // ✅ Added back - needed for search
+    sorting, // ✅ Added - needed for column sorting
+    // POZOR: loadOrders NENÍ v dependencies - způsoboval by infinite loop!
   ]);
   
   /**
