@@ -1126,7 +1126,7 @@ function Orders25ListV3() {
 
       {/* Action Bar - toggles a konfigurace */}
       <ActionBar>
-        {/* Toggle Dashboard - zobrazit/skrýt */}
+        {/* Toggle Dashboard - zobrazit POUZE když je skrytý */}
         {!showDashboard && (
           <ToggleButton
             $active={false}
@@ -1137,19 +1137,8 @@ function Orders25ListV3() {
             Dashboard
           </ToggleButton>
         )}
-        
-        {showDashboard && (
-          <ToggleButton
-            $active={true}
-            onClick={() => setShowDashboard(false)}
-            title="Skrýt dashboard a zobrazit pouze tabulku"
-          >
-            <FontAwesomeIcon icon={faTimes} />
-            Skrýt dashboard
-          </ToggleButton>
-        )}
 
-        {/* Toggle Filtry - zobrazit/skrýt */}
+        {/* Toggle Filtry - zobrazit POUZE když jsou skryté */}
         {!showFilters && (
           <ToggleButton
             $active={false}
@@ -1158,17 +1147,6 @@ function Orders25ListV3() {
           >
             <FontAwesomeIcon icon={faFilter} />
             Filtry
-          </ToggleButton>
-        )}
-        
-        {showFilters && (
-          <ToggleButton
-            $active={true}
-            onClick={() => setShowFilters(false)}
-            title="Skrýt pokročilé filtry"
-          >
-            <FontAwesomeIcon icon={faTimes} />
-            Skrýt filtry
           </ToggleButton>
         )}
 
