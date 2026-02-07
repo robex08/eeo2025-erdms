@@ -740,6 +740,7 @@ function handle_order_v3_list($input, $config, $queries) {
                     // Mapování sloupců
                     $column_map = array(
                         'dt_objednavky' => 'o.dt_objednavky',
+                        'dt_aktualizace' => 'o.dt_aktualizace',
                         'cislo_objednavky' => 'o.cislo_objednavky',
                         'dodavatel_nazev' => 'd.nazev',
                         'max_cena_s_dph' => 'o.max_cena_s_dph',
