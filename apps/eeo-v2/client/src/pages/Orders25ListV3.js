@@ -1199,20 +1199,22 @@ function Orders25ListV3() {
         />
       )}
 
-      {/* Filters */}
-      <OrdersFiltersV3Full
-        token={token}
-        username={username}
-        userId={user_id}
-        filters={columnFilters}
-        onFilterChange={handlePanelFiltersChange}
-        onClearAll={handleClearFilters}
-        globalFilter={globalFilter}
-        onGlobalFilterChange={setGlobalFilter}
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters(!showFilters)}
-        onHide={() => setShowFilters(false)}
-      />
+      {/* Filters - zobrazit pouze když showFilters === true */}
+      {showFilters && (
+        <OrdersFiltersV3Full
+          token={token}
+          username={username}
+          userId={user_id}
+          filters={columnFilters}
+          onFilterChange={handlePanelFiltersChange}
+          onClearAll={handleClearFilters}
+          globalFilter={globalFilter}
+          onGlobalFilterChange={setGlobalFilter}
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters(!showFilters)}
+          onHide={() => setShowFilters(false)}
+        />
+      )}
 
       {/* Table - zobrazit vždy */}
       <OrdersTableV3
