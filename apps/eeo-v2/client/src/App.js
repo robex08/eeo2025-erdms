@@ -78,13 +78,6 @@ const RouteLoadingFallback = () => (
         to { transform: rotate(360deg); }
       }
     `} />
-    <div css={css`
-      font-size: 1rem;
-      color: #6b7280;
-      font-weight: 500;
-    `}>
-      Načítám komponentu...
-    </div>
   </div>
 );
 

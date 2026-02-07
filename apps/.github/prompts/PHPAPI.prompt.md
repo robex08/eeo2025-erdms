@@ -1,0 +1,448 @@
+---
+agent: agent
+name: PHPAPI
+description: PHP legacy API coding
+priority: high
+version: 1.0
+last_updated: 2025-12-30
+---
+
+**DŮLEŽITÉ: Komunikuj vždy v češtině.**
+
+---
+
+## 🚨 NEJVYŠŠÍ PRIORITA - PRODUCTION OCHRANA 🚨
+
+### ⛔ ABSOLUTNĚ ZAKÁZÁNO BEZ POTVRZENÍ:
+1. ❌ **NIKDY neměnit /var/www/erdms-platform/** (produkce)
+2. ❌ **NIKDY neměnit produkční .env** v `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env`
+3. ❌ **NIKDY nedělat rsync do /var/www/erdms-platform/** bez explicitního příkazu
+4. ❌ **NIKDY nepoužívat `--delete` flag** při rsync (smaže api-legacy/)
+5. ❌ **NIKDY neměnit produkční databázi** `eeo2025` (pouze `eeo2025-dev`)
+6. ❌ **ŽÁDNÉ HARDCODED KONSTANTY, URL, CESTY** - vše pouze z .env nebo config souborů!
+
+### 🔒 ZÁKAZ HARDCODED HODNOT - NEJVYŠŠÍ PRIORITA:
+- ❌ **Hardcoded URL:** `http://localhost:3001`, `https://erdms.zachranka.cz`
+- ❌ **Hardcoded cesty:** `/var/www/erdms-data/`, `/data/eeo-v2/`
+- ❌ **Hardcoded DB jména:** `eeo2025`, `eeo2025-dev`
+- ❌ **Hardcoded porty:** `:3306`, `:3000`, `:3001`
+- ❌ **Hardcoded API endpointy:** `/api.eeo/`, `/api/`
+
+### ✅ POUŽIJ VŽDY Z CONFIG:
+```php
+// ✅ SPRÁVNĚ - čti z .env
+$uploadRoot = $_ENV['UPLOAD_ROOT_PATH'] ?? '/var/www/erdms-data/';
+$apiBaseUrl = $_ENV['API_BASE_URL'] ?? '/api.eeo';
+$dbHost = $_ENV['DB_HOST'] ?? 'localhost';
+$dbName = $_ENV['DB_NAME'] ?? 'eeo2025-dev';
+
+// ❌ ŠPATNĚ - hardcoded
+$uploadRoot = '/var/www/erdms-data/';  // NIKDY!
+$apiBaseUrl = '/api.eeo';             // NIKDY!
+```
+
+### ✅ FRONTEND - POUŽIJ ENV VARIABLES:
+```javascript
+// ✅ SPRÁVNĚ - čti z process.env
+const API_BASE = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
+const UPLOAD_URL = process.env.REACT_APP_UPLOAD_BASE_URL;
+
+// ❌ ŠPATNĚ - hardcoded
+const API_BASE = '/api.eeo';           // NIKDY!
+const API_BASE = 'http://localhost:3001/api'; // NIKDY!
+```
+
+### ✅ POVOLENÉ OPERACE (bez potvrzení):
+- ✅ Všechny změny v `/var/www/erdms-dev/` (dev workspace)
+- ✅ Build:dev pro testování
+- ✅ Práce s `eeo2025-dev` databází
+- ✅ Upload do `/var/www/erdms-data/`
+- ✅ Commit do GIT
+
+### ⚠️ VYŽADUJE EXPLICITNÍ POTVRZENÍ:
+- 🔴 `npm run build:prod` - zeptat se: "Mám dát build:prod?"
+- 🔴 Deploy do produkce - zeptat se: "Mám nasadit do produkce?"
+- 🔴 Změny v produkční .env - zeptat se: "Mám změnit produkční .env?"
+- 🔴 rsync api-legacy do produkce - zeptat se: "Mám nasadit API do produkce?"
+
+**WORKFLOW:**
+1. Pracuj POUZE v `/var/www/erdms-dev/`
+2. Testuj s `eeo2025-dev` DB a `/var/www/erdms-data/`
+3. Před JAKOUKOLIV akcí v produkci → ZEPTEJ SE!
+
+---
+
+## 🎯 KRITICKÁ PRAVIDLA (vždy dodržovat)
+pokud vyvojvoy tym nerekne jinka tak pracuje s databazi 
+
+eeo2025-dev   / verzi dev, a vse se odehrava v ni. 
+pri kontrole obshu, zakladnai novych sloupcu apod. vzdy pracovat s touto verzi DB, nazvem !!
+
+
+!!! vzdy ukladat u vsech PHP endpointu casove a datumove polozky s vyzuitim TimezoneHelper pro spravnou timezone (
+setMysqlTimezone($db) - nastavuje MySQL session timezone na českou časovou zónu (+01:00 nebo +02:00)) !!!
+
+### 🐛 Testování a Debugging
+
+#### 📋 PHP ERROR LOGY - KRITICKÉ MÍSTO PRO DEBUGGING!
+- **✅ HLAVNÍ LOG (DEV):** `/var/www/erdms-dev/logs/php-error.log`
+- **✅ PRODUKČNÍ LOG:** `/var/www/erdms-dev/logs/php/prod-error.log`
+- **⚠️ Apache log (sekundární):** `/var/log/apache2/error.log`
+
+**🔍 JAK DEBUGOVAT CHYBY:**
+```bash
+# 1. Kontrola posledních chyb v DEV logu
+tail -100 /var/www/erdms-dev/logs/php-error.log
+
+# 2. Sledování logu v reálném čase
+tail -f /var/www/erdms-dev/logs/php-error.log
+
+# 3. Filtrování konkrétního endpointu
+tail -100 /var/www/erdms-dev/logs/php-error.log | grep "orders-v3"
+
+# 4. Hledání SQL chyb
+tail -100 /var/www/erdms-dev/logs/php-error.log | grep -i "SQLSTATE\|Column not found\|Table.*doesn't exist"
+```
+
+**⚠️ CO KONTROLOVAT V LOGU:**
+- ❌ SQL chyby: `SQLSTATE[42S22]: Column not found`
+- ❌ Neexistující tabulky: `Table 'EEO-OSTRA-DEV.25_xxx' doesn't exist`
+- ❌ Neexistující sloupce: `Unknown column 'xxx.nazev' in 'SELECT'`
+- ❌ PHP errory: Fatal errors, warnings, notices
+- ✅ Debug výpisy: `error_log("🔍 Debug info...")` v kódu
+
+**🔧 RESTART APACHE PO ZMĚNÁCH:**
+```bash
+systemctl reload apache2  # Bez sudo (už jsi root)
+```
+
+#### 🚫 ZAKÁZANÉ TESTOVACÍ METODY:
+- ❌ **NIKDY nepoužívej curl/wget/http požadavky na produkční URL** `https://erdms.zachranka.cz/api.eeo/`
+- ❌ Nemáš k dispozici přístup k testování produkčních endpointů přes HTTP
+
+#### ✅ POVOLENÉ TESTOVACÍ METODY:
+- ✅ `php -l /path/to/file.php` - syntax check
+- ✅ `grep -r "pattern" /path/` - analýza kódu
+- ✅ Kontrola PHP error logů (viz výše)
+- ✅ Kontrola konzistenci kódu bez HTTP requestů
+
+### Databázové připojení
+- ❌ NIKDY nepoužívej `localhost` - databáze běží na vzdáleném serveru
+- ✅ Všechny přístupy najdeš v: `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dbconfig.php` prip. prihlaseni jsou presunuty do .env* souborech!!
+- ✅ Používej POUZE PDO připojení (žádné `mysqli`)
+- ✅ Vždy používej prepared statements proti SQL injection
+
+### Názvy tabulek a sloupců
+- 🇨🇿 **České názvy** jsou primární (tabulky i sloupce)
+- ✅ VŽDY ověř existenci konstant tabulek v `/apps/eeo-v2/api-legacy/api.eeo/api.php` (řádky 100-200)
+- ❌ NIKDY nevytvářej nové názvy tabulek "od ruky"
+- ❌ NIKDY nepředpokládaj názvy sloupců - zkontroluj je v databázi nebo existujících queries!
+
+**⚠️ ČASTÁ CHYBA - NÁZVY SLOUPCŮ:**
+```php
+// ❌ ŠPATNĚ - předpokládáš název sloupce:
+LEFT JOIN 25_organizace_vizitka org ON ...
+SELECT org.nazev  // CHYBA! Sloupec se jmenuje 'nazev_organizace'
+
+// ✅ SPRÁVNĚ - ověř název v existujících queries:
+grep -r "25_organizace_vizitka" lib/*.php
+// Najdeš: ORDER BY nazev_organizace ASC
+
+SELECT org.nazev_organizace as organizace_nazev  // Správně!
+```
+
+**Příklad konstant tabulek:**
+```php
+define('TBL_OBJEDNAVKY', '25a_objednavky');
+define('TBL_UZIVATELE', '25_uzivatele');
+define('TBL_FAKTURY', '25a_objednavky_faktury');
+define('TBL_SMLOUVY', '25_smlouvy');
+define('TBL_ORGANIZACE_VIZITKA', '25_organizace_vizitka');
+```
+
+### Vytváření nových tabulek/sloupců
+⚠️ **Pokud potřebuješ vytvořit novou tabulku nebo sloupec:**
+1. ZASTAV se
+2. Konzultuj s týmem vývojářů
+3. Nečekej na odpověď v chatu - požádej uživatele o konzultaci
+
+---
+
+## 📡 STRUKTURA API
+
+### Hlavní API router
+- **Soubor:** `/apps/eeo-v2/api-legacy/api.eeo/api.php`
+- Veškeré API je integrováno přes tento centrální soubor
+- Definuje konstanty tabulek a routuje požadavky na jednotlivé handlery
+
+### Standard endpointů
+Všechny nové endpointy **MUSÍ** dodržovat Order V2 strukturu:
+
+#### HTTP Metoda
+```php
+// ✅ PRIMÁRNÍ metoda: POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+    exit;
+}
+```
+
+#### Autentizace
+```php
+// ✅ Parametry v BODY (JSON nebo form-data)
+$input = json_decode(file_get_contents('php://input'), true);
+$token = $input['token'] ?? '';
+$username = $input['username'] ?? '';
+
+// ❌ NIKDY nečti token z x-headers
+// ❌ Špatně: $_SERVER['HTTP_X_AUTH_TOKEN']
+```
+
+#### Formát odpovědi (JSON)
+```php
+// ✅ Standardní formát úspěšné odpovědi:
+http_response_code(200);
+echo json_encode([
+    'status' => 'success',
+    'data' => $vysledky,
+    'message' => 'Operace proběhla úspěšně',
+    'count' => count($vysledky) // pokud je to pole
+]);
+
+// ✅ Standardní formát chybové odpovědi:
+http_response_code(400); // nebo jiný error kód
+echo json_encode([
+    'status' => 'error',
+    'message' => 'Popis chyby v češtině',
+    'error_code' => 'VALIDATION_FAILED', // volitelné
+    'debug' => [...] // pouze pro development
+]);
+```
+
+---
+
+## 📚 REFERENČNÍ SOUBORY
+
+### Konstanty a konfigurace
+- **DB config:** `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dbconfig.php`
+- **Konstanty tabulek:** `/apps/eeo-v2/api-legacy/api.eeo/api.php` (řádky 100-200)
+- **Verze API:** `define('VERSION', 'v2025.03_25');` v `api.php`
+
+### Vzorové implementace
+- **Faktury API:** `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceHandlers.php`
+- **Order V2 vzory:** Hledej soubory s prefixem `orderV2*Handlers.php`
+- **Autentizace:** Podívej se, jak je implementována v `invoiceHandlers.php` (funkce `verify_token()`)
+
+### Handler soubory (knihovny funkcí)
+- Všechny handlery: `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/*Handlers.php`
+- Queries: `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/*Queries.php`
+
+---
+
+## ✅ CHECKLIST před dokončením endpointu
+
+Před dokončením práce vždy zkontroluj:
+
+- [ ] **🔒 ŽÁDNÝ HARDCODE:** Všechny URL, cesty, DB názvy z .env?
+- [ ] **Metoda:** Používáš POST?
+- [ ] **Autentizace:** Validuješ `username` a `token` z body?
+- [ ] **Bezpečnost:** Používáš prepared statements?
+- [ ] **Konstanty:** Všechny názvy tabulek jsou z konstant (TBL_*)?
+- [ ] **Ověření sloupců:** Ověřil jsi názvy sloupců pomocí `grep -r "nazev_tabulky" lib/*.php`?
+- [ ] **Odpověď:** JSON formát má `status`, `data`, `message`?
+- [ ] **Error handling:** Try-catch pro všechny DB operace s `error_log()`?
+- [ ] **HTTP kódy:** Správné status codes (200, 400, 401, 403, 500)?
+- [ ] **České texty:** Všechny error messages jsou česky?
+- [ ] **ENV Variables:** Frontend používá process.env.REACT_APP_*?
+- [ ] **Config:** PHP čte všechny cesty a URL z $_ENV nebo config?
+- [ ] **🐛 Testováno:** Zkontroloval jsi `/var/www/erdms-dev/logs/php-error.log` po testu?
+
+---
+
+## 🔒 BEZPEČNOSTNÍ POŽADAVKY
+
+### SQL Injection prevence
+```php
+// ✅ Správně - prepared statements
+$stmt = $db->prepare("SELECT * FROM `$table` WHERE id = ?");
+$stmt->execute([$id]);
+
+// ❌ Špatně - concatenation
+$query = "SELECT * FROM $table WHERE id = $id"; // NIKDY!
+```
+
+### XSS prevence
+```php
+// ✅ Escapování výstupů
+$safe_output = htmlspecialchars($user_input, ENT_QUOTES, 'UTF-8');
+```
+
+### Validace vstupů
+```php
+// ✅ Validuj vše před použitím
+$email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
+$id = filter_var($input['id'], FILTER_VALIDATE_INT);
+```
+
+---
+
+## 🚀 WORKFLOW při vytváření endpointu
+
+1. **Ověř konstanty:**
+   - Otevři `/apps/eeo-v2/api-legacy/api.eeo/api.php`
+   - Zkontroluj, že konstanty tabulek existují
+
+2. **Podívej se na vzor:**
+   - Najdi podobný endpoint v `*Handlers.php` souborech
+   - Zkopíruj strukturu autentizace a response formátu
+
+3. **Implementuj logiku:**
+   - Připojení k DB přes PDO
+   - Prepared statements pro všechny queries
+   - Kompletní error handling
+
+4. **Otestuj:**
+   - Správný response formát
+   - Error stavy (chybějící token, neplatná data)
+   - SQL injection pokusy
+
+5. **Dokumentuj:**
+   - Přidej PHPDoc komentář s příkladem použití
+   - Zaznamenej parametry a response formát
+
+---
+
+## 📝 PŘÍKLAD NOVÉHO ENDPOINTU
+
+```php
+<?php
+/**
+ * POST - Vytvoří novou položku
+ * Endpoint: muj-endpoint/create
+ * POST: {token, username, data...}
+ */
+function handle_muj_endpoint_create($input, $config) {
+    // 1. Validace požadavku
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    // 2. Parametry z body
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    // 3. Ověření tokenu
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // 5. Business logika - VŽDY používej konstanty tabulek
+        $stmt = $db->prepare("SELECT * FROM `" . TBL_OBJEDNAVKY . "` WHERE id = ?");
+        $stmt->execute([$input['id']]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // 6. Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => $result,
+            'message' => 'Data načtena úspěšně'
+        ]);
+
+    } catch (Exception $e) {
+        // 7. Error handling
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při zpracování: ' . $e->getMessage()
+        ]);
+    }
+}
+```
+
+---
+
+## 💡 TIPY A BEST PRACTICES
+
+1. **Před psaním kódu:**
+   - Vždy si najdi podobný existující endpoint jako vzor
+   - Ověř strukturu databáze pomocí existujících queries
+
+2. **Pokud nevíš:**
+   - ❌ Nehádej názvy tabulek nebo sloupců
+   - ✅ Zeptej se uživatele nebo vyhledej v kódu
+
+3. **Error messages:**
+   - Vždy česky
+   - Buď konkrétní (ne "Chyba", ale "Objednávka s ID 123 neexistuje")
+   
+4. **Logování:**
+   - Pro production: Loguj důležité akce do audit tabulky
+   - Pro development: Používej `error_log()` místo `var_dump()`
+
+---
+
+## � ENVIRONMENT VARIABLES A CONFIG
+
+### 🔍 KONTROLA PŘED KAŽDÝM COMMIT:
+```bash
+# Vyhledej hardcoded hodnoty v kódu:
+grep -r "localhost:3001" apps/eeo-v2/client/src/
+grep -r "/api.eeo" apps/eeo-v2/client/src/ | grep -v "process.env"
+grep -r "eeo2025" apps/eeo-v2/api-legacy/ | grep -v ".env"
+```
+
+### 📂 MÍSTA PRO ENV VARIABLES:
+- **Frontend:** `/apps/eeo-v2/client/.env`
+- **Backend API:** `/apps/eeo-v2/api-legacy/api.eeo/.env`
+- **Production:** `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env`
+
+### 🎯 POVINNÉ ENV VARIABLES:
+```bash
+# Frontend (.env)
+REACT_APP_API2_BASE_URL=/api.eeo/
+REACT_APP_API_BASE_URL=/api
+REACT_APP_UPLOAD_BASE_URL=/data/eeo-v2/prilohy/
+
+# Backend (.env)
+DB_HOST=10.3.174.11
+DB_NAME=eeo2025-dev
+UPLOAD_ROOT_PATH=/var/www/erdms-data/
+API_BASE_URL=/api.eeo
+```
+
+### ⚠️ NEJČASTĚJŠÍ CHYBY:
+1. **Špatná env variable:** `REACT_APP_API_BASE_URL` místo `REACT_APP_API2_BASE_URL`
+2. **Zapomenutý fallback:** `process.env.REACT_APP_API2_BASE_URL` bez `|| '/api.eeo'`
+3. **Hardcoded localhost:** `http://localhost:3001/api/` v prod kódu
+4. **Missing env load:** PHP neloaduje dotenv properly
+
+---
+
+## �📖 SOUVISEJÍCÍ DOKUMENTACE
+
+- Bezpečnost: `/_docs/PHP_API_SECURITY_AUDIT_20251220.md`
+- DB struktura: `/_docs/ERDMS_PLATFORM_STRUCTURE.md`
+- Migrace: `/_docs/CHANGELOG_LP_PDO_MIGRATION_COMPLETE.md`
+
+
+

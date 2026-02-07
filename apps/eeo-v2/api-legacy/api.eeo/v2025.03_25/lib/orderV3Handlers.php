@@ -362,6 +362,95 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_params[] = '%' . $filters['predmet'] . '%';
         }
         
+        // 🔍 DEBUG: Log příchozích filtrů
+        error_log("[OrderV3 FILTERS] Received filters: " . json_encode($filters));
+        
+        // ========================================================================
+        // FILTRY PODLE ID (POLE) - priorita před textovými filtry
+        // ========================================================================
+        
+        // Objednatel - filtr podle pole ID
+        if (!empty($filters['objednatel']) && is_array($filters['objednatel'])) {
+            $ids = array_map('intval', $filters['objednatel']);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $where_conditions[] = "o.objednatel_id IN ($placeholders)";
+            foreach ($ids as $id) {
+                $where_params[] = $id;
+            }
+        }
+        
+        // Garant - filtr podle pole ID
+        if (!empty($filters['garant']) && is_array($filters['garant'])) {
+            $ids = array_map('intval', $filters['garant']);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $where_conditions[] = "o.garant_uzivatel_id IN ($placeholders)";
+            foreach ($ids as $id) {
+                $where_params[] = $id;
+            }
+        }
+        
+        // Příkazce - filtr podle pole ID
+        if (!empty($filters['prikazce']) && is_array($filters['prikazce'])) {
+            $ids = array_map('intval', $filters['prikazce']);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $where_conditions[] = "o.prikazce_id IN ($placeholders)";
+            foreach ($ids as $id) {
+                $where_params[] = $id;
+            }
+        }
+        
+        // Schvalovatel - filtr podle pole ID
+        if (!empty($filters['schvalovatel']) && is_array($filters['schvalovatel'])) {
+            $ids = array_map('intval', $filters['schvalovatel']);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $where_conditions[] = "o.schvalovatel_id IN ($placeholders)";
+            foreach ($ids as $id) {
+                $where_params[] = $id;
+            }
+        }
+        
+        // Status - filtr podle pole workflow kódů
+        if (!empty($filters['stav']) && is_array($filters['stav'])) {
+            // Převést české názvy na workflow kódy
+            $stav_map = array(
+                'NOVA' => 'NOVA',
+                'KE_SCHVALENI' => 'ODESLANA_KE_SCHVALENI',
+                'SCHVALENA' => 'SCHVALENA',
+                'ZAMITNUTA' => 'ZAMITNUTA',
+                'ROZPRACOVANA' => 'ROZPRACOVANA',
+                'ODESLANA' => 'ODESLANA',
+                'POTVRZENA' => 'POTVRZENA',
+                'K_UVEREJNENI_DO_REGISTRU' => 'K_UVEREJNENI_DO_REGISTRU',
+                'UVEREJNENA' => 'UVEREJNIT',
+                'FAKTURACE' => 'FAKTURACE',
+                'VECNA_SPRAVNOST' => 'VECNA_SPRAVNOST',
+                'ZKONTROLOVANA' => 'ZKONTROLOVANA',
+                'DOKONCENA' => 'DOKONCENA',
+                'ZRUSENA' => 'ZRUSENA',
+                'SMAZANA' => 'SMAZANA'
+            );
+            
+            $workflow_conditions = array();
+            foreach ($filters['stav'] as $stav_key) {
+                if (isset($stav_map[$stav_key])) {
+                    $workflow_kod = $stav_map[$stav_key];
+                    if ($stav_key === 'NOVA') {
+                        $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
+                    } else {
+                        $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
+                    }
+                    $where_params[] = $workflow_kod;
+                }
+            }
+            if (!empty($workflow_conditions)) {
+                $where_conditions[] = '(' . implode(' OR ', $workflow_conditions) . ')';
+            }
+        }
+        
+        // ========================================================================
+        // TEXTOVÉ FILTRY (SLOUPCOVÉ) - pro kombinované sloupce z tabulky
+        // ========================================================================
+        
         // Filtr pro objednatele a garanta - pokud jsou stejné, použít OR logiku
         $objednatel_filter = !empty($filters['objednatel_jmeno']) ? $filters['objednatel_jmeno'] : '';
         $garant_filter = !empty($filters['garant_jmeno']) ? $filters['garant_jmeno'] : '';
@@ -502,6 +591,7 @@ function handle_order_v3_list($input, $config, $queries) {
         }
         
         // max_cena_s_dph - maximální cena objednávky
+        // Podporuje buď operátory (>=10000) nebo rozsah (cena_max + cena_max_to)
         if (!empty($filters['cena_max'])) {
             $parsed = parseOperatorValue($filters['cena_max']);
             if ($parsed) {
@@ -511,6 +601,19 @@ function handle_order_v3_list($input, $config, $queries) {
             } else {
                 error_log("[OrderV3] Failed to parse cena_max: {$filters['cena_max']}");
             }
+        }
+        
+        // Cenový rozsah (od-do) z filtrovacího panelu
+        if (!empty($filters['cena_max_od']) && !empty($filters['cena_max_do'])) {
+            $where_conditions[] = "o.max_cena_s_dph BETWEEN ? AND ?";
+            $where_params[] = floatval($filters['cena_max_od']);
+            $where_params[] = floatval($filters['cena_max_do']);
+        } elseif (!empty($filters['cena_max_od'])) {
+            $where_conditions[] = "o.max_cena_s_dph >= ?";
+            $where_params[] = floatval($filters['cena_max_od']);
+        } elseif (!empty($filters['cena_max_do'])) {
+            $where_conditions[] = "o.max_cena_s_dph <= ?";
+            $where_params[] = floatval($filters['cena_max_do']);
         }
         
         // cena_polozky - součet cen položek (HAVING klauzule kvůli subquery)
@@ -542,6 +645,34 @@ function handle_order_v3_list($input, $config, $queries) {
                     HAVING SUM(f.fa_castka) {$parsed['operator']} ?
                 )";
                 $where_params[] = $parsed['value'];
+            }
+        }
+        
+        // ========================================================================
+        // STAV REGISTRU (checkboxy: publikováno, nepublikováno, nezveřejňovat)
+        // ========================================================================
+        if (!empty($filters['stav_registru']) && is_array($filters['stav_registru'])) {
+            $stav_conditions = array();
+            
+            foreach ($filters['stav_registru'] as $stav) {
+                switch ($stav) {
+                    case 'publikovano':
+                        // Bylo zveřejněno v registru (existuje dt_zverejneni)
+                        $stav_conditions[] = "o.dt_zverejneni IS NOT NULL";
+                        break;
+                    case 'nepublikovano':
+                        // Má být zveřejněno (zverejnit IS NOT NULL), ale ještě nebylo (dt_zverejneni IS NULL)
+                        $stav_conditions[] = "(o.zverejnit IS NOT NULL AND o.dt_zverejneni IS NULL)";
+                        break;
+                    case 'nezverejnovat':
+                        // Nemá být vůbec zveřejněno (zverejnit IS NULL)
+                        $stav_conditions[] = "o.zverejnit IS NULL";
+                        break;
+                }
+            }
+            
+            if (!empty($stav_conditions)) {
+                $where_conditions[] = '(' . implode(' OR ', $stav_conditions) . ')';
             }
         }
 

@@ -106,11 +106,14 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
   if (!options || options.length === 0) {
     return (
       <div style={{
-        padding: '0.75rem 2.5rem',
-        border: '2px solid #e5e7eb',
-        borderRadius: '8px',
+        padding: '0.5rem 0.75rem',
+        border: '1px solid #e5e7eb',
+        borderRadius: '6px',
         color: '#9ca3af',
-        fontSize: '0.875rem'
+        fontSize: '0.875rem',
+        minHeight: '38px',
+        display: 'flex',
+        alignItems: 'center'
       }}>
         Načítání...
       </div>
@@ -123,9 +126,9 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
         onClick={handleMainClick}
         style={{
           width: '100%',
-          padding: '0.75rem 2.5rem 0.75rem 2.5rem',
-          border: '2px solid #e5e7eb',
-          borderRadius: '8px',
+          padding: '0.5rem 2rem 0.5rem 0.75rem',
+          border: '1px solid #e5e7eb',
+          borderRadius: '6px',
           fontSize: '0.875rem',
           background: '#ffffff',
           cursor: 'pointer',
@@ -134,7 +137,8 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
           justifyContent: 'space-between',
           position: 'relative',
           color: (!value || value.length === 0) ? '#9ca3af' : '#1f2937',
-          fontWeight: (value && value.length > 0) ? '600' : '400'
+          fontWeight: (value && value.length > 0) ? '500' : '400',
+          minHeight: '38px'
         }}
       >
         <span>{getDisplayValue()}</span>
@@ -208,7 +212,7 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
                 placeholder="Hledat..."
                 style={{
                   width: '100%',
-                  padding: '0.5rem 0.75rem 0.5rem 2rem',
+                  padding: '0.5rem 2rem 0.5rem 2rem',
                   border: '1px solid #d1d5db',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
@@ -219,6 +223,37 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
                 onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                 onClick={(e) => e.stopPropagation()}
               />
+              {searchTerm && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSearchTerm('');
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '0.5rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    padding: '0.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'color 0.2s ease',
+                    zIndex: 2,
+                    width: '20px',
+                    height: '20px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                  title="Vymazat"
+                >
+                  <FontAwesomeIcon icon={faTimes} style={{ fontSize: '0.875rem' }} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -297,23 +332,24 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
 
 const FiltersPanel = styled.div`
   background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%);
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-family: var(--app-font-family, Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
 `;
 
 const FiltersHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 
   h3 {
     margin: 0;
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: 1.125rem;
+    font-weight: 600;
     color: #1e293b;
   }
 `;
@@ -321,14 +357,14 @@ const FiltersHeader = styled.div`
 const FilterGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.375rem;
 `;
 
 const FiltersGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 0.875rem;
+  margin-top: 1.25rem;
 
   & > div {
     min-width: 0;
@@ -351,10 +387,11 @@ const FilterLabel = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #475569;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.125rem;
+  gap: 0.5rem;
 `;
 
 const FilterLabelLeft = styled.div`
@@ -397,16 +434,18 @@ const FilterInputWithIcon = styled.div`
 
 const FilterInput = styled.input`
   width: 100%;
-  padding: ${props => props.hasIcon ? '0.75rem 2.5rem' : '0.75rem 1rem'};
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  padding: ${props => props.hasIcon ? '0.5rem 2.5rem 0.5rem 2rem' : '0.5rem 0.75rem'};
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   font-size: 0.875rem;
+  font-family: inherit;
   transition: all 0.2s ease;
+  min-height: 38px;
 
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
 
   &::placeholder {
@@ -416,20 +455,24 @@ const FilterInput = styled.input`
 
 const ClearButton = styled.button`
   position: absolute;
-  right: 0.5rem;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
   background: transparent;
   border: none;
-  color: #dc2626;
+  color: #9ca3af;
   cursor: pointer;
   padding: 0.25rem;
-  font-size: 0.875rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
 
   &:hover {
-    color: #991b1b;
-    transform: scale(1.1);
+    color: #6b7280;
   }
 `;
 
@@ -511,6 +554,7 @@ const ActionButton = styled.button`
   color: #3b82f6;
   font-size: 0.875rem;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   transition: all 0.2s ease;
 
@@ -588,8 +632,40 @@ const OrdersFiltersV3Full = ({
           fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' })
         ]);
 
+        // Zpracuj approvers data - přidej displayName s tituly (jako v Orders25List)
+        const approversWithDisplayName = (approversData || []).map(approver => {
+          if (approver.displayName) return approver;
+
+          const titul_pred_str = approver.titul_pred ? approver.titul_pred + ' ' : '';
+          const jmeno_str = approver.jmeno || '';
+          const prijmeni_str = approver.prijmeni || '';
+          const titul_za_str = approver.titul_za ? ', ' + approver.titul_za : '';
+          const displayName = `${titul_pred_str}${jmeno_str} ${prijmeni_str}${titul_za_str}`.replace(/\s+/g, ' ').trim() ||
+                             approver.jmeno_prijmeni ||
+                             approver.username ||
+                             approver.uzivatelske_jmeno ||
+                             `User ${approver.user_id || approver.uzivatel_id}`;
+
+          return { ...approver, displayName };
+        });
+
+        // Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        approversWithDisplayName.unshift({
+          id: '0',
+          user_id: '0',
+          uzivatel_id: '0',
+          jmeno: 'SYSTEM',
+          prijmeni: '',
+          titul_pred: '',
+          titul_za: '',
+          username: 'system',
+          deaktivovan: 0,
+          aktivni: 1,
+          displayName: 'SYSTEM'
+        });
+
         setUsersList(usersData || []);
-        setApproversList(approversData || []);
+        setApproversList(approversWithDisplayName);
         setOrderStatesList(statesData || []);
       } catch (error) {
         console.error('❌ Chyba při načítání dat pro filtry:', error);
@@ -619,17 +695,32 @@ const OrdersFiltersV3Full = ({
       });
   }, [usersList]);
 
-  // Připrav sorted approvers
+  // Připrav sorted approvers (s tituly a bez deaktivovaných)
   const sortedActiveApprovers = useMemo(() => {
     if (!approversList || approversList.length === 0) return [];
 
     return [...approversList]
-      .filter(approver => approver.aktivni === 1 || approver.aktivni === '1' || approver.aktivni === true)
-      .map(approver => ({
-        ...approver,
-        id: approver.id,
-        displayName: approver.jmeno_prijmeni || `${approver.jmeno || ''} ${approver.prijmeni || ''}`.trim() || `User ${approver.id}`
-      }))
+      .filter(approver => {
+        // Filtruj aktivní uživatele
+        if (approver.aktivni !== undefined && approver.aktivni !== null) {
+          return approver.aktivni === 1 || approver.aktivni === '1' || approver.aktivni === true;
+        }
+        // Fallback na deaktivovan (0 = aktivní, 1 = neaktivní)
+        if (approver.deaktivovan !== undefined && approver.deaktivovan !== null) {
+          return approver.deaktivovan === 0 || approver.deaktivovan === '0' || approver.deaktivovan === false;
+        }
+        return true;
+      })
+      .map(approver => {
+        // ID pro API (user_id nebo uzivatel_id nebo id)
+        const approverId = approver.user_id || approver.uzivatel_id || approver.id;
+        
+        return {
+          ...approver,
+          id: String(approverId),
+          displayName: approver.displayName || approver.jmeno_prijmeni || `${approver.jmeno || ''} ${approver.prijmeni || ''}`.trim() || `User ${approverId}`
+        };
+      })
       .sort((a, b) => {
         const nameA = a.displayName || '';
         const nameB = b.displayName || '';
@@ -691,16 +782,6 @@ const OrdersFiltersV3Full = ({
     handleFilterChange(field, Array.isArray(filters[field]) ? [] : '');
   };
 
-  if (loading) {
-    return (
-      <FiltersPanel>
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-          Načítání filtrů...
-        </div>
-      </FiltersPanel>
-    );
-  }
-
   return (
     <FiltersPanel>
       <FiltersHeader>
@@ -729,8 +810,10 @@ const OrdersFiltersV3Full = ({
       {/* Fulltext search */}
       <FilterGroup>
         <FilterLabel>
-          <FontAwesomeIcon icon={faSearch} />
-          Fulltext vyhledávání
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FontAwesomeIcon icon={faSearch} />
+            <span>Fulltext vyhledávání</span>
+          </div>
           <HintText>
             💡 Bez diakritiky
           </HintText>

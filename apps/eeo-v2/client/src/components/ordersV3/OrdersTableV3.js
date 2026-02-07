@@ -2524,15 +2524,6 @@ const OrdersTableV3 = ({
                 </div>
               </td>
             </ErrorRow>
-          ) : isLoading && !hasData ? (
-            <LoadingRow>
-              <td colSpan={colSpan}>
-                <div className="loading-spinner">
-                  <FontAwesomeIcon icon={faCircleNotch} spin />
-                </div>
-                <div style={{ marginTop: '1rem' }}>Načítání objednávek...</div>
-              </td>
-            </LoadingRow>
           ) : !hasData ? (
             <EmptyStateRow>
               <td colSpan={colSpan}>
