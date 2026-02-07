@@ -17,6 +17,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import DatePicker from '../DatePicker';
 import { fetchAllUsers, fetchApprovers, fetchCiselniky } from '../../services/api2auth';
+import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 
 // ============================================================================
 // MULTISELECT KOMPONENTA
@@ -600,7 +601,7 @@ const OrdersFiltersV3Full = ({
   // Filters state
   filters,
   onFilterChange,
-  onClearAll,
+  onClearAll, // ✅ Vráceno zpět pro panel filtrů
   
   // Global search
   globalFilter,
@@ -616,6 +617,9 @@ const OrdersFiltersV3Full = ({
   const [approversList, setApproversList] = useState([]);
   const [orderStatesList, setOrderStatesList] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // State pro zobrazování rozšířených filtrů (nezávislé na showFilters)
+  const [showExtendedFilters, setShowExtendedFilters] = useState(true);
 
   // Load data from API při mountu
   useEffect(() => {
@@ -792,20 +796,26 @@ const OrdersFiltersV3Full = ({
           Filtry a vyhledávání
         </h3>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <ActionButton onClick={onClearAll} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
-            <FontAwesomeIcon icon={faEraser} />
-            Vymazat filtry
-          </ActionButton>
+          <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
+            <ActionButton onClick={onClearAll} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
+              <FontAwesomeIcon icon={faEraser} />
+              Vymazat filtry
+            </ActionButton>
+          </SmartTooltip>
 
-          <ActionButton onClick={onToggleFilters}>
-            <FontAwesomeIcon icon={showFilters ? faChevronUp : faChevronDown} />
-            {showFilters ? 'Skrýt filtry' : 'Rozšířený filtr'}
-          </ActionButton>
+          <SmartTooltip text="Skryje rozšířené filtry, fulltext search zůstane" icon="info" preferredPosition="bottom">
+            <ActionButton onClick={() => setShowExtendedFilters(!showExtendedFilters)}>
+              <FontAwesomeIcon icon={showExtendedFilters ? faChevronUp : faChevronDown} />
+              {showExtendedFilters ? 'Skrýt filtr' : 'Rozšířený filtr'}
+            </ActionButton>
+          </SmartTooltip>
 
-          <ActionButton onClick={onHide}>
-            <FontAwesomeIcon icon={faTimes} />
-            Skrýt
-          </ActionButton>
+          <SmartTooltip text="Skryje celý filtrovací panel včetně fulltext searche" icon="warning" preferredPosition="bottom">
+            <ActionButton onClick={onHide}>
+              <FontAwesomeIcon icon={faTimes} />
+              Skrýt
+            </ActionButton>
+          </SmartTooltip>
         </div>
       </FiltersHeader>
 
@@ -838,7 +848,7 @@ const OrdersFiltersV3Full = ({
       </FilterGroup>
 
       {/* Extended filters */}
-      {showFilters && (
+      {showExtendedFilters && (
         <FiltersGrid>
           {/* Objednatel */}
           <FilterGroup>

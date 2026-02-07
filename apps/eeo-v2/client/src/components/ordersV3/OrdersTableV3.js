@@ -22,8 +22,9 @@ import DatePicker from '../DatePicker';
 import OperatorInput from '../OperatorInput';
 import useExpandedRowsV3 from '../../hooks/ordersV3/useExpandedRowsV3';
 import OrderExpandedRowV3 from './OrderExpandedRowV3';
-import { updateOrder } from '../../services/api2auth';
+import { updateOrderV3 } from '../../services/apiOrdersV3';
 import { getOrderDetailV3 } from '../../services/apiOrderV3';
+import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 import {
   faPlus,
   faMinus,
@@ -54,19 +55,37 @@ import {
 // KEYFRAMES
 // ============================================================================
 
-// 🎯 Animace pro zvýraznění řádku po návratu z editace
+// 🎯 Animace pro zvýraznění řádku po schválení - inspirace Order25List
 const highlightPulse = keyframes`
   0% {
-    background-color: #fef3c7;
-    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+    filter: brightness(1.4) saturate(1.3);
+    box-shadow: 0 0 30px currentColor, 0 4px 16px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px) scale(1.015);
   }
-  50% {
-    background-color: #fde68a;
-    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+  15% {
+    filter: brightness(1.5) saturate(1.4);
+    box-shadow: 0 0 40px currentColor, 0 6px 20px rgba(0, 0, 0, 0.2);
+    transform: translateY(-3px) scale(1.02);
+  }
+  30% {
+    filter: brightness(1.3) saturate(1.2);
+    box-shadow: 0 0 25px currentColor, 0 3px 12px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px) scale(1.01);
+  }
+  60% {
+    filter: brightness(1.15) saturate(1.1);
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.08);
+    transform: translateY(0) scale(1.005);
+  }
+  80% {
+    filter: brightness(1.05) saturate(1.05);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+    transform: translateY(0) scale(1.002);
   }
   100% {
-    background-color: transparent;
-    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+    filter: brightness(1) saturate(1);
+    box-shadow: none;
+    transform: translateY(0) scale(1);
   }
 `;
 
@@ -1489,9 +1508,14 @@ const OrdersTableV3 = ({
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
   highlightOrderId = null, // 🎯 ID objednávky k zvýraznění po návratu z editace
+  highlightAction = null, // 🎨 Akce pro určení barvy (approve/reject/postpone)
+  onHighlightOrder = null, // 🎯 Callback pro zvýraznění objednávky po schválení
+  showToast = null, // 🎯 Toast notifikace
+  clearCache = null, // ✅ Vyčistí cache po update operacích
 }) => {
   // Hook pro expandované řádky s lazy loading a localStorage persistence
   const {
+    expandedRows, // 🎯 Set of expanded row IDs
     isExpanded,
     toggleRow,
     getRowDetail,
@@ -1750,31 +1774,26 @@ const OrdersTableV3 = ({
         mimoradna_udalost: orderToApprove.mimoradna_udalost // ✅ ZACHOVAT status Mimořádná událost
       };
 
-      const timestamp = new Date().toISOString();
-
       switch (action) {
         case 'approve':
           // Schválit - přidej SCHVALENA
           newWorkflowStates.push('SCHVALENA');
           orderUpdate.stav_objednavky = 'Schválená';
-          orderUpdate.dt_schvaleni = timestamp;
-          orderUpdate.schvalil_uzivatel_id = userId;
+          orderUpdate.schvalovatel_id = userId;
           break;
 
         case 'reject':
           // Zamítnout - přidej ZAMITNUTA
           newWorkflowStates.push('ZAMITNUTA');
           orderUpdate.stav_objednavky = 'Zamítnutá';
-          orderUpdate.dt_schvaleni = timestamp;
-          orderUpdate.schvalil_uzivatel_id = userId;
+          orderUpdate.schvalovatel_id = userId;
           break;
 
         case 'postpone':
           // Odložit - přidej CEKA_SE (také zaznamenat kdo a kdy)
           newWorkflowStates.push('CEKA_SE');
           orderUpdate.stav_objednavky = 'Čeká se';
-          orderUpdate.dt_schvaleni = timestamp;
-          orderUpdate.schvalil_uzivatel_id = userId;
+          orderUpdate.schvalovatel_id = userId;
           break;
 
         default:
@@ -1789,18 +1808,85 @@ const OrdersTableV3 = ({
       setApprovalComment('');
       setApprovalCommentError('');
 
-      // 🔥 API CALL na pozadí pro update
-      await updateOrder({ token, username, payload: { id: orderToApprove.id, ...orderUpdate } });
-      
-      // Zavolej onActionClick pro refresh celého seznamu
-      if (onActionClick) {
-        onActionClick('refresh');
+      // ✅ Zobraz úspěšnou zprávu s detaily
+      const actionMessages = {
+        approve: `✅ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla úspěšně schválena\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}`,
+        reject: `❌ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla zamítnuta\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}`,
+        postpone: `⏸️ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla odložena\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}`
+      };
+      if (showToast) {
+        showToast(actionMessages[action], { type: 'success' });
       }
+
+      // 🎯 Zvýrazni objednávku (předej ID parent komponentě)
+      if (onHighlightOrder) {
+        onHighlightOrder(orderToApprove.id, action); // 🎨 Předej i akci pro barvu
+      }
+
+      // � API CALL na pozadí pro update V3 - ČEKÁME NA DOKONČENÍ!
+      updateOrderV3({ token, username, payload: { id: orderToApprove.id, ...orderUpdate } })
+        .then(() => {
+          // ✅ Po úspěšném API callu:
+          // 0. VYČISTI CACHE (DŮLEŽITÉ!)
+          if (clearCache) {
+            clearCache();
+          }
+          // 1. Refreshni celý seznam
+          if (onActionClick) {
+            onActionClick('refresh');
+          }
+          // 2. Refreshni expanded detail pokud je otevřený (MUSÍ BÝT AŽ PO UPDATE!)
+          if (isExpanded(orderToApprove.id)) {
+            refreshDetail(orderToApprove.id);
+          }
+        })
+        .catch(apiError => {
+          console.error('API update failed:', apiError);
+          if (showToast) {
+            showToast('Změna byla zobrazena, ale mohlo dojít k chybě na serveru. Obnovte stránku.', { type: 'warning' });
+          }
+          // I při chybě vyčisti cache a refreshni seznam pro jistotu
+          if (clearCache) {
+            clearCache();
+          }
+          if (onActionClick) {
+            onActionClick('refresh');
+          }
+        });
+
+      // 🔔 TRIGGER NOTIFICATION na pozadí
+      try {
+        const eventTypeMap = {
+          approve: 'ORDER_APPROVED',
+          reject: 'ORDER_REJECTED', 
+          postpone: 'ORDER_PENDING_APPROVAL'
+        };
+        
+        const eventType = eventTypeMap[action];
+        if (eventType) {
+          const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+          fetch(`${baseURL}notifications/trigger`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token,
+              username,
+              event_type: eventType,
+              object_id: orderToApprove.id,
+              trigger_user_id: userId,
+              debug: false
+            })
+          }).catch(err => console.error('Notification error:', err));
+        }
+      } catch (notifError) {
+        console.error('❌ Failed to trigger notification:', notifError);
+      }
+      
     } catch (error) {
       console.error('Chyba při schvalování objednávky:', error);
       setApprovalCommentError('Chyba při ukládání schválení. Zkuste to znovu.');
     }
-  }, [orderToApprove, approvalComment, token, username, userId, onActionClick]);
+  }, [orderToApprove, approvalComment, token, username, userId, onActionClick, showToast, onHighlightOrder]);
   
   // Handler pro globální expand/collapse všech řádků na stránce
   // MUSÍ být před useMemo pro columns, protože se v něm používá
@@ -1941,46 +2027,51 @@ const OrdersTableV3 = ({
           
           return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  try {
-                    const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
-                    // DEBUG: Order detail loaded with enriched data
-                    setOrderToApprove(orderDetail);
-                    setApprovalComment(orderDetail.schvaleni_komentar || '');
-                    setShowApprovalDialog(true);
-                  } catch (error) {
-                    console.error('Chyba při načítání detailu objednávky:', error);
-                  }
-                }}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px',
-                  color: iconColor,
-                  cursor: 'pointer',
-                  padding: '0.35rem 0.5rem',
-                  fontSize: '1.1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = hoverBgColor;
-                  e.currentTarget.style.borderColor = hoverBorderColor;
-                  e.currentTarget.style.color = hoverIconColor;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                  e.currentTarget.style.color = iconColor;
-                }}
-                title={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"}
+              <SmartTooltip 
+                text={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"} 
+                icon={isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info")} 
+                preferredPosition="top"
               >
-                <FontAwesomeIcon icon={icon} />
-              </button>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
+                      // DEBUG: Order detail loaded with enriched data
+                      setOrderToApprove(orderDetail);
+                      setApprovalComment(orderDetail.schvaleni_komentar || '');
+                      setShowApprovalDialog(true);
+                    } catch (error) {
+                      console.error('Chyba při načítání detailu objednávky:', error);
+                    }
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    color: iconColor,
+                    cursor: 'pointer',
+                    padding: '0.35rem 0.5rem',
+                    fontSize: '1.1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = hoverBgColor;
+                    e.currentTarget.style.borderColor = hoverBorderColor;
+                    e.currentTarget.style.color = hoverIconColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.color = iconColor;
+                  }}
+                >
+                  <FontAwesomeIcon icon={icon} />
+                </button>
+              </SmartTooltip>
             </div>
           );
         },
@@ -2499,46 +2590,6 @@ const OrdersTableV3 = ({
     <>
     <TableWrapper>
     <TableContainer ref={tableContainerRef}>
-      {/* Toolbar s info a reset tlačítky */}
-      {(hasActiveSorting || activeFiltersCount > 0) && (
-        <TableToolbar>
-          <ToolbarInfo>
-            {hasActiveSorting && (
-              <span>
-                🔄 Třídění: <strong>{sorting.length}</strong> {sorting.length === 1 ? 'sloupec' : 'sloupce'}
-              </span>
-            )}
-            {activeFiltersCount > 0 && (
-              <span>
-                🔍 Filtry: <strong>{activeFiltersCount}</strong>
-                <FilterBadge>{filteredData.length}</FilterBadge>
-              </span>
-            )}
-          </ToolbarInfo>
-          <ToolbarActions>
-            {activeFiltersCount > 0 && (
-              <ResetButton onClick={() => {
-                // Clear local filters immediately
-                setLocalColumnFilters({});
-                // Call parent to clear all filters
-                Object.keys(localColumnFilters).forEach(columnId => {
-                  onColumnFiltersChange?.(columnId, '');
-                });
-              }}>
-                <FontAwesomeIcon icon={faTimes} />
-                Vymazat filtry
-              </ResetButton>
-            )}
-            {hasActiveSorting && (
-              <ResetButton onClick={() => onSortingChange?.([])}>
-                <FontAwesomeIcon icon={faUndo} />
-                Reset třídění
-              </ResetButton>
-            )}
-          </ToolbarActions>
-        </TableToolbar>
-      )}
-      
       <Table>
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
@@ -2784,7 +2835,42 @@ const OrdersTableV3 = ({
               
               // Získat barvu pozadí řádku
               let rowStyle = {};
-              if (showRowColoring && getRowBackgroundColor) {
+              
+              // 🎯 Highlight animace pro právě schválenou objednávku - NEJVYŠŠÍ PRIORITA
+              const isHighlighted = highlightOrderId && order.id === highlightOrderId;
+              if (isHighlighted) {
+                rowStyle.animation = `${highlightPulse} 3s ease-out`;
+                rowStyle.position = 'relative';
+                rowStyle.zIndex = '100';
+                
+                // 🎨 Barvy podle akce - CELÝ ŘÁDEK
+                if (highlightAction === 'approve') {
+                  // ✅ ZELENÁ - Schváleno
+                  rowStyle.background = 'rgba(220, 252, 231, 0.9)'; // Světle zelená
+                  rowStyle.border = '3px solid #16a34a'; // Tmavě zelená
+                  rowStyle.borderLeft = '6px solid #15803d'; // Ještě tmavší
+                  rowStyle.boxShadow = '0 0 0 2px rgba(22, 163, 74, 0.2)';
+                } else if (highlightAction === 'reject') {
+                  // ❌ ČERVENÁ - Zamítnuto
+                  rowStyle.background = 'rgba(254, 226, 226, 0.9)'; // Světle červená
+                  rowStyle.border = '3px solid #dc2626'; // Tmavě červená
+                  rowStyle.borderLeft = '6px solid #991b1b'; // Ještě tmavší
+                  rowStyle.boxShadow = '0 0 0 2px rgba(220, 38, 38, 0.2)';
+                } else if (highlightAction === 'postpone') {
+                  // ⏸️ ORANŽOVÁ - Čeká se
+                  rowStyle.background = 'rgba(254, 243, 199, 0.9)'; // Světle oranžová
+                  rowStyle.border = '3px solid #f59e0b'; // Tmavě oranžová
+                  rowStyle.borderLeft = '6px solid #d97706'; // Ještě tmavší
+                  rowStyle.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.2)';
+                } else {
+                  // 🔵 DEFAULT - Zelená (fallback)
+                  rowStyle.background = 'rgba(220, 252, 231, 0.9)';
+                  rowStyle.border = '3px solid #16a34a';
+                  rowStyle.borderLeft = '6px solid #15803d';
+                  rowStyle.boxShadow = '0 0 0 2px rgba(22, 163, 74, 0.2)';
+                }
+              } else if (showRowColoring && getRowBackgroundColor) {
+                // Běžné podbarvení podle stavu (pokud NENÍ highlight)
                 const bgColor = getRowBackgroundColor(order);
                 if (bgColor) {
                   rowStyle.background = `linear-gradient(135deg, ${bgColor} 0%, ${bgColor}dd 50%, ${bgColor} 100%)`;
@@ -2793,12 +2879,6 @@ const OrdersTableV3 = ({
                 // Výchozí striping pokud není podbarvení zapnuté
                 const rowIndex = table.getRowModel().rows.indexOf(row);
                 rowStyle.backgroundColor = rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb';
-              }
-              
-              // 🎯 Highlight animace pro právě editovanou objednávku
-              const isHighlighted = highlightOrderId && order.id === highlightOrderId;
-              if (isHighlighted) {
-                rowStyle.animation = `${highlightPulse} 2s ease-out`;
               }
               
               return (
@@ -2829,6 +2909,10 @@ const OrdersTableV3 = ({
                       username={username}
                       onActionClick={onActionClick}
                       canEdit={canEdit}
+                      // 🎯 Schvalovací props
+                      setOrderToApprove={setOrderToApprove}
+                      setApprovalComment={setApprovalComment}
+                      setShowApprovalDialog={setShowApprovalDialog}
                     />
                   )}
                 </React.Fragment>

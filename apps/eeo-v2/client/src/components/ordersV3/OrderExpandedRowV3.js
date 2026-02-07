@@ -5,6 +5,7 @@ import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../../services/apiOrderV2';
 import AttachmentViewer from '../invoices/AttachmentViewer';
+import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 import {
   faInfoCircle,
   faBox,
@@ -725,7 +726,7 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit }) => {
+const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, setOrderToApprove, setApprovalComment, setShowApprovalDialog }) => {
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
   
@@ -898,7 +899,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 Základní údaje objednávky
               </CardTitle>
 
-              {/* Číslo objednávky s ID */}
               <div style={{ 
                 marginBottom: '0.75rem', 
                 padding: '0.5rem', 
@@ -915,40 +915,155 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     #{detail.id || '?'}
                   </sup>
                 </div>
-                {canEdit && canEdit(order) && (
-                  <button
-                    onClick={() => onActionClick?.('edit', order)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '36px',
-                      height: '36px',
-                      border: '2px solid #3b82f6',
-                      borderRadius: '6px',
-                      background: 'white',
-                      color: '#3b82f6',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      fontSize: '1rem'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = '#eff6ff';
-                      e.currentTarget.style.borderColor = '#2563eb';
-                      e.currentTarget.style.transform = 'translateY(-1px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'white';
-                      e.currentTarget.style.borderColor = '#3b82f6';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                    title="Editovat objednávku"
-                  >
-                    <FontAwesomeIcon icon={faEdit} />
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {/* 🎯 Schvalovací tlačítko - stejná logika jako v hlavním řádku */}
+                  {(() => {
+                    // Zkontroluj workflow stav pro schvalovací ikonu
+                    let workflowStates = [];
+                    try {
+                      if (Array.isArray(detail.stav_workflow_kod)) {
+                        workflowStates = detail.stav_workflow_kod;
+                      } else if (typeof detail.stav_workflow_kod === 'string' && detail.stav_workflow_kod.trim()) {
+                        workflowStates = JSON.parse(detail.stav_workflow_kod);
+                      }
+                    } catch (e) {
+                      workflowStates = [];
+                    }
+                    
+                    const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+                    const lastState = workflowStates.length > 0 
+                      ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+                          ? workflowStates[workflowStates.length - 1] 
+                          : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+                        ).toUpperCase()
+                      : '';
+                    
+                    const isAllowedState = allowedStates.includes(lastState);
+                    
+                    if (!isAllowedState) return null;
+                    
+                    // Určení ikony podle stavu
+                    const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+                    const approvedStates = ['SCHVALENA', 'ZAMITNUTA'];
+                    const isPending = pendingStates.includes(lastState);
+                    const isApproved = approvedStates.includes(lastState);
+                    
+                    // Použití barev z STATUS_COLORS (jako v dashboardu) + křížek pro zamítnutou
+                    let icon, iconColor, hoverBgColor, hoverBorderColor, hoverIconColor;
+                    
+                    if (isPending) {
+                      // Ke schválení - červená + hodiny
+                      icon = faHourglassHalf;
+                      iconColor = '#dc2626'; // červená
+                      hoverBgColor = '#fecaca';
+                      hoverBorderColor = '#dc2626';
+                      hoverIconColor = '#991b1b';
+                    } else if (lastState === 'SCHVALENA') {
+                      // Schválená - oranžová + fajfka
+                      icon = faCheckCircle;
+                      iconColor = '#ea580c'; // oranžová
+                      hoverBgColor = '#fed7aa';
+                      hoverBorderColor = '#ea580c';
+                      hoverIconColor = '#c2410c';
+                    } else {
+                      // Zamítnutá - šedá + křížek
+                      icon = faTimesCircle;
+                      iconColor = '#6b7280'; // šedá
+                      hoverBgColor = '#e5e7eb';
+                      hoverBorderColor = '#6b7280';
+                      hoverIconColor = '#4b5563';
+                    }
+                    
+                    return (
+                      <SmartTooltip 
+                        text={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"} 
+                        icon={isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info")} 
+                        preferredPosition="top"
+                      >
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              // Použijeme již načtený detail
+                              setOrderToApprove && setOrderToApprove(detail);
+                              setApprovalComment && setApprovalComment(detail.schvaleni_komentar || '');
+                              setShowApprovalDialog && setShowApprovalDialog(true);
+                            } catch (error) {
+                              console.error('Chyba při otevírání schvalovacího dialogu:', error);
+                            }
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '36px',
+                            height: '36px',
+                            border: `2px solid ${iconColor}`,
+                            borderRadius: '6px',
+                            background: 'white',
+                            color: iconColor,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            fontSize: '1rem'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = hoverBgColor;
+                            e.currentTarget.style.borderColor = hoverBorderColor;
+                            e.currentTarget.style.color = hoverIconColor;
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                            e.currentTarget.style.boxShadow = `0 4px 12px ${hoverBgColor}`;
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'white';
+                            e.currentTarget.style.borderColor = iconColor;
+                            e.currentTarget.style.color = iconColor;
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }}
+                        >
+                          <FontAwesomeIcon icon={icon} />
+                        </button>
+                      </SmartTooltip>
+                    );
+                  })()}
+                  
+                  {/* 📝 Edit tlačítko */}
+                  {canEdit && canEdit(order) && (
+                    <SmartTooltip text="Editovat objednávku" icon="info" preferredPosition="top">
+                      <button
+                        onClick={() => onActionClick?.('edit', order)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '36px',
+                          height: '36px',
+                          border: '2px solid #3b82f6',
+                          borderRadius: '6px',
+                          background: 'white',
+                          color: '#3b82f6',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          fontSize: '1rem'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = '#eff6ff';
+                          e.currentTarget.style.borderColor = '#2563eb';
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'white';
+                          e.currentTarget.style.borderColor = '#3b82f6';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faEdit} />
+                      </button>
+                    </SmartTooltip>
+                  )}
+                </div>
               </div>
 
               <InfoRow>
@@ -1291,10 +1406,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
             {/* 3⃣ ODPOVĚDNÉ OSOBY */}
             <Card>
-              <CardTitle>
-                <FontAwesomeIcon icon={faInfoCircle} />
-                Odpovědné osoby
-              </CardTitle>
               <CardTitle>
                 <FontAwesomeIcon icon={faInfoCircle} />
                 Odpovědné osoby
@@ -1736,7 +1847,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             <Card style={{ gridColumn: '1', gridRow: '1' }}>
               <CardTitle>
                 <FontAwesomeIcon icon={faBox} />
-                1 | POL OBJ – Položky objednávky ({polozky.length})
+                Položky objednávky ({polozky.length})
               </CardTitle>
               {polozky.length === 0 ? (
                 <EmptyState>Žádné položky</EmptyState>
@@ -1878,7 +1989,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             <Card style={{ gridColumn: '2', gridRow: '1 / 3' }}>
               <CardTitle>
                 <FontAwesomeIcon icon={faFileInvoice} />
-                3 | Faktury vc. příloh ({faktury.length})
+                Faktury vc. příloh ({faktury.length})
               </CardTitle>
               {faktury.length === 0 ? (
                 <EmptyState>Žádné faktury</EmptyState>
@@ -2061,7 +2172,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             <Card style={{ gridColumn: '1', gridRow: '2' }}>
               <CardTitle>
                 <FontAwesomeIcon icon={faPaperclip} />
-                2 | PRILOH OBJ – Přílohy objednávky ({prilohy.length})
+                Přílohy objednávky ({prilohy.length})
               </CardTitle>
             {prilohy.length === 0 ? (
               <EmptyState>Žádné přílohy</EmptyState>
