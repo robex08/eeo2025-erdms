@@ -3399,7 +3399,7 @@ const Invoices25List = () => {
       <LoadingOverlay $visible={loading && invoices.length === 0}>
         <LoadingSpinner $visible={loading} />
         <LoadingMessage $visible={loading}>Načítám faktury...</LoadingMessage>
-        <LoadingSubtext $visible={loading}>Vytvářím přehled faktur pro rok {selectedYear}</LoadingSubtext>
+        <LoadingSubtext $visible={loading}>Načítám přehled faktur z databáze...</LoadingSubtext>
       </LoadingOverlay>
 
       {/* Filtering Overlay - jemný při filtrování už načtených faktur */}
@@ -4368,7 +4368,7 @@ const Invoices25List = () => {
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </EmptyStateIcon>
-                      <EmptyStateText>Zatím nebyly nalezeny žádné faktury pro rok {selectedYear}</EmptyStateText>
+                      <EmptyStateText>Zatím nebyly nalezeny žádné faktury</EmptyStateText>
                     </td>
                   </tr>
                 )}

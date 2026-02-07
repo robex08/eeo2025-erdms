@@ -29,6 +29,38 @@ module.exports = function override(config, env) {
       allowedHosts: 'all', // Allow all hosts (no origin check)
       // WebSocket se řídí WDS_SOCKET_HOST z .env.development
       webSocketServer: 'ws',
+      
+      // 🚀 SSH TUNNEL OPTIMIZATIONS - Snížení datového toku
+      // Polling namísto native file watching (šetří SSH bandwidth)
+      watchOptions: {
+        poll: 5000, // Kontrola změn každých 5s (místo real-time)
+        aggregateTimeout: 1000, // Počkat 1s před rebuildem
+        ignored: [
+          '**/node_modules/**',
+          '**/vendor/**',
+          '**/.git/**',
+          '**/build/**',
+          '**/dist/**',
+          '**/.webpack-cache/**',
+          '**/coverage/**',
+          '**/*.test.js',
+          '**/*.spec.js'
+        ],
+      },
+      
+      // Omezit client logging (méně WebSocket zpráv)
+      client: {
+        logging: 'error', // Pouze chyby, ne každý hot update
+        progress: false, // Vypnout progress bar updates
+        overlay: {
+          errors: true,
+          warnings: false, // Skrýt warnings overlay
+        },
+      },
+      
+      // Vypnout liveReload jako fallback (používá více dat)
+      liveReload: false,
+      hot: true, // Pouze HMR
     };
   }
 
