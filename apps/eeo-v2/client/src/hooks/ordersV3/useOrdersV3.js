@@ -293,6 +293,16 @@ export function useOrdersV3({
       backendFilters.financovani = filters.financovani;
     }
     
+    // Datum z column filtru 
+    if (filters.datum_od) {
+      backendFilters.datum_od = filters.datum_od;
+    }
+    
+    // Přesné datum z tabulkového sloupce
+    if (filters.datum_presne) {
+      backendFilters.datum_presne = filters.datum_presne;
+    }
+    
     // Sloučené filtry (pro tabulkové filtry)
     if (filters.objednatel_jmeno) {
       backendFilters.objednatel_jmeno = filters.objednatel_jmeno;
@@ -400,20 +410,32 @@ export function useOrdersV3({
    */
   const handlePanelFiltersChange = useCallback((newFilters) => {
     updatePreferences({ columnFilters: newFilters });
+    
+    // ✅ Clear cache když se změní filtry
+    clearCache();
+    
     setCurrentPage(1);
-  }, [updatePreferences]);
+  }, [updatePreferences, clearCache]);
   
   /**
    * ✅ OPTIMALIZACE: Column filter s debounce z config
    */
   const handleColumnFilterChange = useCallback((columnId, value, debounceMs = ORDERS_V3_CONFIG.FILTER_DEBOUNCE_DELAY) => {
+    console.log('🎯 useOrdersV3 handleColumnFilterChange START:', {
+      columnId,
+      value,
+      type: typeof value,
+      debounceMs,
+      timestamp: new Date().toISOString()
+    });
+    
     // Mapování ID sloupců z tabulky na názvy API parametrů
     const columnToFilterMapping = {
       'cislo_objednavky': 'cislo_objednavky',
       'predmet': 'predmet',
       'dodavatel_nazev': 'dodavatel_nazev',
       'stav_objednavky': 'stav', // Mapuje na filters.stav pre backend
-      'dt_objednavky': 'datum_od', // Date column - bude potřeba speciální handling
+      'dt_objednavky': 'datum_presne', // Přesné filtrování podle datumu ze sloupce
       'objednatel_garant': 'objednatel_jmeno', // Hledá v objednatel i garant
       'prikazce_schvalovatel': 'prikazce_jmeno', // Hledá v příkazce i schvalovatel
       'financovani': 'financovani',
@@ -436,6 +458,9 @@ export function useOrdersV3({
     
     // Funkce pro aplikaci filtru
     const applyFilter = () => {
+      // ✅ Clear cache při změně filtrů
+      clearCache();
+      
       // Pro kombinované sloupce - poslat hodnotu oběma polím
       if (columnId === 'objednatel_garant') {
         updatePreferences({
@@ -454,6 +479,14 @@ export function useOrdersV3({
           }
         });
       } else {
+        console.log('💾 useOrdersV3 UPDATE PREFERENCES:', {
+          columnId,
+          filterName,
+          value,
+          oldColumnFilters: columnFilters,
+          newColumnFilters: { ...columnFilters, [filterName]: value }
+        });
+        
         updatePreferences({
           columnFilters: {
             ...columnFilters,
@@ -537,13 +570,16 @@ export function useOrdersV3({
       expandedRows: {},
     });
     
+    // ✅ Clear cache při resetů filtrů
+    clearCache();
+    
     // Reset expanded rows state
     setSubRowsData({});
     
     // Reset na první stránku
     setCurrentPage(1);
     
-  }, [userId]);
+  }, [updatePreferences, clearCache]);
   
   // ============================================================================
   // FUNKCE - Pagination
