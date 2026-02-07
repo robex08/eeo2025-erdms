@@ -8,7 +8,7 @@
  * - Loading/Empty states
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useNavigate } from 'react-router-dom';
@@ -153,16 +153,17 @@ const CategorySection = styled.div`
 
 const CategoryHeader = styled.div`
   padding: 12px 16px;
-  background: ${props => props.$expanded ? '#f8fafc' : 'white'};
+  background: ${props => props.$selected ? '#eff6ff' : props.$expanded ? '#f8fafc' : 'white'};
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
   transition: all 0.2s ease;
   user-select: none;
+  border-left: ${props => props.$selected ? '4px solid #3b82f6' : '4px solid transparent'};
 
   &:hover {
-    background: #f8fafc;
+    background: ${props => props.$selected ? '#dbeafe' : '#f8fafc'};
   }
 
   &:active {
@@ -232,11 +233,12 @@ const TableHeader = styled.thead`
 const TableRow = styled.tr`
   border-bottom: 1px solid #e2e8f0;
   transition: background 0.15s ease;
-  cursor: text;
+  cursor: pointer;
   user-select: text;
+  background: ${props => props.$selected ? '#eff6ff' : 'white'};
 
   &:hover {
-    background: #f8fafc;
+    background: ${props => props.$selected ? '#dbeafe' : '#f8fafc'};
   }
 
   &:last-child {
@@ -398,12 +400,116 @@ const highlightMatch = (text, query) => {
 /**
  * Search Results Dropdown Component
  */
-const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, username, token }) => {
+const SearchResultsDropdown = ({ 
+  results, 
+  loading, 
+  query, 
+  onClose, 
+  inputRef, 
+  username, 
+  token,
+  selectedResultIndex = -1,
+  onResultAction = null,
+  onNavigableItemsChange = null,
+  resultActionType = 'enter'
+}) => {
   const navigate = useNavigate();
   
   // State pro rozbalené kategorie
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [position, setPosition] = useState({ top: 0, left: 0, width: 800, maxHeight: 600 });
+  const selectedRowRef = useRef(null);
+  
+  // Ref pro tracking aktuálně vybrané položky (aby přežila rozbalení/sbalení)
+  const selectedItemRef = useRef(null);
+  
+  // Flatten všech výsledků pro keyboard navigation
+  const flattenedResults = useMemo(() => {
+    if (!results?.categories) return [];
+    
+    const flattened = [];
+    Object.entries(results.categories).forEach(([key, category]) => {
+      if (category.results && category.results.length > 0) {
+        category.results.forEach((result, idx) => {
+          flattened.push({
+            result,
+            categoryKey: key,
+            categoryIndex: idx,
+            resultId: result.id || result.user_id || result.order_id || `${key}-${idx}`
+          });
+        });
+      }
+    });
+    return flattened;
+  }, [results]);
+  
+  // Vytvoř navigovatelné položky (kategorie + jejich rozbalené položky)
+  const navigableItems = useMemo(() => {
+    if (!results?.categories) return [];
+    
+    const items = [];
+    const sortedCats = Object.entries(results.categories)
+      .filter(([_, cat]) => cat.total > 0)
+      .sort(([_, a], [__, b]) => b.total - a.total)
+      .map(([key, cat]) => ({ key, ...cat }));
+    
+    sortedCats.forEach(category => {
+      // Přidej kategorii jako navigovatelnou položku
+      items.push({
+        type: 'category',
+        categoryKey: category.key,
+        categoryLabel: category.category_label,
+        total: category.total,
+        // ID pro tracking
+        itemId: `cat-${category.key}`
+      });
+      
+      // Pokud je kategorie rozbalená, přidej její položky
+      if (expandedCategories.has(category.key)) {
+        category.results.forEach((result, idx) => {
+          items.push({
+            type: 'result',
+            categoryKey: category.key,
+            result,
+            resultIndex: idx,
+            resultId: result.id || result.user_id || result.order_id || `${category.key}-${idx}`,
+            // ID pro tracking
+            itemId: `result-${category.key}-${result.id || result.user_id || result.order_id || idx}`
+          });
+        });
+      }
+    });
+    
+    return items;
+  }, [results, expandedCategories]);
+  
+  // Pošli navigableItems (ne jen počet) zpět do UniversalSearchInput
+  useEffect(() => {
+    if (onNavigableItemsChange) {
+      onNavigableItemsChange(navigableItems);
+    }
+  }, [navigableItems, onNavigableItemsChange]);
+  
+  // Sleduj změny navigableItems a ulož ID aktuálně vybrané položky
+  useEffect(() => {
+    if (selectedResultIndex >= 0 && selectedResultIndex < navigableItems.length) {
+      const currentItem = navigableItems[selectedResultIndex];
+      if (currentItem) {
+        selectedItemRef.current = currentItem.itemId;
+      }
+    }
+  }, [selectedResultIndex, navigableItems]);
+  
+  // Auto-scroll na vybranou položku
+  useEffect(() => {
+    if (selectedResultIndex >= 0 && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      });
+    }
+  }, [selectedResultIndex]);
   
   // State pro slide-in panel
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -483,7 +589,7 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
   /**
    * Toggle kategorie
    */
-  const toggleCategory = (categoryKey) => {
+  const toggleCategory = useCallback((categoryKey) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
       if (next.has(categoryKey)) {
@@ -493,12 +599,12 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
       }
       return next;
     });
-  };
+  }, []);
 
   /**
    * Otevřít detail entity
    */
-  const handleOpenDetail = (entity, categoryKey) => {
+  const handleOpenDetail = useCallback((entity, categoryKey) => {
     const entityId = entity.id || entity.user_id || entity.order_id;
     
     // Rovnou použij data ze search výsledků - mají už všechny potřebné fieldy
@@ -510,7 +616,36 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
     setDetailLoading(false);
     setDetailError(null);
     setPanelOpen(true);
-  };
+  }, []);
+
+  // Callback pro akci na vybraný výsledek (z UniversalSearchInput)
+  // MUSÍ být za definicí handleOpenDetail!
+  useEffect(() => {
+    if (onResultAction && selectedResultIndex >= 0 && selectedResultIndex < navigableItems.length) {
+      const selectedItem = navigableItems[selectedResultIndex];
+      
+      if (selectedItem.type === 'category') {
+        const isExpanded = expandedCategories.has(selectedItem.categoryKey);
+        
+        if (resultActionType === 'expand' && !isExpanded) {
+          // Šipka doprava - rozbalit kategorii (pokud je sbalená)
+          toggleCategory(selectedItem.categoryKey);
+        } else if (resultActionType === 'collapse' && isExpanded) {
+          // Šipka doleva - sbalit kategorii (pokud je rozbalená)
+          toggleCategory(selectedItem.categoryKey);
+        } else if (resultActionType === 'enter') {
+          // Enter - toggle rozbalení/sbalení
+          toggleCategory(selectedItem.categoryKey);
+        }
+        
+      } else if (selectedItem.type === 'result') {
+        // Je to položka - otevři detail (pouze na Enter, ne na šipky)
+        if (resultActionType === 'enter') {
+          handleOpenDetail(selectedItem.result, selectedItem.categoryKey);
+        }
+      }
+    }
+  }, [onResultAction]);
 
   /**
    * Zavřít detail panel
@@ -762,12 +897,21 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
         {sortedCategories.map(category => {
           const isExpanded = expandedCategories.has(category.key);
           const iconData = getCategoryIcon(category.key);
+          
+          // Je tato kategorie vybraná?
+          const categoryItemId = `cat-${category.key}`;
+          const categoryNavIndex = navigableItems.findIndex(
+            item => item.itemId === categoryItemId
+          );
+          const isCategorySelected = categoryNavIndex === selectedResultIndex;
 
           return (
             <CategorySection key={category.key}>
               <CategoryHeader
+                ref={isCategorySelected ? selectedRowRef : null}
                 onClick={() => toggleCategory(category.key)}
                 $expanded={isExpanded}
+                $selected={isCategorySelected}
               >
                 <CategoryIcon $color={iconData.color}>
                   <FontAwesomeIcon icon={iconData.icon} />
@@ -824,10 +968,13 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                         )}
                         {category.key === 'invoices' && (
                           <>
-                            <TableHeaderCell>Číslo faktury</TableHeaderCell>
-                            <TableHeaderCell>Objednávka</TableHeaderCell>
+                            <TableHeaderCell>VS</TableHeaderCell>
+                            <TableHeaderCell>Splatnost</TableHeaderCell>
+                            <TableHeaderCell>Typ</TableHeaderCell>
+                            <TableHeaderCell>Obj/Sml</TableHeaderCell>
                             <TableHeaderCell>Částka</TableHeaderCell>
-                            <TableHeaderCell>Datum</TableHeaderCell>
+                            <TableHeaderCell>Zaevidoval</TableHeaderCell>
+                            <TableHeaderCell>Předáno</TableHeaderCell>
                             <TableHeaderCell style={{ width: '40px' }}></TableHeaderCell>
                           </>
                         )}
@@ -854,9 +1001,19 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                     </TableHeader>
                     <tbody>
                       {category.results.map((result, idx) => {
+                        // Najdi globální index tohoto výsledku v navigableItems
+                        const itemId = `result-${category.key}-${result.id || result.user_id || result.order_id || idx}`;
+                        const globalIndex = navigableItems.findIndex(
+                          item => item.itemId === itemId
+                        );
+                        const isSelected = globalIndex === selectedResultIndex;
+                        
                         return (
                         <TableRow 
                           key={result.id || idx}
+                          ref={isSelected ? selectedRowRef : null}
+                          $selected={isSelected}
+                          onClick={() => handleOpenDetail(result, category.key)}
                           onDoubleClick={() => handleOpenDetail(result, category.key)}
                         >
                           {/* Users */}
@@ -942,9 +1099,25 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                           {category.key === 'invoices' && (
                             <>
                               <TableCell dangerouslySetInnerHTML={{ __html: highlightMatch(result.fa_cislo_vema, query) }} />
-                              <TableCell>{result.objednavka_cislo || '-'}</TableCell>
+                              <TableCell $noWrap>{result.datum_splatnosti ? new Date(result.datum_splatnosti).toLocaleDateString('cs-CZ') : '-'}</TableCell>
+                              <TableCell>{result.fa_typ || '-'}</TableCell>
+                              <TableCell>{result.smlouva_cislo || result.objednavka_cislo || '-'}</TableCell>
                               <TableCell $noWrap>{parseFloat(result.castka || 0).toLocaleString('cs-CZ')} Kč</TableCell>
-                              <TableCell $noWrap>{result.datum_vystaveni}</TableCell>
+                              <TableCell>
+                                <div>{result.nahrano_kym || '-'}</div>
+                                <div style={{ fontSize: '0.85em', color: '#666' }}>
+                                  {result.datum_zaevidovani ? new Date(result.datum_zaevidovani).toLocaleDateString('cs-CZ') : ''}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div>{result.predano_kym || '-'}</div>
+                                <div style={{ fontSize: '0.85em', color: '#666' }}>
+                                  {result.datum_predani_zam ? new Date(result.datum_predani_zam).toLocaleDateString('cs-CZ') : ''}
+                                  {result.datum_vraceni_zam && (
+                                    <span> → {new Date(result.datum_vraceni_zam).toLocaleDateString('cs-CZ')}</span>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell>
                                 <IconButton 
                                   onClick={(e) => { e.stopPropagation(); handleOpenDetail(result, category.key); }}

@@ -58,8 +58,6 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
   },
 
   callback: async () => {
-    const timestamp = new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
     try {
       // Získání počtu nepřečtených notifikací
       const unreadCount = await getUnreadCount();
@@ -75,20 +73,18 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
           limit: 20, // Zvýšeno z 5 na 20 pro všechny notifikace
           unread_only: false, // Načíst i přečtené pro kompletní sync
           include_dismissed: false // ✅ Neskrývat dismissed notifikace v dropdownu
-        });
-
-        // 🆕 BEST PRACTICE: Synchronizuj HIGH alarmy do localStorage
+        });        // 🆕 BEST PRACTICE: Synchronizuj HIGH alarmy do localStorage
         const { saveTodoAlarmToLocalStorage } = require('../hooks/useTodoAlarms');
         const userId = getStoredUserId(); // Získej userId z auth
 
         if (userId && notificationsData.data) {
           notificationsData.data.forEach(notification => {
             // Filtruj HIGH priority notifikace (TODO alarmy)
-            const isHighAlarm = notification.priority === 'HIGH' ||
-                               notification.type === 'alarm_todo_high' ||
-                               notification.type === 'alarm_todo_expired';
+            const isHighAlarm = notification.priorita === 'HIGH' ||
+                               notification.typ === 'alarm_todo_high' ||
+                               notification.typ === 'alarm_todo_expired';
 
-            if (isHighAlarm && (!notification.is_read || notification.is_read === 0)) {
+            if (isHighAlarm && (!notification.precteno || notification.precteno === 0)) {
               // Uložit do localStorage pro FloatingAlarmPopup
               try {
                 saveTodoAlarmToLocalStorage(notification, userId);
@@ -370,7 +366,7 @@ export const createExchangeRatesTask = (onRatesUpdated) => ({
       const baseCurrency = 'CZK';
       const fiatApiUrl = `https://open.er-api.com/v6/latest/${baseCurrency}`;
 
-      // Načtení jen fiat měn (crypto API vypnuto kvůli CORS problémům)
+      // Načtení kurzů fiat měn
       const fiatResponse = await fetch(fiatApiUrl, {
         timeout: 10000, // 10 sekund timeout
         headers: {
@@ -398,40 +394,7 @@ export const createExchangeRatesTask = (onRatesUpdated) => ({
         }
       }
 
-      // 🪙 Crypto API - načtení krypto kurzů přes backend proxy (řeší CORS problém)
-      try {
-        // ✅ OPRAVENO: Použít API2_BASE_URL který už obsahuje /api.eeo/
-        const API2_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
-        const cryptoApiUrl = `${API2_BASE_URL}crypto-rates-proxy.php`;
-
-        // Získat token pro autentizaci (pokud je vyžadován)
-        const token = await loadAuthData.token();
-
-        const cryptoResponse = await fetch(cryptoApiUrl, {
-          method: 'GET',
-          timeout: 15000, // 15 sekund timeout pro crypto API
-          headers: {
-            'Accept': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
-          }
-        });
-
-        if (cryptoResponse.ok) {
-          const data = await cryptoResponse.json();
-
-          // Backend proxy vrací normalizovanou strukturu { success, rates: { BTC: 1234, ETH: 890, ... } }
-          if (data.success && data.rates) {
-            // Přímo přidat crypto kurzy z proxy response
-            for (const [symbol, rateInCzk] of Object.entries(data.rates)) {
-              finalRates[symbol] = rateInCzk;
-            }
-          }
-        }
-      } catch (cryptoError) {
-        // Tiše ignoruj chyby z crypto API - fiat měny budou stále dostupné
-      }
-
-      // Callback s novými kurzy (fiat + crypto)
+      // Callback s novými kurzy (pouze fiat měny)
       if (onRatesUpdated) {
         onRatesUpdated(finalRates);
       }

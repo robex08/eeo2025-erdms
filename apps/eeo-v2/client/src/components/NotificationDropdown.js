@@ -7,12 +7,16 @@ import {
   faBell,
   faCheck,
   faCheckDouble,
+  faCheckCircle,
   faTimes,
   faTrash,
   faExclamationCircle,
   faClock,
   faInfoCircle,
-  faEyeSlash
+  faEyeSlash,
+  faBolt,
+  faExclamation,
+  faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -181,25 +185,37 @@ const NotificationsList = styled.div`
   }
 `;
 
-const NotificationIcon = styled.div(({ $priority }) => `
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-  background: ${
-    $priority === 'urgent'
-      ? 'linear-gradient(135deg, #dc2626, #991b1b)'
-      : $priority === 'high'
-      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-      : 'linear-gradient(135deg, #3b82f6, #2563eb)'
-  };
-  color: white;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-`);
+const NotificationIcon = styled.div(({ $priority }) => {
+  const normalizedPriority = ($priority || 'INFO').toUpperCase();
+  
+  let bgColor, iconColor;
+  if (normalizedPriority === 'SUCCESS') {
+    bgColor = '#f0fdf4';  // Světle zelená
+    iconColor = '#16a34a';  // Tmavě zelená
+  } else if (normalizedPriority === 'EXCEPTIONAL' || normalizedPriority === 'URGENT') {
+    bgColor = '#fef2f2';  // Světle červená
+    iconColor = '#dc2626';  // Tmavě červená
+  } else if (normalizedPriority === 'APPROVAL' || normalizedPriority === 'HIGH' || normalizedPriority === 'WARNING') {
+    bgColor = '#fff7ed';  // Světle oranžová
+    iconColor = '#ea580c';  // Tmavě oranžová
+  } else {
+    bgColor = '#eff6ff';  // Světle modrá
+    iconColor = '#3b82f6';  // Tmavě modrá
+  }
+  
+  return `
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px; /* Zvětšeno z 18px */
+    flex-shrink: 0;
+    background: ${bgColor};
+    color: ${iconColor};
+  `;
+});
 
 const NotificationContent = styled.div`
   flex: 1;
@@ -208,10 +224,41 @@ const NotificationContent = styled.div`
 
 const NotificationTitle = styled.div`
   font-weight: ${props => props.$isUnread ? 700 : 400};
-  color: ${props => props.$isUnread ? '#111827' : '#374151'};
+  color: ${props => props.$isUnread ? '#111827' : '#6b7280'};
   font-size: 14px;
   line-height: 1.4;
   margin-bottom: 4px;
+  
+  /* 🚨 URGENT zvýraznění - červené pozadí + žluté písmo */
+  ${props => {
+    if (props.$priority === 'urgent' || props.$priority === 'URGENT' || props.$priority === 'exceptional' || props.$priority === 'EXCEPTIONAL') {
+      return `
+        background: linear-gradient(135deg, #dc2626, #b91c1c);
+        color: #fef3c7;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        border: 1px solid #991b1b;
+        box-shadow: 0 2px 4px rgba(220,38,38,0.3);
+      `;
+    }
+    
+    /* ⚠️ WARNING zvýraznění - žlutavé pozadí + tmavé písmo */
+    if (props.$priority === 'warning' || props.$priority === 'WARNING' || props.$priority === 'high' || props.$priority === 'HIGH') {
+      return `
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        color: #451a03;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        border: 1px solid #d97706;
+        box-shadow: 0 1px 3px rgba(251,191,36,0.4);
+      `;
+    }
+    
+    return '';
+  }}
 
   /* Truncate long titles */
   overflow: hidden;
@@ -529,14 +576,64 @@ export const NotificationDropdown = ({
     });
   };
 
-  const getPriorityIcon = (priority) => {
-    switch (priority) {
-      case 'urgent':
-        return faExclamationCircle;
-      case 'high':
-        return faClock;
+  // 🎯 Funkce pro odstranění ikon z nadpisu (eliminuje duplicity)
+  const cleanNotificationTitle = (title) => {
+    if (!title) return title;
+    
+    const originalTitle = title;
+    // Odstraní emoji ikony a otazníky na začátku včetně variation selectors (\uFE0F)
+    const cleanedTitle = title
+      .replace(/^\?\s*/, '')     // Otazník na začátku
+      .replace(/^ℹ️\s*/, '')     // Info emoji s variation selector
+      .replace(/^ℹ\uFE0F\s*/, '') // Info emoji s explicit variation selector  
+      .replace(/^⚠️\s*/, '')     // Warning emoji s variation selector
+      .replace(/^⚠\uFE0F\s*/, '') // Warning emoji s explicit variation selector
+      .replace(/^🚨\s*/, '')     // Emergency emoji
+      .replace(/^✅\s*/, '')     // Check mark
+      .replace(/^❌\s*/, '')     // Cross mark
+      .replace(/^⏸️\s*/, '')     // Pause button
+      .replace(/^⏸\uFE0F\s*/, '') // Pause s explicit variation selector
+      .replace(/^📧\s*/, '')     // Email
+      .replace(/^🎯\s*/, '')     // Target
+      .replace(/^📦\s*/, '')     // Package
+      .replace(/^[?ℹ⚠🚨✅❌⏸📧🎯📦]\uFE0F?\s*/, ''); // Fallback regex
+    
+    return cleanedTitle;
+  };
+
+  const getPriorityIcon = (priority, nadpis = '', notificationType = '') => {
+    const normalizedPriority = (priority || 'INFO').toUpperCase();
+    
+    // 🌟 SPECIÁLNÍ: Pro potvrzení věcné správnosti zobraz zelenou fajfku
+    if (notificationType === 'invoice_material_check_approved' || 
+        notificationType === 'INVOICE_MATERIAL_CHECK_APPROVED') {
+      return faCheckCircle;  // ✅ Zelená fajfka
+    }
+    
+    // Určíme prioritu podle emoji v nadpisu, pokud priority není specifická
+    if (nadpis.includes('🚨')) {
+      return faBolt; // URGENT - blesk
+    }
+    if (nadpis.includes('⚠️')) {
+      return faExclamationTriangle; // WARNING - trojúhelník
+    }
+    if (nadpis.includes('ℹ️')) {
+      return faInfoCircle; // INFO - kruh
+    }
+    
+    switch (normalizedPriority) {
+      case 'EXCEPTIONAL':
+      case 'URGENT':
+        return faBolt;  // ⚡ Blesk - červená
+      case 'APPROVAL':
+      case 'HIGH':
+        return faExclamationTriangle;  // ⚠️ Trojúhelník - oranžová
+      case 'WARNING':
+        return faExclamationTriangle;  // ⚠️ Trojúhelník - oranžová
+      case 'INFO':
+      case 'NORMAL':
       default:
-        return faInfoCircle;
+        return faInfoCircle;  // ℹ️ Info kruh - modrá
     }
   };
 
@@ -595,8 +692,23 @@ export const NotificationDropdown = ({
             </EmptyState>
           ) : (
             notifications.slice(0, 10).map((notification, index) => {
-              const isUnread = !notification.is_read || notification.is_read === 0 || notification.is_read === false;
-              const priority = notification.priority || 'normal';
+              const isUnread = !notification.precteno || notification.precteno === 0 || notification.precteno === false;
+              let priority = notification.priorita || 'normal';
+              
+              // 🌟 SPECIÁLNÍ: Pro potvrzení věcné správnosti nastav speciální priority
+              if (notification.typ === 'invoice_material_check_approved' || 
+                  notification.typ === 'INVOICE_MATERIAL_CHECK_APPROVED') {
+                priority = 'SUCCESS';
+              }
+              
+              // 🚨 Detekce URGENT z emoji v nadpisu
+              if (notification.nadpis && notification.nadpis.includes('🚨')) {
+                priority = 'URGENT';
+              } else if (notification.nadpis && notification.nadpis.includes('⚠️')) {
+                priority = 'WARNING';
+              } else if (notification.nadpis && notification.nadpis.includes('ℹ️')) {
+                priority = 'INFO';
+              }
 
               // ✅ Parse data_json pro zobrazení dodatečných informací
               let notificationData = {};
@@ -621,15 +733,15 @@ export const NotificationDropdown = ({
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <NotificationIcon $priority={priority}>
-                    <FontAwesomeIcon icon={getPriorityIcon(priority)} />
+                    <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis, notification.typ)} />
                   </NotificationIcon>
                   <NotificationContent>
-                    <NotificationTitle $isUnread={isUnread}>
-                      {notification.title || notification.app_title || 'Bez názvu'}
+                    <NotificationTitle $isUnread={isUnread} $priority={priority}>
+                      {cleanNotificationTitle(notification.nadpis) || notification.app_title || 'Bez názvu'}
                     </NotificationTitle>
-                    {(notification.message || notification.app_message) && (
+                    {(notification.zprava || notification.app_message) && (
                       <NotificationMessage>
-                        {notification.message || notification.app_message}
+                        {notification.zprava || notification.app_message}
                       </NotificationMessage>
                     )}
                     <NotificationMeta>
@@ -637,8 +749,8 @@ export const NotificationDropdown = ({
                         <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px' }} />
                         {getTimeAgo(notification.dt_created || notification.created_at)}
                       </NotificationTime>
-                      {/* Zobraz informaci kdo poslal objednávku místo typu notifikace */}
-                      {notification.type?.includes('order') && notificationData.action_performed_by ? (
+                      {/* Zobraz jméno uživatele, který provedl akci */}
+                      {(notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by) && (
                         <span style={{
                           background: '#f3e8ff',
                           color: '#6b21a8',
@@ -647,19 +759,9 @@ export const NotificationDropdown = ({
                           fontSize: '11px',
                           fontWeight: '500'
                         }}>
-                          👤 {notificationData.action_performed_by}
+                          👤 {notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by}
                         </span>
-                      ) : notification.type ? (
-                        <span style={{
-                          background: '#e5e7eb',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: '500'
-                        }}>
-                          {notification.type}
-                        </span>
-                      ) : null}
+                      )}
                     </NotificationMeta>
                   </NotificationContent>
                   <NotificationActions>

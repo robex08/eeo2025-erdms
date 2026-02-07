@@ -2,12 +2,13 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
 import CalendarPanel from './panels/CalendarPanel';
 import NotificationDropdown from './NotificationDropdown';
+import SystemInfoService from '../services/systemInfoService';
 import SmartTooltip from '../styles/SmartTooltip';
 // translation logic moved to utils/translate
 import { setApiDebugEnabled } from '../services/apiv2';
@@ -21,10 +22,10 @@ import styled from '@emotion/styled';
 // Extracted floating panels
 import { TodoPanel, NotesPanel, ChatPanel } from './panels';
 import { formatDateOnly, prettyDate } from '../utils/format';
-import useThemeMode from '../theme/useThemeMode'; // theme toggle button removed
 import { useFloatingPanels } from '../hooks/useFloatingPanels';
 import { useGlobalVoiceRecognition } from '../hooks/useGlobalVoiceRecognition';
 import { useTodoAlarms } from '../hooks/useTodoAlarms';
+import useActivityTracking from '../hooks/useActivityTracking'; // ✅ NOVÉ: Activity tracking
 import { FloatingAlarmManager } from './FloatingAlarmPopup';
 import { translateToCz } from '../utils/translate';
 import { useDebugPanel } from '../hooks/useDebugPanel';
@@ -38,6 +39,7 @@ import { onTabSyncMessage, BROADCAST_TYPES, initTabSync, closeTabSync } from '..
 import draftManager from '../services/DraftManager'; // CENTRALIZED DRAFT MANAGER
 import { getToolsVisibility } from '../utils/toolsVisibility';
 import UniversalSearchInput from './UniversalSearch/UniversalSearchInput';
+import { checkMaintenanceMode } from '../services/globalSettingsApi';
 
 // Inject small CSS for bell pulse if missing
 if (typeof document !== 'undefined' && !document.getElementById('bell-pulse-styles')) {
@@ -46,6 +48,7 @@ if (typeof document !== 'undefined' && !document.getElementById('bell-pulse-styl
   style.textContent = `
     @keyframes bell-pulse { 0% { transform: scale(1); box-shadow: 0 0 0 rgba(0,0,0,0); } 50% { transform: scale(1.12); box-shadow: 0 6px 18px rgba(59,130,246,0.18); } 100% { transform: scale(1); box-shadow: 0 0 0 rgba(0,0,0,0); } }
     @keyframes mic-pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 50% { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    @keyframes pulse-maintenance { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     [data-bell-pulse='1'] { animation: bell-pulse .9s ease; }
   `;
   document.head.appendChild(style);
@@ -140,27 +143,33 @@ const layoutStyle = css`
   position: relative;
   overflow: hidden; /* vnější stránka bez scrollbaru – scroll uvnitř Content */
 `;
-const Header = styled.header(({ theme }) => `
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryAccent} 70%, ${theme.colors.primaryAccentAlt} 100%);
-  color: #fff;
-  height: var(--app-header-height, 96px);
-  padding: 10px 20px 14px 20px;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  transition: background .3s ease;
-
-  &[data-mode='dark'] {
-    background:${theme.colors.darkBg};
-  }
-`);
+const Header = styled.header(({ theme }) => {
+  // Detekce dev prostředí z URL
+  const isDevEnv = typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/');
+  
+  // Dev: tmavě hnědá → tmavě červená, Produkce: modrý gradient
+  const gradient = isDevEnv
+    ? 'linear-gradient(135deg, #654321 0%, #8B4513 40%, #A0522D 70%, #8B0000 100%)'
+    : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryAccent} 70%, ${theme.colors.primaryAccentAlt} 100%)`;
+  
+  return `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: ${gradient};
+    color: #fff;
+    height: var(--app-header-height, 96px);
+    padding: 10px 20px 14px 20px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    transition: background .3s ease;
+  `;
+});
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
@@ -196,6 +205,33 @@ const CalendarBtn = styled.button`
   margin-right: 0.25rem;
   transform: translateY(2px);
 `;
+
+// 🎯 OPTIMALIZACE: Samostatná komponenta pro čas - re-renderuje se pouze ona
+const LiveDateTime = React.memo(() => {
+  const [currentDateTime, setCurrentDateTime] = useState({
+    date: formatDateOnly(new Date()),
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentDateTime({
+        date: formatDateOnly(new Date()),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }, 60000); // ✅ Aktualizace každou MINUTU (ne každých 10s)
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <>
+      <DateLine>{currentDateTime.date}</DateLine>
+      <TimeLine>{currentDateTime.time}</TimeLine>
+    </>
+  );
+});
+
 // (Removed unused Menu styled component)
 const MenuLeft = styled.div`
   display: flex;
@@ -206,7 +242,7 @@ const MenuLeft = styled.div`
   border-radius: 1.2em;
   box-shadow: 0 2px 8px rgba(34, 197, 94, 0.04);
   min-width:0;
-  overflow-x:hidden;
+  overflow-x:visible; /* Změněno z hidden - aby scrollWidth fungoval pro detekci */
 `;
 const MenuRight = styled.div`
   display: flex;
@@ -228,6 +264,8 @@ const MenuDropdownButton = styled.button`
   border: none;
   color: ${({theme}) => theme.colors.primary};
   font-size: 1.05em;
+  line-height: 1.5;
+  min-height: 2.8em;
   padding: 0.4em 0.85em;
   border-radius: 0.8em;
   transition: all 0.22s ease;
@@ -354,6 +392,8 @@ const MenuLinkLeft = styled(Link, {
   text-decoration: none !important;
   color: ${theme.colors.primary};
   font-size: 1.05em;
+  line-height: 1.5;
+  min-height: 2.8em;
   padding: 0.4em 0.85em;
   border-radius: 0.8em;
   transition: all 0.22s ease;
@@ -545,6 +585,7 @@ const CashBookLink = styled(Link)`
   font-weight: 600;
   box-shadow: 0 3px 10px -2px rgba(30,64,175,0.45), 0 0 0 1px rgba(37,99,235,0.5) inset;
   text-decoration: none !important;
+  position: relative;
 
   display: inline-flex;
   align-items: center;
@@ -572,6 +613,60 @@ const CashBookLink = styled(Link)`
   }
 
   &:active {
+    transform: translateY(0px);
+    transition: all .1s ease;
+  }
+`;
+
+// Styled link pro Zaevidovat fakturu - stejná modrá jako na Invoices25List (#3b82f6)
+const InvoiceCreateLink = styled(Link)`
+  background: #3b82f6; /* světle modrá */
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.25em 1.05em 0.25em 0.9em;
+  font-size: 0.95em;
+  font-weight: 600;
+  box-shadow: 0 3px 10px -2px rgba(59,130,246,0.45), 0 0 0 1px rgba(59,130,246,0.5) inset;
+  text-decoration: none !important;
+  position: relative;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  line-height: 1.1;
+  transition: all .25s ease;
+  cursor: pointer;
+
+  svg,
+  .svg-inline--fa {
+    color: inherit !important;
+    fill: inherit !important;
+    transition: inherit !important;
+  }
+
+  &:link, &:visited {
+    color: #fff;
+    text-decoration: none !important;
+  }
+
+  /* Inactive state */
+  &[data-inactive='true'] {
+    background: rgba(107,114,128,0.4);
+    color: #0f172a;
+    box-shadow: inset 0 1px 0 rgba(15,23,42,0.06);
+    border: 1px solid rgba(15,23,42,0.12);
+    cursor: default;
+
+    &:link, &:visited { color: #0f172a; }
+  }
+
+  &:hover:not([data-inactive='true']) {
+    color: #FFD700 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px -2px rgba(59,130,246,0.6), 0 0 0 1px rgba(96,165,250,0.7) inset;
+  }
+
+  &:active:not([data-inactive='true']) {
     transform: translateY(0px);
     transition: all .1s ease;
   }
@@ -963,7 +1058,22 @@ const GlobalProgressWrapper = styled.div`
 const GlobalProgressBar = styled.div`
   height:100%; background:linear-gradient(90deg,#2e7d32,#4caf50 40%,#66bb6a); box-shadow:0 0 4px rgba(0,0,0,0.25),0 0 6px rgba(76,175,80,0.55); width:0%; transition:width .25s ease;`;
 const GlobalAddBtn = styled(Link)`
-  width:46px; height:46px; border-radius:50%; background:#202d65; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(255,255,255,0.07) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; .svg-inline--fa{color:#fff !important; filter:none !important;} &:hover,&:focus-visible{opacity:.92; outline:none;} &:active{transform:scale(.9);} &[data-status='draft']{ background:#c2410c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(154,52,18,0.65) inset; } &[data-status='edit']{ background:#ea580c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(234,88,12,0.65) inset; }`;
+  width:46px; height:46px; border-radius:50%; background:#166534; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(22, 101, 52, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; .svg-inline--fa{color:#fff !important; filter:none !important;} &:hover,&:focus-visible{opacity:.92; outline:none;} &:active{transform:scale(.9);} &[data-status='draft']{ background:#dc2626; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(185, 28, 28, 0.65) inset; } &[data-status='edit']{ background:#ea580c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(234,88,12,0.65) inset; }`;
+
+const GlobalInvoiceBtn = styled(Link)`
+  position:relative; width:46px; height:46px; border-radius:50%; background:#3b82f6; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(59, 130, 246, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
+  .svg-inline--fa{color:#fff !important; filter:none !important;} 
+  &:hover:not([data-inactive='true']),&:focus-visible:not([data-inactive='true']){opacity:.92; outline:none;} 
+  &:active:not([data-inactive='true']){transform:scale(.9);} 
+  &[data-inactive='true']{ background:#94a3b8; cursor:default; opacity:.25; pointer-events:none; }`;
+
+const GlobalCashBookBtn = styled(Link)`
+  position:relative; width:46px; height:46px; border-radius:50%; background:#1e40af; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(30, 64, 175, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
+  .svg-inline--fa{color:#fff !important; filter:none !important;} 
+  &:hover:not([data-inactive='true']),&:focus-visible:not([data-inactive='true']){opacity:.92; outline:none;} 
+  &:active:not([data-inactive='true']){transform:scale(.9);} 
+  &[data-inactive='true']{ background:#94a3b8; cursor:default; opacity:.25; pointer-events:none; }`;
+
 const DebugDockWrapper = styled.div`position:fixed; left:.75rem; bottom:.75rem; z-index:4000; font-family:monospace; display:flex; flex-direction:column; gap:.55rem;`;
 const DebugToggleBtn = styled.button`
   background:#000; color:#fbbf24; border:1px solid #fbbf24; border-radius:50%; width:46px; height:46px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.08) inset; opacity:.40; transition:opacity .25s ease, transform .25s ease, background .25s ease; backdrop-filter:blur(2px); &:hover,&:focus-visible{opacity:.95; outline:none;} &:active{transform:scale(.9);} `;
@@ -1036,7 +1146,7 @@ const NotificationBellWrapper = ({ userId }) => {
       // 🔄 AUTO-REFRESH: Detekuj nové nepřečtené notifikace o změně stavu objednávky
       // a triggeruj auto-refresh v Orders25List
       const newUnreadOrderNotifications = apiNotifications.filter(n => {
-        const isUnread = !n.is_read || n.is_read === 0;
+        const isUnread = !n.precteno || n.precteno === 0;
         const isOrderStatusChange = n.type && n.type.startsWith('order_status_');
         const hasOrderId = n.order_id && n.order_id > 0;
         return isUnread && isOrderStatusChange && hasOrderId;
@@ -1049,7 +1159,7 @@ const NotificationBellWrapper = ({ userId }) => {
             detail: {
               orderId: notification.order_id,
               orderNumber: notification.order_number,
-              notificationType: notification.type,
+              notificationType: notification.typ,
               timestamp: new Date().toISOString()
             }
           }));
@@ -1083,7 +1193,7 @@ const NotificationBellWrapper = ({ userId }) => {
   // Handlers pro akce v dropdownu
   const handleNotificationClick = async (notification) => {
     // Označit jako přečtenou pokud není
-    const isUnread = !notification.is_read || notification.is_read === 0;
+    const isUnread = !notification.precteno || notification.precteno === 0;
     if (isUnread) {
       await handleMarkAsRead(notification.id);
     }
@@ -1111,7 +1221,7 @@ const NotificationBellWrapper = ({ userId }) => {
         data.order_id = data.id;
       }
 
-      if (notification.type?.includes('order') && data.order_id) {
+      if (notification.typ?.includes('order') && data.order_id) {
         const targetOrderId = parseInt(data.order_id);
         const user_id = userDetail?.user_id;
 
@@ -1184,7 +1294,7 @@ const NotificationBellWrapper = ({ userId }) => {
         // ✅ Navigace
         navigate(`/order-form-25?edit=${data.order_id}`);
         setDropdownVisible(false);
-      } else if (notification.type?.includes('alarm_todo') && data.order_id) {
+      } else if (notification.typ?.includes('alarm_todo') && data.order_id) {
         // ⚠️ Fallback pro alarm_todo bez 'order' v typu - STEJNÝ KÓD JAKO VÝŠE
         const targetOrderId = parseInt(data.order_id);
         const user_id = userDetail?.user_id;
@@ -1260,9 +1370,9 @@ const NotificationBellWrapper = ({ userId }) => {
       const { markNotificationAsRead } = require('../services/notificationsApi');
       await markNotificationAsRead(notificationId);
 
-      // Aktualizuj lokální stav
+      // Aktualizuj lokální stav - použij 'precteno' místo 'is_read'
       setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: 1 } : n)
+        prev.map(n => n.id === notificationId ? { ...n, precteno: 1, is_read: 1 } : n)
       );
 
       // Aktualizuj badge
@@ -1282,9 +1392,9 @@ const NotificationBellWrapper = ({ userId }) => {
       const { markAllNotificationsAsRead } = require('../services/notificationsApi');
       await markAllNotificationsAsRead();
 
-      // Aktualizuj všechny jako přečtené
+      // Aktualizuj všechny jako přečtené - použij 'precteno' místo 'is_read'
       setNotifications(prev =>
-        prev.map(n => ({ ...n, is_read: 1 }))
+        prev.map(n => ({ ...n, precteno: 1, is_read: 1 }))
       );
 
       // Aktualizuj badge na 0
@@ -1307,7 +1417,7 @@ const NotificationBellWrapper = ({ userId }) => {
 
       // Aktualizuj badge pokud byla nepřečtená
       const notification = notifications.find(n => n.id === notificationId);
-      if (notification && (!notification.is_read || notification.is_read === 0)) {
+      if (notification && (!notification.precteno || notification.precteno === 0)) {
         if (bgTasks?.handleUnreadCountChange) {
           const currentCount = bgTasks.unreadNotificationsCount || 0;
           if (currentCount > 0) {
@@ -1400,8 +1510,10 @@ const NotificationBellWrapper = ({ userId }) => {
 };
 
 const Layout = ({ children }) => {
+  // ✅ NOVÉ: Activity tracking - automaticky sleduje route změny
+  useActivityTracking();
+
   // RSS vtipy: kompletně odstraněno (na žádost uživatele)
-  const { mode, toggle } = useThemeMode();
 
   // State pro submenu - Administrace
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
@@ -1415,29 +1527,33 @@ const Layout = ({ children }) => {
   const analyticsButtonRef = useRef(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
-  // Aktualizace pozice dropdownu - Administrace
-  useEffect(() => {
-    if (adminMenuOpen && adminButtonRef.current) {
-      const rect = adminButtonRef.current.getBoundingClientRect();
-      setAdminDropdownPosition({
-        top: rect.bottom + 5,
-        left: rect.left,
-        width: rect.width
-      });
-    }
-  }, [adminMenuOpen]);
+  // State pro submenu - BETA funkce
+  const [betaMenuOpen, setBetaMenuOpen] = useState(false);
+  const betaMenuRef = useRef(null);
+  const betaButtonRef = useRef(null);
+  const [betaDropdownPosition, setBetaDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
-  // Aktualizace pozice dropdownu - Manažerské analýzy
-  useEffect(() => {
-    if (analyticsMenuOpen && analyticsButtonRef.current) {
-      const rect = analyticsButtonRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + 5,
-        left: rect.left,
-        width: rect.width
-      });
-    }
-  }, [analyticsMenuOpen]);
+  // State pro submenu - Přehled (dynamické menu)
+  const [prehledMenuOpen, setPrehledMenuOpen] = useState(false);
+  const prehledMenuRef = useRef(null);
+  const prehledButtonRef = useRef(null);
+  const [prehledDropdownPosition, setPrehledDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+
+  // State pro detekci přetečení menu
+  const menuLeftRef = useRef(null);
+  
+  // State pro název databáze (načte se z API)
+  const [databaseName, setDatabaseName] = useState(null);
+  
+  // State pro systémové informace z API
+  const [systemInfo, setSystemInfo] = useState(null);
+  
+  // State pro maintenance mode indikátor
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+
+  // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
+
+  // Pozice dropdownu pro Manažerské analýzy se počítá synchronně v onClick handleru
 
   // Zavřít submenu při kliku mimo - Administrace
   useEffect(() => {
@@ -1468,6 +1584,36 @@ const Layout = ({ children }) => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [analyticsMenuOpen]);
+
+  // Zavřít submenu při kliku mimo - BETA
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (betaMenuRef.current && !betaMenuRef.current.contains(event.target) &&
+          betaButtonRef.current && !betaButtonRef.current.contains(event.target)) {
+        setBetaMenuOpen(false);
+      }
+    };
+    
+    if (betaMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [betaMenuOpen]);
+
+  // Zavřít submenu při kliku mimo - Přehled
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (prehledMenuRef.current && !prehledMenuRef.current.contains(event.target) &&
+          prehledButtonRef.current && !prehledButtonRef.current.contains(event.target)) {
+        setPrehledMenuOpen(false);
+      }
+    };
+    
+    if (prehledMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [prehledMenuOpen]);
 
   // State pro blikací efekt a aktuální databázi
   const [dbSourceBlinking, setDbSourceBlinking] = useState(false);
@@ -1515,13 +1661,7 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  // Alt + D toggle
-  useEffect(()=>{
-    const handler = (e) => { if (e.altKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); toggle(); } };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [toggle]);
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token } = useContext(AuthContext); // Přidán user_id pro filtrování draftu
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
@@ -1551,6 +1691,36 @@ const Layout = ({ children }) => {
   const [calculatorLastResult, setCalculatorLastResult] = useState(null);
   const [calculatorLastExpression, setCalculatorLastExpression] = useState(null);
 
+  // 🌲 HIERARCHIE: Použít data z AuthContext
+  const hierarchyInfo = useMemo(() => {
+    if (!hierarchyStatus || !hierarchyStatus.hierarchyEnabled || !hierarchyStatus.profileId) {
+      return { enabled: false };
+    }
+    
+    return {
+      profileId: hierarchyStatus.profileId,
+      enabled: true,
+      isImmune: hierarchyStatus.isImmune || false
+    };
+  }, [hierarchyStatus]);
+  
+  // Check if user is ADMINI (not ADMINISTRATOR or SUPERADMIN)
+  const isAdmini = useMemo(() => {
+    return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
+  }, [userDetail]);
+
+  // Check if user has all three permissions (Invoices + Orders + Annual Fees)
+  // These users should also get dropdown menu to save space
+  const hasAllThreePermissions = useMemo(() => {
+    if (!hasPermission) return false;
+    
+    const hasInvoices = hasPermission('INVOICE_VIEW') || hasPermission('INVOICE_EDIT') || hasPermission('INVOICE_MANAGE');
+    const hasOrders = hasPermission('ORDER_VIEW') || hasPermission('ORDER_EDIT') || hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025') || hasPermission('ORDER_OLD');
+    const hasAnnualFees = hasPermission('ANNUAL_FEES_VIEW') || hasPermission('ANNUAL_FEES_EDIT') || hasPermission('ANNUAL_FEES_MANAGE');
+    
+    return hasInvoices && hasOrders && hasAnnualFees;
+  }, [hasPermission, userDetail]);
+
   // Notes recording state (pro floating button)
   const [notesRecording, setNotesRecording] = useState(false);
 
@@ -1567,6 +1737,81 @@ const Layout = ({ children }) => {
       return { notes: true, todo: true, chat: true, kalkulacka: true };
     }
   }, [user_id, toolsVisibilityKey]); // Re-calculate only when user_id or toolsVisibilityKey changes
+
+  // Fetch system info from API (database, environment, etc.)
+  useEffect(() => {
+    const loadSystemInfo = async () => {
+      try {
+        const info = await SystemInfoService.getSystemInfo();
+        setSystemInfo(info);
+        
+        // Backwards compatibility - set database name for existing code
+        if (info?.database?.display_name) {
+          setDatabaseName(info.database.display_name);
+        }
+      } catch (error) {
+        console.warn('Nepodařilo se načíst systémové informace:', error);
+      }
+    };
+    
+    loadSystemInfo();
+  }, []); // Run only once on mount
+
+  // Refresh system info after login
+  useEffect(() => {
+    if (isLoggedIn && token && username) {
+      const refreshSystemInfo = async () => {
+        try {
+          // ⏱️ Malé zpoždění, aby se localStorage stihl naplnit
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Clear cache to force fresh load from API
+          SystemInfoService.clearCache();
+          const info = await SystemInfoService.getSystemInfo();
+          setSystemInfo(info);
+          
+          if (info?.database?.display_name) {
+            setDatabaseName(info.database.display_name);
+          }
+        } catch (error) {
+          console.warn('Nepodařilo se aktualizovat systémové informace:', error);
+        }
+      };
+      
+      refreshSystemInfo();
+    }
+  }, [isLoggedIn, token, username]); // Refresh when user logs in
+
+  // Refresh system info after logout (clear cache when user logs out)
+  useEffect(() => {
+    if (!isLoggedIn) {
+      // Při odhlášení vyčistit cache a resetovat na fallback
+      SystemInfoService.clearCache();
+      setSystemInfo(null);
+      setDatabaseName(null);
+    }
+  }, [isLoggedIn]);
+
+  // Check maintenance mode status periodically
+  useEffect(() => {
+    const checkMaintenance = async () => {
+      try {
+        const maintenanceActive = await checkMaintenanceMode();
+        setIsMaintenanceMode(maintenanceActive);
+      } catch (error) {
+        console.warn('Nepodařilo se zkontrolovat maintenance mode:', error);
+        setIsMaintenanceMode(false);
+      }
+    };
+
+    // Check immediately on mount
+    checkMaintenance();
+
+    // Check every 30 seconds
+    const interval = setInterval(checkMaintenance, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Listen for settings changes (triggered after saving settings in ProfilePage)
   useEffect(() => {
@@ -1625,15 +1870,15 @@ const Layout = ({ children }) => {
     const newNotification = {
       id: notification.id,
       type: 'TODO_ALARM',
-      title: notification.priority === 'HIGH'
+      title: notification.priorita === 'HIGH'
         ? '🚨 TODO Alarm (HIGH)'
         : '⏰ TODO Alarm',
-      message: notification.message,
+      message: notification.zprava,
       dt_created: new Date(notification.timestamp).toISOString(),
       timestamp: notification.timestamp,
       is_read: 0,
       read: false,
-      priority: notification.priority || 'NORMAL',
+      priority: notification.priorita || 'NORMAL',
       data: {
         taskId: notification.taskId,
         alarmTime: notification.alarmTime
@@ -1694,7 +1939,7 @@ const Layout = ({ children }) => {
         const filtered = prev.filter(n => {
           if (n.type === 'TODO_ALARM' && n.data?.taskId === completedTaskId) {
             // Aktualizuj badge
-            if (n.is_read === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
+            if (n.precteno === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
               bgTasksContext.handleUnreadCountChange?.(bgTasksContext.unreadNotificationsCount - 1);
             }
 
@@ -1713,7 +1958,7 @@ const Layout = ({ children }) => {
       const filtered = prev.filter(n => {
         if (n.type === 'TODO_ALARM' && n.data?.taskId === taskId) {
           // Aktualizuj badge (pokud byla nepřečtená)
-          if (n.is_read === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
+          if (n.precteno === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
             bgTasksContext.handleUnreadCountChange?.(bgTasksContext.unreadNotificationsCount - 1);
           }
 
@@ -1858,6 +2103,21 @@ const Layout = ({ children }) => {
   const [editOrderNumber, setEditOrderNumber] = useState('');
   const [orderPhaseInfo, setOrderPhaseInfo] = useState({ phase: 1, isZrusena: false });
 
+  // 🔍 DEBUG: Logovat pouze při změně hodnot (ne při každém renderu)
+  const prevMenuBarState = useRef({ hasDraftOrder: false, isOrderEditMode: false, editOrderId: null, editOrderNumber: '' });
+  useEffect(() => {
+    const current = { hasDraftOrder, isOrderEditMode, editOrderId, editOrderNumber };
+    const prev = prevMenuBarState.current;
+    
+    if (prev.hasDraftOrder !== current.hasDraftOrder ||
+        prev.isOrderEditMode !== current.isOrderEditMode ||
+        prev.editOrderId !== current.editOrderId ||
+        prev.editOrderNumber !== current.editOrderNumber) {
+      
+      prevMenuBarState.current = current;
+    }
+  }, [hasDraftOrder, isOrderEditMode, editOrderId, editOrderNumber]);
+
   // Helper pro opakované vyhodnocení (při loginu, user_id změně, eventech)
   const recalcHasDraft = useCallback(async () => {
     try {
@@ -1987,51 +2247,87 @@ const Layout = ({ children }) => {
     return () => window.removeEventListener('orderDraftChange', handler);
   }, [user_id, recalcHasDraft]);
 
-  // 🎯 [DIRECT STATE] Poslouchat OrderForm25 globální stav (window.__orderFormState)
-  // Jednodušší než draft metadata - OrderForm25 přímo říká "edituji objednávku X"
+  // 🎯 [SYNCHRONNÍ MENUBAR] Poslouchat OrderForm25 stav a OKAMŽITĚ aktualizovat MenuBar
+  // PRIORITA: Layout nastavuje MenuBar → OrderForm se načte podle toho
+  const pendingResetTimeoutRef = useRef(null);
+  
   useEffect(() => {
-    const handler = async (e) => {
+    const handler = (e) => {
       const state = e.detail;
       if (!state) return;
 
-      // 🔧 FIX: Použij state.hasDraft z OrderForm25 (obsahuje info o isChanged)
-      // Pokud není hasDraft v state, fallback na původní logiku
-      const hasDraft = state.hasDraft !== undefined 
-        ? state.hasDraft 
-        : (state.isNewOrder === true || (state.orderId !== null && state.orderId !== undefined));
+      // 🔥 OKAMŽITÉ nastavení MenuBaru podle stavu z OrderForm25
       
-      // 🔧 KRITICKÉ: Pokud dostaneme reset (hasDraft=false), VERIFIKUJ v localStorage
-      // Může se stát že OrderForm25 unmount (navigace pryč), ale draft stále existuje!
-      if (!hasDraft && user_id) {
-        try {
-          draftManager.setCurrentUser(user_id);
-          const actuallyHasDraft = await draftManager.hasDraft();
-          
-          if (actuallyHasDraft) {
-            // Draft existuje! Ignoruj reset a načti draft
-            recalcHasDraft();
-            return;
-          }
-        } catch (e) {
-          // Pokud selže kontrola, pokračuj s reset
+      // 1️⃣ EDITACE (má savedOrderId) → MenuBar = "Editace objednávky"
+      if (state.isEditMode && state.orderId) {
+        if (pendingResetTimeoutRef.current) {
+          clearTimeout(pendingResetTimeoutRef.current);
+          pendingResetTimeoutRef.current = null;
         }
+        
+        setHasDraftOrder(true);
+        setIsOrderEditMode(true);
+        setEditOrderId(state.orderId);
+        setEditOrderNumber(state.orderNumber || '');
+        
+        if (state.currentPhase) {
+          setOrderPhaseInfo({
+            phase: state.currentPhase,
+            isZrusena: state.mainWorkflowState === 'ZRUSENA'
+          });
+        }
+        return;
       }
       
-      // Přímo nastav stavy z OrderForm25
-      setHasDraftOrder(hasDraft);
-      setIsOrderEditMode(state.isEditMode);
-      setEditOrderId(state.orderId);
-      setEditOrderNumber(state.orderNumber);
-
-      // Aktualizuj phase info
-      if (state.currentPhase) {
-        setOrderPhaseInfo({
-          phase: state.currentPhase,
-          isZrusena: state.mainWorkflowState === 'ZRUSENA'
-        });
-      } else if (!hasDraft) {
-        // Reset phase info když formulář zavřen
-        setOrderPhaseInfo({ phase: 1, isZrusena: false });
+      // 2️⃣ KONCEPT (hasDraft=true, ale BEZ savedOrderId) → MenuBar = "Koncept objednávka"
+      if (state.hasDraft === true && !state.isEditMode) {
+        if (pendingResetTimeoutRef.current) {
+          clearTimeout(pendingResetTimeoutRef.current);
+          pendingResetTimeoutRef.current = null;
+        }
+        
+        setHasDraftOrder(true);
+        setIsOrderEditMode(false);
+        setEditOrderId(null);
+        setEditOrderNumber('');
+        setOrderPhaseInfo({ phase: state.currentPhase || 1, isZrusena: false });
+        return;
+      }
+      
+      // 3️⃣ RESET (hasDraft=false nebo undefined) → MenuBar = "Nová objednávka"
+      // POZOR: Zpožděný reset kvůli React remount (strict mode)
+      if (state.hasDraft === false || state.hasDraft === undefined) {
+        if (pendingResetTimeoutRef.current) {
+          clearTimeout(pendingResetTimeoutRef.current);
+          pendingResetTimeoutRef.current = null;
+        }
+        
+        pendingResetTimeoutRef.current = setTimeout(async () => {
+          // Ověř skutečnou existenci draftu
+          if (user_id) {
+            try {
+              draftManager.setCurrentUser(user_id);
+              const actuallyHasDraft = await draftManager.hasDraft();
+              
+              if (actuallyHasDraft) {
+                recalcHasDraft();
+                return;
+              }
+            } catch (e) {
+              // Pokud selže kontrola, pokračuj s reset
+            }
+          }
+          
+          // Draft skutečně neexistuje → RESET
+          setHasDraftOrder(false);
+          setIsOrderEditMode(false);
+          setEditOrderId(null);
+          setEditOrderNumber('');
+          setOrderPhaseInfo({ phase: 1, isZrusena: false });
+          pendingResetTimeoutRef.current = null;
+        }, 150);
+        
+        return;
       }
     };
 
@@ -2042,8 +2338,14 @@ const Layout = ({ children }) => {
       handler({ detail: window.__orderFormState });
     }
 
-    return () => window.removeEventListener('orderFormStateChange', handler);
-  }, [user_id, draftManager, recalcHasDraft]);
+    return () => {
+      window.removeEventListener('orderFormStateChange', handler);
+      if (pendingResetTimeoutRef.current) {
+        clearTimeout(pendingResetTimeoutRef.current);
+        pendingResetTimeoutRef.current = null;
+      }
+    };
+  }, [user_id, recalcHasDraft]);
 
   // Recalc když se změní user_id (přihlášení/odhlášení). Už existující vlastní draft se tak znovu označí.
   useEffect(() => {
@@ -2062,21 +2364,7 @@ const Layout = ({ children }) => {
     }
   }, [isLoggedIn, recalcHasDraft]);
 
-  const [currentDateTime, setCurrentDateTime] = useState({
-    date: formatDateOnly(new Date()),
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // Remove seconds
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentDateTime({
-        date: formatDateOnly(new Date()),
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // Remove seconds
-      });
-    }, 10000); // Refresh every 10 seconds
-
-    return () => clearInterval(interval);
-  }, []);
+  // ✅ ODSTRANĚNO: currentDateTime state přesunut do LiveDateTime komponenty
 
   const handleLogoutClick = async () => {
     // Zavřít všechny panely před odhlášením
@@ -2377,18 +2665,69 @@ const Layout = ({ children }) => {
     font-weight: 700 !important;
   }
       `} />
-  <Header data-mode={mode} data-auth={isLoggedIn ? '1':'0'}>
+  <Header data-auth={isLoggedIn ? '1':'0'}>
         <HeaderLeft>
           <HeaderLogo src={ASSETS.LOGO_ZZS_MAIN} alt="ZZS Středočeského kraje" />
           <div>
             <HeaderTitle>
               Systém správy a workflow objednávek
               <sup style={{ fontSize: '0.5em', marginLeft: '4px', fontWeight: '600', color: '#fbbf24', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
+                {/* MAINTENANCE label při aktivním maintenance módu */}
+                {isMaintenanceMode && (
+                  <span style={{ 
+                    color: '#f97316', 
+                    fontWeight: '700',
+                    backgroundColor: 'rgba(249, 115, 22, 0.2)',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    marginRight: '6px',
+                    border: '1px solid rgba(249, 115, 22, 0.4)',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    animation: 'pulse-maintenance 2s ease-in-out infinite'
+                  }}>
+                    MAINTENANCE
+                  </span>
+                )}
+                {/* DEVELOP label pro dev prostředí */}
+                {typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/') && (
+                  <span style={{ 
+                    color: '#ff6b6b', 
+                    fontWeight: '700',
+                    backgroundColor: 'rgba(220, 38, 38, 0.2)',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    marginRight: '6px',
+                    border: '1px solid rgba(220, 38, 38, 0.4)',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                    display: 'inline-flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '1px'
+                  }}>
+                    <span>DEVELOP</span>
+                    {databaseName && (
+                      <span style={{ 
+                        fontSize: '0.6em', 
+                        fontWeight: '600',
+                        opacity: 0.9
+                      }}>{databaseName}</span>
+                    )}
+                  </span>
+                )}
                 {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
+                {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
+                  <span style={{ 
+                    color: hierarchyInfo.isImmune ? '#9ca3af' : '#10b981', 
+                    fontWeight: '700',
+                    opacity: hierarchyInfo.isImmune ? 0.6 : 1
+                  }}>.H{hierarchyInfo.profileId}</span>
+                )}
               </sup>
             </HeaderTitle>
             {isLoggedIn && (
-              <p style={{ margin: 0, fontSize: '.72rem', letterSpacing: '.35px', fontWeight: 500, fontStyle: 'normal', color: '#ffffff', opacity: 0.95 }}>
+              <p style={{ margin: 0, fontSize: '.85rem', letterSpacing: '.35px', fontWeight: 500, fontStyle: 'normal', color: '#ffffff', opacity: 0.95 }}>
                 {process.env.REACT_ORG_NAME || 'Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace'}
               </p>
             )}
@@ -2434,8 +2773,7 @@ const Layout = ({ children }) => {
                   </CalendarBtn>
                 </>
               )}
-              <DateLine>{currentDateTime.date}</DateLine>
-              <TimeLine>{currentDateTime.time}</TimeLine>
+              <LiveDateTime />
             </DateTimeBlock>
             {isLoggedIn && (
               <CalendarPanel
@@ -2547,12 +2885,39 @@ const Layout = ({ children }) => {
       </Header>
       {isLoggedIn && (
         <MenuBar>
-          <MenuLeft>
-            { hasAdminRole && hasAdminRole() && (
+          <MenuLeft ref={menuLeftRef}>
+            { hasPermission && (
+                hasPermission('USER_MANAGE') || 
+                hasPermission('DICT_MANAGE') || 
+                hasPermission('PHONEBOOK_MANAGE') ||
+                hasPermission('SUPPLIER_MANAGE') ||
+                hasPermission('LOCATIONS_MANAGE') || 
+                hasPermission('POSITIONS_MANAGE') || 
+                hasPermission('DEPARTMENTS_MANAGE') || 
+                hasPermission('ORGANIZATIONS_MANAGE') || 
+                hasPermission('STATES_MANAGE') || 
+                hasPermission('ROLES_MANAGE') || 
+                hasPermission('PERMISSIONS_MANAGE') || 
+                hasPermission('DOCX_TEMPLATES_MANAGE') || 
+                hasPermission('CASH_BOOKS_MANAGE') || 
+                hasPermission('CONTRACT_MANAGE') ||
+                (hasAdminRole && hasAdminRole()) ||
+                (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'))
+              ) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={adminButtonRef}
-                  onClick={() => setAdminMenuOpen(!adminMenuOpen)}
+                  onClick={() => {
+                    if (!adminMenuOpen && adminButtonRef.current) {
+                      const rect = adminButtonRef.current.getBoundingClientRect();
+                      setAdminDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setAdminMenuOpen(!adminMenuOpen);
+                  }}
                   data-open={adminMenuOpen}
                 >
                   <FontAwesomeIcon icon={faCog} /> Administrace
@@ -2570,30 +2935,62 @@ const Layout = ({ children }) => {
                       minWidth: `${adminDropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/address-book" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faAddressBook} /> Adresář
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/dictionaries" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faBook} /> Číselníky
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/users" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faUsers} /> Uživatelé
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/app-settings" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faCog} /> Nastavení aplikace
-                    </MenuDropdownItem>
+                    {(
+                      hasAdminRole() ||
+                      hasPermission('SUPPLIER_MANAGE') || hasPermission('PHONEBOOK_MANAGE')
+                    ) && (
+                      <MenuDropdownItem 
+                        to="/address-book" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faAddressBook} /> Adresář
+                      </MenuDropdownItem>
+                    )}
+                    {(
+                      hasAdminRole() ||
+                      hasPermission('DICT_MANAGE') ||
+                      hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
+                      hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
+                      hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE') ||
+                      hasPermission('ORGANIZATIONS_VIEW') || hasPermission('ORGANIZATIONS_CREATE') || hasPermission('ORGANIZATIONS_EDIT') || hasPermission('ORGANIZATIONS_DELETE') ||
+                      hasPermission('DEPARTMENTS_VIEW') || hasPermission('DEPARTMENTS_CREATE') || hasPermission('DEPARTMENTS_EDIT') || hasPermission('DEPARTMENTS_DELETE') ||
+                      hasPermission('STATES_VIEW') || hasPermission('STATES_CREATE') || hasPermission('STATES_EDIT') || hasPermission('STATES_DELETE') ||
+                      hasPermission('ROLES_VIEW') || hasPermission('ROLES_CREATE') || hasPermission('ROLES_EDIT') || hasPermission('ROLES_DELETE') ||
+                      hasPermission('PERMISSIONS_VIEW') || hasPermission('PERMISSIONS_CREATE') || hasPermission('PERMISSIONS_EDIT') || hasPermission('PERMISSIONS_DELETE') ||
+                      hasPermission('DOCX_TEMPLATES_VIEW') || hasPermission('DOCX_TEMPLATES_CREATE') || hasPermission('DOCX_TEMPLATES_EDIT') || hasPermission('DOCX_TEMPLATES_DELETE') ||
+                      hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
+                    ) && (
+                      <MenuDropdownItem 
+                        to="/dictionaries" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faBook} /> Číselníky
+                      </MenuDropdownItem>
+                    )}
+                    {(hasPermission('USER_VIEW') || hasPermission('USER_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/users" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faUsers} /> Uživatelé
+                      </MenuDropdownItem>
+                    )}
+                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN')) && (
+                      <MenuDropdownItem 
+                        to="/organization-hierarchy" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faSitemap} /> Systém workflow a notifikací
+                      </MenuDropdownItem>
+                    )}
+                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) && (
+                      <MenuDropdownItem 
+                        to="/app-settings" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faCog} /> Nastavení aplikace
+                      </MenuDropdownItem>
+                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}
@@ -2604,26 +3001,106 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faAddressBook} /> Kontakty
               </MenuLinkLeft>
             ) : null }
-            { ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('INVOICE_MANAGE'))) && (
+            
+            {/* Přehled menu - pro ADMINI nebo uživatele se všemi třemi právy */}
+            { (hasAdminRole && hasAdminRole()) || hasAllThreePermissions ? (
+              <MenuDropdownWrapper>
+                <MenuDropdownButton 
+                  ref={prehledButtonRef}
+                  onClick={() => {
+                    if (!prehledMenuOpen && prehledButtonRef.current) {
+                      const rect = prehledButtonRef.current.getBoundingClientRect();
+                      setPrehledDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setPrehledMenuOpen(!prehledMenuOpen);
+                  }}
+                  data-open={prehledMenuOpen}
+                >
+                  <FontAwesomeIcon icon={faList} /> Přehled
+                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
+                    {prehledMenuOpen ? '▴' : '▾'}
+                  </span>
+                </MenuDropdownButton>
+                {prehledMenuOpen && ReactDOM.createPortal(
+                  <MenuDropdownContent 
+                    ref={prehledMenuRef}
+                    $open={prehledMenuOpen}
+                    style={{
+                      top: `${prehledDropdownPosition.top}px`,
+                      left: `${prehledDropdownPosition.left}px`,
+                      minWidth: `${prehledDropdownPosition.width}px`
+                    }}
+                  >
+                    <MenuDropdownItem 
+                      to="/orders25-list" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky
+                    </MenuDropdownItem>
+                    <MenuDropdownItem 
+                      to="/invoices25-list" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} /> Faktury
+                    </MenuDropdownItem>
+                    <MenuDropdownItem 
+                      to="/annual-fees" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
+                    </MenuDropdownItem>
+                    <MenuDropdownItem 
+                      to="/orders" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky 2026
+                    </MenuDropdownItem>
+                  </MenuDropdownContent>,
+                  document.body
+                )}
+              </MenuDropdownWrapper>
+            ) : null }
+            
+            {/* Menu položky pro přehledy - skryto pro ADMINI a uživatele se všemi třemi právy */}
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && ((hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Přehled faktur
+                <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
-            { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Obj před 2026
+                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt;2026)
               </MenuLinkLeft>
             ) }
-            { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Přehled objednávek
+                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
               </MenuLinkLeft>
             ) }
-            { hasAdminRole && hasAdminRole() && (
+            
+            {/* Manažerské analýzy - zobrazit pokud má právo k reportům nebo statistikám */}
+            { hasPermission && (
+                hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT') ||
+                hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')
+              ) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={analyticsButtonRef}
-                  onClick={() => setAnalyticsMenuOpen(!analyticsMenuOpen)}
+                  onClick={() => {
+                    if (!analyticsMenuOpen && analyticsButtonRef.current) {
+                      const rect = analyticsButtonRef.current.getBoundingClientRect();
+                      setDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setAnalyticsMenuOpen(!analyticsMenuOpen);
+                  }}
                   data-open={analyticsMenuOpen}
                 >
                   <FontAwesomeIcon icon={faChartBar} /> Manažerské analýzy
@@ -2641,18 +3118,91 @@ const Layout = ({ children }) => {
                       minWidth: `${dropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/reports" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faChartBar} /> Reporty
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/statistics" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faChartLine} /> Statistiky
-                    </MenuDropdownItem>
+                    {/* Reporty - zobrazit pokud má právo */}
+                    {(hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')) && (
+                      <MenuDropdownItem 
+                        to="/reports" 
+                        onClick={() => setAnalyticsMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faChartBar} /> Reporty
+                      </MenuDropdownItem>
+                    )}
+                    {/* Statistiky - zobrazit pokud má právo */}
+                    {(hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')) && (
+                      <MenuDropdownItem 
+                        to="/statistics" 
+                        onClick={() => setAnalyticsMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faChartLine} /> Statistiky
+                      </MenuDropdownItem>
+                    )}
+                  </MenuDropdownContent>,
+                  document.body
+                )}
+              </MenuDropdownWrapper>
+            ) }
+            
+            {/* 🚀 BETA menu - nové/experimentální funkce - pouze pro ADMINI */}
+            { hasAdminRole && hasAdminRole() && (
+              <MenuDropdownWrapper>
+                <MenuDropdownButton 
+                  ref={betaButtonRef}
+                  onClick={() => {
+                    if (!betaMenuOpen && betaButtonRef.current) {
+                      const rect = betaButtonRef.current.getBoundingClientRect();
+                      setBetaDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setBetaMenuOpen(!betaMenuOpen);
+                  }}
+                  data-open={betaMenuOpen}
+                  style={{
+                    background: betaMenuOpen 
+                      ? 'linear-gradient(90deg, transparent 0 33.333%, rgba(59,130,246,0.25) 33.333% 100%)'
+                      : 'transparent'
+                  }}
+                >
+                  <span style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.25rem 0.6rem',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: 'white',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    borderRadius: '10px',
+                    boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
+                    letterSpacing: '0.5px'
+                  }}>
+                    <FontAwesomeIcon icon={faFlask} style={{ fontSize: '0.9rem' }} />
+                    BETA
+                  </span>
+                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
+                    {betaMenuOpen ? '▴' : '▾'}
+                  </span>
+                </MenuDropdownButton>
+                {betaMenuOpen && ReactDOM.createPortal(
+                  <MenuDropdownContent 
+                    ref={betaMenuRef}
+                    $open={betaMenuOpen}
+                    style={{
+                      top: `${betaDropdownPosition.top}px`,
+                      left: `${betaDropdownPosition.left}px`,
+                      minWidth: `${betaDropdownPosition.width}px`
+                    }}
+                  >
+                    {hasAdminRole && hasAdminRole() && (
+                      <MenuDropdownItem 
+                        to="/orders25-list-v3" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3
+                      </MenuDropdownItem>
+                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}
@@ -2684,6 +3234,33 @@ const Layout = ({ children }) => {
                 </CashBookLink>
               </SmartTooltip>
             ) }
+
+            {/* Zaevidovat fakturu */}
+            {/* Zobrazit pokud: má oprávnění INVOICE_MANAGE */}
+            {hasPermission && hasPermission('INVOICE_MANAGE') && (
+              <SmartTooltip 
+                text={location.pathname === '/invoice-evidence' ? 'Evidence faktury již otevřena' : 'Zaevidovat novou fakturu'} 
+                icon={location.pathname === '/invoice-evidence' ? 'info' : 'success'} 
+                preferredPosition="bottom"
+              >
+                <InvoiceCreateLink 
+                  to={location.pathname === '/invoice-evidence' ? '#' : '/invoice-evidence'}
+                  onClick={(e) => {
+                    if (location.pathname === '/invoice-evidence') { 
+                      e.preventDefault(); 
+                      return; 
+                    }
+                  }}
+                  data-inactive={location.pathname === '/invoice-evidence' ? 'true' : 'false'}
+                  style={{
+                    pointerEvents: location.pathname === '/invoice-evidence' ? 'none' : undefined
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFileInvoice} style={{ fontSize:'1em' }} />
+                  Zaevidovat fakturu
+                </InvoiceCreateLink>
+              </SmartTooltip>
+            )}
 
             {/* JEDNODUCHÁ struktura: Link > ikona + text */}
             {hasPermission && (hasPermission('ORDER_CREATE') || hasPermission('ORDER_SAVE')) && (
@@ -2762,9 +3339,9 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faUser} />
               </MenuIconLink>
             </SmartTooltip>
-            <SmartTooltip text="Změnit přihlašovací heslo" icon="warning" preferredPosition="bottom">
-              <MenuIconLink to="/change-password" title="">
-                <FontAwesomeIcon icon={faKey} />
+            <SmartTooltip text="Nápověda" icon="info" preferredPosition="bottom">
+              <MenuIconLink to="/help" title="">
+                <FontAwesomeIcon icon={faQuestionCircle} />
               </MenuIconLink>
             </SmartTooltip>
             <SmartTooltip text="O aplikaci" icon="info" preferredPosition="bottom">
@@ -2968,12 +3545,106 @@ const Layout = ({ children }) => {
               onClick={() => setCalculatorOpen(o => !o)}
               style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
             >
-              <FontAwesomeIcon icon={faCalculator} />
+              <FontAwesomeIcon icon={faSquareRootAlt} />
             </RoundFab>
           </SmartTooltip>
           )}
 
-          {/* FLOATING IKONA OBJEDNÁVKY - PRVNÍ ZPRAVA (úplně vpravo) */}
+          {/* Floating button pro správu pokladny - VLEVO od faktury */}
+          {(
+            (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) ||
+            (hasPermission && (
+              hasPermission('CASH_BOOK_MANAGE') ||
+              hasPermission('CASH_BOOK_READ_ALL') ||
+              hasPermission('CASH_BOOK_READ_OWN') ||
+              hasPermission('CASH_BOOK_EDIT_ALL') ||
+              hasPermission('CASH_BOOK_EDIT_OWN') ||
+              hasPermission('CASH_BOOK_DELETE_ALL') ||
+              hasPermission('CASH_BOOK_DELETE_OWN') ||
+              hasPermission('CASH_BOOK_EXPORT_ALL') ||
+              hasPermission('CASH_BOOK_EXPORT_OWN') ||
+              hasPermission('CASH_BOOK_CREATE')
+            ))
+          ) && (
+            <SmartTooltip
+              text="Správa pokladní knihy"
+              icon="success"
+              preferredPosition="left"
+            >
+              <GlobalCashBookBtn
+                to="/cash-book"
+                aria-label="Pokladní kniha"
+                title=""
+              >
+                <FontAwesomeIcon icon={faCalculator} />
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#10b981',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  minWidth: '16px',
+                  height: '16px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 3px',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                  pointerEvents: 'none'
+                }}>+</span>
+              </GlobalCashBookBtn>
+            </SmartTooltip>
+          )}
+
+          {/* Floating button pro zaevidování faktury - VLEVO od objednávky */}
+          {hasPermission && hasPermission('INVOICE_MANAGE') && (
+            <SmartTooltip
+              text={location.pathname === '/invoice-evidence' ? 'Evidence faktury již otevřena' : 'Zaevidovat novou fakturu'}
+              icon={location.pathname === '/invoice-evidence' ? 'info' : 'success'}
+              preferredPosition="left"
+            >
+              <GlobalInvoiceBtn
+                to={location.pathname === '/invoice-evidence' ? '#' : '/invoice-evidence'}
+                aria-label="Zaevidovat fakturu"
+                title=""
+                onClick={(e) => {
+                  if (location.pathname === '/invoice-evidence') { 
+                    e.preventDefault(); 
+                    return; 
+                  }
+                }}
+                data-inactive={location.pathname === '/invoice-evidence' ? 'true' : 'false'}
+                style={{ 
+                  pointerEvents: location.pathname === '/invoice-evidence' ? 'none' : undefined
+                }}
+              >
+                <FontAwesomeIcon icon={faFileInvoice} />
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#10b981',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  minWidth: '16px',
+                  height: '16px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 3px',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                  pointerEvents: 'none'
+                }}>+</span>
+              </GlobalInvoiceBtn>
+            </SmartTooltip>
+          )}
+
+          {/* FLOATING IKONA OBJEDNÁVKY - VPRAVO od faktury */}
           <SmartTooltip
             text={(() => {
               // Jednodušší logika: Nova pouze když je zrušená nebo nemá draft
@@ -3179,6 +3850,73 @@ const Layout = ({ children }) => {
         <FooterCenter>
           <span style={{ display: 'block', textAlign: 'center', lineHeight: '1.5' }}>
             © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {process.env.REACT_APP_VERSION}
+            {' | '}
+            <FontAwesomeIcon 
+              icon={faPlug} 
+              style={{ 
+                marginRight: '0.35rem', 
+                color: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '#ff6b6b' : '#94a3b8',
+                fontSize: '0.8em'
+              }} 
+            />
+            <span style={{ 
+              fontFamily: 'monospace', 
+              fontSize: '0.85em',
+              color: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '#ff6b6b' : '#94a3b8',
+              fontWeight: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '700' : '400'
+            }}>
+              {(() => {
+                // Detekce skutečné API cesty
+                const isDevelopment = process.env.NODE_ENV === 'development';
+                const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                
+                // V npm start (development) se používá setupProxy.js který přesměruje /api.eeo -> /dev/api.eeo
+                // V buildu se používá přímá cesta z REACT_APP_API2_BASE_URL
+                if (isDevelopment) {
+                  return '/dev/api.eeo (proxy)';
+                } else if (apiUrl.includes('/dev/')) {
+                  return '/dev/api.eeo';
+                } else {
+                  return '/api.eeo';
+                }
+              })()}
+            </span>
+            {' | '}
+            <FontAwesomeIcon 
+              icon={faDatabase} 
+              style={{ 
+                marginRight: '0.35rem', 
+                color: systemInfo?.environment?.is_dev ? '#22c55e' : '#6366f1',
+                fontSize: '0.8em'
+              }} 
+            />
+            <span 
+              onClick={async () => {
+                try {
+                  SystemInfoService.clearCache();
+                  const info = await SystemInfoService.getSystemInfo();
+                  setSystemInfo(info);
+                  if (info?.database?.display_name) {
+                    setDatabaseName(info.database.display_name);
+                  }
+                } catch (error) {
+                  console.error('Chyba při refresh system info:', error);
+                }
+              }}
+              style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '0.85em',
+                color: systemInfo?.environment?.is_dev ? '#22c55e' : '#6366f1',
+                fontWeight: '500',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                textDecorationStyle: 'dotted',
+                textDecorationColor: 'rgba(255,255,255,0.3)'
+              }}
+              title="Klikni pro aktualizaci názvu databáze z API"
+            >
+              {systemInfo?.database?.display_name || 'NAČÍTÁ...'}
+            </span>
           </span>
         </FooterCenter>
       </Footer>

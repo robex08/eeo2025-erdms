@@ -1,0 +1,285 @@
+.mobile-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  height: 60px;
+  /* Zajištění, že header nebude blokovat scroll */
+  pointer-events: auto;
+}
+
+.mobile-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 100%;
+  max-width: 100%;
+}
+
+/* Tlačítko zpět */
+.mobile-back-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: white;
+}
+
+.mobile-back-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mobile-back-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Logo */
+.mobile-logo {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.mobile-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Název aplikace */
+.mobile-app-title {
+  flex: 1;
+  margin: 0 12px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mobile-app-title h1 {
+  color: white;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.mobile-app-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Akce v hlavičce */
+.mobile-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Tlačítko historie aktivit */
+.mobile-activity-btn {
+  position: relative;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: white;
+  font-size: 18px;
+}
+
+.mobile-activity-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mobile-activity-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #8b5cf6;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid #1e40af;
+}
+
+/* Rok selector */
+.mobile-year-selector {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  height: 40px;
+  padding: 0 12px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+  min-width: 70px;
+}
+
+.mobile-year-selector:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mobile-year-selector option {
+  background: #1e40af;
+  color: white;
+}
+
+/* Tlačítko notifikací */
+.mobile-notification-btn {
+  position: relative;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.mobile-notification-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mobile-notification-btn svg {
+  width: 22px;
+  height: 22px;
+  color: white;
+}
+
+.mobile-notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid #1e40af;
+}
+
+/* Hamburger menu button */
+.mobile-menu-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 0;
+}
+
+.mobile-menu-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mobile-menu-btn span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: white;
+  border-radius: 1px;
+  transition: all 0.3s;
+}
+
+/* Velmi úzké displeje */
+@media (max-width: 360px) {
+  .mobile-app-title h1 {
+    font-size: 18px;
+  }
+  
+  .mobile-app-subtitle {
+    font-size: 10px;
+  }
+  
+  .mobile-logo {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ============================================
+   🌙 DARK MODE - Mobilní Header
+   ============================================ */
+
+[data-theme="dark"] .mobile-header {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .mobile-logo {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .mobile-notification-badge {
+  border-color: #334155;
+}
+
+[data-theme="dark"] .mobile-year-selector {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .mobile-year-selector option {
+  background: #334155;
+  color: white;
+}

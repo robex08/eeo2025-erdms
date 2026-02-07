@@ -1,0 +1,112 @@
+Prijmeni	Jmeno	Titul	Mobil
+Sedláčková	Patricia		605398228
+Himmel	Filip		731137015
+Maruška	Petr		731137106
+Štěpař	Michael		73113003
+Sedláček	Jan	MUDr.	603812244
+Pávková	Kateřina	Mgr.	734673490
+Škornová	Linda	Ing.	705590909
+Dizon	José	MUDr.	725712380
+Klik	Leoš	MUDr.	731137113
+Kolář	Ivo	MUDr.	731137019
+"Machovský "	Jaroslav	MUDr.	731137151
+Maloch	Marek	MUDr.	731137096
+Pěnička	Petr	MUDr.	604382234
+Pospíšil	Jiří	MUDr.	731137123
+Rechová	Alena	MUDr.	605203818
+Rybáček	Viktor	MUDr.	731137111
+Začalová	Barbora	MUDr.	737268795
+Bednářová	Markéta	MUDr.	705879143
+Sybera	Karel		-
+Merhaut	Patrik	Bc.	731137165
+Pleva	Jan		731137166
+Mikula	Milan		604778867
+Stinková	Pavlína		734673561
+Čech	Tomáš		731137065
+Hájek	Jiří		731137152
+Hanibalová-Šimáková	Marie		731137145
+Indrová	Jitka		731124487
+Kubíčková	Štěpánka		731137168
+Němcová	Miroslava		737506897
+Šulgánová	Klára		703847766
+Plíšková	Ivana		731137076
+Štursová	Soňa		731137125
+Švehlová	Iva		731137105
+Nováková	Monika	Bc.	605398242
+Kosprtová	Zdena		705762547
+Matej	Peter		731137156
+Čižmárik	"Ján, MPH"	"Mgr. Bc."	725567579
+Steklá	" Michaela"	Ing.	705782469
+Bezoušková	"Tereza, MBA"	Ing.	734673568
+Černohorský	Jan	Ing.	705764147
+Labuťová	Kateřina		608133667
+Barták	Václav		736131267
+Jankovec	Martin		731137122
+Kolínský	"Petr, DiS."		737213892
+Kotek	Rudolf	Bc.	605203800
+Kunc	Tomáš		705762503
+Richter	Tomáš		731137162
+Novotný	Jiří		605203817
+Pavlič	Milan		737213891
+Pucholt	Jiří		731137114
+Staněk	Josef		731137148
+Stronček	"Tomáš, DiS."		731137018
+Menšíková	"Alice, DiS."	Mgr.	603815389
+Šimůnková	Barbora	Ing.	777871155
+Bartoněk	Jaroslav	Mgr.	737205961
+Holeňa	Jakub	Bc.	731137068
+Chocholová	Jitka	Bc.	731137112
+Mach	"Ondřej, DiS."		731137144
+Plíšková	Ivana		731137076
+"Sodomová "	Martina		731137041
+Stejskalová	Radka	Mgr.	731137063
+Svoboda	Adam	Bc.	731137131
+Nováková	Iveta	Mgr.	731137002
+Tymeš	Jiří	Bc.	731137154
+Věříš	"Miroslav, DiS."		731137133
+Kršková	Alena	Ing.	705879144
+Horáková	Eva		705764148
+"Jonášová "	Hana	Bc.	731137164
+Wlachová	Karolína		705764145
+Voštinka	Vojtěch		705588431
+"Grossmannová "	Renáta	Ing.	705588432
+Procházková	Michaela		705764146
+"Karas "	Tomáš		731137084
+Sosnová	Eva	MUDr.	604779297
+Staš	Jiří	Bc.	604779335
+Vacinová	Radka		705591291
+IT	pohotovost		731137100
+Witosz	Michael		604778276
+"Zahrádková Vavrochová"	Jaroslava		705762547
+Lungerová	Leona		731137089
+Poláčková	Lucie	Mgr.	605203815
+Dvořák	"Vít, DiS."	Mgr.	705891519
+Fajka	Jindřich	Ing.	736131215
+Jirsová	Dana	Bc.	607675334
+Tlustý	"Pavel, DiS."	Bc.	731137167
+Brodecká	Tereza		
+Křížová	Marie		
+Holovský	Robert		731137077
+Stolovská	Martina		605398234
+Balousová	"Tereza, MBA"	Ing.	777551386
+Broučková	Hana		705828709
+Kloták	David		604494730
+Aulická	"Veronika, DiS."		-
+Slezáčková	Martina		734673617
+Veselá	Kateřina		703847765
+Matoušová	Markéta	Bc.	605398218
+Kiláczko	Zoltán		-
+Ciplová	Zdena		-
+Tůmová	Marie		731137052
+Konopásková	Nikola	Ing.	735191710
+Rusý	Pavel	MUDr.	722952400
+"Kvapilová Filipová"	Denisa	Bc.	731137010
+Kraftová	Jana		605398220
+Kachlířová	Štěpánka	Bc.	731137062
+Hylebrant	Marek	Bc.	737239962
+Nováková	Michaela	Ing.	605203819
+Ondrák	Jan		731137137
+Wolf	Miroslav	Bc.	731137146
+Škarvadová	Lenka		
+Nešporová	Martina		
+Šulgán	Štefan		731137008

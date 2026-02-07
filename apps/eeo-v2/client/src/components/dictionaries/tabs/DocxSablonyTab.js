@@ -244,9 +244,10 @@ const Table = styled.table`
   th:nth-of-type(4), td:nth-of-type(4) { width: 135px !important; min-width: 135px !important; max-width: 135px !important; }   /* Verze */
   th:nth-of-type(5), td:nth-of-type(5) { width: 135px !important; min-width: 135px !important; max-width: 135px !important; }   /* Velikost */
   /* Uživatel (6) - žádná pevná šířka, dynamicky zabere zbytek */
-  th:nth-of-type(7), td:nth-of-type(7) { width: 150px !important; min-width: 150px !important; max-width: 150px !important; }   /* Částka */
-  th:nth-of-type(8), td:nth-of-type(8) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Disk */
-  th:nth-of-type(9), td:nth-of-type(9) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Aktivní */
+  th:nth-of-type(7), td:nth-of-type(7) { width: 100px !important; min-width: 100px !important; max-width: 100px !important; }   /* Částka OD */
+  th:nth-of-type(8), td:nth-of-type(8) { width: 100px !important; min-width: 100px !important; max-width: 100px !important; }   /* Částka DO */
+  th:nth-of-type(9), td:nth-of-type(9) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Disk */
+  th:nth-of-type(10), td:nth-of-type(10) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Aktivní */
   th:last-child, td:last-child { width: 120px !important; min-width: 120px !important; max-width: 120px !important; }      /* Akce */
 `;
 
@@ -764,7 +765,7 @@ const BottomSection = styled.div`
   margin-top: 0.5rem;
 `;
 
-// JSON Editor - roztáhne se na zbývající prostor
+// JSON Editor - roztáhne se na zbývající prostor s min. výškou
 const FullWidthJsonEditor = styled.div`
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 1px solid #cbd5e1;
@@ -774,6 +775,7 @@ const FullWidthJsonEditor = styled.div`
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 300px; /* Minimální výška pro JSON editor */
 `;
 
 const JsonHeader = styled.div`
@@ -840,6 +842,7 @@ const JsonEditor = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 200px; /* Minimální výška pro inner editor */
 `;
 
 const JsonTextarea = styled.textarea`
@@ -899,7 +902,7 @@ const JsonHighlightContainer = styled.div`
   position: relative;
   width: 100%;
   flex: 1;
-  min-height: 0;
+  min-height: 180px; /* Minimální výška pro scrollovatelnou oblast */
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -2003,7 +2006,7 @@ const highlightJsonSyntax = (jsonString) => {
 // =============================================================================
 
 // Base URL pro API - včetně api.eeo prefixu
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 // Helper funkce pro vytvoření docxApi s aktuálním username - NOVÁ VERZE
 const createDocxApi = (username) => ({
@@ -2094,7 +2097,7 @@ const createDocxApi = (username) => ({
   // Legacy method pro kompatibilitu
   getDownloadUrl(token, id) {
     // Toto by se už nemělo používat, ale zachováváme pro kompatibilitu
-    return `${process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/'}sablona_docx/download?username=${username || 'system'}&token=${token}&id=${id}`;
+    return `${process.env.REACT_APP_API2_BASE_URL || '/api.eeo/'}sablona_docx/download?username=${username || 'system'}&token=${token}&id=${id}`;
   }
 });
 
@@ -2112,9 +2115,8 @@ const defaultUploadForm = {
   verze: '1.0',
   platnost_od: '',
   platnost_do: '',
-  castka: '', // ⭐ NOVÉ POLE: Částka pro šablonu
-  min_cena: '', // ⭐ Minimální cena (od)
-  max_cena: '', // ⭐ Maximální cena (do)
+  castka_od: '', // ⭐ Částka OD (rozsah)
+  castka_do: '', // ⭐ Částka DO (rozsah)
   mapovani_json: '',
   docx_mapping: {}
 };
@@ -2482,7 +2484,6 @@ const DocxSablonyTab = () => {
 
   // Reset formuláře a otevření upload modalu
   const handleOpenUploadModal = () => {
-    console.log('➕ Otevírám modal pro přidání nové šablony');
 
     // Reset editačního módu
     setIsEditMode(false);
@@ -2506,8 +2507,15 @@ const DocxSablonyTab = () => {
     }
   }, [token, loadData, loadTypyDokumentu]);
 
-  // Validace mappingu při změně
+  // Validace mappingu při změně - POUZE pro JSON editaci bez DOCX souboru
+  // (když máme DOCX soubor, validace přichází z DocxMappingExpandableSection)
   useEffect(() => {
+    // Pokud máme načtený DOCX soubor, validaci dostáváme z DocxMappingExpandableSection
+    if (uploadForm.file || downloadedTemplateFile) {
+      return; // Neprovádíme vlastní validaci
+    }
+    
+    // Validace pouze JSON mappingu bez DOCX souboru
     try {
       const mappingToValidate = uploadForm.docx_mapping || JSON.parse(uploadForm.mapovani_json || '{}');
       
@@ -2527,7 +2535,7 @@ const DocxSablonyTab = () => {
         validFields: 0
       });
     }
-  }, [uploadForm.docx_mapping, uploadForm.mapovani_json]);
+  }, [uploadForm.docx_mapping, uploadForm.mapovani_json, uploadForm.file, downloadedTemplateFile]);
 
   // Automatická oprava mappingu
   const handleAutoFixMapping = () => {
@@ -2722,23 +2730,45 @@ const DocxSablonyTab = () => {
       }
     },
     {
-      accessorKey: 'castka',
-      size: 150,
-      maxSize: 150,
-      minSize: 150,
-      header: () => <div style={{ textAlign: 'right', paddingRight: '1rem' }}>Částka</div>,
+      accessorKey: 'castka_od',
+      size: 100,
+      maxSize: 100,
+      minSize: 100,
+      header: () => <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Od</div>,
       cell: ({ getValue }) => {
-        const castka = getValue();
-        if (castka === null || castka === undefined) {
-          return <div style={{ textAlign: 'right', paddingRight: '1rem', color: '#9ca3af' }}>—</div>;
+        const castka_od = getValue();
+        if (castka_od === null || castka_od === undefined) {
+          return <div style={{ textAlign: 'right', paddingRight: '0.5rem', color: '#9ca3af' }}>—</div>;
         }
         return (
-          <div style={{ textAlign: 'right', paddingRight: '1rem', fontWeight: '600' }}>
+          <div style={{ textAlign: 'right', paddingRight: '0.5rem', fontWeight: '500' }}>
             {new Intl.NumberFormat('cs-CZ', {
               style: 'currency',
               currency: 'CZK',
               maximumFractionDigits: 0
-            }).format(castka)}
+            }).format(castka_od)}
+          </div>
+        );
+      }
+    },
+    {
+      accessorKey: 'castka_do',
+      size: 100,
+      maxSize: 100,
+      minSize: 100,
+      header: () => <div style={{ textAlign: 'right', paddingRight: '1rem' }}>Do</div>,
+      cell: ({ getValue }) => {
+        const castka_do = getValue();
+        if (castka_do === null || castka_do === undefined) {
+          return <div style={{ textAlign: 'right', paddingRight: '1rem', color: '#9ca3af' }}>—</div>;
+        }
+        return (
+          <div style={{ textAlign: 'right', paddingRight: '1rem', fontWeight: '500' }}>
+            {new Intl.NumberFormat('cs-CZ', {
+              style: 'currency',
+              currency: 'CZK',
+              maximumFractionDigits: 0
+            }).format(castka_do)}
           </div>
         );
       }
@@ -2962,12 +2992,18 @@ const DocxSablonyTab = () => {
         // Formátuj velikost souboru pro vyhledávání
         const velikostKB = item.velikost_souboru ? (item.velikost_souboru / 1024).toFixed(1) + ' KB' : '';
 
-        // Formátuj částku pro vyhledávání (včetně nuly)
-        const castkaStr = (item.castka !== null && item.castka !== undefined) ? new Intl.NumberFormat('cs-CZ', {
+        // Formátuj částky pro vyhledávání
+        const castkaOdStr = (item.castka_od !== null && item.castka_od !== undefined) ? new Intl.NumberFormat('cs-CZ', {
           style: 'currency',
           currency: 'CZK',
           maximumFractionDigits: 0
-        }).format(item.castka) : '';
+        }).format(item.castka_od) : '';
+        
+        const castkaDoStr = (item.castka_do !== null && item.castka_do !== undefined) ? new Intl.NumberFormat('cs-CZ', {
+          style: 'currency',
+          currency: 'CZK',
+          maximumFractionDigits: 0
+        }).format(item.castka_do) : '';
 
         // Status aktivní/neaktivní jako text
         const aktivniText = item.aktivni ? 'aktivní' : 'neaktivní';
@@ -2978,6 +3014,9 @@ const DocxSablonyTab = () => {
           removeDiacritics(item.typ_dokumentu || '').includes(searchNormalized) ||
           removeDiacritics((item.verze || '').toString()).includes(searchNormalized) ||
           removeDiacritics(velikostKB).includes(searchNormalized) ||
+          // Částky
+          removeDiacritics(castkaOdStr).includes(searchNormalized) ||
+          removeDiacritics(castkaDoStr).includes(searchNormalized) ||
           // Uživatelé - ROBUSTNÍ hledání (hledá i v jednotlivých slovech)
           removeDiacritics(vytvorilJmeno).includes(searchNormalized) ||
           removeDiacritics(vytvorilPrijmeni).includes(searchNormalized) ||
@@ -2997,8 +3036,6 @@ const DocxSablonyTab = () => {
           // Datum a čas
           removeDiacritics(dtVytvoreni).includes(searchNormalized) ||
           removeDiacritics(dtVytvoreniCas).includes(searchNormalized) ||
-          // Částka
-          removeDiacritics(castkaStr).includes(searchNormalized) ||
           // Název souboru
           removeDiacritics(item.nazev_souboru || '').includes(searchNormalized) ||
           // Aktivní status
@@ -3042,7 +3079,8 @@ const DocxSablonyTab = () => {
       columnSizing: {
         verze: 50,
         velikost_souboru: 80,
-        castka: 80,
+        castka_od: 100,
+        castka_do: 100,
         dt_vytvoreni: 90,
         dt_aktualizace: 90,
         aktivni: 70
@@ -3066,13 +3104,6 @@ const DocxSablonyTab = () => {
     const isEditing = isEditMode && editingTemplate;
     const action = isEditing ? 'editace' : 'nahrání';
 
-    console.log(`🔧 Zahajuji ${action} šablony:`, {
-      isEditing,
-      templateId: editingTemplate?.id,
-      templateName: editingTemplate?.nazev,
-      diskStatus: diskStatus[editingTemplate?.id],
-      hasNewFile: !!uploadForm.file
-    });
 
     // Validace povinných polí
     const errors = [];
@@ -3100,20 +3131,20 @@ const DocxSablonyTab = () => {
       errors.push('Typ dokumentu je povinný');
     }
 
+    // Validace rozsahu částek (od <= do)
+    const castka_od = parseFloat(uploadForm.castka_od);
+    const castka_do = parseFloat(uploadForm.castka_do);
+    
+    if (!isNaN(castka_od) && !isNaN(castka_do) && castka_od > castka_do) {
+      errors.push('Částka OD nemůže být větší než Částka DO');
+    }
+
     if (errors.length > 0) {
       showToast(`Vyplňte povinná pole:\n${errors.join('\n')}`, 'error');
       return;
     }
 
     try {
-      console.log(`🔐 DocxSablonyTab ${action.charAt(0).toUpperCase() + action.slice(1)}:`, {
-        username: user?.username || 'system',
-        filename: uploadForm.file?.name,
-        hasToken: !!token,
-        endpoint: isEditing ?
-          `${API_BASE_URL}sablona_docx/update` :
-          `${API_BASE_URL}sablona_docx/create`
-      });
 
       let result;
 
@@ -3128,21 +3159,15 @@ const DocxSablonyTab = () => {
           formData.append('typ_dokumentu', uploadForm.typ_dokumentu);
           formData.append('aktivni', uploadForm.aktivni ? '1' : '0');
           formData.append('verze', uploadForm.verze);
-          formData.append('castka', uploadForm.castka || '0'); // ⭐ NOVÉ POLE: Částka
-          console.log('💾 [DOCX Tab] Ukládám částku (s novým souborem):', uploadForm.castka);
+          formData.append('castka_od', uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? uploadForm.castka_od : '');
+          formData.append('castka_do', uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? uploadForm.castka_do : '');
           formData.append('platnost_od', uploadForm.platnost_od);
           formData.append('platnost_do', uploadForm.platnost_do);
           // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
           if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
             const docxMappingJson = JSON.stringify(uploadForm.docx_mapping);
             formData.append('mapovani_json', docxMappingJson);
-            console.log('💾 Ukládám DOCX mapování (s novým souborem) jako mapovani_json:', {
-              mapping: uploadForm.docx_mapping,
-              jsonString: docxMappingJson,
-              fieldsCount: Object.keys(uploadForm.docx_mapping).length
-            });
           } else {
-            console.log('⚠️ DOCX mapování je prázdné nebo neexistuje (s novým souborem)');
             formData.append('mapovani_json', uploadForm.mapovani_json || '');
           }
 
@@ -3155,28 +3180,20 @@ const DocxSablonyTab = () => {
             typ_dokumentu: uploadForm.typ_dokumentu,
             aktivni: uploadForm.aktivni ? 1 : 0,
             verze: uploadForm.verze,
-            castka: parseFloat(uploadForm.castka) || 0, // ⭐ NOVÉ POLE: Částka
+            castka_od: uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? parseFloat(uploadForm.castka_od) : null,
+            castka_do: uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? parseFloat(uploadForm.castka_do) : null,
             platnost_od: uploadForm.platnost_od,
             platnost_do: uploadForm.platnost_do,
             mapovani_json: uploadForm.mapovani_json
           };
 
-          console.log('💾 [DOCX Tab] Ukládám částku (bez nového souboru):', updateData.castka, 'původní:', uploadForm.castka);
 
           // Přidáme DOCX mapování pokud existuje
           if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
             updateData.docx_mapping = JSON.stringify(uploadForm.docx_mapping);
-            console.log('💾 Ukládám DOCX mapování (bez souboru):', {
-              mapping: uploadForm.docx_mapping,
-              jsonString: updateData.docx_mapping,
-              fieldsCount: Object.keys(uploadForm.docx_mapping).length
-            });
           } else {
-            console.log('⚠️ DOCX mapování je prázdné nebo neexistuje (bez souboru)');
           }
 
-          console.log('📤 Posílám updateData na backend:', updateData);
-          console.log('📤 castka v updateData:', updateData.castka, typeof updateData.castka);
 
           result = await docxApi.update(token, editingTemplate.id, updateData);
         }
@@ -3189,28 +3206,21 @@ const DocxSablonyTab = () => {
         formData.append('typ_dokumentu', uploadForm.typ_dokumentu);
         formData.append('aktivni', uploadForm.aktivni ? '1' : '0');
         formData.append('verze', uploadForm.verze);
-        formData.append('castka', uploadForm.castka || '0'); // ⭐ NOVÉ POLE: Částka
-        console.log('💾 [DOCX Tab] Ukládám částku (při vytvoření):', uploadForm.castka);
+        formData.append('castka_od', uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? uploadForm.castka_od : '');
+        formData.append('castka_do', uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? uploadForm.castka_do : '');
         formData.append('platnost_od', uploadForm.platnost_od);
         formData.append('platnost_do', uploadForm.platnost_do);
         // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
         if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
           const docxMappingJson = JSON.stringify(uploadForm.docx_mapping);
           formData.append('mapovani_json', docxMappingJson);
-          console.log('💾 Ukládám DOCX mapování (při vytvoření) jako mapovani_json:', {
-            mapping: uploadForm.docx_mapping,
-            jsonString: docxMappingJson,
-            fieldsCount: Object.keys(uploadForm.docx_mapping).length
-          });
         } else {
-          console.log('⚠️ DOCX mapování je prázdné nebo neexistuje (při vytvoření)');
           formData.append('mapovani_json', uploadForm.mapovani_json || '');
         }
 
         result = await docxApi.create(token, formData);
       }
 
-      console.log(`🔥 DOCX ${action.charAt(0).toUpperCase() + action.slice(1)} Result:`, result);
 
       if (result.status === 'ok') {
         showToast(
@@ -3261,13 +3271,6 @@ const DocxSablonyTab = () => {
       const newStatus = !template.aktivni;
       const action = newStatus ? 'aktivace' : 'deaktivace';
 
-      console.log(`🔄 DOCX Template Toggle Status:`, {
-        templateId: template.id,
-        templateName: template.nazev,
-        currentStatus: template.aktivni,
-        newStatus: newStatus,
-        action: action
-      });
 
       // Okamžitá aktualizace lokálního stavu
       setData(prevData =>
@@ -3281,17 +3284,12 @@ const DocxSablonyTab = () => {
       let result;
       if (newStatus) {
         // Aktivace - použij update API
-        console.log(`API CALL: docxApi.update(token, ${template.id}, { aktivni: 1 })`);
         result = await docxApi.update(token, template.id, { aktivni: 1 });
-        console.log(`BE RESPONSE aktivace:`, JSON.stringify(result, null, 2));
       } else {
         // Deaktivace - použij deactivate API
-        console.log(`API CALL: docxApi.deactivate(token, ${template.id})`);
         result = await docxApi.deactivate(token, template.id);
-        console.log(`BE RESPONSE deaktivace:`, JSON.stringify(result, null, 2));
       }
 
-      console.log(`Kontrola vysledku - newStatus: ${newStatus}, result.status: ${result.status}, result.success: ${result.success}`);
 
       if ((newStatus && result.status === 'ok') || (!newStatus && result.success)) {
         showToast(
@@ -3328,11 +3326,6 @@ const DocxSablonyTab = () => {
   // Stažení originální šablony (bez zpracování mapování)
   const handleDownloadOriginal = async (template) => {
     try {
-      console.log('📥 Stahování originální DOCX šablony:', {
-        templateId: template.id,
-        templateName: template.nazev,
-        username: user?.username
-      });
 
       setProgress(true);
       const blob = await docxApi.download(token, template.id);
@@ -3357,12 +3350,6 @@ const DocxSablonyTab = () => {
 
   const handleDownload = async (template) => {
     try {
-      console.log('📥 DOCX Download Request:', {
-        templateId: template.id,
-        templateName: template.nazev,
-        username: user?.username,
-        hasMapping: !!(template.docx_mapping || template.mapovani_json)
-      });
 
       // Zkontroluj, jestli má šablona mapování
       const mappingSource = template.docx_mapping || template.mapovani_json;
@@ -3374,7 +3361,6 @@ const DocxSablonyTab = () => {
 
       if (!hasMapping) {
         // Bez mapování - stáhni přímo
-        console.log('📄 Stahuji šablonu bez mapování (prázdná)');
         const blob = await docxApi.download(token, template.id);
 
         const url = window.URL.createObjectURL(blob);
@@ -3389,7 +3375,6 @@ const DocxSablonyTab = () => {
       }
 
       // S mapováním - stáhni, naplň pole a pak stáhni
-      console.log('📝 Stahuji šablonu s mapováním - budu plnit pole');
       setProgress(true);
 
       // Stáhni šablonu jako File
@@ -3416,9 +3401,6 @@ const DocxSablonyTab = () => {
       // Vytvoř field values s podporou složených polí
       const fieldValues = createFieldValuesFromMapping(enhancedMapping, null);
 
-      console.log('🔧 Zpracovávám DOCX s rozšířenými poli:', fieldValues);
-      console.log('📊 Základní mapování:', mapping);
-      console.log('📊 Rozšířené mapování:', enhancedMapping);
 
       // Zpracuj DOCX - rozbal, nahraď pole, zabal zpět
       const result = await processDocxWithFields({
@@ -3431,7 +3413,6 @@ const DocxSablonyTab = () => {
         throw new Error(result.error);
       }
 
-      console.log('✅ DOCX zpracován:', result.stats);
 
       // Stáhni výsledný soubor
       const url = window.URL.createObjectURL(result.blob);
@@ -3462,11 +3443,6 @@ const DocxSablonyTab = () => {
     }
 
     try {
-      console.log('🎨 Generuji univerzální HTML náhled...', {
-        file: file.name,
-        mappingFields: Object.keys(mapping).length,
-        mapping: mapping
-      });
 
       // Import funkcí pro rozšířené mapování
       const { createEnhancedFieldMapping, createFieldValuesFromMapping, getOrderFieldsForMapping } = await import('../../../utils/docx/docxProcessor.js');
@@ -3481,8 +3457,6 @@ const DocxSablonyTab = () => {
       // Vytvoř field values pro preview (bez skutečných dat)
       const fieldValues = createFieldValuesFromMapping(enhancedMapping, null);
 
-      console.log('📋 Enhanced mapping:', enhancedMapping);
-      console.log('📋 Field values pro náhled:', fieldValues);
 
       // Zpracuj DOCX a nahraď pole - rozbal ZIP, nahraď v XML, zabal zpět
       const result = await processDocxWithFields({
@@ -3495,7 +3469,6 @@ const DocxSablonyTab = () => {
         throw new Error(result.error);
       }
 
-      console.log('📊 Statistiky náhrady:', result.stats);
 
       // Teď konvertuj výsledný DOCX na HTML pomocí mammoth
       const htmlResult = await mammoth.convertToHtml({ arrayBuffer: await result.blob.arrayBuffer() });
@@ -3598,7 +3571,6 @@ const DocxSablonyTab = () => {
       // Uvolni URL po chvíli
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-      console.log(`✅ HTML náhled vygenerován: ${result.stats.replacedCount} polí nahrazeno (včetně ${Object.keys(enhancedMapping).length - Object.keys(mapping).length} složených polí)`);
 
       return { success: true, stats: result.stats, enhancedMapping };
 
@@ -3612,7 +3584,6 @@ const DocxSablonyTab = () => {
   // PREVIEW HANDLER - Otevření náhledu DOCX z tabulky (nyní také v nové záložce)
   // ============================================================================
   const handlePreview = async (template) => {
-    console.log('👁️ Zahajuji preview šablony z tabulky:', template);
 
     // Zkontroluj, zda má šablona mapování
     const mappingSource = template.docx_mapping || template.mapovani_json;
@@ -3639,11 +3610,6 @@ const DocxSablonyTab = () => {
         throw new Error('Nepodařilo se stáhnout soubor šablony');
       }
 
-      console.log('📄 Soubor připraven pro preview:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
 
       setProgress(60);
 
@@ -3715,7 +3681,8 @@ const DocxSablonyTab = () => {
       typ_dokumentu: template.typ_dokumentu || '',
       aktivni: template.aktivni === 1 || template.aktivni === '1' || template.aktivni === true,
       verze: template.verze || '1.0',
-      castka: template.castka !== undefined && template.castka !== null ? template.castka : '', // ⭐ Správné načítání (0 je validní hodnota!)
+      castka_od: template.castka_od !== undefined && template.castka_od !== null ? template.castka_od : '',
+      castka_do: template.castka_do !== undefined && template.castka_do !== null ? template.castka_do : '',
       platnost_od: template.platnost_od || '',
       platnost_do: template.platnost_do || '',
       mapovani_json: mapovaniJsonString,
@@ -3738,10 +3705,8 @@ const DocxSablonyTab = () => {
       // Pokud existuje mapování, zobrazit sekci i bez souboru
       if (existingDocxMapping && Object.keys(existingDocxMapping).length > 0) {
         setMappingSectionVisible(true);
-        console.log('📝 Zobrazuji mapovací sekci s existujícím mapováním bez DOCX souboru');
       } else {
         setMappingSectionVisible(false);
-        console.log('📝 DOCX soubor není k dispozici na disku, mapování nebude zobrazeno');
       }
     }
   };
@@ -3756,17 +3721,10 @@ const DocxSablonyTab = () => {
 
     try {
       // Trash tlačítko volá vždy jen DICT_MANAGE s deleteAction='delete'
-      console.log('🗑️ DOCX Hard Delete Request:', {
-        templateId: selectedTemplate.id,
-        templateName: selectedTemplate.nazev,
-        username: user?.username,
-        userRole: user?.role
-      });
 
       // Hard delete - skutečné smazání z DB i disku
       const result = await docxApi.delete(token, selectedTemplate.id);
 
-      console.log('🗑️ DOCX Hard Delete Result:', result);
 
       if (result.status === 'ok') {
         showToast('✅ Šablona a soubor byly úspěšně smazány z disku', 'success');
@@ -3788,14 +3746,9 @@ const DocxSablonyTab = () => {
       startProgress();
       setVerifyResult(null);
 
-      console.log('🔍 DOCX Verify Request:', {
-        username: user?.username,
-        endpoint: `${API_BASE_URL}sablona_docx/verify`
-      });
 
       const result = await docxApi.verify(token);
 
-      console.log('🔍 DOCX Verify Result:', result);
 
       if (result.status === 'ok') {
         setVerifyResult(result);
@@ -3826,11 +3779,6 @@ const DocxSablonyTab = () => {
         [template.id]: { status: 'checking' }
       }));
 
-      console.log('🔍 DOCX Template Verify Single:', {
-        templateId: template.id,
-        templateName: template.nazev,
-        username: user?.username
-      });
 
       // Použij nové verifySingle API
       const result = await docxApi.verifySingle(token, template.id);
@@ -3912,12 +3860,10 @@ const DocxSablonyTab = () => {
       setMappingSectionVisible(true);
 
       // Automaticky extrahuj pole z nového souboru
-      console.log('🔄 Automaticky aktualizuji pole po výběru nového souboru v edit módu');
       try {
         // Import DOCX procesoru pro extrakci polí
         import('../../../utils/docx/docxProcessor.js').then(({ extractDocxFields }) => {
           extractDocxFields(file).then(fields => {
-            console.log('🔍 Extrahovaná pole z nového souboru:', fields);
             // Pole se automaticky aktualizují v DocxMappingExpandableSection komponentě
             showToast('✅ Pole úspěšně aktualizována z nového souboru', 'success');
           }).catch(error => {
@@ -3936,7 +3882,6 @@ const DocxSablonyTab = () => {
   // Funkce pro odstranění souboru šablony (zachová záznam v DB)
   const handleRemoveTemplateFile = async (template) => {
     try {
-      console.log('🗑️ Odstraňuji soubor šablony:', template);
 
       await removeDocxSablonaFile({
         token,
@@ -4660,37 +4605,81 @@ const DocxSablonyTab = () => {
                               />
                             </InputWithIcon>
                           </FormGroup>
+                        </div>
 
-                          <FormGroup style={{ flex: '0 0 120px' }}>
-                            <Label>Částka</Label>
+                        {/* Částky na samostatném řádku */}
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                          <FormGroup style={{ flex: '0 0 180px' }}>
+                            <Label>Částka od</Label>
                             <InputWithIcon>
                               <Calculator size={16} />
                               <div style={{ position: 'relative' }}>
                                 <Input
                                   type="text"
                                   className="no-spinner"
-                                  value={uploadForm.castka ? new Intl.NumberFormat('cs-CZ').format(uploadForm.castka) : ''}
+                                  value={uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? new Intl.NumberFormat('cs-CZ').format(uploadForm.castka_od) : ''}
                                   onChange={(e) => {
-                                    // Odstranit formátování a ponechat pouze čísla a tečku
                                     const value = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
-                                    setUploadForm(prev => ({ ...prev, castka: value }));
+                                    setUploadForm(prev => ({ ...prev, castka_od: value }));
                                   }}
                                   onBlur={(e) => {
-                                    // Při opuštění pole pouze vyčistit formátování, ale zachovat číslo
                                     const cleanValue = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
                                     const numValue = parseFloat(cleanValue);
 
                                     if (!isNaN(numValue)) {
-                                      setUploadForm(prev => ({ ...prev, castka: numValue.toString() }));
+                                      setUploadForm(prev => ({ ...prev, castka_od: numValue.toString() }));
                                     } else if (cleanValue === '') {
-                                      setUploadForm(prev => ({ ...prev, castka: '' }));
+                                      setUploadForm(prev => ({ ...prev, castka_od: '' }));
                                     }
-                                    // Jinak ponechej původní hodnotu
                                   }}
-                                  placeholder="např. 25 000"
+                                  placeholder="např. 10 000"
                                   style={{
                                     textAlign: 'right',
-                                    paddingRight: '35px' // Místo pro "Kč"
+                                    paddingRight: '35px'
+                                  }}
+                                />
+                                <span style={{
+                                  position: 'absolute',
+                                  right: '8px',
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  color: '#6b7280',
+                                  fontSize: '14px',
+                                  pointerEvents: 'none'
+                                }}>
+                                  Kč
+                                </span>
+                              </div>
+                            </InputWithIcon>
+                          </FormGroup>
+
+                          <FormGroup style={{ flex: '0 0 180px' }}>
+                            <Label>Částka do</Label>
+                            <InputWithIcon>
+                              <Calculator size={16} />
+                              <div style={{ position: 'relative' }}>
+                                <Input
+                                  type="text"
+                                  className="no-spinner"
+                                  value={uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? new Intl.NumberFormat('cs-CZ').format(uploadForm.castka_do) : ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
+                                    setUploadForm(prev => ({ ...prev, castka_do: value }));
+                                  }}
+                                  onBlur={(e) => {
+                                    const cleanValue = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
+                                    const numValue = parseFloat(cleanValue);
+
+                                    if (!isNaN(numValue)) {
+                                      setUploadForm(prev => ({ ...prev, castka_do: numValue.toString() }));
+                                    } else if (cleanValue === '') {
+                                      setUploadForm(prev => ({ ...prev, castka_do: '' }));
+                                    }
+                                  }}
+                                  placeholder="např. 50 000"
+                                  style={{
+                                    textAlign: 'right',
+                                    paddingRight: '35px'
                                   }}
                                 />
                                 <span style={{
@@ -4930,12 +4919,12 @@ const DocxSablonyTab = () => {
                                     {mappingValidation.valid ? (
                                       <>
                                         <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#059669', marginRight: '0.5rem' }} />
-                                        <strong>Mapping je v pořádku</strong> - {mappingValidation.validFields}/{mappingValidation.totalFields} polí validních
+                                        <strong>Mapping je v pořádku</strong> - {mappingValidation.totalFields}/{mappingValidation.totalFields} polí validních
                                       </>
                                     ) : (
                                       <>
                                         <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#dc2626', marginRight: '0.5rem' }} />
-                                        <strong>Nalezeny problémy</strong> - {mappingValidation.errors.length} chyb, {mappingValidation.warnings.length} varování
+                                        <strong>Nalezeny problémy</strong> - {mappingValidation.totalFields - mappingValidation.errors.length} validních, {mappingValidation.errors.length} {mappingValidation.errors.length === 1 ? 'chyba' : mappingValidation.errors.length < 5 ? 'chyby' : 'chyb'}
                                       </>
                                     )}
                                   </div>
@@ -5034,6 +5023,7 @@ const DocxSablonyTab = () => {
                         file={uploadForm.file}
                         mapping={uploadForm.docx_mapping || {}}
                         onMappingChange={handleDocxMappingChange}
+                        onValidationChange={setMappingValidation}
                         expanded={true}
                         onExpandChange={() => {}}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
@@ -5050,6 +5040,7 @@ const DocxSablonyTab = () => {
                         file={downloadedTemplateFile}
                         mapping={uploadForm.docx_mapping || {}}
                         onMappingChange={handleDocxMappingChange}
+                        onValidationChange={setMappingValidation}
                         expanded={mappingSectionVisible}
                         onExpandChange={setMappingSectionVisible}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}

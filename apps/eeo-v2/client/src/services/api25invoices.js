@@ -28,17 +28,17 @@ api25invoices.interceptors.response.use(
   (response) => response,
   (error) => {
     // 🚨 TEMPORARY FIX: Disable auto-logout for delete invoice endpoint
-    // Důvod: BE pravděpodobně vrací 401/403 i s platným tokenem (timezone issue?)
-    const isDeleteInvoice = error.config?.url?.includes('invoices25/delete');
+    // Důvod: BE může vrátit 403 pro permission check (není to auth issue)
+    const isDeleteInvoice = error.config?.url?.includes('/invoices/') && error.config?.url?.includes('/delete'); 
+                           (error.config?.method === 'delete' && error.config?.url?.includes('order-v2/invoices'));
 
     if (isDeleteInvoice) {
       // Vrátit error BEZ triggeru authError event
       return Promise.reject(error);
     }
 
-    // Pro ostatní endpointy zachovat původní chování (auto-logout)
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 🔐 401 Unauthorized - token expired → logout
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -46,6 +46,7 @@ api25invoices.interceptors.response.use(
         window.dispatchEvent(event);
       }
     }
+    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, normalizeApi25InvoicesError to ošetří
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';
@@ -66,6 +67,12 @@ api25invoices.interceptors.response.use(
  * Normalize error messages from API responses
  */
 export function normalizeApi25InvoicesError(err) {
+  // ⚠️ 403 Forbidden by neměl vyvolat odhlášení - pouze zobrazit chybu
+  if (err.response?.status === 403) {
+    const msg = err.response?.data?.message || err.response?.data?.error || 'Nemáte oprávnění k této akci';
+    return msg; // Nevrátíme "Vaše přihlášení vypršelo"
+  }
+  
   if (err.response?.data?.message) return err.response.data.message;
   if (err.response?.data?.error) return err.response.data.error;
   if (err.response?.data?.err) return err.response.data.err;
@@ -166,22 +173,12 @@ export async function uploadInvoiceAttachment25({
 
     const data = response.data;
 
-    // ✅ NOVÁ STRUKTURA: { success: true, message: "...", priloha: {...} }
-    if (data.success === true) {
-      return data;
-    }
-
-    // ✅ STARÁ STRUKTURA: { status: 'ok', ... } (backwards compatibility)
+    // ✅ ORDER V2 STANDARD: status === 'ok' (jediný podporovaný formát)
     if (data.status === 'ok') {
       return data;
     }
 
-    // ❌ CHYBA - NOVÁ STRUKTURA: { success: false, error: "..." }
-    if (data.success === false) {
-      throw new Error(data.error || data.message || 'Chyba při nahrávání přílohy faktury');
-    }
-
-    // ❌ CHYBA - STARÁ STRUKTURA: { status: 'error', message: "..." }
+    // ❌ CHYBA: status === 'error'
     if (data.status === 'error') {
       throw new Error(data.message || 'Chyba při nahrávání přílohy faktury');
     }
@@ -1054,7 +1051,7 @@ export async function deleteInvoice25({ token, username, faktura_id }) {
     };
 
 
-    const response = await api25invoices.post('invoices25/delete', payload, {
+    const response = await api25invoices.post(`order-v2/invoices/${faktura_id}/delete`, payload, {
       timeout: 10000
     });
 
@@ -1252,10 +1249,10 @@ export async function createInvoiceWithAttachmentV2({
       formData.append('klasifikace', String(klasifikace));
     }
 
-    // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
+    // ✅ VŽDY použij V2 API - buď s order_id nebo standalone
     const endpoint = order_id 
       ? `order-v2/${order_id}/invoices/create-with-attachment`
-      : 'invoices25/create-with-attachment';
+      : 'order-v2/invoices/create-with-attachment'; // V2 standalone API
 
     const response = await api25invoices.post(
       endpoint,
@@ -1428,10 +1425,10 @@ export async function createInvoiceV2({
       payload.smlouva_id = Number(smlouva_id);
     }
 
-    // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
+    // ✅ VŽDY použij V2 API - buď s order_id nebo standalone
     const endpoint = order_id 
       ? `order-v2/${order_id}/invoices/create`
-      : 'invoices25/create';
+      : 'order-v2/invoices/create'; // V2 standalone API
     
     // Přidat objednavka_id do payload (může být null)
     if (order_id) {
@@ -1516,9 +1513,8 @@ export async function updateInvoiceV2({
       ...updateData
     };
 
-
     const response = await api25invoices.post(
-      `invoices25/update`,
+      `order-v2/invoices/${invoice_id}/update`,
       payload,
       { timeout: 10000 }
     );
@@ -1579,9 +1575,8 @@ export async function deleteInvoiceV2(invoiceId, token, username, hardDelete = f
       hard_delete: hardDelete ? 1 : 0
     };
 
-    // ✅ V2 API: DELETE /order-v2/invoices/{id}
-    const response = await api25invoices.delete(`order-v2/invoices/${invoiceId}`, {
-      data: payload,
+    // ✅ V2 API: POST /order-v2/invoices/{id}/delete (Apache blokuje DELETE method)
+    const response = await api25invoices.post(`order-v2/invoices/${invoiceId}/delete`, payload, {
       timeout: 10000
     });
 
@@ -1598,6 +1593,63 @@ export async function deleteInvoiceV2(invoiceId, token, username, hardDelete = f
     }
 
     if (data.status === 'ok' || data.success === true || response.status === 200) {
+      return data;
+    }
+
+    throw new Error('Neočekávaná struktura odpovědi ze serveru');
+
+  } catch (error) {
+    throw new Error(normalizeApi25InvoicesError(error));
+  }
+}
+
+/**
+ * Obnovit neaktivní (soft-deleted) fakturu
+ * POST /api.eeo/invoices25/restore
+ * 
+ * ⚠️ Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
+ * 
+ * @param {number} invoiceId - ID faktury k obnovení
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Response data
+ *
+ * @example
+ * await restoreInvoiceV2(123, token, username);
+ */
+export async function restoreInvoiceV2(invoiceId, token, username) {
+  if (!token || !username) {
+    throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
+  }
+
+  if (!invoiceId) {
+    throw new Error('Chybí ID faktury.');
+  }
+
+  try {
+    const payload = {
+      token,
+      username,
+      id: invoiceId
+    };
+
+    const response = await api25invoices.post('invoices25/restore', payload, {
+      timeout: 10000
+    });
+
+    if (response.status !== 200 && response.status !== 201) {
+      throw new Error('Neočekávaný kód odpovědi při obnově faktury');
+    }
+
+    const data = response.data;
+
+    // Kontrola různých formátů odpovědi
+    if (data.err || data.error) {
+      const errorMsg = data.err || data.error || 'Chyba při obnově faktury';
+      throw new Error(errorMsg);
+    }
+
+    if (data.status === 'ok' || data.success === true) {
       return data;
     }
 
@@ -1662,16 +1714,24 @@ export async function listInvoices25({
   filter_status,  // Dashboard filter (paid/unpaid/overdue/without_order/my_invoices)
   search_term,    // 🔍 Globální vyhledávání
   cislo_objednavky,  // 📋 Sloupcový filtr - číslo objednávky
+  filter_datum_doruceni,  // 📋 Sloupcový filtr - datum doručení
   filter_datum_vystaveni,  // 📋 Sloupcový filtr - datum vystavení
   filter_datum_splatnosti,  // 📋 Sloupcový filtr - datum splatnosti
+  filter_dt_aktualizace,  // 📋 Sloupcový filtr - datum aktualizace
   filter_stav,  // 📋 Sloupcový filtr - stav faktury
   filter_vytvoril_uzivatel,  // 📋 Sloupcový filtr - uživatel
-  castka_min,  // 💰 Sloupcový filtr - minimální částka
-  castka_max,  // 💰 Sloupcový filtr - maximální částka
+  filter_fa_typ,  // 📋 Sloupcový filtr - typ faktury (BEZNA, ZALOHOVA, ...)
+  castka_gt,   // 💰 Operátorový filtr - částka větší než (>)
+  castka_lt,   // 💰 Operátorový filtr - částka menší než (<) 
+  castka_eq,   // 💰 Operátorový filtr - částka rovná se (=)
   filter_ma_prilohy,  // 📎 Sloupcový filtr - přílohy
   filter_vecna_kontrola,  // 📋 Sloupcový filtr - věcná kontrola
   filter_vecnou_provedl,  // 📋 Sloupcový filtr - kdo provedl věcnou kontrolu
-  filter_predano_zamestnanec  // 📋 Sloupcový filtr - předáno zaměstnanci
+  filter_predano_zamestnanec,  // 📋 Sloupcový filtr - předáno zaměstnanci
+  filter_kontrola_radku,  // ✅ Sloupcový filtr - kontrola řádku (kontrolovano/nekontrolovano)
+  show_only_inactive,  // 🔧 ADMIN FEATURE: Zobrazení pouze neaktivních faktur (aktivni = 0)
+  order_by,    // 📊 Třídění - sloupec pro řazení
+  order_direction  // 📊 Třídění - směr řazení (ASC/DESC)
 }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
@@ -1703,22 +1763,36 @@ export async function listInvoices25({
     
     // 📋 Sloupcové filtry
     if (cislo_objednavky !== undefined && cislo_objednavky !== '') payload.cislo_objednavky = cislo_objednavky;
+    if (filter_datum_doruceni !== undefined && filter_datum_doruceni !== '') payload.filter_datum_doruceni = filter_datum_doruceni;
     if (filter_datum_vystaveni !== undefined && filter_datum_vystaveni !== '') payload.filter_datum_vystaveni = filter_datum_vystaveni;
     if (filter_datum_splatnosti !== undefined && filter_datum_splatnosti !== '') payload.filter_datum_splatnosti = filter_datum_splatnosti;
+    if (filter_dt_aktualizace !== undefined && filter_dt_aktualizace !== '') payload.filter_dt_aktualizace = filter_dt_aktualizace;
     if (filter_stav !== undefined && filter_stav !== '') payload.filter_stav = filter_stav;
     if (filter_vytvoril_uzivatel !== undefined && filter_vytvoril_uzivatel !== '') payload.filter_vytvoril_uzivatel = filter_vytvoril_uzivatel;
+    if (filter_fa_typ !== undefined && filter_fa_typ !== '') payload.filter_fa_typ = filter_fa_typ;
     
-    // 💰 Filtry pro částku
-    if (castka_min !== undefined && castka_min !== '') payload.castka_min = castka_min;
-    if (castka_max !== undefined && castka_max !== '') payload.castka_max = castka_max;
+    // 💰 Operátorové filtry pro částku (>, <, =)
+    if (castka_gt !== undefined && castka_gt !== '') payload.castka_gt = castka_gt;
+    if (castka_lt !== undefined && castka_lt !== '') payload.castka_lt = castka_lt;
+    if (castka_eq !== undefined && castka_eq !== '') payload.castka_eq = castka_eq;
     
     // 📎 Filtr pro přílohy
     if (filter_ma_prilohy !== undefined && filter_ma_prilohy !== '') payload.filter_ma_prilohy = filter_ma_prilohy;
     
-    // 📋 Filtry pro věcnou kontrolu a předání zaměstnanci
+    // Filtry pro věcnou kontrolu a předání zaměstnanci
     if (filter_vecna_kontrola !== undefined && filter_vecna_kontrola !== '') payload.filter_vecna_kontrola = filter_vecna_kontrola;
     if (filter_vecnou_provedl !== undefined && filter_vecnou_provedl !== '') payload.filter_vecnou_provedl = filter_vecnou_provedl;
     if (filter_predano_zamestnanec !== undefined && filter_predano_zamestnanec !== '') payload.filter_predano_zamestnanec = filter_predano_zamestnanec;
+    
+    // ✅ Filtr pro kontrolu řádku (kontrolovano/nekontrolovano)
+    if (filter_kontrola_radku !== undefined && filter_kontrola_radku !== '') payload.filter_kontrola_radku = filter_kontrola_radku;
+    
+    // 🔧 ADMIN FEATURE: Zobrazení pouze neaktivních faktur
+    if (show_only_inactive !== undefined && show_only_inactive !== '') payload.show_only_inactive = show_only_inactive;
+
+    // 📊 Třídění
+    if (order_by !== undefined && order_by !== '') payload.order_by = order_by;
+    if (order_direction !== undefined && order_direction !== '') payload.order_direction = order_direction;
 
     const response = await api25invoices.post('invoices25/list', payload, {
       timeout: 30000
@@ -1739,6 +1813,9 @@ export async function listInvoices25({
     // ✅ Vrátit data podle BE dokumentace (status: "ok")
     if (data.status === 'ok') {
       return {
+        status: data.status,
+        message: data.message,
+        test: data.test,
         faktury: data.faktury || [],
         pagination: data.pagination || { page: 1, per_page: 50, total: 0, total_pages: 0 },
         statistiky: data.statistiky || null,
@@ -1862,6 +1939,54 @@ export async function getInvoiceById25({ token, username, id }) {
 }
 
 /**
+ * Check if invoice number (fa_cislo_vema) already exists
+ * 
+ * @param {string} username 
+ * @param {string} token 
+ * @param {string} faCisloVema - Invoice number to check
+ * @param {number|null} excludeInvoiceId - ID faktury k vynechání (při editaci)
+ * @returns {Promise<{exists: boolean, invoice?: object}>}
+ */
+export async function checkInvoiceDuplicate(username, token, faCisloVema, excludeInvoiceId = null) {
+  try {
+    const payload = {
+      username,
+      token,
+      fa_cislo_vema: faCisloVema
+    };
+    
+    if (excludeInvoiceId) {
+      payload.exclude_invoice_id = excludeInvoiceId;
+    }
+
+    const response = await api25invoices.post('order-v2/invoices/check-duplicate', payload, {
+      timeout: 5000
+    });
+
+    if (response.status !== 200) {
+      throw new Error('Neočekávaný kód odpovědi při kontrole duplicity');
+    }
+
+    const data = response.data;
+
+    // Kontrola chyb
+    if (data.status === 'error' || data.err || data.error) {
+      const errorMsg = data.message || data.err || data.error || 'Chyba při kontrole duplicity';
+      throw new Error(errorMsg);
+    }
+
+    // Vrátit výsledek
+    return {
+      exists: data.exists === true,
+      invoice: data.invoice || null
+    };
+
+  } catch (error) {
+    throw new Error(normalizeApi25InvoicesError(error));
+  }
+}
+
+/**
  * Export všech funkcí
  */
 export default {
@@ -1883,6 +2008,7 @@ export default {
   listInvoices25,
   getInvoicesByOrder25,
   getInvoiceById25,
+  checkInvoiceDuplicate,
   // Utils
   isAllowedInvoiceFileType,
   isAllowedInvoiceFileSize,

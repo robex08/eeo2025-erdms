@@ -123,14 +123,6 @@ export const loadDraft = (userId) => {
         return null;
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[loadDraft] Metadata:', {
-          timestamp: draftData.__timestamp ? new Date(draftData.__timestamp).toLocaleString('cs-CZ') : 'N/A',
-          version: draftData.__version || '1.0',
-          isAutoSave: draftData.__isAutoSave
-        });
-      }
-
       return draftData;
     }
 

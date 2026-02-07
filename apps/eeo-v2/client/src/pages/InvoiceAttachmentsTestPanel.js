@@ -461,7 +461,6 @@ const InvoiceAttachmentsTestPanel = () => {
     const loadClassifications = async () => {
       try {
         const types = await getTypyFaktur25({ token, username, aktivni: 1 });
-        console.log('📎 Načtené typy faktur:', types);
         setFakturaTypyPrilohOptions(types);
       } catch (error) {
         console.error('Chyba načítání klasifikací:', error);
@@ -635,7 +634,8 @@ const InvoiceAttachmentsTestPanel = () => {
       missingFields.push('Číslo faktury VEMA');
     }
     
-    if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
+    // Částka - povolit i záporné hodnoty a nulu (zálohové faktury, dobropisy)
+    if (!faktura.fa_castka || isNaN(parseFloat(faktura.fa_castka))) {
       missingFields.push('Částka');
     }
     
@@ -808,8 +808,7 @@ const InvoiceAttachmentsTestPanel = () => {
                   {selectedOrder.faktury.map((faktura, index) => {
                     const editedFaktura = editingFaktura[faktura.id] || {};
                     const currentValues = { ...faktura, ...editedFaktura };
-                    
-                    console.log('🔍 Rendering faktura:', { 
+                    console.log('Faktura metadata:', {
                       id: faktura.id, 
                       isTemp: String(faktura.id).startsWith('temp-'),
                       attachmentsCount: faktura.attachments?.length 
@@ -964,10 +963,8 @@ const InvoiceAttachmentsTestPanel = () => {
                           handleInvoiceAttachmentUploaded(faktura.id, uploadedAttachment);
                         }}
                         onCreateInvoiceInDB={async (tempFakturaId) => {
-                          console.log('🎯 onCreateInvoiceInDB called:', { tempFakturaId, currentValues });
                           // Vytvoř fakturu v DB a vrať její reálné ID
                           const created = await handleCreateFaktura(currentValues);
-                          console.log('✅ handleCreateFaktura result:', created);
                           return created?.id || null;
                         }}
                       />

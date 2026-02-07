@@ -560,7 +560,6 @@ const MailTestPanel = () => {
           const data = await response.json();
           if (data.status === 'ok' && data.data) {
             setTemplates(data.data);
-            console.log('📧 Načteno šablon:', data.data.length);
           }
         }
       } catch (error) {
@@ -674,9 +673,6 @@ const MailTestPanel = () => {
     try {
       const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
       const endpoint = `${API_BASE_URL}notify/email`;
-      
-      console.log('📧 Odesílám email na:', endpoint);
-      console.log('📧 Data:', { to: formData.to, subject: formData.subject, from: formData.from, html: formData.isHtml });
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -694,16 +690,12 @@ const MailTestPanel = () => {
         })
       });
 
-      console.log('📧 Response status:', response.status);
-
       let data;
       try {
         data = await response.json();
       } catch (e) {
         throw new Error('Server nevrátil JSON odpověď');
       }
-
-      console.log('📧 Response data:', data);
 
       if (data.status === 'ok' || data.sent === true) {
         setStatus('success');
@@ -830,7 +822,7 @@ const MailTestPanel = () => {
                 });
                 setRawTemplate({
                   id: 'APPROVER_NORMAL',
-                  type: 'order_status_ke_schvaleni',
+                  type: 'ORDER_PENDING_APPROVAL',
                   name: '📋 APPROVER_NORMAL (Oranžová - z DB)',
                   email_subject: 'EEO: Nová objednávka ke schválení #{order_number}',
                   email_body: DB_TEMPLATE_APPROVER_NORMAL,
@@ -871,7 +863,7 @@ const MailTestPanel = () => {
                 });
                 setRawTemplate({
                   id: 'APPROVER_URGENT',
-                  type: 'order_status_ke_schvaleni',
+                  type: 'ORDER_PENDING_APPROVAL',
                   name: '⚠️ APPROVER_URGENT (Červená - z DB)',
                   email_subject: 'EEO: Nová objednávka ke schválení #{order_number}',
                   email_body: DB_TEMPLATE_APPROVER_URGENT,
@@ -912,7 +904,7 @@ const MailTestPanel = () => {
                 });
                 setRawTemplate({
                   id: 'SUBMITTER',
-                  type: 'order_status_ke_schvaleni',
+                  type: 'ORDER_PENDING_APPROVAL',
                   name: '✅ SUBMITTER (Zelená - z DB)',
                   email_subject: 'EEO: Vaše objednávka byla odeslána ke schválení #{order_number}',
                   email_body: DB_TEMPLATE_SUBMITTER,
@@ -924,6 +916,725 @@ const MailTestPanel = () => {
             >
               ✅ SUBMITTER (Zelená - z DB)
             </Button>
+          </div>
+
+          {/* FÁZE 1 - Nové šablony workflow */}
+          <div style={{ 
+            marginTop: '30px', 
+            paddingTop: '20px', 
+            borderTop: '3px solid #3b82f6',
+            background: 'linear-gradient(to right, #dbeafe, #f0f9ff)',
+            padding: '20px',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ 
+              color: '#1e40af', 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              🎨 FÁZE 1 - Nové šablony (2-stavové)
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* SCHVÁLENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_APPROVED');
+                  if (template) {
+                    const demoData = {
+                      '{creator_name}': username || 'Jan Novák',
+                      '{approver_name}': 'Ing. Marie Svobodová',
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{order_id}': '456',
+                      '{predmet}': 'Nákup kancelářského materiálu',
+                      '{strediska}': 'ZZS MSK - Ostrava, ZZS MSK - Opava',
+                      '{financovani}': 'Rozpočet provozní - kapitola 5',
+                      '{financovani_poznamka}': 'Standardní provozní náklady',
+                      '{amount}': '15 840 Kč',
+                      '{approval_date}': new Date().toLocaleString('cs-CZ')
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#059669', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ SCHVÁLENA - Pro tvůrce (Zelená)
+              </Button>
+
+              {/* SCHVÁLENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_APPROVED');
+                  if (template) {
+                    const demoData = {
+                      '{creator_name}': username || 'Jan Novák',
+                      '{approver_name}': 'Ing. Marie Svobodová',
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{order_id}': '456',
+                      '{predmet}': 'Nákup kancelářského materiálu',
+                      '{strediska}': 'ZZS MSK - Ostrava, ZZS MSK - Opava',
+                      '{financovani}': 'Rozpočet provozní - kapitola 5',
+                      '{financovani_poznamka}': 'Standardní provozní náklady',
+                      '{amount}': '15 840 Kč',
+                      '{approval_date}': new Date().toLocaleString('cs-CZ')
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#3b82f6', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ SCHVÁLENA - Pro schvalovatele (Modrá)
+              </Button>
+
+              {/* ZAMÍTNUTA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_REJECTED');
+                  if (template) {
+                    const demoData = {
+                      '{creator_name}': username || 'Jan Novák',
+                      '{approver_name}': 'Ing. Marie Svobodová',
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{order_id}': '456',
+                      '{predmet}': 'Nákup kancelářského materiálu',
+                      '{strediska}': 'ZZS MSK - Ostrava',
+                      '{amount}': '15 840 Kč',
+                      '{rejection_date}': new Date().toLocaleString('cs-CZ'),
+                      '{rejection_comment}': 'Objednávka neobsahuje kompletní specifikaci požadovaného zboží. Prosím doplňte katalogová čísla tonerů.'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#dc2626', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ❌ ZAMÍTNUTA - Pro tvůrce (Červená)
+              </Button>
+
+              {/* ZAMÍTNUTA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_REJECTED');
+                  if (template) {
+                    const demoData = {
+                      '{creator_name}': username || 'Jan Novák',
+                      '{approver_name}': 'Ing. Marie Svobodová',
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{order_id}': '456',
+                      '{predmet}': 'Nákup kancelářského materiálu',
+                      '{strediska}': 'ZZS MSK - Ostrava',
+                      '{amount}': '15 840 Kč',
+                      '{rejection_date}': new Date().toLocaleString('cs-CZ'),
+                      '{rejection_comment}': 'Objednávka neobsahuje kompletní specifikaci požadovaného zboží. Prosím doplňte katalogová čísla tonerů.'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#f97316', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ❌ ZAMÍTNUTA - Pro zamítajícího (Oranžová)
+              </Button>
+
+              {/* VRÁCENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_AWAITING_CHANGES');
+                  if (template) {
+                    const demoData = {
+                      '{creator_name}': username || 'Jan Novák',
+                      '{approver_name}': 'Ing. Marie Svobodová',
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{order_id}': '456',
+                      '{predmet}': 'Nákup kancelářského materiálu',
+                      '{strediska}': 'ZZS MSK - Ostrava',
+                      '{amount}': '15 840 Kč',
+                      '{revision_date}': new Date().toLocaleString('cs-CZ'),
+                      '{revision_comment}': 'Prosím doplňte následující:\n1. Katalogová čísla tonerů\n2. Počet balení papíru A4\n3. Typ desek'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#f97316', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ⏸️ VRÁCENA - Pro tvůrce (Oranžová)
+              </Button>
+
+              {/* VRÁCENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_AWAITING_CHANGES');
+                  if (template) {
+                    const demoData = {
+                      '{creator_name}': username || 'Jan Novák',
+                      '{approver_name}': 'Ing. Marie Svobodová',
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{order_id}': '456',
+                      '{predmet}': 'Nákup kancelářského materiálu',
+                      '{strediska}': 'ZZS MSK - Ostrava',
+                      '{amount}': '15 840 Kč',
+                      '{revision_date}': new Date().toLocaleString('cs-CZ'),
+                      '{revision_comment}': 'Prosím doplňte následující:\n1. Katalogová čísla tonerů\n2. Počet balení papíru A4\n3. Typ desek'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#3b82f6', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ⏸️ VRÁCENA - Pro vracejícího (Modrá)
+              </Button>
+            </div>
+            
+            <div style={{ 
+              marginTop: '15px', 
+              padding: '12px', 
+              background: '#f0f9ff', 
+              border: '1px solid #bae6fd',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#0c4a6e'
+            }}>
+              <strong>ℹ️ Info:</strong> Nové šablony mají 2 varianty (RECIPIENT/SUBMITTER) místo 3 jako u KE SCHVALENI.
+              <br/>RECIPIENT = příjemce akce (tvůrce), SUBMITTER = autor akce (schvalovatel).
+            </div>
+          </div>
+
+          {/* ========== FÁZE 2 ========== */}
+          <div style={{ 
+            marginTop: '20px', 
+            paddingTop: '20px', 
+            borderTop: '3px solid #10b981',
+            background: 'linear-gradient(to right, #d1fae5, #ecfdf5)',
+            padding: '20px',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ 
+              color: '#065f46', 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              📦 FÁZE 2 - Komunikace s dodavatelem (2-stavové)
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* ODESLÁNA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_SENT_TO_SUPPLIER');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{action_date}': new Date().toLocaleString('cs-CZ'),
+                      '{total_amount}': '15 840',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#3b82f6', fontSize: '14px', padding: '10px 20px' }}
+              >
+                📤 ODESLÁNA - Pro příjemce (Modrá)
+              </Button>
+
+              {/* ODESLÁNA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_SENT_TO_SUPPLIER');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{action_date}': new Date().toLocaleString('cs-CZ'),
+                      '{total_amount}': '15 840',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                📤 ODESLÁNA - Pro autora (Zelená)
+              </Button>
+
+              {/* POTVRZENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_CONFIRMED_BY_SUPPLIER');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{action_date}': new Date().toLocaleString('cs-CZ'),
+                      '{total_amount}': '15 840',
+                      '{expected_delivery}': '5-7 pracovních dní',
+                      '{supplier_comment}': 'Objednávka bude expedována zítra, dodání do 3 dnů.',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ POTVRZENA - Pro příjemce (Zelená)
+              </Button>
+
+              {/* POTVRZENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_CONFIRMED_BY_SUPPLIER');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{action_date}': new Date().toLocaleString('cs-CZ'),
+                      '{expected_delivery}': '5-7 pracovních dní',
+                      '{supplier_comment}': 'Objednávka bude expedována zítra, dodání do 3 dnů.',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ POTVRZENA - Pro autora (Zelená)
+              </Button>
+            </div>
+            
+            <div style={{ 
+              marginTop: '15px', 
+              padding: '12px', 
+              background: '#d1fae5', 
+              border: '1px solid #a7f3d0',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#065f46'
+            }}>
+              <strong>📦 Info:</strong> Šablony pro komunikaci s dodavatelem po schválení objednávky.
+              <br/>RECIPIENT = příjemce info (manager), SUBMITTER = autor objednávky (tvůrce).
+            </div>
+          </div>
+
+          {/* ========== FÁZE 3 ========== */}
+          <div style={{ 
+            marginTop: '20px', 
+            paddingTop: '20px', 
+            borderTop: '3px solid #10b981',
+            background: 'linear-gradient(to right, #d1fae5, #ecfdf5)',
+            padding: '20px',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ 
+              color: '#065f46', 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              💰 FÁZE 3 - Faktury (2-stavové)
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* FAKTURA SCHVÁLENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_INVOICE_APPROVED');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{invoice_number}': 'FA-2025-00456',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{invoice_amount}': '15 840',
+                      '{approval_date}': new Date().toLocaleString('cs-CZ'),
+                      '{due_date}': new Date(Date.now() + 14*24*60*60*1000).toLocaleDateString('cs-CZ'),
+                      '{invoice_detail_url}': 'https://erdms.zachranka.cz/faktura/456',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{invoice_number}', 'FA-2025-00456'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                💰 FAKTURA SCHVÁLENA - Pro příjemce (Zelená)
+              </Button>
+
+              {/* FAKTURA SCHVÁLENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'ORDER_INVOICE_APPROVED');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{invoice_number}': 'FA-2025-00456',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{invoice_amount}': '15 840',
+                      '{approval_date}': new Date().toLocaleString('cs-CZ'),
+                      '{due_date}': new Date(Date.now() + 14*24*60*60*1000).toLocaleDateString('cs-CZ'),
+                      '{invoice_detail_url}': 'https://erdms.zachranka.cz/faktura/456',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{invoice_number}', 'FA-2025-00456'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                💰 FAKTURA SCHVÁLENA - Pro autora (Zelená)
+              </Button>
+            </div>
+            
+            <div style={{ 
+              marginTop: '15px', 
+              padding: '12px', 
+              background: '#d1fae5', 
+              border: '1px solid #a7f3d0',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#065f46'
+            }}>
+              <strong>💰 Info:</strong> Šablona pro notifikaci o schválení faktury k objednávce.
+              <br/>RECIPIENT = příjemce info (ekonom), SUBMITTER = autor objednávky.
+            </div>
+          </div>
+
+          {/* ========== FÁZE 4 ========== */}
+          <div style={{ 
+            marginTop: '20px', 
+            paddingTop: '20px', 
+            borderTop: '3px solid #8b5cf6',
+            background: 'linear-gradient(to right, #ede9fe, #f5f3ff)',
+            padding: '20px',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ 
+              color: '#6b21a8', 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              🔍 FÁZE 4 - Kontrola kvality (2-stavové)
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* KONTROLA POTVRZENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_APPROVED');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{control_comment}': 'Vše v pořádku, objednávka splňuje všechna kritéria.',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ KONTROLA OK - Pro příjemce (Zelená)
+              </Button>
+
+              {/* KONTROLA POTVRZENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_APPROVED');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{control_comment}': 'Vše v pořádku, objednávka splňuje všechna kritéria.',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ KONTROLA OK - Pro autora (Zelená)
+              </Button>
+
+              {/* KONTROLA ZAMÍTNUTA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_REJECTED');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{rejection_reason}': 'Chybí následující:\n1. Kompletní specifikace zboží\n2. Katalogová čísla\n3. Podpis příkazce na příloze',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#dc2626', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ❌ KONTROLA ZAMÍTNUTA - Pro příjemce (Červená)
+              </Button>
+
+              {/* KONTROLA ZAMÍTNUTA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_REJECTED');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{rejection_reason}': 'Chybí následující:\n1. Kompletní specifikace zboží\n2. Katalogová čísla\n3. Podpis příkazce na příloze',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#f97316', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ❌ KONTROLA ZAMÍTNUTA - Pro autora (Oranžová)
+              </Button>
+            </div>
+            
+            <div style={{ 
+              marginTop: '15px', 
+              padding: '12px', 
+              background: '#ede9fe', 
+              border: '1px solid #ddd6fe',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#6b21a8'
+            }}>
+              <strong>🔍 Info:</strong> Šablony pro výsledek kontroly kvality objednávky.
+              <br/>RECIPIENT = příjemce info (manager), SUBMITTER = autor objednávky.
+            </div>
           </div>
         </FormGroup>
 

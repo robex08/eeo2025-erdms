@@ -85,7 +85,8 @@ export const clearAllUserData = () => {
     'userDetail_user_', // userDetail_user_123
     'translation_dict_user_', // translation_dict_user_123
     'order_open_for_edit_user_', // order_open_for_edit_user_123
-    'orderData_user_',  // orderData_user_123 (pokud by se používalo)
+    'orderData_',       // orderData_123 (OrderFormTabs)
+    'activeOrderEditId_', // activeOrderEditId_123 (InvoiceEvidencePage, Orders25List)
     'cashbook_'         // 💰 cashbook_userId_assignmentId_year_month - CITLIVÁ FINANČNÍ DATA
   ];
 

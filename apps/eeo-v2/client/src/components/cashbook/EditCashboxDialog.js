@@ -2,9 +2,10 @@ import React, { useState, useEffect, useContext } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
-import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search } from 'lucide-react';
+import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search, DollarSign } from 'lucide-react';
 import cashbookAPI from '../../services/cashbookService';
 import { getUsekyList } from '../../services/apiv2Dictionaries';
+import { fetchAllUsers } from '../../services/api2auth';
 import { AuthContext } from '../../context/AuthContext';
 import { ToastContext } from '../../context/ToastContext';
 import DatePicker from '../DatePicker';
@@ -114,42 +115,59 @@ const CloseButton = styled.button`
 `;
 
 const ModalBody = styled.div`
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 0;
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  max-height: calc(75vh - 140px);
+  padding: 1.25rem 1.5rem;
+`;
+
+const TopSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
 `;
 
 const LeftSection = styled.div`
-  padding: 2rem;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
-  overflow-y: auto;
+  padding-right: 0.75rem;
+  border-right: 2px solid #e2e8f0;
 `;
 
 const RightSection = styled.div`
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  gap: 1rem;
+  padding-left: 0.75rem;
+`;
+
+const BottomSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e2e8f0;
+`;
+
+const BottomLeftColumn = styled.div`
+  padding-right: 0.75rem;
+  border-right: 2px solid #e2e8f0;
+`;
+
+const BottomRightColumn = styled.div`
+  padding-left: 0.75rem;
 `;
 
 const SectionTitle = styled.h3`
-  margin: 0 0 1.25rem 0;
-  font-size: 0.875rem;
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #475569;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
 
   svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     color: #64748b;
   }
 `;
@@ -185,19 +203,19 @@ const WarningText = styled.div`
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.875rem;
 `;
 
 const FormRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
   font-weight: 500;
   font-size: 0.8125rem;
   color: #1e293b;
@@ -213,10 +231,10 @@ const Label = styled.label`
 
 const Input = styled.input`
   width: 100%;
-  padding: 0.625rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid ${props => props.$error ? '#f87171' : '#e2e8f0'};
   border-radius: 6px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   transition: all 0.15s;
   font-family: inherit;
   background: white;
@@ -236,6 +254,34 @@ const Input = styled.input`
     color: #94a3b8;
     cursor: not-allowed;
   }
+`;
+
+const InputWithCurrency = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const CurrencyInput = styled(Input)`
+  padding-right: 2.5rem;
+  text-align: right;
+  
+  /* Odstranění spin tlačítek */
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  -moz-appearance: textfield;
+`;
+
+const CurrencySuffix = styled.span`
+  position: absolute;
+  right: 0.75rem;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  pointer-events: none;
 `;
 
 const Textarea = styled.textarea`
@@ -267,22 +313,31 @@ const Textarea = styled.textarea`
   }
 `;
 
+const HelpText = styled.div`
+  color: #64748b;
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f1f5f9;
+  border-radius: 4px;
+  line-height: 1.4;
+`;
+
 const UsersList = styled.div`
   flex: 1;
-  overflow-y: auto;
-  min-height: 200px;
+  min-height: auto;
 `;
 
 const UserItem = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
+  flex-direction: column;
+  padding: 0.625rem 0.75rem;
   background: white;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  margin-bottom: 0.625rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
   transition: all 0.15s;
+  gap: 0.5rem;
 
   &:hover {
     border-color: #cbd5e1;
@@ -296,29 +351,29 @@ const UserItem = styled.div`
 
 const UserInfo = styled.div`
   display: flex;
-  align-items: flex-start;
-  gap: 0.875rem;
-  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
 `;
 
 const UserIcon = styled.div`
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   flex-shrink: 0;
 `;
 
 const UserDetails = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.5rem;
   flex: 1;
   min-width: 0;
 `;
@@ -326,27 +381,39 @@ const UserDetails = styled.div`
 const UserName = styled.span`
   font-weight: 600;
   color: #0f172a;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 `;
 
 const UserMeta = styled.span`
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #64748b;
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 `;
 
+const UserBottomRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-left: 2.5rem; /* Offset pro ikonu vlevo */
+`;
+
 const MainBadge = styled.span`
-  padding: 0.25rem 0.625rem;
+  padding: 0.125rem 0.5rem;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border-radius: 4px;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
 `;
 
 const UserActions = styled.div`
@@ -498,36 +565,36 @@ const CancelEditButton = styled.button`
 `;
 
 const AddUserSection = styled.div`
-  padding: 1.25rem;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
 `;
 
 const AddUserRow = styled.div`
-  display: flex;
-  gap: 0.625rem;
-  margin-bottom: 0.75rem;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
 `;
 
 const CheckboxLabel = styled.label`
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  font-size: 0.8125rem;
-  color: #334155;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #475569;
   cursor: pointer;
-  user-select: none;
 
   input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
     cursor: pointer;
-    accent-color: #3b82f6;
   }
 `;
 
@@ -600,7 +667,6 @@ const UsekName = styled.span`
 `;
 
 const AddButton = styled.button`
-  width: 100%;
   padding: 0.625rem 1rem;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
@@ -613,7 +679,8 @@ const AddButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
+  white-space: nowrap;
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
@@ -626,8 +693,8 @@ const AddButton = styled.button`
   }
 
   svg {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
   }
 `;
 
@@ -814,7 +881,7 @@ const SearchableSelectWrapper = styled.div`
 
 const SearchableSelectButton = styled.div`
   width: 100%;
-  padding: 0.625rem 2.25rem 0.625rem ${props => props.$hasIcon ? '2.5rem' : '0.75rem'};
+  padding: 0.625rem 2rem 0.625rem ${props => props.$hasIcon ? '2.5rem' : '0.75rem'};
   border: 1px solid ${props => props.$error ? '#f87171' : '#e2e8f0'};
   border-radius: 6px;
   font-size: 0.875rem;
@@ -840,6 +907,14 @@ const SearchableSelectButton = styled.div`
     position: absolute;
     left: 0.75rem;
     color: #94a3b8;
+  }
+
+  .chevron {
+    position: absolute;
+    right: 0.5rem;
+    color: #94a3b8;
+    transition: transform 0.2s;
+    pointer-events: none;
   }
 `;
 
@@ -913,7 +988,7 @@ const SearchClearButton = styled.button`
 
 const ClearButton = styled.button`
   position: absolute;
-  right: 2.25rem;
+  right: 1.75rem;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -925,7 +1000,7 @@ const ClearButton = styled.button`
   align-items: center;
   justify-content: center;
   transition: color 0.2s;
-  z-index: 1;
+  z-index: 2;
 
   &:hover {
     color: #475569;
@@ -967,7 +1042,7 @@ const NoResults = styled.div`
 `;
 
 // SearchableSelect Component
-const SearchableSelect = ({ value, onChange, options, placeholder, disabled, icon }) => {
+const SearchableSelect = React.forwardRef(({ value, onChange, options, placeholder, disabled, icon, autoFocus }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -975,6 +1050,36 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
   const buttonRef = React.useRef(null);
   const dropdownRef = React.useRef(null);
   const searchInputRef = React.useRef(null);
+
+  // Expose buttonRef to parent via ref prop
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (buttonRef.current) {
+        buttonRef.current.focus();
+        // Automaticky otevřít dropdown při focus
+        if (!disabled) {
+          setIsOpen(true);
+        }
+      }
+    },
+    click: () => {
+      if (buttonRef.current && !disabled) {
+        buttonRef.current.click();
+      }
+    }
+  }));
+
+  // Auto-focus on mount if autoFocus prop is true
+  useEffect(() => {
+    if (autoFocus && buttonRef.current && !disabled) {
+      // Delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        buttonRef.current?.focus();
+        setIsOpen(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus, disabled]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1052,7 +1157,11 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
             <X size={14} />
           </ClearButton>
         )}
-        <ChevronDown size={16} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+        <ChevronDown 
+          size={16} 
+          className="chevron"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'none' }} 
+        />
       </SearchableSelectButton>
 
       {isOpen && ReactDOM.createPortal(
@@ -1100,7 +1209,9 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled, ico
       )}
     </SearchableSelectWrapper>
   );
-};
+});
+
+SearchableSelect.displayName = 'SearchableSelect';
 
 // =============================================================================
 // KOMPONENTA
@@ -1110,10 +1221,14 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   const { token, user } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
+  // Ref pro SearchableSelect pro přidání uživatelů
+  const addUserSelectRef = React.useRef(null);
+
   const [formData, setFormData] = useState({
     nazev: '',
     kod_pracoviste: '',
     nazev_pracoviste: '',
+    pocatecni_stav_rok: '', // 🆕 Počáteční stav pro nový rok
     ciselna_rada_vpd: '',
     vpd_od_cislo: 1,
     ciselna_rada_ppd: '',
@@ -1143,6 +1258,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
         nazev: cashbox.nazev || '',
         kod_pracoviste: cashbox.kod_pracoviste || '',
         nazev_pracoviste: cashbox.nazev_pracoviste || '',
+        pocatecni_stav_rok: cashbox.pocatecni_stav_rok !== null && cashbox.pocatecni_stav_rok !== undefined ? cashbox.pocatecni_stav_rok : '',
         ciselna_rada_vpd: cashbox.ciselna_rada_vpd || '',
         vpd_od_cislo: cashbox.vpd_od_cislo || 1,
         ciselna_rada_ppd: cashbox.ciselna_rada_ppd || '',
@@ -1164,6 +1280,17 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
       loadUseky();
     }
   }, [isOpen, cashbox, token, user?.username]);
+
+  // Nastavit focus na SearchableSelect pro přidání uživatelů po otevření dialogu
+  useEffect(() => {
+    if (isOpen && addUserSelectRef.current) {
+      // Delay pro zajištění, že je dialog již zobrazen
+      const timer = setTimeout(() => {
+        addUserSelectRef.current?.focus();
+      }, 300); // Prodlouženo na 300ms kvůli animaci dialogu
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   const loadUseky = async () => {
     if (!token || !user?.username) return;
@@ -1192,14 +1319,18 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   };
 
   const loadAvailableUsers = async () => {
-    if (!cashbox?.id) return;
+    if (!token || !user?.username) return;
 
     try {
       setLoading(true);
-      const result = await cashbookAPI.getAvailableUsers(cashbox.id);
-      setAvailableUsers(result.data.uzivatele || []);
+      const result = await fetchAllUsers({
+        token: token,
+        username: user.username,
+        show_inactive: false // Pouze aktivní uživatelé
+      });
+      setAvailableUsers(result || []);
     } catch (err) {
-      // Error handling
+      console.error('Chyba při načítání uživatelů:', err);
     } finally {
       setLoading(false);
     }
@@ -1252,8 +1383,14 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
       setSaving(true);
       setError('');
 
+      // Příprava dat - odstranění mezer z formátovaných čísel
+      const dataToSend = {
+        ...formData,
+        pocatecni_stav_rok: formData.pocatecni_stav_rok !== '' ? parseFloat(formData.pocatecni_stav_rok.replace(/\s/g, '')) : null
+      };
+
       // 1. Uložit parametry pokladny
-      await cashbookAPI.updateCashbox(cashbox.id, formData);
+      await cashbookAPI.updateCashbox(cashbox.id, dataToSend);
 
       // 2. Synchronizovat uživatele (smazat všechny + přidat jen ty co jsou v users state)
       const usersPayload = users.map(u => ({
@@ -1284,8 +1421,40 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     try {
       // isMainUser checkbox znamená "Zástupce", takže musíme invertovat
       // checked (true) = zástupce (0), unchecked (false) = hlavní (1)
-      const jeHlavni = isMainUser ? 0 : 1;
-      console.log('Přidávám uživatele:', selectedUser, 'checkbox zástupce:', isMainUser, 'je_hlavni:', jeHlavni);
+      let jeHlavni = isMainUser ? 0 : 1;
+
+      // Kontrola, jestli uživatel už není hlavním správcem jiné pokladny
+      if (jeHlavni === 1) {
+        try {
+          const allAssignmentsResult = await cashbookAPI.listAssignments(parseInt(selectedUser), true);
+          const existingMain = allAssignmentsResult.data.assignments.find(
+            a => parseInt(a.je_hlavni) === 1 && parseInt(a.pokladna_id) !== parseInt(cashbox.id)
+          );
+          
+          if (existingMain) {
+            const cashboxName = existingMain.cislo_pokladny || `Pokladna ${existingMain.pokladna_id}`;
+            const addedUser = availableUsers.find(u => u.id === parseInt(selectedUser));
+            const userName = addedUser?.name || 'Uživatel';
+            
+            const confirmed = window.confirm(
+              `Uživatel "${userName}" je již hlavním správcem pokladny "${cashboxName}".\n\n` +
+              `Uživatel může být hlavním správcem pouze u jedné pokladny.\n\n` +
+              `Chcete jej přidat jako zástupce?`
+            );
+            
+            if (!confirmed) {
+              return;
+            }
+            
+            jeHlavni = 0;
+            showToast('Uživatel bude přidán jako zástupce', 'info');
+          }
+        } catch (checkError) {
+          console.error('Chyba při kontrole přiřazení:', checkError);
+          showToast('Chyba při kontrole přiřazení uživatele', 'error');
+          return;
+        }
+      }
 
       const result = await cashbookAPI.assignUserToCashbox({
         pokladna_id: cashbox.id,
@@ -1322,13 +1491,39 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     }
   };
 
-  const handleToggleMain = async (assignmentId, currentStatus, userName) => {
+  const handleToggleMain = async (assignmentId, currentStatus, userName, uzivatelId) => {
     try {
-      console.log('Měním status je_hlavni:', assignmentId, 'current:', currentStatus, 'userName:', userName);
       const newStatus = currentStatus === 1 ? 0 : 1;
 
+      // Pokud nastavujeme jako hlavní (newStatus = 1), zkontrolovat, jestli uživatel už není hlavním jinde
+      if (newStatus === 1) {
+        try {
+          const allAssignmentsResult = await cashbookAPI.listAssignments(parseInt(uzivatelId), true);
+          const existingMain = allAssignmentsResult.data.assignments.find(
+            a => parseInt(a.je_hlavni) === 1 && parseInt(a.pokladna_id) !== parseInt(cashbox.id)
+          );
+          
+          if (existingMain) {
+            const cashboxName = existingMain.cislo_pokladny || `Pokladna ${existingMain.pokladna_id}`;
+            const confirmed = window.confirm(
+              `Uživatel "${userName}" je již hlavním správcem pokladny "${cashboxName}".\n\n` +
+              `Uživatel může být hlavním správcem pouze u jedné pokladny.\n\n` +
+              `Pokud potvrdíte, bude automaticky odebrán jako hlavní z "${cashboxName}" a nastaven jako hlavní zde.\n\n` +
+              `Pokračovat?`
+            );
+            
+            if (!confirmed) {
+              return;
+            }
+          }
+        } catch (checkError) {
+          console.error('Chyba při kontrole přiřazení:', checkError);
+          showToast('Chyba při kontrole přiřazení uživatele', 'error');
+          return;
+        }
+      }
+
       const result = await cashbookAPI.updateUserMainStatus(assignmentId, newStatus);
-      console.log('Změna statusu úspěšná');
 
       if (result.status === 'ok') {
         // Reload users list from server
@@ -1352,7 +1547,6 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   };
 
   const handleEditUserClick = (user) => {
-    console.log('📝 Editace platnosti uživatele:', user);
     setEditingUserId(user.uzivatel_id);
     setEditValues({
       platne_od: user.platne_od || new Date().toISOString().split('T')[0],
@@ -1361,8 +1555,6 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   };
 
   const handleSaveUserDates = (userId) => {
-    console.log('💾 Ukládám platnost uživatele:', userId, editValues);
-
     setUsers(prev => prev.map(u => {
       if (u.uzivatel_id === userId) {
         return {
@@ -1392,89 +1584,34 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     const { assignmentId, userName } = confirmRemove;
     setConfirmRemove({ show: false, assignmentId: null, userName: '' });
 
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('🗑️  ODEBRÁNÍ UŽIVATELE Z POKLADNY - START');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📋 Assignment ID:', assignmentId);
-    console.log('👤 Uživatel:', userName);
-    console.log('🏦 Pokladna ID:', cashbox?.id);
-    console.log('🏦 Pokladna číslo:', cashbox?.cislo_pokladny);
-
     try {
-      console.log('📡 Volám API: cashbookAPI.unassignUserFromCashbox()');
-      console.log('   Parametry:', { assignmentId });
-
       const result = await cashbookAPI.unassignUserFromCashbox(assignmentId);
-
-      console.log('✅ API Response:', JSON.stringify(result, null, 2));
-      console.log('   Status:', result?.status);
-      console.log('   Message:', result?.message);
-      console.log('   Data:', result?.data);
-      console.log('   Affected rows:', result?.data?.affected_rows);
 
       if (result.status === 'ok') {
         // Kontrola affected_rows - pokud je 0, záznam nebyl aktualizován
         const affectedRows = result?.data?.affected_rows;
 
         if (affectedRows === 0 || affectedRows === '0') {
-          console.warn('⚠️  BE vrátilo affected_rows = 0 (žádná změna v DB)');
-          console.warn('   Možné důvody:');
-          console.warn('   1. Záznam s prirazeni_id =', assignmentId, 'neexistuje');
-          console.warn('   2. Záznam už má platne_do nastavené na dnešní datum');
-          console.warn('   3. SQL WHERE podmínka je špatně');
           showToast(`VAROVÁNÍ: Uživatel "${userName}" nebyl odebrán - záznam už neexistuje nebo byl již deaktivován`, 'warning');
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('⚠️  ODEBRÁNÍ UŽIVATELE - WARNING (affected_rows = 0)');
-          console.log('═══════════════════════════════════════════════════════');
-
           // I tak refreshneme data, ať vidíme aktuální stav
-          console.log('🔄 Načítám dostupné uživatele...');
           await loadAvailableUsers();
           return;
         }
 
-        console.log('✅ BE potvrdilo úspěšné odebrání (affected_rows:', affectedRows, ')');
-
         // Reload users - remove from local state
-        const oldUsersCount = users.length;
-        setUsers(prev => {
-          const updated = prev.filter(u => u.prirazeni_id !== assignmentId);
-          console.log('📊 Počet uživatelů PŘED:', oldUsersCount);
-          console.log('📊 Počet uživatelů PO:', updated.length);
-          console.log('📊 Odebraný uživatel byl:', prev.find(u => u.prirazeni_id === assignmentId));
-          console.log('📊 Zůstávající uživatelé:', updated.map(u => ({ id: u.prirazeni_id, name: u.uzivatel_cele_jmeno })));
-          return updated;
-        });
+        setUsers(prev => prev.filter(u => u.prirazeni_id !== assignmentId));
 
         // Reload available users
-        console.log('🔄 Načítám dostupné uživatele...');
         await loadAvailableUsers();
 
         // Show success toast
         showToast(`Uživatel "${userName}" byl úspěšně odebrán z pokladny`, 'success');
-        console.log('✅ Toast zobrazen');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('🗑️  ODEBRÁNÍ UŽIVATELE - SUCCESS');
-        console.log('═══════════════════════════════════════════════════════');
 
       } else {
-        console.error('❌ BE vrátilo neúspěšný status');
-        console.error('   Status:', result?.status);
-        console.error('   Message:', result?.message);
         showToast(result.message || 'Chyba při odebírání uživatele', 'error');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('❌ ODEBRÁNÍ UŽIVATELE - FAILED (BE status != ok)');
-        console.log('═══════════════════════════════════════════════════════');
       }
     } catch (err) {
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('❌ ODEBRÁNÍ UŽIVATELE - ERROR');
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('❌ Chyba při odebírání:', err);
-      console.error('   Message:', err?.message);
-      console.error('   Response:', err?.response);
-      console.error('   Response Data:', err?.response?.data);
-      console.error('   Response Status:', err?.response?.status);
+      console.error('Chyba při odebírání:', err);
       
       // Detekce Foreign Key Constraint chyby
       const errorMsg = err?.message || err?.response?.data?.message || '';
@@ -1513,136 +1650,89 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
         </ModalHeader>
 
         <ModalBody>
-          {/* LEVÁ ČÁST - Parametry pokladny */}
-          <LeftSection>
-            <SectionTitle>
-              <Hash />
-              Parametry pokladny
-            </SectionTitle>
+          {/* HORNÍ SEKCE - DVOUSLOUPCOVÝ LAYOUT */}
+          <TopSection>
+            {/* LEVÁ ČÁST - Základní informace */}
+            <LeftSection>
+              <SectionTitle>
+                <Building size={14} />
+                Základní informace
+              </SectionTitle>
 
-            {error && (
-              <ErrorMessage>
-                <AlertTriangle />
-                {error}
-              </ErrorMessage>
-            )}
-
-            <FormGroup>
-              <Label>
-                <Hash />
-                Číslo pokladny
-              </Label>
-              <Input
-                type="number"
-                value={cashbox?.cislo_pokladny || ''}
-                disabled
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>Název pokladny</Label>
-              <Input
-                type="text"
-                value={formData.nazev}
-                onChange={e => handleChange('nazev', e.target.value)}
-                placeholder="Pokladna IT oddělení..."
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>
-                <Building />
-                Úsek (zkratka)
-              </Label>
-              <SearchableSelect
-                value={selectedUsek?.id || ''}
-                onChange={(val) => handleUsekChange(val)}
-                options={useky.map(usek => ({
-                  value: usek.id,
-                  label: `${usek.usek_zkr} - ${usek.usek_nazev}`
-                }))}
-                placeholder="Vyberte úsek..."
-                disabled={loadingUseky}
-                icon={<Building size={16} />}
-              />
-
-              {selectedUsek && (
-                <UsekDisplay>
-                  <UsekBadge>{selectedUsek.usek_zkr}</UsekBadge>
-                  <UsekName>{selectedUsek.usek_nazev}</UsekName>
-                </UsekDisplay>
+              {error && (
+                <ErrorMessage>
+                  <AlertTriangle />
+                  {error}
+                </ErrorMessage>
               )}
-            </FormGroup>
 
-            <FormRow>
-              <FormGroup style={{ marginBottom: 0 }}>
+              <FormGroup>
                 <Label>
                   <Hash />
-                  VPD prefix *
+                  Číslo pokladny
                 </Label>
                 <Input
-                  type="text"
-                  value={formData.ciselna_rada_vpd}
-                  onChange={e => handleChange('ciselna_rada_vpd', e.target.value)}
-                  placeholder="599"
-                  $error={!formData.ciselna_rada_vpd}
-                />
-              </FormGroup>
-
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>VPD od čísla</Label>
-                <Input
                   type="number"
-                  value={formData.vpd_od_cislo}
-                  onChange={e => handleChange('vpd_od_cislo', parseInt(e.target.value) || 1)}
+                  value={cashbox?.cislo_pokladny || ''}
+                  disabled
                 />
               </FormGroup>
-            </FormRow>
 
-            <FormRow>
-              <FormGroup style={{ marginBottom: 0 }}>
+              <FormGroup>
+                <Label>Název pokladny</Label>
+                <Input
+                  type="text"
+                  value={formData.nazev}
+                  onChange={e => handleChange('nazev', e.target.value)}
+                  placeholder="Pokladna IT oddělení..."
+                />
+              </FormGroup>
+
+              <FormGroup>
                 <Label>
-                  <Hash />
-                  PPD prefix *
+                  <Building />
+                  Úsek (zkratka)
                 </Label>
-                <Input
-                  type="text"
-                  value={formData.ciselna_rada_ppd}
-                  onChange={e => handleChange('ciselna_rada_ppd', e.target.value)}
-                  placeholder="499"
-                  $error={!formData.ciselna_rada_ppd}
+                <SearchableSelect
+                  value={selectedUsek?.id || ''}
+                  onChange={(val) => handleUsekChange(val)}
+                  options={useky.map(usek => ({
+                    value: usek.id,
+                    label: `${usek.usek_zkr} - ${usek.usek_nazev}`
+                  }))}
+                  placeholder="Vyberte úsek..."
+                  disabled={loadingUseky}
+                  icon={<Building size={14} />}
                 />
+
+                {selectedUsek && (
+                  <UsekDisplay>
+                    <UsekBadge>{selectedUsek.usek_zkr}</UsekBadge>
+                    <UsekName>{selectedUsek.usek_nazev}</UsekName>
+                  </UsekDisplay>
+                )}
               </FormGroup>
 
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>PPD od čísla</Label>
-                <Input
-                  type="number"
-                  value={formData.ppd_od_cislo}
-                  onChange={e => handleChange('ppd_od_cislo', parseInt(e.target.value) || 1)}
+              <FormGroup>
+                <Label>Poznámka</Label>
+                <Textarea
+                  value={formData.poznamka}
+                  onChange={e => handleChange('poznamka', e.target.value)}
+                  placeholder="Volitelná poznámka..."
+                  rows={2}
                 />
               </FormGroup>
-            </FormRow>
+            </LeftSection>
 
-            <FormGroup>
-              <Label>Poznámka</Label>
-              <Textarea
-                value={formData.poznamka}
-                onChange={e => handleChange('poznamka', e.target.value)}
-                placeholder="Volitelná poznámka..."
-                rows={2}
-              />
-            </FormGroup>
-          </LeftSection>
+            {/* PRAVÁ ČÁST - Uživatelé */}
+            <RightSection>
+              <SectionTitle>
+                <User size={14} />
+                Přiřazení uživatelé ({users.length})
+              </SectionTitle>
 
-          {/* PRAVÁ ČÁST - Správa uživatelů */}
-          <RightSection>
-            <SectionTitle>
-              <User />
-              Přiřazení uživatelé ({users.length})
-            </SectionTitle>
-
-            <UsersList style={{ marginBottom: 0 }}>
+              {/* Seznam přiřazených uživatelů */}
+              <UsersList style={{ marginBottom: 0 }}>
               {users.length === 0 ? (
                 <EmptyUsers>
                   <User size={48} />
@@ -1654,6 +1744,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
 
                   return (
                     <UserItem key={user.prirazeni_id || user.uzivatel_id}>
+                      {/* První řádek: ikona + jméno (osobní číslo) + badge */}
                       <UserInfo>
                         <UserIcon>
                           <User size={16} />
@@ -1661,88 +1752,106 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                         <UserDetails>
                           <UserName>
                             {user.uzivatel_cele_jmeno}
-                            {(user.je_hlavni === 1 || user.je_hlavni === '1') ? (
-                              <MainBadge>Hlavní</MainBadge>
-                            ) : (
-                              <MainBadge style={{ background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)' }}>Zástupce</MainBadge>
-                            )}
+                            {user.username && ` (${user.username})`}
                           </UserName>
-
-                          {isEditing ? (
-                            <EditModeContainer>
-                              <EditDateInputs>
-                                <EditDateLabel>Přiřazena od:</EditDateLabel>
-                                <EditDatePickerWrapper>
-                                  <DatePicker
-                                    value={editValues.platne_od}
-                                    onChange={(newValue) => {
-                                      setEditValues(prev => {
-                                        const newState = { ...prev, platne_od: newValue };
-
-                                        // Pokud je datum "do" vyplněné a je menší než nové datum "od",
-                                        // nastav datum "do" na nové datum "od"
-                                        if (newState.platne_do && newValue && newState.platne_do < newValue) {
-                                          newState.platne_do = newValue;
-                                        }
-
-                                        return newState;
-                                      });
-                                    }}
-                                    placeholder="Vyberte datum"
-                                  />
-                                </EditDatePickerWrapper>
-                                <EditDateLabel>do:</EditDateLabel>
-                                <EditDatePickerWrapper>
-                                  <DatePicker
-                                    value={editValues.platne_do}
-                                    onChange={(newValue) => {
-                                      setEditValues(prev => {
-                                        // Pokud je nové datum "do" menší než datum "od", nastav na datum "od"
-                                        if (newValue && prev.platne_od && newValue < prev.platne_od) {
-                                          return { ...prev, platne_do: prev.platne_od };
-                                        }
-                                        return { ...prev, platne_do: newValue };
-                                      });
-                                    }}
-                                    placeholder="Nevyplnit = navždy"
-                                  />
-                                </EditDatePickerWrapper>
-                              </EditDateInputs>
-                              <EditModeButtons>
-                                <SaveEditButton onClick={() => handleSaveUserDates(user.uzivatel_id)}>
-                                  ✓ Uložit
-                                </SaveEditButton>
-                                <CancelEditButton onClick={handleCancelEditDates}>
-                                  ✕ Zrušit
-                                </CancelEditButton>
-                              </EditModeButtons>
-                            </EditModeContainer>
+                          {(user.je_hlavni === 1 || user.je_hlavni === '1') ? (
+                            <MainBadge>Hlavní</MainBadge>
                           ) : (
-                            <UserMeta>
-                              {user.username}
-                              {user.platne_od && ` • Přiřazena od: ${user.platne_od}`}
-                              {user.platne_do ? ` • do: ${user.platne_do}` : ' • navždy'}
-                            </UserMeta>
+                            <MainBadge style={{ background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)' }}>Zástupce</MainBadge>
                           )}
                         </UserDetails>
                       </UserInfo>
 
-                      {!isEditing && (
-                        <UserActions>
-                          <EditDateButton
-                            onClick={() => handleEditUserClick(user)}
-                            title="Editovat platnost přiřazení"
-                          >
-                            <Calendar size={13} />
-                            Přiřazená
-                          </EditDateButton>
-                          <RemoveButton
-                            onClick={() => handleRemoveUserClick(user.prirazeni_id, user.uzivatel_cele_jmeno)}
-                            title="Odebrat uživatele"
-                          >
-                            <Trash2 />
-                          </RemoveButton>
-                        </UserActions>
+                      {/* Druhý řádek: úsek + metadata + ikony */}
+                      {isEditing ? (
+                        <EditModeContainer>
+                          <EditDateInputs>
+                            <EditDateLabel>Přiřazena od:</EditDateLabel>
+                            <EditDatePickerWrapper>
+                              <DatePicker
+                                value={editValues.platne_od}
+                                onChange={(newValue) => {
+                                  setEditValues(prev => {
+                                    const newState = { ...prev, platne_od: newValue };
+
+                                    // Pokud je datum "do" vyplněné a je menší než nové datum "od",
+                                    // nastav datum "do" na nové datum "od"
+                                    if (newState.platne_do && newValue && newState.platne_do < newValue) {
+                                      newState.platne_do = newValue;
+                                    }
+
+                                    return newState;
+                                  });
+                                }}
+                                placeholder="Vyberte datum"
+                              />
+                            </EditDatePickerWrapper>
+                            <EditDateLabel>do:</EditDateLabel>
+                            <EditDatePickerWrapper>
+                              <DatePicker
+                                value={editValues.platne_do}
+                                onChange={(newValue) => {
+                                  setEditValues(prev => {
+                                    // Pokud je nové datum "do" menší než datum "od", nastav na datum "od"
+                                    if (newValue && prev.platne_od && newValue < prev.platne_od) {
+                                      return { ...prev, platne_do: prev.platne_od };
+                                    }
+                                    return { ...prev, platne_do: newValue };
+                                  });
+                                }}
+                                placeholder="Nevyplnit = navždy"
+                              />
+                            </EditDatePickerWrapper>
+                          </EditDateInputs>
+                          <EditModeButtons>
+                            <SaveEditButton onClick={() => handleSaveUserDates(user.uzivatel_id)}>
+                              ✓ Uložit
+                            </SaveEditButton>
+                            <CancelEditButton onClick={handleCancelEditDates}>
+                              ✕ Zrušit
+                            </CancelEditButton>
+                          </EditModeButtons>
+                        </EditModeContainer>
+                      ) : (
+                        <UserBottomRow>
+                          <UserMeta>
+                            {(() => {
+                              // Zkusit různé varianty názvů polí pro úsek
+                              const usek = user.usek_nazev || user.usek || user.usek_kod || user.nazev_usek || '';
+                              const parts = [];
+                              
+                              if (usek) {
+                                parts.push(usek);
+                              }
+                              
+                              if (user.platne_od) {
+                                parts.push(`Přiřazena od: ${user.platne_od}`);
+                              }
+                              
+                              if (user.platne_do) {
+                                parts.push(`do: ${user.platne_do}`);
+                              } else if (user.platne_od) {
+                                parts.push('navždy');
+                              }
+                              
+                              return parts.join(' • ');
+                            })()}
+                          </UserMeta>
+                          <UserActions>
+                            <EditDateButton
+                              onClick={() => handleEditUserClick(user)}
+                              title="Editovat platnost přiřazení"
+                            >
+                              <Calendar size={13} />
+                            </EditDateButton>
+                            <RemoveButton
+                              onClick={() => handleRemoveUserClick(user.prirazeni_id, user.uzivatel_cele_jmeno)}
+                              title="Odebrat uživatele"
+                            >
+                              <Trash2 size={13} />
+                            </RemoveButton>
+                          </UserActions>
+                        </UserBottomRow>
                       )}
                     </UserItem>
                   );
@@ -1753,15 +1862,17 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
             <AddUserSection>
               <AddUserRow>
                 <SearchableSelect
+                  ref={addUserSelectRef}
                   value={selectedUser}
                   onChange={(val) => setSelectedUser(val)}
                   options={availableUsers.map(user => ({
                     value: user.id,
-                    label: `${user.cele_jmeno} (${user.username})`
+                    label: `${user.displayName || [user.jmeno, user.prijmeni].filter(Boolean).join(' ') || user.username} (${user.username})`
                   }))}
                   placeholder="Vyberte uživatele..."
                   disabled={loading}
-                  icon={<User size={16} />}
+                  icon={<User size={14} />}
+                  autoFocus={false}
                 />
                 <AddButton
                   onClick={handleAddUser}
@@ -1783,6 +1894,113 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
               </CheckboxLabel>
             </AddUserSection>
           </RightSection>
+          </TopSection>
+
+          {/* SPODNÍ SEKCE - DVOUSLOUPCOVÝ LAYOUT */}
+          <BottomSection>
+            {/* LEVÝ SLOUPEC - Prefixy VPD/PPD */}
+            <BottomLeftColumn>
+              <SectionTitle>
+                <Hash size={14} />
+                Prefixy dokladů
+              </SectionTitle>
+
+              <FormRow>
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>
+                    <Hash />
+                    VPD prefix *
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.ciselna_rada_vpd}
+                    onChange={e => handleChange('ciselna_rada_vpd', e.target.value)}
+                    placeholder="599"
+                    $error={!formData.ciselna_rada_vpd}
+                  />
+                </FormGroup>
+
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>VPD od čísla</Label>
+                  <Input
+                    type="number"
+                    value={formData.vpd_od_cislo}
+                    onChange={e => handleChange('vpd_od_cislo', parseInt(e.target.value) || 1)}
+                  />
+                </FormGroup>
+              </FormRow>
+
+              <FormRow>
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>
+                    <Hash />
+                    PPD prefix *
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.ciselna_rada_ppd}
+                    onChange={e => handleChange('ciselna_rada_ppd', e.target.value)}
+                    placeholder="499"
+                    $error={!formData.ciselna_rada_ppd}
+                  />
+                </FormGroup>
+
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>PPD od čísla</Label>
+                  <Input
+                    type="number"
+                    value={formData.ppd_od_cislo}
+                    onChange={e => handleChange('ppd_od_cislo', parseInt(e.target.value) || 1)}
+                  />
+                </FormGroup>
+              </FormRow>
+            </BottomLeftColumn>
+
+            {/* PRAVÝ SLOUPEC - Počáteční stav roku */}
+            <BottomRightColumn>
+              <SectionTitle>
+                <DollarSign size={14} />
+                Počáteční stav roku
+              </SectionTitle>
+
+              <FormGroup>
+                <Label>
+                  <DollarSign />
+                  Počáteční stav 1. ledna (nový rok)
+                </Label>
+                <InputWithCurrency>
+                  <CurrencyInput
+                    type="text"
+                    value={formData.pocatecni_stav_rok}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw === '' || /^\d*\.?\d{0,2}$/.test(raw)) {
+                        handleChange('pocatecni_stav_rok', raw);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw && !isNaN(raw)) {
+                        const num = parseFloat(raw);
+                        const formatted = num.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                        handleChange('pocatecni_stav_rok', formatted.replace(/,/g, '.'));
+                      }
+                    }}
+                    onFocus={(e) => {
+                      const val = e.target.value.replace(/\s/g, '');
+                      handleChange('pocatecni_stav_rok', val);
+                    }}
+                    placeholder="Ponechte prázdné pro převod z prosince"
+                  />
+                  <CurrencySuffix>Kč</CurrencySuffix>
+                </InputWithCurrency>
+                <HelpText>
+                  ⓘ <strong>Použije se při vytvoření knihy pro leden každého nového roku:</strong><br/>
+                  Zadejte hodnotu (včetně 0) = použije se jako počáteční stav | Ponechte prázdné = převezme se koncový stav z prosince předchozího roku.
+                </HelpText>
+              </FormGroup>
+            </BottomRightColumn>
+          </BottomSection>
         </ModalBody>
 
         <ModalFooter>

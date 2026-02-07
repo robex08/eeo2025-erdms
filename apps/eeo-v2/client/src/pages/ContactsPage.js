@@ -388,6 +388,72 @@ const LoadingContainer = styled.div`
   }
 `;
 
+const LoadingOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(${props => props.$visible ? '8px' : '0px'});
+  -webkit-backdrop-filter: blur(${props => props.$visible ? '8px' : '0px'});
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.5s ease-in-out, backdrop-filter 0.6s ease-in-out;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+
+  @media (max-width: 768px) {
+    padding: 1rem;
+  }
+`;
+
+const LoadingSpinner = styled.div`
+  width: 64px;
+  height: 64px;
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+  transform: scale(${props => props.$visible ? 1 : 0.8});
+  transition: transform 0.5s ease-in-out;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg) scale(1); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+`;
+
+const LoadingMessage = styled.div`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+  margin-bottom: 0.5rem;
+  transform: translateY(${props => props.$visible ? '0' : '10px'});
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: transform 0.5s ease-in-out 0.1s, opacity 0.5s ease-in-out 0.1s;
+`;
+
+const LoadingSubtext = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
+  transform: translateY(${props => props.$visible ? '0' : '10px'});
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: transform 0.5s ease-in-out 0.15s, opacity 0.5s ease-in-out 0.15s;
+`;
+
+const PageContent = styled.div`
+  filter: blur(${props => props.$blurred ? '3px' : '0px'});
+  transition: filter 0.6s ease-in-out;
+  pointer-events: ${props => props.$blurred ? 'none' : 'auto'};
+`;
+
 const EmptyState = styled.div`
   text-align: center;
   padding: 4rem 2rem;
@@ -477,6 +543,7 @@ const ContactsPage = () => {
   const [employees, setEmployees] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Load state from localStorage
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -521,6 +588,8 @@ const ContactsPage = () => {
   const loadData = async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
+    } else {
+      setLoading(true);
     }
     
     if (!isRefresh && startProgress) {
@@ -552,9 +621,9 @@ const ContactsPage = () => {
         const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
           role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
         );
-        const hasContactManage = hasPermission && hasPermission('CONTACT_MANAGE');
+        const hasSupplierManage = hasPermission && hasPermission('SUPPLIER_MANAGE');
         
-        if (!isAdmin && !hasContactManage) {
+        if (!isAdmin && !hasSupplierManage) {
           // Ostatní vidí jen globální, osobní a úsekove
           const currentUserDepartment = userDetail?.usek_zkr || userDetail?.department || userDetail?.usek || '';
           
@@ -599,6 +668,7 @@ const ContactsPage = () => {
         stopProgress();
       }
       setRefreshing(false);
+      setLoading(false);
     }
   };
 
@@ -726,6 +796,7 @@ const ContactsPage = () => {
     if (filter === 'all' || filter === 'employees') {
       const employeeContacts = employees
         .filter(emp => emp.aktivni === 1 || emp.aktivni === '1' || emp.aktivni === true)
+        .filter(emp => emp.viditelny_v_tel_seznamu === 1 || emp.viditelny_v_tel_seznamu === '1')
         .map(emp => ({
           type: 'employee',
           id: `emp-${emp.id || emp.ID}`,
@@ -889,18 +960,30 @@ const ContactsPage = () => {
     setCurrentPage(0);
   };
 
-  const employeeCount = employees.filter(e => e.aktivni === 1 || e.aktivni === '1' || e.aktivni === true).length;
+  const employeeCount = employees
+    .filter(e => e.aktivni === 1 || e.aktivni === '1' || e.aktivni === true)
+    .filter(e => e.viditelny_v_tel_seznamu === 1 || e.viditelny_v_tel_seznamu === '1')
+    .length;
   const supplierCount = suppliers.length;
 
   return (
     <PageContainer>
-      <Header>
-        <Title>
-          <Briefcase />
-          Kontakty
-        </Title>
-        <Subtitle>Přehled zaměstnanců a dodavatelů</Subtitle>
-      </Header>
+      {/* Loading Overlay */}
+      <LoadingOverlay $visible={loading}>
+        <LoadingSpinner $visible={loading} />
+        <LoadingMessage $visible={loading}>Načítám kontakty...</LoadingMessage>
+        <LoadingSubtext $visible={loading}>Načítám zaměstnance a dodavatele z databáze</LoadingSubtext>
+      </LoadingOverlay>
+
+      {/* Page Content */}
+      <PageContent $blurred={loading}>
+        <Header>
+          <Title>
+            <Briefcase />
+            Kontakty
+          </Title>
+          <Subtitle>Přehled zaměstnanců a dodavatelů</Subtitle>
+        </Header>
 
       <SearchSection>
         <SearchContainer>
@@ -1294,6 +1377,7 @@ const ContactsPage = () => {
             </PaginationControls>
           </PaginationContainer>
       </TableContainer>
+      </PageContent>
     </PageContainer>
   );
 };

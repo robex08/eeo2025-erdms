@@ -1,0 +1,1081 @@
+/**
+ * OrdersFiltersV3Full.js
+ * 
+ * Plnohodnotný filtrovací panel pro Orders V3
+ * Přesný clone filtrovací sekce z Orders25List.js
+ * 
+ * Datum: 6. února 2026
+ */
+
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faFilter, faSearch, faTimes, faUser, faShield, faList,
+  faCalendarAlt, faMoneyBillWave, faFileContract, faBoltLightning,
+  faEraser, faChevronUp, faChevronDown, faEyeSlash
+} from '@fortawesome/free-solid-svg-icons';
+import DatePicker from '../DatePicker';
+import { fetchAllUsers, fetchApprovers, fetchCiselniky } from '../../services/api2auth';
+
+// ============================================================================
+// MULTISELECT KOMPONENTA
+// ============================================================================
+
+const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const dropdownRef = React.useRef(null);
+  const searchInputRef = React.useRef(null);
+
+  // Zavři dropdown při kliku mimo
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Focus na vyhledávací pole při otevření
+  React.useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    }
+  }, [isOpen]);
+
+  // Memoizuj aktuální hodnoty
+  const valueSet = React.useMemo(() => {
+    const arr = Array.isArray(value) ? value : [];
+    return new Set(arr.map(v => String(v)));
+  }, [value]);
+
+  // Filtrované options podle vyhledávání
+  const filteredOptions = React.useMemo(() => {
+    if (!searchTerm.trim()) return options;
+
+    const search = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    return options.filter(opt => {
+      const label = (opt.displayName || opt.nazev_stavu || opt.nazev || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return label.includes(search);
+    });
+  }, [options, searchTerm]);
+
+  const getDisplayValue = React.useCallback(() => {
+    if (!value || value.length === 0) return placeholder || 'Vyberte...';
+    if (value.length === 1) {
+      const opt = options?.find(o => String(o.id) === String(value[0]));
+      return opt ? (opt.displayName || opt.nazev_stavu || opt.nazev || value[0]) : value[0];
+    }
+    return `Vybráno: ${value.length}`;
+  }, [value, options, placeholder]);
+
+  const handleToggle = React.useCallback((optValue) => {
+    const currentValue = Array.isArray(value) ? value : [];
+    const newValue = currentValue.includes(optValue)
+      ? currentValue.filter(v => v !== optValue)
+      : [...currentValue, optValue];
+
+    const fakeEvent = {
+      target: {
+        options: newValue.map(v => ({ value: v, selected: true }))
+      }
+    };
+    onChange(fakeEvent);
+  }, [value, onChange]);
+
+  const handleMainClick = React.useCallback((e) => {
+    e.stopPropagation();
+    setIsOpen(prev => !prev);
+  }, []);
+
+  const handleItemClick = React.useCallback((e, optValue) => {
+    e.stopPropagation();
+    handleToggle(optValue);
+  }, [handleToggle]);
+
+  if (!options || options.length === 0) {
+    return (
+      <div style={{
+        padding: '0.75rem 2.5rem',
+        border: '2px solid #e5e7eb',
+        borderRadius: '8px',
+        color: '#9ca3af',
+        fontSize: '0.875rem'
+      }}>
+        Načítání...
+      </div>
+    );
+  }
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+      <div
+        onClick={handleMainClick}
+        style={{
+          width: '100%',
+          padding: '0.75rem 2.5rem 0.75rem 2.5rem',
+          border: '2px solid #e5e7eb',
+          borderRadius: '8px',
+          fontSize: '0.875rem',
+          background: '#ffffff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'relative',
+          color: (!value || value.length === 0) ? '#9ca3af' : '#1f2937',
+          fontWeight: (value && value.length > 0) ? '600' : '400'
+        }}
+      >
+        <span>{getDisplayValue()}</span>
+        <svg
+          style={{
+            position: 'absolute',
+            right: '0.5rem',
+            width: '16px',
+            height: '16px',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            pointerEvents: 'none'
+          }}
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#374151"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          right: 0,
+          marginTop: '4px',
+          background: '#ffffff',
+          border: '2px solid #3b82f6',
+          borderRadius: '8px',
+          zIndex: 9999,
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '400px'
+        }}>
+          {/* Vyhledávací pole */}
+          <div style={{
+            padding: '0.75rem',
+            borderBottom: '2px solid #e5e7eb',
+            position: 'sticky',
+            top: 0,
+            background: '#ffffff',
+            zIndex: 1
+          }}>
+            <div style={{ position: 'relative', width: '100%' }}>
+              <FontAwesomeIcon
+                icon={faSearch}
+                style={{
+                  position: 'absolute',
+                  left: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#9ca3af',
+                  width: '12px',
+                  height: '12px',
+                  pointerEvents: 'none',
+                  zIndex: 1
+                }}
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Hledat..."
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem 0.5rem 2rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                  transition: 'border-color 0.2s'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+
+          {/* Seznam options */}
+          <div style={{ overflowY: 'auto', maxHeight: '300px' }}>
+            {filteredOptions.length === 0 ? (
+              <div style={{
+                padding: '1rem',
+                textAlign: 'center',
+                color: '#9ca3af',
+                fontSize: '0.875rem'
+              }}>
+                Žádné výsledky
+              </div>
+            ) : (
+              filteredOptions.map((opt, idx) => {
+                const optValue = String(opt.id || '');
+                const optLabel = opt.displayName || opt.nazev_stavu || opt.nazev || 'Bez názvu';
+                const isChecked = valueSet.has(optValue);
+
+                return (
+                  <div
+                    key={optValue || idx}
+                    onClick={(e) => handleItemClick(e, optValue)}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      cursor: 'pointer',
+                      background: isChecked ? '#eff6ff' : 'transparent',
+                      borderBottom: idx < filteredOptions.length - 1 ? '1px solid #f3f4f6' : 'none',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isChecked) e.currentTarget.style.background = '#f9fafb';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isChecked) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        cursor: 'pointer',
+                        accentColor: '#3b82f6',
+                        pointerEvents: 'none'
+                      }}
+                    />
+                    <span style={{
+                      fontSize: '0.875rem',
+                      color: isChecked ? '#1e3a8a' : '#374151',
+                      fontWeight: isChecked ? '600' : '400',
+                      userSelect: 'none'
+                    }}>
+                      {optLabel}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// STYLED COMPONENTS
+// ============================================================================
+
+const FiltersPanel = styled.div`
+  background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%);
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+`;
+
+const FiltersHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+
+  h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+`;
+
+const FilterGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const FiltersGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-top: 1.5rem;
+
+  ${FilterGroup} {
+    min-width: 0;
+  }
+
+  @media (max-width: 1600px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @media (max-width: 1200px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FilterLabel = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.25rem;
+`;
+
+const FilterLabelLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const FilterClearButton = styled.button`
+  background: transparent;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  opacity: ${props => props.visible ? 1 : 0};
+  pointer-events: ${props => props.visible ? 'auto' : 'none'};
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: #991b1b;
+    transform: scale(1.1);
+  }
+`;
+
+const FilterInputWithIcon = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  svg {
+    position: absolute;
+    left: 0.75rem;
+    color: #9ca3af;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+  }
+`;
+
+const FilterInput = styled.input`
+  width: 100%;
+  padding: ${props => props.hasIcon ? '0.75rem 2.5rem' : '0.75rem 1rem'};
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
+const ClearButton = styled.button`
+  position: absolute;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    color: #991b1b;
+    transform: scale(1.1);
+  }
+`;
+
+const SelectWithIcon = styled.div`
+  position: relative;
+`;
+
+const DateRangeGroup = styled(FilterGroup)`
+  grid-column: span 2;
+
+  @media (max-width: 1600px) {
+    grid-column: span 1;
+  }
+`;
+
+const DateRangeInputs = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+`;
+
+const DateInputWrapper = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const DateSeparator = styled.span`
+  color: #9ca3af;
+  font-weight: 500;
+  font-size: 1rem;
+`;
+
+const PriceRangeGroup = styled(FilterGroup)`
+  grid-column: span 2;
+
+  @media (max-width: 1600px) {
+    grid-column: span 1;
+  }
+`;
+
+const PriceRangeInputs = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+`;
+
+const PriceInputWrapper = styled.div`
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+
+  svg {
+    position: absolute;
+    left: 0.75rem;
+    color: #9ca3af;
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
+  }
+`;
+
+const PriceSeparator = styled.span`
+  color: #9ca3af;
+  font-weight: 500;
+  font-size: 1rem;
+`;
+
+const ActionButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
+  color: #3b82f6;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #3b82f6;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  }
+`;
+
+const HintText = styled.span`
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+
+  kbd {
+    background: #f1f5f9;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+    font-family: monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+  }
+`;
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
+const OrdersFiltersV3Full = ({
+  // Auth
+  token,
+  username,
+  userId,
+  
+  // Filters state
+  filters,
+  onFilterChange,
+  onClearAll,
+  
+  // Global search
+  globalFilter,
+  onGlobalFilterChange,
+  
+  // UI state
+  showFilters,
+  onToggleFilters,
+  onHide
+}) => {
+  // State pro loaded data
+  const [usersList, setUsersList] = useState([]);
+  const [approversList, setApproversList] = useState([]);
+  const [orderStatesList, setOrderStatesList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load data from API při mountu
+  useEffect(() => {
+    const loadFiltersData = async () => {
+      if (!token || !username) return;
+
+      try {
+        setLoading(true);
+
+        // Načíst všechny data paralelně
+        const [usersData, approversData, statesData] = await Promise.all([
+          fetchAllUsers({ token, username, show_inactive: true }),
+          fetchApprovers({ token, username }),
+          fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' })
+        ]);
+
+        setUsersList(usersData || []);
+        setApproversList(approversData || []);
+        setOrderStatesList(statesData || []);
+      } catch (error) {
+        console.error('❌ Chyba při načítání dat pro filtry:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFiltersData();
+  }, [token, username]);
+
+  // Připrav sorted users
+  const sortedActiveUsers = useMemo(() => {
+    if (!usersList || usersList.length === 0) return [];
+
+    return [...usersList]
+      .filter(user => user.aktivni === 1 || user.aktivni === '1' || user.aktivni === true)
+      .map(user => ({
+        ...user,
+        id: user.id,
+        displayName: user.jmeno_prijmeni || `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || `User ${user.id}`
+      }))
+      .sort((a, b) => {
+        const nameA = a.displayName || '';
+        const nameB = b.displayName || '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [usersList]);
+
+  // Připrav sorted approvers
+  const sortedActiveApprovers = useMemo(() => {
+    if (!approversList || approversList.length === 0) return [];
+
+    return [...approversList]
+      .filter(approver => approver.aktivni === 1 || approver.aktivni === '1' || approver.aktivni === true)
+      .map(approver => ({
+        ...approver,
+        id: approver.id,
+        displayName: approver.jmeno_prijmeni || `${approver.jmeno || ''} ${approver.prijmeni || ''}`.trim() || `User ${approver.id}`
+      }))
+      .sort((a, b) => {
+        const nameA = a.displayName || '';
+        const nameB = b.displayName || '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [approversList]);
+
+  // Připrav status options
+  const statusOptions = useMemo(() => {
+    if (!orderStatesList || orderStatesList.length === 0) return [];
+
+    return [...orderStatesList].map(status => {
+      const statusName = status.nazev_stavu || status.nazev || status.kod_stavu || status.id;
+      return {
+        ...status,
+        id: statusName,
+        kod_stavu: status.kod_stavu || status.id
+      };
+    });
+  }, [orderStatesList]);
+
+  // Format number with spaces
+  const formatNumberWithSpaces = (value) => {
+    if (!value) return '';
+    const numStr = String(value).replace(/\s/g, '');
+    return numStr.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  };
+
+  // Parse number from string with spaces
+  const parseNumber = (value) => {
+    if (!value) return '';
+    const cleaned = String(value).replace(/\s/g, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? '' : num;
+  };
+
+  // Handlers
+  const handleFilterChange = (field, value) => {
+    onFilterChange({ ...filters, [field]: value });
+  };
+
+  const handleMultiSelectChange = (field) => (event) => {
+    const selectedOptions = event.target.options;
+    const values = Array.from(selectedOptions).map(opt => opt.value);
+    handleFilterChange(field, values);
+  };
+
+  const handleAmountFromChange = (e) => {
+    const value = e.target.value;
+    handleFilterChange('amountFrom', parseNumber(value));
+  };
+
+  const handleAmountToChange = (e) => {
+    const value = e.target.value;
+    handleFilterChange('amountTo', parseNumber(value));
+  };
+
+  const clearFilter = (field) => {
+    handleFilterChange(field, Array.isArray(filters[field]) ? [] : '');
+  };
+
+  if (loading) {
+    return (
+      <FiltersPanel>
+        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+          Načítání filtrů...
+        </div>
+      </FiltersPanel>
+    );
+  }
+
+  return (
+    <FiltersPanel>
+      <FiltersHeader>
+        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FontAwesomeIcon icon={faFilter} style={{ color: '#3b82f6' }} />
+          Filtry a vyhledávání
+        </h3>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <ActionButton onClick={onClearAll} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
+            <FontAwesomeIcon icon={faEraser} />
+            Vymazat filtry
+          </ActionButton>
+
+          <ActionButton onClick={onToggleFilters}>
+            <FontAwesomeIcon icon={showFilters ? faChevronUp : faChevronDown} />
+            {showFilters ? 'Skrýt filtry' : 'Rozšířený filtr'}
+          </ActionButton>
+
+          <ActionButton onClick={onHide}>
+            <FontAwesomeIcon icon={faTimes} />
+            Skrýt
+          </ActionButton>
+        </div>
+      </FiltersHeader>
+
+      {/* Fulltext search */}
+      <FilterGroup>
+        <FilterLabel>
+          <FontAwesomeIcon icon={faSearch} />
+          Fulltext vyhledávání
+          <HintText>
+            💡 Bez diakritiky
+          </HintText>
+        </FilterLabel>
+        <FilterInputWithIcon>
+          <FontAwesomeIcon icon={faSearch} />
+          <FilterInput
+            type="text"
+            placeholder="Hledat v evidenčním čísle, předmětu, objednateli..."
+            value={globalFilter || ''}
+            onChange={(e) => onGlobalFilterChange(e.target.value)}
+            hasIcon
+          />
+          {globalFilter && (
+            <ClearButton onClick={() => onGlobalFilterChange('')} title="Vymazat">
+              <FontAwesomeIcon icon={faTimes} />
+            </ClearButton>
+          )}
+        </FilterInputWithIcon>
+      </FilterGroup>
+
+      {/* Extended filters */}
+      {showFilters && (
+        <FiltersGrid>
+          {/* Objednatel */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faUser} />
+                Objednatel
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.objednatel?.length > 0}
+                onClick={() => clearFilter('objednatel')}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <SelectWithIcon>
+              <MultiSelectLocal
+                field="objednatel"
+                value={filters.objednatel || []}
+                onChange={handleMultiSelectChange('objednatel')}
+                options={sortedActiveUsers}
+                placeholder="Vyberte objednatele..."
+                icon={<FontAwesomeIcon icon={faUser} />}
+              />
+            </SelectWithIcon>
+          </FilterGroup>
+
+          {/* Garant */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faUser} />
+                Garant
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.garant?.length > 0}
+                onClick={() => clearFilter('garant')}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <SelectWithIcon>
+              <MultiSelectLocal
+                field="garant"
+                value={filters.garant || []}
+                onChange={handleMultiSelectChange('garant')}
+                options={sortedActiveUsers}
+                placeholder="Vyberte guaranty..."
+                icon={<FontAwesomeIcon icon={faUser} />}
+              />
+            </SelectWithIcon>
+          </FilterGroup>
+
+          {/* Příkazce */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faUser} />
+                Příkazce
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.prikazce?.length > 0}
+                onClick={() => clearFilter('prikazce')}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <SelectWithIcon>
+              <MultiSelectLocal
+                field="prikazce"
+                value={filters.prikazce || []}
+                onChange={handleMultiSelectChange('prikazce')}
+                options={sortedActiveApprovers}
+                placeholder="Vyberte příkazce..."
+                icon={<FontAwesomeIcon icon={faUser} />}
+              />
+            </SelectWithIcon>
+          </FilterGroup>
+
+          {/* Schvalovatel */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faShield} />
+                Schvalovatel
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.schvalovatel?.length > 0}
+                onClick={() => clearFilter('schvalovatel')}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <SelectWithIcon>
+              <MultiSelectLocal
+                field="schvalovatel"
+                value={filters.schvalovatel || []}
+                onChange={handleMultiSelectChange('schvalovatel')}
+                options={sortedActiveApprovers}
+                placeholder="Vyberte schvalovatele..."
+                icon={<FontAwesomeIcon icon={faShield} />}
+              />
+            </SelectWithIcon>
+          </FilterGroup>
+
+          {/* Stav objednávky */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faList} />
+                Stav objednávky
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.stav?.length > 0}
+                onClick={() => clearFilter('stav')}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <SelectWithIcon>
+              <MultiSelectLocal
+                field="stav"
+                value={filters.stav || []}
+                onChange={handleMultiSelectChange('stav')}
+                options={statusOptions}
+                placeholder="Vyberte stavy..."
+                icon={<FontAwesomeIcon icon={faList} />}
+              />
+            </SelectWithIcon>
+          </FilterGroup>
+
+          {/* Datum od-do */}
+          <DateRangeGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faCalendarAlt} />
+                Datum od - do
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.dateFrom || filters.dateTo}
+                onClick={() => {
+                  clearFilter('dateFrom');
+                  clearFilter('dateTo');
+                }}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <DateRangeInputs>
+              <DateInputWrapper>
+                <DatePicker
+                  fieldName="dateFrom"
+                  value={filters.dateFrom || ''}
+                  onChange={(value) => handleFilterChange('dateFrom', value || '')}
+                  placeholder="Datum od"
+                />
+              </DateInputWrapper>
+              <DateSeparator>—</DateSeparator>
+              <DateInputWrapper>
+                <DatePicker
+                  fieldName="dateTo"
+                  value={filters.dateTo || ''}
+                  onChange={(value) => handleFilterChange('dateTo', value || '')}
+                  placeholder="Datum do"
+                />
+              </DateInputWrapper>
+            </DateRangeInputs>
+          </DateRangeGroup>
+
+          {/* Cena od-do */}
+          <PriceRangeGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faMoneyBillWave} />
+                Cena od - do (Kč)
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.amountFrom || filters.amountTo}
+                onClick={() => {
+                  clearFilter('amountFrom');
+                  clearFilter('amountTo');
+                }}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <PriceRangeInputs>
+              <PriceInputWrapper>
+                <FontAwesomeIcon icon={faMoneyBillWave} />
+                <FilterInput
+                  type="text"
+                  placeholder="0"
+                  value={formatNumberWithSpaces(filters.amountFrom)}
+                  onChange={handleAmountFromChange}
+                  hasIcon
+                  style={{ textAlign: 'right', paddingRight: '2.5rem' }}
+                />
+              </PriceInputWrapper>
+              <PriceSeparator>—</PriceSeparator>
+              <PriceInputWrapper>
+                <FontAwesomeIcon icon={faMoneyBillWave} />
+                <FilterInput
+                  type="text"
+                  placeholder="∞"
+                  value={formatNumberWithSpaces(filters.amountTo)}
+                  onChange={handleAmountToChange}
+                  hasIcon
+                  style={{ textAlign: 'right', paddingRight: '2.5rem' }}
+                />
+              </PriceInputWrapper>
+            </PriceRangeInputs>
+          </PriceRangeGroup>
+
+          {/* Stav registru */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faFileContract} />
+                Stav registru
+              </FilterLabelLeft>
+            </FilterLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: filters.maBytZverejneno ? '600' : '400',
+                color: filters.maBytZverejneno ? '#f59e0b' : '#4b5563'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={filters.maBytZverejneno || false}
+                  onChange={(e) => handleFilterChange('maBytZverejneno', e.target.checked)}
+                  style={{
+                    cursor: 'pointer',
+                    width: '16px',
+                    height: '16px',
+                    accentColor: '#f59e0b'
+                  }}
+                />
+                <span>Má být zveřejněno</span>
+              </label>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: filters.byloZverejneno ? '600' : '400',
+                color: filters.byloZverejneno ? '#10b981' : '#4b5563'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={filters.byloZverejneno || false}
+                  onChange={(e) => handleFilterChange('byloZverejneno', e.target.checked)}
+                  style={{
+                    cursor: 'pointer',
+                    width: '16px',
+                    height: '16px',
+                    accentColor: '#10b981'
+                  }}
+                />
+                <span>Bylo již zveřejněno</span>
+              </label>
+            </div>
+          </FilterGroup>
+
+          {/* Mimořádné události */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faBoltLightning} />
+                Mimořádné události
+              </FilterLabelLeft>
+            </FilterLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: filters.mimoradneObjednavky ? '600' : '400',
+                color: filters.mimoradneObjednavky ? '#dc2626' : '#4b5563'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={filters.mimoradneObjednavky || false}
+                  onChange={(e) => handleFilterChange('mimoradneObjednavky', e.target.checked)}
+                  style={{
+                    cursor: 'pointer',
+                    width: '16px',
+                    height: '16px',
+                    accentColor: '#dc2626'
+                  }}
+                />
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  Krize / Havárie
+                </span>
+              </label>
+            </div>
+          </FilterGroup>
+        </FiltersGrid>
+      )}
+    </FiltersPanel>
+  );
+};
+
+export default OrdersFiltersV3Full;

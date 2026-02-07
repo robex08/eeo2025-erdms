@@ -58,84 +58,84 @@ export {
  */
 export const NOTIFICATION_CONFIG = {
   // STAVY OBJEDNÁVEK (NOVÉ)
-  order_status_nova: {
+  ORDER_CREATED: {
     icon: '📝',
     color: '#64748b',
     category: 'orders',
     label: 'Objednávka vytvořena',
     priority: 'low'
   },
-  order_status_rozpracovana: {
+  ORDER_DRAFT: {
     icon: '✏️',
     color: '#f59e0b',
     category: 'orders',
     label: 'Objednávka rozpracována',
     priority: 'low'
   },
-  order_status_ke_schvaleni: {
+  ORDER_PENDING_APPROVAL: {
     icon: '📋',
     color: '#3b82f6',
     category: 'orders',
     label: 'Objednávka ke schválení',
     priority: 'high'
   },
-  order_status_schvalena: {
+  ORDER_APPROVED: {
     icon: '👍',
     color: '#16a34a',
     category: 'orders',
     label: 'Objednávka schválena',
     priority: 'normal'
   },
-  order_status_zamitnuta: {
+  ORDER_REJECTED: {
     icon: '❌',
     color: '#dc2626',
     category: 'orders',
     label: 'Objednávka zamítnuta',
     priority: 'high'
   },
-  order_status_ceka_se: {
+  ORDER_AWAITING_CHANGES: {
     icon: '⏸️',
     color: '#f59e0b',
     category: 'orders',
     label: 'Objednávka čeká',
     priority: 'normal'
   },
-  order_status_odeslana: {
+  ORDER_SENT_TO_SUPPLIER: {
     icon: '📤',
     color: '#3b82f6',
     category: 'orders',
     label: 'Objednávka odeslána',
     priority: 'normal'
   },
-  order_status_ceka_potvrzeni: {
+  ORDER_AWAITING_CONFIRMATION: {
     icon: '⏳',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na potvrzení dodavatele',
     priority: 'normal'
   },
-  order_status_potvrzena: {
+  ORDER_CONFIRMED_BY_SUPPLIER: {
     icon: '✔️',
     color: '#8b5cf6',
     category: 'orders',
     label: 'Objednávka potvrzena',
     priority: 'normal'
   },
-  order_status_dokoncena: {
+  ORDER_COMPLETED: {
     icon: '🎯',
     color: '#059669',
     category: 'orders',
     label: 'Objednávka dokončena',
     priority: 'normal'
   },
-  order_status_zrusena: {
+  ORDER_CANCELLED: {
     icon: '🚫',
     color: '#6b7280',
     category: 'orders',
     label: 'Objednávka zrušena',
     priority: 'normal'
   },
-  order_status_smazana: {
+  ORDER_DELETED: {
     icon: '🗑️',
     color: '#6b7280',
     category: 'orders',
@@ -144,14 +144,14 @@ export const NOTIFICATION_CONFIG = {
   },
 
   // NOVÉ FÁZE - REGISTR SMLUV
-  order_status_registr_ceka: {
+  ORDER_REGISTRY_PENDING: {
     icon: '📋',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na registr smluv',
     priority: 'normal'
   },
-  order_status_registr_zverejnena: {
+  ORDER_REGISTRY_PUBLISHED: {
     icon: '📢',
     color: '#10b981',
     category: 'orders',
@@ -160,28 +160,28 @@ export const NOTIFICATION_CONFIG = {
   },
 
   // NOVÉ FÁZE - FAKTURACE
-  order_status_faktura_ceka: {
+  ORDER_INVOICE_PENDING: {
     icon: '💰',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na fakturu',
     priority: 'normal'
   },
-  order_status_faktura_pridana: {
+  ORDER_INVOICE_ADDED: {
     icon: '📄',
     color: '#3b82f6',
     category: 'orders',
     label: 'Faktura přidána',
     priority: 'normal'
   },
-  order_status_faktura_schvalena: {
+  ORDER_INVOICE_APPROVED: {
     icon: '✅',
     color: '#10b981',
     category: 'orders',
     label: 'Faktura schválena',
     priority: 'normal'
   },
-  order_status_faktura_uhrazena: {
+  ORDER_INVOICE_PAID: {
     icon: '💳',
     color: '#10b981',
     category: 'orders',
@@ -189,25 +189,25 @@ export const NOTIFICATION_CONFIG = {
     priority: 'normal'
   },
 
-  // NOVÉ FÁZE - VĚCNÁ SPRÁVNOST
-  order_status_kontrola_ceka: {
-    icon: '🔍',
+  // NOVÉ FÁZE - VĚCNÁ SPRÁVNOST FAKTURY
+  INVOICE_MATERIAL_CHECK_REQUESTED: {
+    icon: '📝',
     color: '#f59e0b',
-    category: 'orders',
-    label: 'Čeká na kontrolu',
+    category: 'invoices',
+    label: 'Čeká na kontrolu věcné správnosti',
     priority: 'high'
   },
-  order_status_kontrola_potvrzena: {
+  INVOICE_MATERIAL_CHECK_APPROVED: {
     icon: '✅',
     color: '#10b981',
-    category: 'orders',
-    label: 'Věcná správnost OK',
+    category: 'invoices',
+    label: 'Věcná správnost faktury OK',
     priority: 'normal'
   },
-  order_status_kontrola_zamitnuta: {
+  INVOICE_MATERIAL_CHECK_REJECTED: {
     icon: '⚠️',
     color: '#ef4444',
-    category: 'orders',
+    category: 'invoices',
     label: 'Reklamace - věcná správnost',
     priority: 'high'
   },
@@ -278,29 +278,6 @@ export const NOTIFICATION_CONFIG = {
     color: '#ef4444',
     category: 'orders',
     label: 'Objednávka násilně odebrána',
-    priority: 'high'
-  },
-
-  // DEPRECATED (ponecháno pro kompatibilitu)
-  order_approved: {
-    icon: '✅',
-    color: '#10b981',
-    category: 'orders',
-    label: 'Objednávka schválena (deprecated)',
-    priority: 'normal'
-  },
-  order_rejected: {
-    icon: '❌',
-    color: '#ef4444',
-    category: 'orders',
-    label: 'Objednávka zamítnuta (deprecated)',
-    priority: 'high'
-  },
-  order_created: {
-    icon: '📝',
-    color: '#3b82f6',
-    category: 'orders',
-    label: 'Nová objednávka (deprecated)',
     priority: 'high'
   }
 };
@@ -441,7 +418,7 @@ export const markNotificationAsRead = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/mark-read', payload);
@@ -482,7 +459,7 @@ export const dismissNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/dismiss', payload);
@@ -523,7 +500,7 @@ export const restoreNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/restore', payload);
@@ -546,7 +523,7 @@ export const deleteNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/delete', payload);
@@ -678,7 +655,7 @@ class NotificationService {
       const payload = {
         token,
         username,
-        type,
+        typ: type, // Backend očekává 'typ', ne 'type'
         order_id,
         action_user_id,
         ...custom_placeholders
@@ -689,7 +666,7 @@ class NotificationService {
       if (recipients && Array.isArray(recipients) && recipients.length > 0) {
         payload.to_users = recipients; // Backend očekává "to_users", ne "recipients"
       } else if (to_user_id) {
-        payload.to_user_id = to_user_id;
+        payload.pro_uzivatele_id = to_user_id; // Backend očekává "pro_uzivatele_id", ne "to_user_id"
       }
 
       const response = await notificationsApi.post('/notifications/create', payload);
@@ -715,7 +692,7 @@ class NotificationService {
       const payload = {
         token,
         username,
-        type,
+        typ: type, // Backend očekává 'typ', ne 'type'
         order_id,
         action_user_id,
         ...custom_placeholders
@@ -773,6 +750,150 @@ class NotificationService {
     }
   }
 
+  /**
+   * 🆕 NOVÝ: Trigger notifikace podle organizational hierarchy
+   * Backend automaticky najde příjemce v hierarchii podle event typu
+   * 
+   * @param {string} eventType - Event type code (order_status_ke_schvaleni, order_status_schvalena, INVOICE_CREATED, ...)
+   * @param {number} objectId - ID objektu (objednávka, faktura, ...)
+   * @param {number} triggerUserId - ID uživatele, který akci provedl
+   * @param {Object} placeholderData - Volitelná placeholder data (backend je načte automaticky z object_id)
+   * @returns {Promise<Object>} - Výsledek {status: 'ok', sent: number, errors: array}
+   */
+  async trigger(eventType, objectId, triggerUserId, placeholderData = {}) {
+    try {
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+
+      const payload = {
+        token,
+        username: user?.username,
+        event_type: eventType,
+        object_id: objectId,
+        trigger_user_id: triggerUserId,
+        placeholder_data: placeholderData
+      };
+
+      const response = await notificationsApi.post('/notifications/trigger', payload);
+      const result = handleApiResponse(response);
+
+      return result;
+
+    } catch (error) {
+      console.error('❌ [NotificationService] Trigger CHYBA:', error);
+      console.error('   Error message:', error.message);
+      console.error('   HTTP Status:', error.response?.status);
+      console.error('   Response data:', error.response?.data);
+      throw error;
+    }
+  }
+
+  // ===========================================================================
+  // TODO ALARM FUNKCE
+  // ===========================================================================
+
+  /**
+   * Poslat TODO alarm notifikaci (normální priorita)
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   */
+  async notifyTodoAlarmNormal(userId, todoData) {
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
+    return this.create({
+      token,
+      username: user?.username,
+      type: 'alarm_todo_normal',
+      order_id: null,
+      action_user_id: userId,
+      to_user_id: userId,
+      custom_placeholders: {
+        todo_title: todoData.todo_title,
+        todo_note: todoData.todo_note || '',
+        alarm_datetime: todoData.alarm_datetime,
+        alarm_date: todoData.alarm_date,
+        alarm_time: todoData.alarm_time,
+        user_name: todoData.user_name,
+        time_remaining: todoData.time_remaining || '',
+        todo_id: String(todoData.todo_id)
+      }
+    });
+  }
+
+  /**
+   * Poslat TODO alarm notifikaci (VYSOKÁ priorita)
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   */
+  async notifyTodoAlarmHigh(userId, todoData) {
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
+    return this.create({
+      token,
+      username: user?.username,
+      type: 'alarm_todo_high',
+      order_id: null,
+      action_user_id: userId,
+      to_user_id: userId,
+      custom_placeholders: {
+        todo_title: todoData.todo_title,
+        todo_note: todoData.todo_note || '',
+        alarm_datetime: todoData.alarm_datetime,
+        alarm_date: todoData.alarm_date,
+        alarm_time: todoData.alarm_time,
+        user_name: todoData.user_name,
+        time_remaining: todoData.time_remaining || '',
+        todo_id: String(todoData.todo_id)
+      }
+    });
+  }
+
+  /**
+   * Poslat TODO alarm notifikaci (PROŠLÝ TERMÍN)
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   */
+  async notifyTodoAlarmExpired(userId, todoData) {
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
+    return this.create({
+      token,
+      username: user?.username,
+      type: 'alarm_todo_expired',
+      order_id: null,
+      action_user_id: userId,
+      to_user_id: userId,
+      custom_placeholders: {
+        todo_title: todoData.todo_title,
+        todo_note: todoData.todo_note || '',
+        alarm_datetime: todoData.alarm_datetime,
+        alarm_date: todoData.alarm_date,
+        alarm_time: todoData.alarm_time,
+        user_name: todoData.user_name,
+        time_remaining: todoData.time_remaining || '',
+        todo_id: String(todoData.todo_id)
+      }
+    });
+  }
+
+  /**
+   * Univerzální funkce pro odeslání TODO alarm notifikace
+   * Automaticky vybere správný typ podle priority a stavu
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   * @param {boolean} isExpired - Je termín prošlý?
+   * @param {boolean} isHighPriority - Je vysoká priorita?
+   */
+  async notifyTodoAlarm(userId, todoData, isExpired = false, isHighPriority = false) {
+    if (isExpired) {
+      return this.notifyTodoAlarmExpired(userId, todoData);
+    } else if (isHighPriority) {
+      return this.notifyTodoAlarmHigh(userId, todoData);
+    } else {
+      return this.notifyTodoAlarmNormal(userId, todoData);
+    }
+  }
+
   // ===========================================================================
   // HELPER FUNKCE - Ready-to-use metody pro běžné workflow akce
   // ===========================================================================
@@ -784,7 +905,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_schvalena',
+      type: 'ORDER_APPROVED',
       order_id,
       action_user_id,
       to_user_id: creator_id
@@ -798,7 +919,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_zamitnuta',
+      type: 'ORDER_REJECTED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -813,7 +934,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_ke_schvaleni',
+      type: 'ORDER_PENDING_APPROVAL',
       order_id,
       action_user_id,
       to_user_id: garant_id
@@ -827,7 +948,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_ceka_se',
+      type: 'ORDER_AWAITING_CHANGES',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -842,7 +963,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_odeslana',
+      type: 'ORDER_SENT_TO_SUPPLIER',
       order_id,
       action_user_id,
       recipients
@@ -856,7 +977,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_potvrzena',
+      type: 'ORDER_CONFIRMED_BY_SUPPLIER',
       order_id,
       action_user_id,
       recipients
@@ -870,7 +991,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_registr_zverejnena',
+      type: 'ORDER_REGISTRY_PUBLISHED',
       order_id,
       action_user_id,
       recipients
@@ -884,7 +1005,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_pridana',
+      type: 'ORDER_INVOICE_ADDED',
       order_id,
       action_user_id,
       recipients
@@ -898,7 +1019,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_schvalena',
+      type: 'ORDER_INVOICE_APPROVED',
       order_id,
       action_user_id,
       to_user_id: creator_id
@@ -912,7 +1033,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_uhrazena',
+      type: 'ORDER_INVOICE_PAID',
       order_id,
       action_user_id,
       to_user_id: creator_id
@@ -926,7 +1047,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_kontrola_potvrzena',
+      type: 'INVOICE_MATERIAL_CHECK_APPROVED',
       order_id,
       action_user_id,
       recipients
@@ -940,7 +1061,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_kontrola_zamitnuta',
+      type: 'INVOICE_MATERIAL_CHECK_REJECTED', // TODO: implementovat nebo odstranit
       order_id,
       action_user_id,
       recipients,
@@ -954,6 +1075,11 @@ const notificationService = new NotificationService();
 
 // Export instance + class (pro testy)
 export { notificationService, NotificationService };
+
+// Export TODO alarm helper funkce (pro backward compatibility)
+export const notifyTodoAlarm = (userId, todoData, isExpired, isHighPriority) => {
+  return notificationService.notifyTodoAlarm(userId, todoData, isExpired, isHighPriority);
+};
 
 // Export jako default
 export default notificationService;

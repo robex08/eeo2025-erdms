@@ -519,6 +519,44 @@ const MainBadge = styled.span`
   font-weight: 600;
 `;
 
+const LpRequiredToggle = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: ${props => props.disabled ? 'default' : 'pointer'};
+  transition: all 0.2s ease;
+  background: ${props => props.$required 
+    ? 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)' 
+    : 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
+  };
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  opacity: ${props => props.disabled ? 0.7 : 1};
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    background: ${props => props.$required 
+      ? 'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)' 
+      : 'linear-gradient(135deg, #475569 0%, #334155 100%)'
+    };
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  svg {
+    font-size: 0.75rem;
+  }
+`;
+
 const RemoveButton = styled.button`
   display: flex;
   align-items: center;
@@ -762,7 +800,7 @@ const ConfirmDeleteButton = styled(ConfirmButton)`
 // =============================================================================
 
 const CashbookTab = () => {
-  const { user, hasPermission } = useContext(AuthContext);
+  const { user, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { invalidateCache } = useContext(DictionaryCacheContext) || {};
 
@@ -811,8 +849,17 @@ const CashbookTab = () => {
   const [forceRenumberDialogOpen, setForceRenumberDialogOpen] = useState(false);
   const [assignmentToRenumber, setAssignmentToRenumber] = useState(null);
 
-  // Oprávnění
-  const canManage = hasPermission('CASH_BOOK_MANAGE');
+  // Admin má plný přístup ke všemu
+  const isAdmin = hasAdminRole();
+  
+  // Oprávnění pro číselník pokladních knih (CASH_BOOKS_* - nový systém)
+  const canView = isAdmin || hasPermission('CASH_BOOKS_VIEW');
+  const canCreate = isAdmin || hasPermission('CASH_BOOKS_CREATE');
+  const canEdit = isAdmin || hasPermission('CASH_BOOKS_EDIT');
+  const canDelete = isAdmin || hasPermission('CASH_BOOKS_DELETE');
+  
+  // Fallback na starý systém (CASH_BOOK_MANAGE) pro zpětnou kompatibilitu
+  const canManage = isAdmin || hasPermission('CASH_BOOK_MANAGE') || canEdit || canDelete;
 
   // ============================================================================
   // PAGINATION PERSISTENCE
@@ -836,18 +883,19 @@ const CashbookTab = () => {
 
   // Znovu načíst když se změní oprávnění
   useEffect(() => {
-    if (canManage !== undefined) {
+    if (canView !== undefined || canEdit !== undefined) {
       loadData();
     }
-  }, [canManage]);
+  }, [canView, canEdit, canCreate, canDelete]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       // 🆕 ZMĚNA: Načíst seznam pokladen (místo assignments)
+      // 🔧 OPRAVA: V číselníkách zobrazit VŠECHNY pokladny (i neaktivní)
       const cashboxResult = await cashbookAPI.getCashboxList(
-        true,  // activeOnly = true (jen aktivní pokladny)
-        true   // includeUsers = true (načíst i uživatele)
+        false,  // activeOnly = false (načíst i neaktivní pokladny)
+        true    // includeUsers = true (načíst i uživatele)
       );
 
       if (cashboxResult.status === 'ok') {
@@ -879,7 +927,7 @@ const CashbookTab = () => {
   // ============================================================================
 
   const handleSaveSettings = async () => {
-    if (!canManage) {
+    if (!canEdit) {
       showToast?.('Nemáte oprávnění pro správu nastavení', { type: 'error' });
       return;
     }
@@ -887,7 +935,6 @@ const CashbookTab = () => {
     setSettingsSaving(true);
     try {
       const valueToSave = usePrefixSetting ? '1' : '0';
-      console.log('🔍 Saving cashbook_use_prefix:', valueToSave);
 
       const result = await cashbookAPI.updateSetting(
         'cashbook_use_prefix',
@@ -895,7 +942,6 @@ const CashbookTab = () => {
         'Používat prefixovaná čísla dokladů (V599-001)'
       );
 
-      console.log('🔍 Save result:', result);
 
       if (result.status === 'ok') {
         showToast?.('Nastavení uloženo', { type: 'success' });
@@ -961,7 +1007,6 @@ const CashbookTab = () => {
 
   // 🆕 ADMIN: Force přepočet dokladů
   const handleForceRenumber = async (cashbox) => {
-    console.log('🔧 FORCE RENUMBER - pokladna ID:', cashbox.id);
 
     try {
       // ✅ PO ZMĚNĚ (commit 945cc8e): Přímo použít pokladna_id z řádku
@@ -973,8 +1018,6 @@ const CashbookTab = () => {
         ciselna_rada_vpd: cashbox.ciselna_rada_vpd,
         ciselna_rada_ppd: cashbox.ciselna_rada_ppd
       };
-
-      console.log('🔧 FORCE RENUMBER - použiji pokladnu:', assignmentData);
 
       setAssignmentToRenumber(assignmentData);
       setForceRenumberDialogOpen(true);
@@ -991,7 +1034,6 @@ const CashbookTab = () => {
 
       // ✅ SMAZAT LOCALSTORAGE pro všechny uživatele + měsíce dané pokladny v daném roce
       if (result && result.status === 'ok') {
-        console.log('🗑️ FORCE RENUMBER ÚSPĚŠNÝ - mažu localStorage pro pokladnu:', pokladnaId, 'rok:', year);
 
         // Projít všechny localStorage klíče a smazat ty, které patří k této pokladně a roku
         const keysToRemove = [];
@@ -1004,7 +1046,6 @@ const CashbookTab = () => {
           }
         }
 
-        console.log('🗑️ Mažu localStorage klíče:', keysToRemove);
         keysToRemove.forEach(key => localStorage.removeItem(key));
 
         // Zobrazit toast
@@ -1045,8 +1086,8 @@ const CashbookTab = () => {
       return user.platne_do > today; // Budoucí datum = ještě aktivní (dnes už ne)
     });
 
-    if (!canManage) {
-      return null; // Non-admin nemůže rozbalit
+    if (!canView) {
+      return null; // Bez VIEW práva nemůže rozbalit
     }
 
     return (
@@ -1103,20 +1144,28 @@ const CashbookTab = () => {
         )}
 
         <div style={{ marginTop: '1rem' }}>
-          <AddUserButton onClick={() => handleAssignUser(cashbox.id)}>
+          <AddUserButton onClick={() => handleAssignUser(cashbox)}>
             <FontAwesomeIcon icon={faPlus} />
             Přiřadit uživatele
           </AddUserButton>
         </div>
       </ExpandedContent>
     );
-  }, [canManage]);
+  }, [canView, canEdit, canDelete]);
 
   // Placeholder handlery pro assign/unassign (budou implementovány s dialogy)
-  const handleAssignUser = useCallback((cashboxId) => {
-    // TODO: Otevřít AssignUserDialog
-    showToast('Funkce přiřazení uživatele - připravena pro implementaci', 'info');
-  }, [showToast]);
+  const handleAssignUser = useCallback((cashboxParam) => {
+    // Pokud je parametr číslo, hledáme v cashboxes state (fallback)
+    // Pokud je parametr objekt, používáme přímo ten objekt
+    const cashbox = typeof cashboxParam === 'object' ? cashboxParam : cashboxes.find(c => c.id == cashboxParam);
+    
+    if (cashbox) {
+      setSelectedAssignment(cashbox);
+      setEditDialogOpen(true);
+    } else {
+      showToast('Pokladna nenalezena', 'error');
+    }
+  }, [cashboxes, showToast]);
 
   // User removal with custom confirm dialog
   const handleUnassignUserClick = useCallback((assignmentId, userName) => {
@@ -1127,20 +1176,8 @@ const CashbookTab = () => {
     const { assignmentId, userName } = confirmRemove;
     setConfirmRemove({ show: false, assignmentId: null, userName: '' });
 
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('🗑️  CASHBOOK TAB - ODEBRÁNÍ UŽIVATELE Z PODŘÁDKU');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📋 Assignment ID:', assignmentId);
-    console.log('👤 Uživatel:', userName);
-
     try {
-      console.log('📡 Volám API: cashbookAPI.unassignUserFromCashbox()');
       const result = await cashbookAPI.unassignUserFromCashbox(assignmentId);
-
-      console.log('✅ API Response:', JSON.stringify(result, null, 2));
-      console.log('   Status:', result?.status);
-      console.log('   Message:', result?.message);
-      console.log('   Affected rows:', result?.data?.affected_rows);
 
       if (result.status === 'ok') {
         // Kontrola affected_rows - pokud je 0, záznam nebyl aktualizován
@@ -1153,33 +1190,20 @@ const CashbookTab = () => {
           console.warn('   2. Záznam už má platne_do nastavené na dnešní datum');
           console.warn('   3. SQL WHERE podmínka je špatně');
           showToast(`VAROVÁNÍ: Uživatel "${userName}" nebyl odebrán - záznam už neexistuje nebo byl již deaktivován`, 'warning');
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('⚠️  CASHBOOK TAB - WARNING (affected_rows = 0)');
-          console.log('═══════════════════════════════════════════════════════');
 
           // I tak refreshneme data, ať vidíme aktuální stav
-          console.log('🔄 Volám loadData() pro refresh...');
           loadData();
           invalidateCache?.('cashbook');
           return;
         }
 
-        console.log('✅ BE potvrdilo úspěšné odebrání (affected_rows:', affectedRows, ')');
         showToast(`Uživatel "${userName}" byl úspěšně odebrán z pokladny`, 'success');
 
-        console.log('🔄 Volám loadData() pro refresh...');
         loadData(); // Reload data to reflect changes
         invalidateCache?.('cashbook');
-        console.log('✅ loadData() zavoláno');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('🗑️  CASHBOOK TAB - SUCCESS');
-        console.log('═══════════════════════════════════════════════════════');
       } else {
         console.error('❌ BE vrátilo neúspěšný status:', result?.status);
         showToast(result.message || 'Chyba při odebírání uživatele', 'error');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('❌ CASHBOOK TAB - FAILED');
-        console.log('═══════════════════════════════════════════════════════');
       }
     } catch (error) {
       console.error('═══════════════════════════════════════════════════════');
@@ -1195,6 +1219,47 @@ const CashbookTab = () => {
   const handleUnassignUserCancel = useCallback(() => {
     setConfirmRemove({ show: false, assignmentId: null, userName: '' });
   }, []);
+
+  // ============================================================================
+  // 🆕 LP KÓD POVINNOSŤ HANDLER
+  // ============================================================================
+
+  const handleToggleLpRequirement = useCallback(async (pokladnaId, newValue) => {
+    try {
+      console.log(`🔄 Toggle LP requirement for pokladna ${pokladnaId}: ${newValue}`);
+      
+      // Optimistická aktualizace UI
+      setCashboxes(prev => prev.map(pokladna => 
+        pokladna.id === pokladnaId 
+          ? { ...pokladna, lp_kod_povinny: newValue ? 1 : 0 }
+          : pokladna
+      ));
+      
+      const result = await cashbookAPI.updateLpRequirement(pokladnaId, newValue);
+      
+      if (result.status === 'ok' || result.status === 'success') {
+        showToast(`LP kód ${newValue ? 'je nyní povinný' : 'už není povinný'}`, 'success');
+        invalidateCache?.('cashbook');
+      } else {
+        // Vrátit zpět při chybě
+        setCashboxes(prev => prev.map(pokladna => 
+          pokladna.id === pokladnaId 
+            ? { ...pokladna, lp_kod_povinny: newValue ? 0 : 1 }
+            : pokladna
+        ));
+        showToast(result.message || 'Chyba pri aktualizaci nastavení LP kódu', 'error');
+      }
+    } catch (error) {
+      console.error('❌ Chyba při toggle LP requirement:', error);
+      // Vrátit zpět při chybě
+      setCashboxes(prev => prev.map(pokladna => 
+        pokladna.id === pokladnaId 
+          ? { ...pokladna, lp_kod_povinny: newValue ? 0 : 1 }
+          : pokladna
+      ));
+      showToast('Chyba při aktualizaci nastavení LP kódu', 'error');
+    }
+  }, [showToast, invalidateCache]);
 
   // ============================================================================
   // TABLE COLUMNS - 🆕 NOVÁ STRUKTURA: Pokladny místo uživatelů
@@ -1262,6 +1327,24 @@ const CashbookTab = () => {
         ),
       },
       {
+        accessorKey: 'pocatecni_stav_rok',
+        header: 'Počáteční stav',
+        cell: ({ row }) => {
+          const stav = row.original.pocatecni_stav_rok;
+          return (
+            <div style={{
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: stav !== null && stav !== undefined ? '#059669' : '#94a3b8'
+            }}>
+              {stav !== null && stav !== undefined 
+                ? `${parseFloat(stav).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                : '—'}
+            </div>
+          );
+        },
+      },
+      {
         accessorKey: 'ciselna_rada_vpd',
         header: 'VPD',
         cell: ({ row }) => (
@@ -1317,6 +1400,33 @@ const CashbookTab = () => {
         ),
       },
       {
+        accessorKey: 'lp_kod_povinny',
+        header: 'LP kód povinný',
+        cell: ({ row }) => {
+          const isRequired = row.original.lp_kod_povinny === 1 || row.original.lp_kod_povinny === '1';
+          return (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <LpRequiredToggle
+                $required={isRequired}
+                onClick={() => canEdit && handleToggleLpRequirement(row.original.id, !isRequired)}
+                disabled={!canEdit}
+                title={canEdit 
+                  ? `Kliknout pro ${isRequired ? 'zrušení' : 'nastavení'} povinnosti LP kódu` 
+                  : `LP kód je ${isRequired ? 'povinný' : 'volitelný'}`
+                }
+              >
+                <FontAwesomeIcon icon={isRequired ? faCheckCircle : faTimesCircle} />
+                {isRequired ? 'Povinný' : 'Volitelný'}
+              </LpRequiredToggle>
+            </div>
+          );
+        },
+      },
+      {
         id: 'actions',
         header: () => (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
@@ -1327,20 +1437,20 @@ const CashbookTab = () => {
           <ActionIcons>
             <IconButton
               onClick={() => handleEdit(row.original)}
-              disabled={!canManage}
+              disabled={!canEdit}
               title="Upravit pokladnu (VPD/PPD)"
             >
               <FontAwesomeIcon icon={faEdit} />
             </IconButton>
             <IconButton
               onClick={() => handleDelete(row.original)}
-              disabled={!canManage}
+              disabled={!canDelete}
               $delete
               title="Smazat pokladnu"
             >
               <FontAwesomeIcon icon={faTrash} />
             </IconButton>
-            {canManage && (
+            {canEdit && (
               <IconButton
                 onClick={() => handleForceRenumber(row.original)}
                 $warning
@@ -1353,7 +1463,7 @@ const CashbookTab = () => {
         ),
       },
     ],
-    [canManage]
+    [canView, canEdit, canDelete, canCreate]
   );
 
   // ============================================================================
@@ -1421,7 +1531,7 @@ const CashbookTab = () => {
   return (
     <Container>
       {/* Global Settings Panel */}
-      {canManage && (
+      {canEdit && (
         <SettingsPanel>
           <SettingsTitle>
             <FontAwesomeIcon icon={faCog} />
@@ -1469,7 +1579,7 @@ const CashbookTab = () => {
           )}
         </SearchWrapper>
 
-        {canManage && (
+        {canCreate && (
           <ActionButton onClick={handleAddNew} $primary>
             <FontAwesomeIcon icon={faPlus} />
             Přidat pokladnu

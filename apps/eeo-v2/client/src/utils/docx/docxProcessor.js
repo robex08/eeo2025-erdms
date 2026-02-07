@@ -189,16 +189,39 @@ const extractFieldsFromXml = (documentXml) => {
       });
     }
 
+    // ✅ ODSTRANĚNÍ FRAGMENTOVANÝCH ČÁSTÍ
+    // Pokud máme TERMIN_D i TERMIN_DODANI, odstraníme TERMIN_D (je to fragment)
+    // Najdeme všechna fragmentovaná pole (source: 'fragmentedInstrText')
+    const fragmentedFieldNames = fields
+      .filter(f => f.source === 'fragmentedInstrText')
+      .map(f => f.name);
+
+    // Odfiltrujeme pole, která jsou prefixem fragmentovaných polí
+    const filteredFields = fields.filter(field => {
+      // Pokud je to samo fragmentované pole, necháme ho
+      if (field.source === 'fragmentedInstrText') {
+        return true;
+      }
+      
+      // Zkontrolujeme, zda není prefix nějakého fragmentovaného pole
+      const isFragmentOfLongerField = fragmentedFieldNames.some(fragName => 
+        fragName.startsWith(field.name) && fragName !== field.name
+      );
+      
+      // Ponecháme jen pole, které NEJSOU fragmenty
+      return !isFragmentOfLongerField;
+    });
+
     // ✅ Počítání výskytů jednotlivých polí (místo odstranění duplicit)
     // Vytvoříme mapu: název_pole -> počet výskytů
     const fieldCounts = {};
-    fields.forEach(field => {
+    filteredFields.forEach(field => {
       const key = `${field.name}|${field.type}`;
       fieldCounts[key] = (fieldCounts[key] || 0) + 1;
     });
 
     // Vytvoříme unikátní seznam polí s počtem výskytů (1:1 case-sensitive)
-    const uniqueFields = fields.reduce((acc, field) => {
+    const uniqueFields = filteredFields.reduce((acc, field) => {
       const existing = acc.find(f =>
         f.name === field.name &&
         f.type === field.type
@@ -1433,13 +1456,12 @@ export const generateFieldsFromApiData = (apiData) => {
       const missingDateFields = staticDateGroup.fields.filter(f => !existingKeys.includes(f.key));
       
       if (missingDateFields.length > 0) {
-        console.log(`⚠️ Doplňuji ${missingDateFields.length} chybějících datumových polí (NULL v API):`, 
-          missingDateFields.map(f => f.key));
+        //   missingDateFields.map(f => f.key));
         existingDateGroup.fields.push(...missingDateFields);
       }
     } else {
       // Datumová sekce vůbec neexistuje - přidej celou statickou
-      console.log('⚠️ Datumová sekce chybí úplně, přidávám statickou definici');
+      // Datumová sekce chybí úplně, přidávám statickou definici
       groups.unshift(staticDateGroup);
     }
   }
@@ -1486,13 +1508,11 @@ export const generateFieldsFromApiData = (apiData) => {
       const missingFields = staticUserGroup.fields.filter(f => !existingKeys.includes(f.key));
       
       if (missingFields.length > 0) {
-        console.log(`⚠️ Doplňuji ${missingFields.length} chybějících polí pro "${groupName}" (NULL v API):`,
-          missingFields.map(f => f.key));
+        //   missingFields.map(f => f.key));
         existingUserGroup.fields.push(...missingFields);
       }
     } else {
       // Skupina neexistuje vůbec - přidej celou statickou (např. když garant není vyplněný)
-      console.log(`⚠️ Skupina "${groupName}" chybí úplně, přidávám statickou definici`);
       groups.push(staticUserGroup);
     }
   });
@@ -1506,7 +1526,7 @@ export const generateFieldsFromApiData = (apiData) => {
       seenGroupNames.add(group.group);
       uniqueGroups.push(group);
     } else {
-      console.warn(`⚠️ Odstraněna duplicitní skupina: "${group.group}"`);
+      // console.warn(`⚠️ Odstraněna duplicitní skupina: "${group.group}"`);
     }
   });
 

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EEO - Elektronická Evidence Objednávek | Příprava Produkčního Prostředí</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #e6e9f0 0%, #eef1f5 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 100%;
+            padding: 60px 40px;
+            text-align: center;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logos-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 0 20px;
+        }
+
+        .logo-side {
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-side img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .icon {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(74, 85, 104, 0.3);
+        }
+
+        .icon svg {
+            width: 60px;
+            height: 60px;
+            fill: white;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #4a5568;
+            font-weight: 600;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .description {
+            font-size: 1.1rem;
+            color: #4a5568;
+            line-height: 1.8;
+            margin-bottom: 40px;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+
+        .feature {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #4a5568;
+        }
+
+        .feature-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+
+        .feature-text {
+            font-size: 0.9rem;
+            color: #718096;
+            line-height: 1.5;
+        }
+
+        .feature-badge {
+            display: inline-block;
+            background: #ed8936;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-top: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 15px rgba(237, 137, 54, 0.4);
+        }
+
+        .status-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .info-section {
+            background: #edf2f7;
+            padding: 30px;
+            border-radius: 12px;
+            margin-top: 30px;
+        }
+
+        .info-section h2 {
+            font-size: 1.3rem;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .info-section p {
+            font-size: 1rem;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .beta-section {
+            background: linear-gradient(135deg, #654321 0%, #8B4513 40%, #A0522D 70%, #8B0000 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin-top: 30px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .beta-section h2 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .beta-badge {
+            background: rgba(220, 38, 38, 0.9);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .beta-section p {
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            opacity: 0.95;
+        }
+
+        .beta-link {
+            display: inline-block;
+            background: white;
+            color: #8B4513;
+            padding: 12px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .beta-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            background: #f7fafc;
+        }
+
+        /* ❤️ SRDÍČKO PRO MILOVANÉ BETA TESTERY ❤️ */
+        .heart {
+            position: absolute;
+            font-size: 2rem;
+            animation: float 3s ease-in-out infinite;
+            opacity: 0.3;
+        }
+
+        .heart:nth-child(1) {
+            top: 10%;
+            left: 5%;
+            animation-delay: 0s;
+        }
+
+        .heart:nth-child(2) {
+            top: 20%;
+            right: 8%;
+            animation-delay: 1s;
+        }
+
+        .heart:nth-child(3) {
+            bottom: 15%;
+            left: 10%;
+            animation-delay: 2s;
+        }
+
+        .heart:nth-child(4) {
+            bottom: 10%;
+            right: 5%;
+            animation-delay: 1.5s;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px) scale(1);
+            }
+            50% {
+                transform: translateY(-10px) scale(1.1);
+            }
+        }
+
+        .love-emoji {
+            display: inline-block;
+            font-size: 1.5rem;
+            animation: heartbeat 1.5s ease-in-out infinite;
+            margin: 0 5px;
+        }
+
+        @keyframes heartbeat {
+            0%, 100% {
+                transform: scale(1);
+            }
+            10%, 30% {
+                transform: scale(1.2);
+            }
+            20%, 40% {
+                transform: scale(1);
+            }
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e2e8f0;
+            color: #a0aec0;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .features {
+                grid-template-columns: 1fr;
+            }
+            
+            .logos-header {
+                padding: 0 10px;
+            }
+            
+            .logo-side {
+                width: 70px;
+                height: 70px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 40px 25px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .subtitle {
+                font-size: 0.9rem;
+            }
+
+            .description {
+                font-size: 1rem;
+            }
+
+            .features {
+                grid-template-columns: 1fr;
+            }
+
+            .heart {
+                font-size: 1.5rem;
+            }
+
+            .love-emoji {
+                font-size: 1.2rem;
+            }
+            
+            .logo-side {
+                width: 60px;
+                height: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logos-header">
+            <div class="logo-side">
+                <img src="/eeo-v2/zzs-logo.png" alt="ZZS Středočeského kraje">
+            </div>
+            <div class="logo-side">
+                <img src="/eeo-v2/logo512.png" alt="ERDMS Logo">
+            </div>
+        </div>
+
+        <div class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+            </svg>
+        </div>
+
+        <div class="subtitle">Produkční Prostředí</div>
+        <h1>Elektronická Evidence<br>Objednávek</h1>
+
+        <div class="status-badge">V Přípravě</div>
+
+        <p class="description">
+            Moderní webová aplikace pro komplexní správu objednávek a faktur s pokročilým workflow systémem,
+            hierarchickým řízením oprávnění a integrací s externími systémy.
+        </p>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-title">📋 Správa Objednávek</div>
+                <div class="feature-text">Kompletní lifecycle management od vytvoření po archivaci</div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-title">💰 Evidence Faktur</div>
+                <div class="feature-text">Propojení s objednávkami, schvalovací proces</div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-title">📖 Pokladní Kniha</div>
+                <div class="feature-text">Elektronická evidence příjmů a výdajů s měsíčním uzavíráním</div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-title">📨 Komunikace se Spisovkou</div>
+                <div class="feature-text">Propojení s původním systémem spisové služby</div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-title">🔄 Workflow</div>
+                <div class="feature-text">Vícestupňový schvalovací proces s auditním logem</div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-title">🔒 Bezpečnost</div>
+                <div class="feature-text">Hierarchické oprávnění, Azure AD integrace</div>
+                <div class="feature-badge">V PŘÍPRAVĚ</div>
+            </div>
+        </div>
+
+        <div class="beta-section">
+            <div class="heart">❤️</div>
+            <div class="heart">💖</div>
+            <div class="heart">💕</div>
+            <div class="heart">💗</div>
+
+            <h2>
+                🧪 Pro Beta Testery
+                <span class="beta-badge">DEVELOP</span>
+            </h2>
+
+            <p>
+                <span class="love-emoji">💝</span>Milovaní Beta Testeři!<span class="love-emoji">��</span><br>
+                Vývojová verze aplikace je připravena pro vaše testování.
+                Pomůžete nám odhalit případné chyby před ostrým spuštěním.
+            </p>
+
+            <a href="/dev/eeo-v2" class="beta-link">🚀 Otevřít Testovací Verzi</a>
+        </div>
+
+        <div class="info-section">
+            <h2>🚀 Co přichází</h2>
+            <p>
+                Aplikace je aktuálně ve fázi finálního testování a přípravy produkčního prostředí.
+                Pracujeme na zajištění maximální stability, výkonu a bezpečnosti pro plynulý
+                provoz v produkčním nasazení.
+            </p>
+        </div>
+
+        <div class="footer">
+            <strong>ERDMS Platform</strong> | Elektronický Redakční a Dokumentační Systém<br>
+            Verze 2.0 | © 2025
+        </div>
+    </div>
+</body>
+</html>

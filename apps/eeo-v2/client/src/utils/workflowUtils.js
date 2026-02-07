@@ -10,6 +10,34 @@ import {
   getWorkflowInfo
 } from '../constants/workflow25';
 
+/**
+ * Helper funkce pro parsování workflow stavů z JSON
+ */
+const parseWorkflowStates = (workflowCode) => {
+  if (!workflowCode) return ['ODESLANA_KE_SCHVALENI'];
+  if (typeof workflowCode === 'string') {
+    try {
+      const parsed = JSON.parse(workflowCode);
+      if (Array.isArray(parsed)) {
+        return parsed.length > 0 ? parsed : ['ODESLANA_KE_SCHVALENI'];
+      }
+      return [workflowCode];
+    } catch {
+      return [workflowCode];
+    }
+  }
+  const result = Array.isArray(workflowCode) ? workflowCode : [workflowCode];
+  return result.length > 0 ? result : ['ODESLANA_KE_SCHVALENI'];
+};
+
+/**
+ * Helper funkce pro kontrolu přítomnosti workflow stavu
+ */
+const hasWorkflowState = (workflowCode, state) => {
+  const states = parseWorkflowStates(workflowCode);
+  return states.includes(state);
+};
+
 // Mapa pro překlad systémových názvů polí na lidsky čitelné labely
 const FIELD_LABELS = {
   predmet: 'Předmět objednávky',
@@ -27,6 +55,7 @@ const FIELD_LABELS = {
   polozky_objednavky: 'Položky objednávky',
   zpusob_financovani: 'Způsob financování',
   lp_kod: 'LP kód',
+  lp_poznamka: 'Poznámka k LP',
   cislo_smlouvy: 'Číslo smlouvy',
   smlouva_poznamka: 'Poznámka ke smlouvě',
   individualni_schvaleni: 'Identifikátor schválení',
@@ -94,6 +123,7 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     // Financování: Samostatná sekce (viditelná ve FÁZI 1, validovaná podle svého stavu)
     zpusob_financovani: 'financovani',
     lp_kod: 'financovani',
+    lp_poznamka: 'financovani',
     cislo_smlouvy: 'financovani',
     smlouva_poznamka: 'financovani',
     individualni_schvaleni: 'financovani',
@@ -338,8 +368,9 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     }
   }
 
-  // Validace stornování - důvod je povinný při stornování
-  if (formData.stav_stornovano) {
+  // Validace stornování - důvod je povinný při stornování (kontrola workflow stavu ZRUSENA)
+  const isZrusena = hasWorkflowState(formData.stav_workflow_kod, 'ZRUSENA');
+  if (isZrusena) {
     if (!formData.odeslani_storno_duvod?.trim()) {
       errors.odeslani_storno_duvod = `${FIELD_LABELS.odeslani_storno_duvod} je povinný - uveďte, proč objednávku stornujete`;
     }
@@ -349,10 +380,14 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
   // Pokud je checkbox "Má být zveřejněna" zaškrtnutý, pak jsou POVINNÁ:
   // - dt_zverejneni (Datum zveřejnění VZ)
   // - registr_iddt (Identifikátor IDDT)
+  // 🔒 VALIDACE POUZE pokud je sekce registr_smluv_vyplneni viditelná A odemčená
+  // (což znamená, že uživatel má právo ORDER_PUBLISH_REGISTRY)
   if (formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1) {
     // Zkontroluj, zda je sekce registr_smluv_vyplneni viditelná a odemčená
     const registrSection = sectionStates?.registr_smluv_vyplneni;
-    const shouldValidateRegistr = !registrSection || (registrSection.visible && !registrSection.locked);
+    // ✅ OPRAVA: Validovat POUZE pokud je sekce explicitně viditelná A odemčená
+    // Pokud registrSection není definována, NEVALIDOVAT (uživatel nemá právo)
+    const shouldValidateRegistr = registrSection && registrSection.visible && !registrSection.locked;
     
     if (shouldValidateRegistr) {
       if (!formData.dt_zverejneni || !String(formData.dt_zverejneni).trim()) {

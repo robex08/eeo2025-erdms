@@ -1,14 +1,15 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useReducer } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
-import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins } from 'lucide-react';
+import { loadAuthData } from '../utils/authStorage';
+import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
-import { fetchFreshUserDetail, fetchCiselniky } from '../services/api2auth';
+import { fetchFreshUserDetail, fetchCiselniky, fetchAllUsers, fetchApprovers } from '../services/api2auth';
 import { getOrganizaceDetail } from '../services/apiv2Dictionaries';
 import { CustomSelect } from '../components/CustomSelect';
 import { getAvailableSections, isSectionAvailable, getFirstAvailableSection } from '../utils/availableSections';
@@ -234,12 +235,40 @@ const InfoCard = styled.div`
   padding: 1.5rem;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  position: relative;
 
   &:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     border-color: #cbd5e1;
   }
+`;
+
+const CardWithChart = styled(InfoCard)`
+  display: flex;
+  flex-direction: column;
+  min-height: 500px;
+`;
+
+const CardContent = styled.div`
+  flex: 1;
+`;
+
+const PieChartContainer = styled.div`
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  width: 270px;
+  height: 270px;
+  opacity: 0.9;
+  
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const PieChartSvg = styled.svg`
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
 `;
 
 const SectionDivider = styled.div`
@@ -1025,12 +1054,10 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon, 
     }
   }, [isOpen, field, setSelectStates, setSearchStates]);
 
-  // Focus na vyhledávací pole při otevření
+  // Focus na vyhledávací pole při otevření (bez setTimeout - podle OBECNA_pravidla.prompt.md)
   React.useEffect(() => {
     if (isOpen && searchInputRef.current) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
+      searchInputRef.current.focus();
     }
   }, [isOpen]);
 
@@ -1074,8 +1101,8 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon, 
     e.stopPropagation();
     const willBeOpen = !isOpen;
     if (willBeOpen) {
-      // Když otevíráme, zavřeme všechny ostatní selecty
-      setSelectStates({ [field]: true });
+      // Když otevíráme, zavřeme všechny ostatní selecty (používáme funkční formu - OBECNA_pravidla.prompt.md)
+      setSelectStates(() => ({ [field]: true }));
     } else {
       // Když zavíráme, jen zavřeme tento
       setSelectStates(prev => ({ ...prev, [field]: false }));
@@ -1353,6 +1380,379 @@ const PERIOD_OPTIONS = [
   { value: '10-12', label: 'Q4 (Říjen-Prosinec)' }
 ];
 
+// ============================================================================
+// 🎯 USEREDUCER: Actions a Reducer pro userSettings
+// ============================================================================
+
+// Akce pro reducer
+const SETTINGS_ACTIONS = {
+  LOAD_FROM_DB: 'load_from_db',
+  UPDATE_FIELD: 'update_field',
+  UPDATE_NESTED_FIELD: 'update_nested_field',
+  UPDATE_NESTED_CATEGORY: 'update_nested_category',
+  TOGGLE_TILE: 'toggle_tile',
+  TOGGLE_ICON: 'toggle_icon',
+  TOGGLE_NOTIFICATION: 'toggle_notification',
+  UPDATE_CSV_COLUMN: 'update_csv_column',
+  RESET_TO_DEFAULT: 'reset_to_default'
+};
+
+// Výchozí nastavení (extrahováno do konstanty pro reuse)
+const getDefaultSettings = (hasPermission, userDetail) => {
+  const { getFirstAvailableSection } = require('../utils/availableSections');
+  const defaultSection = getFirstAvailableSection(hasPermission, userDetail);
+  
+  return {
+    // Chování aplikace (podle screenu z 28.12.2025)
+    zapamatovat_filtry: true,
+    vychozi_sekce_po_prihlaseni: defaultSection || 'orders',
+    vychozi_filtry_stavu_objednavek: [],
+    auto_sbalit_zamcene_sekce: true,
+    
+    // Předvolby pro OrderForm25
+    vychozi_garant_id: '', // Výchozí garant pro nové objednávky (prázdný string místo null)
+    vychozi_prikazce_id: '', // Výchozí příkazce pro nové objednávky (prázdný string místo null)
+    
+    // Výchozí rok a období
+    vychozi_rok: 'current',
+    vychozi_obdobi: 'last-quarter',
+    
+    // Viditelnost dlaždic
+    viditelne_dlazdice: {
+      nova: false,
+      ke_schvaleni: false,
+      schvalena: false,
+      zamitnuta: false,
+      rozpracovana: false,
+      odeslana_dodavateli: false,
+      potvrzena_dodavatelem: false,
+      k_uverejneni_do_registru: false,
+      uverejnena: false,
+      ceka_na_potvrzeni: false,
+      ceka_se: false,
+      vecna_spravnost: false,
+      dokoncena: false,
+      zrusena: false,
+      smazana: false,
+      archivovano: false,
+      s_fakturou: false,
+      s_prilohami: false,
+      mimoradne_udalosti: false,
+      moje_objednavky: false
+    },
+    
+    // Export nastavení
+    export_pokladna_format: 'xlsx',
+    
+    // CSV Export nastavení - oddělovače
+    exportCsvDelimiter: 'semicolon', // 'semicolon', 'tab', 'pipe', 'custom'
+    exportCsvCustomDelimiter: '', // Vlastní oddělovač (max 3 znaky)
+    exportCsvListDelimiter: 'pipe', // 'pipe', 'comma', 'semicolon', 'custom'
+    exportCsvListCustomDelimiter: '', // Vlastní oddělovač pro seznamy (max 3 znaky)
+    
+    // Export CSV sloupce - optimalizovaná verze podle DB 25a_objednavky
+    export_csv_sloupce: {
+      // Základní identifikace
+      id: true,
+      cislo_objednavky: true,
+      predmet: true,
+      poznamka: false,
+      
+      // Stavy a workflow
+      stav_objednavky: true,
+      stav_workflow: false,
+      stav_workflow_kod: false,
+      
+      // Datumy
+      dt_objednavky: true,
+      dt_vytvoreni: true,
+      dt_schvaleni: false,
+      dt_odeslani: false,
+      dt_akceptace: false,
+      dt_zverejneni: false,
+      dt_predpokladany_termin_dodani: false,
+      dt_aktualizace: false,
+      dt_dokonceni: false,
+      
+      // Finanční údaje
+      max_cena_s_dph: true,
+
+      financovani_lp_kody: true, // LP kódy z financovani JSON
+      financovani_lp_nazvy: false, // LP názvy (pokud jsou dostupné)
+      financovani_lp_cisla: false, // LP čísla (pokud jsou dostupné)
+      financovani_typ: false, // typ z financovani JSON
+      financovani_typ_nazev: false, // název typu
+      pojistna_udalost_cislo: false, // číslo pojistné události
+      pojistna_udalost_poznamka: false, // poznámka k pojisťovacím údajům
+      cislo_smlouvy: false, // číslo smlouvy (pro individuální schválení)
+      individualni_schvaleni: false, // individuální schválení
+      individualni_poznamka: false, // poznámka k individuálnímu schválení
+      financovani_raw: false, // raw JSON financovani pole z DB
+      
+      // Odpovědné osoby (enriched z JOINů)
+      uzivatel: true, // objednatel (uzivatel_id)
+      uzivatel_email: false,
+      uzivatel_telefon: false,
+      garant_uzivatel: false, // (garant_uzivatel_id)
+      garant_uzivatel_email: false,
+      garant_uzivatel_telefon: false,
+      schvalovatel: false, // (schvalovatel_id)
+      schvalovatel_email: false,
+      schvalovatel_telefon: false,
+      prikazce: false, // (prikazce_id)
+      prikazce_email: false,
+      prikazce_telefon: false,
+      vytvoril_uzivatel: false, // CREATE audit
+      odesilatel: false, // (odesilatel_id)
+      dokoncil: false, // (dokoncil_id)
+      fakturant: false, // (fakturant_id)
+      
+      // Dodavatel
+      dodavatel_nazev: true,
+      dodavatel_ico: false,
+      dodavatel_dic: false,
+      dodavatel_adresa: false,
+      dodavatel_zastoupeny: false,
+      dodavatel_kontakt_jmeno: false,
+      dodavatel_kontakt_email: false,
+      dodavatel_kontakt_telefon: false,
+      
+      // Střediska a struktura
+      strediska_kod: true, // raw kódy z DB
+      strediska_nazvy: false, // enriched názvy
+      druh_objednavky_kod: false,
+      mimoradna_udalost: false,
+      
+      // Položky objednávky (z 25a_objednavky_polozky)
+      pocet_polozek: true,
+      polozky_celkova_cena_s_dph: true,
+      polozky_popis: false,
+      polozky_cena_bez_dph: false,
+      polozky_sazba_dph: false,
+      polozky_cena_s_dph: false,
+      polozky_usek_kod: false,
+      polozky_budova_kod: false,
+      polozky_mistnost_kod: false,
+      polozky_poznamka: false,
+      
+      // Přílohy (z 25a_objednavky_prilohy)
+      prilohy_count: false,
+      prilohy_guid: false,
+      prilohy_typ: false,
+      prilohy_nazvy: false,
+      prilohy_velikosti: false,
+      prilohy_nahrano_uzivatel: false,
+      prilohy_dt_vytvoreni: false,
+      
+      // Faktury (z 25a_objednavky_faktury)
+      faktury_count: false,
+      faktury_celkova_castka: false,
+      faktury_cisla_vema: false,
+      faktury_stav: false,
+      faktury_datum_vystaveni: false,
+      faktury_datum_splatnosti: false,
+      faktury_datum_doruceni: false,
+      faktury_strediska_kod: false,
+      faktury_poznamka: false,
+      faktury_dorucena: false,
+      faktury_zaplacena: false,
+      
+      // Registr smluv
+      zverejnit: false, // DB: zverejnit (tinytext)
+      registr_iddt: false,
+      zverejnil_uzivatel: false, // (zverejnil_id)
+      
+      // Ostatní
+      zaruka: false,
+      misto_dodani: false,
+      schvaleni_komentar: false,
+      dokonceni_poznamka: false,
+      potvrzeni_dokonceni_objednavky: false,
+      potvrzeni_vecne_spravnosti: false,
+      vecna_spravnost_poznamka: false
+    },
+    
+    // Notifikace
+    notifikace: {
+      povoleny: true,
+      email_povoleny: true,
+      inapp_povoleny: true,
+      kategorie: {
+        objednavky: true,
+        faktury: true,
+        smlouvy: true,
+        pokladna: true
+      }
+    },
+    
+    // Profil
+    profil: {
+      zobrazit_email: true,
+      zobrazit_telefon: true
+    },
+    
+    // Viditelnost ikon nástrojů (podle screenu)
+    zobrazit_ikony_nastroju: {
+      notes: true,
+      todo: true,
+      chat: false,
+      kalkulacka: true,
+      helper: false
+    }
+  };
+};
+
+// Reducer funkce pro userSettings
+const userSettingsReducer = (state, action) => {
+  switch (action.type) {
+    case SETTINGS_ACTIONS.LOAD_FROM_DB:
+      // Načtení z DB - merge s existujícím state
+      return mergeSettingsForReducer(state, action.payload);
+      
+    case SETTINGS_ACTIONS.UPDATE_FIELD:
+      // Aktualizace jednoho pole (např. vychozi_rok)
+      return {
+        ...state,
+        [action.payload.field]: action.payload.value
+      };
+      
+    case SETTINGS_ACTIONS.UPDATE_NESTED_FIELD:
+      // Aktualizace nested pole (např. notifikace.inapp_povoleny)
+      return {
+        ...state,
+        [action.payload.parent]: {
+          ...state[action.payload.parent],
+          [action.payload.field]: action.payload.value
+        }
+      };
+      
+    case SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY:
+      // Aktualizace kategorie notifikací (např. notifikace.kategorie.objednavky)
+      return {
+        ...state,
+        notifikace: {
+          ...state.notifikace,
+          kategorie: {
+            ...state.notifikace.kategorie,
+            [action.payload.category]: action.payload.value
+          }
+        }
+      };
+      
+    case SETTINGS_ACTIONS.TOGGLE_TILE:
+      // Toggle viditelnosti dlaždice
+      return {
+        ...state,
+        viditelne_dlazdice: {
+          ...state.viditelne_dlazdice,
+          [action.payload]: !state.viditelne_dlazdice[action.payload]
+        }
+      };
+      
+    case SETTINGS_ACTIONS.TOGGLE_ICON:
+      // Toggle viditelnosti ikony nástroje
+      return {
+        ...state,
+        zobrazit_ikony_nastroju: {
+          ...state.zobrazit_ikony_nastroju,
+          [action.payload]: !state.zobrazit_ikony_nastroju[action.payload]
+        }
+      };
+      
+    case SETTINGS_ACTIONS.TOGGLE_NOTIFICATION:
+      // Toggle notifikace (kategorie nebo hlavní)
+      if (action.payload.category) {
+        return {
+          ...state,
+          notifikace: {
+            ...state.notifikace,
+            kategorie: {
+              ...state.notifikace.kategorie,
+              [action.payload.category]: !state.notifikace.kategorie[action.payload.category]
+            }
+          }
+        };
+      } else {
+        return {
+          ...state,
+          notifikace: {
+            ...state.notifikace,
+            [action.payload.field]: !state.notifikace[action.payload.field]
+          }
+        };
+      }
+      
+    case SETTINGS_ACTIONS.UPDATE_CSV_COLUMN:
+      // Aktualizace CSV sloupce - pokud není hodnota zadaná, toggle aktuální hodnotu
+      const currentValue = state.export_csv_sloupce[action.payload.column];
+      const newValue = action.payload.value !== undefined ? action.payload.value : !currentValue;
+      return {
+        ...state,
+        export_csv_sloupce: {
+          ...state.export_csv_sloupce,
+          [action.payload.column]: newValue
+        }
+      };
+      
+    case SETTINGS_ACTIONS.RESET_TO_DEFAULT:
+      // Reset na výchozí hodnoty
+      return action.payload;
+      
+    default:
+      return state;
+  }
+};
+
+// Helper pro merge nastavení (použije se v reduceru)
+const mergeSettingsForReducer = (defaultSettings, loadedSettings) => {
+  const merged = { ...defaultSettings };
+  
+  Object.keys(loadedSettings).forEach(key => {
+    if (typeof loadedSettings[key] === 'object' && loadedSettings[key] !== null && !Array.isArray(loadedSettings[key])) {
+      merged[key] = { ...defaultSettings[key], ...loadedSettings[key] };
+    } else {
+      merged[key] = loadedSettings[key];
+    }
+  });
+  
+  // Extrakuj .value z objektů
+  if (loadedSettings.vychozi_rok && typeof loadedSettings.vychozi_rok === 'object' && loadedSettings.vychozi_rok.value) {
+    merged.vychozi_rok = loadedSettings.vychozi_rok.value;
+  }
+  if (loadedSettings.vychozi_obdobi && typeof loadedSettings.vychozi_obdobi === 'object' && loadedSettings.vychozi_obdobi.value) {
+    merged.vychozi_obdobi = loadedSettings.vychozi_obdobi.value;
+  }
+  
+  // Validace sekce (přesunuto do komponentní funkce - potřebuje hasPermission, userDetail)
+  let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'orders';
+  if (typeof targetSection === 'object' && targetSection.value) {
+    targetSection = targetSection.value;
+  }
+  merged.vychozi_sekce_po_prihlaseni = targetSection;
+  
+  // Extrahuj values z filtrů
+  if (loadedSettings.vychozi_filtry_stavu_objednavek && Array.isArray(loadedSettings.vychozi_filtry_stavu_objednavek)) {
+    merged.vychozi_filtry_stavu_objednavek = loadedSettings.vychozi_filtry_stavu_objednavek.map(item => 
+      (typeof item === 'object' && item !== null && item.value) ? item.value : item
+    );
+  }
+  
+  // Zajisti výchozí hodnoty pro ikony
+  if (!loadedSettings.zobrazit_ikony_nastroju) {
+    merged.zobrazit_ikony_nastroju = {
+      notes: true,
+      todo: true,
+      chat: false,
+      kalkulacka: true,
+      helper: false
+    };
+  }
+  
+  return merged;
+};
+
+// ============================================================================
+
 const ProfilePage = () => {
   const { userDetail, token, username, user_id, refreshUserDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
@@ -1360,6 +1760,7 @@ const ProfilePage = () => {
 
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
+  const loadingRef = React.useRef(false); // Prevent multiple simultaneous loads
   const [activeTab, setActiveTab] = useState(() => {
     try {
       return localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
@@ -1381,6 +1782,7 @@ const ProfilePage = () => {
     total: 0,
     active: 0,
     zruseno_storno: 0,
+    celkem_garant: 0,
     stavy: {}
   });
 
@@ -1417,191 +1819,55 @@ const ProfilePage = () => {
 
   // Stavy objednávek z číselníku API (načítáme stejně jako v Orders25List)
   const [orderStatesList, setOrderStatesList] = useState([]);
+  
+  // 🆕 Uživatelé pro výběr garanta a příkazce
+  const [allUsers, setAllUsers] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
+  const [approvers, setApprovers] = useState([]); // Pro příkazce (pouze ti s právem schvalovat)
 
   // 🎨 Dynamické menu options podle oprávnění uživatele
   const MENU_TAB_OPTIONS = useMemo(() => {
     return getAvailableSections(hasPermission, userDetail);
   }, [hasPermission, userDetail]);
 
-  // User Settings State - ČESKÉ KLÍČE (bez diakritiky, snake_case)
-  const [userSettings, setUserSettings] = useState(() => {
-    // Dynamická výchozí hodnota - první dostupná sekce pro uživatele
-    const { getFirstAvailableSection } = require('../utils/availableSections');
-    const defaultSection = getFirstAvailableSection(hasPermission, userDetail);
-    
-    return {
-      // Chování aplikace
-      zapamatovat_filtry: true,
-      vychozi_sekce_po_prihlaseni: defaultSection,
-      vychozi_filtry_stavu_objednavek: [], // Changed to array for multiselect
-      auto_sbalit_zamcene_sekce: true, // Automaticky sbalit zamčené sekce v objednávkách
-    
-    // Výchozí rok a období
-    vychozi_rok: 'current', // 'current' nebo konkrétní rok (např. '2025')
-    vychozi_obdobi: 'all', // 'all' nebo číslo měsíce ('1'-'12')
-    
-    // Viditelnost dlaždic - výchozí hodnoty FALSE (načte se z DB)
-    viditelne_dlazdice: {
-      nova: false,                           // Nová / Koncept
-      ke_schvaleni: false,                   // Ke schválení
-      schvalena: false,                      // Schválená
-      zamitnuta: false,                      // Zamítnutá
-      rozpracovana: false,                   // Rozpracovaná
-      odeslana_dodavateli: false,            // Odeslaná dodavateli
-      potvrzena_dodavatelem: false,          // Potvrzená dodavatelem
-      k_uverejneni_do_registru: false,       // Má být zveřejněna
-      uverejnena: false,                     // Uveřejněná
-      ceka_na_potvrzeni: false,              // Čeká na potvrzení
-      ceka_se: false,                        // Čeká se
-      vecna_spravnost: false,                // Věcná správnost
-      dokoncena: false,                      // Dokončená
-      zrusena: false,                        // Zrušená
-      smazana: false,                        // Smazaná
-      archivovano: false,                    // Archivováno / Import
-      s_fakturou: false,                     // S fakturou
-      s_prilohami: false,                    // S přílohami
-      mimoradne_udalosti: false,             // Mimořádné události
-      moje_objednavky: false                 // Moje objednávky
-    },
+  // 🎯 USEREDUCER: User Settings State Management
+  // Místo useState používáme useReducer pro lepší správu komplexního state
+  const [userSettings, dispatch] = useReducer(
+    userSettingsReducer,
+    null,
+    () => getDefaultSettings(hasPermission, userDetail)
+  );
 
-    // Export nastavení
-    export_pokladna_format: 'xlsx', // 'xlsx' nebo 'csv'
-    
-    // Export CSV sloupce - kompletní seznam všech dostupných sloupců z enriched dat
-    export_csv_sloupce: {
-      // Základní identifikace
-      id: true,
-      cislo_objednavky: true,
+  // 🆕 Načíst všechny uživatele (pro garanta a příkazce)
+  useEffect(() => {
+    const loadUsers = async () => {
+      if (!token || !username) return;
       
-      // Předmět a popis
-      predmet: true,
-      poznamka: false,
-      
-      // Stavy a workflow
-      stav_objednavky: true,
-      stav_workflow: false,
-      stav_komentar: false,
-      
-      // Datumy (skutečné názvy z API)
-      dt_objednavky: true,
-      dt_vytvoreni: true,
-      dt_schvaleni: false,
-      dt_odeslani: false,
-      dt_akceptace: false,
-      dt_zverejneni: false,
-      dt_predpokladany_termin_dodani: false,
-      dt_aktualizace: false,
-      
-      // Finanční údaje
-      max_cena_s_dph: true,
-      celkova_cena_bez_dph: false,
-      celkova_cena_s_dph: true,
-      financovani_typ: false,
-      financovani_typ_nazev: false,
-      financovani_lp_kody: false,
-      financovani_lp_nazvy: false,
-      financovani_lp_cisla: false,
-      
-      // Lidé (enriched data)
-      objednatel: true,
-      objednatel_email: false,
-      objednatel_telefon: false,
-      garant: false,
-      garant_email: false,
-      garant_telefon: false,
-      prikazce: false,
-      schvalovatel: false,
-      vytvoril_uzivatel: false,
-      
-      // Dodavatel (enriched data)
-      dodavatel_nazev: true,
-      dodavatel_ico: false,
-      dodavatel_dic: false,
-      dodavatel_adresa: false,
-      dodavatel_zastoupeny: false,
-      dodavatel_kontakt_jmeno: false,
-      dodavatel_kontakt_email: false,
-      dodavatel_kontakt_telefon: false,
-      
-      // Střediska a struktura
-      strediska: true,
-      strediska_nazvy: false,
-      druh_objednavky_kod: false,
-      stav_workflow_kod: false,
-      
-      // Položky objednávky (z API)
-      pocet_polozek: true,
-      polozky_celkova_cena_s_dph: true, // Celková cena všech položek s DPH
-      polozky_popis: false,             // Seznam popisů položek
-      polozky_cena_bez_dph: false,      // Seznam cen bez DPH
-      polozky_sazba_dph: false,         // Seznam sazeb DPH (%)
-      polozky_cena_s_dph: false,        // Seznam cen s DPH
-      polozky_usek_kod: false,          // Seznam kódů úseků
-      polozky_budova_kod: false,        // Seznam kódů budov
-      polozky_mistnost_kod: false,      // Seznam kódů místností
-      polozky_poznamka: false,          // Seznam poznámek k položkám
-      polozky_poznamka_umisteni: false, // Seznam poznámek k umístění
-      
-      // Přílohy
-      prilohy_count: false,
-      prilohy_guid: false,              // Seznam GUID příloh
-      prilohy_typ: false,               // Seznam typů příloh
-      prilohy_nazvy: false,             // Seznam názvů souborů
-      prilohy_velikosti: false,         // Seznam velikostí v B
-      prilohy_nahrano_uzivatel: false,  // Seznam uživatelů kteří nahráli
-      prilohy_dt_vytvoreni: false,      // Seznam datumů vytvoření příloh
-      
-      // Faktury (z API)
-      faktury_count: false,
-      faktury_celkova_castka_s_dph: false, // Celková částka všech faktur
-      faktury_cisla_vema: false,        // Čísla faktur VEMA
-      faktury_castky: false,            // Částky jednotlivých faktur
-      faktury_datum_vystaveni: false,   // Data vystavení faktur
-      faktury_datum_splatnosti: false,  // Data splatnosti faktur
-      faktury_datum_doruceni: false,    // Data doručení faktur
-      faktury_strediska: false,         // Střediska faktur
-      faktury_poznamka: false,          // Poznámky k fakturám
-      faktury_pocet_priloh: false,      // Počet příloh ke všem fakturám
-      faktury_dorucena: false,          // Faktury doručeny (ANO/NE)
-      
-      // Potvrzení a odeslání
-      stav_odeslano: false,
-      potvrzeno_dodavatelem: false,
-      zpusob_potvrzeni: false,
-      zpusob_platby: false,
-      
-      // Registr smluv
-      zverejnit_registr_smluv: false,
-      registr_iddt: false,
-      
-      // Ostatní
-      zaruka: false,
-      misto_dodani: false
-    },
-    
-    // Notifikace
-    notifikace: {
-      email: true,
-      system: true
-    },
-    
-    // Profil
-    profil: {
-      zobrazit_email: true,
-      zobrazit_telefon: true
-    },
-    
-    // Viditelnost ikon nástrojů
-    zobrazit_ikony_nastroju: {
-      notes: true,           // Poznámky
-      todo: true,            // TODO seznam
-      chat: true,            // Chat
-      kalkulacka: true,      // Kalkulačka
-      helper: true           // Helper avatar
-    }
+      try {
+        // Načíst všechny uživatele pro garanta
+        const usersData = await fetchAllUsers({ token, username, show_inactive: true });
+        if (usersData && Array.isArray(usersData)) {
+          setAllUsers(usersData);
+          // Filtrovat pouze aktivní uživatele
+          const active = usersData.filter(u => u.aktivni === true || u.aktivni === 1);
+          setActiveUsers(active);
+        }
+        
+        // Načíst approvers pro příkazce (pouze uživatelé s právem schvalovat)
+        const approversData = await fetchApprovers({ token, username });
+        if (approversData && Array.isArray(approversData)) {
+          setApprovers(approversData);
+        }
+      } catch (error) {
+        console.error('Chyba při načítání uživatelů:', error);
+      }
     };
-  });
-
+    
+    if (token && username) {
+      loadUsers();
+    }
+  }, [token, username]);
+  
   // Načíst stavy objednávek z API (stejně jako v Orders25List)
   useEffect(() => {
     const loadOrderStates = async () => {
@@ -1639,6 +1905,7 @@ const ProfilePage = () => {
         total: stats.celkem || 0,
         active: stats.aktivni || 0,
         zruseno_storno: stats.zruseno_storno || 0,
+        celkem_garant: stats.celkem_garant || 0,
         stavy: stats.stavy || {}
       });
     }
@@ -1652,268 +1919,153 @@ const ProfilePage = () => {
       }
 
       try {
-        const { fetchUserSettings, saveSettingsToLocalStorage } = await import('../services/userSettingsApi');
+        const { fetchUserSettings, saveUserSettings, saveSettingsToLocalStorage } = await import('../services/userSettingsApi');
         
         // Načti z DB
         const settingsFromDB = await fetchUserSettings({ token, username, userId: parseInt(user_id, 10) });
         
-        if (settingsFromDB && Object.keys(settingsFromDB).length > 0) {
-          // Ulož do localStorage
-          saveSettingsToLocalStorage(parseInt(user_id, 10), settingsFromDB);
+        // 🆕 KONTROLA: Pokud uživatel NEMÁ nastavení v DB (prázdný objekt nebo null)
+        const hasExistingSettings = settingsFromDB && Object.keys(settingsFromDB).length > 0;
+        
+        // Zkontroluj, zda je uživatel ADMIN
+        const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+          role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+        );
+        
+        if (!hasExistingSettings) {
           
-          // Deep merge s výchozími hodnotami (zachová strukturu, přepíše hodnoty)
-          setUserSettings(prev => {
-            const merged = { ...prev };
-            
-            Object.keys(settingsFromDB).forEach(key => {
-              if (typeof settingsFromDB[key] === 'object' && settingsFromDB[key] !== null && !Array.isArray(settingsFromDB[key])) {
-                // Deep merge pro vnořené objekty (viditelne_dlazdice, notifikace, profil, export_csv_sloupce)
-                merged[key] = { ...prev[key], ...settingsFromDB[key] };
-              } else {
-                // Direct assignment pro primitivy a pole
-                merged[key] = settingsFromDB[key];
-              }
-            });
-            
-            // Zajisti výchozí hodnoty pro rok a období, pokud nejsou v DB
-            if (!settingsFromDB.vychozi_rok) {
-              merged.vychozi_rok = 'current';
-            } else if (typeof settingsFromDB.vychozi_rok === 'object' && settingsFromDB.vychozi_rok.value) {
-              // Backend vrátil objekt {value, label}, extrahuj jen value
-              merged.vychozi_rok = settingsFromDB.vychozi_rok.value;
-            }
-            
-            if (!settingsFromDB.vychozi_obdobi) {
-              merged.vychozi_obdobi = 'all';
-            } else if (typeof settingsFromDB.vychozi_obdobi === 'object' && settingsFromDB.vychozi_obdobi.value) {
-              // Backend vrátil objekt {value, label}, extrahuj jen value
-              merged.vychozi_obdobi = settingsFromDB.vychozi_obdobi.value;
-            }
-            
-            // Podobně pro vychozi_sekce_po_prihlaseni - VÝCHOZÍ HODNOTA: 'orders' (Seznam objednávek)
-            // ⚠️ VALIDACE: Zkontroluj, zda má uživatel stále oprávnění k této sekci
-            let targetSection = '';
-            
-            if (!settingsFromDB.vychozi_sekce_po_prihlaseni || settingsFromDB.vychozi_sekce_po_prihlaseni === '') {
-              targetSection = 'orders';
-            } else if (typeof settingsFromDB.vychozi_sekce_po_prihlaseni === 'object' && settingsFromDB.vychozi_sekce_po_prihlaseni !== null && settingsFromDB.vychozi_sekce_po_prihlaseni.value) {
-              targetSection = settingsFromDB.vychozi_sekce_po_prihlaseni.value;
-            } else {
-              // Pokud je string, použij ho přímo
-              targetSection = settingsFromDB.vychozi_sekce_po_prihlaseni;
-            }
-            
-            // Validace oprávnění - pokud uživatel nemá oprávnění, použij první dostupnou sekci
-            if (!isSectionAvailable(targetSection, hasPermission, userDetail)) {
-              console.warn('⚠️ Uživatel nemá oprávnění k sekci:', targetSection, '→ Použije se první dostupná sekce');
-              targetSection = getFirstAvailableSection(hasPermission, userDetail);
-            }
-            
-            merged.vychozi_sekce_po_prihlaseni = targetSection;
-            
-            // Pro vychozi_filtry_stavu_objednavek - PONECHAT PRÁZDNÉ pokud není v DB
-            if (settingsFromDB.vychozi_filtry_stavu_objednavek && Array.isArray(settingsFromDB.vychozi_filtry_stavu_objednavek)) {
-              // Extrahuj values pokud jsou objekty
-              merged.vychozi_filtry_stavu_objednavek = settingsFromDB.vychozi_filtry_stavu_objednavek.map(item => {
-                if (typeof item === 'object' && item !== null && item.value) {
-                  return item.value;
-                }
-                return item;
-              });
-            } else if (!settingsFromDB.vychozi_filtry_stavu_objednavek) {
-              // Pokud není v DB, ponechat prázdné pole
-              merged.vychozi_filtry_stavu_objednavek = [];
-            }
-            
-            // Zajisti výchozí hodnoty pro ikony nástrojů, pokud nejsou v DB
-            if (!settingsFromDB.zobrazit_ikony_nastroju) {
-              merged.zobrazit_ikony_nastroju = {
-                notes: true,
-                todo: true,
-                chat: true,
-                kalkulacka: true,
-                helper: true
-              };
-            }
-            
-            return merged;
-          });
-        } else {
-          // Fallback: načti z localStorage (pokud DB nemá data)
-          const { loadSettingsFromLocalStorage } = await import('../services/userSettingsApi');
-          const cachedSettings = loadSettingsFromLocalStorage(parseInt(user_id, 10));
+          // Připrav výchozí nastavení z current state (userSettings má výchozí hodnoty z useState)
+          let defaultSettings = userSettings;
           
-          if (cachedSettings && Object.keys(cachedSettings).length > 0) {
-            setUserSettings(prev => {
-              const merged = { ...prev };
-              
-              Object.keys(cachedSettings).forEach(key => {
-                if (typeof cachedSettings[key] === 'object' && cachedSettings[key] !== null && !Array.isArray(cachedSettings[key])) {
-                  merged[key] = { ...prev[key], ...cachedSettings[key] };
-                } else {
-                  merged[key] = cachedSettings[key];
-                }
-              });
-              
-              // Zajisti výchozí hodnoty pro rok a období, pokud nejsou v localStorage
-              if (!cachedSettings.vychozi_rok) {
-                merged.vychozi_rok = 'current';
-              } else if (typeof cachedSettings.vychozi_rok === 'object' && cachedSettings.vychozi_rok.value) {
-                merged.vychozi_rok = cachedSettings.vychozi_rok.value;
+          // Pro non-admin vynuluj chat
+          if (!isAdmin) {
+            defaultSettings = {
+              ...defaultSettings,
+              zobrazit_ikony_nastroju: {
+                ...defaultSettings.zobrazit_ikony_nastroju,
+                chat: false
               }
-              
-              if (!cachedSettings.vychozi_obdobi) {
-                merged.vychozi_obdobi = 'all';
-              } else if (typeof cachedSettings.vychozi_obdobi === 'object' && cachedSettings.vychozi_obdobi.value) {
-                merged.vychozi_obdobi = cachedSettings.vychozi_obdobi.value;
-              }
-              
-              // ⚠️ VALIDACE: Zkontroluj, zda má uživatel stále oprávnění k této sekci (localStorage cache - fallback větev)
-              let cachedTargetSection = '';
-              
-              if (!cachedSettings.vychozi_sekce_po_prihlaseni || cachedSettings.vychozi_sekce_po_prihlaseni === '') {
-                cachedTargetSection = 'orders';
-              } else if (typeof cachedSettings.vychozi_sekce_po_prihlaseni === 'object' && cachedSettings.vychozi_sekce_po_prihlaseni !== null && cachedSettings.vychozi_sekce_po_prihlaseni.value) {
-                cachedTargetSection = cachedSettings.vychozi_sekce_po_prihlaseni.value;
-              } else {
-                cachedTargetSection = cachedSettings.vychozi_sekce_po_prihlaseni;
-              }
-              
-              // Validace oprávnění - pokud uživatel nemá oprávnění, použij první dostupnou sekci
-              if (!isSectionAvailable(cachedTargetSection, hasPermission, userDetail)) {
-                console.warn('⚠️ Uživatel nemá oprávnění k sekci (cache fallback):', cachedTargetSection, '→ Použije se první dostupná sekce');
-                cachedTargetSection = getFirstAvailableSection(hasPermission, userDetail);
-              }
-              
-              merged.vychozi_sekce_po_prihlaseni = cachedTargetSection;
-              
-              // Pro vychozi_filtry_stavu_objednavek - extrahuj values z objektů
-              if (cachedSettings.vychozi_filtry_stavu_objednavek && Array.isArray(cachedSettings.vychozi_filtry_stavu_objednavek)) {
-                merged.vychozi_filtry_stavu_objednavek = cachedSettings.vychozi_filtry_stavu_objednavek.map(item => {
-                  if (typeof item === 'object' && item !== null && item.value) {
-                    return item.value;
-                  }
-                  return item;
-                });
-              } else if (!cachedSettings.vychozi_filtry_stavu_objednavek) {
-                merged.vychozi_filtry_stavu_objednavek = [];
-              }
-              
-              // Zajisti výchozí hodnoty pro ikony nástrojů, pokud nejsou v localStorage
-              if (!cachedSettings.zobrazit_ikony_nastroju) {
-                merged.zobrazit_ikony_nastroju = {
-                  notes: true,
-                  todo: true,
-                  chat: true,
-                  kalkulacka: true,
-                  helper: true
-                };
-              }
-              
-              return merged;
-            });
+            };
           }
+          
+          // Ulož výchozí nastavení do DB
+          try {
+            await saveUserSettings({ 
+              token, 
+              username, 
+              userId: parseInt(user_id, 10), 
+              nastaveni: defaultSettings 
+            });
+            
+            // Ulož do localStorage
+            saveSettingsToLocalStorage(parseInt(user_id, 10), defaultSettings);
+            
+            // Pokud jsme upravili chat, aktualizuj state
+            if (!isAdmin) {
+              dispatch({ type: SETTINGS_ACTIONS.LOAD_FROM_DB, payload: defaultSettings });
+            }
+            
+          } catch (saveError) {
+            console.error('⚠️ Chyba při ukládání výchozích nastavení:', saveError);
+            // Pokračuj dál - použijeme výchozí hodnoty lokálně
+          }
+          
+          // Nastavení už má výchozí hodnoty, nemusíme nic měnit
+          return;
         }
+        
+        // 🎯 Uživatel MÁ nastavení v DB → Použij je (NEPŘEPISUJ)
+        
+        // Pro non-admin vždy vynuluj chat (i když je v DB)
+        let finalSettings = settingsFromDB;
+        if (!isAdmin) {
+          finalSettings = {
+            ...settingsFromDB,
+            zobrazit_ikony_nastroju: {
+              ...(settingsFromDB.zobrazit_ikony_nastroju || {}),
+              chat: false
+            }
+          };
+        }
+        
+        // Ulož do localStorage
+        saveSettingsToLocalStorage(parseInt(user_id, 10), finalSettings);
+        
+        // Deep merge s výchozími hodnotami (zachová strukturu, přepíše hodnoty)
+        dispatch({ type: SETTINGS_ACTIONS.LOAD_FROM_DB, payload: finalSettings });
+        
       } catch (error) {
         console.error('Error loading user settings from DB:', error);
-        
-        // Fallback: načti z localStorage
-        try {
-          const { loadSettingsFromLocalStorage } = await import('../services/userSettingsApi');
-          const cachedSettings = loadSettingsFromLocalStorage(parseInt(user_id, 10));
-          
-          if (cachedSettings && Object.keys(cachedSettings).length > 0) {
-            setUserSettings(prev => {
-              const merged = { ...prev };
-              
-              Object.keys(cachedSettings).forEach(key => {
-                if (typeof cachedSettings[key] === 'object' && cachedSettings[key] !== null && !Array.isArray(cachedSettings[key])) {
-                  merged[key] = { ...prev[key], ...cachedSettings[key] };
-                } else {
-                  merged[key] = cachedSettings[key];
-                }
-              });
-              
-              // Zajisti výchozí hodnoty pro rok a období, pokud nejsou v localStorage
-              if (!cachedSettings.vychozi_rok) {
-                merged.vychozi_rok = 'current';
-              } else if (typeof cachedSettings.vychozi_rok === 'object' && cachedSettings.vychozi_rok.value) {
-                merged.vychozi_rok = cachedSettings.vychozi_rok.value;
-              }
-              
-              if (!cachedSettings.vychozi_obdobi) {
-                merged.vychozi_obdobi = 'all';
-              } else if (typeof cachedSettings.vychozi_obdobi === 'object' && cachedSettings.vychozi_obdobi.value) {
-                merged.vychozi_obdobi = cachedSettings.vychozi_obdobi.value;
-              }
-              
-              // ⚠️ VALIDACE: Zkontroluj, zda má uživatel stále oprávnění k této sekci (localStorage cache - error fallback větev)
-              let cachedTargetSection2 = '';
-              
-              if (!cachedSettings.vychozi_sekce_po_prihlaseni || cachedSettings.vychozi_sekce_po_prihlaseni === '') {
-                cachedTargetSection2 = 'orders';
-              } else if (typeof cachedSettings.vychozi_sekce_po_prihlaseni === 'object' && cachedSettings.vychozi_sekce_po_prihlaseni !== null && cachedSettings.vychozi_sekce_po_prihlaseni.value) {
-                cachedTargetSection2 = cachedSettings.vychozi_sekce_po_prihlaseni.value;
-              } else {
-                cachedTargetSection2 = cachedSettings.vychozi_sekce_po_prihlaseni;
-              }
-              
-              // Validace oprávnění - pokud uživatel nemá oprávnění, použij první dostupnou sekci
-              if (!isSectionAvailable(cachedTargetSection2, hasPermission, userDetail)) {
-                console.warn('⚠️ Uživatel nemá oprávnění k sekci (cache error fallback):', cachedTargetSection2, '→ Použije se první dostupná sekce');
-                cachedTargetSection2 = getFirstAvailableSection(hasPermission, userDetail);
-              }
-              
-              merged.vychozi_sekce_po_prihlaseni = cachedTargetSection2;
-              
-              // Pro vychozi_filtry_stavu_objednavek - extrahuj values z objektů
-              if (cachedSettings.vychozi_filtry_stavu_objednavek && Array.isArray(cachedSettings.vychozi_filtry_stavu_objednavek)) {
-                merged.vychozi_filtry_stavu_objednavek = cachedSettings.vychozi_filtry_stavu_objednavek.map(item => {
-                  if (typeof item === 'object' && item !== null && item.value) {
-                    return item.value;
-                  }
-                  return item;
-                });
-              } else if (!cachedSettings.vychozi_filtry_stavu_objednavek) {
-                merged.vychozi_filtry_stavu_objednavek = [];
-              }
-              
-              // Zajisti výchozí hodnoty pro ikony nástrojů, pokud nejsou v localStorage
-              if (!cachedSettings.zobrazit_ikony_nastroju) {
-                merged.zobrazit_ikony_nastroju = {
-                  notes: true,
-                  todo: true,
-                  chat: true,
-                  kalkulacka: true,
-                  helper: true
-                };
-              }
-              
-              return merged;
-            });
-          }
-        } catch (fallbackError) {
-          console.error('Error loading cached settings:', fallbackError);
-        }
+        // Pokud načtení z DB selže, používáme výchozí hodnoty (už v state)
       }
     };
 
     loadUserSettings();
-  }, [user_id, token, username]);
+  }, [user_id, token, username, hasPermission, userDetail]);
+  
+  // 🔧 Helper funkce pro merge nastavení (DRY - Don't Repeat Yourself)
+  const mergeSettings = (defaultSettings, loadedSettings) => {
+    const merged = { ...defaultSettings };
+    
+    Object.keys(loadedSettings).forEach(key => {
+      if (typeof loadedSettings[key] === 'object' && loadedSettings[key] !== null && !Array.isArray(loadedSettings[key])) {
+        // Deep merge pro vnořené objekty
+        merged[key] = { ...defaultSettings[key], ...loadedSettings[key] };
+      } else {
+        // Direct assignment pro primitivy a pole
+        merged[key] = loadedSettings[key];
+      }
+    });
+    
+    // Extrakuj .value z objektů (backend někdy vrací {value, label})
+    if (loadedSettings.vychozi_rok && typeof loadedSettings.vychozi_rok === 'object' && loadedSettings.vychozi_rok.value) {
+      merged.vychozi_rok = loadedSettings.vychozi_rok.value;
+    }
+    if (loadedSettings.vychozi_obdobi && typeof loadedSettings.vychozi_obdobi === 'object' && loadedSettings.vychozi_obdobi.value) {
+      merged.vychozi_obdobi = loadedSettings.vychozi_obdobi.value;
+    }
+    
+    // Validace a úprava vychozi_sekce_po_prihlaseni
+    let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'orders';
+    if (typeof targetSection === 'object' && targetSection.value) {
+      targetSection = targetSection.value;
+    }
+    if (!isSectionAvailable(targetSection, hasPermission, userDetail)) {
+      console.warn('⚠️ Uživatel nemá oprávnění k sekci:', targetSection, '→ Použije se první dostupná sekce');
+      targetSection = getFirstAvailableSection(hasPermission, userDetail);
+    }
+    merged.vychozi_sekce_po_prihlaseni = targetSection;
+    
+    // Extrahuj values z vychozi_filtry_stavu_objednavek
+    if (loadedSettings.vychozi_filtry_stavu_objednavek && Array.isArray(loadedSettings.vychozi_filtry_stavu_objednavek)) {
+      merged.vychozi_filtry_stavu_objednavek = loadedSettings.vychozi_filtry_stavu_objednavek.map(item => 
+        (typeof item === 'object' && item !== null && item.value) ? item.value : item
+      );
+    }
+    
+    // Zajisti výchozí hodnoty pro ikony nástrojů
+    if (!loadedSettings.zobrazit_ikony_nastroju) {
+      merged.zobrazit_ikony_nastroju = {
+        notes: true,
+        todo: true,
+        chat: true,
+        kalkulacka: true,
+        helper: true
+      };
+    }
+    
+    return merged;
+  };
 
   // Ref pro sledování, zda jsou nastavení již inicializována
   const [settingsInitialized, setSettingsInitialized] = useState(false);
 
-  // Označit jako inicializované po prvním načtení
+  // Označit jako inicializované po načtení dat (bez setTimeout - podle OBECNA_pravidla.prompt.md)
   useEffect(() => {
-    if (user_id && token) {
-      // Krátké zpoždění, aby se načetla data z DB/localStorage
-      const timer = setTimeout(() => {
-        setSettingsInitialized(true);
-      }, 500);
-      return () => clearTimeout(timer);
+    if (user_id && token && userSettings) {
+      setSettingsInitialized(true);
     }
-  }, [user_id, token]);
+  }, [user_id, token, userSettings]);
 
   // Auto-save userSettings to localStorage on every change (protection against F5 refresh)
   // DB má přednost při načítání, ale localStorage chrání před ztrátou dat při refreshi
@@ -1981,6 +2133,17 @@ const ProfilePage = () => {
     setIsSavingSettings(true);
 
     try {
+      // 🔐 KROK 0: PRE-SAVE TOKEN CHECK - ověřit že token existuje PŘED uložením
+      const preTokenCheck = await loadAuthData.token();
+      if (!preTokenCheck) {
+        console.error('❌ [ProfilePage] KRITICKÁ CHYBA: Token chybí PŘED uložením nastavení!');
+        if (showToast) {
+          showToast('Kritická chyba: Token chybí. Zůstáváte na stránce, zkuste se odhlásit a znovu přihlásit.', 'error');
+        }
+        setIsSavingSettings(false);
+        return; // STOP - neukládat, nezreloadovat
+      }
+
       const { saveUserSettings, saveSettingsToLocalStorage } = await import('../services/userSettingsApi');
 
       // Helper funkce pro extrakci hodnoty (pokud je to objekt s .value, vezmi .value, jinak celou hodnotu)
@@ -2001,6 +2164,15 @@ const ProfilePage = () => {
         auto_sbalit_zamcene_sekce: userSettings.auto_sbalit_zamcene_sekce,
         vychozi_rok: extractValue(userSettings.vychozi_rok),
         vychozi_obdobi: extractValue(userSettings.vychozi_obdobi),
+        // 🔧 Zajistit že prázdný string se převede na null
+        vychozi_garant_id: (() => {
+          const val = extractValue(userSettings.vychozi_garant_id);
+          return (val === '' || val === null || val === undefined) ? null : val;
+        })(),
+        vychozi_prikazce_id: (() => {
+          const val = extractValue(userSettings.vychozi_prikazce_id);
+          return (val === '' || val === null || val === undefined) ? null : val;
+        })(),
         viditelne_dlazdice: userSettings.viditelne_dlazdice,
         export_pokladna_format: userSettings.export_pokladna_format,
         export_csv_sloupce: userSettings.export_csv_sloupce,
@@ -2008,21 +2180,37 @@ const ProfilePage = () => {
         profil: userSettings.profil,
         zobrazit_ikony_nastroju: userSettings.zobrazit_ikony_nastroju
       };
+      
+      // 🔒 Pro non-admin uživatele vždy vynuluj chat
+      const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+        role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+      );
+      
+      if (!isAdmin) {
+        cleanSettings.zobrazit_ikony_nastroju = {
+          ...(cleanSettings.zobrazit_ikony_nastroju || {}),
+          chat: false
+        };
+      }
 
-      console.log('💾 SAVING TO DB - cleanSettings:', cleanSettings);
-      console.log('💾 vychozi_rok being saved:', cleanSettings.vychozi_rok);
-      console.log('💾 vychozi_obdobi being saved:', cleanSettings.vychozi_obdobi);
-      console.log('💾 zobrazit_ikony_nastroju being saved:', cleanSettings.zobrazit_ikony_nastroju);
-      console.log('💾 vychozi_filtry_stavu_objednavek being saved:', cleanSettings.vychozi_filtry_stavu_objednavek);
-      console.log('💾 Full userSettings before save:', userSettings);
-
-      // Krok 1: Uložit do databáze (saveUserSettings automaticky uloží i do localStorage)
+      // 🔐 KROK 1: Uložit do databáze (saveUserSettings automaticky uloží i do localStorage)
       const dbResponse = await saveUserSettings({
         token,
         username,
         userId: parseInt(user_id, 10),
         nastaveni: cleanSettings
       });
+
+      // 🔐 KROK 1.5: POST-SAVE TOKEN CHECK - ověřit že token stále existuje PO uložení
+      const postTokenCheck = await loadAuthData.token();
+      if (!postTokenCheck) {
+        console.error('❌ [ProfilePage] KRITICKÁ CHYBA: Token chybí PO uložení nastavení!');
+        if (showToast) {
+          showToast('Nastavení uloženo, ale token byl ztracen. Zkuste se odhlásit a znovu přihlásit.', 'warning');
+        }
+        setIsSavingSettings(false);
+        return; // STOP - neukládat, nezreloadovat
+      }
 
       // ℹ️ localStorage je automaticky aktualizován uvnitř saveUserSettings()
 
@@ -2056,13 +2244,28 @@ const ProfilePage = () => {
         console.warn('Nelze uložit aktivní tab před reloadem:', e);
       }
 
-      // Krok 4: Reload aplikace pro aplikování změn
-      setTimeout(() => {
-        window.location.reload();
-      }, 800);
+      // 🔐 KROK 3.5: DELAY 1000ms - Dát localStorage čas na synchronizaci
+      // KRITICKÉ: Tento delay zabrání race condition mezi save a reload
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 🔐 KROK 4: FINAL TOKEN CHECK - triple check před reloadem (stejná metoda jako předchozí checky)
+      const finalTokenCheck = await loadAuthData.token();
+      if (!finalTokenCheck) {
+        console.error('❌ [ProfilePage] KRITICKÁ CHYBA: Token chybí těsně PŘED reloadem!');
+        if (showToast) {
+          showToast('Kritická chyba: Token byl ztracen před reloadem. Zůstáváte na stránce.', 'error');
+        }
+        setIsSavingSettings(false);
+        return; // STOP - NIKDY nezreloadovat bez tokenu!
+      }
+
+      // 🔐 KROK 5: Reload aplikace pro aplikování změn
+      // Pouze pokud všechny kontroly prošly!
+      console.log('✅ [ProfilePage] Všechny token kontroly prošly, provádím reload...');
+      window.location.reload();
 
     } catch (error) {
-      console.error('Chyba při ukládání nastavení:', error);
+      console.error('❌ [ProfilePage] Chyba při ukládání nastavení:', error);
       if (showToast) {
         showToast('Chyba při ukládání nastavení: ' + (error.message || 'Neznámá chyba'), 'error');
       }
@@ -2108,17 +2311,19 @@ const ProfilePage = () => {
   // POZOR: Pokud endpoint selže, NEMĚŇ data - nech původní z AuthContext
   useEffect(() => {
     const loadEnrichedProfile = async () => {
-      // DŮLEŽITÉ: Pokud nemáme profileData (ještě se neinicializovala z AuthContext), NEPOKRAČUJ
-      if (!profileData) {
+      if (!token || !username || !userDetail) {
         return;
       }
 
-      if (!token || !username) {
+      // 🔒 Prevent multiple simultaneous loads
+      if (loadingRef.current) {
         return;
       }
+
+      loadingRef.current = true;
 
       try {
-        const apiUrl = `${process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/'}user/profile`;
+        const apiUrl = `${process.env.REACT_APP_API2_BASE_URL || '/api.eeo/'}user/profile`;
 
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -2136,6 +2341,7 @@ const ProfilePage = () => {
 
         // Kontrola na chybu z backendu
         if (data.status === 'error') {
+          loadingRef.current = false;
           return; // Použij data z AuthContext
         }
 
@@ -2143,51 +2349,54 @@ const ProfilePage = () => {
 
           const apiData = data.data;
 
+          // 🎯 KRITICKÉ: Použít současné profileData pro zachování organizace pokud API nevrací
+          const currentData = profileData || userDetail;
+
           // Kompletní merge dat podle nové API struktury
           const enrichedData = {
             // Základní identifikace
-            uzivatel_id: apiData.id || profileData?.uzivatel_id,
-            id: apiData.id || profileData?.id,
-            login: apiData.username || profileData?.login,
-            username: apiData.username || profileData?.username,
+            uzivatel_id: apiData.id || currentData?.uzivatel_id,
+            id: apiData.id || currentData?.id,
+            login: apiData.username || currentData?.login,
+            username: apiData.username || currentData?.username,
 
             // Jméno a kontakt
             cely_jmeno: apiData.cely_jmeno || `${apiData.jmeno || ''} ${apiData.prijmeni || ''}`.trim(),
-            jmeno: apiData.jmeno || profileData?.jmeno,
-            prijmeni: apiData.prijmeni || profileData?.prijmeni,
-            email: apiData.email || profileData?.email,
-            telefon: apiData.telefon || profileData?.telefon,
+            jmeno: apiData.jmeno || currentData?.jmeno,
+            prijmeni: apiData.prijmeni || currentData?.prijmeni,
+            email: apiData.email || currentData?.email,
+            telefon: apiData.telefon || currentData?.telefon,
 
             // Tituly
-            titul_pred: apiData.titul_pred || profileData?.titul_pred || '',
-            titul_za: apiData.titul_za || profileData?.titul_za || null,
+            titul_pred: apiData.titul_pred || currentData?.titul_pred || '',
+            titul_za: apiData.titul_za || currentData?.titul_za || null,
 
             // Stav a časové značky
-            aktivni: apiData.aktivni ?? profileData?.aktivni ?? 1,
-            dt_vytvoreni: apiData.dt_vytvoreni || profileData?.dt_vytvoreni || '',
-            dt_aktualizace: apiData.dt_aktualizace || profileData?.dt_aktualizace || '',
-            dt_posledni_aktivita: apiData.dt_posledni_aktivita || profileData?.dt_posledni_aktivita || '',
+            aktivni: apiData.aktivni ?? currentData?.aktivni ?? 1,
+            dt_vytvoreni: apiData.dt_vytvoreni || currentData?.dt_vytvoreni || '',
+            dt_aktualizace: apiData.dt_aktualizace || currentData?.dt_aktualizace || '',
+            dt_posledni_aktivita: apiData.dt_posledni_aktivita || currentData?.dt_posledni_aktivita || '',
 
             // Lokalita
-            lokalita_id: apiData.lokalita?.id || profileData?.lokalita_id,
-            lokalita_nazev: apiData.lokalita?.nazev || profileData?.lokalita_nazev || '',
-            lokalita_typ: apiData.lokalita?.typ || profileData?.lokalita_typ || '',
-            lokalita_parent_id: apiData.lokalita?.parent_id || profileData?.lokalita_parent_id || null,
-            lokalita: apiData.lokalita || profileData?.lokalita,
+            lokalita_id: apiData.lokalita?.id || currentData?.lokalita_id,
+            lokalita_nazev: apiData.lokalita?.nazev || currentData?.lokalita_nazev || '',
+            lokalita_typ: apiData.lokalita?.typ || currentData?.lokalita_typ || '',
+            lokalita_parent_id: apiData.lokalita?.parent_id || currentData?.lokalita_parent_id || null,
+            lokalita: apiData.lokalita || currentData?.lokalita,
 
             // Pozice (z původních dat, API to nevrací)
-            pozice_id: profileData?.pozice_id,
-            nazev_pozice: profileData?.nazev_pozice || '',
-            pozice: profileData?.pozice,
+            pozice_id: currentData?.pozice_id,
+            nazev_pozice: currentData?.nazev_pozice || '',
+            pozice: currentData?.pozice,
 
             // Úsek (z původních dat, API to nevrací)
-            usek_id: profileData?.usek_id,
-            usek_nazev: profileData?.usek_nazev || '',
-            usek_zkr: profileData?.usek_zkr || [],
-            usek: profileData?.usek,
+            usek_id: currentData?.usek_id,
+            usek_nazev: currentData?.usek_nazev || '',
+            usek_zkr: currentData?.usek_zkr || [],
+            usek: currentData?.usek,
 
-            // Organizace - kompletní mapování
-            organizace_id: apiData.organizace?.id || profileData?.organizace_id,
+            // 🏢 ORGANIZACE - KRITICKÉ: Zachovat pokud API nevrací, ale preferovat API data
+            organizace_id: apiData.organizace?.id || currentData?.organizace_id,
             organizace: apiData.organizace ? {
               id: apiData.organizace.id,
               nazev_organizace: apiData.organizace.nazev_organizace || '',
@@ -2204,18 +2413,18 @@ const ProfilePage = () => {
               email: apiData.organizace.email || '',
               telefon: apiData.organizace.telefon || '',
               web: apiData.organizace.web || ''
-            } : profileData?.organizace,
+            } : currentData?.organizace, // ✅ Zachovat existující organizaci pokud API nevrací
 
             // Nadřízený
-            nadrizeny_cely_jmeno: apiData.nadrizeny?.cely_jmeno || profileData?.nadrizeny_cely_jmeno || '',
-            nadrizeny: apiData.nadrizeny || profileData?.nadrizeny,
+            nadrizeny_cely_jmeno: apiData.nadrizeny?.cely_jmeno || currentData?.nadrizeny_cely_jmeno || '',
+            nadrizeny: apiData.nadrizeny || currentData?.nadrizeny,
 
             // Role a práva
-            roles: apiData.roles || profileData?.roles || [],
-            direct_rights: apiData.direct_rights || profileData?.direct_rights || [],
+            roles: apiData.roles || currentData?.roles || [],
+            direct_rights: apiData.direct_rights || currentData?.direct_rights || [],
 
             // Statistiky objednávek
-            statistiky_objednavek: apiData.statistiky_objednavek || profileData?.statistiky_objednavek || {
+            statistiky_objednavek: apiData.statistiky_objednavek || currentData?.statistiky_objednavek || {
               celkem: 0,
               aktivni: 0,
               zruseno_storno: 0,
@@ -2226,15 +2435,14 @@ const ProfilePage = () => {
           setProfileData(enrichedData);
         }
       } catch (error) {
-        // Fallback - použij data z AuthContext (už jsou v profileData)
+        // Fallback - použij data z AuthContext (silence error)
+      } finally {
+        loadingRef.current = false;
       }
     };
 
-    // Načti pouze pokud máme všechna data a profileData je už inicializované
-    if (token && username && userDetail && profileData) {
-      loadEnrichedProfile();
-    }
-  }, [token, username, userDetail?.uzivatel_id, profileData?.uzivatel_id]);
+    loadEnrichedProfile();
+  }, [token, username, userDetail]);
 
   const refreshProfile = async () => {
     if (!token || !username) {
@@ -2737,6 +2945,12 @@ const ProfilePage = () => {
                     {profileData.usek_nazev && (
                       <span> • {safeDisplayValue(profileData.usek_nazev)}</span>
                     )}
+                    {profileData.email && (
+                      <span> • 📧 {safeDisplayValue(profileData.email)}</span>
+                    )}
+                    {profileData.telefon && (
+                      <span> • 📞 {safeDisplayValue(profileData.telefon)}</span>
+                    )}
                     {profileData.dt_posledni_aktivita && (
                       <span> • Poslední aktivita: {formatDateTime(profileData.dt_posledni_aktivita)}</span>
                     )}
@@ -2758,7 +2972,7 @@ const ProfilePage = () => {
                     onClick={handleChangePassword}
                     title="Změnit heslo"
                   >
-                    <Lock size={20} />
+                    <Key size={20} />
                   </ActionButton>
                 </ActionButtons>
               )}
@@ -2790,7 +3004,7 @@ const ProfilePage = () => {
               <Coins size={20} />
               <span>Limitované přísliby</span>
             </TabButton>
-            {hasPermission && (hasPermission('SUPPLIER_READ') || hasPermission('SUPPLIER_EDIT') || hasPermission('CONTACT_MANAGE')) && (
+            {hasPermission && (hasPermission('SUPPLIER_VIEW') || hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_MANAGE')) && (
               <TabButton 
                 $active={activeTab === 'suppliers'} 
                 onClick={() => setActiveTab('suppliers')}
@@ -2987,14 +3201,31 @@ const ProfilePage = () => {
                   </InfoContent>
                 </InfoItem>
               )}
+              
+              {/* Rychlý odkaz na Limitované příslušnosti */}
+              <InfoItem style={{ cursor: 'pointer', transition: 'background 0.2s ease' }} onClick={() => setActiveTab('lp')}>
+                <InfoIcon color="#10b981">
+                  <Coins size={16} />
+                </InfoIcon>
+                <InfoContent>
+                  <InfoLabel>Limitované příslušnosti</InfoLabel>
+                  <InfoValue style={{ color: '#10b981', fontWeight: 600 }}>
+                    Zobrazit moje LP →
+                  </InfoValue>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>
+                    Klikněte pro zobrazení detailního přehledu čerpání
+                  </div>
+                </InfoContent>
+              </InfoItem>
             </InfoCard>
 
             {/* Sloupec 2: Aktivita účtu */}
-            <InfoCard>
-              <CardTitle>
-                <TrendingUp size={20} />
-                Aktivita účtu
-              </CardTitle>
+            <CardWithChart>
+              <CardContent>
+                <CardTitle>
+                  <TrendingUp size={20} />
+                  Aktivita účtu
+                </CardTitle>
 
               <InfoItem>
                 <InfoIcon color="#6366f1">
@@ -3041,7 +3272,7 @@ const ProfilePage = () => {
                   <FileText size={16} />
                 </InfoIcon>
                 <InfoContent>
-                  <InfoLabel>Celkem vytvořených objednávek</InfoLabel>
+                  <InfoLabel>Celkem objednávek (jako objednatel)</InfoLabel>
                   <InfoValue>
                     {orderStats.total}
                   </InfoValue>
@@ -3059,6 +3290,48 @@ const ProfilePage = () => {
                   </InfoValue>
                 </InfoContent>
               </InfoItem>
+
+              {orderStats.stavy?.ke_schvaleni > 0 && (
+                <InfoItem>
+                  <InfoIcon color="#f59e0b">
+                    <Clock size={16} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Ke schválení</InfoLabel>
+                    <InfoValue>
+                      {orderStats.stavy.ke_schvaleni}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoItem>
+              )}
+
+              {orderStats.stavy?.schvalena > 0 && (
+                <InfoItem>
+                  <InfoIcon color="#10b981">
+                    <CheckCircle size={16} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Schválené</InfoLabel>
+                    <InfoValue>
+                      {orderStats.stavy.schvalena}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoItem>
+              )}
+
+              {orderStats.stavy?.odeslana > 0 && (
+                <InfoItem>
+                  <InfoIcon color="#3b82f6">
+                    <Send size={16} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Odesláno dodavateli</InfoLabel>
+                    <InfoValue>
+                      {orderStats.stavy.odeslana}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoItem>
+              )}
 
               {(() => {
                 const zamitnute = orderStats.stavy?.zamitnuta || 0;
@@ -3082,7 +3355,7 @@ const ProfilePage = () => {
 
               {orderStats.stavy?.archivovano > 0 && (
                 <InfoItem>
-                  <InfoIcon color="#94a3b8">
+                  <InfoIcon color="#64748b">
                     <Archive size={16} />
                   </InfoIcon>
                   <InfoContent>
@@ -3096,18 +3369,145 @@ const ProfilePage = () => {
 
               {orderStats.stavy?.dokoncena > 0 && (
                 <InfoItem>
-                  <InfoIcon color="#10b981">
+                  <InfoIcon color="#059669">
                     <CheckCircle size={16} />
                   </InfoIcon>
                   <InfoContent>
-                    <InfoLabel>Dokončena</InfoLabel>
+                    <InfoLabel>Dokončené</InfoLabel>
                     <InfoValue>
                       {orderStats.stavy.dokoncena}
                     </InfoValue>
                   </InfoContent>
                 </InfoItem>
               )}
-            </InfoCard>
+
+              <InfoItem>
+                <InfoIcon color="#8b5cf6">
+                  <Shield size={16} />
+                </InfoIcon>
+                <InfoContent>
+                  <InfoLabel>Objednávky jako garant</InfoLabel>
+                  <InfoValue>
+                    {orderStats.celkem_garant}
+                  </InfoValue>
+                </InfoContent>
+              </InfoItem>
+              </CardContent>
+
+              {/* Koláčový graf v rohu */}
+              <PieChartContainer>
+                {(() => {
+                  // Všechny možné stavy s rozlišenými barvami
+                  const allStates = [
+                    { label: 'Nová', value: orderStats.stavy?.nova || 0, color: '#06b6d4' },
+                    { label: 'Ke schválení', value: orderStats.stavy?.ke_schvaleni || 0, color: '#f59e0b' },
+                    { label: 'Schválené', value: orderStats.stavy?.schvalena || 0, color: '#10b981' },
+                    { label: 'Rozpracovaná', value: orderStats.stavy?.rozpracovana || 0, color: '#f97316' },
+                    { label: 'Odesláno', value: orderStats.stavy?.odeslana || 0, color: '#3b82f6' },
+                    { label: 'Potvrzená', value: orderStats.stavy?.potvrzena || 0, color: '#14b8a6' },
+                    { label: 'Uveřejněná', value: orderStats.stavy?.uverejnena || 0, color: '#6366f1' },
+                    { label: 'Čeká potvrzení', value: orderStats.stavy?.ceka_potvrzeni || 0, color: '#eab308' },
+                    { label: 'Dokončené', value: orderStats.stavy?.dokoncena || 0, color: '#059669' },
+                    { label: 'Věcná správnost', value: orderStats.stavy?.vecna_spravnost || 0, color: '#8b5cf6' },
+                    { label: 'Zkontrolovaná', value: orderStats.stavy?.zkontrolovana || 0, color: '#22c55e' },
+                    { label: 'Zamítnuté', value: orderStats.stavy?.zamitnuta || 0, color: '#ef4444' },
+                    { label: 'Zrušené', value: orderStats.stavy?.zrusena || 0, color: '#dc2626' },
+                    { label: 'Archivováno', value: orderStats.stavy?.archivovano || 0, color: '#64748b' },
+                    { label: 'Jako garant', value: orderStats.celkem_garant || 0, color: '#a855f7' }
+                  ];
+                  
+                  const chartData = allStates.filter(item => item.value > 0);
+
+                  // Použít celkový počet ze statistiky
+                  const total = orderStats.total || 0;
+                  const active = orderStats.active || 0;
+                  const chartTotal = chartData.reduce((sum, item) => sum + item.value, 0);
+                  
+                  if (total === 0) return null;
+
+                  let cumulativePercent = 0;
+                  
+                  const createArc = (startPercent, endPercent) => {
+                    const startAngle = startPercent * 2 * Math.PI;
+                    const endAngle = endPercent * 2 * Math.PI;
+                    const largeArc = endPercent - startPercent > 0.5 ? 1 : 0;
+                    
+                    const x1 = 135 + 120 * Math.cos(startAngle - Math.PI / 2);
+                    const y1 = 135 + 120 * Math.sin(startAngle - Math.PI / 2);
+                    const x2 = 135 + 120 * Math.cos(endAngle - Math.PI / 2);
+                    const y2 = 135 + 120 * Math.sin(endAngle - Math.PI / 2);
+                    
+                    return `M 135 135 L ${x1} ${y1} A 120 120 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                  };
+
+                  return (
+                    <PieChartSvg viewBox="0 0 270 270">
+                      {chartData.map((item, idx) => {
+                        const percent = item.value / chartTotal;
+                        const startPercent = cumulativePercent;
+                        cumulativePercent += percent;
+                        
+                        // Vypočítat střed výseče pro popisek
+                        const midPercent = (startPercent + cumulativePercent) / 2;
+                        const midAngle = midPercent * 2 * Math.PI - Math.PI / 2;
+                        const labelRadius = 95;
+                        const labelX = 135 + labelRadius * Math.cos(midAngle);
+                        const labelY = 135 + labelRadius * Math.sin(midAngle);
+                        
+                        return (
+                          <g key={idx}>
+                            <path
+                              d={createArc(startPercent, cumulativePercent)}
+                              fill={item.color}
+                              stroke="white"
+                              strokeWidth="2"
+                              opacity="0.9"
+                            >
+                              <title>{`${item.label}: ${item.value}`}</title>
+                            </path>
+                            {/* Popisek stavu */}
+                            <text
+                              x={labelX}
+                              y={labelY}
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontWeight="700"
+                              fill="white"
+                              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}
+                            >
+                              {item.value}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      <circle cx="135" cy="135" r="50" fill="white" opacity="0.95" />
+                      {/* Celkem */}
+                      <text
+                        x="135"
+                        y="130"
+                        textAnchor="middle"
+                        fontSize="32"
+                        fontWeight="700"
+                        fill="#1e293b"
+                      >
+                        {total}
+                      </text>
+                      {/* Aktivní */}
+                      <text
+                        x="135"
+                        y="155"
+                        textAnchor="middle"
+                        fontSize="24"
+                        fontWeight="600"
+                        fill="#10b981"
+                      >
+                        {active}
+                      </text>
+                    </PieChartSvg>
+                  );
+                })()}
+              </PieChartContainer>
+            </CardWithChart>
 
             {/* Sloupec 3: Organizace */}
             <InfoCard>
@@ -3270,7 +3670,7 @@ const ProfilePage = () => {
           </TabContent>
 
           {/* Tab Content - Adresář dodavatelů */}
-          {hasPermission && (hasPermission('SUPPLIER_READ') || hasPermission('SUPPLIER_EDIT') || hasPermission('CONTACT_MANAGE')) && (() => {
+          {hasPermission && (hasPermission('SUPPLIER_VIEW') || hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_MANAGE')) && (() => {
             // Admini mají automaticky plný přístup
             const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
               role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
@@ -3278,7 +3678,7 @@ const ProfilePage = () => {
             
             let permLevel = 'READ'; // Default
             
-            if (isAdmin || hasPermission('CONTACT_MANAGE')) {
+            if (isAdmin || hasPermission('SUPPLIER_MANAGE')) {
               permLevel = 'MANAGE';
             } else if (hasPermission('SUPPLIER_EDIT')) {
               permLevel = 'EDIT';
@@ -3367,7 +3767,7 @@ const ProfilePage = () => {
                         <input
                           type="checkbox"
                           checked={userSettings.zapamatovat_filtry}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, zapamatovat_filtry: e.target.checked }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'zapamatovat_filtry', value: e.target.checked } })}
                         />
                         <span></span>
                       </ToggleSwitch>
@@ -3385,7 +3785,7 @@ const ProfilePage = () => {
                         <input
                           type="checkbox"
                           checked={userSettings.auto_sbalit_zamcene_sekce}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, auto_sbalit_zamcene_sekce: e.target.checked }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'auto_sbalit_zamcene_sekce', value: e.target.checked } })}
                         />
                         <span></span>
                       </ToggleSwitch>
@@ -3416,10 +3816,7 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.zobrazit_ikony_nastroju.notes}
-                            onChange={(e) => setUserSettings(prev => ({
-                              ...prev,
-                              zobrazit_ikony_nastroju: { ...prev.zobrazit_ikony_nastroju, notes: e.target.checked }
-                            }))}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'notes', value: e.target.checked } })}
                           />
                           <span></span>
                         </ToggleSwitch>
@@ -3437,35 +3834,44 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.zobrazit_ikony_nastroju.todo}
-                            onChange={(e) => setUserSettings(prev => ({
-                              ...prev,
-                              zobrazit_ikony_nastroju: { ...prev.zobrazit_ikony_nastroju, todo: e.target.checked }
-                            }))}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'todo', value: e.target.checked } })}
                           />
                           <span></span>
                         </ToggleSwitch>
                       </ToggleSettingItem>
 
-                      {/* Chat */}
-                      <ToggleSettingItem>
-                        <ToggleSettingLabel>
-                          <ToggleSettingTitle>💬 Chat</ToggleSettingTitle>
-                          <SettingDescription>
-                            Zobrazit ikonu pro chat
-                          </SettingDescription>
-                        </ToggleSettingLabel>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={userSettings.zobrazit_ikony_nastroju.chat}
-                            onChange={(e) => setUserSettings(prev => ({
-                              ...prev,
-                              zobrazit_ikony_nastroju: { ...prev.zobrazit_ikony_nastroju, chat: e.target.checked }
-                            }))}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                      </ToggleSettingItem>
+                      {/* Chat - pouze pro ADMIN role editovatelné */}
+                      {(() => {
+                        const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+                          role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+                        );
+                        
+                        return (
+                          <ToggleSettingItem>
+                            <ToggleSettingLabel>
+                              <ToggleSettingTitle>💬 Chat</ToggleSettingTitle>
+                              <SettingDescription>
+                                {isAdmin 
+                                  ? 'Zobrazit ikonu pro chat' 
+                                  : 'Chat je dostupný pouze pro administrátory'}
+                              </SettingDescription>
+                            </ToggleSettingLabel>
+                            <ToggleSwitch>
+                              <input
+                                type="checkbox"
+                                checked={isAdmin ? userSettings.zobrazit_ikony_nastroju.chat : false}
+                                disabled={!isAdmin}
+                                onChange={(e) => {
+                                  if (isAdmin) {
+                                    dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'chat', value: e.target.checked } });
+                                  }
+                                }}
+                              />
+                              <span></span>
+                            </ToggleSwitch>
+                          </ToggleSettingItem>
+                        );
+                      })()}
 
                       {/* Kalkulačka */}
                       <ToggleSettingItem>
@@ -3479,10 +3885,7 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.zobrazit_ikony_nastroju.kalkulacka}
-                            onChange={(e) => setUserSettings(prev => ({
-                              ...prev,
-                              zobrazit_ikony_nastroju: { ...prev.zobrazit_ikony_nastroju, kalkulacka: e.target.checked }
-                            }))}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'kalkulacka', value: e.target.checked } })}
                           />
                           <span></span>
                         </ToggleSwitch>
@@ -3501,10 +3904,7 @@ const ProfilePage = () => {
                             <input
                               type="checkbox"
                               checked={userSettings.zobrazit_ikony_nastroju.helper ?? true}
-                              onChange={(e) => setUserSettings(prev => ({
-                                ...prev,
-                                zobrazit_ikony_nastroju: { ...prev.zobrazit_ikony_nastroju, helper: e.target.checked }
-                              }))}
+                              onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'helper', value: e.target.checked } })}
                             />
                             <span></span>
                           </ToggleSwitch>
@@ -3515,6 +3915,75 @@ const ProfilePage = () => {
 
                   {/* PRAVÝ SLOUPEC - SELECTY */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* Výchozí garant */}
+                    <SettingItem>
+                      <SettingLabel>
+                        Výchozí garant
+                      </SettingLabel>
+                      <CustomSelect
+                        icon={<User size={16} />}
+                        value={userSettings.vychozi_garant_id || ''}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_garant_id', value: e.target.value || '' } })}
+                        options={[
+                          { value: '', label: '-- Žádný (nevybírat automaticky) --' },
+                          ...activeUsers.map(u => ({
+                            value: u.id || u.user_id,
+                            label: `${u.titul_pred ? u.titul_pred + ' ' : ''}${u.jmeno || ''} ${u.prijmeni || ''}${u.titul_za ? ', ' + u.titul_za : ''}`.trim() || u.username || u.login
+                          }))
+                        ]}
+                        placeholder="Vyberte garanta..."
+                        field="vychozi_garant_id"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                      />
+                      <SettingDescription>
+                        Automaticky předvybrán při vytvoření nové objednávky
+                      </SettingDescription>
+                    </SettingItem>
+
+                    {/* Výchozí příkazce */}
+                    <SettingItem>
+                      <SettingLabel>
+                        Výchozí schvalovatel/příkazce
+                      </SettingLabel>
+                      <CustomSelect
+                        icon={<User size={16} />}
+                        value={userSettings.vychozi_prikazce_id || ''}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_prikazce_id', value: e.target.value || '' } })}
+                        options={[
+                          { value: '', label: '-- Žádný (nevybírat automaticky) --' },
+                          ...approvers.map(u => ({
+                            value: u.id || u.user_id,
+                            label: `${u.titul_pred ? u.titul_pred + ' ' : ''}${u.jmeno || ''} ${u.prijmeni || ''}${u.titul_za ? ', ' + u.titul_za : ''}`.trim() || u.username || u.login
+                          }))
+                        ]}
+                        placeholder="Vyberte příkazce..."
+                        field="vychozi_prikazce_id"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                      />
+                      <SettingDescription>
+                        Automaticky předvybrán při vytvoření nové objednávky (jen schvalovatelé)
+                      </SettingDescription>
+                    </SettingItem>
+
+                    {/* Oddělovač */}
+                    <div style={{ height: '1px', background: '#e5e7eb', margin: '1.5rem 0' }}></div>
+
                     {/* Výchozí menu záložka */}
                     <SettingItem>
                       <SettingLabel>
@@ -3522,8 +3991,8 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Layout size={16} />}
-                        value={userSettings.vychozi_sekce_po_prihlaseni}
-                        onChange={(e) => setUserSettings(prev => ({ ...prev, vychozi_sekce_po_prihlaseni: e.target.value }))}
+                        value={userSettings.vychozi_sekce_po_prihlaseni || 'orders'}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_sekce_po_prihlaseni', value: e.target.value } })}
                         options={MENU_TAB_OPTIONS}
                         placeholder="Vyberte sekci..."
                         field="vychozi_sekce_po_prihlaseni"
@@ -3549,8 +4018,8 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <MultiSelectLocal
                         field="vychozi_filtry_stavu_objednavek"
-                        value={userSettings.vychozi_filtry_stavu_objednavek}
-                        onChange={(newValue) => setUserSettings(prev => ({ ...prev, vychozi_filtry_stavu_objednavek: newValue }))}
+                        value={userSettings.vychozi_filtry_stavu_objednavek || []}
+                        onChange={(newValue) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_filtry_stavu_objednavek', value: newValue } })}
                         options={orderStatesList.map(status => ({
                           value: status.nazev_stavu || status.nazev || status.kod_stavu,
                           kod: status.kod_stavu || status.id,
@@ -3579,8 +4048,8 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Calendar size={16} />}
-                        value={userSettings.vychozi_rok}
-                        onChange={(e) => setUserSettings(prev => ({ ...prev, vychozi_rok: e.target.value }))}
+                        value={userSettings.vychozi_rok || 'current'}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_rok', value: e.target.value } })}
                         options={YEAR_OPTIONS}
                         placeholder="Vyberte rok..."
                         field="vychozi_rok"
@@ -3606,8 +4075,8 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Calendar size={16} />}
-                        value={userSettings.vychozi_obdobi}
-                        onChange={(e) => setUserSettings(prev => ({ ...prev, vychozi_obdobi: e.target.value }))}
+                        value={userSettings.vychozi_obdobi || 'last-quarter'}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_obdobi', value: e.target.value } })}
                         options={PERIOD_OPTIONS}
                         placeholder="Vyberte období..."
                         field="vychozi_obdobi"
@@ -3647,9 +4116,10 @@ const ProfilePage = () => {
                     Vyberte, jakým způsobem chcete dostávat oznámení o důležitých událostech v aplikaci.
                   </SettingDescription>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                  {/* Kanály notifikací */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
                     
-                    {/* Systémové notifikace (v aplikaci) */}
+                    {/* In-app notifikace */}
                     <ToggleSettingItem>
                       <ToggleSettingLabel>
                         <ToggleSettingTitle>Zobrazovat notifikace v aplikaci</ToggleSettingTitle>
@@ -3661,11 +4131,8 @@ const ProfilePage = () => {
                       <ToggleSwitch>
                         <input
                           type="checkbox"
-                          checked={userSettings.notifikace.system}
-                          onChange={(e) => setUserSettings(prev => ({
-                            ...prev,
-                            notifikace: { ...prev.notifikace, system: e.target.checked }
-                          }))}
+                          checked={userSettings.notifikace.inapp_povoleny}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'notifikace', field: 'inapp_povoleny', value: e.target.checked } })}
                         />
                         <span></span>
                       </ToggleSwitch>
@@ -3676,22 +4143,101 @@ const ProfilePage = () => {
                       <ToggleSettingLabel>
                         <ToggleSettingTitle>Zasílat notifikace emailem</ToggleSettingTitle>
                         <SettingDescription>
-                          Důležité události budou zasílány také na váš registrovaný email: <strong>{userDetail?.email || 'není k dispozici'}</strong>. Můžete vybrat obě možnosti, pouze jednu, nebo žádnou.
+                          Důležité události budou zasílány také na váš registrovaný email: <strong>{userDetail?.email || 'není k dispozici'}</strong>.
                         </SettingDescription>
                       </ToggleSettingLabel>
                       <ToggleSwitch>
                         <input
                           type="checkbox"
-                          checked={userSettings.notifikace.email}
-                          onChange={(e) => setUserSettings(prev => ({
-                            ...prev,
-                            notifikace: { ...prev.notifikace, email: e.target.checked }
-                          }))}
+                          checked={userSettings.notifikace.email_povoleny}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'notifikace', field: 'email_povoleny', value: e.target.checked } })}
                         />
                         <span></span>
                       </ToggleSwitch>
                     </ToggleSettingItem>
 
+                  </div>
+
+                  {/* Kategorie notifikací */}
+                  <div style={{ borderTop: '2px solid #e9ecef', paddingTop: '1.5rem' }}>
+                    <SettingDescription style={{ marginBottom: '1rem', fontWeight: 600 }}>
+                      Vyberte, ze kterých modulů chcete dostávat notifikace:
+                    </SettingDescription>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      
+                      {/* Objednávky */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Objednávky</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Změny stavů, schvalování, komentáře
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.objednavky}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'objednavky', value: e.target.checked } })}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                      {/* Faktury */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Faktury</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Nové faktury, schválení, zamítnutí
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.faktury}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'faktury', value: e.target.checked } })}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                      {/* Smlouvy */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Smlouvy</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Nové smlouvy, změny, komentáře
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.smlouvy}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'smlouvy', value: e.target.checked } })}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                      {/* Pokladna */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Pokladna</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Nové doklady, kontroly, schvalování
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.pokladna}
+                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'pokladna', value: e.target.checked } })}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                    </div>
                   </div>
                 </CollapsibleContent>
               </SettingsSection>
@@ -3717,10 +4263,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.nova}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, nova: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'nova' })}
                     />
                     <span>📝 Nová / Koncept</span>
                   </TileCheckbox>
@@ -3729,10 +4272,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.ke_schvaleni}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, ke_schvaleni: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'ke_schvaleni' })}
                     />
                     <span>📋 Ke schválení</span>
                   </TileCheckbox>
@@ -3741,10 +4281,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.schvalena}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, schvalena: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'schvalena' })}
                     />
                     <span>👍 Schválená</span>
                   </TileCheckbox>
@@ -3753,10 +4290,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.zamitnuta}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, zamitnuta: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'zamitnuta' })}
                     />
                     <span>❌ Zamítnutá</span>
                   </TileCheckbox>
@@ -3765,10 +4299,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.rozpracovana}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, rozpracovana: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'rozpracovana' })}
                     />
                     <span>⬇️ Rozpracovaná</span>
                   </TileCheckbox>
@@ -3777,10 +4308,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.odeslana_dodavateli}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, odeslana_dodavateli: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'odeslana_dodavateli' })}
                     />
                     <span>📤 Odeslaná dodavateli</span>
                   </TileCheckbox>
@@ -3789,10 +4317,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.potvrzena_dodavatelem}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, potvrzena_dodavatelem: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'potvrzena_dodavatelem' })}
                     />
                     <span>✔️ Potvrzená dodavatelem</span>
                   </TileCheckbox>
@@ -3801,10 +4326,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.k_uverejneni_do_registru}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, k_uverejneni_do_registru: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'k_uverejneni_do_registru' })}
                     />
                     <span>📊 Má být zveřejněna</span>
                   </TileCheckbox>
@@ -3813,10 +4335,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.uverejnena}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, uverejnena: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'uverejnena' })}
                     />
                     <span>📢 Uveřejněná</span>
                   </TileCheckbox>
@@ -3825,10 +4344,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.ceka_na_potvrzeni}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, ceka_na_potvrzeni: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'ceka_na_potvrzeni' })}
                     />
                     <span>⏸️ Čeká na potvrzení</span>
                   </TileCheckbox>
@@ -3837,10 +4353,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.ceka_se}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, ceka_se: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'ceka_se' })}
                     />
                     <span>⏸️ Čeká se</span>
                   </TileCheckbox>
@@ -3849,10 +4362,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.vecna_spravnost}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, vecna_spravnost: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'vecna_spravnost' })}
                     />
                     <span>✅ Věcná správnost</span>
                   </TileCheckbox>
@@ -3861,10 +4371,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.dokoncena}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, dokoncena: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'dokoncena' })}
                     />
                     <span>🎯 Dokončená</span>
                   </TileCheckbox>
@@ -3873,10 +4380,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.zrusena}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, zrusena: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'zrusena' })}
                     />
                     <span>🚫 Zrušená</span>
                   </TileCheckbox>
@@ -3885,10 +4389,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.smazana}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, smazana: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'smazana' })}
                     />
                     <span>🗑️ Smazaná</span>
                   </TileCheckbox>
@@ -3897,10 +4398,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.archivovano}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, archivovano: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'archivovano' })}
                     />
                     <span>📦 Archivováno / Import</span>
                   </TileCheckbox>
@@ -3909,10 +4407,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.s_fakturou}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, s_fakturou: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 's_fakturou' })}
                     />
                     <span>📄 S fakturou</span>
                   </TileCheckbox>
@@ -3921,10 +4416,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.s_prilohami}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, s_prilohami: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 's_prilohami' })}
                     />
                     <span>📎 S přílohami</span>
                   </TileCheckbox>
@@ -3933,10 +4425,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.mimoradne_udalosti}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, mimoradne_udalosti: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'mimoradne_udalosti' })}
                     />
                     <span><FontAwesomeIcon icon={faBoltLightning} style={{ color: '#dc2626' }} /> Mimořádné události</span>
                   </TileCheckbox>
@@ -3945,10 +4434,7 @@ const ProfilePage = () => {
                     <input
                       type="checkbox"
                       checked={userSettings.viditelne_dlazdice.moje_objednavky}
-                      onChange={(e) => setUserSettings(prev => ({
-                        ...prev,
-                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, moje_objednavky: e.target.checked }
-                      }))}
+                      onChange={() => dispatch({ type: SETTINGS_ACTIONS.TOGGLE_TILE, payload: 'moje_objednavky' })}
                     />
                     <span>👤 Moje objednávky</span>
                   </TileCheckbox>
@@ -3984,14 +4470,14 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.id} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, id: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.id} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'id' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>ID objednávky</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} id {'}'} = 11308</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.cislo_objednavky} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, cislo_objednavky: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.cislo_objednavky} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'cislo_objednavky' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Číslo objednávky</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} cislo_objednavky {'}'} = "O-1767/75030926/2025/IT"</span>
@@ -4007,14 +4493,14 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.predmet} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, predmet: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.predmet} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'predmet' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Předmět objednávky</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} predmet {'}'} = "Test timezony"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.poznamka} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, poznamka: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'poznamka' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Poznámka</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} poznamka {'}'}</span>
@@ -4030,21 +4516,21 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_objednavky} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, stav_objednavky: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_objednavky} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'stav_objednavky' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Stav objednávky</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_objednavky {'}'} = "Dokončená"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_workflow} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, stav_workflow: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_workflow} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'stav_workflow' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Workflow stavy (enriched)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.stav_workflow[].nazev_stavu {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_komentar} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, stav_komentar: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_komentar} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'stav_komentar' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Komentář ke stavu</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_komentar {'}'}</span>
@@ -4060,56 +4546,56 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_objednavky} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_objednavky: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_objednavky} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_objednavky' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum objednávky</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_objednavky {'}'} = "2025-11-16 19:23:44"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_vytvoreni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_vytvoreni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_vytvoreni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_vytvoreni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum vytvoření</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_vytvoreni {'}'} = "2025-11-14 19:41:59"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_schvaleni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_schvaleni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_schvaleni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_schvaleni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum schválení</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_schvaleni {'}'} = "2025-11-14 19:42:24"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_odeslani} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_odeslani: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_odeslani} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_odeslani' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum odeslání</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_odeslani {'}'} = "2025-11-14 19:50:57"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_akceptace} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_akceptace: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_akceptace} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_akceptace' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum akceptace</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_akceptace {'}'} = "2025-11-16 18:13:10"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_zverejneni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_zverejneni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_zverejneni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_zverejneni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum zveřejnění</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_zverejneni {'}'} = "2025-11-30 17:42:59"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_predpokladany_termin_dodani} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_predpokladany_termin_dodani: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_predpokladany_termin_dodani} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_predpokladany_termin_dodani' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Předpokl. termín dodání</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_predpokladany_termin_dodani {'}'} = "2025-11-16"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_aktualizace} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dt_aktualizace: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_aktualizace} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_aktualizace' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum poslední aktualizace</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_aktualizace {'}'} = "2025-11-16 19:23:44"</span>
@@ -4124,135 +4610,222 @@ const ProfilePage = () => {
                       💰 Finanční údaje
                     </div>
                     <SettingDescription style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
-                      Příklad financování: <code style={{ background: '#e2e8f0', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>Typ: LP (Limitovaný příslib), Kódy: 1, 4, Názvy: "LPIT1 - Spotreba materialu", "LPIT4 - Zakonne socialni naklady"</code>
+                      DB pole: max_cena_s_dph, financovani (JSON), pojistna_udalost_cislo, cislo_smlouvy. Zahrnuje LP kódy, pojisťovací údaje a smlouvy.
                     </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.max_cena_s_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, max_cena_s_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.max_cena_s_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'max_cena_s_dph' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Max. cena s DPH</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} max_cena_s_dph {'}'} = 75000.00</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.celkova_cena_bez_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, celkova_cena_bez_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_kody} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_kody' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Celková cena bez DPH</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} celkova_cena_bez_dph {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>LP kódy</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Kódy limitovaných příslibů z JSON</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.celkova_cena_s_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, celkova_cena_s_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_nazvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_nazvy' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Celková cena s DPH</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} celkova_cena_s_dph {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>LP názvy</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Názvy limitovaných příslibů</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_typ} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, financovani_typ: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_cisla} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_cisla' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>LP čísla</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Čísla limitovaných příslibů</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_typ} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_typ' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Typ financování</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.typ {'}'} = "LP"</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Typ z financovani JSON (LP, IT, atd.)</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_typ_nazev} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, financovani_typ_nazev: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_typ_nazev} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_typ_nazev' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Název typu financování</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.typ_nazev {'}'} = "Limitovaný příslib"</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Lidsky čitelný název typu</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_kody} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, financovani_lp_kody: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.pojistna_udalost_cislo} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'pojistna_udalost_cislo' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Kódy LP (seznam)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.lp_kody[] {'}'} = ["1", "4"]</span>
+                          <span style={{ fontWeight: '500' }}>Číslo pojistné události</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Číslo pojistné události - PU-456</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_nazvy} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, financovani_lp_nazvy: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.pojistna_udalost_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'pojistna_udalost_poznamka' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Názvy LP (seznam)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.lp_nazvy[].nazev {'}'} = ["Spotreba materialu", "Zakonne socialni naklady"]</span>
+                          <span style={{ fontWeight: '500' }}>Poznámka k pojisťovacím údajům</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Poznámka k pojistné události</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_cisla} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, financovani_lp_cisla: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.cislo_smlouvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'cislo_smlouvy' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Čísla LP (seznam)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.lp_nazvy[].cislo_lp {'}'} = ["LPIT1", "LPIT4"]</span>
+                          <span style={{ fontWeight: '500' }}>Číslo smlouvy</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Číslo smlouvy pro individuální schválení</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.individualni_schvaleni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'individualni_schvaleni' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Individuální schválení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Ano/Ne - individuální schválení</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.individualni_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'individualni_poznamka' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Poznámka k individuálnímu schválení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Poznámka k individualizovanému schválení</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_raw} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_raw' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Financování (raw JSON)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani {'}'} - původní JSON z DB</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
                   </div>
 
-                  {/* Lidé */}
+                  {/* Odpovědné osoby - podle DB foreign keys */}
                   <div style={{ marginBottom: '1.5rem' }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.75rem', paddingLeft: '0.5rem', borderLeft: '3px solid #06b6d4' }}>
-                      👥 Lidé (enriched data)
+                      👥 Odpovědné osoby (enriched z JOINů na 25_uzivatele)
                     </div>
+                    <SettingDescription style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
+                      DB foreign keys: uzivatel_id, garant_uzivatel_id, schvalovatel_id, prikazce_id, odesilatel_id, dokoncil_id, fakturant_id, zverejnil_id
+                    </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.objednatel} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, objednatel: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Objednatel (jméno)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.objednatel.jmeno {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Objednatel (hlavní uživatel)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} uzivatel_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.objednatel_email} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, objednatel_email: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.uzivatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'uzivatel_email' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Objednatel (email)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.objednatel.email {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Objednatel email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.uzivatel.email {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.objednatel_telefon} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, objednatel_telefon: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.uzivatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'uzivatel_telefon' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Objednatel (telefon)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.objednatel.telefon {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Objednatel telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.uzivatel.telefon {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, garant: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Garant (jméno)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.garant_uzivatel.jmeno {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Garant</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} garant_uzivatel_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_email} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, garant_email: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_uzivatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_uzivatel_email' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Garant (email)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.garant_uzivatel.email {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Garant email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.garant_uzivatel.email {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_telefon} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, garant_telefon: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_uzivatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_uzivatel_telefon' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Garant (telefon)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.garant_uzivatel.telefon {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Garant telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.garant_uzivatel.telefon {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prikazce: e.target.checked } }))} />
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Příkazce</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.prikazce.jmeno {'}'}</span>
-                        </span>
-                      </TileCheckbox>
-                      <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, schvalovatel: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvalovatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Schvalovatel</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.schvalovatel.jmeno {'}'}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} schvalovatel_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.vytvoril_uzivatel} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, vytvoril_uzivatel: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvalovatel_email' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Schvalovatel email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.schvalovatel.email {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvalovatel_telefon' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Schvalovatel telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.schvalovatel.telefon {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Příkazce</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prikazce_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce_email' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Příkazce email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.prikazce.email {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce_telefon' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Příkazce telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.prikazce.telefon {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.vytvoril_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'vytvoril_uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Vytvořil uživatel</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.uzivatel.jmeno {'}'}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.vytvoril_uzivatel.jmeno {'}'} (CREATE audit)</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.odesilatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'odesilatel' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Odesílatel</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} odesilatel_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dokoncil} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dokoncil' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Dokončil</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dokoncil_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.fakturant} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'fakturant' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Fakturant</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} fakturant_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zverejnil_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zverejnil_uzivatel' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Zveřejnil</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} zverejnil_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
@@ -4265,56 +4838,56 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_nazev} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_nazev: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_nazev} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_nazev' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Název dodavatele</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.nazev {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_ico} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_ico: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_ico} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_ico' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>IČO dodavatele</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.ico {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_dic} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_dic: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_dic} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_dic' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>DIČ dodavatele</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.dic {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_adresa} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_adresa: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_adresa} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_adresa' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Adresa dodavatele</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.adresa {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_zastoupeny} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_zastoupeny: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_zastoupeny} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_zastoupeny' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Zastoupen kým</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.zastoupeny {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_kontakt_jmeno} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_kontakt_jmeno: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_kontakt_jmeno} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_kontakt_jmeno' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Kontaktní osoba</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.kontakt_jmeno {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_kontakt_email} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_kontakt_email: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_kontakt_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_kontakt_email' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Kontaktní email</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.kontakt_email {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_kontakt_telefon} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, dodavatel_kontakt_telefon: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dodavatel_kontakt_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dodavatel_kontakt_telefon' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Kontaktní telefon</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dodavatel.kontakt_telefon {'}'}</span>
@@ -4328,33 +4901,43 @@ const ProfilePage = () => {
                     <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.75rem', paddingLeft: '0.5rem', borderLeft: '3px solid #84cc16' }}>
                       🏛️ Střediska a struktura
                     </div>
+                    <SettingDescription style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
+                      DB pole: strediska_kod (text), druh_objednavky_kod, stav_workflow_kod, mimoradna_udalost
+                    </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, strediska: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'strediska_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Střediska (kódy)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} strediska_kod[] {'}'} = ["100", "400"]</span>
+                          <span style={{ fontWeight: '500' }}>Střediska (kódy z DB)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} strediska_kod {'}'} = "[100,400]"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska_nazvy} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, strediska_nazvy: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska_nazvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'strediska_nazvy' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Střediska (názvy)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.strediska[].nazev {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Střediska (enriched názvy)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>JOIN s 25_useky pro lidsky čitelné názvy</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.druh_objednavky_kod} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, druh_objednavky_kod: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.druh_objednavky_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'druh_objednavky_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Druh objednávky (kód)</span>
+                          <span style={{ fontWeight: '500' }}>Druh objednávky kód</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} druh_objednavky_kod {'}'} = "DODAVKA_ZBOZI"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_workflow_kod} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, stav_workflow_kod: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_workflow_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'stav_workflow_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Workflow stavy (kódy)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_workflow_kod[] {'}'} = ["SCHVALENA", "ODESLANA", "POTVRZENA", ...]</span>
+                          <span style={{ fontWeight: '500' }}>Workflow stav kód</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_workflow_kod {'}'} = "SCHVALENA"</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.mimoradna_udalost} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'mimoradna_udalost' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Mimořádná událost</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} mimoradna_udalost {'}'} (tinyint) = Ano/Ne</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
@@ -4370,77 +4953,77 @@ const ProfilePage = () => {
                     </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.pocet_polozek} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, pocet_polozek: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.pocet_polozek} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'pocet_polozek' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Počet položek</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky_count {'}'} = 1</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_celkova_cena_s_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_celkova_cena_s_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_celkova_cena_s_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_celkova_cena_s_dph' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Celková cena položek s DPH</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky_celkova_cena_s_dph {'}'} = 73250</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_popis} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_popis: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_popis} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_popis' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Popisy položek (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].popis {'}'} = ["Dodání síťových prvků..."]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_cena_bez_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_cena_bez_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_cena_bez_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_cena_bez_dph' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Ceny bez DPH (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].cena_bez_dph {'}'} = ["60537.19"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_sazba_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_sazba_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_sazba_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_sazba_dph' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Sazby DPH % (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].sazba_dph {'}'} = ["21"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_cena_s_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_cena_s_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_cena_s_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_cena_s_dph' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Ceny s DPH (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].cena_s_dph {'}'} = ["73250.00"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_usek_kod} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_usek_kod: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_usek_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_usek_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Kódy úseků (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].usek_kod {'}'} = ["100"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_budova_kod} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_budova_kod: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_budova_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_budova_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Kódy budov (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].budova_kod {'}'} = ["200"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_mistnost_kod} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_mistnost_kod: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_mistnost_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_mistnost_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Kódy místností (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].mistnost_kod {'}'} = ["300"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_poznamka} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_poznamka: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_poznamka' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Poznámky k položkám (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].poznamka {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_poznamka_umisteni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, polozky_poznamka_umisteni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.polozky_poznamka_umisteni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'polozky_poznamka_umisteni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Poznámky k umístění (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} polozky[].poznamka_umisteni {'}'}</span>
@@ -4459,49 +5042,49 @@ const ProfilePage = () => {
                     </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_count} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_count: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_count} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_count' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Počet příloh</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy_count {'}'} = 3</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_guid} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_guid: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_guid} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_guid' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>GUID příloh (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy[].guid {'}'} = ["2025-11-16_bf523139...", ...]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_typ} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_typ: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_typ} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_typ' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Typy příloh (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy[].typ_prilohy {'}'} = ["DOKLAD", "POTVRZENA_OBJEDNAVKA", "JINE"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_nazvy} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_nazvy: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_nazvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_nazvy' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Názvy souborů (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy[].originalni_nazev_souboru {'}'} = ["ReportData-2025-11-06...", ...]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_velikosti} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_velikosti: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_velikosti} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_velikosti' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Velikosti souborů v B (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy[].velikost_souboru_b {'}'} = ["2664", "2645", "83682"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_nahrano_uzivatel} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_nahrano_uzivatel: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_nahrano_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_nahrano_uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Nahráli uživatelé (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy[].nahrano_uzivatel_celne_jmeno {'}'} = ["Super ADMIN", ...]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_dt_vytvoreni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, prilohy_dt_vytvoreni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prilohy_dt_vytvoreni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prilohy_dt_vytvoreni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Data vytvoření příloh (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prilohy[].dt_vytvoreni {'}'} = ["2025-11-16 18:02:31", ...]</span>
@@ -4520,77 +5103,77 @@ const ProfilePage = () => {
                     </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_count} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_count: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_count} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_count' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Počet faktur</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury_count {'}'} = 1</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_celkova_castka_s_dph} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_celkova_castka_s_dph: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_celkova_castka_s_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_celkova_castka_s_dph' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Celková částka faktur s DPH</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury_celkova_castka_s_dph {'}'} = 39480</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_cisla_vema} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_cisla_vema: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_cisla_vema} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_cisla_vema' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Čísla faktur VEMA (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_cislo_vema {'}'} = ["250100528"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_castky} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_castky: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_castky} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_castky' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Částky faktur (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_castka {'}'} = ["39480.00"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_datum_vystaveni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_datum_vystaveni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_datum_vystaveni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_datum_vystaveni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Data vystavení faktur (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_datum_vystaveni {'}'} = ["2025-09-08"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_datum_splatnosti} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_datum_splatnosti: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_datum_splatnosti} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_datum_splatnosti' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Data splatnosti faktur (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_datum_splatnosti {'}'} = ["2025-09-23"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_datum_doruceni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_datum_doruceni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_datum_doruceni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_datum_doruceni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Data doručení faktur (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_datum_doruceni {'}'} = ["2025-11-16"]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_strediska} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_strediska: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_strediska} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_strediska' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Střediska faktur (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_strediska_kod {'}'} = [["100", "400"]]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_poznamka} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_poznamka: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_poznamka' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Poznámky faktur (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_poznamka {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_pocet_priloh} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_pocet_priloh: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_pocet_priloh} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_pocet_priloh' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Počty příloh k fakturám (seznam)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].prilohy.length {'}'} = [1]</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_dorucena} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, faktury_dorucena: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.faktury_dorucena} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'faktury_dorucena' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Faktury doručeny (ANO/NE)</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} faktury[].fa_dorucena {'}'} = ["1"]</span>
@@ -4606,28 +5189,28 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_odeslano} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, stav_odeslano: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_odeslano} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'stav_odeslano' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Stav odeslání</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_odeslano {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.potvrzeno_dodavatelem} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, potvrzeno_dodavatelem: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.potvrzeno_dodavatelem} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'potvrzeno_dodavatelem' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Potvrzeno dodavatelem</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} potvrzeno_dodavatelem {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zpusob_potvrzeni} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, zpusob_potvrzeni: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zpusob_potvrzeni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zpusob_potvrzeni' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Způsob potvrzení</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} zpusob_potvrzeni {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zpusob_platby} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, zpusob_platby: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zpusob_platby} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zpusob_platby' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Způsob platby</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} zpusob_platby {'}'}</span>
@@ -4643,14 +5226,14 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zverejnit_registr_smluv} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, zverejnit_registr_smluv: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zverejnit_registr_smluv} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zverejnit_registr_smluv' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Zveřejnit v registru</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} zverejnit_registr_smluv {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.registr_iddt} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, registr_iddt: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.registr_iddt} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'registr_iddt' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>ID registru smluv</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} registr_iddt {'}'}</span>
@@ -4666,14 +5249,14 @@ const ProfilePage = () => {
                     </div>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zaruka} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, zaruka: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zaruka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zaruka' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Záruka</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} zaruka {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.misto_dodani} onChange={(e) => setUserSettings(prev => ({ ...prev, export_csv_sloupce: { ...prev.export_csv_sloupce, misto_dodani: e.target.checked } }))} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.misto_dodani} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'misto_dodani' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Místo dodání</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} misto_dodani {'}'}</span>
@@ -4701,7 +5284,7 @@ const ProfilePage = () => {
                           name="csvDelimiter"
                           value="semicolon"
                           checked={userSettings.exportCsvDelimiter === 'semicolon'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvDelimiter', value: e.target.value } })}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
                         <span style={{ fontWeight: userSettings.exportCsvDelimiter === 'semicolon' ? '600' : '400' }}>
@@ -4715,7 +5298,7 @@ const ProfilePage = () => {
                           name="csvDelimiter"
                           value="tab"
                           checked={userSettings.exportCsvDelimiter === 'tab'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvDelimiter', value: e.target.value } })}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
                         <span style={{ fontWeight: userSettings.exportCsvDelimiter === 'tab' ? '600' : '400' }}>
@@ -4729,7 +5312,7 @@ const ProfilePage = () => {
                           name="csvDelimiter"
                           value="pipe"
                           checked={userSettings.exportCsvDelimiter === 'pipe'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvDelimiter', value: e.target.value } })}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
                         <span style={{ fontWeight: userSettings.exportCsvDelimiter === 'pipe' ? '600' : '400' }}>
@@ -4743,7 +5326,7 @@ const ProfilePage = () => {
                           name="csvDelimiter"
                           value="custom"
                           checked={userSettings.exportCsvDelimiter === 'custom'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvDelimiter', value: e.target.value } })}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
                         <span style={{ fontWeight: userSettings.exportCsvDelimiter === 'custom' ? '600' : '400' }}>
@@ -4751,8 +5334,8 @@ const ProfilePage = () => {
                         </span>
                         <input
                           type="text"
-                          value={userSettings.exportCsvCustomDelimiter}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvCustomDelimiter: e.target.value.slice(0, 3) }))}
+                          value={userSettings.exportCsvCustomDelimiter || ''}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvCustomDelimiter', value: e.target.value.slice(0, 3) } })}
                           disabled={userSettings.exportCsvDelimiter !== 'custom'}
                           placeholder="Zadejte znak..."
                           maxLength={3}
@@ -4805,7 +5388,7 @@ const ProfilePage = () => {
                           name="csvListDelimiter"
                           value="pipe"
                           checked={userSettings.exportCsvListDelimiter === 'pipe'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvListDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvListDelimiter', value: e.target.value } })}
                           disabled={userSettings.exportCsvDelimiter === 'pipe'}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
@@ -4829,7 +5412,7 @@ const ProfilePage = () => {
                           name="csvListDelimiter"
                           value="comma"
                           checked={userSettings.exportCsvListDelimiter === 'comma'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvListDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvListDelimiter', value: e.target.value } })}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
                         <span style={{ fontWeight: userSettings.exportCsvListDelimiter === 'comma' ? '600' : '400' }}>
@@ -4854,7 +5437,7 @@ const ProfilePage = () => {
                           name="csvListDelimiter"
                           value="semicolon"
                           checked={userSettings.exportCsvListDelimiter === 'semicolon'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvListDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvListDelimiter', value: e.target.value } })}
                           disabled={userSettings.exportCsvDelimiter === 'semicolon'}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
@@ -4869,7 +5452,7 @@ const ProfilePage = () => {
                           name="csvListDelimiter"
                           value="custom"
                           checked={userSettings.exportCsvListDelimiter === 'custom'}
-                          onChange={(e) => setUserSettings(prev => ({ ...prev, exportCsvListDelimiter: e.target.value }))}
+                          onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvListDelimiter', value: e.target.value } })}
                           style={{ accentColor: '#3b82f6', width: '18px', height: '18px' }}
                         />
                         <span style={{ fontWeight: userSettings.exportCsvListDelimiter === 'custom' ? '600' : '400' }}>
@@ -4877,7 +5460,7 @@ const ProfilePage = () => {
                         </span>
                         <input
                           type="text"
-                          value={userSettings.exportCsvListCustomDelimiter}
+                          value={userSettings.exportCsvListCustomDelimiter || ''}
                           onChange={(e) => {
                             const newValue = e.target.value.slice(0, 3);
                             // Kontrola kolize s hlavním oddělovačem
@@ -4888,7 +5471,7 @@ const ProfilePage = () => {
                             if (newValue && newValue === mainDelimiter) {
                               return; // Zabránit nastavení stejného znaku
                             }
-                            setUserSettings(prev => ({ ...prev, exportCsvListCustomDelimiter: newValue }));
+                            dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'exportCsvListCustomDelimiter', value: newValue } });
                           }}
                           disabled={userSettings.exportCsvListDelimiter !== 'custom'}
                           placeholder="Zadejte znak..."
@@ -4921,8 +5504,8 @@ const ProfilePage = () => {
                     </SettingLabel>
                     <CustomSelect
                       icon={<Download size={16} />}
-                      value={userSettings.export_pokladna_format}
-                      onChange={(e) => setUserSettings(prev => ({ ...prev, export_pokladna_format: e.target.value }))}
+                      value={userSettings.export_pokladna_format || 'xlsx'}
+                      onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'export_pokladna_format', value: e.target.value } })}
                       options={EXPORT_FORMAT_OPTIONS}
                       placeholder="Vyberte formát..."
                       field="export_pokladna_format"

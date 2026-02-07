@@ -13,9 +13,14 @@ const fadeIn = keyframes`
   to { opacity: 1; }
 `;
 
+const fadeOut = keyframes`
+  from { opacity: 1; }
+  to { opacity: 0; }
+`;
+
 const pulse = keyframes`
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.6; }
 `;
 
 // Styled components
@@ -31,7 +36,11 @@ const SplashContainer = styled.div`
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  animation: ${fadeIn} 0.3s ease-in;
+  animation: ${fadeIn} 0.2s ease-in;
+  
+  &.hidden {
+    animation: ${fadeOut} 0.3s ease-out forwards;
+  }
 `;
 
 const LogoContainer = styled.div`
@@ -101,11 +110,12 @@ const VersionText = styled.div`
 `;
 
 /**
- * SplashScreen - Zobrazuje se při načítání aplikace
+ * SplashScreen - Zobrazuje se POUZE při cold start (první načtení v novém tabu/okně)
+ * 🎯 OPTIMALIZACE: Při F5/reload se NEzobrazuje (řízeno v index.js pomocí sessionStorage)
  * @param {Object} props
  * @param {string} [props.message] - Volitelná zpráva pro zobrazení
  */
-const SplashScreen = ({ message = 'Načítání aplikace...' }) => {
+const SplashScreen = ({ message = 'Spouštění aplikace...' }) => {
   return (
     <SplashContainer>
       <LogoContainer>

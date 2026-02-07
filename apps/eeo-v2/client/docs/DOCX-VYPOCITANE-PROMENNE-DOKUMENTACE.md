@@ -10,39 +10,39 @@ Backend API endpoint `/api.eeo/sablona_docx/order-data` **MUSÍ** vrátit novou 
 
 ### `vypocitane.celkova_cena_bez_dph`
 - **Typ**: `string` (formátovaná měna)
-- **Formát**: `"123456.78"` (mezery jako oddělovač tisíců, 2 des. místa)
+- **Formát**: `"123456,78"` (mezery jako oddělovač tisíců, čárka jako des. oddělovač)
 - **Výpočet**: Součet všech `polozky[*].celkova_cena_bez_dph`
-- **Příklad**: `"1 234 567.89"`
+- **Příklad**: `"1 234 567,89"`
 
 ### `vypocitane.celkova_cena_s_dph`
 - **Typ**: `string` (formátovaná měna)
-- **Formát**: `"123456.78"` (mezery jako oddělovač tisíců, 2 des. místa)
+- **Formát**: `"123456,78"` (mezery jako oddělovač tisíců, čárka jako des. oddělovač)
 - **Výpočet**: Součet všech `polozky[*].celkova_cena_s_dph`
-- **Příklad**: `"1 498 765.43"`
+- **Příklad**: `"1 498 765,43"`
 
 ### `vypocitane.vypoctene_dph`
 - **Typ**: `string` (formátovaná měna)
-- **Formát**: `"123456.78"` (mezery jako oddělovač tisíců, 2 des. místa)
+- **Formát**: `"123456,78"` (mezery jako oddělovač tisíců, čárka jako des. oddělovač)
 - **Výpočet**: `celkova_cena_s_dph - celkova_cena_bez_dph`
-- **Příklad**: `"264 197.54"`
+- **Příklad**: `"264 197,54"`
 
 ### `vypocitane.celkova_cena_bez_dph_kc`
 - **Typ**: `string` (s jednotkou)
-- **Formát**: `"123456.78 Kč"`
+- **Formát**: `"123456,78 Kč"`
 - **Výpočet**: `celkova_cena_bez_dph + " Kč"`
-- **Příklad**: `"1 234 567.89 Kč"`
+- **Příklad**: `"1 234 567,89 Kč"`
 
 ### `vypocitane.celkova_cena_s_dph_kc`
 - **Typ**: `string` (s jednotkou)
-- **Formát**: `"123456.78 Kč"`
+- **Formát**: `"123456,78 Kč"`
 - **Výpočet**: `celkova_cena_s_dph + " Kč"`
-- **Příklad**: `"1 498 765.43 Kč"`
+- **Příklad**: `"1 498 765,43 Kč"`
 
 ### `vypocitane.vypoctene_dph_kc`
 - **Typ**: `string` (s jednotkou)
-- **Formát**: `"123456.78 Kč"`
+- **Formát**: `"123456,78 Kč"`
 - **Výpočet**: `vypoctene_dph + " Kč"`
-- **Příklad**: `"264 197.54 Kč"`
+- **Příklad**: `"264 197,54 Kč"`
 
 ## 📊 Statistiky objednávky
 

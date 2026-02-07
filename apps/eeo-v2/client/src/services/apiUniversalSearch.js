@@ -8,7 +8,7 @@
 
 import { loadAuthData, getStoredUsername } from '../utils/authStorage';
 
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 /**
  * Univerzální vyhledávání
@@ -83,14 +83,6 @@ export const universalSearch = async (params) => {
     search_all: params.search_all || false  // ✅ Ignorovat permissions, vrátit všechny výsledky
   };
 
-  console.log('🌐 [universalSearch] Sending to backend:', {
-    url: `${API_BASE_URL}search/universal`,
-    body: {
-      ...requestBody,
-      token: requestBody.token ? `${requestBody.token.substring(0, 20)}...` : 'missing'
-    }
-  });
-
   try {
     const response = await fetch(`${API_BASE_URL}search/universal`, {
       method: 'POST',
@@ -102,12 +94,6 @@ export const universalSearch = async (params) => {
 
     const data = await response.json();
     
-    console.log('🌐 [universalSearch] Backend response:', {
-      status: response.status,
-      ok: response.ok,
-      data: data
-    });
-
     // Error handling
     if (!response.ok) {
       console.error('❌ Universal Search ERROR:', data);

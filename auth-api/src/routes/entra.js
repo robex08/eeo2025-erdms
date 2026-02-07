@@ -305,4 +305,84 @@ router.get('/search/user', authenticateSession, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/entra/me/calendar/events
+ * Získat nadcházející události z kalendáře přihlášeného uživatele
+ * Query params: ?days=7
+ */
+router.get('/me/calendar/events', authenticateSession, async (req, res) => {
+  try {
+    console.log('📅 Calendar endpoint called');
+    console.log('📅 User:', req.user ? 'exists' : 'missing');
+    console.log('📅 Access token:', req.user?.entra_access_token ? 'exists' : 'missing');
+    
+    // Validace: uživatel musí mít access token
+    if (!req.user || !req.user.entra_access_token) {
+      console.log('🔴 Calendar: No access token, returning 401');
+      return res.status(401).json({
+        success: false,
+        error: 'User access token not found. Please re-login to get calendar permissions.'
+      });
+    }
+
+    const days = parseInt(req.query.days) || 7;
+    console.log('📅 Calling entraService.getMyCalendarEvents with days:', days);
+    
+    // 🔬 DEBUG: Na pozadí zavolat všechny varianty Graph API a vypsat do konzole
+    console.log('\n🔬 ========== GRAPH API DEBUG TEST START ==========');
+    entraService.debugCalendarAPIs(req.user.entra_access_token).then(results => {
+      console.log('\n🔬 DEBUG RESULTS:');
+      console.log(JSON.stringify(results, null, 2));
+      console.log('\n🔬 SUMMARY:');
+      results.tests.forEach(test => {
+        const hasCategories = test.firstEvent?.categories !== undefined;
+        const timezone = test.firstEvent?.start?.timeZone || 'N/A';
+        console.log(`  ${test.test}: categories=${hasCategories}, timezone=${timezone}`);
+      });
+      console.log('🔬 ========== GRAPH API DEBUG TEST END ==========\n');
+    }).catch(err => {
+      console.error('🔴 DEBUG TEST ERROR:', err.message);
+    });
+    
+    const events = await entraService.getMyCalendarEvents(req.user.entra_access_token, days);
+    console.log('📅 Got events:', events.length);
+    res.json({ success: true, data: events });
+  } catch (err) {
+    console.error('🔴 GET /api/entra/me/calendar/events ERROR:', err.message);
+    console.error('🔴 Stack:', err.stack);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * GET /api/entra/me/calendar/debug
+ * DEBUG: Zkusit všechny možné Graph API endpointy pro kalendář
+ */
+router.get('/me/calendar/debug', authenticateSession, async (req, res) => {
+  try {
+    console.log('🔬 DEBUG: Calendar API testing started');
+    
+    if (!req.user || !req.user.entra_access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'User access token not found'
+      });
+    }
+
+    const results = await entraService.debugCalendarAPIs(req.user.entra_access_token, 3);
+    
+    console.log('🔬 DEBUG: All tests completed');
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error('🔴 DEBUG ERROR:', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 module.exports = router;

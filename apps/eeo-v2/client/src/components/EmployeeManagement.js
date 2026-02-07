@@ -3,8 +3,8 @@ import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { SmartTooltip } from '../styles/SmartTooltip';
-import { fetchEmployees } from '../services/api2auth';
-import { Search, Users, List, Grid3X3, RotateCw, FolderSearch, CheckCircle, XCircle, Mail, Phone, Building, MapPin, Calendar, X } from 'lucide-react';
+import { fetchEmployees, toggleEmployeeVisibility } from '../services/api2auth';
+import { Search, Users, List, Grid3X3, RotateCw, FolderSearch, CheckCircle, XCircle, Mail, Phone, Building, MapPin, Calendar, X, Eye, EyeOff } from 'lucide-react';
 
 const refreshSpin = keyframes`
   from { transform: rotate(0deg); }
@@ -360,6 +360,36 @@ const ListStatusBadge = styled.div`
   white-space: nowrap;
 `;
 
+const VisibilityToggle = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px solid ${props => props.$visible ? '#10b981' : '#e5e7eb'};
+  background: ${props => props.$visible ? '#d1fae5' : '#f3f4f6'};
+  color: ${props => props.$visible ? '#065f46' : '#6b7280'};
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+  
+  &:hover:not(:disabled) {
+    background: ${props => props.$visible ? '#a7f3d0' : '#e5e7eb'};
+    border-color: ${props => props.$visible ? '#059669' : '#d1d5db'};
+    transform: translateY(-1px);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  svg {
+    flex-shrink: 0;
+  }
+`;
+
 const EmployeeCard = styled.div`
   background: white;
   border: 1px solid #e2e8f0;
@@ -421,6 +451,36 @@ const StatusBadge = styled.div`
   font-weight: 600;
   background: ${props => props.active ? '#dcfce7' : '#fef2f2'};
   color: ${props => props.active ? '#166534' : '#dc2626'};
+`;
+
+const VisibilityToggleButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+  border-radius: 6px;
+  border: 1px solid ${props => props.visible ? '#10b981' : '#e5e7eb'};
+  background: ${props => props.visible ? '#d1fae5' : '#f9fafb'};
+  color: ${props => props.visible ? '#059669' : '#6b7280'};
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.visible ? '#a7f3d0' : '#f3f4f6'};
+    border-color: ${props => props.visible ? '#059669' : '#d1d5db'};
+    transform: scale(1.05);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
 `;
 
 const ContactDetails = styled.div`
@@ -551,6 +611,64 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
       showToast?.(err.message || 'Chyba při načítání zaměstnanců', { type: 'error' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleVisibility = async (employee) => {
+    if (!user?.username || !token) {
+      showToast?.('Nejste přihlášen', { type: 'error' });
+      return;
+    }
+
+    // Check permission - ADMIN/SUPERADMIN or PHONEBOOK_MANAGE
+    const isSuperAdmin = userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
+    const isAdmin = userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR');
+    const hasPermission = userDetail?.permissions?.includes('PHONEBOOK_MANAGE');
+    
+    if (!isSuperAdmin && !isAdmin && !hasPermission) {
+      showToast?.('Nemáte oprávnění změnit viditelnost zaměstnance', { type: 'error' });
+      return;
+    }
+
+    const currentVisibility = employee.viditelny_v_tel_seznamu === 1;
+    const newVisibility = !currentVisibility;
+    const newVisibilityValue = newVisibility ? 1 : 0; // Převod boolean na číselnou hodnotu
+
+    try {
+      // Optimistic update - update UI immediately
+      setEmployees(prevEmployees =>
+        prevEmployees.map(emp =>
+          emp.id === employee.id
+            ? { ...emp, viditelny_v_tel_seznamu: newVisibilityValue }
+            : emp
+        )
+      );
+
+      // Call API
+      await toggleEmployeeVisibility({
+        token,
+        username: user.username,
+        user_id: employee.id,
+        viditelny_v_tel_seznamu: newVisibilityValue
+      });
+
+      showToast?.(
+        newVisibility
+          ? 'Zaměstnanec bude viditelný v telefonním seznamu'
+          : 'Zaměstnanec nebude viditelný v telefonním seznamu',
+        { type: 'success' }
+      );
+    } catch (err) {
+      // Revert optimistic update on error
+      setEmployees(prevEmployees =>
+        prevEmployees.map(emp =>
+          emp.id === employee.id
+            ? { ...emp, viditelny_v_tel_seznamu: currentVisibility ? 1 : 0 }
+            : emp
+        )
+      );
+
+      showToast?.(err.message || 'Chyba při změně viditelnosti zaměstnance', { type: 'error' });
     }
   };
 
@@ -708,10 +826,29 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                     <EmployeePosition>{employee.nazev_pozice}</EmployeePosition>
                   )}
                 </EmployeeInfo>
-                <StatusBadge active={isEmployeeActive(employee)}>
-                  {isEmployeeActive(employee) ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                  {isEmployeeActive(employee) ? 'Aktivní' : 'Neaktivní'}
-                </StatusBadge>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+
+                  {(userDetail?.roles?.some(r => r.kod_role === 'ADMINISTRATOR' || r.kod_role === 'SUPERADMIN') || userDetail?.permissions?.includes('PHONEBOOK_MANAGE')) && (
+                    <SmartTooltip
+                      content={
+                        employee.viditelny_v_tel_seznamu === 1
+                          ? 'Viditelný v telefonním seznamu. Klikněte pro skrytí.'
+                          : 'Skrytý v telefonním seznamu. Klikněte pro zobrazení.'
+                      }
+                    >
+                      <VisibilityToggleButton
+                        visible={employee.viditelny_v_tel_seznamu === 1}
+                        onClick={() => handleToggleVisibility(employee)}
+                      >
+                        {employee.viditelny_v_tel_seznamu === 1 ? <Eye /> : <EyeOff />}
+                      </VisibilityToggleButton>
+                    </SmartTooltip>
+                  )}
+                  <StatusBadge active={isEmployeeActive(employee)}>
+                    {isEmployeeActive(employee) ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                    {isEmployeeActive(employee) ? 'Aktivní' : 'Neaktivní'}
+                  </StatusBadge>
+                </div>
               </EmployeeHeader>
 
               <ContactDetails>
@@ -751,6 +888,26 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                     <ContactIcon><Calendar size={16} /></ContactIcon>
                     <ContactText>
                       Poslední aktivita: {formatDate(employee.dt_posledni_aktivita)}
+                      {(() => {
+                        try {
+                          const metadata = employee.aktivita_metadata 
+                            ? (typeof employee.aktivita_metadata === 'string' 
+                                ? JSON.parse(employee.aktivita_metadata) 
+                                : employee.aktivita_metadata)
+                            : null;
+                          
+                          if (metadata) {
+                            return (
+                              <div style={{ marginTop: '0.25rem', fontSize: '0.8em', opacity: 0.8 }}>
+                                {metadata.last_module && `📍 ${metadata.last_module}`}
+                                {metadata.last_ip && ` • 🌐 ${metadata.last_ip}`}
+                              </div>
+                            );
+                          }
+                        } catch (e) {
+                          return null;
+                        }
+                      })()}
                     </ContactText>
                   </ContactItem>
                 )}
@@ -803,20 +960,61 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                   {employee.dt_posledni_aktivita && (
                     <div style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
                       fontSize: '0.75rem',
                       color: '#6b7280'
                     }}>
-                      <Calendar size={12} />
-                      {formatDate(employee.dt_posledni_aktivita)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Calendar size={12} />
+                        {formatDate(employee.dt_posledni_aktivita)}
+                      </div>
+                      {(() => {
+                        try {
+                          const metadata = employee.aktivita_metadata 
+                            ? (typeof employee.aktivita_metadata === 'string' 
+                                ? JSON.parse(employee.aktivita_metadata) 
+                                : employee.aktivita_metadata)
+                            : null;
+                          
+                          if (metadata) {
+                            return (
+                              <div style={{ paddingLeft: '1.25rem', fontSize: '0.7em', opacity: 0.75 }}>
+                                {metadata.last_module && `📍 ${metadata.last_module}`}
+                                {metadata.last_ip && ` • 🌐 ${metadata.last_ip}`}
+                              </div>
+                            );
+                          }
+                        } catch (e) {
+                          return null;
+                        }
+                      })()}
                     </div>
                   )}
                 </div>
-                <ListStatusBadge active={isEmployeeActive(employee)}>
-                  {isEmployeeActive(employee) ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                  {isEmployeeActive(employee) ? 'Aktivní' : 'Neaktivní'}
-                </ListStatusBadge>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+
+                  {(userDetail?.roles?.some(r => r.kod_role === 'ADMINISTRATOR' || r.kod_role === 'SUPERADMIN') || userDetail?.permissions?.includes('PHONEBOOK_MANAGE')) && (
+                    <SmartTooltip
+                      content={
+                        employee.viditelny_v_tel_seznamu === 1
+                          ? 'Viditelný v telefonním seznamu. Klikněte pro skrytí.'
+                          : 'Skrytý v telefonním seznamu. Klikněte pro zobrazení.'
+                      }
+                    >
+                      <VisibilityToggleButton
+                        visible={employee.viditelny_v_tel_seznamu === 1}
+                        onClick={() => handleToggleVisibility(employee)}
+                      >
+                        {employee.viditelny_v_tel_seznamu === 1 ? <Eye /> : <EyeOff />}
+                      </VisibilityToggleButton>
+                    </SmartTooltip>
+                  )}
+                  <ListStatusBadge active={isEmployeeActive(employee)}>
+                    {isEmployeeActive(employee) ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                    {isEmployeeActive(employee) ? 'Aktivní' : 'Neaktivní'}
+                  </ListStatusBadge>
+                </div>
               </ListEmployeeInfo>
             </EmployeeListItem>
           ))}

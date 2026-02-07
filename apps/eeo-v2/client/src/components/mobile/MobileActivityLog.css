@@ -1,0 +1,421 @@
+/**
+ * 📋 Mobile Activity Log Styles
+ * Historie aktivit - design podobný OrderApprovalCard
+ */
+
+/* Overlay (backdrop) */
+.mobile-activity-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Panel s historií */
+.mobile-activity-panel {
+  background: white;
+  width: 100%;
+  max-width: 600px;
+  height: 100vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Hlavička */
+.mobile-activity-header {
+  padding: 1rem 1.25rem;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .mobile-activity-header {
+  background: #1e40af;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-activity-header h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mobile-activity-count {
+  background: rgba(255, 255, 255, 0.25);
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.mobile-activity-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 1.25rem;
+}
+
+.mobile-activity-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Podnázev */
+.mobile-activity-subtitle {
+  padding: 0.75rem 1.25rem;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  color: #6c757d;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* Seznam aktivit */
+.mobile-activity-list {
+  flex: 1;
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+}
+
+/* Prázdný stav */
+.mobile-activity-empty {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #6c757d;
+}
+
+.mobile-activity-empty .empty-icon {
+  font-size: 4rem;
+  color: #dee2e6;
+  margin-bottom: 1rem;
+}
+
+.mobile-activity-empty p {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #495057;
+}
+
+.mobile-activity-empty .empty-hint {
+  font-size: 0.875rem;
+  color: #adb5bd;
+}
+
+/* Karta aktivity - podobná OrderApprovalCard */
+.mobile-activity-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  gap: 1rem;
+  border-left: 4px solid #dee2e6;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mobile-activity-card:active {
+  transform: scale(0.98);
+}
+
+/* Ikona aktivity */
+.activity-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background: #f8f9fa;
+  color: #6c757d;
+}
+
+/* Obsah */
+.activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+}
+
+.activity-entity {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6c757d;
+}
+
+.activity-time {
+  font-size: 0.75rem;
+  color: #adb5bd;
+  white-space: nowrap;
+}
+
+.activity-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-description {
+  font-size: 0.875rem;
+  color: #495057;
+  margin-bottom: 0.5rem;
+}
+
+.activity-amount {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #212529;
+  margin-bottom: 0.25rem;
+}
+
+.activity-entity-id {
+  font-size: 0.75rem;
+  color: #adb5bd;
+  font-family: 'Courier New', monospace;
+}
+
+/* Barevné varianty - světlý režim */
+.mobile-activity-card.activity-success {
+  border-left-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.mobile-activity-card.activity-success .activity-icon {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.mobile-activity-card.activity-danger {
+  border-left-color: #ef4444;
+  background: #fef2f2;
+}
+
+.mobile-activity-card.activity-danger .activity-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.mobile-activity-card.activity-warning {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.mobile-activity-card.activity-warning .activity-icon {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.mobile-activity-card.activity-info {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.mobile-activity-card.activity-info .activity-icon {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+/* Footer */
+.mobile-activity-footer {
+  padding: 1rem 1.25rem;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-activity-clear-btn {
+  width: 100%;
+  padding: 0.75rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background 0.2s;
+}
+
+.mobile-activity-clear-btn:hover {
+  background: #c82333;
+}
+
+.mobile-activity-clear-btn:active {
+  transform: scale(0.98);
+}
+
+/* ============================================
+   🌙 DARK MODE - Activity Log
+   ============================================ */
+
+[data-theme="dark"] .mobile-activity-panel {
+  background: #1f2937;
+}
+
+[data-theme="dark"] .mobile-activity-subtitle {
+  background: #111827;
+  border-bottom-color: #374151;
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .mobile-activity-list {
+  background: #1f2937;
+}
+
+[data-theme="dark"] .mobile-activity-card {
+  background: #111827;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .activity-icon {
+  background: #374151;
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .activity-title {
+  color: #f9fafb;
+}
+
+[data-theme="dark"] .activity-description {
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .activity-amount {
+  color: #f9fafb;
+}
+
+[data-theme="dark"] .activity-entity {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .activity-time {
+  color: #6b7280;
+}
+
+[data-theme="dark"] .activity-entity-id {
+  color: #6b7280;
+}
+
+[data-theme="dark"] .mobile-activity-footer {
+  background: #111827;
+  border-top-color: #374151;
+}
+
+[data-theme="dark"] .mobile-activity-empty {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .mobile-activity-empty p {
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .mobile-activity-empty .empty-hint {
+  color: #6b7280;
+}
+
+/* Dark mode barevné varianty */
+[data-theme="dark"] .mobile-activity-card.activity-success .activity-icon {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+[data-theme="dark"] .mobile-activity-card.activity-danger .activity-icon {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+[data-theme="dark"] .mobile-activity-card.activity-warning .activity-icon {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .mobile-activity-card.activity-info .activity-icon {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+/* Responsivní úpravy */
+@media (max-width: 480px) {
+  .mobile-activity-header h2 {
+    font-size: 1.125rem;
+  }
+
+  .mobile-activity-card {
+    padding: 0.875rem;
+  }
+
+  .activity-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1.25rem;
+  }
+}

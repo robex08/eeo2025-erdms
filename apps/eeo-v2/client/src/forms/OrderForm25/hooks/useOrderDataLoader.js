@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { getOrderV2, getNextOrderNumberV2 } from '../../../services/apiOrderV2'; // ✅ V2 API
+import { getOrderV2, getNextOrderNumberV2, listInvoiceAttachments } from '../../../services/apiOrderV2'; // ✅ V2 API + přílohy faktur
 import { WORKFLOW_STATES } from '../../../constants/workflow25';
 
 export const useOrderDataLoader = ({ token, username, dictionaries }) => {
@@ -131,6 +131,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       financovaniVnorena = {
         lp_kod: dbOrder.financovani.lp_kody || [], // V2 používá "lp_kody"
         lp_nazev: dbOrder.financovani.nazev || '', // Název LP
+        lp_nazvy: dbOrder.financovani.lp_nazvy || [], // ✅ OPRAVA: Enriched LP názvy pro PDF
+        lp_poznamka: dbOrder.lp_poznamka || dbOrder.financovani.lp_poznamka || '', // ✅ LP poznámka
         // Další pole (pokud existují)
         paragraf: dbOrder.financovani.paragraf || '',
         polozka: dbOrder.financovani.polozka || '',
@@ -215,17 +217,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         }
       })(),
 
-      // STORNOVANA: stav obsahuje "STORNOVANA"
-      stav_stornovano: (() => {
-        try {
-          const stavyArray = Array.isArray(dbOrder.stav_workflow_kod)
-            ? dbOrder.stav_workflow_kod
-            : JSON.parse(dbOrder.stav_workflow_kod || '[]');
-          return Array.isArray(stavyArray) && stavyArray.includes('STORNOVANA');
-        } catch (e) {
-          return false;
-        }
-      })(),
+      // 🛑 ODSTRANĚNO: stav_stornovano neexistuje v DB - používá se workflow stav ZRUSENA
+      // Frontend by měl používat hasWorkflowState(stav_workflow_kod, 'ZRUSENA')
 
       // 🎯 FÁZE 1: Stav schválení (UI helper odvozený ze workflow stavů)
       // ✅ Checkbox se zobrazuje pro všechny stavy KROMĚ "NOVA"
@@ -256,8 +249,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       })(),
 
       // Datumová pole
-      datum_odeslani: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslano).split(' ')[0] : '',
-      datum_storna: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslano).split(' ')[0] : '',
+      datum_odeslani: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslani).split(' ')[0] : '',
+      // 🛑 ODSTRANĚNO: datum_storna - používá se dt_odeslani pro obojí (odeslání i storno)
       dt_akceptace: dbOrder.dt_akceptace ? dbOrder.dt_akceptace.split(' ')[0] : '',
       datum_vytvoreni: dbOrder.dt_vytvoreni ? dbOrder.dt_vytvoreni.split(' ')[0] : '',
       datum_splatnosti: dbOrder.dt_splatnost ? dbOrder.dt_splatnost.split(' ')[0] : '',
@@ -329,7 +322,9 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
           // ✅ Zachovat originální DB pole pro API odesílání
           fa_datum_doruceni: faktura.fa_datum_doruceni,
           fa_datum_splatnosti: faktura.fa_datum_splatnosti,
-          fa_datum_vystaveni: faktura.fa_datum_vystaveni
+          fa_datum_vystaveni: faktura.fa_datum_vystaveni,
+          // 📎 PŘÍLOHY: Přenést attachments z dbOrder (načtené v loadOrderForEdit)
+          attachments: faktura.attachments || []
           // ✅ VĚCNÁ SPRÁVNOST: 1:1 mapování - žádné přejmenovávání polí!
           // vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, vecna_spravnost_potvrzeno,
           // potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti - vše 1:1 z DB
@@ -442,7 +437,12 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
 
       // 3. Pokud má "má být zveřejněna", označ jako zveřejněnou
       if (transformedData.ma_byt_zverejnena || transformedData.ma_byt_zverejnena === 1) {
-        transformedData.dt_zverejneni = transformedData.dt_zverejneni || new Date().toISOString().split('T')[0];
+        // 🔥 FIX: Použít lokální datum místo UTC
+        transformedData.dt_zverejneni = transformedData.dt_zverejneni || (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        })();
       }
 
       // 4. Nastav jako zkontrolováno
@@ -488,7 +488,6 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
                        transformedData.stav_objednavky === 'Archivováno';
 
     if (isArchived) {
-      console.log('🏛️ Detekována ARCHIVOVANÁ objednávka - aplikuji speciální pravidla');
 
       // 1. Nastav workflow stav pouze na ARCHIVOVANO (NESMÍ SE PŘEPSAT!)
       transformedData.stav_workflow_kod = ['ARCHIVOVANO'];
@@ -500,7 +499,12 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
 
       // 3. Pokud má "má být zveřejněna", označ jako zveřejněnou
       if (transformedData.ma_byt_zverejnena || transformedData.ma_byt_zverejnena === 1) {
-        transformedData.dt_zverejneni = transformedData.dt_zverejneni || new Date().toISOString().split('T')[0];
+        // 🔥 FIX: Použít lokální datum místo UTC
+        transformedData.dt_zverejneni = transformedData.dt_zverejneni || (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        })();
       }
 
       // 4. Nastav jako zkontrolováno
@@ -598,18 +602,49 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
     setError(null);
 
     try {
-      // console.log('🔍 [useOrderDataLoader] Volám getOrderV2 pro orderId:', orderId);
       // ✨ V2 API: Use getOrderV2() - returns standardized data with enriched=true
-      const dbOrder = await getOrderV2(orderId, token, username, true); // ✅ enriched=true pro financovani.lp_nazvy
-      // console.log('🔍 [useOrderDataLoader] Obdržel jsem dbOrder:', dbOrder);
+      const dbOrder = await getOrderV2(orderId, token, username, true, archivovano); // ✅ enriched=true + archivovano parameter
 
       if (!dbOrder) {
         console.error('❌ [useOrderDataLoader] dbOrder is null!');
         throw new Error(`Order ${orderId} not found`);
       }
 
+      // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (pokud existují)
+      if (dbOrder.faktury && Array.isArray(dbOrder.faktury) && dbOrder.faktury.length > 0) {
+        const fakturyWithAttachments = await Promise.all(
+          dbOrder.faktury.map(async (faktura) => {
+            let attachments = [];
+            
+            // Načíst přílohy pouze pro reálné ID (ne temp-)
+            if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+              try {
+                const attachResponse = await listInvoiceAttachments(
+                  faktura.id,
+                  username,
+                  token,
+                  orderId
+                );
+                attachments = attachResponse.data?.attachments || attachResponse.data || [];
+              } catch (err) {
+                console.error(`❌ [useOrderDataLoader] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
+                // Pokračovat i při chybě - přílohy jsou optional
+                attachments = []; // ✅ Ujistit se, že attachments je pole i při chybě
+              }
+            }
+            
+            return { ...faktura, attachments };
+          })
+        );
+        
+        // Nahradit faktury včetně příloh
+        dbOrder.faktury = fakturyWithAttachments;
+      } else if (dbOrder.faktury && Array.isArray(dbOrder.faktury)) {
+        // ✅ I když faktury nemají přílohy, ujistit se že mají prázdné pole attachments
+        dbOrder.faktury = dbOrder.faktury.map(f => ({ ...f, attachments: [] }));
+      }
+
       const transformedData = transformOrderData(dbOrder, dictionaries);
-      // console.log('🔍 [useOrderDataLoader] Transformovaná data:', transformedData);
       return transformedData;
     } catch (err) {
       console.error('❌ [useOrderDataLoader] Error in loadOrderForEdit:', err);
@@ -676,7 +711,12 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         id: null,
         objednavka_id: null,
         ev_cislo: newEvCislo,
-        temp_datum_objednavky: new Date().toISOString().split('T')[0],
+        // 🔥 FIX: Použít lokální datum místo UTC
+        temp_datum_objednavky: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        })(),
 
         // Reset workflow
         stav_workflow_kod: 'NOVA',
@@ -693,8 +733,7 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         // Reset stavů
         stav_odeslano: false,
         datum_odeslani: '',
-        stav_stornovano: false,
-        datum_storna: '',
+        // 🛑 ODSTRANĚNO: stav_stornovano, datum_storna - neexistují v DB
 
         // Reset příloh a faktur
         prilohy_dokumenty: [],

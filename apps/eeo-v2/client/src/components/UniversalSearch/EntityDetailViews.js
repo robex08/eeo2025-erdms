@@ -7,6 +7,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { AuthContext } from '../../context/AuthContext';
+import { ToastContext } from '../../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import draftManager from '../../services/DraftManager';
 import { getStoredUserId } from '../../utils/authStorage';
@@ -30,7 +31,11 @@ import {
   faFileContract,
   faFileInvoice,
   faTruck,
-  faExclamationTriangle
+  faExclamationTriangle,
+  faEye,
+  faClock,
+  faDesktop,
+  faNetworkWired
 } from '@fortawesome/free-solid-svg-icons';
 
 // Pomocná funkce pro bezpečné formátování datumů
@@ -483,6 +488,82 @@ export const UserDetailView = ({ data }) => {
           </InfoGrid>
         </DetailSection>
       )}
+
+      {/* ✅ NOVÁ SEKCE: Poslední aktivita */}
+      {(() => {
+        let activityMeta = null;
+        try {
+          if (data.aktivita_metadata && typeof data.aktivita_metadata === 'string') {
+            activityMeta = JSON.parse(data.aktivita_metadata);
+          } else if (data.aktivita_metadata && typeof data.aktivita_metadata === 'object') {
+            activityMeta = data.aktivita_metadata;
+          }
+        } catch (e) {
+          // Ignorovat chybu parsování
+        }
+
+        if (!data.dt_posledni_aktivita && !activityMeta) return null;
+
+        return (
+          <DetailSection>
+            <SectionTitle>Poslední aktivita</SectionTitle>
+            <InfoGrid>
+              {data.dt_posledni_aktivita && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faClock} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Čas</InfoLabel>
+                    <InfoValue>
+                      {new Date(data.dt_posledni_aktivita).toLocaleString('cs-CZ')}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+
+              {activityMeta?.last_module && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faDesktop} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Modul</InfoLabel>
+                    <InfoValue>{activityMeta.last_module}</InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+
+              {activityMeta?.last_ip && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faNetworkWired} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>IP adresa</InfoLabel>
+                    <InfoValue>{activityMeta.last_ip}</InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+
+              {activityMeta?.last_path && activityMeta.last_path !== activityMeta.last_module && (
+                <InfoRow>
+                  <InfoIcon>
+                    <FontAwesomeIcon icon={faFileAlt} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Cesta</InfoLabel>
+                    <InfoValue style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                      {activityMeta.last_path}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoRow>
+              )}
+            </InfoGrid>
+          </DetailSection>
+        );
+      })()}
+
       </ContentWrapper>
     </DetailViewWrapper>
   );
@@ -1507,6 +1588,7 @@ export const ContractDetailView = ({ data }) => {
  * Invoice Detail View
  */
 export const InvoiceDetailView = ({ data, username, token }) => {
+  const { showToast } = useContext(ToastContext) || {};
   const [attachments, setAttachments] = useState([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
@@ -1813,7 +1895,7 @@ export const InvoiceDetailView = ({ data, username, token }) => {
           <AttachmentsGrid>
             {attachments.map((attachment, index) => {
               // Podporuje různé struktury API
-              const fileName = attachment.original_filename || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+              const fileName = attachment.originalni_nazev_souboru || attachment.original_filename || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
               const fileSizeKb = attachment.velikost_kb || attachment.file_size_kb;
               const fileSizeMb = attachment.velikost_mb || attachment.file_size_mb;
               const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -1849,16 +1931,43 @@ export const InvoiceDetailView = ({ data, username, token }) => {
 
               const fileSizeFormatted = formatFileSize();
 
-              // Vytvoř URL pro stažení
-              // Pokud má attachment.url nebo attachment.file_path, použij je
-              // Jinak vytvoř URL z ID přílohy přes API endpoint
-              let downloadUrl = attachment.url || attachment.file_path;
-              
-              if (!downloadUrl && attachment.id) {
-                // Použij API endpoint pro stažení přílohy podle ID
-                const API_BASE = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
-                downloadUrl = `${API_BASE}order-v2/attachments/${attachment.id}/download`;
-              }
+              const handleViewOrDownload = async () => {
+                try {
+                  // Import utility pro preview/download
+                  const { default: downloadAndPreviewAttachment } = await import('../../utils/attachmentDownloader');
+                  
+                  // Stáhni přílohu z API
+                  const API_BASE = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                  const response = await fetch(`${API_BASE}invoices25/attachments/download`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      token: token,
+                      username: username,
+                      priloha_id: attachment.id
+                    })
+                  });
+
+                  if (!response.ok) {
+                    throw new Error('Chyba při načítání přílohy');
+                  }
+
+                  // Získej blob
+                  const blob = await response.blob();
+                  
+                  // Použij univerzální preview/download funkci
+                  // Pro PDF otevře náhled, pro ostatní stáhne
+                  await downloadAndPreviewAttachment(blob, fileName, {
+                    autoDownload: false // Pro PDF nechceme automaticky stahovat
+                  });
+                  
+                } catch (error) {
+                  console.error('Chyba při zobrazení/stažení přílohy:', error);
+                  showToast?.('Nepodařilo se načíst přílohu', { type: 'error' });
+                }
+              };
 
               return (
                 <AttachmentItem key={attachment.id || index}>
@@ -1873,15 +1982,13 @@ export const InvoiceDetailView = ({ data, username, token }) => {
                       </AttachmentMeta>
                     )}
                   </AttachmentInfo>
-                  {downloadUrl && (
-                    <DownloadButton
-                      onClick={() => window.open(downloadUrl, '_blank')}
-                      title="Stáhnout přílohu"
-                    >
-                      <FontAwesomeIcon icon={faDownload} />
-                      Stáhnout
-                    </DownloadButton>
-                  )}
+                  <DownloadButton
+                    onClick={handleViewOrDownload}
+                    title={fileExtension === 'pdf' ? 'Zobrazit PDF' : 'Stáhnout přílohu'}
+                  >
+                    <FontAwesomeIcon icon={fileExtension === 'pdf' ? faEye : faDownload} />
+                    {fileExtension === 'pdf' ? 'Zobrazit' : 'Stáhnout'}
+                  </DownloadButton>
                 </AttachmentItem>
               );
             })}
@@ -2162,10 +2269,6 @@ export const SupplierDetailView = ({ data, onCloseAll }) => {
                 <InfoContent style={{ gridColumn: '1 / -1' }}>
                   <button
                     onClick={async () => {
-                      if (process.env.NODE_ENV === 'development') {
-                        console.log('🔔 Kliknutí na Otevřít nejnovější objednávku, ID:', data.nejnovejsi_objednavka_id);
-                      }
-                      
                       // Zavři panel
                       if (onCloseAll) onCloseAll();
                       

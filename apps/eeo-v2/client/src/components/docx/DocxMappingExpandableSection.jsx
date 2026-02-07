@@ -897,6 +897,7 @@ const DocxMappingExpandableSection = ({
   file,
   mapping = {},
   onMappingChange,
+  onValidationChange, // ✅ Callback pro předání validace do parent komponenty
   expanded: controlledExpanded,
   onExpandChange,
   // ✅ NOVÉ: Auth parametry pro načítání enriched dat
@@ -941,7 +942,6 @@ const DocxMappingExpandableSection = ({
     const loadFields = async () => {
       // ✅ POKUD MÁME AUTH PARAMETRY A SAMPLE ORDER ID - NAČTI ENRICHED DATA
       if (useDynamicFields && token && username && sampleOrderId) {
-        console.log('🔄 Načítám ENRICHED DB pole z API pro sampleOrderId:', sampleOrderId);
         try {
           const enrichedData = await getDocxOrderEnrichedData({ 
             token, 
@@ -952,11 +952,6 @@ const DocxMappingExpandableSection = ({
           const dynamicFields = generateFieldsFromApiData(enrichedData);
           setOrderFields(dynamicFields);
           
-          console.log('✅ ENRICHED DB pole načtena z API:', {
-            pocet_skupin: dynamicFields.length,
-            celkem_poli: dynamicFields.reduce((sum, group) => sum + group.fields.length, 0),
-            skupiny: dynamicFields.map(g => `${g.group} (${g.fields.length})`)
-          });
         } catch (error) {
           console.error('❌ Chyba při načítání enriched dat, fallback na statické pole:', error);
           // Fallback na statické pole z getOrderFieldsForMapping
@@ -965,14 +960,9 @@ const DocxMappingExpandableSection = ({
         }
       } else {
         // ✅ FALLBACK: POUŽIJ STATICKÉ POLE (kompatibilita se starou verzí)
-        console.log('🔄 Načítám STATICKÉ DB pole (fallback - žádné auth parametry)...');
         const staticFields = getOrderFieldsForMapping();
         setOrderFields(staticFields);
         
-        console.log('✅ STATICKÉ DB pole načtena:', {
-          pocet_skupin: staticFields.length,
-          celkem_poli: staticFields.reduce((sum, group) => sum + group.fields.length, 0)
-        });
       }
     };
 
@@ -998,15 +988,43 @@ const DocxMappingExpandableSection = ({
     }
 
     const validation = validateDocxMapping(mapping);
+    
+    // ✅ NOVÁ VALIDACE: Zkontroluj, zda všechna pole v JSON existují v DOCX
+    if (analysisResult?.fields && analysisResult.fields.length > 0) {
+      const docxFieldNames = analysisResult.fields.map(f => f.name);
+      const mappingKeys = Object.keys(mapping);
+      
+      // Najdi pole v JSON mapování, která neexistují v DOCX
+      const orphanFields = mappingKeys.filter(key => !docxFieldNames.includes(key));
+      
+      if (orphanFields.length > 0) {
+        console.warn('⚠️ Pole v JSON mapování, která NEEXISTUJÍ v DOCX souboru:', orphanFields);
+        
+        // Přidej tyto chyby do validace
+        if (!validation.errors) validation.errors = [];
+        orphanFields.forEach(fieldName => {
+          validation.errors.push({
+            type: 'missing_in_docx',
+            docxField: fieldName,
+            apiPath: mapping[fieldName],
+            reason: `Pole "${fieldName}" je v JSON mapování, ale NEEXISTUJE ve Word dokumentu. Možná jste přejmenovali pole ve Wordu, ale aktualizovali jste mapování.`,
+            suggestion: `Klikněte na tlačítko "Obnovit detekci" pro znovu načtení polí z DOCX nebo odstraňte toto pole z mapování.`
+          });
+        });
+        validation.valid = false;
+      }
+    }
+    
     setMappingValidation(validation);
 
-    if (validation && !validation.valid) {
-      console.log('⚠️ Mapping obsahuje chyby:', {
-        errors: validation.errors.length,
-        warnings: validation.warnings.length
-      });
+    // ✅ Předej validaci do parent komponenty
+    if (onValidationChange) {
+      onValidationChange(validation);
     }
-  }, [mapping]);
+
+    if (validation && !validation.valid) {
+    }
+  }, [mapping, analysisResult, onValidationChange]);
 
   // Parsuj existující mapování a rozlož složená pole do multi-mapping
   useEffect(() => {
@@ -1089,6 +1107,14 @@ const DocxMappingExpandableSection = ({
     }
   }, [file, expanded]);
 
+  // ✅ AUTOMATICKÁ ANALÝZA při načtení souboru (i když je sekce sbalená) - pro validaci
+  useEffect(() => {
+    if (file && !analysisResult && !analyzing) {
+      // Spusť analýzu i když je sekce sbalená - potřebujeme validaci
+      analyzeDocxFile(file);
+    }
+  }, [file]);
+
   // Reset analýzy při změně souboru
   useEffect(() => {
     if (file) {
@@ -1101,11 +1127,14 @@ const DocxMappingExpandableSection = ({
   const analyzeDocxFile = async (docxFile) => {
     if (!docxFile || analyzing) return;
 
+
     setAnalyzing(true);
     setAnalysisResult(null);
 
     try {
       const result = await extractDocxFields(docxFile);
+      
+      
       setAnalysisResult(result);
     } catch (error) {
       console.error('❌ Chyba při analýze DOCX:', error);
@@ -1129,8 +1158,28 @@ const DocxMappingExpandableSection = ({
 
   const getStatus = () => {
     if (analyzing) return { status: 'analyzing', text: 'Analyzuji...' };
+    
+    // ✅ KRITICKÁ PRIORITA: Validační chyby mapování (DOCX pole chybí v JSON nebo naopak)
+    if (mappingValidation && !mappingValidation.valid && mappingValidation.errors?.length > 0) {
+      const errorCount = mappingValidation.errors.length;
+      return { 
+        status: 'error', 
+        text: `${errorCount} ${errorCount === 1 ? 'chyba' : errorCount < 5 ? 'chyby' : 'chyb'} v mapování` 
+      };
+    }
+    
+    // ✅ Analýza DOCX a mapování
     if (analysisResult?.success && analysisResult.fields?.length > 0) {
       const mappedCount = Object.keys(mapping).length;
+      
+      // Pokud je validace OK, ukaž to
+      if (mappingValidation?.valid) {
+        return {
+          status: 'ready',
+          text: `✓ ${analysisResult.fields.length} polí, ${mappedCount} namapováno`
+        };
+      }
+      
       return {
         status: 'ready',
         text: `${analysisResult.fields.length} polí, ${mappedCount} namapováno`
@@ -1513,10 +1562,6 @@ const DocxMappingExpandableSection = ({
         };
         onMappingChange?.(newMapping);
 
-        console.log('✅ Namapováno jednoduché pole:', {
-          docxField: docxFieldName,
-          dbField: draggedField.key
-        });
       }
     }
 
@@ -1640,7 +1685,7 @@ const DocxMappingExpandableSection = ({
 
   return (
     <ExpandableSection>
-      <SectionHeader $expanded={expanded} onClick={handleExpand}>
+      <SectionHeader $expanded={true}>
         <SectionHeaderLeft>
           <SectionIcon>
             <FontAwesomeIcon icon={faFileWord} />
@@ -1652,22 +1697,9 @@ const DocxMappingExpandableSection = ({
             </SectionSubtitle>
           </div>
         </SectionHeaderLeft>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <StatusBadge $status={status.status}>
-            {status.status === 'analyzing' && <FontAwesomeIcon icon={faSpinner} spin />}
-            {status.status === 'ready' && <FontAwesomeIcon icon={faCheck} />}
-            {status.status === 'error' && <FontAwesomeIcon icon={faTimes} />}
-            {status.text}
-          </StatusBadge>
-
-          <ExpandIcon $expanded={expanded}>
-            <FontAwesomeIcon icon={faChevronDown} />
-          </ExpandIcon>
-        </div>
       </SectionHeader>
 
-      <SectionContent $expanded={expanded}>
+      <SectionContent $expanded={true}>
         {!file && (
           <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
             <FontAwesomeIcon icon={faFileWord} style={{ fontSize: '3rem', marginBottom: '1rem' }} />
@@ -1869,8 +1901,19 @@ const DocxMappingExpandableSection = ({
                                 <div style={{ marginTop: '0.25rem' }}>💡 Toto pole neexistuje v enriched API</div>
                               </>
                             )}
+                            {fieldError.type === 'missing_in_docx' && (
+                              <>
+                                🚨 <strong>Pole CHYBÍ v DOCX:</strong> <code>{field.name}</code>
+                                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
+                                  💡 {fieldError.reason}
+                                </div>
+                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#fef3c7', borderRadius: '4px', fontSize: '0.85rem' }}>
+                                  ✅ <strong>Řešení:</strong> {fieldError.suggestion}
+                                </div>
+                              </>
+                            )}
                           </ValidationWarning>
-                          {fieldError.suggestion && (
+                          {fieldError.suggestion && fieldError.type !== 'missing_in_docx' && (
                             <ValidationSuggestion>
                               ✅ Použijte: <strong>{fieldError.suggestion}</strong>
                             </ValidationSuggestion>

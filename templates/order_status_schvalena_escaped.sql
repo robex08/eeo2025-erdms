@@ -1,0 +1,205 @@
+<!-- RECIPIENT: RECIPIENT -->
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Objednávka schválena</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'Helvetica Neue\', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f5f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border-radius: 8px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #059669, #047857); padding: 30px; border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700; text-align: center;">
+                                ✅ Objednávka schválena
+                            </h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 20px; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Dobrý den <strong>{creator_name}</strong>,
+                            </p>
+                            
+                            <p style="margin: 0 0 30px; font-size: 16px; line-height: 1.6; color: #374151;">
+                                vaše objednávka byla <strong>úspěšně schválena</strong> uživatelem <strong>{approver_name}</strong>.
+                            </p>
+                            
+                            <!-- Order Details Card -->
+                            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 20px; margin-bottom: 30px;">
+                                <h2 style="margin: 0 0 15px; color: #1f2937; font-size: 18px; font-weight: 600;">
+                                    📋 Detaily schválené objednávky
+                                </h2>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Číslo objednávky:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{order_number}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Předmět:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{predmet}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Střediska:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{strediska}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Zdroj financování:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{financovani}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Poznámka:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{financovani_poznamka}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Cena s DPH:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-weight: 700; font-size: 16px;">{amount}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Schválil:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{approver_name}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Datum schválení:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{approval_date}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- CTA Button -->
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="https://erdms.zachranka.cz/eeo-v2/order-form-25?edit={order_id}" style="display: inline-block; background: linear-gradient(135deg, #059669, #047857); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(5, 150, 105, 0.3);">
+                                    👁️ Zobrazit schválenou objednávku
+                                </a>
+                            </div>
+                            
+                            <p style="margin: 30px 0 0; font-size: 14px; line-height: 1.6; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+                                Tento e-mail byl automaticky vygenerován systémem EEO.<br>
+                                Nyní můžete pokračovat v dalších krocích objednávkového procesu.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-radius: 0 0 8px 8px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                © 2025 EEO | Systém řízení objednávek
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+
+<!-- RECIPIENT: SUBMITTER -->
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Potvrzení schválení objednávky</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'Helvetica Neue\', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f5f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border-radius: 8px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #3b82f6, #2563eb); padding: 30px; border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700; text-align: center;">
+                                ✅ Potvrzení schválení objednávky
+                            </h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 20px; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Dobrý den <strong>{approver_name}</strong>,
+                            </p>
+                            
+                            <p style="margin: 0 0 30px; font-size: 16px; line-height: 1.6; color: #374151;">
+                                toto je potvrzení, že jste <strong>schválili objednávku</strong> č. <strong>{order_number}</strong>. Tvůrce objednávky byl informován o schválení.
+                            </p>
+                            
+                            <!-- Order Details Card -->
+                            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 20px; margin-bottom: 30px;">
+                                <h2 style="margin: 0 0 15px; color: #1f2937; font-size: 18px; font-weight: 600;">
+                                    📋 Detaily schválené objednávky
+                                </h2>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Číslo objednávky:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{order_number}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Předmět:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{predmet}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Střediska:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{strediska}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Zdroj financování:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{financovani}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Poznámka:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{financovani_poznamka}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Cena s DPH:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-weight: 700; font-size: 16px;">{amount}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Tvůrce objednávky:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{creator_name}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px;">Datum schválení:</td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">{approval_date}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- CTA Button -->
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="https://erdms.zachranka.cz/eeo-v2/order-form-25?edit={order_id}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);">
+                                    👁️ Zobrazit schválenou objednávku
+                                </a>
+                            </div>
+                            
+                            <p style="margin: 30px 0 0; font-size: 14px; line-height: 1.6; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+                                Tento e-mail byl automaticky vygenerován systémem EEO.<br>
+                                Záznam o vašem schválení byl uložen do systému.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-radius: 0 0 8px 8px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                © 2025 EEO | Systém řízení objednávek
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

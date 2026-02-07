@@ -62,7 +62,7 @@ export const useDictionaries = ({ token, username, enabled = true }) => {
           if (signal.aborted) return { key: 'users', success: false, cancelled: true };
           try {
             dispatch({ type: DICTIONARIES_ACTIONS.START_LOADING, payload: { key: 'users' } });
-            const users = await fetchAllUsers({ token, username }); // ⚠️ TODO: API nepodporuje signal zatím
+            const users = await fetchAllUsers({ token, username, show_inactive: true }); // ⚠️ TODO: API nepodporuje signal zatím
             if (signal.aborted) return { key: 'users', success: false, cancelled: true };
 
             // ✅ Bez SYSTEM uživatele - přidá se dynamicky jen u archivovaných objednávek
@@ -192,12 +192,12 @@ export const useDictionaries = ({ token, username, enabled = true }) => {
           }
         })(),
 
-        // 8. Typy faktur
+        // 8. Typy faktur - klasifikace příloh (FAKTURA_TYP)
         (async () => {
           if (signal.aborted) return { key: 'typyFaktur', success: false, cancelled: true };
           try {
             dispatch({ type: DICTIONARIES_ACTIONS.START_LOADING, payload: { key: 'typyFaktur' } });
-            const typyFaktur = await getTypyFaktur25({ token, username }); // ⚠️ TODO: API nepodporuje signal zatím
+            const typyFaktur = await getTypyFaktur25({ token, username }); // Klasifikace příloh
             if (signal.aborted) return { key: 'typyFaktur', success: false, cancelled: true };
             dispatch({ type: DICTIONARIES_ACTIONS.SET_TYPY_FAKTUR, payload: typyFaktur || [] });
             return { key: 'typyFaktur', success: true };

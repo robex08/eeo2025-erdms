@@ -188,7 +188,7 @@ class FormDataManager {
     this.stateCallbacks.setLoadingUsers?.(true);
 
     try {
-      const users = await fetchAllUsers({ token, username });
+      const users = await fetchAllUsers({ token, username, show_inactive: true });
 
       // Filtrování podle režimu
       const filtered = isLoadingFromDB
