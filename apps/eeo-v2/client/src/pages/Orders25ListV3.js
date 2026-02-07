@@ -748,8 +748,8 @@ function Orders25ListV3() {
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [docxModalOrder, setDocxModalOrder] = useState(null);
   
-  // State pro třídění
-  const [sorting, setSorting] = useState([]);
+  // State pro třídění - výchozí: datum aktualizace sestupně (nejnovější první)
+  const [sorting, setSorting] = useState([{ id: 'dt_aktualizace', desc: true }]);
   
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
