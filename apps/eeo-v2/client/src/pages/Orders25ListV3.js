@@ -140,25 +140,34 @@ const HeaderActions = styled.div`
   }
 `;
 
+const ActionBar = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 3px solid #e5e7eb;
+`;
+
 const ToggleButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1rem;
-  background: ${props => props.$active ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.15)'};
-  border: 2px solid ${props => props.$active ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)'};
+  background: ${props => props.$active ? '#3b82f6' : 'white'};
+  border: 2px solid ${props => props.$active ? '#3b82f6' : '#e2e8f0'};
   border-radius: 8px;
-  color: white;
+  color: ${props => props.$active ? 'white' : '#475569'};
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+    background: ${props => props.$active ? '#2563eb' : '#f1f5f9'};
+    border-color: ${props => props.$active ? '#2563eb' : '#3b82f6'};
   }
 
   svg {
@@ -1124,49 +1133,53 @@ function Orders25ListV3() {
             <option value="last-quarter">Poslední kvartál</option>
             <option value="all-months">Všechny měsíce</option>
           </PeriodSelector>
-
-          {/* Toggle Dashboard */}
-          <ToggleButton
-            $active={showDashboard}
-            onClick={() => setShowDashboard(!showDashboard)}
-            title={showDashboard ? 'Skrýt dashboard' : 'Zobrazit dashboard'}
-          >
-            <FontAwesomeIcon icon={showDashboard ? faEyeSlash : faEye} />
-            <FontAwesomeIcon icon={faChartBar} />
-          </ToggleButton>
-
-          {/* Toggle Filtry */}
-          <ToggleButton
-            $active={showFilters}
-            onClick={() => setShowFilters(!showFilters)}
-            title={showFilters ? 'Skrýt filtry' : 'Zobrazit filtry'}
-          >
-            <FontAwesomeIcon icon={showFilters ? faEyeSlash : faEye} />
-            <FontAwesomeIcon icon={faFilter} />
-          </ToggleButton>
-
-          {/* Toggle Podbarvení řádků */}
-          <ToggleButton
-            $active={showRowColoring}
-            onClick={() => setShowRowColoring(!showRowColoring)}
-            title={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'}
-          >
-            <FontAwesomeIcon icon={faPalette} />
-          </ToggleButton>
-
-          {/* Konfigurace sloupců */}
-          <OrdersColumnConfigV3
-            columnVisibility={columnVisibility}
-            columnOrder={columnOrder}
-            columnLabels={COLUMN_LABELS}
-            onVisibilityChange={handleColumnVisibilityChange}
-            onOrderChange={handleColumnOrderChange}
-            onReset={handleResetColumnConfig}
-            onSave={handleSaveColumnConfig}
-            userId={user_id}
-          />
         </HeaderActions>
       </Header>
+
+      {/* Action Bar - toggles a konfigurace */}
+      <ActionBar>
+        {/* Toggle Dashboard */}
+        <ToggleButton
+          $active={showDashboard}
+          onClick={() => setShowDashboard(!showDashboard)}
+          title={showDashboard ? 'Skrýt dashboard' : 'Zobrazit dashboard'}
+        >
+          <FontAwesomeIcon icon={faChartBar} />
+          {showDashboard ? 'Skrýt' : 'Zobrazit'} dashboard
+        </ToggleButton>
+
+        {/* Toggle Filtry */}
+        <ToggleButton
+          $active={showFilters}
+          onClick={() => setShowFilters(!showFilters)}
+          title={showFilters ? 'Skrýt filtry' : 'Zobrazit filtry'}
+        >
+          <FontAwesomeIcon icon={faFilter} />
+          {showFilters ? 'Skrýt' : 'Zobrazit'} filtry
+        </ToggleButton>
+
+        {/* Toggle Podbarvení řádků */}
+        <ToggleButton
+          $active={showRowColoring}
+          onClick={() => setShowRowColoring(!showRowColoring)}
+          title={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'}
+        >
+          <FontAwesomeIcon icon={faPalette} />
+          {showRowColoring ? 'Vypnout' : 'Zapnout'} barevné řádky
+        </ToggleButton>
+
+        {/* Konfigurace sloupců */}
+        <OrdersColumnConfigV3
+          columnVisibility={columnVisibility}
+          columnOrder={columnOrder}
+          columnLabels={COLUMN_LABELS}
+          onVisibilityChange={handleColumnVisibilityChange}
+          onOrderChange={handleColumnOrderChange}
+          onReset={handleResetColumnConfig}
+          onSave={handleSaveColumnConfig}
+          userId={user_id}
+        />
+      </ActionBar>
 
       {/* Error state */}
       {error && (
