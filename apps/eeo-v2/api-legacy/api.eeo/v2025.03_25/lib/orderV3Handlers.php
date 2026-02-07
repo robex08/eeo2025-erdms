@@ -408,32 +408,64 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Dynamické filtry
         if (!empty($filters['cislo_objednavky'])) {
-            // Vyhledávat v čísle objednávky NEBO v popisu položek
-            $where_conditions[] = "(o.cislo_objednavky LIKE ? OR EXISTS(
-                SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
-                WHERE pol.objednavka_id = o.id 
-                AND pol.aktivni = 1 
-                AND pol.popis LIKE ?
-            ))";
+            // ⚠️ KOMBINOVANÝ SLOUPEC: Evidenční číslo zobrazuje cislo_objednavky + predmet
+            // Hledat v OBOU sloupcích + v položkách (case-insensitive)
+            $where_conditions[] = "(
+                LOWER(o.cislo_objednavky) LIKE LOWER(?) 
+                OR LOWER(o.predmet) LIKE LOWER(?)
+                OR EXISTS(
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                    WHERE pol.objednavka_id = o.id 
+                    AND LOWER(pol.popis) LIKE LOWER(?)
+                )
+            )";
             $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
-            $where_params[] = '%' . $filters['cislo_objednavky'] . '%'; // Pro EXISTS clause
+            $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
+            $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
         }
         
         if (!empty($filters['dodavatel_nazev'])) {
-            $where_conditions[] = "d.nazev LIKE ?";
+            // ⚠️ DODAVATEL: Hledat v názvu + adrese + kontaktech (case-insensitive)
+            $where_conditions[] = "(
+                LOWER(d.nazev) LIKE LOWER(?)
+                OR LOWER(o.dodavatel_nazev) LIKE LOWER(?)
+                OR LOWER(o.dodavatel_adresa) LIKE LOWER(?)
+                OR LOWER(o.dodavatel_kontakt_jmeno) LIKE LOWER(?)
+                OR LOWER(o.dodavatel_kontakt_email) LIKE LOWER(?)
+            )";
+            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
+            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
+            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
+            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
             $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
         }
         
-        if (!empty($filters['predmet'])) {
-            // Vyhledávat v předmětu objednávky NEBO v popisu položek
-            $where_conditions[] = "(o.predmet LIKE ? OR EXISTS(
-                SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
-                WHERE pol.objednavka_id = o.id 
-                AND pol.aktivni = 1 
-                AND pol.popis LIKE ?
-            ))";
-            $where_params[] = '%' . $filters['predmet'] . '%';
-            $where_params[] = '%' . $filters['predmet'] . '%'; // Pro EXISTS clause
+        // ⚠️ KOMBINOVANÝ SLOUPEC: Objednatel / Garant
+        if (!empty($filters['objednatel_garant'])) {
+            $where_conditions[] = "(
+                LOWER(CONCAT(u1.jmeno, ' ', u1.prijmeni)) LIKE LOWER(?)
+                OR LOWER(u1.email) LIKE LOWER(?)
+                OR LOWER(CONCAT(u2.jmeno, ' ', u2.prijmeni)) LIKE LOWER(?)
+                OR LOWER(u2.email) LIKE LOWER(?)
+            )";
+            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
+            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
+            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
+            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
+        }
+        
+        // ⚠️ KOMBINOVANÝ SLOUPEC: Příkazce / Schvalovatel
+        if (!empty($filters['prikazce_schvalovatel'])) {
+            $where_conditions[] = "(
+                LOWER(CONCAT(u3.jmeno, ' ', u3.prijmeni)) LIKE LOWER(?)
+                OR LOWER(u3.email) LIKE LOWER(?)
+                OR LOWER(CONCAT(u4.jmeno, ' ', u4.prijmeni)) LIKE LOWER(?)
+                OR LOWER(u4.email) LIKE LOWER(?)
+            )";
+            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
+            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
+            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
+            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
         }
         
         // 🔍 DEBUG: Log příchozích filtrů
