@@ -386,7 +386,7 @@ const OrdersDashboardV3Full = ({
               </LargeStatLabel>
               
               {/* Oranžová sekce pro vybrané - jen když je aktivní dashboard filtr */}
-              {activeStatus && filteredCount < (stats.total || 0) && (
+              {activeStatus && (
                 <div style={{
                   marginTop: '0.75rem',
                   paddingTop: '0.75rem',
@@ -423,7 +423,7 @@ const OrdersDashboardV3Full = ({
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
                 {/* Rozpracované částka = celková - dokončená */}
-                {Math.round((totalAmount - (stats.dokoncenaAmount || 0)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round((totalAmount - (stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
                 {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
@@ -625,7 +625,7 @@ const OrdersDashboardV3Full = ({
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
                 {/* Rozpracované částka = celková - dokončená */}
-                {Math.round((totalAmount - (stats.dokoncenaAmount || 0)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round((totalAmount - (stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
                 {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
