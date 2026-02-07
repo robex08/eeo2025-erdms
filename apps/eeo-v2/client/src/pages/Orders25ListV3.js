@@ -33,6 +33,7 @@ import {
   faEye,
   faEyeSlash,
   faPalette,
+  faTimes,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -666,8 +667,8 @@ function Orders25ListV3() {
     handleItemsPerPageChange,
     
     // Filtry
-    selectedYear,
-    setSelectedYear,
+    selectedPeriod,
+    setSelectedPeriod,
     columnFilters,
     dashboardFilters,
     handlePanelFiltersChange,
@@ -708,12 +709,6 @@ function Orders25ListV3() {
 
   // State pro inicializaci - skryje obsah až do načtení všech dat
   const [isInitialized, setIsInitialized] = useState(false);
-  
-  // State pro výběr období
-  const [selectedPeriod, setSelectedPeriod] = useState(() => {
-    const saved = localStorage.getItem(`ordersV3_selectedPeriod_${user_id}`);
-    return saved || 'all';
-  });
   
   // State pro backend pagination toggle
   const [useBackendPagination, setUseBackendPagination] = useState(() => {
@@ -803,7 +798,7 @@ function Orders25ListV3() {
           username,
           order_id: orderIdFromEdit,
           per_page: itemsPerPage,
-          year: selectedYear,
+          period: selectedPeriod,
           filters: columnFilters,
           sorting: sorting
         });
@@ -823,7 +818,7 @@ function Orders25ListV3() {
         } else {
           // Objednávka nenalezena (nesplňuje filtry nebo jiný problém)
           showToast && showToast(
-            result.message || `Objednávka #${orderIdFromEdit} nenalezena v aktuálních filtrech nebo roce ${selectedYear}.`, 
+            result.message || `Objednávka #${orderIdFromEdit} nenalezena v aktuálních filtrech nebo období.`, 
             { type: 'info' }
           );
           window.history.replaceState({}, document.title);
@@ -868,7 +863,7 @@ function Orders25ListV3() {
       findAndScrollToOrder();
     }
     
-  }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedYear, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
+  }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedPeriod, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
 
   // Efekty pro uložení do LocalStorage při změně
   useEffect(() => {
@@ -894,13 +889,6 @@ function Orders25ListV3() {
       localStorage.setItem(`ordersV3_showRowColoring_${user_id}`, JSON.stringify(showRowColoring));
     }
   }, [showRowColoring, user_id]);
-
-  // Persist selectedPeriod do localStorage
-  useEffect(() => {
-    if (user_id) {
-      localStorage.setItem(`ordersV3_selectedPeriod_${user_id}`, selectedPeriod);
-    }
-  }, [selectedPeriod, user_id]);
 
   useEffect(() => {
     if (user_id) {
@@ -1138,25 +1126,51 @@ function Orders25ListV3() {
 
       {/* Action Bar - toggles a konfigurace */}
       <ActionBar>
-        {/* Toggle Dashboard */}
-        <ToggleButton
-          $active={showDashboard}
-          onClick={() => setShowDashboard(!showDashboard)}
-          title={showDashboard ? 'Skrýt dashboard' : 'Zobrazit dashboard'}
-        >
-          <FontAwesomeIcon icon={faChartBar} />
-          {showDashboard ? 'Skrýt' : 'Zobrazit'} dashboard
-        </ToggleButton>
+        {/* Toggle Dashboard - zobrazit/skrýt */}
+        {!showDashboard && (
+          <ToggleButton
+            $active={false}
+            onClick={() => setShowDashboard(true)}
+            title="Zobrazit dashboard s přehledem statistik"
+          >
+            <FontAwesomeIcon icon={faChartBar} />
+            Dashboard
+          </ToggleButton>
+        )}
+        
+        {showDashboard && (
+          <ToggleButton
+            $active={true}
+            onClick={() => setShowDashboard(false)}
+            title="Skrýt dashboard a zobrazit pouze tabulku"
+          >
+            <FontAwesomeIcon icon={faTimes} />
+            Skrýt dashboard
+          </ToggleButton>
+        )}
 
-        {/* Toggle Filtry */}
-        <ToggleButton
-          $active={showFilters}
-          onClick={() => setShowFilters(!showFilters)}
-          title={showFilters ? 'Skrýt filtry' : 'Zobrazit filtry'}
-        >
-          <FontAwesomeIcon icon={faFilter} />
-          {showFilters ? 'Skrýt' : 'Zobrazit'} filtry
-        </ToggleButton>
+        {/* Toggle Filtry - zobrazit/skrýt */}
+        {!showFilters && (
+          <ToggleButton
+            $active={false}
+            onClick={() => setShowFilters(true)}
+            title="Zobrazit pokročilé filtry"
+          >
+            <FontAwesomeIcon icon={faFilter} />
+            Filtry
+          </ToggleButton>
+        )}
+        
+        {showFilters && (
+          <ToggleButton
+            $active={true}
+            onClick={() => setShowFilters(false)}
+            title="Skrýt pokročilé filtry"
+          >
+            <FontAwesomeIcon icon={faTimes} />
+            Skrýt filtry
+          </ToggleButton>
+        )}
 
         {/* Toggle Podbarvení řádků */}
         <ToggleButton
