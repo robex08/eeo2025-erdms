@@ -1408,13 +1408,16 @@ const OrdersTableV3 = ({
   
   // Debounced filter change - posílá změny do parent komponenty po 1000ms
   const handleFilterChange = useCallback((columnId, value) => {
-    console.log('🔄 handleFilterChange:', { columnId, value });
+    console.log('🔄 handleFilterChange:', { columnId, value, type: Array.isArray(value) ? 'array' : typeof value });
     
-    // Update lokální state okamžitě (pro UI)
+    // ✅ Pro stav_objednavky mapuj na 'stav' pro backend
+    const backendColumnId = columnId === 'stav_objednavky' ? 'stav' : columnId;
+    
+    // Update lokální state okamžitě (pro UI) - zachovej POLE!
     setLocalColumnFilters(prev => {
       const newFilters = {
         ...prev,
-        [columnId]: value
+        [columnId]: value  // ✅ Nezměň typ! Pokud je pole, zachovej pole
       };
       
       // ✅ OKAMŽITĚ ulož do localStorage (aby přežil refresh dat)
@@ -1426,7 +1429,7 @@ const OrdersTableV3 = ({
             const prefs = JSON.parse(savedPrefs);
             prefs.columnFilters = newFilters;
             localStorage.setItem(prefsKey, JSON.stringify(prefs));
-            console.log('💾 Uloženo do LS:', { columnId, value, allFilters: newFilters });
+            console.log('💾 Uloženo do LS:', { columnId, value, isArray: Array.isArray(value), allFilters: newFilters });
           } else {
             // Vytvoř nový objekt pokud neexistuje
             const newPrefs = {
@@ -1439,7 +1442,7 @@ const OrdersTableV3 = ({
               selectedPeriod: 'current-month'
             };
             localStorage.setItem(prefsKey, JSON.stringify(newPrefs));
-            console.log('💾 Vytvořen nový LS:', { columnId, value });
+            console.log('💾 Vytvořen nový LS:', { columnId, value, isArray: Array.isArray(value) });
           }
         } catch (e) {
           console.error('❌ Error saving filter to localStorage:', e);
@@ -1455,10 +1458,10 @@ const OrdersTableV3 = ({
     }
     
     filterTimers.current[columnId] = setTimeout(() => {
-      console.log('⏰ Debounce dokončen, volám parent callback');
-      // Volanie parent callback pre API update
+      console.log('⏰ Debounce dokončen, volám parent callback', { backendColumnId, value, isArray: Array.isArray(value) });
+      // ✅ Volání parent callback pro API update - použij BACKEND column ID
       if (onColumnFiltersChange) {
-        onColumnFiltersChange(columnId, value);
+        onColumnFiltersChange(backendColumnId, value);
       }
     }, 1000);
   }, [onColumnFiltersChange, userId]);
@@ -2506,55 +2509,145 @@ const OrdersTableV3 = ({
                           );
                         }
                         
-                        // Stav objednávky - Select z číselníku (načítá z DB - 25_ciselnik_stavy)
+                        // Stav objednávky - MULTISELECT z číselníku (načítá z DB - 25_ciselnik_stavy)
                         if (columnId === 'stav_objednavky') {
-                          // 🐛 DEBUG: Log aktuální hodnoty
-                          console.log('🔍 SELECT RENDER:', {
-                            columnId,
-                            currentValue: localColumnFilters[columnId],
-                            orderStatesListLength: orderStatesList?.length
-                          });
+                          const [stavDropdownOpen, setStavDropdownOpen] = useState(false);
+                          const dropdownRef = useRef(null);
+                          
+                          // Hodnota jako pole (synchronizace s filter panelem)
+                          const currentValue = Array.isArray(localColumnFilters[columnId]) 
+                            ? localColumnFilters[columnId] 
+                            : (localColumnFilters[columnId] ? [localColumnFilters[columnId]] : []);
+                          
+                          // Close dropdown on click outside
+                          useEffect(() => {
+                            const handleClickOutside = (event) => {
+                              if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                                setStavDropdownOpen(false);
+                              }
+                            };
+                            
+                            if (stavDropdownOpen) {
+                              document.addEventListener('mousedown', handleClickOutside);
+                              return () => document.removeEventListener('mousedown', handleClickOutside);
+                            }
+                          }, [stavDropdownOpen]);
+                          
+                          const handleToggleStav = (kod) => {
+                            const newValue = currentValue.includes(kod)
+                              ? currentValue.filter(v => v !== kod)
+                              : [...currentValue, kod];
+                            
+                            // ✅ Uložit jako POLE pro backend
+                            handleFilterChange(columnId, newValue.length > 0 ? newValue : '');
+                          };
+                          
+                          const displayText = currentValue.length === 0 
+                            ? 'Všechny stavy...' 
+                            : `Vybráno: ${currentValue.length}`;
                           
                           return (
-                            <div style={{ position: 'relative', marginTop: '4px' }}>
-                              <select
-                                value={localColumnFilters[columnId] || ''}
-                                onChange={(e) => {
-                                  const newValue = e.target.value;
-                                  console.log('🔄 SELECT ZMĚNA:', { oldValue: localColumnFilters[columnId], newValue });
-                                  handleFilterChange(columnId, newValue);
+                            <div ref={dropdownRef} style={{ position: 'relative', marginTop: '4px' }}>
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setStavDropdownOpen(!stavDropdownOpen);
                                 }}
-                                onClick={(e) => e.stopPropagation()}
                                 style={{
                                   width: '100%',
-                                  padding: '0.375rem 0.5rem',
-                                  paddingRight: '1.5rem',
+                                  padding: '0.375rem 1.5rem 0.375rem 0.5rem',
                                   border: '1px solid #d1d5db',
                                   borderRadius: '4px',
                                   fontSize: '0.8125rem',
                                   background: 'white',
                                   cursor: 'pointer',
-                                  appearance: 'none',
-                                  backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3E%3C/svg%3E")',
-                                  backgroundPosition: 'right 0.5rem center',
-                                  backgroundRepeat: 'no-repeat',
-                                  backgroundSize: '1.25em 1.25em'
+                                  position: 'relative',
+                                  color: currentValue.length > 0 ? '#1f2937' : '#9ca3af',
+                                  fontWeight: currentValue.length > 0 ? '500' : '400',
                                 }}
                               >
-                                <option value="">Všechny stavy...</option>
-                                {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
-                                  // ✅ VALUE = kod_stavu (workflow kód pro backend)
-                                  // ✅ ZOBRAZENÍ = český název (bez závorek)
-                                  const kod = status.kod_stavu || status.kod || '';
-                                  const nazev = status.nazev_stavu || status.nazev || kod;
-                                  
-                                  return (
-                                    <option key={status.id || idx} value={kod}>
-                                      {nazev}
-                                    </option>
-                                  );
-                                })}
-                              </select>
+                                {displayText}
+                                <svg
+                                  style={{
+                                    position: 'absolute',
+                                    right: '0.5rem',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    width: '14px',
+                                    height: '14px',
+                                    pointerEvents: 'none'
+                                  }}
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                              
+                              {stavDropdownOpen && (
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    right: 0,
+                                    marginTop: '2px',
+                                    background: 'white',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px',
+                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                    zIndex: 1000,
+                                    maxHeight: '300px',
+                                    overflowY: 'auto'
+                                  }}
+                                >
+                                  {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
+                                    const kod = status.kod_stavu || status.kod || '';
+                                    const nazev = status.nazev_stavu || status.nazev || kod;
+                                    const isSelected = currentValue.includes(kod);
+                                    
+                                    return (
+                                      <div
+                                        key={status.id || idx}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleStav(kod);
+                                        }}
+                                        style={{
+                                          padding: '0.5rem 0.75rem',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.5rem',
+                                          fontSize: '0.8125rem',
+                                          background: isSelected ? '#eff6ff' : 'white',
+                                          borderBottom: '1px solid #f3f4f6',
+                                          transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isSelected) e.currentTarget.style.background = '#f9fafb';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (!isSelected) e.currentTarget.style.background = 'white';
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => {}}
+                                          style={{ cursor: 'pointer' }}
+                                        />
+                                        <span style={{ 
+                                          fontWeight: isSelected ? '500' : '400',
+                                          color: isSelected ? '#2563eb' : '#1f2937'
+                                        }}>
+                                          {nazev}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           );
                         }
