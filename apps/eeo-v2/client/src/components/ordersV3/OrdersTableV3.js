@@ -1529,11 +1529,30 @@ const OrdersTableV3 = ({
   const [localColumnFilters, setLocalColumnFilters] = useState(() => {
     // ✅ Při inicializaci mapuj backend formát na UI formát
     const mapped = { ...columnFilters };
-    // stav (backend) → stav_objednavky (UI)
+    
+    // Backend → UI mapování
     if (mapped.stav) {
       mapped.stav_objednavky = mapped.stav;
       delete mapped.stav;
     }
+    if (mapped.datum_presne !== undefined) {
+      mapped.dt_objednavky = mapped.datum_presne;
+      delete mapped.datum_presne;
+    }
+    else if (mapped.datum_od) {
+      // Pouze pokud není nastaveno datum_presne vůbec
+      mapped.dt_objednavky = mapped.datum_od;
+      delete mapped.datum_od;
+    }
+    if (mapped.objednatel_jmeno) {
+      mapped.objednatel_garant = mapped.objednatel_jmeno;
+      // Nemaž objednatel_jmeno, může být použito odděleně
+    }
+    if (mapped.prikazce_jmeno) {
+      mapped.prikazce_schvalovatel = mapped.prikazce_jmeno;
+      // Nemaž prikazce_jmeno, může být použito odděleně
+    }
+    
     return mapped;
   });
   
@@ -1542,10 +1561,27 @@ const OrdersTableV3 = ({
     // Mapuj backend formát na UI formát
     const mappedFilters = { ...columnFilters };
     
-    // stav (backend) → stav_objednavky (UI column)
+    // Backend → UI mapování pro všechny column filtry
     if (mappedFilters.stav !== undefined) {
       mappedFilters.stav_objednavky = mappedFilters.stav;
       delete mappedFilters.stav;
+    }
+    if (mappedFilters.datum_presne !== undefined) {
+      mappedFilters.dt_objednavky = mappedFilters.datum_presne;
+      delete mappedFilters.datum_presne;
+    }
+    else if (mappedFilters.datum_od !== undefined) {
+      // Pouze pokud není nastaveno datum_presne vůbec
+      mappedFilters.dt_objednavky = mappedFilters.datum_od;
+      delete mappedFilters.datum_od;
+    }
+    if (mappedFilters.objednatel_jmeno !== undefined) {
+      mappedFilters.objednatel_garant = mappedFilters.objednatel_jmeno;
+      // Zachovej objednatel_jmeno pro případné oddělené použití
+    }
+    if (mappedFilters.prikazce_jmeno !== undefined) {
+      mappedFilters.prikazce_schvalovatel = mappedFilters.prikazce_jmeno;
+      // Zachovej prikazce_jmeno pro případné oddělené použití
     }
     
     // Porovnej s aktuálním stavem
@@ -1602,16 +1638,36 @@ const OrdersTableV3 = ({
   
   // Debounced filter change - posílá změny do parent komponenty po 1000ms
   const handleFilterChange = useCallback((columnId, value) => {
-    // console.log('🔄 handleFilterChange:', { columnId, value, type: Array.isArray(value) ? 'array' : typeof value });
+    console.log('🔄 OrdersTableV3 handleFilterChange START:', { 
+      columnId, 
+      value, 
+      type: Array.isArray(value) ? 'array' : typeof value,
+      timestamp: new Date().toISOString()
+    });
     
-    // ✅ Pro stav_objednavky mapuj na 'stav' pro backend
-    const backendColumnId = columnId === 'stav_objednavky' ? 'stav' : columnId;
+    // ✅ Mapování UI column názvů na backend parametry
+    const columnToBackendMapping = {
+      'stav_objednavky': 'stav',
+      'dt_objednavky': 'datum_presne', // Datum z column filtru
+    };
+    
+    const backendColumnId = columnToBackendMapping[columnId] || columnId;
+    console.log('🗺️ OrdersTableV3 MAPPING:', { 
+      uiColumn: columnId, 
+      backendColumn: backendColumnId 
+    });
     
     // Update lokální state okamžitě (pro UI s UI názvy)
-    setLocalColumnFilters(prev => ({
-      ...prev,
-      [columnId]: value  // UI column název
-    }));
+    setLocalColumnFilters(prev => {
+      const newState = { ...prev, [columnId]: value };
+      console.log('📱 OrdersTableV3 setLocalColumnFilters:', {
+        columnId,
+        value,
+        oldState: prev,
+        newState
+      });
+      return newState;
+    });
     
     // Debounce pro volání API (300ms pro rychlejší response)
     if (filterTimers.current[columnId]) {
@@ -1619,7 +1675,12 @@ const OrdersTableV3 = ({
     }
     
     filterTimers.current[columnId] = setTimeout(() => {
-      // console.log('⏰ Debounce dokončen, volám parent callback', { backendColumnId, value, isArray: Array.isArray(value) });
+      console.log('⏰ OrdersTableV3 DEBOUNCE END - calling parent callback:', { 
+        columnId, 
+        backendColumnId, 
+        value, 
+        isArray: Array.isArray(value) 
+      });
       // ✅ Volání parent callback pro API update - použij BACKEND column ID
       if (onColumnFiltersChange) {
         onColumnFiltersChange(backendColumnId, value);
@@ -2684,11 +2745,13 @@ const OrdersTableV3 = ({
                         
                         // Datum sloupec - DatePicker
                         if (columnId === 'dt_objednavky') {
+                          const dateValue = localColumnFilters[columnId] || '';
                           return (
                             <div style={{ position: 'relative', marginTop: '4px' }}>
                               <DatePicker
+                                key={`${columnId}_${dateValue || 'empty'}`} // Force re-render když se změní hodnota
                                 fieldName={`${columnId}_filter`}
-                                value={localColumnFilters[columnId] || ''}
+                                value={dateValue}
                                 onChange={(value) => handleFilterChange(columnId, value)}
                                 placeholder="Datum"
                                 variant="compact"

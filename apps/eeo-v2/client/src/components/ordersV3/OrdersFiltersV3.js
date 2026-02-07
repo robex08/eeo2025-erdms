@@ -102,7 +102,7 @@ const FilterLabel = styled.label`
   gap: 0.5rem;
 
   svg {
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     color: #94a3b8;
   }
 `;
@@ -126,6 +126,11 @@ const FilterInput = styled.input`
   &::placeholder {
     color: #94a3b8;
   }
+  
+  /* Když je v wrapper s clear buttonem */
+  &.with-clear {
+    padding-right: 2.5rem;
+  }
 `;
 
 const FilterSelect = styled.select`
@@ -144,6 +149,39 @@ const FilterSelect = styled.select`
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const FilterInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const FilterClearButton = styled.button`
+  position: absolute;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  z-index: 1;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #fef2f2;
+    color: #dc2626;
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
   }
 `;
 
@@ -177,7 +215,7 @@ const ActiveFilterChip = styled.div`
   background: #dbeafe;
   border: 1px solid #3b82f6;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   color: #1e40af;
   font-weight: 600;
 
@@ -189,7 +227,7 @@ const ActiveFilterChip = styled.div`
     padding: 0;
     display: flex;
     align-items: center;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     transition: color 0.15s ease;
 
     &:hover {
@@ -410,19 +448,41 @@ const OrdersFiltersV3 = ({
             Cena od - do (Kč)
           </FilterLabel>
           <FilterDateRange>
-            <FilterInput
-              type="number"
-              placeholder="Min"
-              value={localFilters.min_cena || ''}
-              onChange={(e) => handleFilterChange('min_cena', e.target.value)}
-            />
+            <FilterInputWrapper>
+              <FilterInput
+                type="number"
+                placeholder="Min"
+                className={localFilters.min_cena ? 'with-clear' : ''}
+                value={localFilters.min_cena || ''}
+                onChange={(e) => handleFilterChange('min_cena', e.target.value)}
+              />
+              {localFilters.min_cena && (
+                <FilterClearButton
+                  onClick={() => handleFilterChange('min_cena', '')}
+                  title="Vymazat minimum"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </FilterClearButton>
+              )}
+            </FilterInputWrapper>
             <span>—</span>
-            <FilterInput
-              type="number"
-              placeholder="Max"
-              value={localFilters.max_cena || ''}
-              onChange={(e) => handleFilterChange('max_cena', e.target.value)}
-            />
+            <FilterInputWrapper>
+              <FilterInput
+                type="number"
+                placeholder="Max"
+                className={localFilters.max_cena ? 'with-clear' : ''}
+                value={localFilters.max_cena || ''}
+                onChange={(e) => handleFilterChange('max_cena', e.target.value)}
+              />
+              {localFilters.max_cena && (
+                <FilterClearButton
+                  onClick={() => handleFilterChange('max_cena', '')}
+                  title="Vymazat maximum"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </FilterClearButton>
+              )}
+            </FilterInputWrapper>
           </FilterDateRange>
         </FilterGroup>
 
@@ -432,17 +492,39 @@ const OrdersFiltersV3 = ({
             Datum od - do
           </FilterLabel>
           <FilterDateRange>
-            <FilterInput
-              type="date"
-              value={localFilters.dt_od || ''}
-              onChange={(e) => handleFilterChange('dt_od', e.target.value)}
-            />
+            <FilterInputWrapper>
+              <FilterInput
+                type="date"
+                className={localFilters.dt_od ? 'with-clear' : ''}
+                value={localFilters.dt_od || ''}
+                onChange={(e) => handleFilterChange('dt_od', e.target.value)}
+              />
+              {localFilters.dt_od && (
+                <FilterClearButton
+                  onClick={() => handleFilterChange('dt_od', '')}
+                  title="Vymazat datum od"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </FilterClearButton>
+              )}
+            </FilterInputWrapper>
             <span>—</span>
-            <FilterInput
-              type="date"
-              value={localFilters.dt_do || ''}
-              onChange={(e) => handleFilterChange('dt_do', e.target.value)}
-            />
+            <FilterInputWrapper>
+              <FilterInput
+                type="date"
+                className={localFilters.dt_do ? 'with-clear' : ''}
+                value={localFilters.dt_do || ''}
+                onChange={(e) => handleFilterChange('dt_do', e.target.value)}
+              />
+              {localFilters.dt_do && (
+                <FilterClearButton
+                  onClick={() => handleFilterChange('dt_do', '')}
+                  title="Vymazat datum do"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </FilterClearButton>
+              )}
+            </FilterInputWrapper>
           </FilterDateRange>
         </FilterGroup>
 
@@ -480,6 +562,11 @@ const OrdersFiltersV3 = ({
           {Object.keys(localFilters).map(key => {
             const value = localFilters[key];
             if (!value || value === '') return null;
+            
+            // Vyloučit filtry, které mají vlastní clear buttony uvnitř inputů
+            if (['min_cena', 'max_cena', 'dt_od', 'dt_do'].includes(key)) {
+              return null;
+            }
             
             return (
               <ActiveFilterChip key={key}>

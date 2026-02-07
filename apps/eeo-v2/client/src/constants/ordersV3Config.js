@@ -75,9 +75,9 @@ export const ORDERS_V3_CONFIG = {
   // ============================================================================
   // STORAGE KEYS
   // ============================================================================
-  STORAGE_PREFIX: 'ordersV3',
+  STORAGE_PREFIX: 'ordersV3_v2', // v2: Opravuje column filtry mapování (datum_presne)
   
-  getStorageKey: (key, userId) => `ordersV3_${key}_${userId}`,
+  getStorageKey: (key, userId) => `ordersV3_v2_${key}_${userId}`,
 
   // ============================================================================
   // API ENDPOINTS (proti hardcoding)
