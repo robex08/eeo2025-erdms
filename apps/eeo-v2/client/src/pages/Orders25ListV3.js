@@ -47,6 +47,7 @@ import { ToastContext } from '../context/ToastContext';
 // API Services
 import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
 import { findOrderPageV3 } from '../services/apiOrdersV3';
+import { fetchCiselniky } from '../services/api2auth';
 
 // Custom hooks
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
@@ -490,6 +491,15 @@ function Orders25ListV3() {
   // State pro třídění - výchozí: datum aktualizace sestupně (nejnovější první)
   const [sorting, setSorting] = useState([{ id: 'dt_objednavky', desc: true }]);
 
+  // State pro global/fulltext search - musí být před useOrdersV3 kvůli dependency
+  const [globalFilter, setGlobalFilter] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_globalFilter_${user_id}`);
+    return saved || '';
+  });
+
+  // State pro číselník stavů (načítá se z API)
+  const [orderStatesList, setOrderStatesList] = useState([]);
+
   // Custom hook pro Orders V3
   const {
     // Data
@@ -537,6 +547,7 @@ function Orders25ListV3() {
     showProgress,
     hideProgress,
     sorting: sorting,
+    globalFilter: globalFilter, // ✅ Předání globalFilter do hooku
   });
 
   // ✅ VIRTUALIZATION: Automatic based na data size (declared after orders)
@@ -573,12 +584,6 @@ function Orders25ListV3() {
     return saved !== null ? JSON.parse(saved) : true; // Defaultně zapnuto
   });
   
-  // State pro global/fulltext search - zůstává samostatný kvůli specifické logice
-  const [globalFilter, setGlobalFilter] = useState(() => {
-    const saved = localStorage.getItem(`ordersV3_globalFilter_${user_id}`);
-    return saved || '';
-  });
-  
   // State pro dialogy
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [docxModalOrder, setDocxModalOrder] = useState(null);
@@ -586,6 +591,61 @@ function Orders25ListV3() {
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const [isSearchingForOrder, setIsSearchingForOrder] = useState(false);
+
+  // 🎯 Effect: Načtení číselníku stavů z API
+  useEffect(() => {
+    const loadStates = async () => {
+      if (!token || !username) return;
+      
+      try {
+        const statesData = await fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' });
+        
+        // Seřaď stavy abecedně podle názvu
+        const sortedStates = (statesData || []).sort((a, b) => {
+          const nameA = (a.nazev_stavu || a.nazev || '').toLowerCase();
+          const nameB = (b.nazev_stavu || b.nazev || '').toLowerCase();
+          return nameA.localeCompare(nameB, 'cs');
+        });
+        
+        setOrderStatesList(sortedStates);
+        
+        // 🔧 VALIDACE: Ověř že uložený filtr stavu existuje v číselníku
+        const prefsKey = `ordersV3_preferences_${user_id}`;
+        const savedPrefs = localStorage.getItem(prefsKey);
+        if (savedPrefs) {
+          try {
+            const prefs = JSON.parse(savedPrefs);
+            if (prefs.columnFilters && prefs.columnFilters.stav_objednavky) {
+              const stavValue = prefs.columnFilters.stav_objednavky;
+              
+              // Kontrola 1: Je to český název? (mezera nebo diakritika)
+              const isCzechName = typeof stavValue === 'string' && (/\s/.test(stavValue) || /[áčďéěíňóřšťúůýž]/i.test(stavValue));
+              
+              // Kontrola 2: Existuje v číselníku?
+              const existsInCiselnik = sortedStates.some(state => state.kod_stavu === stavValue);
+              
+              if (isCzechName || !existsInCiselnik) {
+                console.log('🧹 CLEANUP: Neplatný stav filtru:', stavValue, '- mažu z localStorage');
+                delete prefs.columnFilters.stav_objednavky;
+                localStorage.setItem(prefsKey, JSON.stringify(prefs));
+                
+                // ✅ Informuj state management (BEZ reloadu)
+                if (typeof handleColumnFilterChange === 'function') {
+                  handleColumnFilterChange('stav_objednavky', '');
+                }
+              }
+            }
+          } catch (e) {
+            console.error('❌ Chyba při validaci filtrů:', e);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Chyba při načítání číselníku stavů:', error);
+      }
+    };
+    
+    loadStates();
+  }, [token, username, user_id]);
 
   // 🎯 Effect: Detekce dokončení inicializace - fade-in po načtení dat
   useEffect(() => {
@@ -995,11 +1055,11 @@ function Orders25ListV3() {
       {/* Dashboard */}
       {showDashboard && (
         <OrdersDashboardV3Full
-          stats={stats}
-          totalAmount={stats.totalAmount || 0}
-          filteredTotalAmount={stats.filteredTotalAmount || stats.totalAmount || 0}
-          filteredCount={stats.filteredCount || orders.length}
-          hasActiveFilters={!!dashboardFilters.filter_status}
+          stats={stats || {}}
+          totalAmount={stats?.totalAmount || 0}
+          filteredTotalAmount={stats?.filteredTotalAmount || stats?.totalAmount || 0}
+          filteredCount={stats?.filteredCount || orders?.length || 0}
+          hasActiveFilters={!!dashboardFilters?.filter_status}
           activeStatus={dashboardFilters.filter_status}
           onStatusClick={handleDashboardFilterChange}
           onHide={() => updatePreferences({ showDashboard: false })}
@@ -1030,6 +1090,7 @@ function Orders25ListV3() {
         data={orders}
         visibleColumns={columnVisibility ? Object.keys(columnVisibility).filter(col => columnVisibility[col]) : []}
         columnOrder={columnOrder}
+        columnFilters={columnFilters} // ✅ Synchronizace filters
         sorting={sorting}
         onSortingChange={setSorting}
         onRowExpand={handleRowExpand}
@@ -1037,6 +1098,7 @@ function Orders25ListV3() {
         onColumnVisibilityChange={handleColumnVisibilityChange}
         onColumnReorder={handleColumnOrderChange}
         onColumnFiltersChange={handleColumnFilterChange}
+        orderStatesList={orderStatesList} // ✅ Options pro stavový filtr
         userId={user_id}
         token={token}
         username={username}

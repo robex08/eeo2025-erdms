@@ -392,6 +392,9 @@ function handle_order_v3_list($input, $config, $queries) {
         // Aktivní záznamy
         $where_conditions[] = "o.aktivni = 1";
         
+        // ⚠️ IGNORE testovací/vzorová objednávka s ID 1 - VŽDY vyloučit ze všech výsledků
+        $where_conditions[] = "o.id != 1";
+        
         // Období - filtrování podle datumu
         $period_range = calculatePeriodRange($period);
         if ($period_range !== null) {
@@ -477,7 +480,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 'ROZPRACOVANA' => 'ROZPRACOVANA',
                 'ODESLANA' => 'ODESLANA',
                 'POTVRZENA' => 'POTVRZENA',
-                'K_UVEREJNENI_DO_REGISTRU' => 'K_UVEREJNENI_DO_REGISTRU',
+                'K_UVEREJNENI_DO_REGISTRU' => 'UVEREJNIT', // ✅ Fixed mapping
                 'UVEREJNENA' => 'UVEREJNIT',
                 'FAKTURACE' => 'FAKTURACE',
                 'VECNA_SPRAVNOST' => 'VECNA_SPRAVNOST',
@@ -572,7 +575,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 'rozpracovana' => 'ROZPRACOVANA',
                 'odeslana' => 'ODESLANA',
                 'potvrzena' => 'POTVRZENA',
-                'k_uverejneni_do_registru' => 'K_UVEREJNENI_DO_REGISTRU',
+                'k_uverejneni_do_registru' => 'UVEREJNIT', // ✅ Fixed mapping
                 'uverejnena' => 'UVEREJNIT',
                 'fakturace' => 'FAKTURACE',
                 'vecna_spravnost' => 'VECNA_SPRAVNOST',
@@ -1116,6 +1119,9 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
     
     // 1. Aktivní objednávky (vždy)
     $where_conditions[] = "o.aktivni = 1";
+    
+    // ⚠️ IGNORE testovací/vzorová objednávka s ID 1 - VŽDY vyloučit ze všech výsledků
+    $where_conditions[] = "o.id != 1";
     
     // 2. Period filtr
     if ($period_range !== null) {

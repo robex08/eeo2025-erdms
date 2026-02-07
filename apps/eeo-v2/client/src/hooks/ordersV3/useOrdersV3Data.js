@@ -71,7 +71,6 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     
     const requestPromise = (async () => {
       try {
-        console.log('📡 API Request:', params);
         const response = await apiFunction(params);
         
         // ✅ SUCCESS: Store data and cache result

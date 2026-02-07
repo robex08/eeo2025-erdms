@@ -75,6 +75,7 @@ const VirtualizedOrdersTable = ({
   data = [],
   forceVirtualization = false,
   showPerformanceInfo = process.env.NODE_ENV === 'development',
+  orderStatesList = [], // ✅ Options pro stavový filtr
   ...tableProps
 }) => {
   
@@ -110,7 +111,8 @@ const VirtualizedOrdersTable = ({
         )}
         <OrdersTableV3 
           {...tableProps} 
-          data={data} 
+          data={data}
+          orderStatesList={orderStatesList}
         />
       </VirtualizedWrapper>
     );
@@ -142,6 +144,7 @@ const VirtualizedOrdersTable = ({
           <OrdersTableV3
             {...tableProps}
             data={virtualTable.visibleItems}
+            orderStatesList={orderStatesList}
             virtualizedProps={{
               startIndex: virtualTable.startIndex,
               endIndex: virtualTable.endIndex,
