@@ -681,54 +681,50 @@ export function useOrdersV3({
   const handleDashboardFilterChange = useCallback(async (filterType) => {
     console.log('🎯 Dashboard filter change:', filterType);
     
+    // Uložit nový stav do dočasné proměnné
+    let newFilters;
+    
     // Pokud je filterType null, resetuj filtry
     if (filterType === null) {
-      const newFilters = {
+      newFilters = {
         filter_status: '',
         filter_my_orders: false,
         filter_archivovano: false,
       };
-      setDashboardFilters(newFilters);
-      
-      // Uložit do localStorage
-      if (userId) {
-        localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(newFilters));
-      }
-      
-      setCurrentPage(1);
-      
-      // Manuální reload dat bez filtru
-      await loadOrders();
-      return;
-    }
-    
-    setDashboardFilters(prev => {
-      const isCurrentlyActive = prev.filter_status === filterType;
+    } else {
+      const isCurrentlyActive = dashboardFilters.filter_status === filterType;
       const newStatus = isCurrentlyActive ? '' : filterType;
       console.log('🎯 Setting filter_status:', newStatus);
       
-      const newFilters = {
-        ...prev,
+      newFilters = {
+        ...dashboardFilters,
         filter_status: newStatus,
       };
+    }
+    
+    // Uložit do localStorage
+    if (userId) {
+      localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(newFilters));
+    }
+    
+    setCurrentPage(1);
+    
+    // DŮLEŽITÉ: Aktualizovat REF PŘED voláním loadOrders()
+    currentDashboardFilters.current = newFilters;
+    
+    try {
+      // Načíst data s novými filtry (AWAIT - čekat na dokončení!)
+      await loadOrders();
       
-      // Uložit do localStorage
-      if (userId) {
-        localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(newFilters));
-      }
+      // TEPRV NYNÍ aktualizovat state (po načtení dat)
+      setDashboardFilters(newFilters);
       
-      return newFilters;
-    });
+    } catch (error) {
+      console.error('❌ Chyba při načítání dat s novým filtrem:', error);
+      // V případě chyby neměnit stav
+    }
     
-    setCurrentPage(1); // Reset na první stránku
-    
-    // DŮLEŽITÉ: Manuálně zavolat loadOrders() pro okamžitý refresh
-    // Ale počkat si na setState - použij setTimeout nebo useEffect
-    setTimeout(() => {
-      loadOrders();
-    }, 50);
-    
-  }, [userId, loadOrders]);
+  }, [userId, dashboardFilters, loadOrders]);
   
   /**
    * Vyčistí VŠECHNY filtry a localStorage

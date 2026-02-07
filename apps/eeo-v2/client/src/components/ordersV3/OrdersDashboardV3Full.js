@@ -372,7 +372,7 @@ const OrdersDashboardV3Full = ({
         <DashboardGrid>
           {/* Celková cena - clickable pro reset filtrů */}
           <LargeStatCard 
-            $color={STATUS_COLORS.TOTAL.dark} 
+            $color="#64748b" 
             $clickable={true}
             $isActive={false}
             onClick={() => onStatusClick?.(null)}
@@ -571,9 +571,9 @@ const OrdersDashboardV3Full = ({
       <DashboardGrid>
         {/* Velká karta - celková cena (clickable pro reset filtrů) */}
         <LargeStatCard 
-          $color={STATUS_COLORS.TOTAL.dark} 
+          $color="#64748b" 
           $clickable={true}
-          $isActive={!activeStatus}
+          $isActive={false}
           onClick={() => onStatusClick?.(null)}
         >
           <div>
