@@ -54,7 +54,8 @@ export async function listOrdersV3({
     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
   }
 
-  return response.json();
+  const responseData = await response.json();
+  return responseData;
 }
 
 /**
