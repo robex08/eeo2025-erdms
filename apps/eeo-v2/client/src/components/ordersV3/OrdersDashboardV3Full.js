@@ -183,6 +183,12 @@ const StatCard = styled.div`
   border-radius: 12px;
   padding: 0.75rem 1rem;
   min-height: 85px;
+  max-height: 85px;
+  height: 85px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   border-left: 4px solid ${props => props.$color || '#3b82f6'};
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: all 0.25s ease;
