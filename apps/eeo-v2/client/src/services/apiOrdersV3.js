@@ -19,7 +19,7 @@ const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace
  * @param {string} params.username - Username
  * @param {number} params.page - Číslo stránky (výchozí: 1)
  * @param {number} params.per_page - Záznamů na stránku (výchozí: 50)
- * @param {number} params.year - Rok objednávek (výchozí: aktuální)
+ * @param {string} params.period - Období objednávek (all/current-month/last-month/last-quarter/all-months)
  * @param {Object} params.filters - Filtry (volitelné)
  * @param {Array} params.sorting - Třídění (volitelné)
  * @returns {Promise<Object>} Response s orders, pagination, stats
@@ -29,7 +29,7 @@ export async function listOrdersV3({
   username,
   page = 1,
   per_page = 50,
-  year = new Date().getFullYear(),
+  period = 'all',
   filters = {},
   sorting = []
 }) {
@@ -43,7 +43,7 @@ export async function listOrdersV3({
       username,
       page,
       per_page,
-      year,
+      period,
       filters,
       sorting
     }),
@@ -62,13 +62,13 @@ export async function listOrdersV3({
  * @param {Object} params
  * @param {string} params.token - Auth token
  * @param {string} params.username - Username
- * @param {number} params.year - Rok objednávek (výchozí: aktuální)
+ * @param {string} params.period - Období objednávek (all/current-month/last-month/last-quarter/all-months)
  * @returns {Promise<Object>} Response se statistikami
  */
 export async function getOrderStatsV3({
   token,
   username,
-  year = new Date().getFullYear()
+  period = 'all'
 }) {
   const response = await fetch(`${API_BASE_URL}/order-v3/stats`, {
     method: 'POST',
@@ -78,7 +78,7 @@ export async function getOrderStatsV3({
     body: JSON.stringify({
       token,
       username,
-      year
+      period
     }),
   });
 
