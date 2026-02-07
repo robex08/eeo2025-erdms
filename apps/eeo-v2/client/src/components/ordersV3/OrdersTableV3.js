@@ -1501,13 +1501,36 @@ const OrdersTableV3 = ({
   } = useExpandedRowsV3({ token, username, userId });
   
   // State pro column filters (lokální - zobrazení v UI)
-  const [localColumnFilters, setLocalColumnFilters] = useState(columnFilters || {});
+  const [localColumnFilters, setLocalColumnFilters] = useState(() => {
+    // ✅ Při inicializaci mapuj backend formát na UI formát
+    const mapped = { ...columnFilters };
+    // stav (backend) → stav_objednavky (UI)
+    if (mapped.stav) {
+      mapped.stav_objednavky = mapped.stav;
+      delete mapped.stav;
+    }
+    return mapped;
+  });
   
-  // ✅ Synchronizace external columnFilters s local state POUZE při změně z parent
+  // ✅ Synchronizace external columnFilters s local state s REVERSE mapováním
   useEffect(() => {
-    // Aktualizuj POUZE pokud se external změnil a nejsme uprostřed lokální editace
-    if (JSON.stringify(columnFilters) !== JSON.stringify(localColumnFilters)) {
-      setLocalColumnFilters(columnFilters || {});
+    // Mapuj backend formát na UI formát
+    const mappedFilters = { ...columnFilters };
+    
+    // stav (backend) → stav_objednavky (UI column)
+    if (mappedFilters.stav !== undefined) {
+      mappedFilters.stav_objednavky = mappedFilters.stav;
+      delete mappedFilters.stav;
+    }
+    
+    // Porovnej s aktuálním stavem
+    const currentMapped = { ...localColumnFilters };
+    if (JSON.stringify(mappedFilters) !== JSON.stringify(currentMapped)) {
+      console.log('🔄 Sync columnFilters → localColumnFilters:', { 
+        from: columnFilters, 
+        to: mappedFilters 
+      });
+      setLocalColumnFilters(mappedFilters);
     }
   }, [columnFilters]);
   
@@ -1559,46 +1582,22 @@ const OrdersTableV3 = ({
     // ✅ Pro stav_objednavky mapuj na 'stav' pro backend
     const backendColumnId = columnId === 'stav_objednavky' ? 'stav' : columnId;
     
-    // Update lokální state okamžitě (pro UI) - zachovej POLE!
-    setLocalColumnFilters(prev => {
-      const newFilters = {
-        ...prev,
-        [columnId]: value  // ✅ Nezměň typ! Pokud je pole, zachovej pole
-      };
-      
-      // ✅ OKAMŽITĚ ulož do localStorage (aby přežil refresh dat)
-      if (userId) {
-        try {
-          const prefsKey = `ordersV3_preferences_${userId}`;
-          const savedPrefs = localStorage.getItem(prefsKey);
-          if (savedPrefs) {
-            const prefs = JSON.parse(savedPrefs);
-            prefs.columnFilters = newFilters;
-            localStorage.setItem(prefsKey, JSON.stringify(prefs));
-            console.log('💾 Uloženo do LS:', { columnId, value, isArray: Array.isArray(value), allFilters: newFilters });
-          } else {
-            // Vytvoř nový objekt pokud neexistuje
-            const newPrefs = {
-              columnFilters: newFilters,
-              showDashboard: true,
-              showFilters: true,
-              dashboardMode: 'full',
-              showRowColoring: false,
-              itemsPerPage: 50,
+    // Update lokální state okamžitě (pro UI s UI názvy)
+    setLocalColumnFilters(prev => ({
+      ...prev,
+      [columnId]: value  // UI column název
+    }));
+    
+    // ✅ OKAMŽITĚ ulož do parent preferences s BACKEND názvy (pro správnou synchronizaci)
+    // NEUKLÁDEJ přímo do LS - to dělá useOrdersV3State hook!
+    // Pouze zavolej parent callback který aktualizuje centrální state
               selectedPeriod: 'current-month'
             };
-            localStorage.setItem(prefsKey, JSON.stringify(newPrefs));
-            console.log('💾 Vytvořen nový LS:', { columnId, value, isArray: Array.isArray(value) });
-          }
-        } catch (e) {
-          console.error('❌ Error saving filter to localStorage:', e);
-        }
-      }
-      
-      return newFilters;
-    });
+    // ✅ OKAMŽITĚ ulož do parent preferences s BACKEND názvy (pro správnou synchronizaci)
+    // NEUKLÁDEJ přímo do LS - to dělá useOrdersV3State hook!
+    // Pouze zavolej parent callback který aktualizuje centrální state
     
-    // Debounce pro volání API (1000ms)
+    // Debounce pro volání API (300ms pro rychlejší response)
     if (filterTimers.current[columnId]) {
       clearTimeout(filterTimers.current[columnId]);
     }
@@ -1609,8 +1608,8 @@ const OrdersTableV3 = ({
       if (onColumnFiltersChange) {
         onColumnFiltersChange(backendColumnId, value);
       }
-    }, 1000);
-  }, [onColumnFiltersChange, userId]);
+    }, 300); // Sníženo z 1000ms na 300ms pro rychlejší response
+  }, [onColumnFiltersChange]);
   
   // Cleanup timers při unmount
   useEffect(() => {
