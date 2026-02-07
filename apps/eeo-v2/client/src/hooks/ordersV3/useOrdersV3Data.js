@@ -50,9 +50,9 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
       return currentRequestRef.current;
     }
     
-    // ✅ CACHE CHECK: Zkontroluj cache pro rychlé výsledky (max 10s starý)
+    // ✅ CACHE CHECK: Zkontroluj cache pro rychlé výsledky (max 2s starý pro debug)
     const cached = cacheRef.current.get(requestSignature);
-    if (cached && (Date.now() - cached.timestamp < 10000)) {
+    if (cached && (Date.now() - cached.timestamp < 2000)) {
       // console.log('⚡ Using cached data for request');
       setData(cached.data.orders || []);
       setStats(cached.data.stats || null);
