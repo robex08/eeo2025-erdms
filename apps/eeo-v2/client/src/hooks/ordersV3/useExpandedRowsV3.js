@@ -95,21 +95,21 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
 
   // 📥 Načtení detailu objednávky (lazy loading)
   const loadOrderDetail = useCallback(async (orderId) => {
-    console.log(`📥 [LOAD] Starting load for order ${orderId}`);
+    // console.log(`📥 [LOAD] Starting load for order ${orderId}`);
     
-    // Pokud už je v cache, nemusíme načítat
+    // Pokud už je v cache, nemusíme načítát
     if (detailsCache[orderId]) {
-      console.log(`✅ [LOAD] Order ${orderId} found in cache, returning cached data`);
+      // console.log(`✅ [LOAD] Order ${orderId} found in cache, returning cached data`);
       return detailsCache[orderId];
     }
 
     // Pokud se právě načítá, počkáme
     if (fetchingRef.current.has(orderId)) {
-      console.log(`⏳ [LOAD] Order ${orderId} is already being fetched, skipping`);
+      // console.log(`⏳ [LOAD] Order ${orderId} is already being fetched, skipping`);
       return null;
     }
 
-    console.log(`🌐 [LOAD] Fetching order ${orderId} from API...`);
+    // console.log(`🌐 [LOAD] Fetching order ${orderId} from API...`);
     
     // Označíme že se načítá
     fetchingRef.current.add(orderId);

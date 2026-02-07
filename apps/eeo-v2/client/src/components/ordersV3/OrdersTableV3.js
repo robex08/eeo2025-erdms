@@ -1551,10 +1551,10 @@ const OrdersTableV3 = ({
     // Porovnej s aktuálním stavem
     const currentMapped = { ...localColumnFilters };
     if (JSON.stringify(mappedFilters) !== JSON.stringify(currentMapped)) {
-      console.log('🔄 Sync columnFilters → localColumnFilters:', { 
-        from: columnFilters, 
-        to: mappedFilters 
-      });
+      // console.log('🔄 Sync columnFilters → localColumnFilters:', { 
+      //   from: columnFilters, 
+      //   to: mappedFilters 
+      // });
       setLocalColumnFilters(mappedFilters);
     }
   }, [columnFilters]);
@@ -1602,7 +1602,7 @@ const OrdersTableV3 = ({
   
   // Debounced filter change - posílá změny do parent komponenty po 1000ms
   const handleFilterChange = useCallback((columnId, value) => {
-    console.log('🔄 handleFilterChange:', { columnId, value, type: Array.isArray(value) ? 'array' : typeof value });
+    // console.log('🔄 handleFilterChange:', { columnId, value, type: Array.isArray(value) ? 'array' : typeof value });
     
     // ✅ Pro stav_objednavky mapuj na 'stav' pro backend
     const backendColumnId = columnId === 'stav_objednavky' ? 'stav' : columnId;
@@ -1619,7 +1619,7 @@ const OrdersTableV3 = ({
     }
     
     filterTimers.current[columnId] = setTimeout(() => {
-      console.log('⏰ Debounce dokončen, volám parent callback', { backendColumnId, value, isArray: Array.isArray(value) });
+      // console.log('⏰ Debounce dokončen, volám parent callback', { backendColumnId, value, isArray: Array.isArray(value) });
       // ✅ Volání parent callback pro API update - použij BACKEND column ID
       if (onColumnFiltersChange) {
         onColumnFiltersChange(backendColumnId, value);
