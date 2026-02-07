@@ -260,6 +260,7 @@ export function useOrdersV3({
   useEffect(() => {
     if (userId && columnFilters) {
       localStorage.setItem(`ordersV3_columnFilters_${userId}`, JSON.stringify(columnFilters));
+      // console.log('💾 Filtry uloženy do localStorage:', columnFilters);
     }
   }, [userId, columnFilters]);
   
@@ -272,6 +273,120 @@ export function useOrdersV3({
   // ============================================================================
   // FUNKCE - Načítání dat
   // ============================================================================
+  
+  /**
+   * Převede filtry z frontendu na formát pro backend API
+   * Mapuje názvy a převádí pole ID na správné parametry
+   */
+  const convertFiltersForBackend = useCallback((filters) => {
+    const backendFilters = {};
+    
+    // Pole ID uživatelů - backend očekává pole ID
+    if (filters.objednatel && Array.isArray(filters.objednatel) && filters.objednatel.length > 0) {
+      backendFilters.objednatel = filters.objednatel;
+    }
+    if (filters.garant && Array.isArray(filters.garant) && filters.garant.length > 0) {
+      backendFilters.garant = filters.garant;
+    }
+    if (filters.prikazce && Array.isArray(filters.prikazce) && filters.prikazce.length > 0) {
+      backendFilters.prikazce = filters.prikazce;
+    }
+    if (filters.schvalovatel && Array.isArray(filters.schvalovatel) && filters.schvalovatel.length > 0) {
+      backendFilters.schvalovatel = filters.schvalovatel;
+    }
+    
+    // Status - pole workflow kódů
+    if (filters.stav && Array.isArray(filters.stav) && filters.stav.length > 0) {
+      backendFilters.stav = filters.stav;
+    }
+    
+    // Datumové rozsahy
+    if (filters.dateFrom) {
+      backendFilters.datum_od = filters.dateFrom;
+    }
+    if (filters.dateTo) {
+      backendFilters.datum_do = filters.dateTo;
+    }
+    
+    // Částkové rozsahy
+    if (filters.amountFrom) {
+      backendFilters.cena_max_od = filters.amountFrom;
+    }
+    if (filters.amountTo) {
+      backendFilters.cena_max_do = filters.amountTo;
+    }
+    
+    // Boolean filtry
+    if (filters.maBytZverejneno) {
+      backendFilters.ma_byt_zverejneno = true;
+    }
+    if (filters.byloZverejneno) {
+      backendFilters.bylo_zverejneno = true;
+    }
+    if (filters.mimoradneObjednavky) {
+      backendFilters.mimoradne_udalosti = true;
+    }
+    
+    // Stav registru (checkboxy) - konverze na pole pro backend
+    // Frontend používá: maBytZverejneno, byloZverejneno checkboxy
+    // Backend očekává: stav_registru pole ['publikovano', 'nepublikovano', 'nezverejnovat']
+    const stavRegistru = [];
+    if (filters.byloZverejneno) {
+      stavRegistru.push('publikovano');
+    }
+    if (filters.maBytZverejneno && !filters.byloZverejneno) {
+      stavRegistru.push('nepublikovano');
+    }
+    if (!filters.maBytZverejneno && !filters.byloZverejneno) {
+      // Pokud nic není zaškrtnuté, mohlo by to znamenat "nezveřejňovat"
+      // Ale podle logiky je lepší to vůbec nefiltrovat
+    }
+    if (stavRegistru.length > 0) {
+      backendFilters.stav_registru = stavRegistru;
+    }
+    
+    // Textové filtry ze sloupcových filtrů
+    if (filters.cislo_objednavky) {
+      backendFilters.cislo_objednavky = filters.cislo_objednavky;
+    }
+    if (filters.predmet) {
+      backendFilters.predmet = filters.predmet;
+    }
+    if (filters.dodavatel_nazev) {
+      backendFilters.dodavatel_nazev = filters.dodavatel_nazev;
+    }
+    if (filters.financovani) {
+      backendFilters.financovani = filters.financovani;
+    }
+    
+    // Sloučené filtry (pro tabulkové filtry)
+    if (filters.objednatel_jmeno) {
+      backendFilters.objednatel_jmeno = filters.objednatel_jmeno;
+    }
+    if (filters.garant_jmeno) {
+      backendFilters.garant_jmeno = filters.garant_jmeno;
+    }
+    if (filters.prikazce_jmeno) {
+      backendFilters.prikazce_jmeno = filters.prikazce_jmeno;
+    }
+    if (filters.schvalovatel_jmeno) {
+      backendFilters.schvalovatel_jmeno = filters.schvalovatel_jmeno;
+    }
+    if (filters.stav_workflow) {
+      backendFilters.stav_workflow = filters.stav_workflow;
+    }
+    if (filters.cena_max) {
+      backendFilters.cena_max = filters.cena_max;
+    }
+    if (filters.cena_polozky) {
+      backendFilters.cena_polozky = filters.cena_polozky;
+    }
+    if (filters.cena_faktury) {
+      backendFilters.cena_faktury = filters.cena_faktury;
+    }
+    
+    return backendFilters;
+  }, []);
   
   /**
    * Načte objednávky z API
@@ -287,19 +402,8 @@ export function useOrdersV3({
     showProgress?.();
     
     try {
-      // console.log('📋 useOrdersV3: Loading orders...', {
-      //   page: currentPage,
-      //   per_page: itemsPerPage,
-      //   year: selectedYear,
-      // });
-      
-      // Připravit filtry pro backend (pouze neprázdné)
-      const activeFilters = {};
-      Object.entries(columnFilters).forEach(([key, value]) => {
-        if (value !== '' && value !== null && value !== undefined) {
-          activeFilters[key] = value;
-        }
-      });
+      // Převést filtry na backend formát
+      const activeFilters = convertFiltersForBackend(columnFilters);
       
       // Přidat dashboard filtr pro workflow stav
       if (dashboardFilters.filter_status) {
@@ -374,6 +478,7 @@ export function useOrdersV3({
     selectedYear,
     columnFilters,
     dashboardFilters,
+    convertFiltersForBackend,
     showProgress,
     hideProgress,
   ]);
@@ -381,6 +486,14 @@ export function useOrdersV3({
   // ============================================================================
   // FUNKCE - Filtrování
   // ============================================================================
+  
+  /**
+   * Změní všechny filtry najednou (pro panelové filtry)
+   */
+  const handlePanelFiltersChange = useCallback((newFilters) => {
+    setColumnFilters(newFilters);
+    setCurrentPage(1);
+  }, []);
   
   /**
    * Změní sloupcový filtr (s debounce pro text inputy)
@@ -469,10 +582,37 @@ export function useOrdersV3({
   }, [dashboardFilters.filter_status]);
   
   /**
-   * Vyčistí všechny filtry a localStorage
+   * Vyčistí VŠECHNY filtry a localStorage
+   * - Sloupcové filtry (textové, multi-select, date/price ranges, boolean)
+   * - Dashboard filtry (status, moje objednávky, archivované)
+   * - Reset na první stránku
    */
   const handleClearFilters = useCallback(() => {
+    console.log('🧹 Čistím všechny filtry...');
+    
+    // Reset všech typů sloupcových filtrů
     const emptyFilters = {
+      // Multi-select pole (user IDs a stavy)
+      objednatel: [],
+      garant: [],
+      prikazce: [],
+      schvalovatel: [],
+      stav: [],
+      
+      // Date range
+      dateFrom: '',
+      dateTo: '',
+      
+      // Price range
+      amountFrom: '',
+      amountTo: '',
+      
+      // Boolean checkboxy (registry status a extraordinary events)
+      maBytZverejneno: false,
+      byloZverejneno: false,
+      mimoradneObjednavky: false,
+      
+      // Textové filtry (pokud jsou používány - pro kompatibilitu)
       cislo_objednavky: '',
       predmet: '',
       dodavatel_nazev: '',
@@ -491,17 +631,23 @@ export function useOrdersV3({
     
     setColumnFilters(emptyFilters);
     
-    // Clear filters from localStorage
+    // Vymazat filtry z localStorage
     if (userId) {
       localStorage.removeItem(`ordersV3_columnFilters_${userId}`);
+      console.log('✅ Filtry vymazány z localStorage');
     }
     
+    // Reset dashboard filtrů
     setDashboardFilters({
       filter_status: '',
       filter_my_orders: false,
       filter_archivovano: false,
     });
+    
+    // Reset na první stránku
     setCurrentPage(1);
+    
+    console.log('✅ Všechny filtry resetovány');
   }, [userId]);
   
   // ============================================================================
@@ -723,6 +869,7 @@ export function useOrdersV3({
     setSelectedYear,
     columnFilters,
     dashboardFilters,
+    handlePanelFiltersChange,
     handleColumnFilterChange,
     handleDashboardFilterChange,
     handleClearFilters,

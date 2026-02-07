@@ -70,6 +70,11 @@ const Container = styled.div`
   margin: 0;
   min-height: calc(100vh - var(--app-fixed-offset, 140px));
   box-sizing: border-box;
+  position: relative;
+  
+  /* Fade-in animace po načtení */
+  opacity: ${props => props.$isInitialized ? 1 : 0};
+  transition: opacity 0.4s ease-in-out;
 `;
 
 
@@ -78,26 +83,35 @@ const Header = styled.div`
   align-items: center;
   justify-content: space-between;
   margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid #e5e7eb;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 1.5rem;
+  color: white;
 `;
 
 const TitleSection = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
+  order: 2;
+  
+  @media (max-width: 768px) {
+    order: 1;
+  }
 `;
 
 const Title = styled.h1`
   font-size: 2rem;
   font-weight: 700;
-  color: #1f2937;
+  color: white;
   margin: 0;
   display: flex;
   align-items: center;
   gap: 1rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 `;
 
 const Badge = styled.span`
@@ -117,6 +131,13 @@ const HeaderActions = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
+  order: 1;
+  
+  @media (max-width: 768px) {
+    order: 2;
+    width: 100%;
+    justify-content: center;
+  }
 `;
 
 const ToggleButton = styled.button`
@@ -124,18 +145,20 @@ const ToggleButton = styled.button`
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1rem;
-  background: ${props => props.$active ? '#3b82f6' : 'white'};
-  border: 2px solid ${props => props.$active ? '#3b82f6' : '#e2e8f0'};
+  background: ${props => props.$active ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.15)'};
+  border: 2px solid ${props => props.$active ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)'};
   border-radius: 8px;
-  color: ${props => props.$active ? 'white' : '#475569'};
+  color: white;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
 
   &:hover {
-    background: ${props => props.$active ? '#2563eb' : '#f1f5f9'};
-    border-color: ${props => props.$active ? '#2563eb' : '#3b82f6'};
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
   }
 
   svg {
@@ -143,51 +166,96 @@ const ToggleButton = styled.button`
   }
 `;
 
-const YearSelector = styled.select`
-  padding: 0.625rem 1rem;
-  background: white;
-  border: 2px solid #e2e8f0;
+const PeriodSelector = styled.select`
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #475569;
+  color: white;
   cursor: pointer;
   transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
 
   &:hover {
-    border-color: #3b82f6;
+    border-color: rgba(255, 255, 255, 0.5);
   }
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+  }
+
+  option {
+    background: #1e40af;
+    color: white;
   }
 `;
 
-const LoadingOverlay = styled.div`
+
+// 🎬 Loading Overlay s blur efektem a smooth transitions
+const InitializationOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(248, 250, 252, 0.95);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-`;
+  z-index: 99999;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.5s ease-in-out;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
 
-const LoadingText = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 1.125rem;
-  color: #64748b;
-  font-weight: 500;
-
-  svg {
-    font-size: 1.5rem;
-    color: #3b82f6;
+  @media (max-width: 768px) {
+    padding: 1rem;
   }
 `;
+
+const InitializationSpinner = styled.div`
+  width: 64px;
+  height: 64px;
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #f59e0b;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+  transform: scale(${props => props.$visible ? 1 : 0.8});
+  transition: transform 0.5s ease-in-out;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg) scale(1); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+`;
+
+const InitializationMessage = styled.div`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+  margin-bottom: 0.5rem;
+  transform: translateY(${props => props.$visible ? '0' : '10px'});
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: transform 0.5s ease-in-out 0.1s, opacity 0.5s ease-in-out 0.1s;
+`;
+
+const InitializationSubtext = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
+  transform: translateY(${props => props.$visible ? '0' : '10px'});
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: transform 0.5s ease-in-out 0.15s, opacity 0.5s ease-in-out 0.15s;
+`;
+
+
 
 const EmptyState = styled.div`
   display: flex;
@@ -593,6 +661,7 @@ function Orders25ListV3() {
     setSelectedYear,
     columnFilters,
     dashboardFilters,
+    handlePanelFiltersChange,
     handleColumnFilterChange,
     handleDashboardFilterChange,
     handleClearFilters,
@@ -616,10 +685,33 @@ function Orders25ListV3() {
     hideProgress,
   });
 
-  // Generovat roky pro selector
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
+  // Helper funkce pro získání labelu období
+  const getPeriodLabel = (value) => {
+    const labels = {
+      'all': 'Vše (bez omezení)',
+      'current-month': 'Aktuální měsíc',
+      'last-month': 'Poslední měsíc',
+      'last-quarter': 'Poslední kvartál',
+      'all-months': 'Všechny měsíce'
+    };
+    return labels[value] || value;
+  };
 
+  // State pro inicializaci - skryje obsah až do načtení všech dat
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // State pro výběr období
+  const [selectedPeriod, setSelectedPeriod] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_selectedPeriod_${user_id}`);
+    return saved || 'all';
+  });
+  
+  // State pro backend pagination toggle
+  const [useBackendPagination, setUseBackendPagination] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_useBackendPagination_${user_id}`);
+    return saved !== null ? JSON.parse(saved) : true; // Defaultně zapnuto
+  });
+  
   // Local state pro UI toggles s LocalStorage persistencí
   const [showDashboard, setShowDashboard] = useState(() => {
     const saved = localStorage.getItem(`ordersV3_showDashboard_${user_id}`);
@@ -658,6 +750,19 @@ function Orders25ListV3() {
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const [isSearchingForOrder, setIsSearchingForOrder] = useState(false);
+
+  // 🎯 Effect: Detekce dokončení inicializace - fade-in po načtení dat
+  useEffect(() => {
+    // Počkej až se načtou objednávky a statistiky
+    if (!loading && orders.length >= 0 && stats.total >= 0) {
+      // Krátké zpoždění pro plynulé zobrazení (300ms)
+      const timer = setTimeout(() => {
+        setIsInitialized(true);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loading, orders.length, stats.total]);
 
   // 🎯 Effect pro highlight a scroll na objednávku po návratu z editace
   useEffect(() => {
@@ -780,6 +885,13 @@ function Orders25ListV3() {
       localStorage.setItem(`ordersV3_showRowColoring_${user_id}`, JSON.stringify(showRowColoring));
     }
   }, [showRowColoring, user_id]);
+
+  // Persist selectedPeriod do localStorage
+  useEffect(() => {
+    if (user_id) {
+      localStorage.setItem(`ordersV3_selectedPeriod_${user_id}`, selectedPeriod);
+    }
+  }, [selectedPeriod, user_id]);
 
   useEffect(() => {
     if (user_id) {
@@ -972,21 +1084,47 @@ function Orders25ListV3() {
   };
 
   return (
-    <Container>
+    <>
+      {/* Initialization Overlay - zobrazí se při prvním načtení */}
+      <InitializationOverlay $visible={!isInitialized}>
+        <InitializationSpinner $visible={!isInitialized} />
+        <InitializationMessage $visible={!isInitialized}>
+          Inicializace přehledu objednávek
+        </InitializationMessage>
+        <InitializationSubtext $visible={!isInitialized}>
+          Načítám objednávky a statistiky z databáze...
+        </InitializationSubtext>
+      </InitializationOverlay>
+      
+      {/* Main Content - fade-in po inicializaci */}
+      <Container $isInitialized={isInitialized}>
       {/* Header */}
       <Header>
         <TitleSection>
           <Title>
-            <FontAwesomeIcon icon={faRocket} style={{ color: '#3b82f6' }} />
-            Objednávky V3
             <Badge>
               <FontAwesomeIcon icon={faInfoCircle} />
               BETA
             </Badge>
+            Objednávky V3
+            <FontAwesomeIcon icon={faRocket} style={{ color: 'white' }} />
           </Title>
         </TitleSection>
 
         <HeaderActions>
+          {/* Výběr období */}
+          <PeriodSelector
+            value={selectedPeriod}
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+            disabled={loading}
+          >
+            <option value="all">Vše (bez omezení)</option>
+            <option value="current-month">Aktuální měsíc</option>
+            <option value="last-month">Poslední měsíc</option>
+            <option value="last-quarter">Poslední kvartál</option>
+            <option value="all-months">Všechny měsíce</option>
+          </PeriodSelector>
+
           {/* Toggle Dashboard */}
           <ToggleButton
             $active={showDashboard}
@@ -1015,19 +1153,6 @@ function Orders25ListV3() {
           >
             <FontAwesomeIcon icon={faPalette} />
           </ToggleButton>
-
-          {/* Výběr roku */}
-          <YearSelector
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-            disabled={loading}
-          >
-            {years.map(year => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </YearSelector>
 
           {/* Konfigurace sloupců */}
           <OrdersColumnConfigV3
@@ -1075,7 +1200,7 @@ function Orders25ListV3() {
         username={username}
         userId={user_id}
         filters={columnFilters}
-        onFilterChange={handleColumnFilterChange}
+        onFilterChange={handlePanelFiltersChange}
         onClearAll={handleClearFilters}
         globalFilter={globalFilter}
         onGlobalFilterChange={setGlobalFilter}
@@ -1083,16 +1208,6 @@ function Orders25ListV3() {
         onToggleFilters={() => setShowFilters(!showFilters)}
         onHide={() => setShowFilters(false)}
       />
-
-      {/* Loading state */}
-      {loading && orders.length === 0 && (
-        <LoadingOverlay>
-          <LoadingText>
-            <FontAwesomeIcon icon={faSpinner} spin />
-            Načítám objednávky...
-          </LoadingText>
-        </LoadingOverlay>
-      )}
 
       {/* Table - zobrazit vždy */}
       <OrdersTableV3
@@ -1136,7 +1251,7 @@ function Orders25ListV3() {
 
       {/* DOCX Generator Modal - Lazy loaded for better performance */}
       {docxModalOpen && (
-        <Suspense fallback={<div>Načítání...</div>}>
+        <Suspense fallback={null}>
           <DocxGeneratorModal
             order={docxModalOrder}
             isOpen={docxModalOpen}
@@ -1145,6 +1260,7 @@ function Orders25ListV3() {
         </Suspense>
       )}
     </Container>
+    </>
   );
 }
 
