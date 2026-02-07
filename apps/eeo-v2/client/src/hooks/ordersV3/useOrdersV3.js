@@ -60,16 +60,16 @@ export function useOrdersV3({
   // STATE - Filtry - s localStorage
   // ============================================================================
   
-  const [selectedYear, setSelectedYear] = useState(() => {
+  const [selectedPeriod, setSelectedPeriod] = useState(() => {
     if (userId) {
       try {
-        const saved = localStorage.getItem(`ordersV3_selectedYear_${userId}`);
-        return saved ? parseInt(saved, 10) : new Date().getFullYear();
+        const saved = localStorage.getItem(`ordersV3_selectedPeriod_${userId}`);
+        return saved || 'all';
       } catch {
-        return new Date().getFullYear();
+        return 'all';
       }
     }
-    return new Date().getFullYear();
+    return 'all';
   });
   
   // Sloupcové filtry (pro backend) - načíst z localStorage
@@ -249,12 +249,12 @@ export function useOrdersV3({
     }
   }, [userId, itemsPerPage]);
   
-  // Uložit selectedYear do localStorage
+  // Uložit selectedPeriod do localStorage
   useEffect(() => {
-    if (userId && selectedYear) {
-      localStorage.setItem(`ordersV3_selectedYear_${userId}`, selectedYear.toString());
+    if (userId && selectedPeriod) {
+      localStorage.setItem(`ordersV3_selectedPeriod_${userId}`, selectedPeriod);
     }
-  }, [userId, selectedYear]);
+  }, [userId, selectedPeriod]);
   
   // Uložit columnFilters do localStorage
   useEffect(() => {
@@ -431,7 +431,7 @@ export function useOrdersV3({
         username,
         page: currentPage,
         per_page: itemsPerPage,
-        year: selectedYear,
+        period: selectedPeriod,
         filters: activeFilters,
         sorting: [], // TODO: Přidat podporu multi-column sorting
       });
@@ -475,7 +475,7 @@ export function useOrdersV3({
     username,
     currentPage,
     itemsPerPage,
-    selectedYear,
+    selectedPeriod,
     columnFilters,
     dashboardFilters,
     convertFiltersForBackend,
@@ -865,8 +865,8 @@ export function useOrdersV3({
     handleItemsPerPageChange,
     
     // Filtry
-    selectedYear,
-    setSelectedYear,
+    selectedPeriod,
+    setSelectedPeriod,
     columnFilters,
     dashboardFilters,
     handlePanelFiltersChange,

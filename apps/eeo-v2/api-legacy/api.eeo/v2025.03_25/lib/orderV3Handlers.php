@@ -21,6 +21,50 @@ require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
 
 /**
+ * Vypočítá datový rozsah podle zvoleného období
+ * @param string $period - 'all', 'current-month', 'last-month', 'last-quarter', 'all-months'
+ * @return array|null - ['date_from' => 'Y-m-d', 'date_to' => 'Y-m-d'] nebo null pro 'all'
+ */
+function calculatePeriodRange($period) {
+    $today = date('Y-m-d');
+    
+    switch ($period) {
+        case 'current-month':
+            // První den aktuálního měsíce až dnes
+            return array(
+                'date_from' => date('Y-m-01'),
+                'date_to' => $today
+            );
+            
+        case 'last-month':
+            // Posledních 30 dní
+            return array(
+                'date_from' => date('Y-m-d', strtotime('-30 days')),
+                'date_to' => $today
+            );
+            
+        case 'last-quarter':
+            // Posledních 90 dní (~ kvartál)
+            return array(
+                'date_from' => date('Y-m-d', strtotime('-90 days')),
+                'date_to' => $today
+            );
+            
+        case 'all-months':
+            // Celý aktuální rok
+            return array(
+                'date_from' => date('Y') . '-01-01',
+                'date_to' => date('Y') . '-12-31'
+            );
+            
+        case 'all':
+        default:
+            // Bez omezení
+            return null;
+    }
+}
+
+/**
  * Parsuje hodnotu s operátorem (>=10000, >10000, =10000, <10000, <=10000)
  * @param string $input - Input z frontendu (např. ">=10000")
  * @return array|null - ['operator' => '>=', 'value' => 10000] nebo null
@@ -326,8 +370,8 @@ function handle_order_v3_list($input, $config, $queries) {
         // DEBUG: Log pagination params
         error_log("[OrderV3] Pagination params: page=$page, per_page=$per_page, offset=$offset");
         
-        // 5. Rok pro filtrování
-        $year = isset($input['year']) ? (int)$input['year'] : date('Y');
+        // 5. Období pro filtrování (místo roku)
+        $period = isset($input['period']) ? $input['period'] : 'all';
         
         // 6. Filtry
         $filters = isset($input['filters']) ? $input['filters'] : array();
@@ -342,9 +386,16 @@ function handle_order_v3_list($input, $config, $queries) {
         // Aktivní záznamy
         $where_conditions[] = "o.aktivni = 1";
         
-        // Rok
-        $where_conditions[] = "YEAR(o.dt_objednavky) = ?";
-        $where_params[] = $year;
+        // Období - filtrování podle datumu
+        $period_range = calculatePeriodRange($period);
+        if ($period_range !== null) {
+            $where_conditions[] = "o.dt_objednavky BETWEEN ? AND ?";
+            $where_params[] = $period_range['date_from'];
+            $where_params[] = $period_range['date_to'];
+            error_log("[OrderV3] Period filter: {$period} -> {$period_range['date_from']} to {$period_range['date_to']}");
+        } else {
+            error_log("[OrderV3] Period filter: {$period} -> no date restriction");
+        }
         
         // Dynamické filtry
         if (!empty($filters['cislo_objednavky'])) {
@@ -732,7 +783,7 @@ function handle_order_v3_list($input, $config, $queries) {
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;
         if ($page === 1) {
-            $stats = getOrderStats($db, $year, $user_id, $where_sql, $where_params);
+            $stats = getOrderStatsWithPeriod($db, $period, $user_id, $where_sql, $where_params);
         }
 
         // 12. Hlavní query pro data
@@ -871,6 +922,183 @@ function handle_order_v3_list($input, $config, $queries) {
  * @param int $user_id ID přihlášeného uživatele (pro "moje objednávky")
  * @param string $filtered_where_sql WHERE podmínky pro filtrované objednávky (volitelné)
  * @param array $filtered_where_params Parametry pro WHERE podmínky (volitelné)
+ */
+/**
+ * Wrapper funkce pro statistiky s podporou období
+ * @param PDO $db
+ * @param string $period - 'all', 'current-month', 'last-month', 'last-quarter', 'all-months'
+ * @param int $user_id
+ * @param string|null $filtered_where_sql - Volitelné dodatečné WHERE podmínky
+ * @param array $filtered_where_params - Parametry pro additional WHERE
+ * @return array Statistiky
+ */
+function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql = null, $filtered_where_params = array()) {
+    $period_range = calculatePeriodRange($period);
+    
+    // Upravit WHERE podmínku podle období
+    if ($period_range !== null) {
+        $date_where = "o.dt_objednavky BETWEEN ? AND ?";
+        $date_params = array($period_range['date_from'], $period_range['date_to']);
+    } else {
+        // Bez omezení - žádná podmínka
+        $date_where = "1=1";
+        $date_params = array();
+    }
+    
+    // Sestavit stats query
+    $sql_stats = "
+        SELECT 
+            COUNT(*) as total,
+            -- NOVÉ (první stav v array)
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, '$[0]')) = 'NOVA' THEN 1 
+                ELSE 0 
+            END) as nove,
+            -- KE SCHVÁLENÍ (ODESLANA_KE_SCHVALENI nebo KE_SCHVALENI)
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) IN ('ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI') THEN 1 
+                ELSE 0 
+            END) as ke_schvaleni,
+            -- SCHVÁLENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'SCHVALENA' THEN 1 
+                ELSE 0 
+            END) as schvalena,
+            -- ZAMÍTNUTÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZAMITNUTA' THEN 1 
+                ELSE 0 
+            END) as zamitnuta,
+            -- ROZPRACOVANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ROZPRACOVANA' THEN 1 
+                ELSE 0 
+            END) as rozpracovana,
+            -- ODESLANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ODESLANA' THEN 1 
+                ELSE 0 
+            END) as odeslana,
+            -- POTVRZENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'POTVRZENA' THEN 1 
+                ELSE 0 
+            END) as potvrzena,
+            -- K UVEŘEJNĚNÍ (UVEREJNIT v workflow)
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT' THEN 1 
+                ELSE 0 
+            END) as k_uverejneni_do_registru,
+            -- UVEŘEJNĚNÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNENA' THEN 1 
+                ELSE 0 
+            END) as uverejnene,
+            -- FAKTURACE
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'FAKTURACE' THEN 1 
+                ELSE 0 
+            END) as fakturace,
+            -- VĚCNÁ SPRÁVNOST
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'VECNA_SPRAVNOST' THEN 1 
+                ELSE 0 
+            END) as vecna_spravnost,
+            -- ZKONTROLOVANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZKONTROLOVANA' THEN 1 
+                ELSE 0 
+            END) as zkontrolovana,
+            -- DOKONČENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'DOKONCENA' THEN 1 
+                ELSE 0 
+            END) as dokoncena,
+            -- ZRUŠENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZRUSENA' THEN 1 
+                ELSE 0 
+            END) as zrusena,
+            -- SMAZANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'SMAZANA' THEN 1 
+                ELSE 0 
+            END) as smazana,
+            -- S FAKTURAMI
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_FAKTURY . " f 
+                    WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                ) THEN 1 
+                ELSE 0 
+            END) as withInvoices,
+            -- S PŘÍLOHAMI
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p 
+                    WHERE p.objednavka_id = o.id
+                ) THEN 1 
+                ELSE 0 
+            END) as withAttachments,
+            -- MIMOŘÁDNÉ UDÁLOSTI
+            SUM(CASE 
+                WHEN o.mimoradna_udalost = 1 THEN 1 
+                ELSE 0 
+            END) as mimoradneUdalosti,
+            -- MOJE OBJEDNÁVKY
+            SUM(CASE 
+                WHEN o.objednatel_id = ? OR 
+                    o.garant_uzivatel_id = ? OR 
+                    o.prikazce_id = ? OR 
+                    o.schvalovatel_id = ?
+                THEN 1 
+                ELSE 0 
+            END) as mojeObjednavky
+        FROM " . TBL_OBJEDNAVKY . " o
+        WHERE o.aktivni = 1 AND $date_where
+    ";
+    
+    $stmt_params = array_merge(array($user_id, $user_id, $user_id, $user_id), $date_params);
+    $stmt_stats = $db->prepare($sql_stats);
+    $stmt_stats->execute($stmt_params);
+    $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+    
+    // Celková cena s DPH
+    $sql_total_amount = "
+        SELECT 
+            COALESCE(SUM(
+                CASE
+                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
+                          FROM " . TBL_FAKTURY . " f 
+                          WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0 
+                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
+                          FROM " . TBL_FAKTURY . " f 
+                          WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                    WHEN (SELECT COALESCE(SUM(p.celkova_cena_s_dph), 0) 
+                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " p 
+                          WHERE p.objednavka_id = o.id AND p.aktivni = 1) > 0 
+                    THEN (SELECT COALESCE(SUM(p.celkova_cena_s_dph), 0) 
+                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " p 
+                          WHERE p.objednavka_id = o.id AND p.aktivni = 1)
+                    ELSE o.max_cena_s_dph
+                END
+            ), 0) as total_amount
+        FROM " . TBL_OBJEDNAVKY . " o
+        WHERE o.aktivni = 1 AND $date_where
+    ";
+    
+    $stmt_amount = $db->prepare($sql_total_amount);
+    $stmt_amount->execute($date_params);
+    $amount_result = $stmt_amount->fetch(PDO::FETCH_ASSOC);
+    
+    $stats['total_amount'] = floatval($amount_result['total_amount']);
+    
+    return $stats;
+}
+
+/**
+ * Načte statistiky objednávek podle roku (původní funkce - zachována pro backward compatibility)
+ * @deprecated Použij getOrderStatsWithPeriod
  */
 function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $filtered_where_params = array()) {
     // Počty objednávek podle stavů (poslední stav v workflow array)
@@ -1166,8 +1394,9 @@ function handle_order_v3_stats($input, $config, $queries) {
         
         TimezoneHelper::setMysqlTimezone($db);
         
-        $year = isset($input['year']) ? (int)$input['year'] : date('Y');
-        $stats = getOrderStats($db, $year, $user_id);
+        // Období pro filtrování (místo roku)
+        $period = isset($input['period']) ? $input['period'] : 'all';
+        $stats = getOrderStatsWithPeriod($db, $period, $user_id);
 
         http_response_code(200);
         echo json_encode(array(
