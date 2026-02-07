@@ -177,15 +177,6 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
     }
   };
 
-  // 🔍 DEBUG: Log všech props a state changes (po definici formatDisplayDate)
-  console.log('📅 DatePicker RENDER:', {
-    fieldName,
-    value,
-    inputValue,
-    displayText: inputValue !== '' ? inputValue : (value ? formatDisplayDate(value) : ''),
-    timestamp: new Date().toISOString()
-  });
-
   // Format date for input (YYYY-MM-DD)
   const formatInputDate = (date) => {
     const d = new Date(date);
@@ -230,20 +221,8 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
 
   const handleDateSelect = (date) => {
     const formattedDate = formatInputDate(date);
-    console.log('🗓️ DatePicker SELECT:', {
-      fieldName,
-      selectedDate: date,
-      formattedDate,
-      currentValue: value,
-      currentInputValue: inputValue
-    });
-    
     setInputValue(''); // Reset inputValue - použije se formátované datum
-    console.log('✨ DatePicker setInputValue(\'\') after select for:', fieldName);
-    
     onChange(formattedDate);
-    console.log('🚀 DatePicker onChange called with:', formattedDate, 'for:', fieldName);
-    
     if (onBlur) {
       onBlur(formattedDate);
     }
@@ -275,34 +254,16 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   };
 
   const handleClear = (e) => {
-    console.log('🗋 DatePicker CLEAR START:', {
-      fieldName,
-      currentValue: value,
-      currentInputValue: inputValue,
-      event: e?.type
-    });
-    
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    
     setInputValue(''); // Reset inputValue okamžitě
-    console.log('✨ DatePicker setInputValue(\'\') called for:', fieldName);
-    
     onChange('');
-    console.log('🚀 DatePicker onChange(\'\') called for:', fieldName);
-    
     if (onBlur) {
       onBlur('');
     }
     setIsOpen(false);
-    
-    console.log('✅ DatePicker CLEAR END:', {
-      fieldName,
-      newValue: '',
-      newInputValue: ''
-    });
   };
 
   const prevMonth = (e) => {
@@ -349,13 +310,6 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   useEffect(() => {
     // ✅ OPRAVA: Vždy aktualizovat inputValue když se změní value (i když uživatel nepíše)
     const formattedValue = value ? formatDisplayDate(value) : '';
-    console.log('🔄 DatePicker useEffect SYNC:', {
-      fieldName,
-      oldInputValue: inputValue,
-      newValue: value,
-      formattedValue,
-      willUpdate: true
-    });
     // Vždy aktualizovat - bez porovnání pro vyřešení problémů s caching
     setInputValue(formattedValue);
   }, [value]);

@@ -277,12 +277,16 @@ EXISTS (SELECT 1 FROM 25a_objednavky_lp_prirazeni lpr
 - Přílohy: originalni_nazev_souboru, typ_prilohy
 - Položky: popis, poznamka
 - Uživatelé: jmeno, prijmeni (všichni 4 typy)
+- **🆕 ROZŠÍŘENO 7. února 2026:**
+  - **Uživatelé:** Všechna uživatelská ID (uzivatel_id, uzivatel_akt_id, odesilatel_id, dodavatel_potvrdil_id, zverejnil_id, fakturant_id, dokoncil_id, potvrdil_vecnou_spravnost_id, zamek_uzivatel_id) + emaily
+  - **Smlouvy:** cislo_smlouvy, nazev_smlouvy, poznamka + JSON individuální schválení
+  - **LP kódy:** cislo_lp, nazev_uctu z tabulky + propojení přes JSON financování
 
 ### 🔄 TODO:
-- [ ] Analýza UI komponent Order25ListV3
-- [ ] DESCRIBE všech related tabulek
-- [ ] Mapování UI → DB polí
-- [ ] Rozšíření fulltext search o všechna pole
-- [ ] Kompletní testování
+- [ ] ~~Analýza UI komponent Order25ListV3~~ ✅ HOTOVO
+- [ ] ~~DESCRIBE všech related tabulek~~ ✅ HOTOVO  
+- [ ] ~~Mapování UI → DB polí~~ ✅ HOTOVO
+- [ ] ~~Rozšíření fulltext search o všechna pole~~ ✅ HOTOVO
+- [ ] **TESTOVÁNÍ** - kompletní testování nových funkcí
 
 **ZAČÍNAT: Najít Order25ListV3.jsx a analyzovat všechny zobrazované informace.**

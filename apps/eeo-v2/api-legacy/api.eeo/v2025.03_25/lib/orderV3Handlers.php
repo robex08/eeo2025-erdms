@@ -408,8 +408,15 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Dynamické filtry
         if (!empty($filters['cislo_objednavky'])) {
-            $where_conditions[] = "o.cislo_objednavky LIKE ?";
+            // Vyhledávat v čísle objednávky NEBO v popisu položek
+            $where_conditions[] = "(o.cislo_objednavky LIKE ? OR EXISTS(
+                SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                WHERE pol.objednavka_id = o.id 
+                AND pol.aktivni = 1 
+                AND pol.popis LIKE ?
+            ))";
             $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
+            $where_params[] = '%' . $filters['cislo_objednavky'] . '%'; // Pro EXISTS clause
         }
         
         if (!empty($filters['dodavatel_nazev'])) {
@@ -418,8 +425,15 @@ function handle_order_v3_list($input, $config, $queries) {
         }
         
         if (!empty($filters['predmet'])) {
-            $where_conditions[] = "o.predmet LIKE ?";
+            // Vyhledávat v předmětu objednávky NEBO v popisu položek
+            $where_conditions[] = "(o.predmet LIKE ? OR EXISTS(
+                SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                WHERE pol.objednavka_id = o.id 
+                AND pol.aktivni = 1 
+                AND pol.popis LIKE ?
+            ))";
             $where_params[] = '%' . $filters['predmet'] . '%';
+            $where_params[] = '%' . $filters['predmet'] . '%'; // Pro EXISTS clause
         }
         
         // 🔍 DEBUG: Log příchozích filtrů
@@ -654,6 +668,9 @@ function handle_order_v3_list($input, $config, $queries) {
                 // + FAKTURY: číslo, poznámka, věcná správnost
                 // + PŘÍLOHY: název souboru, typ přílohy
                 // + POLOŽKY: popis, poznámka
+                // + UŽIVATELÉ: všechna uživatelská ID + emaily
+                // + SMLOUVY: číslo a název smluv + individuální schválení z JSON
+                // + LP KÓDY: číslo LP a název účtu z tabulky + kódy z JSON financování
                 // Case-insensitive pomocí LOWER() a bez diakritiky pomocí REPLACE()
                 $where_conditions[] = "(
                     LOWER(o.cislo_objednavky) LIKE LOWER(?) OR
@@ -669,15 +686,61 @@ function handle_order_v3_list($input, $config, $queries) {
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                         CONCAT(u1.jmeno, ' ', u1.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
+                    LOWER(u1.email) LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                         CONCAT(u2.jmeno, ' ', u2.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
+                    LOWER(u2.email) LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                         CONCAT(u3.jmeno, ' ', u3.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
+                    LOWER(u3.email) LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                         CONCAT(u4.jmeno, ' ', u4.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
+                    LOWER(u4.email) LIKE LOWER(?) OR
+                    -- Další uživatelé přes dodatečné EXISTS (nemůžeme dělat nekonečně JOINů)
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_UZIVATELE . " ux 
+                        WHERE (
+                            ux.id = o.uzivatel_id OR ux.id = o.uzivatel_akt_id OR ux.id = o.odesilatel_id OR 
+                            ux.id = o.dodavatel_potvrdil_id OR ux.id = o.zverejnil_id OR ux.id = o.fakturant_id OR 
+                            ux.id = o.dokoncil_id OR ux.id = o.potvrdil_vecnou_spravnost_id OR ux.id = o.zamek_uzivatel_id
+                        ) AND (
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                CONCAT(ux.jmeno, ' ', ux.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?) OR
+                            LOWER(ux.email) LIKE LOWER(?)
+                        )
+                    ) OR
+                    -- Hledání v smlouvách (číslo a název) + JSON individuální schválení 
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_SMLOUVY . " s
+                        WHERE s.aktivni = 1 AND (
+                            LOWER(s.cislo_smlouvy) LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                s.nazev_smlouvy, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                s.poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?)
+                        )
+                    ) OR
+                    -- Hledání v individuálním schválení z JSON financování
+                    LOWER(JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni'))) LIKE LOWER(?) OR
+                    -- Hledání v LP kódech z tabulky
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
+                        WHERE (
+                            LOWER(lp.cislo_lp) LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                lp.nazev_uctu, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?)
+                        ) AND (
+                            -- Hledání LP kódu v JSON financování
+                            JSON_SEARCH(JSON_EXTRACT(o.financovani, '$.doplnujici_data.lp_kod'), 'one', CAST(lp.id AS CHAR)) IS NOT NULL
+                        )
+                    ) OR
                     EXISTS (
                         SELECT 1 FROM " . TBL_FAKTURY . " f 
                         WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (
@@ -722,7 +785,15 @@ function handle_order_v3_list($input, $config, $queries) {
                 
                 // Přidáme parametry: první běžný pattern, zbytek bez diakritiky
                 $where_params[] = $search_pattern; // cislo_objednavky (číselné, bez diakritiky)
-                for ($i = 0; $i < 15; $i++) { // 7 původních + 8 nových (4+2+2)
+                
+                // SPRÁVNÝ POČET PARAMETRŮ (celkem 27):
+                // - 3 základní (predmet, poznamka, dodavatel)
+                // - 8 uživatelé u1-u4 (4 jména + 4 emaily)
+                // - 2 dodatečni uživatelé EXISTS (jmeno+email)
+                // - 4 smlouvy (cislo, nazev, poznamka + JSON)
+                // - 2 LP kódy (cislo_lp, nazev_uctu)
+                // - 8 původních (4 faktury + 2 přílohy + 2 položky)
+                for ($i = 0; $i < 27; $i++) {
                     $where_params[] = $search_pattern_no_diacritics; // textové sloupce
                 }
                 
@@ -745,6 +816,12 @@ function handle_order_v3_list($input, $config, $queries) {
         if (!empty($filters['datum_do'])) {
             $where_conditions[] = "DATE(o.dt_objednavky) <= ?";
             $where_params[] = $filters['datum_do'];
+        }
+        
+        // Přesné datum z tabulkového sloupce
+        if (!empty($filters['datum_presne'])) {
+            $where_conditions[] = "DATE(o.dt_objednavky) = ?";
+            $where_params[] = $filters['datum_presne'];
         }
         
         // Číselné filtry s operátory (>=10000, <=50000, =25000)
