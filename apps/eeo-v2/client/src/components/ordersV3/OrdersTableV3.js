@@ -2270,7 +2270,7 @@ const OrdersTableV3 = ({
     onSortingChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    enableSortingRemoval: false,
+    enableSortingRemoval: true, // Povolit 3-state sorting: asc -> desc -> none
     enableMultiSort: true, // Povolit multi-column sorting
     maxMultiSortColCount: 5, // Maximálně 5 sloupců pro třídění
     isMultiSortEvent: (e) => e.shiftKey, // Shift+click pro multi-sort
