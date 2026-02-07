@@ -680,7 +680,7 @@ export function useOrdersV3({
    */
   useEffect(() => {
     if (token && username) {
-      console.log('🔍 useOrdersV3 effect triggered, globalFilter:', globalFilter);
+      // console.log('🔍 useOrdersV3 effect triggered, globalFilter:', globalFilter);
       loadOrders(globalFilter); // ✅ Používej globalFilter i v základním načtení
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
