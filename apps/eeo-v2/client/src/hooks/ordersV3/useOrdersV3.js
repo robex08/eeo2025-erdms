@@ -421,14 +421,6 @@ export function useOrdersV3({
    * ✅ OPTIMALIZACE: Column filter s debounce z config
    */
   const handleColumnFilterChange = useCallback((columnId, value, debounceMs = ORDERS_V3_CONFIG.FILTER_DEBOUNCE_DELAY) => {
-    console.log('🎯 useOrdersV3 handleColumnFilterChange START:', {
-      columnId,
-      value,
-      type: typeof value,
-      debounceMs,
-      timestamp: new Date().toISOString()
-    });
-    
     // Mapování ID sloupců z tabulky na názvy API parametrů
     const columnToFilterMapping = {
       'cislo_objednavky': 'cislo_objednavky',
@@ -479,14 +471,6 @@ export function useOrdersV3({
           }
         });
       } else {
-        console.log('💾 useOrdersV3 UPDATE PREFERENCES:', {
-          columnId,
-          filterName,
-          value,
-          oldColumnFilters: columnFilters,
-          newColumnFilters: { ...columnFilters, [filterName]: value }
-        });
-        
         updatePreferences({
           columnFilters: {
             ...columnFilters,

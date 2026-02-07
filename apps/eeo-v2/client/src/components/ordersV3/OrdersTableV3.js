@@ -1638,13 +1638,6 @@ const OrdersTableV3 = ({
   
   // Debounced filter change - posílá změny do parent komponenty po 1000ms
   const handleFilterChange = useCallback((columnId, value) => {
-    console.log('🔄 OrdersTableV3 handleFilterChange START:', { 
-      columnId, 
-      value, 
-      type: Array.isArray(value) ? 'array' : typeof value,
-      timestamp: new Date().toISOString()
-    });
-    
     // ✅ Mapování UI column názvů na backend parametry
     const columnToBackendMapping = {
       'stav_objednavky': 'stav',
@@ -1652,22 +1645,12 @@ const OrdersTableV3 = ({
     };
     
     const backendColumnId = columnToBackendMapping[columnId] || columnId;
-    console.log('🗺️ OrdersTableV3 MAPPING:', { 
-      uiColumn: columnId, 
-      backendColumn: backendColumnId 
-    });
     
     // Update lokální state okamžitě (pro UI s UI názvy)
-    setLocalColumnFilters(prev => {
-      const newState = { ...prev, [columnId]: value };
-      console.log('📱 OrdersTableV3 setLocalColumnFilters:', {
-        columnId,
-        value,
-        oldState: prev,
-        newState
-      });
-      return newState;
-    });
+    setLocalColumnFilters(prev => ({
+      ...prev,
+      [columnId]: value  // UI column název
+    }));
     
     // Debounce pro volání API (300ms pro rychlejší response)
     if (filterTimers.current[columnId]) {
@@ -1675,12 +1658,6 @@ const OrdersTableV3 = ({
     }
     
     filterTimers.current[columnId] = setTimeout(() => {
-      console.log('⏰ OrdersTableV3 DEBOUNCE END - calling parent callback:', { 
-        columnId, 
-        backendColumnId, 
-        value, 
-        isArray: Array.isArray(value) 
-      });
       // ✅ Volání parent callback pro API update - použij BACKEND column ID
       if (onColumnFiltersChange) {
         onColumnFiltersChange(backendColumnId, value);
