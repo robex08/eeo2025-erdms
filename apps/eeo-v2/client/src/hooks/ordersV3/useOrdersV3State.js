@@ -33,9 +33,20 @@ export function useOrdersV3State(userId) {
       keys.forEach(key => {
         const value = localStorage.getItem(`${STORAGE_PREFIX}_${key}_${userId}`);
         if (value !== null) {
-          saved[key] = key.includes('Filters') || key.includes('expanded') || key.includes('column') 
+          const parsedValue = key.includes('Filters') || key.includes('expanded') || key.includes('column') 
             ? JSON.parse(value) 
             : (key === 'itemsPerPage' ? parseInt(value, 10) : value);
+          saved[key] = parsedValue;
+          
+          // Debug log pro column filtry
+          if (key === 'columnFilters') {
+            console.log('📖 LOCALSTORAGE LOAD columnFilters:', {
+              userId,
+              raw: value,
+              parsed: parsedValue,
+              datum_presne: parsedValue?.datum_presne
+            });
+          }
         }
       });
       
@@ -62,10 +73,20 @@ export function useOrdersV3State(userId) {
       try {
         Object.entries(newPreferences).forEach(([key, value]) => {
           const storageKey = `${STORAGE_PREFIX}_${key}_${userId}`;
-          if (typeof value === 'object') {
-            localStorage.setItem(storageKey, JSON.stringify(value));
-          } else {
-            localStorage.setItem(storageKey, String(value));
+          const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+          
+          localStorage.setItem(storageKey, stringValue);
+          
+          // Debug log pro column filtry
+          if (key === 'columnFilters') {
+            console.log('💾 LOCALSTORAGE SAVE columnFilters:', {
+              userId,
+              key,
+              storageKey,
+              value,
+              stringValue,
+              datum_presne: value?.datum_presne
+            });
           }
         });
       } catch (err) {

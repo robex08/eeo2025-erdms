@@ -38,6 +38,14 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
   const cacheRef = useRef(new Map());
   
   /**
+   * ✅ CACHE INVALIDATION: Vymaže cache při změně filtrů
+   */
+  const clearCache = useCallback(() => {
+    cacheRef.current.clear();
+    // console.log('🗑️ Cache cleared due to filters change');
+  }, []);
+  
+  /**
    * ✅ OPTIMALIZACE: Deduplikované API volání s cache
    */
   const fetchData = useCallback(async (params) => {
@@ -142,14 +150,6 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
       hideProgress?.();
     }
   }, [hideProgress]);
-  
-  /**
-   * ✅ OPTIMALIZACE: Clear cache
-   */
-  const clearCache = useCallback(() => {
-    cacheRef.current.clear();
-    // console.log('🗑️ API cache cleared');
-  }, []);
   
   /**
    * ✅ OPTIMALIZACE: Get cache status for debugging

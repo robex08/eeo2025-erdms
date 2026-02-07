@@ -388,7 +388,7 @@ const FilterLabel = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #475569;
   margin-bottom: 0.125rem;
@@ -504,7 +504,7 @@ const DateInputWrapper = styled.div`
 const DateSeparator = styled.span`
   color: #9ca3af;
   font-weight: 500;
-  font-size: 1rem;
+  font-size: 0.875rem;
 `;
 
 const PriceRangeGroup = styled(FilterGroup)`
@@ -541,7 +541,7 @@ const PriceInputWrapper = styled.div`
 const PriceSeparator = styled.span`
   color: #9ca3af;
   font-weight: 500;
-  font-size: 1rem;
+  font-size: 0.875rem;
 `;
 
 const ActionButton = styled.button`
@@ -785,7 +785,9 @@ const OrdersFiltersV3Full = ({
   };
 
   const clearFilter = (field) => {
-    handleFilterChange(field, Array.isArray(filters[field]) ? [] : '');
+    const newValue = Array.isArray(filters[field]) ? [] : '';
+    // Přít použít onFilterChange aby se správně uložilo do localStorage
+    onFilterChange({ ...filters, [field]: newValue });
   };
 
   return (
@@ -997,17 +999,6 @@ const OrdersFiltersV3Full = ({
                 <FontAwesomeIcon icon={faCalendarAlt} />
                 Datum od - do
               </FilterLabelLeft>
-              <FilterClearButton
-                type="button"
-                visible={filters.dateFrom || filters.dateTo}
-                onClick={() => {
-                  clearFilter('dateFrom');
-                  clearFilter('dateTo');
-                }}
-                title="Vymazat filtr"
-              >
-                <FontAwesomeIcon icon={faTimes} />
-              </FilterClearButton>
             </FilterLabel>
             <DateRangeInputs>
               <DateInputWrapper>
@@ -1037,20 +1028,9 @@ const OrdersFiltersV3Full = ({
                 <FontAwesomeIcon icon={faMoneyBillWave} />
                 Cena od - do (Kč)
               </FilterLabelLeft>
-              <FilterClearButton
-                type="button"
-                visible={filters.amountFrom || filters.amountTo}
-                onClick={() => {
-                  clearFilter('amountFrom');
-                  clearFilter('amountTo');
-                }}
-                title="Vymazat filtr"
-              >
-                <FontAwesomeIcon icon={faTimes} />
-              </FilterClearButton>
             </FilterLabel>
             <PriceRangeInputs>
-              <PriceInputWrapper>
+              <PriceInputWrapper style={{ position: 'relative' }}>
                 <FontAwesomeIcon icon={faMoneyBillWave} />
                 <FilterInput
                   type="text"
@@ -1058,11 +1038,59 @@ const OrdersFiltersV3Full = ({
                   value={formatNumberWithSpaces(filters.amountFrom)}
                   onChange={handleAmountFromChange}
                   hasIcon
-                  style={{ textAlign: 'right', paddingRight: '2.5rem' }}
+                  style={{ textAlign: 'right', paddingRight: filters.amountFrom ? '2.8rem' : '2.5rem' }}
                 />
+                {filters.amountFrom && (
+                  <button
+                    type="button"
+                    onClick={() => clearFilter('amountFrom')}
+                    title="Smazat minimum"
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      color: '#94a3b8',
+                      border: 'none',
+                      borderRadius: '4px',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      fontWeight: 'normal',
+                      lineHeight: '1',
+                      transition: 'all 0.15s ease',
+                      zIndex: 2,
+                      padding: 0,
+                      opacity: 0.7
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.color = '#64748b';
+                      e.target.style.transform = 'translateY(-50%) scale(1.15)';
+                      e.target.style.opacity = '1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.color = '#94a3b8';
+                      e.target.style.transform = 'translateY(-50%)';
+                      e.target.style.opacity = '0.7';
+                    }}
+                    onMouseDown={(e) => {
+                      e.target.style.transform = 'translateY(-50%) scale(0.9)';
+                    }}
+                    onMouseUp={(e) => {
+                      e.target.style.transform = 'translateY(-50%) scale(1.15)';
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
               </PriceInputWrapper>
               <PriceSeparator>—</PriceSeparator>
-              <PriceInputWrapper>
+              <PriceInputWrapper style={{ position: 'relative' }}>
                 <FontAwesomeIcon icon={faMoneyBillWave} />
                 <FilterInput
                   type="text"
@@ -1070,8 +1098,56 @@ const OrdersFiltersV3Full = ({
                   value={formatNumberWithSpaces(filters.amountTo)}
                   onChange={handleAmountToChange}
                   hasIcon
-                  style={{ textAlign: 'right', paddingRight: '2.5rem' }}
+                  style={{ textAlign: 'right', paddingRight: filters.amountTo ? '2.8rem' : '2.5rem' }}
                 />
+                {filters.amountTo && (
+                  <button
+                    type="button"
+                    onClick={() => clearFilter('amountTo')}
+                    title="Smazat maximum"
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      color: '#94a3b8',
+                      border: 'none',
+                      borderRadius: '4px',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      fontWeight: 'normal',
+                      lineHeight: '1',
+                      transition: 'all 0.15s ease',
+                      zIndex: 2,
+                      padding: 0,
+                      opacity: 0.7
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.color = '#64748b';
+                      e.target.style.transform = 'translateY(-50%) scale(1.15)';
+                      e.target.style.opacity = '1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.color = '#94a3b8';
+                      e.target.style.transform = 'translateY(-50%)';
+                      e.target.style.opacity = '0.7';
+                    }}
+                    onMouseDown={(e) => {
+                      e.target.style.transform = 'translateY(-50%) scale(0.9)';
+                    }}
+                    onMouseUp={(e) => {
+                      e.target.style.transform = 'translateY(-50%) scale(1.15)';
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
               </PriceInputWrapper>
             </PriceRangeInputs>
           </PriceRangeGroup>
