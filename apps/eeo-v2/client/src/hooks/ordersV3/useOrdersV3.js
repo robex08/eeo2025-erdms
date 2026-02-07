@@ -185,24 +185,27 @@ export function useOrdersV3({
   // ============================================================================
   
   /**
-   * 🎯 REFACTORED: Převede filtry na backend formát - JEDNODUŠE!
-   * Odstranění zbytečných mappingů - backend očekává stejné názvy jako frontend
+   * Převede filtry z frontendu na formát pro backend API
+   * Mapuje názvy a převádí pole ID na správné parametry
    */
   const convertFiltersForBackend = useCallback((filters, globalFilterValue) => {
+    console.log('🔄 Converting filters for backend:', {
+      filters,
+      filterKeys: Object.keys(filters),
+      filterValues: Object.values(filters),
+      globalFilterValue,
+      stavValue: filters.stav,
+      stavType: typeof filters.stav
+    });
+    
     const backendFilters = {};
     
-    // ✨ FULLTEXT SEARCH - hlavní search box
+    // ✨ GLOBAL FILTER - fulltext search ve všech polích
     if (globalFilterValue && globalFilterValue.trim()) {
       backendFilters.fulltext_search = globalFilterValue.trim();
     }
     
-    // 🔹 TEXTOVÉ FILTRY - přímé mapování bez zbytečných transformací
-    if (filters.cislo_objednavky) backendFilters.cislo_objednavky = filters.cislo_objednavky;
-    if (filters.predmet) backendFilters.predmet = filters.predmet;
-    if (filters.dodavatel_nazev) backendFilters.dodavatel_nazev = filters.dodavatel_nazev;
-    if (filters.financovani) backendFilters.financovani = filters.financovani;
-    
-    // 🔹 ID POLE (users) - backend očekává pole ID
+    // Pole ID uživatelů - backend očekává pole ID
     if (filters.objednatel && Array.isArray(filters.objednatel) && filters.objednatel.length > 0) {
       backendFilters.objednatel = filters.objednatel;
     }
@@ -216,28 +219,105 @@ export function useOrdersV3({
       backendFilters.schvalovatel = filters.schvalovatel;
     }
     
-    // 🔹 STATUS - pole workflow kódů (select posílá KÓD přímo z číselníku)
+    // Status - pole workflow kódů (select posílá KÓD přímo z číselníku)
     if (filters.stav) {
+      // ✅ Select filter posílá KÓD přímo (např. "FAKTURACE", "POTVRZENA")
       let stavArray = [];
       if (typeof filters.stav === 'string') {
         stavArray = [filters.stav.trim()];
       } else if (Array.isArray(filters.stav) && filters.stav.length > 0) {
         stavArray = filters.stav.map(s => String(s).trim());
       }
+      
       if (stavArray.length > 0) {
         backendFilters.stav = stavArray;
       }
     }
     
-    // 🔹 ČÁSTKOVÉ FILTRY s operátory (>=10000)
-    if (filters.cena_max) backendFilters.cena_max = filters.cena_max;
-    if (filters.cena_polozky) backendFilters.cena_polozky = filters.cena_polozky;
-    if (filters.cena_faktury) backendFilters.cena_faktury = filters.cena_faktury;
+    // Datumové rozsahy
+    if (filters.dateFrom) {
+      backendFilters.datum_od = filters.dateFrom;
+    }
+    if (filters.dateTo) {
+      backendFilters.datum_do = filters.dateTo;
+    }
     
-    // 🔹 BOOLEAN FILTRY
-    if (filters.mimoradne_udalosti) backendFilters.mimoradne_udalosti = true;
-    if (filters.s_fakturou) backendFilters.s_fakturou = true;
-    if (filters.s_prilohami) backendFilters.s_prilohami = true;
+    // Částkové rozsahy
+    if (filters.amountFrom) {
+      backendFilters.cena_max_od = filters.amountFrom;
+    }
+    if (filters.amountTo) {
+      backendFilters.cena_max_do = filters.amountTo;
+    }
+    
+    // Boolean filtry
+    if (filters.maBytZverejneno) {
+      backendFilters.ma_byt_zverejneno = true;
+    }
+    if (filters.byloZverejneno) {
+      backendFilters.bylo_zverejneno = true;
+    }
+    if (filters.mimoradneObjednavky) {
+      backendFilters.mimoradne_udalosti = true;
+    }
+    
+    // Stav registru (checkboxy) - konverze na pole pro backend
+    // Frontend používá: maBytZverejneno, byloZverejneno checkboxy
+    // Backend očekává: stav_registru pole ['publikovano', 'nepublikovano', 'nezverejnovat']
+    const stavRegistru = [];
+    if (filters.byloZverejneno) {
+      stavRegistru.push('publikovano');
+    }
+    if (filters.maBytZverejneno && !filters.byloZverejneno) {
+      stavRegistru.push('nepublikovano');
+    }
+    if (!filters.maBytZverejneno && !filters.byloZverejneno) {
+      // Pokud nic není zaškrtnuté, mohlo by to znamenat "nezveřejňovat"
+      // Ale podle logiky je lepší to vůbec nefiltrovat
+    }
+    if (stavRegistru.length > 0) {
+      backendFilters.stav_registru = stavRegistru;
+    }
+    
+    // Textové filtry ze sloupcových filtrů
+    if (filters.cislo_objednavky) {
+      backendFilters.cislo_objednavky = filters.cislo_objednavky;
+    }
+    if (filters.predmet) {
+      backendFilters.predmet = filters.predmet;
+    }
+    if (filters.dodavatel_nazev) {
+      backendFilters.dodavatel_nazev = filters.dodavatel_nazev;
+    }
+    if (filters.financovani) {
+      backendFilters.financovani = filters.financovani;
+    }
+    
+    // Sloučené filtry (pro tabulkové filtry)
+    if (filters.objednatel_jmeno) {
+      backendFilters.objednatel_jmeno = filters.objednatel_jmeno;
+    }
+    if (filters.garant_jmeno) {
+      backendFilters.garant_jmeno = filters.garant_jmeno;
+    }
+    if (filters.prikazce_jmeno) {
+      backendFilters.prikazce_jmeno = filters.prikazce_jmeno;
+    }
+    if (filters.schvalovatel_jmeno) {
+      backendFilters.schvalovatel_jmeno = filters.schvalovatel_jmeno;
+    }
+    if (filters.stav_workflow) {
+      backendFilters.stav_workflow = filters.stav_workflow;
+    }
+    if (filters.cena_max) {
+      backendFilters.cena_max = filters.cena_max;
+    }
+    if (filters.cena_polozky) {
+      backendFilters.cena_polozky = filters.cena_polozky;
+    }
+    if (filters.cena_faktury) {
+      backendFilters.cena_faktury = filters.cena_faktury;
+    }
     
     return backendFilters;
   }, []);
