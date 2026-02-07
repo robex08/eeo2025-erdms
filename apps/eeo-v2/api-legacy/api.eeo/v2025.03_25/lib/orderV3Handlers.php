@@ -627,9 +627,112 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id AND p.aktivni = 1)";
         }
         
+        // ========================================================================
+        // 🔍 FULLTEXT SEARCH - hledání ve všech důležitých textových sloupcích
+        // Case-insensitive + bez diakritiky
+        // ========================================================================
+        if (!empty($filters['fulltext_search'])) {
+            $search_term = trim($filters['fulltext_search']);
+            if ($search_term !== '') {
+                // Odstranění diakritiky z vyhledávaného textu
+                $search_term_no_diacritics = $search_term;
+                $search_term_no_diacritics = str_replace(['á','à','â','ä','ã','å','ā'], 'a', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['é','è','ê','ë','ē','ė','ę'], 'e', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['í','ì','î','ï','ī','į'], 'i', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ó','ò','ô','ö','õ','ø','ō'], 'o', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ú','ù','û','ü','ū','ů'], 'u', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ý','ÿ'], 'y', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['č'], 'c', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ď'], 'd', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ň'], 'n', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ř'], 'r', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['š'], 's', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ť'], 't', $search_term_no_diacritics);
+                $search_term_no_diacritics = str_replace(['ž'], 'z', $search_term_no_diacritics);
+                
+                // Hledá v: číslo objednávky, předmět, dodavatel, jména uživatelů, poznámka
+                // + FAKTURY: číslo, poznámka, věcná správnost
+                // + PŘÍLOHY: název souboru, typ přílohy
+                // + POLOŽKY: popis, poznámka
+                // Case-insensitive pomocí LOWER() a bez diakritiky pomocí REPLACE()
+                $where_conditions[] = "(
+                    LOWER(o.cislo_objednavky) LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        o.predmet, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        o.poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        o.dodavatel_nazev, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        CONCAT(u1.jmeno, ' ', u1.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        CONCAT(u2.jmeno, ' ', u2.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        CONCAT(u3.jmeno, ' ', u3.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        CONCAT(u4.jmeno, ' ', u4.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        LIKE LOWER(?) OR
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_FAKTURY . " f 
+                        WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (
+                            LOWER(f.fa_cislo_vema) LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                f.fa_poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                f.vecna_spravnost_poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                f.vecna_spravnost_umisteni_majetku, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?)
+                        )
+                    ) OR
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr
+                        WHERE pr.objednavka_id = o.id AND (
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                pr.originalni_nazev_souboru, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                pr.typ_prilohy, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?)
+                        )
+                    ) OR
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol
+                        WHERE pol.objednavka_id = o.id AND (
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                pol.popis, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?) OR
+                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                pol.poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                                LIKE LOWER(?)
+                        )
+                    )
+                )";
+                
+                $search_pattern = '%' . $search_term . '%';
+                $search_pattern_no_diacritics = '%' . strtolower($search_term_no_diacritics) . '%';
+                
+                // Přidáme parametry: první běžný pattern, zbytek bez diakritiky
+                $where_params[] = $search_pattern; // cislo_objednavky (číselné, bez diakritiky)
+                for ($i = 0; $i < 15; $i++) { // 7 původních + 8 nových (4+2+2)
+                    $where_params[] = $search_pattern_no_diacritics; // textové sloupce
+                }
+                
+                // error_log("[OrderV3] Fulltext search applied: '$search_term' (normalized: '$search_term_no_diacritics')");
+            }
+        }
+        
         // Filtr pro dodavatele (mapování z dodavatel_nazev na dodavatel)
         if (!empty($filters['dodavatel'])) {
-            $where_conditions[] = "d.nazev LIKE ?";
+            $where_conditions[] = "o.dodavatel_nazev LIKE ?";
             $where_params[] = '%' . $filters['dodavatel'] . '%';
         }
         
@@ -1296,6 +1399,11 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 ELSE 0 
             END) as mojeObjednavky
         FROM " . TBL_OBJEDNAVKY . " o
+        LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+        LEFT JOIN " . TBL_UZIVATELE . " u1 ON o.objednatel_id = u1.id
+        LEFT JOIN " . TBL_UZIVATELE . " u2 ON o.garant_uzivatel_id = u2.id
+        LEFT JOIN " . TBL_UZIVATELE . " u3 ON o.prikazce_id = u3.id
+        LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
         WHERE $where_clause
     ";
     
@@ -1329,6 +1437,11 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 END
             ), 0) as total_amount
         FROM " . TBL_OBJEDNAVKY . " o
+        LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+        LEFT JOIN " . TBL_UZIVATELE . " u1 ON o.objednatel_id = u1.id
+        LEFT JOIN " . TBL_UZIVATELE . " u2 ON o.garant_uzivatel_id = u2.id
+        LEFT JOIN " . TBL_UZIVATELE . " u3 ON o.prikazce_id = u3.id
+        LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
         WHERE $where_clause
     ";
     
