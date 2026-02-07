@@ -1087,10 +1087,10 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                     THEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
                           FROM " . TBL_FAKTURY . " f 
                           WHERE f.objednavka_id = o.id AND f.aktivni = 1)
-                    WHEN (SELECT COALESCE(SUM(p.celkova_cena_s_dph), 0) 
+                    WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) 
                           FROM " . TBL_OBJEDNAVKY_POLOZKY . " p 
                           WHERE p.objednavka_id = o.id AND p.aktivni = 1) > 0 
-                    THEN (SELECT COALESCE(SUM(p.celkova_cena_s_dph), 0) 
+                    THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) 
                           FROM " . TBL_OBJEDNAVKY_POLOZKY . " p 
                           WHERE p.objednavka_id = o.id AND p.aktivni = 1)
                     ELSE o.max_cena_s_dph
