@@ -189,14 +189,14 @@ export function useOrdersV3({
    * Mapuje názvy a převádí pole ID na správné parametry
    */
   const convertFiltersForBackend = useCallback((filters, globalFilterValue) => {
-    console.log('🔄 Converting filters for backend:', {
-      filters,
-      filterKeys: Object.keys(filters),
-      filterValues: Object.values(filters),
-      globalFilterValue,
-      stavValue: filters.stav,
-      stavType: typeof filters.stav
-    });
+    // console.log('🔄 Converting filters for backend:', {
+    //   filters,
+    //   filterKeys: Object.keys(filters),
+    //   filterValues: Object.values(filters),
+    //   globalFilterValue,
+    //   stavValue: filters.stav,
+    //   stavType: typeof filters.stav
+    // });
     
     const backendFilters = {};
     
@@ -331,13 +331,13 @@ export function useOrdersV3({
       return;
     }
     
-    console.log('🔄 useOrdersV3: loadOrders called', {
-      currentPage,
-      itemsPerPage,
-      selectedPeriod,
-      hasColumnFilters: Object.keys(columnFilters || {}).length > 0,
-      dashboardFilters: currentDashboardFilters.current
-    });
+    // console.log('🔄 useOrdersV3: loadOrders called', {
+    //   currentPage,
+    //   itemsPerPage,
+    //   selectedPeriod,
+    //   hasColumnFilters: Object.keys(columnFilters || {}).length > 0,
+    //   dashboardFilters: currentDashboardFilters.current
+    // });
     
     // Převést filtry na backend formát - ✨ včetně globalFilter
     const activeFilters = convertFiltersForBackend(columnFilters, globalFilterValue);
@@ -359,15 +359,15 @@ export function useOrdersV3({
     }
     
     // ✅ Volání optimalizované API funkce s cache a deduplication
-    console.log('📤 API Request payload:', {
-      token,
-      username,
-      page: currentPage,
-      per_page: itemsPerPage,
-      period: selectedPeriod,
-      filters: activeFilters,
-      sorting: sorting,
-    });
+    // console.log('📤 API Request payload:', {
+    //   token,
+    //   username,
+    //   page: currentPage,
+    //   per_page: itemsPerPage,
+    //   period: selectedPeriod,
+    //   filters: activeFilters,
+    //   sorting: sorting,
+    // });
     
     return fetchData({
       token,
@@ -520,7 +520,8 @@ export function useOrdersV3({
   }, [userId, dashboardFilters]); // ✅ Removed globalFilter - useEffect handle vše
   
   /**
-   * Vyčistí VŠECHNY filtry a localStorage
+   * Vyčistí POUZE sloupcové a dashboard filtry (NEVYMAZÁVÁ globalFilter!)
+   * GlobalFilter se řeší samostatně v Orders25ListV3.js
    * - Sloupcové filtry (textové, multi-select, date/price ranges, boolean)
    * - Dashboard filtry (status, moje objednávky, archivované)
    * - Reset na první stránku
@@ -781,6 +782,7 @@ export function useOrdersV3({
     // Actions
     loadOrders,
     navigate,
+    clearCache, // ✅ Pro vyčištění cache po update operacích
     
     // Utils
     getOrderTotalPriceWithDPH,

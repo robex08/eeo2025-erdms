@@ -167,3 +167,32 @@ export async function findOrderPageV3({
 
   return response.json();
 }
+
+/**
+ * Update objednávky V3 (používá se hlavně pro schválení/zamítnutí)
+ * @param {object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {object} params.payload - Data k aktualizaci (musí obsahovat id)
+ * @returns {Promise<object>} Response data
+ */
+export async function updateOrderV3({ token, username, payload }) {
+  const response = await fetch(`${API_BASE_URL}/orders-v3/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      payload
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
