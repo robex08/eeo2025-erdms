@@ -155,9 +155,7 @@ export function useOrdersV3({
     try {
       const saved = localStorage.getItem(`ordersV3_dashboardFilters_${userId}`);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        console.log('🔄 Načteny dashboard filtry z localStorage:', parsed.filter_status);
-        return parsed;
+        return JSON.parse(saved);
       }
     } catch (e) {
       console.warn('Chyba při načítání dashboard filtrů z localStorage:', e);
@@ -547,18 +545,14 @@ export function useOrdersV3({
         
         // Stats (pouze pro page=1)
         if (response.data.stats) {
-          console.log('📊 RAW BACKEND STATS:', JSON.stringify(response.data.stats, null, 2));
-          
           // Pokud NEJSOU aktivní dashboard filtry, uložit jako unfilteredStats
           const currentDashboard = currentDashboardFilters.current;
           const hasActiveDashboardFilters = !!currentDashboard.filter_status;
           
           if (!hasActiveDashboardFilters) {
-            console.log('📊 Saving unfiltered stats (no dashboard filter):', response.data.stats.totalAmount);
             setUnfilteredStats(response.data.stats);
             setCurrentStats(response.data.stats);
           } else {
-            console.log('📊 Saving current filtered stats:', response.data.stats.totalAmount);
             setCurrentStats(response.data.stats);
             // unfilteredStats zůstávají nedotčené!
           }
@@ -679,8 +673,6 @@ export function useOrdersV3({
    * @param {string|null} filterType - Typ filtru: 'nova', 'schvalena', 'moje_objednavky', atd., nebo null pro reset
    */
   const handleDashboardFilterChange = useCallback(async (filterType) => {
-    console.log('🎯 Dashboard filter change:', filterType);
-    
     // Uložit nový stav do dočasné proměnné
     let newFilters;
     
@@ -694,7 +686,6 @@ export function useOrdersV3({
     } else {
       const isCurrentlyActive = dashboardFilters.filter_status === filterType;
       const newStatus = isCurrentlyActive ? '' : filterType;
-      console.log('🎯 Setting filter_status:', newStatus);
       
       newFilters = {
         ...dashboardFilters,
@@ -1025,31 +1016,28 @@ export function useOrdersV3({
     // ZÁKLAD jsou VŽDY unfilteredStats (celkové hodnoty)
     const baseStats = { ...unfilteredStats };
     
-    // Počítej filteredAmount z aktuálně načtených orders 
-    const filteredTotalAmount = orders.reduce((sum, order) => {
-      const amount = getOrderTotalPriceWithDPH(order);
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
+    // Pro filtrované hodnoty použij currentStats z BE (ne počítání z orders na stránce!)
+    let filteredTotalAmount = baseStats.totalAmount; // default = celková částka
+    let filteredCount = baseStats.total; // default = celkový počet
     
-    // Pro dokončenou částku použij currentStats pokud jsou k dispozici
-    if (currentStats?.dokoncenaAmount) {
-      baseStats.dokoncenaAmount = currentStats.dokoncenaAmount;
+    // Pokud jsou currentStats (= filtrovaná data z BE), použij je
+    if (currentStats && currentStats.totalAmount !== undefined) {
+      filteredTotalAmount = currentStats.totalAmount;
+      filteredCount = currentStats.total || 0;
+      
+      // Také aktualizuj dokoncenaAmount z currentStats
+      if (currentStats.dokoncenaAmount !== undefined) {
+        baseStats.dokoncenaAmount = currentStats.dokoncenaAmount;
+      }
     }
-    
-    console.log('📊 Enhanced stats computation:', {
-      totalAmount: baseStats.totalAmount,
-      filteredTotalAmount,
-      filteredCount: orders.length,
-      dokoncenaAmount: baseStats.dokoncenaAmount
-    });
     
     // Rozšířené stats
     return {
       ...baseStats,
       filteredTotalAmount,
-      filteredCount: orders.length
+      filteredCount
     };
-  }, [unfilteredStats, currentStats, orders]);
+  }, [unfilteredStats, currentStats]);
 
   // ============================================================================
   // RETURN
