@@ -1303,6 +1303,152 @@ const getOrderTotalPriceWithDPH = (order) => {
 };
 
 // ============================================================================
+// MULTISELECT PRO STAV (separátní komponenta kvůli hooks)
+// ============================================================================
+
+const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, orderStatesList }) => {
+  const [stavDropdownOpen, setStavDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  
+  // Hodnota jako pole (synchronizace s filter panelem)
+  const currentValue = Array.isArray(localColumnFilters[columnId]) 
+    ? localColumnFilters[columnId] 
+    : (localColumnFilters[columnId] ? [localColumnFilters[columnId]] : []);
+  
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setStavDropdownOpen(false);
+      }
+    };
+    
+    if (stavDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [stavDropdownOpen]);
+  
+  const handleToggleStav = useCallback((kod) => {
+    const newValue = currentValue.includes(kod)
+      ? currentValue.filter(v => v !== kod)
+      : [...currentValue, kod];
+    
+    // ✅ Uložit jako POLE pro backend
+    handleFilterChange(columnId, newValue.length > 0 ? newValue : '');
+  }, [currentValue, columnId, handleFilterChange]);
+  
+  const displayText = currentValue.length === 0 
+    ? 'Všechny stavy...' 
+    : `Vybráno: ${currentValue.length}`;
+  
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', marginTop: '4px' }}>
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          setStavDropdownOpen(!stavDropdownOpen);
+        }}
+        style={{
+          width: '100%',
+          padding: '0.375rem 1.5rem 0.375rem 0.5rem',
+          border: '1px solid #d1d5db',
+          borderRadius: '4px',
+          fontSize: '0.8125rem',
+          background: 'white',
+          cursor: 'pointer',
+          position: 'relative',
+          color: currentValue.length > 0 ? '#1f2937' : '#9ca3af',
+          fontWeight: currentValue.length > 0 ? '500' : '400',
+        }}
+      >
+        {displayText}
+        <svg
+          style={{
+            position: 'absolute',
+            right: '0.5rem',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '14px',
+            height: '14px',
+            pointerEvents: 'none'
+          }}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </div>
+      
+      {stavDropdownOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: '2px',
+            background: 'white',
+            border: '1px solid #d1d5db',
+            borderRadius: '6px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+            maxHeight: '300px',
+            overflowY: 'auto'
+          }}
+        >
+          {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
+            const kod = status.kod_stavu || status.kod || '';
+            const nazev = status.nazev_stavu || status.nazev || kod;
+            const isSelected = currentValue.includes(kod);
+            
+            return (
+              <div
+                key={status.id || idx}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleStav(kod);
+                }}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.8125rem',
+                  background: isSelected ? '#eff6ff' : 'white',
+                  borderBottom: '1px solid #f3f4f6',
+                  transition: 'background 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = '#f9fafb';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'white';
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => {}}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ 
+                  fontWeight: isSelected ? '500' : '400',
+                  color: isSelected ? '#2563eb' : '#1f2937'
+                }}>
+                  {nazev}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
