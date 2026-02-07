@@ -95,17 +95,26 @@ const ActionButton = styled.button`
 `;
 
 const DashboardGrid = styled.div`
-  display: grid;
-  grid-template-columns: minmax(380px, 420px) repeat(auto-fill, minmax(180px, 1fr));
+  display: flex;
   gap: 1rem;
   width: 100%;
+  align-items: flex-start;
 
   @media (max-width: 1200px) {
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    flex-direction: column;
   }
+`;
+
+const SmallCardsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 200px);
+  gap: 1.5em;
+  row-gap: 2em;
+  flex: 1;
+  width: 100%;
 
   @media (max-width: 768px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 `;
 
@@ -116,7 +125,9 @@ const LargeStatCard = styled.div`
   border-left: 6px solid ${props => props.$color || '#3b82f6'};
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
-  grid-row: span 2;
+  min-width: 380px;
+  max-width: 420px;
+  flex-shrink: 0;
   
   &:hover {
     transform: translateY(-2px);
@@ -124,7 +135,9 @@ const LargeStatCard = styled.div`
   }
 
   @media (max-width: 1200px) {
-    grid-row: span 1;
+    min-width: auto;
+    max-width: none;
+    width: 100%;
   }
 `;
 
@@ -181,10 +194,10 @@ const StatCard = styled.div`
     `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
     'linear-gradient(145deg, #ffffff, #f9fafb)'};
   border-radius: 12px;
-  padding: 0.75rem 1rem;
-  min-height: 85px;
-  max-height: 85px;
-  height: 85px;
+  padding: 0.6rem 1rem;
+  min-height: 95px;
+  max-height: 95px;
+  height: 95px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -219,6 +232,9 @@ const StatValue = styled.div`
   font-weight: 800;
   color: #0f172a;
   font-family: 'Inter', -apple-system, sans-serif;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
 `;
 
 const StatIcon = styled.div`
@@ -232,6 +248,7 @@ const StatLabel = styled.div`
   color: #64748b;
   font-weight: 500;
   line-height: 1.3;
+  margin-bottom: 0.4rem;
 `;
 
 // ============================================================================
@@ -334,12 +351,12 @@ const OrdersDashboardV3Full = ({
         
         <DashboardGrid>
           {/* Celková cena - vždy */}
-          <StatCard $color={STATUS_COLORS.TOTAL.dark}>
+          <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
             <div style={{ width: '100%' }}>
-              <StatValue style={{ fontSize: '1.5rem' }}>
+              <LargeStatValue style={{ fontSize: '1.5rem' }}>
                 {Math.round(totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
-              </StatValue>
-              <StatLabel>Celková cena s DPH za období ({stats.total || 0})</StatLabel>
+              </LargeStatValue>
+              <LargeStatLabel>Celková cena s DPH za období ({stats.total || 0})</LargeStatLabel>
               
               {hasActiveFilters && filteredCount < (stats.total || 0) && (
                 <div style={{
@@ -365,8 +382,9 @@ const OrdersDashboardV3Full = ({
                 </div>
               )}
             </div>
-          </StatCard>
+          </LargeStatCard>
 
+          <SmallCardsGrid>
           {/* Počet objednávek - vždy */}
           <StatCard $color="#2196f3">
             <StatHeader>
@@ -446,6 +464,7 @@ const OrdersDashboardV3Full = ({
               <StatLabel>Dokončená</StatLabel>
             </StatCard>
           )}
+          </SmallCardsGrid>
         </DashboardGrid>
       </DashboardPanel>
     );
@@ -547,6 +566,7 @@ const OrdersDashboardV3Full = ({
           </SummaryRow>
         </LargeStatCard>
 
+        <SmallCardsGrid>
         {/* Počet objednávek - vždy */}
         <StatCard $color="#2196f3">
           <StatHeader>
@@ -895,6 +915,7 @@ const OrdersDashboardV3Full = ({
             <StatLabel>Moje objednávky</StatLabel>
           </StatCard>
         )}
+        </SmallCardsGrid>
       </DashboardGrid>
     </DashboardPanel>
   );
