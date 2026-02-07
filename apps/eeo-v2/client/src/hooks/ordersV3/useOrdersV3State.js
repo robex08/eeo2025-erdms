@@ -37,16 +37,6 @@ export function useOrdersV3State(userId) {
             ? JSON.parse(value) 
             : (key === 'itemsPerPage' ? parseInt(value, 10) : value);
           saved[key] = parsedValue;
-          
-          // Debug log pro column filtry
-          if (key === 'columnFilters') {
-            console.log('📖 LOCALSTORAGE LOAD columnFilters:', {
-              userId,
-              raw: value,
-              parsed: parsedValue,
-              datum_presne: parsedValue?.datum_presne
-            });
-          }
         }
       });
       
@@ -76,18 +66,6 @@ export function useOrdersV3State(userId) {
           const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
           
           localStorage.setItem(storageKey, stringValue);
-          
-          // Debug log pro column filtry
-          if (key === 'columnFilters') {
-            console.log('💾 LOCALSTORAGE SAVE columnFilters:', {
-              userId,
-              key,
-              storageKey,
-              value,
-              stringValue,
-              datum_presne: value?.datum_presne
-            });
-          }
         });
       } catch (err) {
         console.warn('Failed to save preferences to localStorage:', err);
