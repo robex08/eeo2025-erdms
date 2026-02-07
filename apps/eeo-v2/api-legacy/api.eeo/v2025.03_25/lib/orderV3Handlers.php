@@ -601,7 +601,7 @@ function handle_order_v3_list($input, $config, $queries) {
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;
         if ($page === 1) {
-            $stats = getOrderStats($db, $year, $user_id);
+            $stats = getOrderStats($db, $year, $user_id, $where_sql, $where_params);
         }
 
         // 12. Hlavní query pro data
@@ -738,8 +738,10 @@ function handle_order_v3_list($input, $config, $queries) {
  * @param PDO $db Database connection
  * @param int $year Rok pro filtrování
  * @param int $user_id ID přihlášeného uživatele (pro "moje objednávky")
+ * @param string $filtered_where_sql WHERE podmínky pro filtrované objednávky (volitelné)
+ * @param array $filtered_where_params Parametry pro WHERE podmínky (volitelné)
  */
-function getOrderStats($db, $year, $user_id = 0) {
+function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $filtered_where_params = array()) {
     // Počty objednávek podle stavů (poslední stav v workflow array)
     $sql_stats = "
         SELECT 
@@ -926,6 +928,51 @@ function getOrderStats($db, $year, $user_id = 0) {
     $stats['totalAmount'] = floatval($amount_data['totalAmount']);
     $stats['rozpracovanaAmount'] = floatval($amount_data['rozpracovanaAmount']);
     $stats['dokoncenaAmount'] = floatval($amount_data['dokoncenaAmount']);
+    
+    // 🔥 NOVĚ: Pokud máme filtrované WHERE podmínky, spočítej filteredTotalAmount
+    if ($filtered_where_sql !== null && !empty($filtered_where_params)) {
+        $sql_filtered_amount = "
+            SELECT 
+                COALESCE(SUM(
+                    CASE
+                        -- Priorita 1: Pokud existují faktury, použij součet faktur
+                        WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
+                              FROM " . TBL_FAKTURY . " f 
+                              WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                        THEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
+                              FROM " . TBL_FAKTURY . " f 
+                              WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                        
+                        -- Priorita 2: Pokud existují položky, použij součet položek
+                        WHEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) 
+                              FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                              WHERE pol.objednavka_id = o.id) > 0
+                        THEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) 
+                              FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                              WHERE pol.objednavka_id = o.id)
+                        
+                        -- Priorita 3: Použij max_cena_s_dph
+                        ELSE COALESCE(o.max_cena_s_dph, 0)
+                    END
+                ), 0) as filteredTotalAmount
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+            LEFT JOIN " . TBL_UZIVATELE . " u1 ON o.objednatel_id = u1.id
+            LEFT JOIN " . TBL_UZIVATELE . " u2 ON o.garant_uzivatel_id = u2.id
+            LEFT JOIN " . TBL_UZIVATELE . " u3 ON o.prikazce_id = u3.id
+            LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
+            WHERE $filtered_where_sql
+        ";
+        
+        $stmt_filtered = $db->prepare($sql_filtered_amount);
+        $stmt_filtered->execute($filtered_where_params);
+        $filtered_amount_data = $stmt_filtered->fetch(PDO::FETCH_ASSOC);
+        
+        $stats['filteredTotalAmount'] = floatval($filtered_amount_data['filteredTotalAmount']);
+    } else {
+        // Pokud nejsou filtry, filtered = total
+        $stats['filteredTotalAmount'] = $stats['totalAmount'];
+    }
     
     // Převést všechny countery na INT (MySQL SUM vrací string)
     $counter_fields = array(

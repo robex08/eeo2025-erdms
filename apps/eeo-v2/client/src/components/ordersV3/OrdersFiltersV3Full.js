@@ -330,7 +330,7 @@ const FiltersGrid = styled.div`
   gap: 1rem;
   margin-top: 1.5rem;
 
-  ${FilterGroup} {
+  & > div {
     min-width: 0;
   }
 
