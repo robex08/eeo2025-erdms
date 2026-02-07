@@ -65,7 +65,7 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
     const search = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     return options.filter(opt => {
-      const label = (opt.displayName || opt.nazev_stavu || opt.nazev || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const label = (opt.label || opt.displayName || opt.nazev_stavu || opt.nazev || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       return label.includes(search);
     });
   }, [options, searchTerm]);
@@ -74,7 +74,7 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
     if (!value || value.length === 0) return placeholder || 'Vyberte...';
     if (value.length === 1) {
       const opt = options?.find(o => String(o.id) === String(value[0]));
-      return opt ? (opt.displayName || opt.nazev_stavu || opt.nazev || value[0]) : value[0];
+      return opt ? (opt.label || opt.displayName || opt.nazev_stavu || opt.nazev || value[0]) : value[0];
     }
     return `Vybráno: ${value.length}`;
   }, [value, options, placeholder]);
@@ -271,7 +271,7 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
             ) : (
               filteredOptions.map((opt, idx) => {
                 const optValue = String(opt.id || '');
-                const optLabel = opt.displayName || opt.nazev_stavu || opt.nazev || 'Bez názvu';
+                const optLabel = opt.label || opt.displayName || opt.nazev_stavu || opt.nazev || 'Bez názvu';
                 const isChecked = valueSet.has(optValue);
 
                 return (
@@ -733,11 +733,13 @@ const OrdersFiltersV3Full = ({
     if (!orderStatesList || orderStatesList.length === 0) return [];
 
     return [...orderStatesList].map(status => {
-      const statusName = status.nazev_stavu || status.nazev || status.kod_stavu || status.id;
+      const kod = status.kod_stavu || status.kod || '';
+      const nazev = status.nazev_stavu || status.nazev || kod;
       return {
         ...status,
-        id: statusName,
-        kod_stavu: status.kod_stavu || status.id
+        id: kod, // ✅ VALUE = workflow kód pro backend
+        label: nazev, // ✅ ZOBRAZENÍ = český název (bez závorek)
+        kod_stavu: kod
       };
     });
   }, [orderStatesList]);

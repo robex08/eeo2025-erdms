@@ -379,6 +379,37 @@ const ColumnFilterInput = styled.input`
   }
 `;
 
+const ColumnFilterSelect = styled.select`
+  width: 100%;
+  padding: 0.35rem 1.75rem 0.35rem 1.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  background: #f9fafb;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background-color: white;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+  
+  &::placeholder {
+    color: #9ca3af;
+    font-size: 0.7rem;
+  }
+  
+  option {
+    padding: 0.5rem;
+  }
+`;
+
 const TableToolbar = styled.div`
   display: flex;
   align-items: center;
@@ -1115,11 +1146,13 @@ const ApprovalLPRow = styled.div`
 // ============================================================================
 
 /**
- * Získá zobrazovací stav objednávky - používá DB sloupec 'stav_objednavky' (čitelný český název)
+ * Získá zobrazovací stav objednávky - PŘÍMO z DB sloupce stav_objednavky (už je to český popis)
+ * @param {Object} order - Objednávka z backendu
+ * @returns {string} - Český název stavu (např. "Dokončená", "Uveřejněna v registru smluv")
  */
 const getOrderDisplayStatus = (order) => {
-  // Backend vrací sloupec 'stav_objednavky' který už obsahuje čitelný český název
-  // např. "Nová", "Ke schválení", "Schválená", "Dokončená", "Fakturace", atd.
+  // Backend vrací sloupec 'stav_objednavky' který JUŽ OBSAHUJE ČESKÝ POPIS
+  // např. "Dokončená", "Odeslaná dodavateli", "Uveřejněna v registru smluv"
   return order.stav_objednavky || '---';
 };
 
@@ -1287,6 +1320,7 @@ const OrdersTableV3 = ({
   data = [],
   visibleColumns = [], // pole ID sloupců k zobrazení
   columnOrder = [], // pořadí sloupců
+  columnFilters = {}, // ✅ External column filters from parent
   sorting = [],
   onSortingChange,
   onRowExpand,
@@ -1294,6 +1328,7 @@ const OrdersTableV3 = ({
   onColumnVisibilityChange,
   onColumnReorder,
   onColumnFiltersChange, // Callback pro změny filtrů
+  orderStatesList = [], // ✅ Číselník stavů z API
   userId, // Přidáno pro localStorage per user
   token, // 🆕 Pro API volání
   username, // 🆕 Pro API volání
@@ -1320,8 +1355,15 @@ const OrdersTableV3 = ({
   } = useExpandedRowsV3({ token, username, userId });
   
   // State pro column filters (lokální - zobrazení v UI)
-  const [columnFilters, setColumnFilters] = useState({});
-  const [localColumnFilters, setLocalColumnFilters] = useState({});
+  const [localColumnFilters, setLocalColumnFilters] = useState(columnFilters || {});
+  
+  // ✅ Synchronizace external columnFilters s local state POUZE při změně z parent
+  useEffect(() => {
+    // Aktualizuj POUZE pokud se external změnil a nejsme uprostřed lokální editace
+    if (JSON.stringify(columnFilters) !== JSON.stringify(localColumnFilters)) {
+      setLocalColumnFilters(columnFilters || {});
+    }
+  }, [columnFilters]);
   
   // Ref pro debounce timery
   const filterTimers = useRef({});
@@ -1366,11 +1408,46 @@ const OrdersTableV3 = ({
   
   // Debounced filter change - posílá změny do parent komponenty po 1000ms
   const handleFilterChange = useCallback((columnId, value) => {
+    console.log('🔄 handleFilterChange:', { columnId, value });
+    
     // Update lokální state okamžitě (pro UI)
-    setLocalColumnFilters(prev => ({
-      ...prev,
-      [columnId]: value
-    }));
+    setLocalColumnFilters(prev => {
+      const newFilters = {
+        ...prev,
+        [columnId]: value
+      };
+      
+      // ✅ OKAMŽITĚ ulož do localStorage (aby přežil refresh dat)
+      if (userId) {
+        try {
+          const prefsKey = `ordersV3_preferences_${userId}`;
+          const savedPrefs = localStorage.getItem(prefsKey);
+          if (savedPrefs) {
+            const prefs = JSON.parse(savedPrefs);
+            prefs.columnFilters = newFilters;
+            localStorage.setItem(prefsKey, JSON.stringify(prefs));
+            console.log('💾 Uloženo do LS:', { columnId, value, allFilters: newFilters });
+          } else {
+            // Vytvoř nový objekt pokud neexistuje
+            const newPrefs = {
+              columnFilters: newFilters,
+              showDashboard: true,
+              showFilters: true,
+              dashboardMode: 'full',
+              showRowColoring: false,
+              itemsPerPage: 50,
+              selectedPeriod: 'current-month'
+            };
+            localStorage.setItem(prefsKey, JSON.stringify(newPrefs));
+            console.log('💾 Vytvořen nový LS:', { columnId, value });
+          }
+        } catch (e) {
+          console.error('❌ Error saving filter to localStorage:', e);
+        }
+      }
+      
+      return newFilters;
+    });
     
     // Debounce pro volání API (1000ms)
     if (filterTimers.current[columnId]) {
@@ -1378,16 +1455,13 @@ const OrdersTableV3 = ({
     }
     
     filterTimers.current[columnId] = setTimeout(() => {
-      // Update hlavní state a předat změnu do parent komponenty
-      setColumnFilters(prev => ({
-        ...prev,
-        [columnId]: value
-      }));
+      console.log('⏰ Debounce dokončen, volám parent callback');
+      // Volanie parent callback pre API update
       if (onColumnFiltersChange) {
         onColumnFiltersChange(columnId, value);
       }
     }, 1000);
-  }, [onColumnFiltersChange]);
+  }, [onColumnFiltersChange, userId]);
   
   // Cleanup timers při unmount
   useEffect(() => {
@@ -1985,8 +2059,8 @@ const OrdersTableV3 = ({
         header: 'Stav',
         cell: ({ row }) => {
           const order = row.original;
-          const displayStatus = getOrderDisplayStatus(order); // Čitelný český název z DB
-          const statusCode = mapUserStatusToSystemCode(displayStatus); // Převod na systémový kód
+          const displayStatus = getOrderDisplayStatus(order); // Český popis PŘÍMO z DB
+          const statusCode = mapUserStatusToSystemCode(displayStatus); // Převod na systémový kód pro ikonu
           
           // Mapování systémových kódů na ikony
           const iconMap = {
@@ -2276,7 +2350,7 @@ const OrdersTableV3 = ({
     isMultiSortEvent: (e) => e.shiftKey, // Shift+click pro multi-sort
   });
 
-  const activeFiltersCount = Object.values(columnFilters).filter(v => v).length;
+  const activeFiltersCount = Object.values(localColumnFilters).filter(v => v).length;
   const hasActiveSorting = sorting.length > 0;
   const hasData = data && data.length > 0;
   const colSpan = table.getAllColumns().length;
@@ -2303,7 +2377,14 @@ const OrdersTableV3 = ({
           </ToolbarInfo>
           <ToolbarActions>
             {activeFiltersCount > 0 && (
-              <ResetButton onClick={() => setColumnFilters({})}>
+              <ResetButton onClick={() => {
+                // Clear local filters immediately
+                setLocalColumnFilters({});
+                // Call parent to clear all filters
+                Object.keys(localColumnFilters).forEach(columnId => {
+                  onColumnFiltersChange?.(columnId, '');
+                });
+              }}>
                 <FontAwesomeIcon icon={faTimes} />
                 Vymazat filtry
               </ResetButton>
@@ -2421,6 +2502,59 @@ const OrdersTableV3 = ({
                                 placeholder="Datum"
                                 variant="compact"
                               />
+                            </div>
+                          );
+                        }
+                        
+                        // Stav objednávky - Select z číselníku (načítá z DB - 25_ciselnik_stavy)
+                        if (columnId === 'stav_objednavky') {
+                          // 🐛 DEBUG: Log aktuální hodnoty
+                          console.log('🔍 SELECT RENDER:', {
+                            columnId,
+                            currentValue: localColumnFilters[columnId],
+                            orderStatesListLength: orderStatesList?.length
+                          });
+                          
+                          return (
+                            <div style={{ position: 'relative', marginTop: '4px' }}>
+                              <select
+                                value={localColumnFilters[columnId] || ''}
+                                onChange={(e) => {
+                                  const newValue = e.target.value;
+                                  console.log('🔄 SELECT ZMĚNA:', { oldValue: localColumnFilters[columnId], newValue });
+                                  handleFilterChange(columnId, newValue);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.375rem 0.5rem',
+                                  paddingRight: '1.5rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '4px',
+                                  fontSize: '0.8125rem',
+                                  background: 'white',
+                                  cursor: 'pointer',
+                                  appearance: 'none',
+                                  backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3E%3C/svg%3E")',
+                                  backgroundPosition: 'right 0.5rem center',
+                                  backgroundRepeat: 'no-repeat',
+                                  backgroundSize: '1.25em 1.25em'
+                                }}
+                              >
+                                <option value="">Všechny stavy...</option>
+                                {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
+                                  // ✅ VALUE = kod_stavu (workflow kód pro backend)
+                                  // ✅ ZOBRAZENÍ = český název (bez závorek)
+                                  const kod = status.kod_stavu || status.kod || '';
+                                  const nazev = status.nazev_stavu || status.nazev || kod;
+                                  
+                                  return (
+                                    <option key={status.id || idx} value={kod}>
+                                      {nazev}
+                                    </option>
+                                  );
+                                })}
+                              </select>
                             </div>
                           );
                         }
