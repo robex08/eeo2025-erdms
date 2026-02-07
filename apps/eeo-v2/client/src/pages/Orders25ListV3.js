@@ -50,13 +50,18 @@ import { findOrderPageV3 } from '../services/apiOrdersV3';
 
 // Custom hooks
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
+import useOrdersV3State from '../hooks/ordersV3/useOrdersV3State';
+import useOrderPermissions from '../hooks/ordersV3/useOrderPermissions';
 
 // Components
 import OrdersDashboardV3Full from '../components/ordersV3/OrdersDashboardV3Full';
 import OrdersFiltersV3Full from '../components/ordersV3/OrdersFiltersV3Full';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
 import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
-import OrdersTableV3 from '../components/ordersV3/OrdersTableV3';
+import VirtualizedOrdersTable from '../components/ordersV3/VirtualizedOrdersTable';
+
+// Config
+import ORDERS_V3_CONFIG from '../constants/ordersV3Config';
 
 // Lazy loaded components for performance
 const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal').then(m => ({ default: m.DocxGeneratorModal })));
@@ -470,185 +475,17 @@ function Orders25ListV3() {
   // Prefer ToastContext, fallback to ProgressContext
   const showToast = toastShowToast || progressShowToast;
 
-  // Permission check functions
-  const canEdit = (order) => {
-    if (!hasPermission) return false;
+  // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
+  const {
+    canEdit,
+    canCreateInvoice,
+    canExportDocument,
+    canDelete,
+    canHardDelete,
+    canViewDetails,
+  } = useOrderPermissions(hasPermission, user_id);
 
-    // Koncepty může editovat každý kdo má základní práva
-    if (order.isDraft || order.je_koncept) {
-      return hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_EDIT_OWN');
-    }
-
-    // Uživatelé s ORDER_*_ALL oprávněními mohou editovat všechny objednávky
-    if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE')) {
-      return true;
-    }
-
-    // DEPARTMENT-BASED SUBORDINATE PERMISSIONS
-    if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
-      return true;
-    }
-
-    // ORDER_READ_SUBORDINATE = POUZE čtení, ŽÁDNÁ editace
-    if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
-      const isInOrderRole = (
-        order.objednatel_id === user_id ||
-        order.uzivatel_id === user_id ||
-        order.garant_uzivatel_id === user_id ||
-        order.schvalovatel_id === user_id ||
-        order.prikazce_id === user_id
-      );
-      if (!isInOrderRole) return false;
-    }
-
-    // Uživatelé s ORDER_*_OWN oprávněními mohou editovat pouze své objednávky
-    if (hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_2025')) {
-      return order.objednatel_id === user_id ||
-             order.uzivatel_id === user_id ||
-             order.garant_uzivatel_id === user_id ||
-             order.schvalovatel_id === user_id;
-    }
-
-    return false;
-  };
-
-  const canExportDocument = (order) => {
-    if (!order) return false;
-
-    const allowedStates = [
-      'ROZPRACOVANA', 'POTVRZENA', 'ODESLANA', 'UVEREJNIT', 'UVEREJNENA',
-      'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'DOKONCENA', 'ZKONTROLOVANA', 'CEKA_SE'
-    ];
-
-    let workflowStates = [];
-    try {
-      if (order.stav_workflow_kod) {
-        workflowStates = Array.isArray(order.stav_workflow_kod)
-          ? order.stav_workflow_kod
-          : JSON.parse(order.stav_workflow_kod);
-        if (!Array.isArray(workflowStates)) workflowStates = [];
-      }
-    } catch {
-      workflowStates = [];
-    }
-
-    return workflowStates.some(state => {
-      let stavCode = '';
-      if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
-        stavCode = String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim();
-      } else if (typeof state === 'string') {
-        stavCode = String(state).toUpperCase().trim();
-      }
-      return allowedStates.includes(stavCode);
-    });
-  };
-
-  const canCreateInvoice = (order) => {
-    if (!order) return false;
-    if (!hasPermission) return false;
-
-    const hasInvoicePermission = hasPermission('ADMINI') ||
-                                  hasPermission('INVOICE_MANAGE') ||
-                                  hasPermission('INVOICE_ADD');
-    if (!hasInvoicePermission) return false;
-
-    // ✅ POVOLENÉ STAVY: POUZE Fakturace, Věcná kontrola, Zkontrolováno (NE Dokončená)
-    const allowedStates = [
-      'FAKTURACE',        // ✅ FÁZE 6 - probíhá fakturace
-      'VECNA_SPRAVNOST',  // ✅ FÁZE 7 - kontrola věcné správnosti
-      'ZKONTROLOVANA'     // ✅ FÁZE 8 - zkontrolována
-    ];
-
-    // ❌ NEPLATNÉ STAVY (stornované/zamítnuté/dokončené)
-    const invalidStates = ['STORNOVANA', 'ZAMITNUTA', 'DOKONCENA'];
-
-    let workflowStates = [];
-    try {
-      if (order.stav_workflow_kod) {
-        workflowStates = Array.isArray(order.stav_workflow_kod)
-          ? order.stav_workflow_kod
-          : JSON.parse(order.stav_workflow_kod);
-        if (!Array.isArray(workflowStates)) workflowStates = [];
-      }
-    } catch {
-      workflowStates = [];
-    }
-
-    // ✅ Zkontroluj zda není stornovaná/zamítnutá/dokončená
-    const hasInvalidState = workflowStates.some(state => {
-      let stavCode = '';
-      if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
-        stavCode = String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim();
-      } else if (typeof state === 'string') {
-        stavCode = String(state).toUpperCase().trim();
-      }
-      return invalidStates.includes(stavCode);
-    });
-
-    if (hasInvalidState) {
-      return false;
-    }
-
-    // ✅ Zkontroluj zda obsahuje alespoň jeden platný stav
-    return workflowStates.some(state => {
-      let stavCode = '';
-      if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
-        stavCode = String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim();
-      } else if (typeof state === 'string') {
-        stavCode = String(state).toUpperCase().trim();
-      }
-      return allowedStates.includes(stavCode);
-    });
-  };
-
-  const canDelete = (order) => {
-    if (!hasPermission) return false;
-
-    // Zakázat smazání pro koncepty/drafty
-    if (order.isDraft || order.je_koncept || order.hasLocalDraftChanges) return false;
-
-    // Importované objednávky (ARCHIVOVANO) mohou mazat pouze ORDER_MANAGE a ORDER_DELETE_ALL
-    if (order.stav_objednavky === 'ARCHIVOVANO') {
-      return hasPermission('ORDER_MANAGE') || hasPermission('ORDER_DELETE_ALL');
-    }
-
-    // Uživatelé s ORDER_DELETE_ALL nebo ORDER_MANAGE mohou mazat všechny objednávky
-    if (hasPermission('ORDER_DELETE_ALL') || hasPermission('ORDER_MANAGE')) {
-      return true;
-    }
-
-    // DEPARTMENT-BASED SUBORDINATE PERMISSIONS
-    if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
-      return true;
-    }
-
-    // ORDER_READ_SUBORDINATE = NESMÍ mazat (read-only)
-    if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
-      const isInOrderRole = (
-        order.objednatel_id === user_id ||
-        order.uzivatel_id === user_id ||
-        order.garant_uzivatel_id === user_id ||
-        order.schvalovatel_id === user_id ||
-        order.prikazce_id === user_id
-      );
-      if (!isInOrderRole) return false;
-    }
-
-    // Uživatelé s ORDER_DELETE_OWN mohou mazat pouze své objednávky
-    if (hasPermission('ORDER_DELETE_OWN')) {
-      return order.objednatel_id === user_id ||
-             order.uzivatel_id === user_id ||
-             order.garant_uzivatel_id === user_id ||
-             order.schvalovatel_id === user_id;
-    }
-
-    return false;
-  };
-
-  const canHardDelete = (order) => {
-    // Hard delete pouze pro ADMINI
-    return hasPermission && hasPermission('ADMINI');
-  };
+  // ✅ Permission funkce nyní v useOrderPermissions hook
 
   // State pro třídění - výchozí: datum aktualizace sestupně (nejnovější první)
   const [sorting, setSorting] = useState([{ id: 'dt_objednavky', desc: true }]);
@@ -702,6 +539,9 @@ function Orders25ListV3() {
     sorting: sorting,
   });
 
+  // ✅ VIRTUALIZATION: Automatic based na data size (declared after orders)
+  const shouldUseVirtualization = orders.length >= ORDERS_V3_CONFIG.VIRTUALIZATION_THRESHOLD;
+
   // Helper funkce pro získání labelu období
   const getPeriodLabel = (value) => {
     const labels = {
@@ -714,6 +554,16 @@ function Orders25ListV3() {
     return labels[value] || value;
   };
 
+  // ✅ OPTIMALIZACE: Consolidated state management místo 7x individual useState + useEffect
+  const {
+    preferences,
+    updatePreferences,
+    showDashboard,
+    showFilters,
+    dashboardMode,
+    showRowColoring,
+  } = useOrdersV3State(user_id);
+  
   // State pro inicializaci - skryje obsah až do načtení všech dat
   const [isInitialized, setIsInitialized] = useState(false);
   
@@ -723,29 +573,7 @@ function Orders25ListV3() {
     return saved !== null ? JSON.parse(saved) : true; // Defaultně zapnuto
   });
   
-  // Local state pro UI toggles s LocalStorage persistencí
-  const [showDashboard, setShowDashboard] = useState(() => {
-    const saved = localStorage.getItem(`ordersV3_showDashboard_${user_id}`);
-    return saved !== null ? JSON.parse(saved) : true;
-  });
-  
-  const [showFilters, setShowFilters] = useState(() => {
-    const saved = localStorage.getItem(`ordersV3_showFilters_${user_id}`);
-    return saved !== null ? JSON.parse(saved) : false;
-  });
-  
-  const [dashboardMode, setDashboardMode] = useState(() => {
-    const saved = localStorage.getItem(`ordersV3_dashboardMode_${user_id}`);
-    // Normalizovat na lowercase, výchozí 'dynamic'
-    return saved ? saved.toLowerCase() : 'dynamic'; // full, dynamic, compact - výchozí dynamic
-  });
-  
-  const [showRowColoring, setShowRowColoring] = useState(() => {
-    const saved = localStorage.getItem(`ordersV3_showRowColoring_${user_id}`);
-    return saved !== null ? JSON.parse(saved) : true;
-  });
-  
-  // State pro global/fulltext search
+  // State pro global/fulltext search - zůstává samostatný kvůli specifické logice
   const [globalFilter, setGlobalFilter] = useState(() => {
     const saved = localStorage.getItem(`ordersV3_globalFilter_${user_id}`);
     return saved || '';
@@ -869,31 +697,9 @@ function Orders25ListV3() {
     
   }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedPeriod, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
 
-  // Efekty pro uložení do LocalStorage při změně
-  useEffect(() => {
-    if (user_id) {
-      localStorage.setItem(`ordersV3_showDashboard_${user_id}`, JSON.stringify(showDashboard));
-    }
-  }, [showDashboard, user_id]);
-
-  useEffect(() => {
-    if (user_id) {
-      localStorage.setItem(`ordersV3_showFilters_${user_id}`, JSON.stringify(showFilters));
-    }
-  }, [showFilters, user_id]);
-
-  useEffect(() => {
-    if (user_id) {
-      localStorage.setItem(`ordersV3_dashboardMode_${user_id}`, dashboardMode);
-    }
-  }, [dashboardMode, user_id]);
-
-  useEffect(() => {
-    if (user_id) {
-      localStorage.setItem(`ordersV3_showRowColoring_${user_id}`, JSON.stringify(showRowColoring));
-    }
-  }, [showRowColoring, user_id]);
-
+  // ✅ OPTIMALIZACE: localStorage efekty nahrazeny debounced save v useOrdersV3State
+  
+  // Pouze globalFilter zůstává samostatný
   useEffect(() => {
     if (user_id) {
       localStorage.setItem(`ordersV3_globalFilter_${user_id}`, globalFilter);
@@ -1134,7 +940,7 @@ function Orders25ListV3() {
         {!showDashboard && (
           <ToggleButton
             $active={false}
-            onClick={() => setShowDashboard(true)}
+            onClick={() => updatePreferences({ showDashboard: true })}
             title="Zobrazit dashboard s přehledem statistik"
           >
             <FontAwesomeIcon icon={faChartBar} />
@@ -1146,7 +952,7 @@ function Orders25ListV3() {
         {!showFilters && (
           <ToggleButton
             $active={false}
-            onClick={() => setShowFilters(true)}
+            onClick={() => updatePreferences({ showFilters: true })}
             title="Zobrazit pokročilé filtry"
           >
             <FontAwesomeIcon icon={faFilter} />
@@ -1157,7 +963,7 @@ function Orders25ListV3() {
         {/* Toggle Podbarvení řádků */}
         <ToggleButton
           $active={showRowColoring}
-          onClick={() => setShowRowColoring(!showRowColoring)}
+          onClick={() => updatePreferences({ showRowColoring: !showRowColoring })}
           title={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'}
         >
           <FontAwesomeIcon icon={faPalette} />
@@ -1196,9 +1002,9 @@ function Orders25ListV3() {
           hasActiveFilters={!!dashboardFilters.filter_status}
           activeStatus={dashboardFilters.filter_status}
           onStatusClick={handleDashboardFilterChange}
-          onHide={() => setShowDashboard(false)}
+          onHide={() => updatePreferences({ showDashboard: false })}
           mode={dashboardMode}
-          onModeChange={setDashboardMode}
+          onModeChange={(mode) => updatePreferences({ dashboardMode: mode })}
         />
       )}
 
@@ -1214,15 +1020,15 @@ function Orders25ListV3() {
           globalFilter={globalFilter}
           onGlobalFilterChange={setGlobalFilter}
           showFilters={showFilters}
-          onToggleFilters={() => setShowFilters(!showFilters)}
-          onHide={() => setShowFilters(false)}
+          onToggleFilters={() => updatePreferences({ showFilters: !showFilters })}
+          onHide={() => updatePreferences({ showFilters: false })}
         />
       )}
 
-      {/* Table - zobrazit vždy */}
-      <OrdersTableV3
+      {/* Table - virtualizovaná verze pro optimální performance */}
+      <VirtualizedOrdersTable
         data={orders}
-        visibleColumns={Object.keys(columnVisibility).filter(col => columnVisibility[col])}
+        visibleColumns={columnVisibility ? Object.keys(columnVisibility).filter(col => columnVisibility[col]) : []}
         columnOrder={columnOrder}
         sorting={sorting}
         onSortingChange={setSorting}
@@ -1245,6 +1051,8 @@ function Orders25ListV3() {
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
         getOrderTotalPriceWithDPH={getOrderTotalPriceWithDPH}
+        forceVirtualization={shouldUseVirtualization}
+        showPerformanceInfo={process.env.NODE_ENV === 'development'}
       />
 
       {/* Pagination */}
