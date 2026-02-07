@@ -676,10 +676,11 @@ export function useOrdersV3({
   /**
    * Načíst data při prvním načtení a změně základních parametrů
    * POZOR: NE při změně dashboardFilters! To by mazalo unfiltered stats
-   * POZOR: NE při změně globalFilter! To se řeší ručně
+   * IncludeS globalFilter pro fulltext search!
    */
   useEffect(() => {
     if (token && username) {
+      console.log('🔍 useOrdersV3 effect triggered, globalFilter:', globalFilter);
       loadOrders(globalFilter); // ✅ Používej globalFilter i v základním načtení
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

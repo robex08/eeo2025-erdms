@@ -763,17 +763,6 @@ function Orders25ListV3() {
     
   }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedPeriod, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
 
-  // ✅ DEBOUNCED FULLTEXT SEARCH - automatic reload při změně globalFilter
-  useEffect(() => {
-    const delayedSearch = setTimeout(() => {
-      if (loadOrders) {
-        loadOrders(globalFilter); // Přenačti data s novým fulltext filtrem
-      }
-    }, 500); // 500ms debounce
-    
-    return () => clearTimeout(delayedSearch);
-  }, [globalFilter, loadOrders]);
-
   // ✅ VLASTNÍ handleClearFilters která také vymaže globalFilter 
   const handleClearFilters = useCallback(() => {
     originalClearFilters(); // Vymaže sloupcové filtry a dashboard filtry
@@ -1047,8 +1036,8 @@ function Orders25ListV3() {
           </ToggleButton>
         )}
 
-        {/* Vymazat filtry - zobrazit v ActionBar jen když NENÍ viditelný panel filtrů */}
-        {!showFilters && (Object.values(columnFilters || {}).some(v => v && (Array.isArray(v) ? v.length > 0 : true)) || globalFilter) && (
+        {/* Vymazat filtry - zobrazovat v ActionBar když JE skrytý panel filtrů A jsou aktivní filtry */}
+        {!showFilters && (Object.values(columnFilters || {}).some(v => v && (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')) || (globalFilter && globalFilter.trim() !== '')) && (
           <ToggleButton
             onClick={handleClearFilters}
             title="Vymaže všechny aktivní filtry včetně fulltext searche"
