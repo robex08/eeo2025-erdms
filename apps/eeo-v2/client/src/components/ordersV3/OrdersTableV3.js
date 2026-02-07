@@ -1386,7 +1386,7 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
             position: 'absolute',
             top: '100%',
             left: 0,
-            right: 0,
+            minWidth: '280px', // ✅ Minimální šířka aby se vešly dlouhé názvy
             marginTop: '2px',
             background: 'white',
             border: '1px solid #d1d5db',
@@ -1394,7 +1394,8 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
             zIndex: 1000,
             maxHeight: '300px',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            whiteSpace: 'nowrap' // ✅ Zabrání zalomení textu
           }}
         >
           {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
@@ -1587,15 +1588,6 @@ const OrdersTableV3 = ({
       ...prev,
       [columnId]: value  // UI column název
     }));
-    
-    // ✅ OKAMŽITĚ ulož do parent preferences s BACKEND názvy (pro správnou synchronizaci)
-    // NEUKLÁDEJ přímo do LS - to dělá useOrdersV3State hook!
-    // Pouze zavolej parent callback který aktualizuje centrální state
-              selectedPeriod: 'current-month'
-            };
-    // ✅ OKAMŽITĚ ulož do parent preferences s BACKEND názvy (pro správnou synchronizaci)
-    // NEUKLÁDEJ přímo do LS - to dělá useOrdersV3State hook!
-    // Pouze zavolej parent callback který aktualizuje centrální state
     
     // Debounce pro volání API (300ms pro rychlejší response)
     if (filterTimers.current[columnId]) {
