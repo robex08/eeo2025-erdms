@@ -57,10 +57,16 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
 
   // 💾 Save expanded rows to localStorage při změně
   useEffect(() => {
-    if (!userId || expandedRows.size === 0) return;
+    if (!userId) return;
 
     try {
-      localStorage.setItem(storageKey, JSON.stringify(Array.from(expandedRows)));
+      if (expandedRows.size === 0) {
+        // Pokud jsou všechny řádky sbaleny, vymaž localStorage
+        localStorage.removeItem(storageKey);
+      } else {
+        // Jinak ulož aktuální expandované řádky
+        localStorage.setItem(storageKey, JSON.stringify(Array.from(expandedRows)));
+      }
     } catch (error) {
       console.warn('⚠️ Chyba při ukládání rozbalených řádků do localStorage:', error);
     }
@@ -68,12 +74,15 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
 
   // 💾 Save details cache to localStorage
   useEffect(() => {
-    if (!userId || Object.keys(detailsCache).length === 0) return;
+    if (!userId) return;
 
     try {
-      // Omezit velikost cache - max 50 items
       const entries = Object.entries(detailsCache);
-      if (entries.length > 50) {
+      if (entries.length === 0) {
+        // Pokud je cache prázdná, vymaž localStorage
+        localStorage.removeItem(cacheKey);
+      } else if (entries.length > 50) {
+        // Omezit velikost cache - max 50 items
         const limited = Object.fromEntries(entries.slice(-50));
         localStorage.setItem(cacheKey, JSON.stringify(limited));
       } else {
