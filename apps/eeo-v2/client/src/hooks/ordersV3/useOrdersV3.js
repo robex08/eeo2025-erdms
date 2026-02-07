@@ -8,6 +8,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listOrdersV3 } from '../../services/apiOrdersV3';
+import useOrdersV3State from './useOrdersV3State';
+import useOrdersV3Data from './useOrdersV3Data';
+import ORDERS_V3_CONFIG from '../../constants/ordersV3Config';
 
 /**
  * Vypočítá celkovou cenu objednávky s DPH podle priority
@@ -60,120 +63,57 @@ export function useOrdersV3({
 }) {
   const navigate = useNavigate();
   
-  // ============================================================================
-  // STATE - Data
-  // ============================================================================
+  // ✅ OPTIMALIZACE: Deduplicated API request management
+  const {
+    data: orders,
+    stats: apiStats,
+    pagination: apiPagination,
+    loading,
+    error,
+    fetchData,
+    cancelCurrentRequest,
+    clearCache
+  } = useOrdersV3Data(listOrdersV3, showProgress, hideProgress);
   
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  // ✅ OPTIMALIZACE: Consolidated state management místo duplikovaných useState
+  const {
+    preferences,
+    updatePreferences,
+    itemsPerPage,
+    selectedPeriod,
+    columnFilters,
+    dashboardFilters,
+    setDashboardFilters,
+    columnVisibility,
+    setColumnVisibility,
+    columnOrder,
+    setColumnOrder,
+    expandedRows,
+    setExpandedRows,
+  } = useOrdersV3State(userId);
   
   // ============================================================================
-  // STATE - Pagination (Server-side) - s localStorage
+  // STATE - Pagination (sync s API response)
   // ============================================================================
   
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(() => {
-    if (userId) {
-      try {
-        const saved = localStorage.getItem(`ordersV3_itemsPerPage_${userId}`);
-        return saved ? parseInt(saved, 10) : 50;
-      } catch {
-        return 50;
-      }
+  const [totalPages, setTotalPages] = useState(apiPagination?.total_pages || 0);
+  const [totalItems, setTotalItems] = useState(apiPagination?.total || 0);
+  
+  // Update pagination když se změní API response
+  useEffect(() => {
+    if (apiPagination) {
+      setTotalPages(apiPagination.total_pages || 0);
+      setTotalItems(apiPagination.total || 0);
     }
-    return 50;
-  });
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalItems, setTotalItems] = useState(0);
+  }, [apiPagination]);
   
   // ============================================================================
-  // STATE - Filtry - s localStorage
+  // STATE - Statistiky (optimalizované s API integration)
   // ============================================================================
   
-  const [selectedPeriod, setSelectedPeriod] = useState(() => {
-    if (userId) {
-      try {
-        const saved = localStorage.getItem(`ordersV3_selectedPeriod_${userId}`);
-        return saved || 'all';
-      } catch {
-        return 'all';
-      }
-    }
-    return 'all';
-  });
-  
-  // Sloupcové filtry (pro backend) - načíst z localStorage
-  const [columnFilters, setColumnFilters] = useState(() => {
-    if (userId) {
-      try {
-        const saved = localStorage.getItem(`ordersV3_columnFilters_${userId}`);
-        if (saved) {
-          return JSON.parse(saved);
-        }
-      } catch {
-        // Ignorovat chybu
-      }
-    }
-    return {
-      // User filters (multi-select arrays of IDs)
-      objednatel: [],
-      garant: [],
-      prikazce: [],
-      schvalovatel: [],
-      
-      // Status filter (multi-select array of status codes)
-      stav: [],
-      
-      // Date range
-      dateFrom: '',
-      dateTo: '',
-      
-      // Price range
-      amountFrom: '',
-      amountTo: '',
-      
-      // Registry status (boolean)
-      maBytZverejneno: false,
-      byloZverejneno: false,
-      
-      // Extraordinary events (boolean)
-      mimoradneObjednavky: false,
-    };
-  });
-  
-  // Dashboard filtry
-  const [dashboardFilters, setDashboardFilters] = useState(() => {
-    if (!userId) {
-      return {
-        filter_status: '',
-        filter_my_orders: false,
-        filter_archivovano: false,
-      };
-    }
-    
-    try {
-      const saved = localStorage.getItem(`ordersV3_dashboardFilters_${userId}`);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.warn('Chyba při načítání dashboard filtrů z localStorage:', e);
-    }
-    
-    return {
-      filter_status: '',
-      filter_my_orders: false,
-      filter_archivovano: false,
-    };
-  });
-  
-  // ============================================================================
-  // STATE - Statistiky (z BE)
-  // ============================================================================
-  
-  // Celkové stats (unfiltered) - zůstanou stabilní
-  const [unfilteredStats, setUnfilteredStats] = useState({
+  // Base stats (unfiltered) - stabilní reference
+  const [unfilteredStats, setUnfilteredStats] = useState(() => ({
     total: 0,
     totalAmount: 0,
     nova: 0,
@@ -198,156 +138,33 @@ export function useOrdersV3({
     withAttachments: 0,
     mimoradneUdalosti: 0,
     mojeObjednavky: 0,
-  });
+  }));
   
-  // Aktuální stats (pro filtrované výsledky) 
+  // Current stats (filtrované) - z API response
   const [currentStats, setCurrentStats] = useState(null);
   
-  // ============================================================================
-  // STATE - Table Configuration (pro drag&drop, hide/show columns)
-  // ============================================================================
-  
-  const [columnVisibility, setColumnVisibility] = useState({
-    expander: true,
-    approve: true,
-    dt_objednavky: true,
-    cislo_objednavky: true,
-    financovani: true,
-    objednatel_garant: true,
-    prikazce_schvalovatel: true,
-    dodavatel_nazev: true,
-    stav_objednavky: true,
-    stav_registru: true,
-    max_cena_s_dph: true,
-    cena_s_dph: true,
-    faktury_celkova_castka_s_dph: true,
-    actions: true,
-  });
-  
-  const [columnOrder, setColumnOrder] = useState(() => {
-    // Načíst z localStorage (per user)
-    if (userId) {
-      try {
-        const saved = localStorage.getItem(`ordersV3_columnOrder_${userId}`);
-        if (saved) {
-          let parsed = JSON.parse(saved);
-          // console.log('📋 Orders V3: Loaded column order from localStorage:', parsed);
-          
-          // MIGRACE: Opravit staré názvy sloupců
-          const oldToNewMapping = {
-            'zpusob_financovani': 'financovani',
-            'predmet': 'cislo_objednavky', // predmet je teď součástí cislo_objednavky
-          };
-          
-          let migrated = false;
-          parsed = parsed.map(col => {
-            if (oldToNewMapping[col]) {
-              console.log(`🔄 Orders V3: Migrating column name: ${col} → ${oldToNewMapping[col]}`);
-              migrated = true;
-              return oldToNewMapping[col];
-            }
-            return col;
-          });
-          
-          // Odebrat duplicity po migraci
-          parsed = [...new Set(parsed)];
-          
-          // Pokud byla provedena migrace, uložit zpět
-          if (migrated) {
-            // console.log('💾 Orders V3: Saving migrated column order:', parsed);
-            localStorage.setItem(`ordersV3_columnOrder_${userId}`, JSON.stringify(parsed));
-          }
-          
-          return parsed;
-        }
-      } catch (err) {
-        console.warn('Failed to load column order:', err);
+  // Update stats když se změní API response
+  useEffect(() => {
+    if (apiStats) {
+      const hasActiveDashboardFilters = !!dashboardFilters.filter_status;
+      
+      if (!hasActiveDashboardFilters) {
+        // Bez dashboard filtrů = unfiltered baseline
+        setUnfilteredStats(apiStats);
+        setCurrentStats(apiStats);
+      } else {
+        // S dashboard filtry = pouze current stats
+        setCurrentStats(apiStats);
       }
     }
-    // Výchozí pořadí
-    const defaultOrder = [
-      'expander',
-      'approve',
-      'dt_objednavky',
-      'cislo_objednavky',
-      'financovani',  // ← MUSÍ být na 6. místě!
-      'objednatel_garant',
-      'prikazce_schvalovatel',
-      'dodavatel_nazev',
-      'stav_objednavky',
-      'stav_registru',
-      'max_cena_s_dph',
-      'cena_s_dph',
-      'faktury_celkova_castka_s_dph',
-      'actions',
-    ];
-    // console.log('📋 Orders V3: Using default column order:', defaultOrder);
-    return defaultOrder;
-  });
+  }, [apiStats, dashboardFilters.filter_status]);
   
-  // ============================================================================
-  // STATE - Expanded rows (pro lazy loading subrows) - s localStorage
-  // ============================================================================
+  // ✅ Column configuration přesunuto do useOrdersV3State
   
-  const [expandedRows, setExpandedRows] = useState(() => {
-    // Načíst z localStorage (per user)
-    if (userId) {
-      try {
-        const saved = localStorage.getItem(`ordersV3_expandedRows_${userId}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // console.log('📋 Orders V3: Loaded expanded rows from localStorage:', parsed);
-          return parsed;
-        }
-      } catch (err) {
-        console.warn('Failed to load expanded rows:', err);
-      }
-    }
-    return {};
-  });
+  // ✅ Expanded rows přesunuto do useOrdersV3State
   const [subRowsData, setSubRowsData] = useState({}); // Cache pro načtené detaily
   
-  // ============================================================================
-  // EFFECTS - Uložení do localStorage při změně
-  // ============================================================================
-  
-  // Uložit itemsPerPage do localStorage
-  useEffect(() => {
-    if (userId && itemsPerPage) {
-      localStorage.setItem(`ordersV3_itemsPerPage_${userId}`, itemsPerPage.toString());
-    }
-  }, [userId, itemsPerPage]);
-  
-  // Uložit selectedPeriod do localStorage
-  useEffect(() => {
-    if (userId && selectedPeriod) {
-      localStorage.setItem(`ordersV3_selectedPeriod_${userId}`, selectedPeriod);
-    }
-  }, [userId, selectedPeriod]);
-  
-  // Uložit columnFilters do localStorage
-  useEffect(() => {
-    if (userId && columnFilters) {
-      localStorage.setItem(`ordersV3_columnFilters_${userId}`, JSON.stringify(columnFilters));
-      // console.log('💾 Filtry uloženy do localStorage:', columnFilters);
-    }
-  }, [userId, columnFilters]);
-  
-  // Uložit dashboardFilters do localStorage
-  useEffect(() => {
-    if (userId && dashboardFilters) {
-      localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(dashboardFilters));
-      console.log('💾 Dashboard filtry uloženy do localStorage:', dashboardFilters.filter_status);
-    }
-  }, [userId, dashboardFilters]);
-  
-  // Uložit expandedRows do localStorage
-  useEffect(() => {
-    if (userId) {
-      localStorage.setItem(`ordersV3_expandedRows_${userId}`, JSON.stringify(expandedRows));
-      // console.log('💾 Expanded rows uloženy do localStorage:', expandedRows);
-    }
-  }, [userId, expandedRows]);
+  // ✅ OPTIMALIZACE: localStorage effects nahrazeny debounced save v useOrdersV3State
   
   // ============================================================================
   // REF - Debounce timers a aktuální hodnoty
@@ -480,7 +297,7 @@ export function useOrdersV3({
   }, []);
   
   /**
-   * Načte objednávky z API
+   * ✅ OPTIMALIZACE: Načte objednávky přes deduplicated API handler
    */
   const loadOrders = useCallback(async () => {
     if (!token || !username) {
@@ -488,89 +305,35 @@ export function useOrdersV3({
       return;
     }
     
-    setLoading(true);
-    setError(null);
-    showProgress?.();
+    // Převést filtry na backend formát
+    const activeFilters = convertFiltersForBackend(columnFilters);
     
-    try {
-      // Převést filtry na backend formát
-      const activeFilters = convertFiltersForBackend(columnFilters);
-      
-      // Přidat dashboard filtr pro workflow stav (z REF pro aktuální hodnotu)
-      const currentDashboard = currentDashboardFilters.current;
-      if (currentDashboard.filter_status) {
-        // Speciální filtry
-        if (currentDashboard.filter_status === 'moje_objednavky') {
-          activeFilters.moje_objednavky = true;
-        } else if (currentDashboard.filter_status === 'mimoradne_udalosti') {
-          activeFilters.mimoradne_udalosti = true;
-        } else if (currentDashboard.filter_status === 's_fakturou') {
-          activeFilters.s_fakturou = true;
-        } else if (currentDashboard.filter_status === 's_prilohami') {
-          activeFilters.s_prilohami = true;
-        } else {
-          // Jinak je to workflow stav
-          activeFilters.stav_workflow = currentDashboard.filter_status;
-        }
-      }
-      
-      // 🔍 DEBUG: Zobrazit aktivní filtry
-      // console.log('🔍 DEBUG: Active filters being sent to API:', activeFilters);
-      
-      // Volání V3 API
-      const response = await listOrdersV3({
-        token,
-        username,
-        page: currentPage,
-        per_page: itemsPerPage,
-        period: selectedPeriod,
-        filters: activeFilters,
-        sorting: sorting,
-      });
-      
-      // 🔍 DEBUG: Zobrazit celý response
-      // console.log('🔍 DEBUG: Full API Response:', JSON.stringify(response, null, 2));
-      // console.log('🔍 DEBUG: Orders array:', response.data?.orders);
-      // console.log('🔍 DEBUG: Orders count:', response.data?.orders?.length);
-      
-      // Response format: { status, data: { orders, pagination, stats }, message }
-      if (response.status === 'success' && response.data) {
-        setOrders(response.data.orders || []);
-        
-        // Pagination
-        if (response.data.pagination) {
-          setTotalPages(response.data.pagination.total_pages || 0);
-          setTotalItems(response.data.pagination.total || 0);
-        }
-        
-        // Stats (pouze pro page=1)
-        if (response.data.stats) {
-          // Pokud NEJSOU aktivní dashboard filtry, uložit jako unfilteredStats
-          const currentDashboard = currentDashboardFilters.current;
-          const hasActiveDashboardFilters = !!currentDashboard.filter_status;
-          
-          if (!hasActiveDashboardFilters) {
-            setUnfilteredStats(response.data.stats);
-            setCurrentStats(response.data.stats);
-          } else {
-            setCurrentStats(response.data.stats);
-            // unfilteredStats zůstávají nedotčené!
-          }
-        }
-        
-        // console.log('✅ Orders set to state:', response.data.orders?.length || 0, 'items');
+    // Přidat dashboard filtr z REF (aktuální hodnota)
+    const currentDashboard = currentDashboardFilters.current;
+    if (currentDashboard.filter_status) {
+      if (currentDashboard.filter_status === 'moje_objednavky') {
+        activeFilters.moje_objednavky = true;
+      } else if (currentDashboard.filter_status === 'mimoradne_udalosti') {
+        activeFilters.mimoradne_udalosti = true;
+      } else if (currentDashboard.filter_status === 's_fakturou') {
+        activeFilters.s_fakturou = true;
+      } else if (currentDashboard.filter_status === 's_prilohami') {
+        activeFilters.s_prilohami = true;
       } else {
-        throw new Error(response.message || 'Neplatná odpověď serveru');
+        activeFilters.stav_workflow = currentDashboard.filter_status;
       }
-      
-    } catch (err) {
-      console.error('❌ useOrdersV3: Error loading orders:', err);
-      setError(err?.message || 'Chyba při načítání objednávek');
-      // Nemazat data při chybě - ponechat předchozí zobrazení
-    } finally {
-      setLoading(false);
-      hideProgress?.();
     }
+    
+    // ✅ Volání optimalizované API funkce s cache a deduplication
+    return fetchData({
+      token,
+      username,
+      page: currentPage,
+      per_page: itemsPerPage,
+      period: selectedPeriod,
+      filters: activeFilters,
+      sorting: sorting,
+    });
   }, [
     token,
     username,
@@ -578,11 +341,9 @@ export function useOrdersV3({
     itemsPerPage,
     selectedPeriod,
     columnFilters,
-    // dashboardFilters ODSTRANĚNO - jinak by se volal loadOrders při každé změně!
     sorting,
     convertFiltersForBackend,
-    showProgress,
-    hideProgress,
+    fetchData,
   ]);
   
   // ============================================================================
@@ -593,15 +354,14 @@ export function useOrdersV3({
    * Změní všechny filtry najednou (pro panelové filtry)
    */
   const handlePanelFiltersChange = useCallback((newFilters) => {
-    setColumnFilters(newFilters);
+    updatePreferences({ columnFilters: newFilters });
     setCurrentPage(1);
-  }, []);
+  }, [updatePreferences]);
   
   /**
-   * Změní sloupcový filtr (s debounce pro text inputy)
-   * Mapuje ID sloupců z tabulky na názvy API parametrů
+   * ✅ OPTIMALIZACE: Column filter s debounce z config
    */
-  const handleColumnFilterChange = useCallback((columnId, value, debounceMs = 500) => {
+  const handleColumnFilterChange = useCallback((columnId, value, debounceMs = ORDERS_V3_CONFIG.FILTER_DEBOUNCE_DELAY) => {
     // Mapování ID sloupců z tabulky na názvy API parametrů
     const columnToFilterMapping = {
       'cislo_objednavky': 'cislo_objednavky',
@@ -633,22 +393,28 @@ export function useOrdersV3({
     const applyFilter = () => {
       // Pro kombinované sloupce - poslat hodnotu oběma polím
       if (columnId === 'objednatel_garant') {
-        setColumnFilters(prev => ({
-          ...prev,
-          objednatel_jmeno: value,
-          garant_jmeno: value,
-        }));
+        updatePreferences({
+          columnFilters: {
+            ...columnFilters,
+            objednatel_jmeno: value,
+            garant_jmeno: value,
+          }
+        });
       } else if (columnId === 'prikazce_schvalovatel') {
-        setColumnFilters(prev => ({
-          ...prev,
-          prikazce_jmeno: value,
-          schvalovatel_jmeno: value,
-        }));
+        updatePreferences({
+          columnFilters: {
+            ...columnFilters,
+            prikazce_jmeno: value,
+            schvalovatel_jmeno: value,
+          }
+        });
       } else {
-        setColumnFilters(prev => ({
-          ...prev,
-          [filterName]: value,
-        }));
+        updatePreferences({
+          columnFilters: {
+            ...columnFilters,
+            [filterName]: value,
+          }
+        });
       }
       setCurrentPage(1); // Reset na první stránku
     };
@@ -724,71 +490,22 @@ export function useOrdersV3({
    * - Reset na první stránku
    */
   const handleClearFilters = useCallback(() => {
-    console.log('🧹 Čistím všechny filtry...');
     
-    // Reset všech typů sloupcových filtrů
-    const emptyFilters = {
-      // Multi-select pole (user IDs a stavy)
-      objednatel: [],
-      garant: [],
-      prikazce: [],
-      schvalovatel: [],
-      stav: [],
-      
-      // Date range
-      dateFrom: '',
-      dateTo: '',
-      
-      // Price range
-      amountFrom: '',
-      amountTo: '',
-      
-      // Boolean checkboxy (registry status a extraordinary events)
-      maBytZverejneno: false,
-      byloZverejneno: false,
-      mimoradneObjednavky: false,
-      
-      // Textové filtry (pokud jsou používány - pro kompatibilitu)
-      cislo_objednavky: '',
-      predmet: '',
-      dodavatel_nazev: '',
-      objednatel_jmeno: '',
-      garant_jmeno: '',
-      prikazce_jmeno: '',
-      schvalovatel_jmeno: '',
-      financovani: '',
-      stav_workflow: '',
-      datum_od: '',
-      datum_do: '',
-      cena_max: '',
-      cena_polozky: '',
-      cena_faktury: '',
-    };
+    // Reset všech typů sloupcových filtrů na default z config
+    const emptyFilters = { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.columnFilters };
     
-    setColumnFilters(emptyFilters);
-    
-    // Vymazat filtry z localStorage
-    if (userId) {
-      localStorage.removeItem(`ordersV3_columnFilters_${userId}`);
-      localStorage.removeItem(`ordersV3_expandedRows_${userId}`);
-      console.log('✅ Filtry vymazány z localStorage');
-    }
+    updatePreferences({
+      columnFilters: emptyFilters,
+      dashboardFilters: { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.dashboardFilters },
+      expandedRows: {},
+    });
     
     // Reset expanded rows state
-    setExpandedRows({});
     setSubRowsData({});
-    
-    // Reset dashboard filtrů
-    setDashboardFilters({
-      filter_status: '',
-      filter_my_orders: false,
-      filter_archivovano: false,
-    });
     
     // Reset na první stránku
     setCurrentPage(1);
     
-    console.log('✅ Všechny filtry resetovány');
   }, [userId]);
   
   // ============================================================================
@@ -807,9 +524,9 @@ export function useOrdersV3({
    * Změní počet položek na stránku
    */
   const handleItemsPerPageChange = useCallback((newItemsPerPage) => {
-    setItemsPerPage(newItemsPerPage);
+    updatePreferences({ itemsPerPage: newItemsPerPage });
     setCurrentPage(1); // Reset na první stránku
-  }, []);
+  }, [updatePreferences]);
   
   // ============================================================================
   // FUNKCE - Column Configuration
@@ -819,110 +536,51 @@ export function useOrdersV3({
    * Změní viditelnost sloupce
    */
   const handleColumnVisibilityChange = useCallback((columnId, visible) => {
-    setColumnVisibility(prev => ({
-      ...prev,
+    const newVisibility = {
+      ...columnVisibility,
       [columnId]: visible,
-    }));
-  }, []);
+    };
+    updatePreferences({ columnVisibility: newVisibility });
+  }, [columnVisibility, updatePreferences]);
   
   /**
    * Změní pořadí sloupců
-   * @param {string|Array} fromColumnOrNewOrder - Buď ID sloupce který se přesouvá, nebo celé nové pole
-   * @param {string} [toColumn] - ID sloupce kam se přesouvá (pokud je první param string)
    */
   const handleColumnOrderChange = useCallback((fromColumnOrNewOrder, toColumn) => {
-    // console.log('🔄 Orders V3: Column reorder requested:', { fromColumnOrNewOrder, toColumn });
+    let newOrder;
     
     if (Array.isArray(fromColumnOrNewOrder)) {
       // Přijato celé nové pole
-      // console.log('📋 Orders V3: Setting new column order:', fromColumnOrNewOrder);
-      setColumnOrder(fromColumnOrNewOrder);
-      // Uložit do localStorage (per user)
-      if (userId) {
-        try {
-          localStorage.setItem(`ordersV3_columnOrder_${userId}`, JSON.stringify(fromColumnOrNewOrder));
-          // console.log('💾 Orders V3: Column order saved to localStorage');
-        } catch (err) {
-          console.warn('Failed to save column order:', err);
-        }
-      }
+      newOrder = fromColumnOrNewOrder;
     } else if (typeof fromColumnOrNewOrder === 'string' && toColumn) {
       // Přijato (fromColumn, toColumn)
-      setColumnOrder(prevOrder => {
-        const fromIndex = prevOrder.indexOf(fromColumnOrNewOrder);
-        const toIndex = prevOrder.indexOf(toColumn);
-        
-        // console.log('📋 Orders V3: Moving column:', {
-        //   from: fromColumnOrNewOrder,
-        //   fromIndex,
-        //   to: toColumn,
-        //   toIndex,
-        //   currentOrder: prevOrder
-        // });
-        
-        if (fromIndex === -1 || toIndex === -1) {
-          console.warn('⚠️ Orders V3: Invalid column indices!');
-          return prevOrder;
-        }
-        
-        const newOrder = [...prevOrder];
-        newOrder.splice(fromIndex, 1);
-        newOrder.splice(toIndex, 0, fromColumnOrNewOrder);
-        
-        // console.log('✅ Orders V3: New column order:', newOrder);
-        
-        // Uložit do localStorage (per user)
-        if (userId) {
-          try {
-            localStorage.setItem(`ordersV3_columnOrder_${userId}`, JSON.stringify(newOrder));
-            // console.log('💾 Orders V3: Column order saved to localStorage');
-          } catch (err) {
-            console.warn('Failed to save column order:', err);
-          }
-        }
-        
-        return newOrder;
-      });
+      const fromIndex = columnOrder.indexOf(fromColumnOrNewOrder);
+      const toIndex = columnOrder.indexOf(toColumn);
+      
+      if (fromIndex === -1 || toIndex === -1) {
+        console.warn('⚠️ Orders V3: Invalid column indices!');
+        return;
+      }
+      
+      newOrder = [...columnOrder];
+      newOrder.splice(fromIndex, 1);
+      newOrder.splice(toIndex, 0, fromColumnOrNewOrder);
+    } else {
+      return;
     }
-  }, [userId]);
+    
+    updatePreferences({ columnOrder: newOrder });
+  }, [columnOrder, updatePreferences]);
   
   /**
    * Resetuje konfiguraci sloupců na výchozí
    */
   const handleResetColumnConfig = useCallback(() => {
-    setColumnVisibility({
-      expander: true,
-      approve: true,
-      dt_objednavky: true,
-      cislo_objednavky: true,
-      financovani: true,
-      objednatel_garant: true,
-      prikazce_schvalovatel: true,
-      dodavatel_nazev: true,
-      stav_objednavky: true,
-      stav_registru: true,
-      max_cena_s_dph: true,
-      cena_s_dph: true,
-      faktury_celkova_castka_s_dph: true,
-      actions: true,
+    updatePreferences({ 
+      columnVisibility: { ...ORDERS_V3_CONFIG.DEFAULT_COLUMN_VISIBILITY },
+      columnOrder: [...ORDERS_V3_CONFIG.DEFAULT_COLUMN_ORDER] 
     });
-    setColumnOrder([
-      'expander',
-      'approve',
-      'dt_objednavky',
-      'cislo_objednavky',
-      'financovani',
-      'objednatel_garant',
-      'prikazce_schvalovatel',
-      'dodavatel_nazev',
-      'stav_objednavky',
-      'stav_registru',
-      'max_cena_s_dph',
-      'cena_s_dph',
-      'faktury_celkova_castka_s_dph',
-      'actions',
-    ]);
-  }, []);
+  }, [updatePreferences]);
   
   // ============================================================================
   // FUNKCE - Expanded Rows (Lazy Loading)
@@ -936,17 +594,17 @@ export function useOrdersV3({
     
     if (isExpanded) {
       // Sbalujeme - odstraníme z objektu
-      setExpandedRows(prev => {
-        const newState = { ...prev };
-        delete newState[orderId];
-        return newState;
-      });
+      const newExpandedRows = { ...expandedRows };
+      delete newExpandedRows[orderId];
+      updatePreferences({ expandedRows: newExpandedRows });
     } else {
       // Rozbalujeme - přidáme do objektu
-      setExpandedRows(prev => ({
-        ...prev,
-        [orderId]: true,
-      }));
+      updatePreferences({ 
+        expandedRows: {
+          ...expandedRows,
+          [orderId]: true,
+        }
+      });
       
       // Pokud rozbalujeme a ještě nemáme data, načíst je
       if (!subRowsData[orderId]) {
@@ -1060,7 +718,7 @@ export function useOrdersV3({
     
     // Filtry
     selectedPeriod,
-    setSelectedPeriod,
+    setSelectedPeriod: (period) => updatePreferences({ selectedPeriod: period }),
     columnFilters,
     dashboardFilters,
     handlePanelFiltersChange,
