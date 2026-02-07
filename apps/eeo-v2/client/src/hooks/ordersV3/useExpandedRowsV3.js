@@ -192,7 +192,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
 
   // 🔄 Refresh detail (force reload)
   const refreshDetail = useCallback(async (orderId) => {
-    console.log(`🔄 [REFRESH] Starting refresh for order ${orderId}`);
+    // console.log(`🔄 [REFRESH] Starting refresh for order ${orderId}`);
     
     // Vyčistit fetchingRef (důležité!)
     fetchingRef.current.delete(orderId);
@@ -215,7 +215,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
     setDetailsCache(prev => {
       const next = { ...prev };
       delete next[orderId];
-      console.log(`🔄 [REFRESH] Cache cleared for order ${orderId}`);
+      // console.log(`🔄 [REFRESH] Cache cleared for order ${orderId}`);
       return next;
     });
 
@@ -226,14 +226,14 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
         const parsed = JSON.parse(cachedDetails);
         delete parsed[orderId];
         localStorage.setItem(cacheKey, JSON.stringify(parsed));
-        console.log(`🔄 [REFRESH] localStorage cache cleared for order ${orderId}`);
+        // console.log(`🔄 [REFRESH] localStorage cache cleared for order ${orderId}`);
       }
     } catch (error) {
       console.warn('⚠️ Chyba při čištění cache v localStorage:', error);
     }
 
     // PŘÍMO volat API (nepoužívat loadOrderDetail kvůli closure problému)
-    console.log(`🔄 [REFRESH] Calling API directly for order ${orderId}`);
+    // console.log(`🔄 [REFRESH] Calling API directly for order ${orderId}`);
     
     // Označíme že se načítá
     fetchingRef.current.add(orderId);
@@ -246,7 +246,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
         orderId 
       });
 
-      console.log(`✅ [REFRESH] API response received for order ${orderId}`);
+      // console.log(`✅ [REFRESH] API response received for order ${orderId}`);
 
       // Uložíme do cache
       setDetailsCache(prev => ({

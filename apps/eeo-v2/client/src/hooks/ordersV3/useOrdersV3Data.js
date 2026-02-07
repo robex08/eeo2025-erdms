@@ -46,14 +46,14 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     
     // ✅ DEDUPLICATION: Pokud je stejný request již v běhu, počkej na něj
     if (currentRequestRef.current && lastRequestParamsRef.current === requestSignature) {
-      console.log('🔄 Request deduplication: waiting for existing request...');
+      // console.log('🔄 Request deduplication: waiting for existing request...');
       return currentRequestRef.current;
     }
     
     // ✅ CACHE CHECK: Zkontroluj cache pro rychlé výsledky (max 10s starý)
     const cached = cacheRef.current.get(requestSignature);
     if (cached && (Date.now() - cached.timestamp < 10000)) {
-      console.log('⚡ Using cached data for request');
+      // console.log('⚡ Using cached data for request');
       setData(cached.data.orders || []);
       setStats(cached.data.stats || null);
       setPagination(cached.data.pagination || null);
@@ -135,7 +135,7 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
    */
   const cancelCurrentRequest = useCallback(() => {
     if (currentRequestRef.current) {
-      console.log('🚫 Cancelling current request...');
+      // console.log('🚫 Cancelling current request...');
       currentRequestRef.current = null;
       lastRequestParamsRef.current = null;
       setLoading(false);
@@ -148,7 +148,7 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
    */
   const clearCache = useCallback(() => {
     cacheRef.current.clear();
-    console.log('🗑️ API cache cleared');
+    // console.log('🗑️ API cache cleared');
   }, []);
   
   /**

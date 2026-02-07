@@ -2226,6 +2226,17 @@ switch ($endpoint) {
         }
         break;
     
+    // POST /api.eeo/orders-v3/update - Update objednávky (schválení, zamítnutí)
+    case 'orders-v3/update':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/handlers_orders_v3.php';
+            handle_orders_v3_update($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
     // POST /api.eeo/order-v3/find-page - Najde stránku kde je objednávka
     case 'order-v3/find-page':
         if ($request_method === 'POST') {

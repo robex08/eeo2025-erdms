@@ -854,3 +854,121 @@ function handle_orders_v3_find_page($input, $config) {
         api_error(500, 'Chyba při hledání stránky objednávky', 'SERVER_ERROR');
     }
 }
+
+/**
+ * 📝 Handler: UPDATE ORDER V3
+ * 
+ * Aktualizuje objednávku (používá se hlavně pro schválení/zamítnutí)
+ * 
+ * @param array $input POST data s payload
+ * @param array $config DB konfigurace
+ * @return void JSON response
+ */
+function handle_orders_v3_update($input, $config) {
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $payload = $input['payload'] ?? [];
+    $order_id = $payload['id'] ?? 0;
+
+    error_log("📝 [V3 ORDER UPDATE] Request: order_id=$order_id, username=$username");
+
+    if (!$token || !$username) {
+        error_log("❌ [V3 ORDER UPDATE] Missing auth");
+        api_error(401, 'Chybí autentizační údaje', 'MISSING_AUTH');
+        return;
+    }
+
+    if (!$order_id || !is_numeric($order_id)) {
+        error_log("❌ [V3 ORDER UPDATE] Invalid order_id: $order_id");
+        api_error(400, 'Chybí nebo neplatné ID objednávky', 'INVALID_ORDER_ID');
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        TimezoneHelper::setMysqlTimezone($db);
+        
+        // Ověření tokenu
+        $user = verify_token($token, $db);
+        if (!$user) {
+            error_log("❌ [V3 ORDER UPDATE] Invalid token");
+            api_error(401, 'Neplatný nebo vypršelý token', 'INVALID_TOKEN');
+            return;
+        }
+
+        // Build UPDATE query dynamically podle payload
+        $allowed_fields = [
+            'stav_objednavky',
+            'stav_workflow_kod',
+            'schvaleni_komentar',
+            'schvalovatel_id',
+            'mimoradna_udalost'
+        ];
+
+        $update_parts = [];
+        $params = [];
+
+        foreach ($allowed_fields as $field) {
+            if (array_key_exists($field, $payload)) {
+                $update_parts[] = "`$field` = ?";
+                $params[] = $payload[$field];
+            }
+        }
+
+        // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu
+        if (isset($payload['stav_workflow_kod'])) {
+            $workflow_states = json_decode($payload['stav_workflow_kod'], true);
+            if (is_array($workflow_states)) {
+                // Pokud workflow obsahuje SCHVALENA, ZAMITNUTA nebo CEKA_SE
+                if (in_array('SCHVALENA', $workflow_states) || 
+                    in_array('ZAMITNUTA', $workflow_states) || 
+                    in_array('CEKA_SE', $workflow_states)) {
+                    $update_parts[] = "`dt_schvaleni` = ?";
+                    $params[] = TimezoneHelper::getCzechDateTime();
+                    error_log("✅ [V3 ORDER UPDATE] Auto-setting dt_schvaleni with TimezoneHelper");
+                }
+            }
+        }
+
+        if (empty($update_parts)) {
+            error_log("❌ [V3 ORDER UPDATE] No fields to update");
+            api_error(400, 'Žádná data k aktualizaci', 'NO_DATA');
+            return;
+        }
+
+        // Přidej timestamp aktualizace
+        $update_parts[] = "`dt_objednavky` = NOW()";
+        $params[] = $order_id;
+
+        $sql = "UPDATE `" . TBL_OBJEDNAVKY . "` 
+                SET " . implode(', ', $update_parts) . "
+                WHERE `id` = ?";
+
+        error_log("🔍 [V3 ORDER UPDATE] SQL: $sql");
+        error_log("🔍 [V3 ORDER UPDATE] Params: " . json_encode($params));
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+
+        if ($stmt->rowCount() > 0) {
+            error_log("✅ [V3 ORDER UPDATE] Order #$order_id updated successfully");
+            api_ok('Objednávka byla aktualizována', [
+                'order_id' => $order_id,
+                'updated_fields' => array_keys(array_filter($payload, function($key) use ($allowed_fields) {
+                    return in_array($key, $allowed_fields);
+                }, ARRAY_FILTER_USE_KEY))
+            ]);
+        } else {
+            error_log("⚠️ [V3 ORDER UPDATE] No rows affected for order #$order_id");
+            api_ok('Objednávka nebyla změněna (data již aktuální)', [
+                'order_id' => $order_id,
+                'updated' => false
+            ]);
+        }
+
+    } catch (Exception $e) {
+        error_log("❌ [V3 ORDER UPDATE] Error: " . $e->getMessage());
+        error_log("❌ [V3 ORDER UPDATE] Stack: " . $e->getTraceAsString());
+        api_error(500, 'Chyba při aktualizaci objednávky: ' . $e->getMessage(), 'SERVER_ERROR');
+    }
+}

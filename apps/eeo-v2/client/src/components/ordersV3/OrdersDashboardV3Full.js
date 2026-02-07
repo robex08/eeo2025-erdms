@@ -30,6 +30,7 @@ import {
   faShield,
   faClock,
 } from '@fortawesome/free-solid-svg-icons';
+import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -350,22 +351,30 @@ const OrdersDashboardV3Full = ({
             📊 Dashboard (kompaktní)
           </h3>
           <DashboardActions>
-            <ActionButton onClick={() => handleModeChange('full')}>
-              <FontAwesomeIcon icon={faTableColumns} />
-              Plný
-            </ActionButton>
-            <ActionButton onClick={() => handleModeChange('dynamic')}>
-              <FontAwesomeIcon icon={faList} />
-              Dynamické
-            </ActionButton>
-            <ActionButton $active onClick={() => handleModeChange('compact')}>
-              <FontAwesomeIcon icon={faFileInvoice} />
-              Kompaktní
-            </ActionButton>
-            <ActionButton onClick={onHide}>
-              <FontAwesomeIcon icon={faTimes} />
-              Skrýt
-            </ActionButton>
+            <SmartTooltip text="Zobrazit všechny statistické karty" icon="info" preferredPosition="bottom">
+              <ActionButton onClick={() => handleModeChange('full')}>
+                <FontAwesomeIcon icon={faTableColumns} />
+                Plný
+              </ActionButton>
+            </SmartTooltip>
+            <SmartTooltip text="Zobrazit pouze karty s hodnotou > 0" icon="success" preferredPosition="bottom">
+              <ActionButton onClick={() => handleModeChange('dynamic')}>
+                <FontAwesomeIcon icon={faList} />
+                Dynamické
+              </ActionButton>
+            </SmartTooltip>
+            <SmartTooltip text="Kompaktní zobrazení se základními informacemi" icon="warning" preferredPosition="bottom">
+              <ActionButton $active onClick={() => handleModeChange('compact')}>
+                <FontAwesomeIcon icon={faFileInvoice} />
+                Kompaktní
+              </ActionButton>
+            </SmartTooltip>
+            <SmartTooltip text="Skrýt celý dashboard" icon="info" preferredPosition="bottom">
+              <ActionButton onClick={onHide}>
+                <FontAwesomeIcon icon={faTimes} />
+                Skrýt
+              </ActionButton>
+            </SmartTooltip>
           </DashboardActions>
         </DashboardHeader>
         
@@ -549,22 +558,30 @@ const OrdersDashboardV3Full = ({
           📊 Dashboard {dashboardMode === 'full' ? '(plný)' : '(dynamický)'}
         </h3>
         <DashboardActions>
-          <ActionButton $active={dashboardMode === 'full'} onClick={() => handleModeChange('full')}>
-            <FontAwesomeIcon icon={faTableColumns} />
-            Plný
-          </ActionButton>
-          <ActionButton $active={dashboardMode === 'dynamic'} onClick={() => handleModeChange('dynamic')}>
-            <FontAwesomeIcon icon={faList} />
-            Dynamické
-          </ActionButton>
-          <ActionButton onClick={() => handleModeChange('compact')}>
-            <FontAwesomeIcon icon={faFileInvoice} />
-            Kompaktní
-          </ActionButton>
-          <ActionButton onClick={onHide}>
-            <FontAwesomeIcon icon={faTimes} />
-            Skrýt
-          </ActionButton>
+          <SmartTooltip text="Zobrazit všechny statistické karty" icon="info" preferredPosition="bottom">
+            <ActionButton $active={dashboardMode === 'full'} onClick={() => handleModeChange('full')}>
+              <FontAwesomeIcon icon={faTableColumns} />
+              Plný
+            </ActionButton>
+          </SmartTooltip>
+          <SmartTooltip text="Zobrazit pouze karty s hodnotou > 0" icon="success" preferredPosition="bottom">
+            <ActionButton $active={dashboardMode === 'dynamic'} onClick={() => handleModeChange('dynamic')}>
+              <FontAwesomeIcon icon={faList} />
+              Dynamické
+            </ActionButton>
+          </SmartTooltip>
+          <SmartTooltip text="Kompaktní zobrazení se základními informacemi" icon="warning" preferredPosition="bottom">
+            <ActionButton onClick={() => handleModeChange('compact')}>
+              <FontAwesomeIcon icon={faFileInvoice} />
+              Kompaktní
+            </ActionButton>
+          </SmartTooltip>
+          <SmartTooltip text="Skrýt celý dashboard" icon="info" preferredPosition="bottom">
+            <ActionButton onClick={onHide}>
+              <FontAwesomeIcon icon={faTimes} />
+              Skrýt
+            </ActionButton>
+          </SmartTooltip>
         </DashboardActions>
       </DashboardHeader>
       

@@ -18,7 +18,7 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useContext, useState, useEffect, lazy, Suspense } from 'react';
+import React, { useContext, useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -34,6 +34,7 @@ import {
   faEyeSlash,
   faPalette,
   faTimes,
+  faEraser,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -524,7 +525,7 @@ function Orders25ListV3() {
     handlePanelFiltersChange,
     handleColumnFilterChange,
     handleDashboardFilterChange,
-    handleClearFilters,
+    handleClearFilters: originalClearFilters,
     
     // Column Configuration
     columnVisibility,
@@ -537,6 +538,10 @@ function Orders25ListV3() {
     expandedRows,
     subRowsData,
     handleToggleRow,
+    
+    // Actions
+    loadOrders,
+    clearCache, // ✅ Pro vyčištění cache po update operacích
     
     // Utils
     getOrderTotalPriceWithDPH,
@@ -590,6 +595,7 @@ function Orders25ListV3() {
   
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
+  const [highlightAction, setHighlightAction] = useState(null); // 🎨 approve/reject/postpone pro barvu
   const [isSearchingForOrder, setIsSearchingForOrder] = useState(false);
 
   // 🎯 Effect: Načtení číselníku stavů z API
@@ -757,6 +763,23 @@ function Orders25ListV3() {
     
   }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedPeriod, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
 
+  // ✅ DEBOUNCED FULLTEXT SEARCH - automatic reload při změně globalFilter
+  useEffect(() => {
+    const delayedSearch = setTimeout(() => {
+      if (loadOrders) {
+        loadOrders(globalFilter); // Přenačti data s novým fulltext filtrem
+      }
+    }, 500); // 500ms debounce
+    
+    return () => clearTimeout(delayedSearch);
+  }, [globalFilter, loadOrders]);
+
+  // ✅ VLASTNÍ handleClearFilters která také vymaže globalFilter 
+  const handleClearFilters = useCallback(() => {
+    originalClearFilters(); // Vymaže sloupcové filtry a dashboard filtry
+    setGlobalFilter('');    // Vymaže fulltext search
+  }, [originalClearFilters, setGlobalFilter]);
+
   // ✅ OPTIMALIZACE: localStorage efekty nahrazeny debounced save v useOrdersV3State
   
   // Pouze globalFilter zůstává samostatný
@@ -920,6 +943,10 @@ function Orders25ListV3() {
       case 'delete':
         handleDeleteOrder(order);
         break;
+      case 'refresh':
+        // Refresh dat po schválení/zamítnutí objednávky
+        loadOrders();
+        break;
       default:
         console.warn('Neznámá akce:', action);
     }
@@ -1020,6 +1047,22 @@ function Orders25ListV3() {
           </ToggleButton>
         )}
 
+        {/* Vymazat filtry - zobrazit v ActionBar jen když NENÍ viditelný panel filtrů */}
+        {!showFilters && (Object.values(columnFilters || {}).some(v => v && (Array.isArray(v) ? v.length > 0 : true)) || globalFilter) && (
+          <ToggleButton
+            onClick={handleClearFilters}
+            title="Vymaže všechny aktivní filtry včetně fulltext searche"
+            style={{
+              background: '#dc2626',
+              borderColor: '#dc2626', 
+              color: 'white'
+            }}
+          >
+            <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
+            Vymazat filtry
+          </ToggleButton>
+        )}
+
         {/* Toggle Podbarvení řádků */}
         <ToggleButton
           $active={showRowColoring}
@@ -1076,7 +1119,7 @@ function Orders25ListV3() {
           userId={user_id}
           filters={columnFilters}
           onFilterChange={handlePanelFiltersChange}
-          onClearAll={handleClearFilters}
+          onClearAll={handleClearFilters} // ✅ Vráceno zpět
           globalFilter={globalFilter}
           onGlobalFilterChange={setGlobalFilter}
           showFilters={showFilters}
@@ -1112,6 +1155,14 @@ function Orders25ListV3() {
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
+        highlightAction={highlightAction} // 🎨 Akce pro určení barvy
+        onHighlightOrder={(orderId, action) => {
+          setHighlightOrderId(orderId);
+          setHighlightAction(action); // approve/reject/postpone
+          // Highlight zůstane dokud uživatel sám nerefreshne stránku
+        }}
+        showToast={showToast} // 🎯 Toast notifikace
+        clearCache={clearCache} // ✅ Vyčistí cache po update operacích
         getOrderTotalPriceWithDPH={getOrderTotalPriceWithDPH}
         forceVirtualization={shouldUseVirtualization}
         showPerformanceInfo={process.env.NODE_ENV === 'development'}
