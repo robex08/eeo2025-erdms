@@ -40,7 +40,6 @@ const categorizeErrorKey = (key) => {
   
   // 1. Informace o objednateli (včetně garanta!)
   if (key.includes('jmeno') || key.includes('email') || key.includes('ev_cislo') || key.includes('garant')) {
-    console.log(`🔍 categorizeErrorKey: "${key}" → objednatel`);
     return 'objednatel';
   }
   
@@ -49,7 +48,6 @@ const categorizeErrorKey = (key) => {
       key.includes('strediska') || key.includes('predmet') ||
       key.includes('financovani') || key.includes('lp_kod') || key.includes('cislo_smlouvy') ||
       key.includes('individualni_schvaleni') || key.includes('pojistna_udalost')) {
-    console.log(`🔍 categorizeErrorKey: "${key}" → schvaleni`);
     return 'schvaleni';
   }
   
@@ -73,8 +71,10 @@ const categorizeErrorKey = (key) => {
     return 'stav_odeslani';
   }
   
-  // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
-  if (key.startsWith('faktura_') && key.includes('vecna_spravnost')) {
+  // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_" - včetně LP čerpání
+  if ((key.startsWith('faktura_') && key.includes('vecna_spravnost')) || 
+      key.startsWith('vecna_lp_') || 
+      key.includes('vecna_poznamka')) {
     return 'vecna_spravnost';
   }
   
@@ -470,6 +470,26 @@ const ValidationBadge = styled.span`
   margin-left: auto;
   flex-shrink: 0;
   line-height: 1;
+`;
+
+const AttachmentBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: ${props => props.$hasErrors ? '#dc2626' : '#10b981'}; // Červená nebo zelená
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+  border: 1px solid ${props => props.$hasErrors ? '#dc2626' : '#10b981'};
 `;
 
 const DropzoneContainer = styled.div`
@@ -1103,15 +1123,6 @@ const FloatingNavigator = ({
     });
 
     const errorCount = sectionErrors.length;
-    
-    if (Object.keys(validationErrors).length > 0 && section.id === 'schvaleni') {
-      console.log(`🧭 NaviPanel - sekce "${section.id}":`, {
-        allValidationErrors: validationErrors,
-        allErrorKeys: Object.keys(validationErrors),
-        sectionErrors,
-        errorCount
-      });
-    }
 
     // 🆕 Spočítat nevyplněná povinná pole (jen pokud NEJSOU validační chyby)
     // Toto slouží k zobrazení "oranžové tečky" před pokusem o uložení
@@ -1163,8 +1174,9 @@ const FloatingNavigator = ({
 
     // ✅ Používat section states přímo z WorkflowManager (přes allSectionStates)
     // Všechny podmínky viditelnosti jsou už vyřešené v OrderForm25 (extendedSectionStates)
+    // 🔒 KRITICKÉ: Použít === true, ne !== false, aby undefined = skrytá sekce!
     return {
-      visible: sectionState.visible !== false, // sekce je viditelná
+      visible: sectionState.visible === true, // sekce je viditelná POUZE pokud explicitně true
       enabled: sectionState.enabled !== false  // sekce je enabled (ne disabled)
     };
   }, [allSectionStates]);
@@ -1459,12 +1471,14 @@ const FloatingNavigator = ({
         const sectionState = allSectionStates?.prilohy;
         const isDisabled = sectionState ? !sectionState.enabled : isWorkflowCompleted;
         const isActive = isSectionActive ? isSectionActive(section.id) : false;
-        const validationInfo = getSectionValidationInfo(section);
         
-        // 🎯 Zobrazení badge podle stavu
-        const hasErrors = validationInfo.errorCount > 0;
-        const hasMissingFields = !hasErrors && validationInfo.missingCount > 0;
-        const showBadge = hasErrors || hasMissingFields;
+        // 📎 Získání info o přílohách ze sectionState
+        const attachmentsCount = sectionState?.attachmentsCount || 0;
+        const hasAttachmentErrors = sectionState?.hasAttachmentErrors || false;
+        
+        // 🎯 Zobrazení badge pro přílohy
+        const showAttachmentsBadge = attachmentsCount > 0;
+        const badgeText = attachmentsCount.toString();
 
         return (
           <NavigatorContent $isMinimized={isMinimized}>
@@ -1486,13 +1500,10 @@ const FloatingNavigator = ({
                   <SectionInfo $textColor={isDisabled ? '#64748b' : section.color}>
                     <SectionName $isDisabled={isDisabled}>
                       {section.name}
-                      {showBadge && (
-                        <ValidationBadge 
-                          $hasErrors={hasErrors}
-                          $hasMissingFields={hasMissingFields}
-                        >
-                          {hasErrors ? validationInfo.errorCount : ''}
-                        </ValidationBadge>
+                      {showAttachmentsBadge && (
+                        <AttachmentBadge $hasErrors={hasAttachmentErrors}>
+                          {badgeText}
+                        </AttachmentBadge>
                       )}
                     </SectionName>
                   </SectionInfo>

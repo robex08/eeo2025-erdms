@@ -9,13 +9,8 @@
  * @version 2.0
  */
 
-import axios from 'axios';
+import { api2 } from './api2auth';
 import { loadAuthData } from '../utils/authStorage';
-
-// 🌐 Použít stejný base URL jako Order V2 API
-// Ujistíme se že končí lomítkem pro správné sestavení URL
-const API_BASE_RAW = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
-const API_BASE = API_BASE_RAW.endsWith('/') ? API_BASE_RAW.slice(0, -1) : API_BASE_RAW;
 
 /**
  * Helper funkce pro získání autentizačních dat
@@ -23,11 +18,15 @@ const API_BASE = API_BASE_RAW.endsWith('/') ? API_BASE_RAW.slice(0, -1) : API_BA
  */
 const getAuthData = async () => {
   try {
+    // ✅ loadAuthData je objekt s metodami .user() a .token() - obě jsou async
     const user = await loadAuthData.user();
     const token = await loadAuthData.token();
 
     if (!user || !token) {
-      throw new Error('Uživatel není přihlášen');
+      // ❌ Vytvoř specifickou chybu, která NENÍ autentizační error (neměla by způsobit logout)
+      const error = new Error('Uživatel není přihlášen');
+      error.isAuthDataMissing = true; // Flag pro odlišení od skutečného 401/403
+      throw error;
     }
 
     return {
@@ -37,15 +36,28 @@ const getAuthData = async () => {
     };
   } catch (error) {
     console.error('❌ Chyba při načítání autentizace:', error);
-    throw new Error('Autentizace selhala');
+    
+    // Zachovat původní error pokud už má flag, jinak obalit do nového
+    if (error.isAuthDataMissing) {
+      throw error;
+    }
+    const wrappedError = new Error('Autentizace selhala');
+    wrappedError.isAuthDataMissing = true;
+    throw wrappedError;
   }
 };
 
 /**
  * Helper funkce pro zpracování API chyb
+ * ⚠️ DŮLEŽITÉ: Zachovává isAuthDataMissing flag, aby nedošlo k nechtěnému odhlášení
  */
 const handleApiError = (error, operation) => {
   console.error(`❌ Chyba při ${operation}:`, error);
+
+  // Pokud je to chyba z getAuthData (chybějící auth data), propag propagovat beze změny
+  if (error.isAuthDataMissing) {
+    throw error;
+  }
 
   if (error.response) {
     // Server odpověděl s chybovým kódem
@@ -53,7 +65,11 @@ const handleApiError = (error, operation) => {
     const data = error.response.data;
 
     if (status === 401 || status === 403) {
-      throw new Error('Nemáte oprávnění k této operaci');
+      // Skutečný HTTP auth error - tento MÁ způsobit logout
+      const authError = new Error('Nemáte oprávnění k této operaci');
+      authError.isAuthError = true;
+      authError.httpStatus = status;
+      throw authError;
     }
 
     if (data && data.message) {
@@ -92,7 +108,7 @@ const cashbookAPI = {
   listBooks: async (userId, rok = null, mesic = null) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-list`, {
+      const response = await api2.post('cashbook-list', {
         ...auth,
         uzivatel_id: userId,
         rok,
@@ -105,6 +121,28 @@ const cashbookAPI = {
   },
 
   /**
+   * 📚 Načíst knihy pro konkrétní pokladnu (nová logika: jedna kniha = všichni uživatelé)
+   * @param {number} pokladnaId - ID pokladny
+   * @param {number} rok - Rok (např. 2026)
+   * @param {number} mesic - Měsíc (1-12)
+   * @returns {Promise<Object>} Response s polem books
+   */
+  listBooksForCashbox: async (pokladnaId, rok, mesic) => {
+    try {
+      const auth = await getAuthData();
+      const response = await api2.post('cashbook-list', {
+        ...auth,
+        pokladna_ids: [pokladnaId],  // Backend nyní filtruje podle pokladna_id místo uzivatel_id
+        rok,
+        mesic
+      });
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'načítání knihy pokladny');
+    }
+  },
+
+  /**
    * 2️⃣ Získání detailu knihy včetně položek
    * @param {number} bookId - ID knihy
    * @param {boolean} forceRecalc - Vynutit přepočet převodu z předchozího měsíce
@@ -113,11 +151,12 @@ const cashbookAPI = {
   getBook: async (bookId, forceRecalc = true) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-get`, {
+      const response = await api2.post('cashbook-get', {
         ...auth,
         book_id: bookId,
         force_recalc: forceRecalc ? 1 : 0  // ✅ Říct backendu, aby přepočítal převod
       });
+      
       return response.data;
     } catch (error) {
       handleApiError(error, 'načítání detailu knihy');
@@ -135,7 +174,7 @@ const cashbookAPI = {
   createBook: async (prirazeniPokladnyId, rok, mesic, uzivatelId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-create`, {
+      const response = await api2.post('cashbook-create', {
         ...auth,
         prirazeni_id: prirazeniPokladnyId,  // ✅ OPRAVA: Backend očekává 'prirazeni_id', NE 'prirazeni_pokladny_id'
         rok,
@@ -161,7 +200,7 @@ const cashbookAPI = {
   updateBook: async (bookId, updates) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-update`, {
+      const response = await api2.post('cashbook-update', {
         ...auth,
         book_id: bookId,
         ...updates
@@ -181,7 +220,7 @@ const cashbookAPI = {
   closeMonth: async (bookId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-close`, {
+      const response = await api2.post('cashbook-close', {
         ...auth,
         book_id: bookId,
         akce: 'uzavrit_mesic'
@@ -201,7 +240,7 @@ const cashbookAPI = {
   reopenBook: async (bookId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-reopen`, {
+      const response = await api2.post('cashbook-reopen', {
         ...auth,
         book_id: bookId
       });
@@ -219,7 +258,7 @@ const cashbookAPI = {
   createEntry: async (entryData) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-entry-create`, {
+      const response = await api2.post('cashbook-entry-create', {
         ...auth,
         ...entryData
       });
@@ -238,7 +277,7 @@ const cashbookAPI = {
   updateEntry: async (entryId, updates) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-entry-update`, {
+      const response = await api2.post('cashbook-entry-update', {
         ...auth,
         entry_id: entryId,
         ...updates
@@ -257,7 +296,7 @@ const cashbookAPI = {
   deleteEntry: async (entryId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-entry-delete`, {
+      const response = await api2.post('cashbook-entry-delete', {
         ...auth,
         entry_id: entryId
       });
@@ -275,7 +314,7 @@ const cashbookAPI = {
   restoreEntry: async (entryId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-entry-restore`, {
+      const response = await api2.post('cashbook-entry-restore', {
         ...auth,
         entry_id: entryId
       });
@@ -293,7 +332,7 @@ const cashbookAPI = {
   getAuditLog: async (bookId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-audit-log`, {
+      const response = await api2.post('cashbook-audit-log', {
         ...auth,
         book_id: bookId
       });
@@ -322,7 +361,7 @@ const cashbookAPI = {
         uzivatel_id: userId  // null = všechna přiřazení
       };
 
-      const response = await axios.post(`${API_BASE}/cashbox-assignments-list`, payload);
+      const response = await api2.post('cashbox-assignments-list', payload);
       return response.data;
     } catch (error) {
       handleApiError(error, 'načítání přiřazení pokladen');
@@ -338,7 +377,7 @@ const cashbookAPI = {
     try {
       // Použijeme existující cashbox-list endpoint, který vrací všechny pokladny
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-list`, {
+      const response = await api2.post('cashbox-list', {
         ...auth,
         active_only: true,   // ✅ JEN AKTIVNÍ pokladny
         include_users: true  // Vrátit i přiřazené uživatele
@@ -370,29 +409,31 @@ const cashbookAPI = {
           }
 
           // Pro každého uživatele vytvořit assignment
-          return uzivatele.map(uz => ({
-            id: parseInt(uz.prirazeni_id, 10), // ✅ ID přiřazení, ne pokladny
-            pokladna_id: parseInt(pokladna.id, 10),
-            cislo_pokladny: parseInt(pokladna.cislo_pokladny, 10),
-            nazev: pokladna.nazev,
-            nazev_pracoviste: pokladna.nazev_pracoviste,
-            kod_pracoviste: pokladna.kod_pracoviste,
-            ciselna_rada_vpd: pokladna.ciselna_rada_vpd,
-            ciselna_rada_ppd: pokladna.ciselna_rada_ppd,
-            aktivni: parseInt(pokladna.aktivni, 10),
-            uzivatel_id: parseInt(uz.uzivatel_id, 10),
-            uzivatel_cele_jmeno: uz.uzivatel_cele_jmeno,
-            uzivatel_jmeno: uz.uzivatel_jmeno || null,
-            uzivatel_prijmeni: uz.uzivatel_prijmeni || null,
-            je_hlavni: parseInt(uz.je_hlavni || 0, 10),
-            platne_od: uz.platne_od,
-            platne_do: uz.platne_do
-          }));
+          return uzivatele.map(uz => {
+            return {
+              id: parseInt(uz.prirazeni_id, 10), // ✅ ID přiřazení, ne pokladny
+              pokladna_id: parseInt(pokladna.id, 10),
+              cislo_pokladny: parseInt(pokladna.cislo_pokladny, 10),
+              nazev: pokladna.nazev,
+              nazev_pracoviste: pokladna.nazev_pracoviste,
+              kod_pracoviste: pokladna.kod_pracoviste,
+              ciselna_rada_vpd: pokladna.ciselna_rada_vpd,
+              ciselna_rada_ppd: pokladna.ciselna_rada_ppd,
+              aktivni: parseInt(pokladna.aktivni, 10),
+              uzivatel_id: parseInt(uz.uzivatel_id, 10),
+              uzivatel_cele_jmeno: uz.uzivatel_cele_jmeno,
+              uzivatel_jmeno: uz.uzivatel_jmeno || null,
+              uzivatel_prijmeni: uz.uzivatel_prijmeni || null,
+              je_hlavni: parseInt(uz.je_hlavni || 0, 10),
+              platne_od: uz.platne_od,
+              platne_do: uz.platne_do
+            };
+          });
         });
 
         return {
-          status: 'success',
-          data: assignments
+          status: 'ok',
+          data: { assignments }
         };
       }
 
@@ -410,7 +451,7 @@ const cashbookAPI = {
   createAssignment: async (assignmentData) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-assignment-create`, {
+      const response = await api2.post('cashbox-assignment-create', {
         ...auth,
         ...assignmentData
       });
@@ -439,7 +480,7 @@ const cashbookAPI = {
   updateAssignment: async (assignmentId, updates) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-assignment-update`, {
+      const response = await api2.post('cashbox-assignment-update', {
         ...auth,
         assignment_id: assignmentId,
         ...updates
@@ -458,7 +499,7 @@ const cashbookAPI = {
   deleteAssignment: async (assignmentId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-assignment-delete`, {
+      const response = await api2.post('cashbox-assignment-delete', {
         ...auth,
         assignment_id: assignmentId
       });
@@ -484,7 +525,7 @@ const cashbookAPI = {
       if (key) {
         payload.key = key;
       }
-      const response = await axios.post(`${API_BASE}/cashbox-settings-get`, payload);
+      const response = await api2.post('cashbox-settings-get', payload);
       return response.data;
     } catch (error) {
       handleApiError(error, 'načítání nastavení');
@@ -509,7 +550,7 @@ const cashbookAPI = {
       if (description) {
         payload.description = description;
       }
-      const response = await axios.post(`${API_BASE}/cashbox-settings-update`, payload);
+      const response = await api2.post('cashbox-settings-update', payload);
       return response.data;
     } catch (error) {
       handleApiError(error, 'aktualizace nastavení');
@@ -530,7 +571,7 @@ const cashbookAPI = {
   lockBook: async (bookId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-lock`, {
+      const response = await api2.post('cashbook-lock', {
         ...auth,
         book_id: bookId
       });
@@ -553,7 +594,7 @@ const cashbookAPI = {
   getCashboxList: async (activeOnly = true, includeUsers = true) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-list`, {
+      const response = await api2.post('cashbox-list', {
         ...auth,
         active_only: activeOnly,
         include_users: includeUsers
@@ -576,7 +617,7 @@ const cashbookAPI = {
   getCashboxListByPeriod: async (rok, mesic, activeOnly = true, includeUsers = true) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-list-by-period`, {
+      const response = await api2.post('cashbox-list-by-period', {
         ...auth,
         rok,
         mesic,
@@ -606,7 +647,7 @@ const cashbookAPI = {
   createCashbox: async (cashboxData) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-create`, {
+      const response = await api2.post('cashbox-create', {
         ...auth,
         ...cashboxData
       });
@@ -634,7 +675,7 @@ const cashbookAPI = {
   updateCashbox: async (pokladnaId, updates) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-update`, {
+      const response = await api2.post('cashbox-update', {
         ...auth,
         pokladna_id: pokladnaId,
         ...updates
@@ -653,7 +694,7 @@ const cashbookAPI = {
   deleteCashbox: async (pokladnaId) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-delete`, {
+      const response = await api2.post('cashbox-delete', {
         ...auth,
         pokladna_id: pokladnaId
       });
@@ -677,7 +718,7 @@ const cashbookAPI = {
   assignUserToCashbox: async (assignmentData) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-assign-user`, {
+      const response = await api2.post('cashbox-assign-user', {
         ...auth,
         ...assignmentData
       });
@@ -696,7 +737,12 @@ const cashbookAPI = {
   unassignUserFromCashbox: async (prirazeniId, platneDo = null) => {
     try {
       const auth = await getAuthData();
-      const today = platneDo || new Date().toISOString().split('T')[0];
+      // 🔥 FIX: Použít lokální datum místo UTC
+      const today = platneDo || (() => {
+        const now = new Date();
+        const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+        return `${y}-${m}-${d}`;
+      })();
 
       const payload = {
         ...auth,
@@ -704,7 +750,7 @@ const cashbookAPI = {
         platne_do: today
       };
 
-      const response = await axios.post(`${API_BASE}/cashbox-unassign-user`, payload);
+      const response = await api2.post('cashbox-unassign-user', payload);
 
       return response.data;
     } catch (error) {
@@ -730,7 +776,7 @@ const cashbookAPI = {
   getAvailableUsers: async (pokladnaId, search = '') => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbox-available-users`, {
+      const response = await api2.post('cashbox-available-users', {
         ...auth,
         pokladna_id: pokladnaId,
         search
@@ -750,7 +796,7 @@ const cashbookAPI = {
   updateUserMainStatus: async (prirazeniId, jeHlavni) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-assignment-update`, {
+      const response = await api2.post('cashbook-assignment-update', {
         ...auth,
         assignment_id: prirazeniId,
         je_hlavni: jeHlavni
@@ -777,7 +823,7 @@ const cashbookAPI = {
         uzivatele: uzivatele
       };
 
-      const response = await axios.post(`${API_BASE}/cashbox-sync-users`, payload);
+      const response = await api2.post('cashbox-sync-users', payload);
 
       return response.data;
     } catch (error) {
@@ -801,7 +847,7 @@ const cashbookAPI = {
   changeLockStatus: async (bookId, newStatus) => {
     try {
       const auth = await getAuthData();
-      const response = await axios.post(`${API_BASE}/cashbook-change-lock-status`, {
+      const response = await api2.post('cashbook-change-lock-status', {
         ...auth,
         book_id: bookId,
         new_status: newStatus
@@ -840,7 +886,7 @@ const cashbookAPI = {
         year: year
       };
 
-      const response = await axios.post(`${API_BASE}/cashbook-force-renumber`, payload);
+      const response = await api2.post('cashbook-force-renumber', payload);
       return response.data;
     } catch (error) {
       handleApiError(error, 'force přepočtu dokladů');
@@ -853,11 +899,12 @@ const cashbookAPI = {
    * 
    * @param {number} userId - ID uživatele (volitelné, default = přihlášený)
    * @param {number} year - Rok (volitelné, default = aktuální)
+   * @param {Object} authData - Autentizační data {username, token} (volitelné, jinak se načtou z úložiště)
    * @returns {Promise} Response s LP summary
    */
-  getLPSummary: async (userId = null, year = null) => {
+  getLPSummary: async (userId = null, year = null, authData = null) => {
     try {
-      const auth = await getAuthData();
+      const auth = authData || await getAuthData();
       
       const payload = {
         username: auth.username,
@@ -867,7 +914,7 @@ const cashbookAPI = {
       if (userId) payload.user_id = userId;
       if (year) payload.year = year;
       
-      const response = await axios.post(`${API_BASE}/cashbook-lp-summary`, payload);
+      const response = await api2.post('cashbook-lp-summary', payload);
       return response.data;
     } catch (error) {
       handleApiError(error, 'načítání LP summary');
@@ -897,10 +944,83 @@ const cashbookAPI = {
       if (userId) payload.user_id = userId;
       if (year) payload.year = year;
       
-      const response = await axios.post(`${API_BASE}/cashbook-lp-detail`, payload);
+      const response = await api2.post('cashbook-lp-detail', payload);
       return response.data;
     } catch (error) {
       handleApiError(error, 'načítání LP detailu');
+      throw error;
+    }
+  },
+
+  // ========================================================================
+  // 🆕 LP KÓD POVINNOSŤ - Nastavenie povinnosti LP kódu u pokladen
+  // ========================================================================
+
+  /**
+   * Aktualizovať nastavenie povinnosti LP kódu u pokladny
+   * @param {number} pokladnaId - ID pokladny
+   * @param {boolean} lpKodPovinny - Či je LP kód povinný
+   * @returns {Promise<Object>} Response s aktualizovanou pokladnou
+   */
+  updateLpRequirement: async (pokladnaId, lpKodPovinny) => {
+    try {
+      const auth = await getAuthData();
+      const response = await api2.post('cashbox-lp-requirement-update', {
+        ...auth,
+        pokladna_id: pokladnaId,
+        lp_kod_povinny: lpKodPovinny
+      });
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'aktualizace nastavení LP kódu');
+    }
+  },
+
+  /**
+   * Získať nastavenie povinnosti LP kódu pre pokladnu
+   * @param {number} pokladnaId - ID pokladny
+   * @returns {Promise<Object>} Response s nastavením pokladny
+   */
+  getLpRequirement: async (pokladnaId) => {
+    try {
+      const auth = await getAuthData();
+      const response = await api2.post('cashbox-lp-requirement-get', {
+        ...auth,
+        pokladna_id: pokladnaId
+      });
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'načítání nastavení LP kódu');
+    }
+  },
+
+  // ========================================================================
+  // 🆕 PŘEPOČET ZŮSTATKŮ - Utility pro opravy dat
+  // ========================================================================
+
+  /**
+   * Přepočítat zůstatky všech lednových knih dané pokladny
+   * Volá backend endpoint, který přepočítá zustatek_po_operaci všech položek
+   * @param {number} pokladnaId - ID pokladny
+   * @param {number} year - Rok (volitelné, default aktuální)
+   * @returns {Promise} Response s počtem přepočítaných knih
+   */
+  recalculateJanuaryBalances: async (pokladnaId, year = null) => {
+    try {
+      const auth = await getAuthData();
+      
+      const payload = {
+        username: auth.username,
+        token: auth.token,
+        pokladna_id: pokladnaId
+      };
+      
+      if (year) payload.year = year;
+      
+      const response = await api2.post('cashbox-recalculate-january', payload);
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'přepočtu zůstatků lednových knih');
       throw error;
     }
   }

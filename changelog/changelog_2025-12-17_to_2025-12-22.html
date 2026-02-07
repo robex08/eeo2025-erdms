@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHANGELOG 17.12.2025 - 22.12.2025</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-dark: #1e293b;
+            --bg-light: #f8fafc;
+            --text-dark: #0f172a;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #334155 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        
+        .header .period {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 2rem;
+            background: var(--bg-light);
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+        }
+        
+        .section-title {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--primary);
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .section-icon {
+            font-size: 1.5rem;
+        }
+        
+        .commit-group {
+            margin-bottom: 2rem;
+        }
+        
+        .commit-group-title {
+            font-size: 1.3rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        
+        .commit-item {
+            background: white;
+            border-left: 4px solid var(--border);
+            padding: 1rem 1.5rem;
+            margin-bottom: 0.75rem;
+            border-radius: 0.25rem;
+            transition: all 0.2s;
+        }
+        
+        .commit-item:hover {
+            border-left-color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateX(4px);
+        }
+        
+        .commit-item.feat {
+            border-left-color: var(--success);
+        }
+        
+        .commit-item.fix {
+            border-left-color: var(--warning);
+        }
+        
+        .commit-item.refactor {
+            border-left-color: var(--primary);
+        }
+        
+        .commit-item.chore {
+            border-left-color: var(--text-light);
+        }
+        
+        .commit-item.docs {
+            border-left-color: #8b5cf6;
+        }
+        
+        .commit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+        }
+        
+        .commit-type {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .commit-type.feat {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .commit-type.fix {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .commit-type.refactor {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .commit-type.chore {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        
+        .commit-type.docs {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+        
+        .commit-message {
+            font-size: 1rem;
+            color: var(--text-dark);
+            font-weight: 500;
+        }
+        
+        .commit-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-top: 0.5rem;
+        }
+        
+        .commit-hash {
+            font-family: 'Courier New', monospace;
+            background: var(--bg-light);
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+        
+        .footer {
+            background: var(--bg-light);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-light);
+            border-top: 1px solid var(--border);
+        }
+        
+        .tag {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            margin: 0.25rem;
+            background: var(--bg-light);
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            color: var(--text-dark);
+        }
+        
+        .highlight-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin: 1.5rem 0;
+        }
+        
+        .highlight-box h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.2rem;
+        }
+        
+        .highlight-box ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .highlight-box li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        
+        .highlight-box li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 CHANGELOG</h1>
+            <div class="period">17. prosince 2025 - 22. prosince 2025</div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">227</div>
+                <div class="stat-label">Celkem commitů</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">5</div>
+                <div class="stat-label">Dní vývoje</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">45+</div>
+                <div class="stat-label">Nových funkcí</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">80+</div>
+                <div class="stat-label">Oprav bugů</div>
+            </div>
+        </div>
+        
+        <div class="content">
+            
+            <!-- HLAVNÍ NOVINKY -->
+            <div class="highlight-box">
+                <h3>🎯 Hlavní novinky verze 1.90d</h3>
+                <ul>
+                    <li><strong>7-stavový workflow systém faktur</strong> - ZAEVIDOVANA, VECNA_SPRAVNOST, V_RESENI, PREDANA_PO, K_ZAPLACENI, ZAPLACENO, STORNO</li>
+                    <li><strong>Obousměrná synchronizace</strong> stavu faktury s ikonou platby</li>
+                    <li><strong>Spisovka tracking systém</strong> - propojení dokumentů z Spisovky s fakturami</li>
+                    <li><strong>Věcná správnost faktur</strong> - kompletní kontrolní formulář s readonly režimem</li>
+                    <li><strong>Rozšířené UniversalSearch</strong> - vyhledávání faktur podle dodavatele, smluv, příloh</li>
+                    <li><strong>DEV/PROD separace</strong> - oddělené prostředí pro vývoj a produkci</li>
+                    <li><strong>PDO migrace</strong> - Limitované Příslibů handlers převedeny na PDO</li>
+                    <li><strong>Security audit</strong> - 256 endpointů analyzováno, odstranění debug logů</li>
+                </ul>
+            </div>
+            
+            <!-- WORKFLOW FAKTURY -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">📝</span>
+                    Workflow systém faktur (v1.90d)
+                </h2>
+                
+                <div class="commit-group">
+                    <h3 class="commit-group-title">Backend implementace</h3>
+                    
+                    <div class="commit-item feat">
+                        <div class="commit-header">
+                            <span class="commit-type feat">feat</span>
+                        </div>
+                        <div class="commit-message">Přidán workflow stav faktur - 7 stavů s automatickými přechody</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">a6f8f75</span>
+                            <span>22.12.2025 11:44</span>
+                        </div>
+                    </div>
+                    
+                    <div class="commit-item feat">
+                        <div class="commit-header">
+                            <span class="commit-type feat">feat</span>
+                        </div>
+                        <div class="commit-message">Workflow state filtering and fulltext search</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">b5c75bc</span>
+                            <span>22.12.2025 12:32</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="commit-group">
+                    <h3 class="commit-group-title">Frontend komponenty</h3>
+                    
+                    <div class="commit-item feat">
+                        <div class="commit-header">
+                            <span class="commit-type feat">feat</span>
+                        </div>
+                        <div class="commit-message">Add workflow state dropdown with verification toggle</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">2f3298f</span>
+                            <span>22.12.2025 11:49</span>
+                        </div>
+                    </div>
+                    
+                    <div class="commit-item feat">
+                        <div class="commit-header">
+                            <span class="commit-type feat">feat</span>
+                        </div>
+                        <div class="commit-message">Přidání warning dialogu při změně stavu ZAPLACENO</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">e593887</span>
+                            <span>22.12.2025 12:46</span>
+                        </div>
+                    </div>
+                    
+                    <div class="commit-item feat">
+                        <div class="commit-header">
+                            <span class="commit-type feat">feat</span>
+                        </div>
+                        <div class="commit-message">Obousměrná synchronizace workflow stavu a ikony platby</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">06bb817</span>
+                            <span>22.12.2025 12:53</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="commit-group">
+                    <h3 class="commit-group-title">Opravy</h3>
+                    
+                    <div class="commit-item fix">
+                        <div class="commit-header">
+                            <span class="commit-type fix">fix</span>
+                        </div>
+                        <div class="commit-message">Přidání mapování pole stav při načítání dat</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">a1b5ca7</span>
+                            <span>22.12.2025 12:41</span>
+                        </div>
+                    </div>
+                    
+                    <div class="commit-item fix">
+                        <div class="commit-header">
+                            <span class="commit-type fix">fix</span>
+                        </div>
+                        <div class="commit-message">Oprava syntax chyby v komentáři</div>
+                        <div class="commit-meta">
+                            <span class="commit-hash">1405a99</span>
+                            <span>22.12.2025 12:37</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SPISOVKA TRACKING -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">📥</span>
+                    Spisovka Tracking System
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Implement Spisovka Processing Tracking System</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">b80a356</span>
+                        <span>19.12.2025 09:09</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Add Spisovka Processing Tracking integration - Frontend</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">0f2330c</span>
+                        <span>19.12.2025 09:34</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Přesný tracking Spisovka dokumentů podle file_id místo názvu souboru</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">a1f903b</span>
+                        <span>19.12.2025 11:10</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Filtrování a detailní info o zpracování v Spisovka InBox</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">54e4a7e</span>
+                        <span>19.12.2025 11:17</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- VĚCNÁ SPRÁVNOST -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">✅</span>
+                    Věcná správnost faktur
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Věcná správnost faktury - kompletní implementace</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">654b11d</span>
+                        <span>21.12.2025 19:38</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">InvoiceEvidencePage - collapsible sekce s readonly režimem</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">d037280</span>
+                        <span>21.12.2025 18:50</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Datum věcné správnosti pod jméno kontrolora</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">62174b9</span>
+                        <span>19.12.2025 07:46</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- UNIVERSAL SEARCH -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🔍</span>
+                    Universal Search - rozšíření
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Expand UniversalSearch invoice search - supplier, attachments, contracts</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">df2fd64</span>
+                        <span>20.12.2025 02:00</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Implement permission-based invoice filtering in UniversalSearch</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">696ae2e</span>
+                        <span>20.12.2025 02:23</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Search history - posledních 8 vyhledávání v localStorage</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">526467e</span>
+                        <span>20.12.2025 08:55</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Keyboard navigace pro výsledky hledání (šipky + Enter)</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">b1b8986</span>
+                        <span>20.12.2025 09:18</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- DEV/PROD SEPARACE -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🔧</span>
+                    DEV/PROD separace
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">DEV/PROD separace + DB info v hlavičce</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">35bb8dd</span>
+                        <span>20.12.2025 21:17</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Show API endpoint in footer</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">843c8c3</span>
+                        <span>20.12.2025 21:04</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item refactor">
+                    <div class="commit-header">
+                        <span class="commit-type refactor">refactor</span>
+                    </div>
+                    <div class="commit-message">Remove hardcoded API URLs, use env variable</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">5334390</span>
+                        <span>20.12.2025 20:18</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- PDO MIGRACE -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🔄</span>
+                    PDO Migrace - Limitované Příslibů
+                </h2>
+                
+                <div class="commit-item refactor">
+                    <div class="commit-header">
+                        <span class="commit-type refactor">refactor</span>
+                    </div>
+                    <div class="commit-message">PDO migrace /stav KOMPLETNÍ (3/3)</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">169fb65</span>
+                        <span>20.12.2025 11:19</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item refactor">
+                    <div class="commit-header">
+                        <span class="commit-type refactor">refactor</span>
+                    </div>
+                    <div class="commit-message">PDO migrace /prepocet endpointu - nahrazení 260 řádků inline mysqli</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">9152326</span>
+                        <span>20.12.2025 11:32</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item fix">
+                    <div class="commit-header">
+                        <span class="commit-type fix">fix</span>
+                    </div>
+                    <div class="commit-message">Oprava 4 kritických bugů v PDO handleru po porovnání s mysqli verzí</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">53f6971</span>
+                        <span>20.12.2025 12:11</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SECURITY -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🔒</span>
+                    Security & Audit
+                </h2>
+                
+                <div class="commit-item docs">
+                    <div class="commit-header">
+                        <span class="commit-type docs">docs</span>
+                    </div>
+                    <div class="commit-message">PHP API Security Audit report - kompletní analýza 256 endpointů</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">c4c7d84</span>
+                        <span>20.12.2025 10:27</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Odstranění debug logů s citlivými daty z celé aplikace</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">8d24843</span>
+                        <span>20.12.2025 12:31</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item refactor">
+                    <div class="commit-header">
+                        <span class="commit-type refactor">refactor</span>
+                    </div>
+                    <div class="commit-message">Podmínkové debug logy - pouze DEV mode</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">fc7fa96</span>
+                        <span>20.12.2025 10:58</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item refactor">
+                    <div class="commit-header">
+                        <span class="commit-type refactor">refactor</span>
+                    </div>
+                    <div class="commit-message">Replace ALL TABLE_* with TBL_* - CRITICAL FIX</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">59da8df</span>
+                        <span>20.12.2025 19:49</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- UI/UX -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🎨</span>
+                    UI/UX vylepšení
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Ikony v navigaci, profil uživatele, notifikace</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">94c69c2</span>
+                        <span>20.12.2025 10:02</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Improved drag&drop with progress simulation and scroll to active invoice</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">40f06b2</span>
+                        <span>19.12.2025 20:00</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Červené zvýraznění překročení max ceny fakturami</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">462fc21</span>
+                        <span>19.12.2025 22:04</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">PDF náhled v novém okně místo automatického stahování</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">b45010f</span>
+                        <span>20.12.2025 08:47</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Currency formatting and validation - variabilní symbol bold on blur</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">ffb9d51</span>
+                        <span>19.12.2025 07:41</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- LOCK SYSTEM -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🔐</span>
+                    Lock System - prevence souběžné editace
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Implementace LOCK dialogu v Invoices25List a InvoiceEvidencePage</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">23541b8</span>
+                        <span>19.12.2025 18:53</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item fix">
+                    <div class="commit-header">
+                        <span class="commit-type fix">fix</span>
+                    </div>
+                    <div class="commit-message">LOCK kontrola - respektovat is_owned_by_me a is_expired ve všech formulářích</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">04954ed</span>
+                        <span>21.12.2025 17:39</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- NOTIFIKACE -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">🔔</span>
+                    Notifikační systém
+                </h2>
+                
+                <div class="commit-item fix">
+                    <div class="commit-header">
+                        <span class="commit-type fix">fix</span>
+                    </div>
+                    <div class="commit-message">Financování s poznámkami (individuální + pojistná)</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">aed2fee</span>
+                        <span>18.12.2025 23:14</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item fix">
+                    <div class="commit-header">
+                        <span class="commit-type fix">fix</span>
+                    </div>
+                    <div class="commit-message">Fix notification triggering to call notificationRouter directly</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">5c4ff2c</span>
+                        <span>18.12.2025 00:17</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Add support for exceptional events with EXCEPTIONAL priority (⚡ bolt icon)</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">a1a5b8a</span>
+                        <span>17.12.2025 23:09</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- OSTATNÍ -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">⚙️</span>
+                    Ostatní vylepšení a opravy
+                </h2>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Pokladna - vylepšení vstupu částek a floating header pro faktury</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">da08d84</span>
+                        <span>21.12.2025 02:37</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Reorganizace sloupců tabulky objednávek</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">d5b1414</span>
+                        <span>19.12.2025 21:54</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Unified order filtering and stats calculation between mobile and desktop</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">c1b73cf</span>
+                        <span>19.12.2025 22:25</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item feat">
+                    <div class="commit-header">
+                        <span class="commit-type feat">feat</span>
+                    </div>
+                    <div class="commit-message">Tlačítko Zaevidovat fakturu do hlavního menu</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">f69d919</span>
+                        <span>21.12.2025 22:49</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item fix">
+                    <div class="commit-header">
+                        <span class="commit-type fix">fix</span>
+                    </div>
+                    <div class="commit-message">Oprava attachment upload - zobrazení reálných uživatelských jmen a validace souborů</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">cf7dd3b</span>
+                        <span>21.12.2025 23:04</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item chore">
+                    <div class="commit-header">
+                        <span class="commit-type chore">chore</span>
+                    </div>
+                    <div class="commit-message">Bump version to 1.90d</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">2392e44</span>
+                        <span>22.12.2025 12:10</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- DOKUMENTACE -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="section-icon">📚</span>
+                    Dokumentace
+                </h2>
+                
+                <div class="commit-item docs">
+                    <div class="commit-header">
+                        <span class="commit-type docs">docs</span>
+                    </div>
+                    <div class="commit-message">Kompletní dokumentace LP PDO migrace a oprav</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">f9b43f1</span>
+                        <span>20.12.2025 12:23</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item docs">
+                    <div class="commit-header">
+                        <span class="commit-type docs">docs</span>
+                    </div>
+                    <div class="commit-message">Comprehensive CHANGELOG for DEV/PROD separation</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">9a762ef</span>
+                        <span>20.12.2025 21:09</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item docs">
+                    <div class="commit-header">
+                        <span class="commit-type docs">docs</span>
+                    </div>
+                    <div class="commit-message">Add Spisovka Processing Tracking implementation documentation</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">1d72636</span>
+                        <span>19.12.2025 09:41</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item docs">
+                    <div class="commit-header">
+                        <span class="commit-type docs">docs</span>
+                    </div>
+                    <div class="commit-message">Detailní migrační plán Legacy API → V2</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">6f5c7a7</span>
+                        <span>19.12.2025 07:05</span>
+                    </div>
+                </div>
+                
+                <div class="commit-item docs">
+                    <div class="commit-header">
+                        <span class="commit-type docs">docs</span>
+                    </div>
+                    <div class="commit-message">Kompletní audit databáze a API před produkcí</div>
+                    <div class="commit-meta">
+                        <span class="commit-hash">283718d</span>
+                        <span>19.12.2025 01:13</span>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <div class="footer">
+            <p><strong>Verze:</strong> 1.90d</p>
+            <p><strong>Branch:</strong> feature/generic-recipient-system</p>
+            <p><strong>Celkem commitů:</strong> 227</p>
+            <p style="margin-top: 1rem; font-size: 0.9rem;">
+                Generováno: 22. prosince 2025
+            </p>
+        </div>
+    </div>
+</body>
+</html>

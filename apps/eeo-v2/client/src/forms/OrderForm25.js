@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useContext, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM, { flushSync } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
@@ -7,7 +7,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faFileCircleXmark, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown, AlertCircle, CheckCircle2, AlertTriangle, InfoIcon } from 'lucide-react';
 import { CustomSelect, SelectWithIcon } from '../components/CustomSelect';
-import { InvoiceAttachmentsCompact } from '../components/invoices';
+import { InvoiceAttachmentsCompact, LPCerpaniEditor } from '../components/invoices';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SupplierAddDialog from '../components/SupplierAddDialog';
 import ModernHelper from '../components/ModernHelper'; // 💡 Moderní Sponka helper
@@ -18,35 +18,15 @@ import { useActivity } from '../context/ActivityContext';
 import { ProgressContext } from '../context/ProgressContext';
 import backgroundTaskService from '../services/backgroundTaskService';
 import ordersCacheService from '../services/ordersCacheService';
-// ❌ DEPRECATED: order25DraftStorageService - použij draftManager místo toho
-// import order25DraftStorageService from '../services/order25DraftStorageService';
 import draftManager from '../services/DraftManager'; // 🎯 CENTRALIZOVANÝ DRAFT MANAGER
 import formDataManager from '../services/FormDataManager'; // 🎯 CENTRALIZOVANÝ DATA MANAGER
 import { useAutosave } from '../hooks/useAutosave'; // 🎯 CENTRALIZOVANÝ AUTOSAVE HOOK
 import { prettyDate, formatDateOnly } from '../utils/format';
 import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, searchSupplierByIco, searchSuppliersList, fetchSupplierContacts, createSupplier, updateSupplierByIco, fetchTemplatesList, fetchTemplatesListWithMeta, createTemplate, updateTemplate, deleteTemplate, getUserDetailApi2, fetchUskyList } from '../services/api2auth';
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
+// NOTE: setDebugLogger removed - was unused (only commented call on line 11445)
 import {
-  getStrediska25,
-  getFinancovaniZdroj25,
-  getDruhyObjednavky25,
-  // ❌ DEPRECATED: getOrder25, getNextOrderNumber25, createPartialOrder25, updatePartialOrder25 - použij V2 API místo toho
-  // ❌ DEPRECATED: uploadAttachment25, listAttachments25, downloadAttachment25, deleteAttachment25, verifyAttachments25 - použij V2 API místo toho
-  setDebugLogger,
-  updateAttachment25,
-  createDownloadLink25,
-  isAllowedFileType25,
-  isAllowedFileSize25,
-  generateAttachmentGUID25,
-  generateSystemovyNazev25,
-  createAttachmentMetadata25,
-  getTypyPriloh25,
-  getTypyFaktur25,
-  lockOrder25,
-  unlockOrder25
-  // ❌ DEPRECATED: api25orders - přímé volání přes api25orders.post() nahrazeno V2 API funkcemi
-} from '../services/api25orders';
-import {
+  // ✅ V2 API: Core CRUD operations
   getOrderV2,           // ✅ V2 API: GET order by ID
   createOrderV2,        // ✅ V2 API: CREATE order
   updateOrderV2,        // ✅ V2 API: UPDATE order
@@ -65,14 +45,28 @@ import {
   listInvoiceAttachments,
   downloadInvoiceAttachment,
   deleteInvoiceAttachment,
+  // ✅ V2 API: Lock/Unlock
+  lockOrderV2,
+  unlockOrderV2,
+  // ✅ V2 API: Dictionaries
+  getTypyPrilohV2,
+  getTypyFakturV2,
+  // ✅ V2 API: Utilities
+  generateAttachmentGUID,
+  generateSystemFilename,
+  createAttachmentMetadata,
+  isAllowedFileType,
+  isAllowedFileSize,
+  formatFileSize,
+  // ✅ V2 API: Helpers
   prepareDataForAPI,
-  normalizeError
-  // ❌ REMOVED: getLPOptionsForItems - lp_options se načítají přímo z enriched objednávky
+  normalizeError,
+  updateAttachmentV2
 } from '../services/apiOrderV2';
-import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
-// ❌ DEPRECATED: listInvoiceAttachments25, deleteInvoiceAttachment25 - použij V2 API místo toho
+import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/apiInvoiceV2';
+import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
-import notificationServiceDual from '../services/notificationService'; // 🆕 Dual-template notifikace
+import { triggerNotification } from '../services/notificationsApi'; // 🆕 Org-hierarchy-aware notifications
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
 import {
   validateWorkflowData,
@@ -99,9 +93,8 @@ import {
 
 // 🎯 NOVÉ: Import refactored hooks pro state management
 import { useFormController, useWorkflowManager } from './OrderForm25/hooks';
-
-// 🚀 PERFORMANCE: Lazy load DocxGeneratorModal (pouze když je potřeba)
-const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal').then(m => ({ default: m.DocxGeneratorModal })));
+import { DocxGeneratorModal } from '../components/DocxGeneratorModal';
+import FinancialControlConfirmationModal from '../components/FinancialControlConfirmationModal';
 
 // Pomocná funkce pro formátování data pro DatePicker (YYYY-MM-DD formát)
 const formatDateForPicker = (date) => {
@@ -1161,7 +1154,7 @@ const LabelWithClear = styled.div`
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
-  margin-bottom: 0.5rem;
+  min-height: 1.25rem; /* Minimální výška pro konzistenci s Label */
 `;
 
 const LabelText = styled.label`
@@ -1500,7 +1493,7 @@ const Select = styled.select`
   }
 
   /* Placeholder styl pro první option */
-  option:first-child {
+  option:first-of-type {
     color: #9ca3af;
     font-weight: 400;
   }
@@ -3916,16 +3909,19 @@ const transformBackendDataToFrontend = (backendData) => {
   if (backendData.polozky && !backendData.polozky_objednavky) {
     // 🔧 FIX: Normalizovat ceny z DB - zajistit že jsou ve formátu "12345.67" (string s tečkou, 2 des. místa)
     transformed.polozky_objednavky = Array.isArray(backendData.polozky) 
-      ? backendData.polozky.map(item => ({
-          ...item,
-          cena_bez_dph: typeof item.cena_bez_dph === 'number' 
-            ? item.cena_bez_dph.toFixed(2) 
-            : (parseFloat((item.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
-          cena_s_dph: typeof item.cena_s_dph === 'number' 
-            ? item.cena_s_dph.toFixed(2) 
-            : (parseFloat((item.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
-          sazba_dph: parseInt(item.sazba_dph) || 21
-        }))
+      ? backendData.polozky.map(item => {
+          return {
+            ...item,
+            cena_bez_dph: typeof item.cena_bez_dph === 'number' 
+              ? item.cena_bez_dph.toFixed(2) 
+              : (parseFloat((item.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
+            cena_s_dph: typeof item.cena_s_dph === 'number' 
+              ? item.cena_s_dph.toFixed(2) 
+              : (parseFloat((item.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
+            sazba_dph: item.sazba_dph !== undefined && item.sazba_dph !== null ? parseInt(item.sazba_dph) : 21,
+            poznamka: item.poznamka || ''  // ✅ Backend vrací poznamka přímo jako plain text
+          };
+        })
       : [];
     delete transformed.polozky; // Vyčistit BE pole
   }
@@ -3981,22 +3977,26 @@ const transformBackendDataToFrontend = (backendData) => {
   if (backendData.stav_odeslano !== undefined) {
     transformed.stav_odeslano = Boolean(backendData.stav_odeslano);
   }
-  if (backendData.stav_stornovano !== undefined) {
-    transformed.stav_stornovano = Boolean(backendData.stav_stornovano);
-  }
+  // stav_stornovano NEEXISTUJE v DB - používáme pouze workflow stav ZRUSENA
 
   // ℹ️  INDIVIDUÁLNÍ SCHVÁLENÍ a POJISTNÁ UDÁLOST: Načítají se z root objektu (krok 3.5)
   //     stejně jako cislo_smlouvy - NEJSOU vnořené ve financovani objektu
 
   // 5.8. ✅ DATUMY A TEXTOVÉ FIELDY: Kopírovat přímo bez transformace
   const directCopyFields = [
-    'datum_storna',
     'odeslani_storno_duvod',
     'identifikator',
-    'dt_odeslani',
-    'storno_uzivatel_id',
-    'storno_provedl'
+    'dt_odeslani'
+    // 🛑 NEEXISTUJÍ v DB: datum_storna, storno_provedl, stav_stornovano
   ];
+
+  // 🛑 VYČISTIT DEPRECATED POLE (pokud jsou v localStorage draftu nebo starých datech)
+  const deprecatedFields = ['storno_provedl', 'datum_storna', 'stav_stornovano', 'storno_uzivatel_id'];
+  deprecatedFields.forEach(field => {
+    if (backendData[field] !== undefined) {
+      delete transformed[field]; // Odstranit z výstupu
+    }
+  });
 
   directCopyFields.forEach(field => {
     if (backendData[field] !== undefined) {
@@ -4048,11 +4048,32 @@ const transformBackendDataToFrontend = (backendData) => {
   return transformed;
 };
 
+/**
+ * Helper funkce pro zobrazení LP kódu s rokem
+ * Přidává zkrácený rok k číslu LP: LPIT1 → LPIT1'25 (pro rok 2025)
+ * @param {string} cisloLp - Číslo LP (např. "LPIT1")
+ * @param {string|Date} platneDo - Datum platnosti do
+ * @returns {string} - Číslo LP s rokem (např. "LPIT1'25")
+ */
+const formatLpWithYear = (cisloLp, platneDo) => {
+  if (!cisloLp) return '';
+  if (!platneDo) return cisloLp;
+  
+  try {
+    const date = typeof platneDo === 'string' ? new Date(platneDo) : platneDo;
+    const year = date.getFullYear();
+    const shortYear = year.toString().slice(-2); // Poslední 2 číslice roku
+    return `${cisloLp}'${shortYear}`;
+  } catch (e) {
+    return cisloLp; // Fallback při chybě
+  }
+};
+
 // OrderForm25 - Modern form for 2025 orders following workflow phases
 function OrderForm25() {
   const navigate = useNavigate();
   const { showToast } = useContext(ToastContext) || {};
-  const { userDetail, user_id, username, token, user, userPermissions, hasPermission } = useContext(AuthContext) || {};
+  const { userDetail, user_id, username, token, user, userPermissions, hasPermission, hasAdminRole } = useContext(AuthContext) || {};
   const { triggerActivity } = useActivity();
   const { progress, start: startGlobalProgress, setProgress: setGlobalProgress, done: doneGlobalProgress, fail: failGlobalProgress, reset: resetGlobalProgress } = useContext(ProgressContext) || {};
 
@@ -4063,17 +4084,119 @@ function OrderForm25() {
   const location = useLocation();
   const urlParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   
-  // 🎯 PERSISTENCE: Čti editOrderId z URL nebo z localStorage
+  // 🎯 PERSISTENCE: Čti editOrderId z URL nebo z draftManager
   const editOrderIdFromUrl = urlParams.get('edit');
-  const editOrderIdFromLS = localStorage.getItem('activeOrderEditId');
+  const metadata = draftManager.getMetadata();
+  const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
   
-  // 🎯 Ulož editOrderId do localStorage při prvním načtení z URL
-  useEffect(() => {
-    if (editOrderIdFromUrl) {
-      localStorage.setItem('activeOrderEditId', editOrderIdFromUrl);
+  // 🎯 RETURNTO: Pamatovat si odkud jsme přišli pro návrat při zavření
+  // Použít useMemo aby se hodnota aktualizovala synchronně při změně location.state
+  const returnToPath = useMemo(() => {
+    const path = location.state?.returnTo;
+    
+    // Pokud máme explicitní returnTo, použij ho
+    if (path) return path;
+    
+    // Jinak detekuj podle referrer nebo document.referrer
+    const referrer = document.referrer;
+    if (referrer) {
+      if (referrer.includes('/orders25-list-v3')) return '/orders25-list-v3';
+      if (referrer.includes('/faktury') || referrer.includes('/invoices')) return '/faktury';
+      if (referrer.includes('/orders25-list')) return '/orders25-list';
     }
-  }, [editOrderIdFromUrl]);
+    
+    // Default fallback
+    return '/orders25-list';
+  }, [location.state]);
+  
+  const returnToRef = useRef(returnToPath);
+  
+  // 🎯 Pamatovat si highlightOrderId pro návrat zpět na paged seznam
+  const highlightOrderIdRef = useRef(location.state?.highlightOrderId);
+  
+  // Aktualizovat ref když se změní path
+  useEffect(() => {
+    if (returnToPath !== returnToRef.current) {
+      returnToRef.current = returnToPath;
+    }
+  }, [returnToPath]);
+  
+  // 🔥 OKAMŽITÝ BROADCAST MenuBaru při mount - podle dostupných dat
+  useEffect(() => {
+    // 🎯 PRIORITA: Zkontrolovat draft NEJDŘÍV (může mít více informací než URL)
+    const checkInitialState = async () => {
+      let menuBarState = 'NOVA'; // Default
+      let orderId = null;
+      let orderNumber = '';
+      
+      try {
+        if (user_id) {
+          draftManager.setCurrentUser(user_id);
+          
+          // Načíst draft metadata
+          const metadata = draftManager.getMetadata();
+          const hasDraftData = await draftManager.hasDraft();
+          
+          if (hasDraftData) {
+            const draftData = await draftManager.loadDraft();
+            
+            if (draftData && draftData.formData) {
+              // Draft existuje - určit stav podle savedOrderId
+              if (draftData.savedOrderId && draftData.formData.id) {
+                // Má savedOrderId → EDITACE skutečné objednávky
+                menuBarState = 'EDITACE';
+                orderId = draftData.savedOrderId;
+                orderNumber = draftData.formData.cislo_objednavky || draftData.formData.ev_cislo || '';
+              } else {
+                // Nemá savedOrderId → KONCEPT (autosave po první změně)
+                menuBarState = 'KONCEPT';
+                orderId = null;
+                orderNumber = '';
+              }
+            }
+          } else if (editOrderId) {
+            // Nemá draft, ale má editOrderId z URL → načítání EDITACE
+            menuBarState = 'EDITACE';
+            orderId = parseInt(editOrderId);
+            orderNumber = ''; // Bude doplněno po načtení
+            
+            // Ulož editOrderId do draftManager
+            draftManager.saveMetadata({ editOrderId: editOrderId });
+          }
+        } else if (editOrderId) {
+          // Anonymní uživatel s editOrderId
+          menuBarState = 'EDITACE';
+          orderId = parseInt(editOrderId);
+          orderNumber = '';
+        }
+      } catch (error) {
+        // Chyba při kontrole draftu - fallback na URL parametr
+        if (editOrderId) {
+          menuBarState = 'EDITACE';
+          orderId = parseInt(editOrderId);
+          orderNumber = '';
+        }
+      }
+      
+      // 🚀 POSLAT BROADCAST s určeným stavem
+      const state = {
+        isEditMode: menuBarState === 'EDITACE',
+        isNewOrder: menuBarState === 'NOVA',
+        orderId: orderId,
+        orderNumber: orderNumber,
+        currentPhase: 1,
+        mainWorkflowState: 'NOVA',
+        hasDraft: menuBarState !== 'NOVA',
+        timestamp: Date.now()
+      };
+      
+      window.__orderFormState = state;
+      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
+    };
+    
+    checkInitialState();
+  }, [editOrderId, user_id]); // Spustí se při mount a změně editOrderId
   
   const archivovanoParam = urlParams.get('archivovano'); // Parametr pro načtení archivovaných objednávek
 
@@ -4139,20 +4262,22 @@ function OrderForm25() {
   // Fullscreen režim
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // 💰 State pro zbývající částky LP a smluv
-  const [lpDetails, setLpDetails] = useState({}); // { lp_id: { zbyva_skutecne, celkovy_limit, ... } }
-  const [loadingLpDetails, setLoadingLpDetails] = useState({}); // { lp_id: true/false }
-  const [smlouvyList, setSmlouvyList] = useState([]); // Seznam všech smluv pro autocomplete
-  const [loadingSmlouvyList, setLoadingSmlouvyList] = useState(false);
-  const [smlouvaDetail, setSmlouvaDetail] = useState(null); // Detail vybrané smlouvy
-  const [loadingSmlouvaDetail, setLoadingSmlouvaDetail] = useState(false);
-  const [smlouvaSearchTerm, setSmlouvaSearchTerm] = useState(''); // Vyhledávací term pro smlouvy
-  const [showSmlouvySuggestions, setShowSmlouvySuggestions] = useState(false);
-  const [selectedSmlouvaSuggestionIndex, setSelectedSmlouvaSuggestionIndex] = useState(-1); // Index vybrané položky v dropdownu
-
-  // �️ REMOVED: Debug useEffect pro tracking re-renders
-  // Byl většinou zakomentovaný, odstraněn pro čistší kód
-  // Pokud potřebujete debugovat re-renders, použijte React DevTools Profiler
+  // 💰 SPRINT 4: Consolidated LP Details State (2→1 hook)
+  const [lpDetailsState, setLpDetailsState] = useState({
+    details: {}, // { lp_id: { zbyva_skutecne, celkovy_limit, ... } }
+    loading: {} // { lp_id: true/false }
+  });
+  
+  // 📋 SPRINT 4: Consolidated Smlouvy (Contracts) State (6→1 hook)
+  const [smlouvyState, setSmlouvyState] = useState({
+    list: [], // Seznam všech smluv pro autocomplete
+    loadingList: false,
+    detail: null, // Detail vybrané smlouvy
+    loadingDetail: false,
+    searchTerm: '', // Vyhledávací term pro smlouvy
+    showSuggestions: false,
+    selectedSuggestionIndex: -1 // Index vybrané položky v dropdownu
+  });
 
   // useEffect pro ESC klávesy v fullscreen režimu
   useEffect(() => {
@@ -4170,83 +4295,133 @@ function OrderForm25() {
 
   // ✅ REFACTORED: Číselníky budou definovány až po formController
 
-  // ❌ DEPRECATED: dictionariesReadyPromiseRef - použij areDictionariesReady místo toho
-  // const dictionariesReadyPromiseRef = useRef(dictionaries.readyPromise || null);
-  // const dictionariesReadyResolveRef = useRef(null);
-
   // Stavy pro přílohy
   const [attachments, setAttachments] = useState([]); // Lokální seznam příloh
-  // ✅ REMOVED: prilohyTypyOptions - nyní alias na dictionaries.data.prilohyTypyOptions
-  // ✅ REMOVED: loadingPrilohyTypy - nyní alias na dictionaries.loading.prilohyTypy
-  const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [isCheckingSyncAttachments, setIsCheckingSyncAttachments] = useState(false);
-
-  // State pro confirm dialog mazání příloh
-  const [showDeleteAttachmentDialog, setShowDeleteAttachmentDialog] = useState(false);
-  const [attachmentToDelete, setAttachmentToDelete] = useState(null);
   
-  // State pro confirm dialog "Vymazat všechny přílohy"
-  const [showDeleteAllAttachmentsDialog, setShowDeleteAllAttachmentsDialog] = useState(false);
+  // � OBNOVENÍ NEULOŽENÝCH PŘÍLOH Z LOCALSTORAGE
 
-  // State pro nové dialogy
-  const [showSupplierSearchDialog, setShowSupplierSearchDialog] = useState(false);
-  const [aresPopupOpen, setAresPopupOpen] = useState(false);
-  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
-  const [supplierSearchResults, setSupplierSearchResults] = useState([]);
-  const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
-  const [allSupplierContacts, setAllSupplierContacts] = useState([]); // Všechny kontakty načtené jednou
-  const [aresSearch, setAresSearch] = useState('');
-  const [aresResults, setAresResults] = useState([]);
-  const [loadingAres, setLoadingAres] = useState(false);
-  const [savingToLocal, setSavingToLocal] = useState(null); // ID záznamu který se ukládá
-  const [aresScopeInfo, setAresScopeInfo] = useState({}); // { ico: { existsInPersonal, existsInUsek, existsInGlobal } }
-  const [aresSelectedScope, setAresSelectedScope] = useState('personal'); // Vybraný scope pro ARES dialog
-  const [aresSelectedUseky, setAresSelectedUseky] = useState([]); // Vybrané úseky pro ARES scope 'usek'
+  
+  // �📎 SPRINT 4: Consolidated Attachment UI State (6→1 hook)
+  const [attachmentUI, setAttachmentUI] = useState({
+    uploading: false,
+    dragOver: false,
+    checkingSync: false,
+    showDeleteDialog: false,
+    deleteTarget: null,
+    showDeleteAllDialog: false
+  });
 
-  // 🏢 Úseky pro scope selector - načítají se z API
-  const [availableUseky, setAvailableUseky] = useState([]);
-  const [usekyLoading, setUsekyLoading] = useState(false);
+  // 🔍 SPRINT 4: Consolidated Supplier Search State (5→1 hook)
+  const [supplierSearch, setSupplierSearch] = useState({
+    showDialog: false,
+    searchTerm: '',
+    results: [],
+    loading: false,
+    allContacts: [] // Všechny kontakty načtené jednou
+  });
+  
+  // 🏢 SPRINT 4: Consolidated ARES State (8→1 hook)
+  const [aresState, setAresState] = useState({
+    popupOpen: false,
+    search: '',
+    results: [],
+    loading: false,
+    savingToLocal: null, // ID záznamu který se ukládá
+    scopeInfo: {}, // { ico: { existsInPersonal, existsInUsek, existsInGlobal } }
+    selectedScope: 'personal', // Vybraný scope pro ARES dialog
+    selectedUseky: [] // Vybrané úseky pro ARES scope 'usek'
+  });
 
-  // State pro automatické vyhledávání IČO
-  const [showIcoCheck, setShowIcoCheck] = useState(false);
+  // 🏢 SPRINT 4: Consolidated Useky State (2→1 hook)
+  const [usekyState, setUsekyState] = useState({
+    available: [],
+    loading: false
+  });
 
-  // State pro progress indikátor po uložení
-  const [showSaveProgress, setShowSaveProgress] = useState(false);
-  const [saveProgress, setSaveProgress] = useState(0);
-  const [saveProgressText, setSaveProgressText] = useState('');
-  const [icoCheckStatus, setIcoCheckStatus] = useState(null); // null, 'checking', 'found-local', 'found-ares', 'not-found'
+  // 🔍 SPRINT 4: Consolidated ICO Check State (4→1 hook)
+  const [icoCheckState, setIcoCheckState] = useState({
+    show: false,
+    status: null, // null, 'checking', 'found-local', 'found-ares', 'not-found'
+    data: null,
+    isOperation: false
+  });
+
+  // 📊 SPRINT 4: Consolidated Save Progress State (3→1 hook)
+  const [saveProgressState, setSaveProgressState] = useState({
+    show: false,
+    progress: 0,
+    text: ''
+  });
 
   // 🔒 State pro odemykání FÁZE 3 SEKCÍ (Dodavatel → Stav odeslání)
   // ⚠️ POZNÁMKA: Financování je součástí FÁZE 1-2, ne FÁZE 3!
   const [isPhase3SectionsLocked, setIsPhase3SectionsLocked] = useState(false);
   const [isPhase3SectionsUnlocked, setIsPhase3SectionsUnlocked] = useState(false); // Výchozí stav - zamčeno
   const [isPhase3SectionsLockProcessedFromDB, setIsPhase3SectionsLockProcessedFromDB] = useState(false); // Flag že zamčení bylo zpracováno při načtení z DB
-  const [icoCheckData, setIcoCheckData] = useState(null);
-  const [isIcoOperation, setIsIcoOperation] = useState(false);
+
+  // 📋 State pro modal potvrzení finanční kontroly před dokončením objednávky
+  const [showFinancialControlConfirmation, setShowFinancialControlConfirmation] = useState(false);
+  const [financialControlConfirmed, setFinancialControlConfirmed] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState(null); // Data pro odložené uložení po potvrzení
 
   // State pro sledování stavu sbalení/rozbalení sekcí
   const [areSectionsCollapsed, setAreSectionsCollapsed] = useState(false);
 
-  // 🎯 State pro "Přidat do adresáře" dialog
-  const [showSupplierAddDialog, setShowSupplierAddDialog] = useState(false);
-  const [existingSupplierCheck, setExistingSupplierCheck] = useState(null); // Výsledek detekce dodavatele v DB
-  const [supplierAutoFillSource, setSupplierAutoFillSource] = useState(null); // Zdroj automatického vyplnění dodavatele (local/ares/smlouva)
+  // 🎯 SPRINT 4: Consolidated Supplier Dialog State (3→1 hook)
+  const [supplierDialog, setSupplierDialog] = useState({
+    showAddDialog: false,
+    existingCheck: null, // Výsledek detekce dodavatele v DB
+    autoFillSource: null // Zdroj automatického vyplnění dodavatele (local/ares/smlouva)
+  });
 
-  // 🎯 State pro DOCX generátor modal
-  const [docxModalOpen, setDocxModalOpen] = useState(false);
-  const [docxModalOrder, setDocxModalOrder] = useState(null);
+  // 🎯 SPRINT 4: Consolidated DOCX Modal State (2→1 hook)
+  const [docxModal, setDocxModal] = useState({
+    open: false,
+    orderData: null
+  });
 
-  // 🎯 NOVÉ STAVY PRO ŘEŠENÍ RACE CONDITION
-  // Stav načítání číselníků (selecty, dropdown options)
-  const [isLoadingCiselniky, setIsLoadingCiselniky] = useState(true);
-  // Stav načítání dat formuláře (editace objednávky)
-  const [isLoadingFormData, setIsLoadingFormData] = useState(false);
+  // 💰 SPRINT 4: Consolidated LP Faktury State - pro správu LP čerpání faktur
+  const [fakturyLPCerpani, setFakturyLPCerpani] = useState({});
+  const loadedFakturyRef = useRef(new Set());
+  
+  // ✅ Funkce pro načtení LP čerpání faktury
+  const loadFakturaLPCerpani = useCallback(async (fakturaId) => {
+    if (!fakturaId || loadedFakturyRef.current.has(fakturaId) || !token || !username) return;
+    
+    try {
+      loadedFakturyRef.current.add(fakturaId);
+      const response = await getFakturaLPCerpani(fakturaId, token, username);
+      
+      // 🔥 FIX: API vrací {status: 'ok', data: {faktura_id, lp_cerpani: [...], suma, fa_castka}}
+      const lpCerpaniData = response?.data?.lp_cerpani || [];
+      
+      setFakturyLPCerpani(prev => ({
+        ...prev,
+        [fakturaId]: {
+          lpCerpani: Array.isArray(lpCerpaniData) ? lpCerpaniData : [],
+          loaded: true
+        }
+      }));
+    } catch (error) {
+      console.error('Chyba při načítání LP čerpání:', error);
+      setFakturyLPCerpani(prev => ({
+        ...prev,
+        [fakturaId]: {
+          lpCerpani: [],
+          loaded: true
+        }
+      }));
+    }
+  }, [token, username]);
 
-  // Celkový loading stav pro inicializaci formuláře
-  const [isFormInitializing, setIsFormInitializing] = useState(true);
-  const [initializationError, setInitializationError] = useState(null);
-  const [isInitialized, setIsInitialized] = useState(false); // ✅ Flag pro dokončenou inicializaci
+  // 🎯 SPRINT 4: Consolidated Loading State (5→1 hook)
+  const [loadingState, setLoadingState] = useState({
+    ciselniky: true, // Načítání číselníků (selecty, dropdown options)
+    formData: false, // Načítání dat formuláře (editace objednávky)
+    initializing: true, // Celkový loading stav pro inicializaci
+    initialized: false, // ✅ Flag pro dokončenou inicializaci
+    error: null // Chyba při inicializaci
+  });
 
   // 🔐 isEditMode - persistuje v localStorage pro správné MenuBar zobrazení
   // NIKDY se nesmí ztratit po F5 refresh!
@@ -4256,9 +4431,9 @@ function OrderForm25() {
       const metadata = draftManager.getMetadata();
 
       if (metadata && metadata.isEditMode === true) {
-        // ✅ PŘIDAT: Načíst i savedOrderId při inicializaci
-        if (metadata.editOrderId || metadata.savedOrderId) {
-          const orderId = metadata.editOrderId || metadata.savedOrderId;
+        // ✅ PŘIDAT: Načíst i formData.id při inicializaci
+        if (metadata.editOrderId || metadata.formData.id) {
+          const orderId = metadata.editOrderId || metadata.formData.id;
           // Poznámka: setSavedOrderId nelze volat zde (useState init),
           // takže to uděláme v useEffect níže
         }
@@ -4290,7 +4465,7 @@ function OrderForm25() {
     loadUseky();
   }, [token, username]);
 
-  // �🎯 Načíst savedOrderId z metadata při mount (nelze v useState init)
+  // �🎯 Načíst formData.id z metadata při mount (nelze v useState init)
   useEffect(() => {
     if (!user_id) return;
 
@@ -4298,11 +4473,8 @@ function OrderForm25() {
       const metadata = draftManager.getMetadata();
 
       if (metadata && metadata.isEditMode === true) {
-        // ✅ PŘIDAT: Načíst i editOrderId
-        if (metadata.editOrderId || metadata.savedOrderId) {
-          const orderId = metadata.editOrderId || metadata.savedOrderId;
-          setSavedOrderId(orderId);
-        }
+        // NOTE: setSavedOrderId removed - formData.id is single source of truth
+        // Metadata is used only for editOrderId initialization
       }
     } catch (error) {
     }
@@ -4332,7 +4504,6 @@ function OrderForm25() {
       //     const scrollContainer = scrollableContentRef.current;
       //     const scrollPosition = scrollContainer ? scrollContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop);
       //     draftManager.saveMetadata({ scrollPosition });
-      //     // console.log('📊 [Scroll] Uložena pozice:', scrollPosition);
       //   } catch (error) {
       //     console.error('⚠️ [Scroll] Chyba při ukládání pozice:', error);
       //   }
@@ -4486,10 +4657,6 @@ function OrderForm25() {
     };
   };
 
-  // ❌ DEPRECATED: getPhaseThemeInternal a getPhaseProgressInternal
-  // Přesunuty do useWorkflowManager pro eliminaci duplicit
-  // Použij: workflowManager.getPhaseTheme() a workflowManager.getPhaseProgress()
-
   // ✅ Fázování objednávky (8 fází podle workflow)
   // FÁZE 1/8: NOVA - Vytvoření konceptu
   // FÁZE 2/8: ODESLANA_KE_SCHVALENI - Čeká na schválení
@@ -4530,6 +4697,7 @@ function OrderForm25() {
     financovani: '', // JSON pole pro uložení do DB
     // Dynamická pole pro financování
     lp_kod: [], // LP kódy pro Limitovaný příslib (multiselect)
+    lp_poznamka: '', // Poznámka k LP
     cislo_smlouvy: '', // Číslo smlouvy pro Smlouva
     smlouva_poznamka: '', // Poznámka ke smlouvě
     individualni_schvaleni: '', // Identifikátor pro Individuální schválení
@@ -4565,11 +4733,11 @@ function OrderForm25() {
     // Stav odeslání objednávky
     stav_odeslano: false, // FÁZE 3: checkbox "Odesláno"
     datum_odeslani: '',
-    stav_stornovano: false, // FÁZE 3: checkbox "Stornováno"
-    datum_storna: '',
-    storno_uzivatel_id: '', // ID uživatele, který provedl storno
+    // 🛑 ODSTRANĚNO: stav_stornovano, datum_storna, storno_provedl - neexistují v DB
+    // Storno se řeší přes workflow stav ZRUSENA
+    // odesilatel_id (v DB) ukládá ID uživatele pro OBOJÍ (odeslání i storno)
+    // Rozlišení: odeslani_storno_duvod prázdný = odeslání, vyplněný = storno
     odeslani_storno_duvod: '', // DB pole pro důvod storna
-    storno_provedl: '',
     storno_poznamky: '',
 
     // Potvrzení objednávky od dodavatele - struktura JSON pro DB
@@ -4622,7 +4790,10 @@ function OrderForm25() {
     ev_cislo: '',
 
     // Dočasné datum objednávky pro koncepty (generuje se na FE, přepíše se při prvním uložení na BE)
-    temp_datum_objednavky: new Date().toISOString().split('T')[0], // 🔧 OPRAVA: Nastavit ihned při inicializaci
+    temp_datum_objednavky: (() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    })(), // 🔥 FIX: Použít lokální české datum místo UTC
 
     // Datum vytvoření objednávky (nastavuje se až při uložení do DB)
     datum_vytvoreni: ''
@@ -4656,6 +4827,67 @@ function OrderForm25() {
       delete window.__activeOrderFormEvCislo;
     };
   }, [formData.id, formData.cislo_objednavky, formData.ev_cislo]);
+
+  // 📎 LocalStorage obnovení neuložených příloh (musí být AŽ PO formData definici)
+  useEffect(() => {
+    const restoreUnsavedAttachments = () => {
+      try {
+        const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+        const savedAttachmentsStr = localStorage.getItem(storageKey);
+        
+        if (savedAttachmentsStr) {
+          const savedAttachments = JSON.parse(savedAttachmentsStr);
+          
+          if (savedAttachments.length > 0) {
+            addDebugLog('info', 'ATTACHMENTS', 'restore-from-ls',
+              `Nalezeno ${savedAttachments.length} neuložených příloh v LocalStorage`);
+            
+            // Zobrazit upozornění uživateli
+            showToast && showToast(
+              `📎 Nalezeny neuložené přílohy z předchozí session!\n\n` +
+              `🔄 Obnoveno ${savedAttachments.length} příloh.\n` +
+              `⚠️ Soubory bude nutné znovu vybrat a nahrát.`, 
+              { 
+                type: 'info', 
+                timeout: 8000,
+                action: {
+                  confirmText: 'Obnovit přílohy',
+                  cancelText: 'Smazat',
+                  onConfirm: () => {
+                    // Obnovit přílohy bez file objektů (budou označeny pro novou selekci)
+                    const restoredAttachments = savedAttachments.map(att => ({
+                      ...att,
+                      status: 'needs_reselection',
+                      file: null,
+                      uploadError: 'Soubor je nutné znovu vybrat'
+                    }));
+                    
+                    setAttachments(prev => [...prev, ...restoredAttachments]);
+                    
+                    addDebugLog('success', 'ATTACHMENTS', 'restored-from-ls',
+                      `Obnoveno ${restoredAttachments.length} příloh z LocalStorage`);
+                  },
+                  onCancel: () => {
+                    // Smazat z LocalStorage
+                    localStorage.removeItem(storageKey);
+                    addDebugLog('info', 'ATTACHMENTS', 'cleared-ls',
+                      'LocalStorage přílohy smazány na žádost uživatele');
+                  }
+                }
+              }
+            );
+          }
+        }
+      } catch (error) {
+        addDebugLog('error', 'ATTACHMENTS', 'restore-from-ls-error', error.message);
+      }
+    };
+
+    // Obnovit pouze pokud máme user_id a formData je načtené
+    if (user_id && formData) {
+      restoreUnsavedAttachments();
+    }
+  }, [user_id, formData.id]); // Trigger při změně user_id nebo order ID
 
   // 📸 SNAPSHOT původního stavu formuláře pro detekci změn
   const originalFormDataRef = useRef(null);
@@ -4741,34 +4973,16 @@ function OrderForm25() {
     getSectionState
   } = workflowManager;
 
-  // 🎯 Sledování ID uložené objednávky (MUSÍ být PŘED useEffect, který ho používá!)
-  const [savedOrderId, setSavedOrderId] = useState(null);
-  
-  // 🎯 PERSISTENCE: Sleduj změny savedOrderId a ukládej do LS (pro ADMIN/approve režim)
-  // Když ADMIN pokračuje v editaci po schválení, musí se editOrderId zachovat přes refresh
-  useEffect(() => {
-    if (savedOrderId && !editOrderIdFromUrl) {
-      // Pouze pokud NENÍ editOrderId v URL (tj. refresh stránky nebo pokračování v práci)
-      localStorage.setItem('activeOrderEditId', String(savedOrderId));
-    }
-  }, [savedOrderId, editOrderIdFromUrl]);
+  // 🎯 NOTE: formData.id removed - using formData.id directly as single source of truth
 
   // 🎯 [WORKFLOW MANAGER] Logování změny fáze - DISABLED to prevent infinite loop
   // useEffect(() => {
-  //   if (formData.id || savedOrderId) {
+  //   if formData.id {
   //   }
-  // }, [currentPhase, currentPhaseTheme, mainWorkflowState, formData.id, savedOrderId]);
+  // }, [currentPhase, currentPhaseTheme, mainWorkflowState, formData.id, formData.id]);
 
-  // ❌ DEPRECATED: Staré helper funkce přesunuty do useWorkflowManager
-  // parseWorkflowStates() - nyní z workflowManager
-  // hasWorkflowState() - nyní z workflowManager
-  // getCurrentPhase() - nyní z workflowManager
-  // getPhaseProgressInternal() - nahrazeno workflowManager.getPhaseProgress()
-  // getPhaseThemeInternal() - nahrazeno workflowManager.getPhaseTheme()
-
-  // ❌ REMOVED: (formData.id || savedOrderId) - duplicitní state, použij savedOrderId místo toho
-  // Určení zda je to nová objednávka - odvozeno z formData.id nebo savedOrderId
-  const isNewOrder = useMemo(() => !formData.id && !savedOrderId, [formData.id, savedOrderId]);
+  // Určení zda je to nová objednávka - odvozeno z formData.id (single source of truth)
+  const isNewOrder = useMemo(() => !formData.id, [formData.id]);
 
   // �️ COMPUTED: Detekce archivované objednávky
   // Flag který indikuje, že pracujeme s archivovanou objednávkou
@@ -4801,83 +5015,116 @@ function OrderForm25() {
   // 🎯 Sleduje zda už proběhlo načtení draftu
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
 
-  // �🎯 [GLOBAL STATE] Export stavu pro Layout.js MenuBar
-  // Místo složité logiky s draft metadata - OrderForm25 přímo ví, co edituje!
-  // 🎯 [CENTRALIZOVANÁ FUNKCE] Broadcast stavu do MenuBaru
-  // Používá ref pro aktuální hodnoty - vždy dostupná i v async funkcích
-  const broadcastOrderStateRef = useRef();
+  // 🎯 [CENTRÁLNÍ SPRÁVCE STAVU MENUBARU]
+  // Jedno místo pro inicializaci, update a deinicializaci - HOTOVO, KONEC!
   
-  useEffect(() => {
-    broadcastOrderStateRef.current = (overrides = {}) => {
-      const state = {
-        isEditMode: !isNewOrder,
-        orderId: savedOrderId || formData.id,
-        orderNumber: formData.cislo_objednavky || formData.ev_cislo,
-        currentPhase,
-        mainWorkflowState,
-        hasDraft: isChanged || isDraftLoaded, // 🎯 Indikuje že existuje koncept s změnami
-        timestamp: Date.now(),
-        ...overrides
-      };
-      
-      window.__orderFormState = state;
-      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
-      
-      return state;
+  // Centrální funkce pro broadcast stavu
+  const broadcastMenuBarState = useCallback((state) => {
+    const fullState = {
+      isEditMode: state.isEditMode ?? isEditMode,
+      isNewOrder: state.isNewOrder ?? !isEditMode,
+      orderId: state.orderId ?? formData.id,
+      orderNumber: state.orderNumber ?? (formData.cislo_objednavky || formData.ev_cislo),
+      currentPhase: state.currentPhase ?? currentPhase,
+      mainWorkflowState: state.mainWorkflowState ?? mainWorkflowState,
+      hasDraft: state.hasDraft ?? (isChanged || isDraftLoaded),
+      timestamp: Date.now()
     };
-  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
-
+    
+    window.__orderFormState = fullState;
+    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: fullState }));
+    
+    return fullState;
+  }, [isEditMode, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
+  
+  // Ref pro přístup z async funkcí
+  const broadcastMenuBarStateRef = useRef(broadcastMenuBarState);
+  useEffect(() => {
+    broadcastMenuBarStateRef.current = broadcastMenuBarState;
+  }, [broadcastMenuBarState]);
+  
   // Helper pro volání z async funkcí
   const broadcastOrderState = (overrides) => {
-    if (broadcastOrderStateRef.current) {
-      return broadcastOrderStateRef.current(overrides);
-    }
+    return broadcastMenuBarStateRef.current(overrides);
   };
-
-  // 🎯 [MOUNT] Broadcast při načtení formuláře
+  
+  // 🚀 SYNCHRONNÍ BROADCAST MenuBaru - reaguje OKAMŽITĚ na změny
   useEffect(() => {
-    broadcastOrderState();
+    // Čekat dokud není isDraftLoaded = skutečně načteno
+    if (!isDraftLoaded) return;
     
-    return () => {
-      // Cleanup: Reset stavu po 100ms (pokud se nemountla nová instance)
-      setTimeout(() => {
-        if (!window.__orderFormState || window.__orderFormState.timestamp < Date.now() - 500) {
-          const resetState = {
-            isEditMode: false,
-            isNewOrder: false,
-            orderId: null,
-            orderNumber: '',
-            currentPhase: 1,
-            mainWorkflowState: 'NOVA',
-            timestamp: Date.now()
-          };
-          window.__orderFormState = resetState;
-          window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: resetState }));
-        }
-      }, 100);
-    };
-  }, []); // Spustit POUZE při mount/unmount!
-
-  // 🎯 [UPDATE] Broadcast při změně isChanged - pro aktualizaci menu
-  useEffect(() => {
-    if (isDraftLoaded) {
-      broadcastOrderState();
+    // 🔥 URČIT STAV podle formData.id a editOrderId (SINGLE SOURCE OF TRUTH)
+    const hasRealId = !!formData.id; // DB ID = skutečná objednávka v databázi
+    const hasEditIntent = !!editOrderId; // URL parametr edit=123 = editační záměr
+    
+    // ✅ JEDNOZNAČNÁ LOGIKA:
+    // 1. Má DB ID (formData.id) → EDITACE (nezáleží na editOrderId)
+    // 2. Nemá DB ID, ale má změny (isChanged) → KONCEPT
+    // 3. Nemá DB ID ani změny → NOVÁ
+    
+    let menuBarState = 'NOVA'; // Default
+    
+    if (hasRealId) {
+      // Má DB ID → EDITACE
+      menuBarState = 'EDITACE';
+    } else if (isChanged || hasEditIntent) {
+      // Nemá DB ID, ale má změny nebo editační záměr → KONCEPT
+      menuBarState = 'KONCEPT';
     }
-  }, [isChanged]); // Spustit při změně isChanged
+    
+    // 🚀 POSLAT BROADCAST s jednoznačným stavem
+    const state = {
+      isEditMode: menuBarState === 'EDITACE',
+      isNewOrder: menuBarState === 'NOVA',
+      orderId: hasRealId ? formData.id : null,
+      orderNumber: formData.cislo_objednavky || formData.ev_cislo || '',
+      currentPhase,
+      mainWorkflowState,
+      hasDraft: menuBarState === 'KONCEPT' || menuBarState === 'EDITACE',
+      timestamp: Date.now()
+    };
+    
+    window.__orderFormState = state;
+    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
+    
+    // 🔥 DEINICIALIZACE při unmount - zrušit všechny ID a nastavit "žádná objednávka"
+    return () => {
+      window.__orderFormState = {
+        isEditMode: false,
+        isNewOrder: false,
+        orderId: null,
+        orderNumber: '',
+        currentPhase: 1,
+        mainWorkflowState: 'NOVA',
+        hasDraft: false,
+        timestamp: Date.now()
+      };
+      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: window.__orderFormState }));
+    };
+  }, [isDraftLoaded, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, editOrderId]); // ✅ Reaguje na všechny relevantní změny!
 
-  // Loading state pro tlačítka
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [disableAutosave, setDisableAutosave] = useState(false); // ❌ ZAKÁZAT autosave po úspěšném uložení
+  // 💾 SPRINT 4: Consolidated Save State (6→1 hook)
+  const [saveState, setSaveState] = useState({
+    saving: false,
+    savingDraft: false,
+    disableAutosave: false, // ❌ ZAKÁZAT autosave po úspěšném uložení
+    lastAutoSave: null,
+    autoSaving: false,
+    dataSource: null // 'concept', 'database', null
+  });
   const disableAutosaveRef = useRef(false); // 🚀 REF pro OKAMŽITOU kontrolu (bez async delay)
-  const [lastAutoSave, setLastAutoSave] = useState(null);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
-  const [dataSource, setDataSource] = useState(null); // 'concept', 'database', null
-  // ❌ REMOVED: isDraftLoaded přesunut výš (před broadcastOrderStateRef)
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
+
+  // 🔥 REF pro sledování uploadovaných souborů (prevence duplikace)
+  const uploadedFilesRef = useRef(new Set());
+  const uploadingFilesRef = useRef(new Set());
   
   // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
   const isClosingRef = useRef(false);
+
+  // 💾 REFS pro unmount autosave - udržují aktuální hodnoty pro cleanup funkci
+  const formDataRef = useRef(formData);
+  const attachmentsRef = useRef(attachments);
 
   // 🎯 CENTRALIZOVANÝ AUTOSAVE s debounce logikou (3 sekundy neaktivity)
   const autosaveCallbackRef = useRef(null);
@@ -4888,6 +5135,17 @@ function OrderForm25() {
       autosaveCallbackRef.current(isAutoSave);
     }
   }, []);
+  
+  // 🎯 AUTOSAVE HOOK - Defined early to be accessible throughout the component
+  // Uses saveState directly instead of aliases to avoid initialization order issues
+  const { triggerAutosave, cancelAutosave } = useAutosave(performSaveDraft, {
+    delay: 3000, // 3 sekundy neaktivity
+    enabled: !saveState.disableAutosave && isDraftLoaded,
+    dependencies: [saveState.disableAutosave, isDraftLoaded, formData.faktury]
+    // ⚠️ POZNÁMKA: fakturyLPCerpani NENÍ v dependencies (initialization order)
+    // Autosave se triggeruje explicitně v LPCerpaniEditor onChange handleru
+  });
+  
   // 🎤 POZOR: Hlasové rozpoznávání je implementováno GLOBÁLNĚ v Layout.js
   // OrderForm25 NEPOUŽÍVÁ vlastní hook, protože by to způsobovalo konflikty
   // Pokud uživatel chce nahrávat do poznámky formuláře:
@@ -4895,55 +5153,61 @@ function OrderForm25() {
   //   2. Zmáčkne CTRL+Space
   //   3. Text se vloží přímo do textarea (díky logice v hooku)
 
-  // Tracking pro unlock - ID objednávky kterou je potřeba odemknout při zrušení
-  const [sourceOrderIdForUnlock, setSourceOrderIdForUnlock] = useState(null);
+  // NOTE: sourceOrderIdForUnlock removed - using formData.id directly
 
   // Stav pro cancel confirm modal
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [cancelWarningMessage, setCancelWarningMessage] = useState('');
 
-  // Stavy pro správu šablon (převzato z OrderFormComponent)
-  const [savedTemplates, setSavedTemplates] = useState([]); // [{ name, data, ts }]
-  const [serverTemplates, setServerTemplates] = useState([]); // array of { name, data, ts, type, id, user_id }
-  const [templatesFetchStatus, setTemplatesFetchStatus] = useState({ status: null, error: null });
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [showTemplateSaveModal, setShowTemplateSaveModal] = useState(false);
-  const [templateName, setTemplateName] = useState('');
-  const [templateType, setTemplateType] = useState('po'); // 'po', 'details', 'mixed'
-  const [templateSaveChecked, setTemplateSaveChecked] = useState(false);
-  const [saveMode, setSaveMode] = useState('new'); // 'new', 'update', 'merge'
-  const [selectedTargetTemplate, setSelectedTargetTemplate] = useState(null); // celý template objekt
-  const [selectedTargetTemplateTs, setSelectedTargetTemplateTs] = useState(null);
-  const [showDeleteTemplateConfirm, setShowDeleteTemplateConfirm] = useState(false);
-  const [templatePendingDelete, setTemplatePendingDelete] = useState(null);
-
-  // 🔓 Unlock Confirm Dialogs
-  const [showUnlockPhase1Confirm, setShowUnlockPhase1Confirm] = useState(false);
-  const [showUnlockPhase2Confirm, setShowUnlockPhase2Confirm] = useState(false);
-  const [showUnlockPhase3Confirm, setShowUnlockPhase3Confirm] = useState(false);
-  const [showUnlockRegistrConfirm, setShowUnlockRegistrConfirm] = useState(false);
-  const [showUnlockPotvrzeniConfirm, setShowUnlockPotvrzeniConfirm] = useState(false);
-  const [showCancelPublishConfirm, setShowCancelPublishConfirm] = useState(false); // Confirm pro zrušení zveřejnění
-  const [showUnlockFakturaceConfirm, setShowUnlockFakturaceConfirm] = useState(false);
-  // const [showUnlockVecnaSpravnostConfirm, setShowUnlockVecnaSpravnostConfirm] = useState(false); // ❌ ODSTRANĚNO
-  const [showUnlockDokonceniConfirm, setShowUnlockDokonceniConfirm] = useState(false);
-  const [showUnlockStornoConfirm, setShowUnlockStornoConfirm] = useState(false);
-
-  // 💰 FAKTURY - Nyní jsou součástí formData.faktury (jako polozky_objednavky)
-  const [fakturyLoading, setFakturyLoading] = useState(false);
-  const [showAddFakturaForm, setShowAddFakturaForm] = useState(false);
-  const [editingFaktura, setEditingFaktura] = useState(null); // Faktura being edited
-  const [fakturaFormData, setFakturaFormData] = useState({
-    fa_datum_doruceni: formatDateForPicker(new Date()), // ✅ Správné pole pro datum
-    fa_dorucena: 1, // ✅ Boolean flag (0/1)
-    fa_castka: '',
-    fa_cislo_vema: '',
-    fa_strediska_kod: [], // ✅ Správný název pole pro střediska
-    fa_poznamka: '',
-    fa_splatnost: ''
+  // 📋 SPRINT 4: Consolidated Template State (13→1 hook)
+  const [templateState, setTemplateState] = useState({
+    saved: [], // [{ name, data, ts }]
+    server: [], // array of { name, data, ts, type, id, user_id }
+    fetchStatus: { status: null, error: null },
+    loading: false,
+    showSaveModal: false,
+    name: '',
+    type: 'po', // 'po', 'details', 'mixed'
+    saveChecked: false,
+    saveMode: 'new', // 'new', 'update', 'merge'
+    selectedTarget: null, // celý template objekt
+    selectedTargetTs: null,
+    showDeleteConfirm: false,
+    pendingDelete: null
   });
 
-  // 📎 PŘÍLOHY FAKTUR - už řešeno samostatnou komponentou InvoiceAttachmentsCompact
+  // 🔓 SPRINT 4: Consolidated Unlock Confirm Dialogs (9→1 hook)
+  const [unlockDialogs, setUnlockDialogs] = useState({
+    phase1: false,
+    phase2: false,
+    phase3: false,
+    registr: false,
+    potvrzeni: false,
+    cancelPublish: false, // Confirm pro zrušení zveřejnění
+    fakturace: false,
+    dokonceni: false,
+    storno: false
+  });
+
+  // 💰 SPRINT 4: Consolidated Faktury (Invoice) State (4→1 hook)
+  const [fakturyState, setFakturyState] = useState({
+    loading: false,
+    showAddForm: false,
+    editing: null, // Faktura being edited
+    formData: {
+      fa_datum_doruceni: formatDateForPicker(new Date()), // ✅ Správné pole pro datum
+      fa_datum_vystaveni: '', // Datum vystavení - nepovinné
+      fa_dorucena: 1, // ✅ Boolean flag (0/1)
+      fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
+      fa_castka: '',
+      fa_cislo_vema: '',
+      fa_strediska_kod: [], // ✅ Správný název pole pro střediska
+      fa_poznamka: '',
+      fa_splatnost: ''
+    }
+  });
+
+  //  PŘÍLOHY FAKTUR - už řešeno samostatnou komponentou InvoiceAttachmentsCompact
   // (staré state proměnné fakturaAttachments, uploadingFakturaFiles, draggingFakturaId, fakturaFileInputRefs odstraněny)
   // ✅ REMOVED: fakturaTypyPrilohOptions a loadingFakturaTypyPriloh budou definovány až po dictionaries
 
@@ -4963,30 +5227,18 @@ function OrderForm25() {
     onConfirm: null
   });
 
-  // 🎯 AUTOSAVE HOOK - faktury jsou teď součástí formData
-  const { triggerAutosave, cancelAutosave } = useAutosave(performSaveDraft, {
-    delay: 3000, // 3 sekundy neaktivity
-    enabled: !disableAutosave && isDraftLoaded,
-    dependencies: [disableAutosave, isDraftLoaded, formData.faktury]
+  // ✅ SPRINT 5: Broadcast consolidated above (was 4→1 hook)
+
+  // 📋 SPRINT 4: Consolidated Template UI State (7→1 hook)
+  const [templateUI, setTemplateUI] = useState({
+    actionsLog: [],
+    hoveredPreviewKey: null,
+    previewModalData: null, // {template, data}
+    editingId: null,
+    editingName: '',
+    showSearchPredefs: false,
+    searchPredefs: ''
   });
-
-  // 🎯 [UPDATE] Broadcast při změně klíčových hodnot (isNewOrder, savedOrderId, formData.id)
-  useEffect(() => {
-    // Broadcast pouze pokud je formulář inicializovaný
-    if (isDraftLoaded) {
-      broadcastOrderState();
-    }
-  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, isDraftLoaded]);
-
-  const [templateActionsLog, setTemplateActionsLog] = useState([]);
-  const [hoveredPreviewKey, setHoveredPreviewKey] = useState(null);
-  const [previewModalData, setPreviewModalData] = useState(null); // {template, data}
-
-  // States pro editaci názvů šablon
-  const [editingTemplateId, setEditingTemplateId] = useState(null);
-  const [editingTemplateName, setEditingTemplateName] = useState('');
-  const [showSearchPredefs, setShowSearchPredefs] = useState(false);
-  const [searchPredefs, setSearchPredefs] = useState('');
   const searchInputRef = useRef(null);
 
   // Validační chyby - state pro označení červených polí
@@ -4995,15 +5247,232 @@ function OrderForm25() {
   
 
 
-  // State pro rozkládací lokalizační panely u položek
-  const [lokalizacePanelStates, setLokalizacePanelStates] = useState({});
-
-  // 🎯 LP options pro dropdown v položkách objednávky
-  const [lpOptionsForItems, setLpOptionsForItems] = useState([]);
-  const [lpOptionsLoading, setLpOptionsLoading] = useState(false);
+  // 🗂️ SPRINT 4: Consolidated LP (lokalizace) States (4→2 hooks)
+  const [lokalizacePanelStates, setLokalizacePanelStates] = useState({}); // Rozkládací panely u položek
   
-  // 💰 LP stavy z API (limit, čerpáno, zbývá) - pro přesné zobrazení čerpání
-  const [lpStavy, setLpStavy] = useState({});
+  const [lpState, setLpState] = useState({
+    options: [], // LP options pro dropdown v položkách objednávky
+    loading: false,
+    financovani: {} // 💰 LP stavy z API (limit, čerpáno, zbývá) - pro přesné zobrazení čerpání
+  });
+
+  // 🔄 SPRINT 4: Backward Compatibility Aliases - ALL STATES (defined AFTER all useState declarations)
+  // This ensures no "Cannot access before initialization" errors
+  
+  // Supplier Search Aliases
+  const showSupplierSearchDialog = supplierSearch.showDialog;
+  const setShowSupplierSearchDialog = (val) => setSupplierSearch(s => ({...s, showDialog: val}));
+  const supplierSearchTerm = supplierSearch.searchTerm;
+  const setSupplierSearchTerm = (val) => setSupplierSearch(s => ({...s, searchTerm: val}));
+  const supplierSearchResults = supplierSearch.results;
+  const setSupplierSearchResults = (val) => setSupplierSearch(s => ({...s, results: val}));
+  const supplierSearchLoading = supplierSearch.loading;
+  const setSupplierSearchLoading = (val) => setSupplierSearch(s => ({...s, loading: val}));
+  const allSupplierContacts = supplierSearch.allContacts;
+  const setAllSupplierContacts = (val) => setSupplierSearch(s => ({...s, allContacts: val}));
+  
+  // ARES State Aliases
+  const aresPopupOpen = aresState.popupOpen;
+  const setAresPopupOpen = (val) => setAresState(s => ({...s, popupOpen: val}));
+  const aresSearch = aresState.search;
+  const setAresSearch = (val) => setAresState(s => ({...s, search: val}));
+  const aresResults = aresState.results;
+  const setAresResults = (val) => setAresState(s => ({...s, results: val}));
+  const loadingAres = aresState.loading;
+  const setLoadingAres = (val) => setAresState(s => ({...s, loading: val}));
+  const savingToLocal = aresState.savingToLocal;
+  const setSavingToLocal = (val) => setAresState(s => ({...s, savingToLocal: val}));
+  const aresScopeInfo = aresState.scopeInfo;
+  const setAresScopeInfo = (val) => setAresState(s => ({...s, scopeInfo: val}));
+  const aresSelectedScope = aresState.selectedScope;
+  const setAresSelectedScope = (val) => setAresState(s => ({...s, selectedScope: val}));
+  const aresSelectedUseky = aresState.selectedUseky;
+  const setAresSelectedUseky = (val) => setAresState(s => ({...s, selectedUseky: val}));
+  
+  // Useky State Aliases
+  const availableUseky = usekyState.available;
+  const setAvailableUseky = (val) => setUsekyState(s => ({...s, available: val}));
+  const usekyLoading = usekyState.loading;
+  const setUsekyLoading = (val) => setUsekyState(s => ({...s, loading: val}));
+  
+  // ICO Check State Aliases
+  const showIcoCheck = icoCheckState.show;
+  const setShowIcoCheck = (val) => setIcoCheckState(s => ({...s, show: val}));
+  const icoCheckStatus = icoCheckState.status;
+  const setIcoCheckStatus = (val) => setIcoCheckState(s => ({...s, status: val}));
+  const icoCheckData = icoCheckState.data;
+  const setIcoCheckData = (val) => setIcoCheckState(s => ({...s, data: val}));
+  const isIcoOperation = icoCheckState.isOperation;
+  const setIsIcoOperation = (val) => setIcoCheckState(s => ({...s, isOperation: val}));
+  
+  // Save Progress State Aliases
+  const showSaveProgress = saveProgressState.show;
+  const setShowSaveProgress = (val) => setSaveProgressState(s => ({...s, show: val}));
+  const saveProgress = saveProgressState.progress;
+  const setSaveProgress = (val) => setSaveProgressState(s => ({...s, progress: val}));
+  const saveProgressText = saveProgressState.text;
+  const setSaveProgressText = (val) => setSaveProgressState(s => ({...s, text: val}));
+  
+  // Attachment UI Aliases
+  const uploadingFiles = attachmentUI.uploading;
+  const setUploadingFiles = (val) => setAttachmentUI(s => ({...s, uploading: val}));
+  const dragOver = attachmentUI.dragOver;
+  const setDragOver = (val) => setAttachmentUI(s => ({...s, dragOver: val}));
+  const isCheckingSyncAttachments = attachmentUI.checkingSync;
+  const setIsCheckingSyncAttachments = (val) => setAttachmentUI(s => ({...s, checkingSync: val}));
+  const showDeleteAttachmentDialog = attachmentUI.showDeleteDialog;
+  const setShowDeleteAttachmentDialog = (val) => setAttachmentUI(s => ({...s, showDeleteDialog: val}));
+  const attachmentToDelete = attachmentUI.deleteTarget;
+  const setAttachmentToDelete = (val) => setAttachmentUI(s => ({...s, deleteTarget: val}));
+  const showDeleteAllAttachmentsDialog = attachmentUI.showDeleteAllDialog;
+  const setShowDeleteAllAttachmentsDialog = (val) => setAttachmentUI(s => ({...s, showDeleteAllDialog: val}));
+  
+  // Supplier Dialog Aliases
+  const showSupplierAddDialog = supplierDialog.showAddDialog;
+  const setShowSupplierAddDialog = (val) => setSupplierDialog(s => ({...s, showAddDialog: val}));
+  const existingSupplierCheck = supplierDialog.existingCheck;
+  const setExistingSupplierCheck = (val) => setSupplierDialog(s => ({...s, existingCheck: val}));
+  const supplierAutoFillSource = supplierDialog.autoFillSource;
+  const setSupplierAutoFillSource = (val) => setSupplierDialog(s => ({...s, autoFillSource: val}));
+  
+  // DOCX Modal Aliases
+  const docxModalOpen = docxModal.open;
+  const setDocxModalOpen = (val) => setDocxModal(s => ({...s, open: val}));
+  const docxModalOrder = docxModal.orderData;
+  const setDocxModalOrder = (val) => setDocxModal(s => ({...s, orderData: val}));
+  
+  // Loading State Aliases
+  const isLoadingCiselniky = loadingState.ciselniky;
+  const setIsLoadingCiselniky = (val) => setLoadingState(s => ({...s, ciselniky: val}));
+  const isLoadingFormData = loadingState.formData;
+  const setIsLoadingFormData = (val) => setLoadingState(s => ({...s, formData: val}));
+  const isFormInitializing = loadingState.initializing;
+  const setIsFormInitializing = (val) => setLoadingState(s => ({...s, initializing: val}));
+  const isInitialized = loadingState.initialized;
+  const setIsInitialized = (val) => setLoadingState(s => ({...s, initialized: val}));
+  const initializationError = loadingState.error;
+  const setInitializationError = (val) => setLoadingState(s => ({...s, error: val}));
+  
+  // Save State Aliases
+  const isSaving = saveState.saving;
+  const setIsSaving = (val) => setSaveState(s => ({...s, saving: val}));
+  const isSavingDraft = saveState.savingDraft;
+  const setIsSavingDraft = (val) => setSaveState(s => ({...s, savingDraft: val}));
+  const disableAutosave = saveState.disableAutosave;
+  const setDisableAutosave = (val) => {
+    setSaveState(s => ({...s, disableAutosave: val}));
+    disableAutosaveRef.current = val; // Sync ref
+  };
+  const lastAutoSave = saveState.lastAutoSave;
+  const setLastAutoSave = (val) => setSaveState(s => ({...s, lastAutoSave: val}));
+  const isAutoSaving = saveState.autoSaving;
+  const setIsAutoSaving = (val) => setSaveState(s => ({...s, autoSaving: val}));
+  const dataSource = saveState.dataSource;
+  const setDataSource = (val) => setSaveState(s => ({...s, dataSource: val}));
+  
+  // LP Details Aliases
+  const lpDetails = lpDetailsState.details;
+  const setLpDetails = (val) => setLpDetailsState(s => ({...s, details: val}));
+  const loadingLpDetails = lpDetailsState.loading;
+  const setLoadingLpDetails = (val) => setLpDetailsState(s => ({...s, loading: val}));
+  
+  // Smlouvy (Contracts) Aliases
+  const smlouvyList = smlouvyState.list;
+  const setSmlouvyList = (val) => setSmlouvyState(s => ({...s, list: val}));
+  const loadingSmlouvyList = smlouvyState.loadingList;
+  const setLoadingSmlouvyList = (val) => setSmlouvyState(s => ({...s, loadingList: val}));
+  const smlouvaDetail = smlouvyState.detail;
+  const setSmlouvaDetail = (val) => setSmlouvyState(s => ({...s, detail: val}));
+  const loadingSmlouvaDetail = smlouvyState.loadingDetail;
+  const setLoadingSmlouvaDetail = (val) => setSmlouvyState(s => ({...s, loadingDetail: val}));
+  const smlouvaSearchTerm = smlouvyState.searchTerm;
+  const setSmlouvaSearchTerm = (val) => setSmlouvyState(s => ({...s, searchTerm: val}));
+  const showSmlouvySuggestions = smlouvyState.showSuggestions;
+  const setShowSmlouvySuggestions = (val) => setSmlouvyState(s => ({...s, showSuggestions: val}));
+  const selectedSmlouvaSuggestionIndex = smlouvyState.selectedSuggestionIndex;
+  const setSelectedSmlouvaSuggestionIndex = (val) => setSmlouvyState(s => ({...s, selectedSuggestionIndex: val}));
+  
+  // Template State Aliases
+  const savedTemplates = templateState.saved || [];
+  const setSavedTemplates = (val) => setTemplateState(s => ({...s, saved: Array.isArray(val) ? val : []}));
+  const serverTemplates = templateState.server || [];
+  const setServerTemplates = (val) => setTemplateState(s => ({...s, server: Array.isArray(val) ? val : []}));
+  const templatesFetchStatus = templateState.fetchStatus;
+  const setTemplatesFetchStatus = (val) => setTemplateState(s => ({...s, fetchStatus: val}));
+  const templatesLoading = templateState.loading;
+  const setTemplatesLoading = (val) => setTemplateState(s => ({...s, loading: val}));
+  const showTemplateSaveModal = templateState.showSaveModal;
+  const setShowTemplateSaveModal = (val) => setTemplateState(s => ({...s, showSaveModal: val}));
+  const templateName = templateState.name;
+  const setTemplateName = (val) => setTemplateState(s => ({...s, name: val}));
+  const templateType = templateState.type;
+  const setTemplateType = (val) => setTemplateState(s => ({...s, type: val}));
+  const templateSaveChecked = templateState.saveChecked;
+  const setTemplateSaveChecked = (val) => setTemplateState(s => ({...s, saveChecked: val}));
+  const saveMode = templateState.saveMode;
+  const setSaveMode = (val) => setTemplateState(s => ({...s, saveMode: val}));
+  const selectedTargetTemplate = templateState.selectedTarget;
+  const setSelectedTargetTemplate = (val) => setTemplateState(s => ({...s, selectedTarget: val}));
+  const selectedTargetTemplateTs = templateState.selectedTargetTs;
+  const setSelectedTargetTemplateTs = (val) => setTemplateState(s => ({...s, selectedTargetTs: val}));
+  const showDeleteTemplateConfirm = templateState.showDeleteConfirm;
+  const setShowDeleteTemplateConfirm = (val) => setTemplateState(s => ({...s, showDeleteConfirm: val}));
+  const templatePendingDelete = templateState.pendingDelete;
+  const setTemplatePendingDelete = (val) => setTemplateState(s => ({...s, pendingDelete: val}));
+  
+  // Unlock Dialogs Aliases
+  const showUnlockPhase1Confirm = unlockDialogs.phase1;
+  const setShowUnlockPhase1Confirm = (val) => setUnlockDialogs(s => ({...s, phase1: val}));
+  const showUnlockPhase2Confirm = unlockDialogs.phase2;
+  const setShowUnlockPhase2Confirm = (val) => setUnlockDialogs(s => ({...s, phase2: val}));
+  const showUnlockPhase3Confirm = unlockDialogs.phase3;
+  const setShowUnlockPhase3Confirm = (val) => setUnlockDialogs(s => ({...s, phase3: val}));
+  const showUnlockRegistrConfirm = unlockDialogs.registr;
+  const setShowUnlockRegistrConfirm = (val) => setUnlockDialogs(s => ({...s, registr: val}));
+  const showUnlockPotvrzeniConfirm = unlockDialogs.potvrzeni;
+  const setShowUnlockPotvrzeniConfirm = (val) => setUnlockDialogs(s => ({...s, potvrzeni: val}));
+  const showCancelPublishConfirm = unlockDialogs.cancelPublish;
+  const setShowCancelPublishConfirm = (val) => setUnlockDialogs(s => ({...s, cancelPublish: val}));
+  const showUnlockFakturaceConfirm = unlockDialogs.fakturace;
+  const setShowUnlockFakturaceConfirm = (val) => setUnlockDialogs(s => ({...s, fakturace: val}));
+  const showUnlockDokonceniConfirm = unlockDialogs.dokonceni;
+  const setShowUnlockDokonceniConfirm = (val) => setUnlockDialogs(s => ({...s, dokonceni: val}));
+  const showUnlockStornoConfirm = unlockDialogs.storno;
+  const setShowUnlockStornoConfirm = (val) => setUnlockDialogs(s => ({...s, storno: val}));
+  
+  // Faktury (Invoice) State Aliases
+  const fakturyLoading = fakturyState.loading;
+  const setFakturyLoading = (val) => setFakturyState(s => ({...s, loading: val}));
+  const showAddFakturaForm = fakturyState.showAddForm;
+  const setShowAddFakturaForm = (val) => setFakturyState(s => ({...s, showAddForm: val}));
+  const editingFaktura = fakturyState.editing;
+  const setEditingFaktura = (val) => setFakturyState(s => ({...s, editing: val}));
+  const fakturaFormData = fakturyState.formData;
+  const setFakturaFormData = (val) => setFakturyState(s => ({...s, formData: val}));
+  
+  // Template UI Aliases
+  const templateActionsLog = templateUI.actionsLog;
+  const setTemplateActionsLog = (val) => setTemplateUI(s => ({...s, actionsLog: val}));
+  const hoveredPreviewKey = templateUI.hoveredPreviewKey;
+  const setHoveredPreviewKey = (val) => setTemplateUI(s => ({...s, hoveredPreviewKey: val}));
+  const previewModalData = templateUI.previewModalData;
+  const setPreviewModalData = (val) => setTemplateUI(s => ({...s, previewModalData: val}));
+  const editingTemplateId = templateUI.editingId;
+  const setEditingTemplateId = (val) => setTemplateUI(s => ({...s, editingId: val}));
+  const editingTemplateName = templateUI.editingName;
+  const setEditingTemplateName = (val) => setTemplateUI(s => ({...s, editingName: val}));
+  const showSearchPredefs = templateUI.showSearchPredefs;
+  const setShowSearchPredefs = (val) => setTemplateUI(s => ({...s, showSearchPredefs: val}));
+  const searchPredefs = templateUI.searchPredefs;
+  const setSearchPredefs = (val) => setTemplateUI(s => ({...s, searchPredefs: val}));
+  
+  // LP State Aliases
+  const lpOptionsForItems = lpState.options;
+  const setLpOptionsForItems = (val) => setLpState(s => ({...s, options: val}));
+  const lpOptionsLoading = lpState.loading;
+  const setLpOptionsLoading = (val) => setLpState(s => ({...s, loading: val}));
+  const lpStavy = lpState.financovani;
+  const setLpStavy = (val) => setLpState(s => ({...s, financovani: val}));
 
   // 🎯 LP options se načítají automaticky v enriched objednávce z backendu
   // Viz handleDataLoaded() kde se extrahují z response.lp_options
@@ -5106,7 +5575,8 @@ function OrderForm25() {
           token,
           username,
           show_inactive: false,
-          limit: 500
+          limit: 500,
+          pouzit_v_obj_formu: true
         });
         
         if (response?.data && Array.isArray(response.data)) {
@@ -5205,16 +5675,11 @@ function OrderForm25() {
       // Callback když jsou data načtena z DB
       // KRITICKÉ: Nastavit formData s načtenými daty
 
-      // 🔍 DEBUG: RAW CELÉ OBJEDNÁVKY z backendu
-      // console.log('🔍 RAW CELÁ OBJEDNÁVKA z DB:', loadedData);
-
-      // 🛡️ OCHRANA: Zabránit opakovanému volání onDataLoaded PRO STEJNOU objednávku
+      // �️ OCHRANA: Zabránit opakovanému volání onDataLoaded PRO STEJNOU objednávku
       // ✅ FIX: Kontroluj současný editOrderId, ne jen flag
       const currentEditId = editOrderId || loadedData?.id || 'NEW';
+      
       if (onDataLoadedCalledRef.current === currentEditId) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('⚠️ handleDataLoaded už byl zavolán pro:', currentEditId, '- ignoruji duplicitní volání');
-        }
         return;
       }
 
@@ -5236,24 +5701,21 @@ function OrderForm25() {
         setIsInitialized(true); // ✅ Označit jako inicializovaný aby se nespustil duplicitní effect
       }
 
-      // Nastavit ID zdroje pro copy mode
-      if (sourceOrderId) {
-        setSourceOrderIdForUnlock(sourceOrderId);
-      }
+      // NOTE: sourceOrderIdForUnlock removed - formData.id is used directly
+      // NOTE: formData.id removed - formData.id is single source of truth
 
-      // Nastavit savedOrderId pro edit mode
+      // Nastavit edit mode pokud má loadedData ID
       if (loadedData?.id) {
-        setSavedOrderId(loadedData.id);
         setIsEditMode(true);
-        // 🎯 PERSISTENCE: Ulož editOrderId do localStorage pro refresh
-        localStorage.setItem('activeOrderEditId', String(loadedData.id));
+        // 🎯 PERSISTENCE: Ulož editOrderId do draftManager pro refresh
+        draftManager.saveMetadata({ editOrderId: String(loadedData.id) });
       }
 
       // 🎯 NEBO pokud je editOrderId v URL - OKAMŽITĚ nastavit editMode
       if (editOrderId) {
         setIsEditMode(true);
-        // 🎯 PERSISTENCE: Ulož editOrderId do localStorage pro refresh
-        localStorage.setItem('activeOrderEditId', String(editOrderId));
+        // 🎯 PERSISTENCE: Ulož editOrderId do draftManager pro refresh
+        draftManager.saveMetadata({ editOrderId: String(editOrderId) });
       }
 
       // 🔥 NOVÉ: Načti draft PŘÍMO TADY během inicializace!
@@ -5270,17 +5732,20 @@ function OrderForm25() {
 
             if (draftData?.formData) {
               // 🎯 KONTROLA: Patří draft k této objednávce?
-              const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
+              const draftOrderId = draftData.formData.id || draftData.formData?.id;
               const currentOrderId = editOrderId || loadedData?.id;
 
-              // 🎯 Pokud draft má savedOrderId, JE TO EDITACE - nastav HNED!
+              // 💰 LP ČERPÁNÍ: Načíst z draftu pokud existuje
+              if (draftData.fakturyLPCerpani && typeof draftData.fakturyLPCerpani === 'object') {
+                setFakturyLPCerpani(draftData.fakturyLPCerpani);
+              }
+
+              // 🎯 Pokud draft má ID objednávky, JE TO EDITACE - nastav HNED!
               if (draftOrderId) {
                 setIsEditMode(true);
-                setSavedOrderId(draftOrderId);
-                // 🔧 POZNÁMKA: isNewOrder je computed value z useMemo(!formData.id && !savedOrderId)
-                // Nastavením savedOrderId automaticky isNewOrder = false
-                // 🎯 PERSISTENCE: Ulož do localStorage pro refresh
-                localStorage.setItem('activeOrderEditId', String(draftOrderId));
+                // NOTE: formData.id removed - formData.id is single source of truth
+                // 🎯 PERSISTENCE: Ulož do draftManager pro refresh
+                draftManager.saveMetadata({ editOrderId: String(draftOrderId) });
               }
 
               // ❌ Pokud je draft od JINÉ objednávky, IGNORUJ ho!
@@ -5319,6 +5784,64 @@ function OrderForm25() {
         }
       }
 
+      // 🔢 KRITICKÉ: SYNCHRONNÍ NAČTENÍ EV_CISLO pro nové objednávky
+      // Priorita: Načíst číslo PŘED nastavením formData, ne asynchronně v useEffect
+      if (isNewOrder && !finalData.ev_cislo && token && username) {
+        try {
+          const orderNumberData = await getNextOrderNumberV2(token, username);
+          const nextNumber = orderNumberData.next_order_string || orderNumberData.order_number_string || orderNumberData.next_number;
+          
+          if (nextNumber) {
+            finalData.ev_cislo = nextNumber;
+            
+            // Označit že ev_cislo je načteno aby useEffect ho už nenačítal
+            if (window.__orderForm_hasLoadedNextNumberRef) {
+              window.__orderForm_hasLoadedNextNumberRef.current = true;
+            }
+          } else {
+            console.warn('⚠️ [OrderForm25/handleDataLoaded] API nevrátilo ev_cislo');
+          }
+        } catch (error) {
+          console.error('❌ [OrderForm25/handleDataLoaded] Chyba při načítání ev_cislo:', error);
+          // Fallback - useEffect to zkusí načíst
+        }
+      }
+
+      // 🎯 NOVÁ OBJEDNÁVKA: Aplikovat výchozí hodnoty garanta a příkazce z user settings
+      if (isNewOrder && user_id && !finalData.garant_uzivatel_id && !finalData.prikazce_id) {
+        try {
+          const { loadSettingsFromLocalStorage } = require('../services/userSettingsApi');
+          const userSettings = loadSettingsFromLocalStorage(parseInt(user_id, 10));
+          
+          if (userSettings) {
+            // Extrahuj hodnoty garanta
+            if (userSettings.vychozi_garant_id && userSettings.vychozi_garant_id !== '' && userSettings.vychozi_garant_id !== null) {
+              const defaultGarantId = typeof userSettings.vychozi_garant_id === 'object' 
+                ? userSettings.vychozi_garant_id.value 
+                : userSettings.vychozi_garant_id;
+              
+              if (defaultGarantId && defaultGarantId !== '') {
+                finalData.garant_uzivatel_id = String(defaultGarantId);
+              }
+            }
+            
+            // Extrahuj hodnoty příkazce
+            if (userSettings.vychozi_prikazce_id && userSettings.vychozi_prikazce_id !== '' && userSettings.vychozi_prikazce_id !== null) {
+              const defaultPrikazceId = typeof userSettings.vychozi_prikazce_id === 'object'
+                ? userSettings.vychozi_prikazce_id.value
+                : userSettings.vychozi_prikazce_id;
+              
+              if (defaultPrikazceId && defaultPrikazceId !== '') {
+                finalData.prikazce_id = String(defaultPrikazceId);
+              }
+            }
+          } else {
+          }
+        } catch (error) {
+          console.error('❌ [OrderForm25/handleDataLoaded] Chyba při načítání výchozích hodnot garanta/příkazce:', error);
+        }
+      }
+
       // 🔄 AUTOMATICKÉ DOPLNĚNÍ DODAVATELE ZE SMLOUVY
       // Pokud je fáze 3+, financování = Smlouva a dodavatel prázdný, zkusit doplnit
       let wasAutoFilled = false;
@@ -5354,17 +5877,22 @@ function OrderForm25() {
         // Extrahuj LP z financovani.lp_nazvy (primární zdroj pro položky)
         if (loadedData?.financovani?.lp_nazvy && Array.isArray(loadedData.financovani.lp_nazvy)) {
           const lpOptions = loadedData.financovani.lp_nazvy
-            .map(lp => ({
-              id: lp.id,
-              kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-              nazev: lp.nazev || 'Bez názvu',
-              kategorie: lp.kategorie,
-              limit: lp.limit || lp.celkovy_limit,
-              cerpano: lp.cerpano || lp.skutecne_cerpano,
-              zbyva: lp.zbyva || lp.zbyva_skutecne,
-              rok: lp.rok,
-              label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-            }))
+            .map(lp => {
+              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+              return {
+                id: lp.id,
+                kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                nazev: lp.nazev || 'Bez názvu',
+                kategorie: lp.kategorie,
+                limit: lp.limit || lp.celkovy_limit,
+                cerpano: lp.cerpano || lp.skutecne_cerpano,
+                zbyva: lp.zbyva || lp.zbyva_skutecne,
+                rok: lp.rok,
+                platne_od: lp.platne_od,
+                platne_do: lp.platne_do,
+                label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+              };
+            })
             .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
           
           setLpOptionsForItems(lpOptions);
@@ -5419,6 +5947,7 @@ function OrderForm25() {
                     console.warn(`⚠️ LP ${lpKod} (ID: ${originalValue}) nebylo nalezeno nebo nemá platná data`);
                     return null;
                   }
+                  const lpKodWithYear = formatLpWithYear(lpDetail.cislo_lp || lpDetail.kod, lpDetail.platne_do);
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
@@ -5428,7 +5957,9 @@ function OrderForm25() {
                     cerpano: lpDetail.skutecne_cerpano || 0,
                     zbyva: lpDetail.zbyva_skutecne || 0,
                     rok: lpDetail.rok,
-                    label: `${lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
+                    platne_od: lpDetail.platne_od,
+                    platne_do: lpDetail.platne_do,
+                    label: `${lpKodWithYear} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
                   };
                 } catch (err) {
                   console.error(`❌ Chyba načítání LP ${lpKod} (ID: ${originalValue}):`, err);
@@ -5484,8 +6015,16 @@ function OrderForm25() {
         
         // ✅ KRITICKÉ: Povolit autosave i pro EDIT mode!
         draftManager.setAutosaveEnabled(true, 'EDIT order initialization');
+        
+        // 🔥 KRITICKÉ: Poslat broadcast MenuBaru - EDIT MODE JE READY!
+        broadcastOrderState({
+          isEditMode: true,
+          isNewOrder: false,
+          orderId: finalData.id || editOrderId,
+          orderNumber: finalData.cislo_objednavky || finalData.ev_cislo || ''
+        });
       }
-  }, [editOrderId, user_id, draftManager, setFormData, setSourceOrderIdForUnlock, setSavedOrderId, setIsEditMode, setIsDraftLoaded, setIsInitialized, autoFillSupplierFromContract, setSupplierAutoFillSource]);
+  }, [editOrderId, user_id, draftManager, setFormData, setIsEditMode, setIsDraftLoaded, setIsInitialized, autoFillSupplierFromContract, setSupplierAutoFillSource, broadcastOrderState]);
 
   // 🎨 HELPER FUNKCE PRO FORMÁTOVANÉ TOASTY
   // Vytváří jednotný vzhled pro všechny toast zprávy s ikonami a barvami
@@ -5550,6 +6089,12 @@ function OrderForm25() {
     // 🚫 ZRUŠENO: Auto-scroll po načtení formuláře (na žádost uživatele)
   }, []);
 
+  // 🔧 FIX: Reset onDataLoadedCalledRef když se mění editOrderId
+  // Zajistí, že při navigaci mezi objednávkami se data správně načtou
+  useEffect(() => {
+    onDataLoadedCalledRef.current = null;
+  }, [editOrderId]);
+
   // Tento hook řídí celou inicializaci formuláře a eliminuje race conditions
   const formController = useFormController({
     token,
@@ -5595,12 +6140,6 @@ function OrderForm25() {
   // 🆕 Helper: Formátování chybových hlášek do strukturované podoby
   const formatValidationErrors = React.useCallback((errors) => {
     if (!errors || Object.keys(errors).length === 0) return null;
-
-    console.log('📝 formatValidationErrors - vstup:', {
-      errorKeys: Object.keys(errors),
-      errorCount: Object.keys(errors).length,
-      errors
-    });
 
     // ✅ SJEDNOCENO S FloatingNavigator.categorizeErrorKey() - MUSÍ BÝT 100% STEJNÉ!
     // Kategorizace chyb podle sekcí NAVIGÁTORU (odpovídá FloatingNavigator.js sekce IDs)
@@ -5651,8 +6190,10 @@ function OrderForm25() {
       else if (key.includes('datum_odeslani') || key.includes('stav_odeslani')) {
         categories.stav_odeslani.errors.push(cleanMessage);
       }
-      // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
-      else if (key.startsWith('faktura_') && key.includes('vecna_spravnost')) {
+      // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_" - včetně LP čerpání
+      else if ((key.startsWith('faktura_') && key.includes('vecna_spravnost')) || 
+               key.startsWith('vecna_lp_') || 
+               key.includes('vecna_poznamka')) {
         categories.vecna_spravnost.errors.push(cleanMessage);
       }
       // 8. Fakturace
@@ -5771,7 +6312,6 @@ function OrderForm25() {
 
   // Přejmenování pro zpětnou kompatibilitu (různé části kódu používají různé názvy)
   const fakturaTypyPrilohOptions = typyFakturOptions; // Alias
-  // ❌ DEPRECATED: loadingFakturaTypyPriloh - číselníky se načítají v lifecycle, takže vždy false zde
   const loadingFakturaTypyPriloh = false; // Číselníky už jsou načtené když se formulář zobrazuje
 
   // 🚀 CRITICAL FIX: Reset a povolit autosave při změně editOrderId
@@ -5782,15 +6322,40 @@ function OrderForm25() {
     setIsDraftLoaded(false);
     
     if (isNewOrder && user_id) {
-      setIsDraftLoaded(true);
-
-      // ✅ KRITICKÉ: Povolit autosave v DraftManageru!
-      draftManager.setAutosaveEnabled(true, 'NEW order initialization');
+      // 🔍 KRITICKÉ: Pro novou objednávku zkontrolovat zda existuje draft
+      // Pokud ano, nechat useEffect níže ho načíst
+      // Pokud ne, okamžitě nastavit isDraftLoaded=true
+      const checkDraftAndInit = async () => {
+        try {
+          draftManager.setCurrentUser(user_id);
+          const hasDraft = await draftManager.hasDraft();
+          
+          if (hasDraft) {
+            // ✅ Existuje draft - načte se v useEffect níže
+            setIsDraftLoaded(true); // Povolit načtení
+          } else {
+            // ✅ Neexistuje draft - nová čistá objednávka
+            setIsDraftLoaded(true);
+            // ✅ KRITICKÉ: Povolit autosave v DraftManageru!
+            draftManager.setAutosaveEnabled(true, 'NEW order initialization');
+          }
+        } catch (error) {
+          console.error('Chyba při kontrole draftu:', error);
+          // Fallback - nastavit jako novou objednávku
+          setIsDraftLoaded(true);
+          draftManager.setAutosaveEnabled(true, 'NEW order initialization (fallback)');
+        }
+      };
+      
+      checkDraftAndInit();
     } else {
     }
   }, [editOrderId, user_id]); // Spustí se při změně editOrderId
 
   // Automatické rozbalení lokalizačních panelů s vyplněnými hodnotami
+  // VŽDY rozbalit pokud:
+  // 1. Je to majetková položka (atribut_objektu = 1) → POVINNÁ lokalizace
+  // 2. Má vyplněná lokalizační data (úsek, budova, místnost, poznámka)
   useEffect(() => {
     if (formData.polozky_objednavky && Array.isArray(formData.polozky_objednavky)) {
       const newPanelStates = {};
@@ -5806,19 +6371,39 @@ function OrderForm25() {
           (polozka.mistnost_kod && polozka.mistnost_kod.trim() !== '') ||
           (polozka.poznamka && polozka.poznamka.trim() !== '');
 
-        // Pokud má data NEBO je materiálová objednávka, rozbal panel
-        if (hasLocationData || isMaterialOrderValue) {
+        // ✅ ROZBALIT pokud:
+        // - Je to majetek (lokalizace je POVINNÁ) → musí být vidět červené rámečky při validaci
+        // - Má vyplněná data (aby uživatel viděl co už vyplnil)
+        // 
+        // DŮLEŽITÉ: Panel se rozbalí při:
+        // - Načtení objednávky s majetkovými položkami (i když lokalizace není vyplněná)
+        // - Načtení objednávky s vyplněnými lokalizačními daty
+        // - Změně druhu objednávky na majetek
+        if (isMaterialOrderValue || hasLocationData) {
           newPanelStates[polozka.id] = true;
         } else {
-          // Pokud NENÍ materiálová objednávka a NEMÁ data, zavři panel
+          // Zavřít pouze pokud NENÍ majetek A NEMÁ data
           newPanelStates[polozka.id] = false;
         }
       });
 
-      // Nastav VŽDY (ne jen když jsou panely k rozbalení) - aby se mohly i zavřít
+      // Nastav VŽDY - aby se panely mohly otevřít i zavřít při změně stavu
       setLokalizacePanelStates(newPanelStates);
     }
-  }, [formData.polozky_objednavky?.length, formData.druh_objednavky_kod]); // Přidán druh_objednavky_kod
+  }, [
+    formData.polozky_objednavky?.length, 
+    formData.druh_objednavky_kod, 
+    isMaterialOrder,
+    // ✅ KRITICKÉ: Sledovat i změny v lokalizačních datech položek
+    // Když se načte objednávka z DB, musí se panely rozbalit
+    JSON.stringify(formData.polozky_objednavky?.map(p => ({
+      id: p.id,
+      usek: p.usek_kod,
+      budova: p.budova_kod,
+      mistnost: p.mistnost_kod,
+      poznamka: p.poznamka
+    })))
+  ])
 
   // Synchronizace smlouvaSearchTerm s formData.cislo_smlouvy při načtení dat
   useEffect(() => {
@@ -5829,59 +6414,7 @@ function OrderForm25() {
 
   // JEDNODUCHÉ WORKFLOW - přímo z DB stavu bez mapování
   const [isConceptSaved, setIsConceptSaved] = useState(false); // Pouze localStorage koncept
-  // ❌ REMOVED: savedOrderId - přesunut výš (před isNewOrder)
   const [isPhase1Unlocked, setIsPhase1Unlocked] = useState(false); // Stav pro odemknutí FÁZE 1
-  // ❌ REMOVED: isPhase3Unlocked - používáme unlockStates z WorkflowManager
-
-  // 🧹 Cleanup při unmount - uložit draft před unmount
-  useEffect(() => {
-    // Žádná logika tady - jen cleanup funkce
-    return () => {
-      // Cleanup POUZE při unmount komponenty
-      // ⚠️ POZOR: Použij REF pro přístup k aktuálním hodnotám - dependencies musí být prázdné!
-
-      // 💾 KRITICKÉ: Uložit draft před unmount (i když autosave ještě neproběhlo)
-      // Scénář: User změní pole → navigace pryč během 3s delay → bez tohoto by se draft neukládal
-      if (isDraftLoaded && user_id && formData) {
-        // ⚠️ OCHRANA: Ukládat POUZE pokud má formData smysluplný obsah
-        // Minimálně 40 klíčů (prázdný formData má ~78 klíčů)
-        const formDataKeys = Object.keys(formData);
-        const hasSignificantData = formDataKeys.length >= 40;
-
-        if (!hasSignificantData) {
-          return;
-        }
-
-        try {
-          // 🚫 ZRUŠENO: Ukládání scroll pozice před unmount (na žádost uživatele)
-          // const scrollContainer = scrollableContentRef.current;
-          // const scrollPosition = scrollContainer ? scrollContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop);
-
-          // ✅ Nastavit current user před ukládáním
-          draftManager.setCurrentUser(user_id);
-
-          // ✅ Správné API: saveDraft(formData, options)
-          draftManager.saveDraft(formData, {
-            orderId: savedOrderId || null
-          });
-
-          // 🚫 ZRUŠENO: Ukládání scroll pozice
-          // draftManager.saveMetadata({ scrollPosition });
-        } catch (error) {
-        }
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 🎯 PRÁZDNÉ dependencies - spustí se JEN při mount/unmount!
-  // ❌ REMOVED: Všechny unlock states přesunuty do useWorkflowManager
-  // const [isFakturaceUnlocked, setIsFakturaceUnlocked] = useState(false);
-  // const [isVecnaSpravnostUnlocked, setIsVecnaSpravnostUnlocked] = useState(false);
-  // const [isDokonceniUnlocked, setIsDokonceniUnlocked] = useState(false);
-  // const [isRegistrUnlocked, setIsRegistrUnlocked] = useState(false);
-  // const [isPotvrzeniUnlocked, setIsPotvrzeniUnlocked] = useState(false);
-
-  // ❌ REMOVED: isChanged přesunut výš (před broadcastOrderStateRef)
-  // ❌ REMOVED: workflowRefreshKey - přesunut výš (před useWorkflowManager)
 
   // 🎯 CENTRÁLNÍ NAČÍTÁNÍ DRAFTU při obnovení stránky (F5)
   // Tento useEffect se spustí když isDraftLoaded=true a není editOrderId v URL
@@ -5915,7 +6448,7 @@ function OrderForm25() {
         }
 
         // 🔄 DB SYNC CHECK - pouze pro EDIT mode
-        if (draftData.savedOrderId) {
+        if (draftData.formData.id) {
 
           const syncCheck = await draftManager.checkDBSync(
             async (orderId) => {
@@ -5928,8 +6461,14 @@ function OrderForm25() {
             async (orderId) => {
               try {
                 const response = await getOrderV2(orderId, token, username);
-                return response?.data || null;
+                // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+                const rawData = response?.data || null;
+                return rawData ? transformBackendDataToFrontend(rawData) : null;
               } catch (error) {
+                // 🌲 HIERARCHIE: Pokud backend vrátil 403, nemáme právo
+                if (error?.status === 403 || error?.response?.status === 403) {
+                  console.warn('⛔ HIERARCHY: Přístup k objednávce zamítnut hierarchií');
+                }
                 return null;
               }
             }
@@ -5950,7 +6489,13 @@ function OrderForm25() {
             setFormData(mergedData);
             setIsChanged(false);
             setIsEditMode(true);
-            setSavedOrderId(syncCheck.dbData.id);
+            // 🔥 KRITICKÉ: Poslat broadcast po DB sync
+            broadcastOrderState({
+              isEditMode: true,
+              isNewOrder: false,
+              orderId: syncCheck.dbData.id,
+              orderNumber: syncCheck.dbData.cislo_objednavky || syncCheck.dbData.ev_cislo
+            });
             await draftManager.syncWithDatabase(syncCheck.dbData, syncCheck.dbData.id);
             return;
           }
@@ -5960,8 +6505,44 @@ function OrderForm25() {
 
         // 🧹 VYČISTIT objekty ve fa_strediska_kod (pokud tam jsou)
         const cleanedDraftData = { ...draftData.formData };
+        
+        // ✅ TRANSFORMOVAT POLOŽKY Z DRAFTU - parsovat poznámky z JSON
+        if (cleanedDraftData.polozky_objednavky && Array.isArray(cleanedDraftData.polozky_objednavky)) {
+          cleanedDraftData.polozky_objednavky = cleanedDraftData.polozky_objednavky.map((item, idx) => {
+            // ✅ JEDNODUŠE: Pokud je poznámka JSON string, parsuj a extrahuj poznamka_lokalizace
+            let poznamkaText = '';
+            
+            if (item.poznamka) {
+              if (typeof item.poznamka === 'string' && item.poznamka.trim().startsWith('{')) {
+                try {
+                  const parsed = JSON.parse(item.poznamka);
+                  poznamkaText = parsed.poznamka_lokalizace || '';
+                } catch {
+                  // Není JSON → použij jak je
+                  poznamkaText = item.poznamka;
+                }
+              } else {
+                // Už je plain text
+                poznamkaText = item.poznamka;
+              }
+            }
+            
+            const result = {
+              ...item,
+              poznamka: poznamkaText  // ✅ Vždy plain text
+            };
+            
+            return result;
+          });
+        }
 
-        if (cleanedDraftData.faktury && Array.isArray(cleanedDraftData.faktury)) {
+        // 🛡️ CRITICAL: Pokud je to NOVÁ objednávka (bez ID), vyčisti faktury!
+        // Faktury z předchozí objednávky by se NIKDY neměly dostat do nové objednávky
+        if (!cleanedDraftData.id) {
+          // DRAFT CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku
+          cleanedDraftData.faktury = [];
+        } else if (cleanedDraftData.faktury && Array.isArray(cleanedDraftData.faktury)) {
+          // Pro existující objednávku pouze vyčisti fa_strediska_kod
           cleanedDraftData.faktury = cleanedDraftData.faktury.map(faktura => {
             if (faktura.fa_strediska_kod && Array.isArray(faktura.fa_strediska_kod)) {
               // Extrahovat jen stringy z objektů
@@ -5994,9 +6575,15 @@ function OrderForm25() {
 
         setIsChanged(draftData.isChanged === true);
 
-        if (draftData.savedOrderId) {
+        if (draftData.formData.id || draftData.formData?.id) {
           setIsEditMode(true);
-          setSavedOrderId(draftData.savedOrderId);
+          // 🔥 KRITICKÉ: Poslat broadcast po načtení draftu s editId
+          broadcastOrderState({
+            isEditMode: true,
+            isNewOrder: false,
+            orderId: draftData.formData.id,
+            orderNumber: draftData.formData.cislo_objednavky || draftData.formData.ev_cislo
+          });
         }
 
       } catch (error) {
@@ -6018,12 +6605,6 @@ function OrderForm25() {
     const states = Array.isArray(formData.stav_workflow_kod) ? formData.stav_workflow_kod : parseWorkflowStates(formData.stav_workflow_kod);
     return states.includes('SCHVALENA');
   }, [formData.stav_workflow_kod]);
-
-  // ❌ DEPRECATED: getCurrentPhase - nahrazeno workflowManager.getCurrentPhase()
-  // ❌ DEPRECATED: mainWorkflowState - nahrazeno workflowManager.mainWorkflowState
-  // ❌ DEPRECATED: currentPhase - nahrazeno workflowManager.currentPhase
-  // ❌ DEPRECATED: currentPhaseTheme - nahrazeno workflowManager.phaseTheme
-  // Všechny tyto hodnoty jsou nyní dostupné přes workflowManager
 
   const sectionVisibility = getSectionVisibility(mainWorkflowState, currentPhase, isArchived);
 
@@ -6110,8 +6691,98 @@ function OrderForm25() {
   // Kontrola rolí pro speciální oprávnění - MUSÍ BÝT PŘED použitím!
   const isSuperAdmin = userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
   const isAdmin = userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR');
+  const isPrikazce = userDetail?.roles?.some(role => role.kod_role === 'PRIKAZCE');
   const hasOrderManagePermission = hasPermission && hasPermission('ORDER_MANAGE');
   const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission; // SUPER, ADMIN a ORDER_MANAGE mohou odemknout cokoliv
+
+  // 🆕 Rozšířená logika schvalování podle zadání - zahrnout role PRIKAZCE, SUPERADMIN, ADMINISTRATOR
+  const canViewApprovalSection = canApproveOrders || canManageOrders || isPrikazce || isSuperAdmin || isAdmin;
+
+  // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
+  // MUSÍ být AŽ PO definici isSuperAdmin a approvers!
+  const filteredLpKodyOptions = React.useMemo(() => {
+    // Pokud není vybraný příkazce, vrátit všechny LP kódy
+    if (!formData.prikazce_id) {
+      return lpKodyOptions;
+    }
+
+    // Najít vybraného příkazce v seznamu approvers
+    const selectedPrikazce = approvers.find(user => 
+      (user.id || user.user_id) === parseInt(formData.prikazce_id)
+    );
+
+    // Pokud příkazce nenalezen, vrátit všechny LP kódy
+    if (!selectedPrikazce) {
+      // 📝 NOTE: Toto je normální při editaci starých objednávek kde příkazce už nemá ORDER_APPROVE právo
+      // nebo byl deaktivován. V tom případě zobrazíme všechny LP kódy bez filtrace.
+      if (process.env.NODE_ENV === 'development') {
+        console.info('ℹ️ Příkazce není v seznamu aktivních approvers (možná starší objednávka nebo změna role) - zobrazuji všechny LP kódy');
+      }
+      return lpKodyOptions;
+    }
+
+    // 🔓 VÝJIMKA: Pokud je VYBRANÝ PŘÍKAZCE SUPERADMIN → zobrazit VŠECHNY LP kódy
+    // (kontrolujeme roli VYBRANÉHO příkazce, ne přihlášeného uživatele!)
+    // Najít příkazce v allUsers (kde jsou role)
+    const prikazceWithRoles = allUsers.find(u => 
+      (u.id || u.user_id) === parseInt(formData.prikazce_id)
+    );
+    const prikazceIsSuperAdmin = prikazceWithRoles?.roles?.some(role => role.kod_role === 'SUPERADMIN');
+    
+    if (prikazceIsSuperAdmin) {
+      // Stále aplikovat filtr platnosti
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      return lpKodyOptions.filter(lp => {
+        const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
+        const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
+        if (platneOd) platneOd.setHours(0, 0, 0, 0);
+        if (platneDo) platneDo.setHours(0, 0, 0, 0);
+        return (!platneOd || platneOd <= today) && (!platneDo || platneDo >= today);
+      });
+    }
+
+    // Získat usek_id příkazce (už by měl být v response z API)
+    const prikazceUsekId = selectedPrikazce.usek_id;
+    
+    if (!prikazceUsekId) {
+      console.warn('⚠️ Příkazce nemá usek_id:', selectedPrikazce);
+      return lpKodyOptions;
+    }
+
+    // Aktuální datum pro kontrolu platnosti
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalizovat na půlnoc
+
+    // Filtrovat LP kódy podle usek_id a platnosti
+    const filtered = lpKodyOptions.filter(lp => {
+      // 1. Kontrola úseku
+      const lpUsekId = lp.usek_id || lp.usek;
+      if (!lpUsekId || String(lpUsekId) !== String(prikazceUsekId)) {
+        return false;
+      }
+
+      // 2. Kontrola platnosti (platne_od / platne_do)
+      const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
+      const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
+
+      // Normalizovat datumy na půlnoc
+      if (platneOd) platneOd.setHours(0, 0, 0, 0);
+      if (platneDo) platneDo.setHours(0, 0, 0, 0);
+
+      // LP musí být platné DNES
+      // - pokud má platne_od, musí být <= today
+      // - pokud má platne_do, musí být >= today
+      const jeAktivni = 
+        (!platneOd || platneOd <= today) && 
+        (!platneDo || platneDo >= today);
+
+      return jeAktivni;
+    });
+
+    return filtered;
+  }, [formData.prikazce_id, lpKodyOptions, approvers, allUsers]);
 
   // 🔒 WORKFLOW LOCKING - isWorkflowCompleted, isWorkflowRejected, isWorkflowCancelled
   // přicházejí z workflowManager. WorkflowManager řídí zamykání CENTRÁLNĚ přes isWorkflowCompleted.
@@ -6126,9 +6797,6 @@ function OrderForm25() {
     // Důvod: Přílohy k dokončené/zamítnuté/stornované objednávce by neměly být měnitelné
     return isWorkflowCompleted;
   }, [isWorkflowCompleted]);
-
-  // ❌ REMOVED: unlockStates objekt - workflowManager má vlastní states
-  // Unlock states jsou nyní přímo v workflowManager
 
   // 🎯 NOVÉ: Použít centralizované section states z workflowManager
   // ✅ WorkflowManager vrací { visible, enabled } pro každou sekci (bez unlock states parametru)
@@ -6145,6 +6813,25 @@ function OrderForm25() {
     max_cena_s_dph: formData.max_cena_s_dph
   }), [formData.id, formData.faktury, formData.max_cena_s_dph]);
 
+  // 📎 Helper: Počítání příloh a jejich stavů
+  const getAttachmentsInfo = useMemo(() => {
+    if (!attachments || attachments.length === 0) {
+      return { count: 0, hasErrors: false };
+    }
+
+    const count = attachments.length;
+    // ✅ Chyba = soubor neexistuje (file_exists: false), status: 'error', nebo chybí klasifikace
+    const hasErrors = attachments.some(att => 
+      att.file_exists === false || 
+      att.status === 'error' || 
+      att.status === 'failed' ||
+      !att.klasifikace || 
+      att.klasifikace.trim() === ''
+    );
+
+    return { count, hasErrors };
+  }, [attachments]);
+
   // 🎯 Rozšířené section states pro navigator - zahrnuje inline podmínky viditelnosti
   const extendedSectionStates = useMemo(() => {
     const states = { ...allSectionStates };
@@ -6154,7 +6841,9 @@ function OrderForm25() {
     if (formData.id) {
       states.prilohy = {
         visible: true,  // Vždy viditelné když má objednávka ID
-        enabled: !isPrilohyLocked  // Odemčené pouze když není workflow dokončeno
+        enabled: !isPrilohyLocked,  // Odemčené pouze když není workflow dokončeno
+        attachmentsCount: getAttachmentsInfo.count,  // ✅ Počet příloh
+        hasAttachmentErrors: getAttachmentsInfo.hasErrors  // ✅ Stav chyb
       };
     }
     
@@ -6162,7 +6851,7 @@ function OrderForm25() {
     const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
     const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
     const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
-    const hasFaktury = formData.faktury && formData.faktury.length > 0;
+    const hasFaktury = !!(formData.faktury && formData.faktury.length > 0); // ✅ OPRAVA: Vždy boolean
     
     if (states.fakturace) {
       states.fakturace = {
@@ -6176,13 +6865,25 @@ function OrderForm25() {
     }
     
     // Registr smluv vyplnění - upravit viditelnost podle práv a vyplněných dat
+    // 🔒 PRAVIDLA VIDITELNOSTI:
+    // 1. Má uživatel právo ORDER_PUBLISH_REGISTRY → viditelná podle WorkflowManager
+    // 2. Nemá právo, ale data jsou vyplněná A sekce je zamčená → viditelná jako readonly
+    // 3. Nemá právo, data nejsou vyplněná NEBO sekce není zamčená → SKRYTÁ
     const isRegistrFilled = formData.dt_zverejneni && formData.registr_iddt;
     if (states.registr_smluv_vyplneni) {
+      const workflowVisible = states.registr_smluv_vyplneni.visible;
+      const isLocked = !states.registr_smluv_vyplneni.enabled;
+      
+      // Viditelná jen pokud:
+      // - Má právo (bez ohledu na stav) NEBO
+      // - Nemá právo, ale data jsou vyplněná A sekce je zamčená (readonly režim)
+      const shouldBeVisible = workflowVisible && (
+        canPublishRegistry || (isRegistrFilled && isLocked)
+      );
+      
       states.registr_smluv_vyplneni = {
         ...states.registr_smluv_vyplneni,
-        visible: states.registr_smluv_vyplneni.visible && (
-          canPublishRegistry || isRegistrFilled
-        )
+        visible: shouldBeVisible
       };
     }
     
@@ -6199,7 +6900,7 @@ function OrderForm25() {
   }, [allSectionStates, currentPhase, canManageInvoices, canPublishRegistry, 
       formData.financovani?.platba, formData.dodavatel_zpusob_potvrzeni?.platba, 
       formData.faktury, formData.dt_zverejneni, formData.registr_iddt, 
-      formData.id, isPrilohyLocked, canUnlockAnything]);
+      formData.id, isPrilohyLocked, canUnlockAnything, getAttachmentsInfo]);
 
   // 🔧 HELPER: Zjistí jestli je pole disabled (kombinace workflow lock + UI stav)
   const isFieldDisabled = useCallback((sectionState) => {
@@ -6225,8 +6926,31 @@ function OrderForm25() {
 
   // ✅ CHECKBOXY "Stav schválení" - VŽDY odemčené ve FÁZI 2, zamčené až ve FÁZI 3+
   // 🏛️ ARCHIVOVANÉ: Vždy odemčené (isArchived = false)
+  // 🔑 SPECIÁLNÍ ROLE: Pro PRIKAZCE, ADMINISTRATOR, SUPERADMIN a příkazce objednávky zůstávají checkboxy aktivní i při zamítnutí VE FÁZI SCHVALOVÁNÍ
   // Toto je aktivní část workflow ve FÁZI 2 (uživatel musí zaškrtnout Schváleno/Neschváleno/Čeká se)
-  const shouldLockSchvaleniCheckboxes = !isArchived && currentPhase >= 3 && !workflowManager.isSectionUnlocked('phase2');
+  const shouldLockSchvaleniCheckboxes = (() => {
+    // Základní kontrola - archivované objednávky a fáze
+    if (isArchived || (currentPhase >= 3 && !workflowManager.isSectionUnlocked('phase2'))) {
+      // Speciální oprávnění POUZE VE FÁZI SCHVALOVÁNÍ (2-3) - mohou schvalovat i zamítnuté objednávky
+      if (currentPhase === 2 || currentPhase === 3) {
+        const hasGeneralRole = userDetail?.roles?.some(role => 
+          role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+        );
+        const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
+        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder;
+        const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
+        
+        // Pokud má uživatel speciální oprávnění a objednávka je zamítnuta VE FÁZI SCHVALOVÁNÍ, nechej checkboxy aktivní
+        if (hasSpecialApprovalRights && isRejectedOrder) {
+          return false; // ODEMČENO - může měnit schválení
+        }
+      }
+      
+      return true; // ZAMČENO - standardní behavior
+    }
+    
+    return false; // ODEMČENO - standardní behavior ve fázi 2
+  })();
 
   // ✅ Financování je FÁZE 1-2 (samostatná sekce)
   const financovaniState = allSectionStates.financovani;
@@ -6282,38 +7006,29 @@ function OrderForm25() {
   const canShowUnlockPhase3Button = canUnlockAnything || (currentPhase >= 3 && currentPhase <= 6);
 
   // 🎯 NOVÝ useEffect: Reset stavu při změně editOrderId (proklik z jiné objednávky)
+  const previousEditOrderIdRef = useRef(null);
+  
   useEffect(() => {
     // Pokud se změní editOrderId (např. z notifikace nebo universal search), resetuj stav
-    if (editOrderId) {
-      // 🔓 DŮLEŽITÉ: Odemknout předchozí objednávku při otevření nové
-      const previousOrderId = unlockOrderIdRef.current;
-      if (previousOrderId && previousOrderId !== editOrderId && token && username) {
-        // Odemkni předchozí objednávku asynchronně
-        unlockOrder25({ token, username, orderId: previousOrderId })
-          .then(() => {
-            addDebugLog?.('success', 'UNLOCK', 'order-switch', `Předchozí objednávka ${previousOrderId} odemknuta při otevření nové objednávky ${editOrderId}`);
-          })
-          .catch((error) => {
-            addDebugLog?.('warning', 'UNLOCK', 'order-switch-error', `Chyba při odemykání předchozí objednávky: ${error.message}`);
-          });
-      }
-      
-      // Nastav nový unlockOrderId
-      unlockOrderIdRef.current = editOrderId;
+    // ALE pouze pokud se skutečně změnilo ID (ne při mount nebo stejné ID)
+    if (editOrderId && previousEditOrderIdRef.current !== null && previousEditOrderIdRef.current !== editOrderId) {
+
       
       setIsDraftLoaded(false);
       setIsInitialized(false);
       // 🔧 KRITICKÉ: Reset protection flag aby se při F5 správně načetl draft
       onDataLoadedCalledRef.current = null;
     }
-  }, [editOrderId, token, username]);
+    
+    // Zapamatuj si current ID
+    previousEditOrderIdRef.current = editOrderId;
+  }, [editOrderId]);
 
   // Zpracování editace objednávky z URL parametru
   // 🚨 DEPRECATED: Data se nyní načítají v initializeForm() PŘED prvním renderem
   useEffect(() => {
     // ✅ Tento useEffect je teď záložní - použije se jen pokud initializeForm() selhal
     if (editOrderId && token && username && !isDraftLoaded && areDictionariesReady) {
-      // // console.log(`⚠️ ZÁLOŽNÍ načítání objednávky #${editOrderId} (initializeForm() neproběhl správně)`);
       // Nechť původní kód zůstane jako fallback...
     }
   }, [editOrderId, token, username, isDraftLoaded, areDictionariesReady]);
@@ -6331,13 +7046,51 @@ function OrderForm25() {
 
           if (existingDraft && existingDraft.formData && existingDraft.formData.id == editOrderId) {
             // ✅ Máme čerstvý draft z Orders25List - použij ho!
+            
+            
+            // 📎 NAČÍST PŘÍLOHY PRO FAKTURY Z DRAFTU (draft neobsahuje attachments)
+            if (existingDraft.formData.faktury && Array.isArray(existingDraft.formData.faktury)) {
+              const fakturyWithAttachments = await Promise.all(
+                existingDraft.formData.faktury.map(async faktura => {
+                  let attachments = [];
+                  if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+                    try {
+                      const attachResponse = await listInvoiceAttachments(
+                        faktura.id,
+                        username,
+                        token,
+                        editOrderId
+                      );
+                      // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                      const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                      // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                      attachments = rawAttachments.map(att => ({
+                        ...att,
+                        name: att.originalni_nazev_souboru,
+                        size: att.velikost_souboru_b,
+                        klasifikace: att.typ_prilohy,
+                        uploadDate: att.dt_vytvoreni
+                      }));
+                    } catch (err) {
+                      console.error(`❌ [OrderForm25 LOAD DRAFT] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
+                    }
+                  }
+                  return { ...faktura, attachments };
+                })
+              );
+              
+              existingDraft.formData.faktury = fakturyWithAttachments;
+            }
 
             // Aplikuj draft data na formData
             setFormData(existingDraft.formData);
             setAttachments(existingDraft.attachments || []);
             setIsChanged(existingDraft.isChanged || false);
-            setSavedOrderId(existingDraft.savedOrderId || existingDraft.formData.id);
+            // NOTE: formData.id removed - formData.id is single source of truth
             setIsDraftLoaded(true);
+            
+            // ✅ KRITICKÉ: Nastavit isEditMode state komponenty
+            setIsEditMode(true);
 
             return; // HOTOVO - draft načten
           }
@@ -6345,18 +7098,62 @@ function OrderForm25() {
           // Pokud draft neexistuje, načti z databáze
 
           // ✅ V2 API: Načti objednávku s enriched daty
-          const dbOrder = await getOrderV2(editOrderId, token, username, true);
+          let dbOrder;
+          try {
+            console.log('🔥🔥🔥 VOLÁM getOrderV2 s ID:', editOrderId);
+            dbOrder = await getOrderV2(editOrderId, token, username, true);
+            console.log('🔥🔥🔥 ODPOVĚĎ Z getOrderV2:', dbOrder);
+            if (dbOrder && dbOrder.polozky) {
+              console.log('🔥🔥🔥 POLOŽKY Z API - RAW DATA:', dbOrder.polozky);
+              dbOrder.polozky.forEach((item, idx) => {
+                console.log(`🔥🔥🔥 POLOŽKA ${idx + 1}:`, item);
+              });
+            } else {
+              console.log('⚠️⚠️⚠️ ŽÁDNÉ POLOŽKY V ODPOVĚDI Z API!');
+            }
+          } catch (error) {
+            console.error('❌❌❌ CHYBA PŘI VOLÁNÍ getOrderV2:', error);
+            // 🌲 HIERARCHIE: Zachyť 403 error (hierarchie zamítla přístup)
+            if (error?.status === 403 || error?.response?.status === 403) {
+              showToast?.(
+                'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu',
+                { type: 'error' }
+              );
+              navigate('/orders25-list', { replace: true });
+              return;
+            }
+            
+            // ❌ Jiná chyba - objednávka neexistuje nebo jiný problém
+            const errorMsg = error?.message || error?.error || 'Objednávka nebyla nalezena';
+            showToast?.(
+              `Nepodařilo se načíst objednávku: ${errorMsg}`,
+              { type: 'error', autoClose: 5000 }
+            );
+            // Přesměruj zpět na seznam po 2 sekundách
+            setTimeout(() => {
+              navigate('/orders25-list', { replace: true });
+            }, 2000);
+            return;
+          }
 
           if (!dbOrder) {
-            showToast?.(formatToastMessage('Nepodařilo se načíst objednávku', 'error'), { type: 'error' });
+            showToast?.(
+              'Objednávka nebyla nalezena nebo nemáte oprávnění k jejímu zobrazení',
+              { type: 'error', autoClose: 5000 }
+            );
+            // Přesměruj zpět na seznam po 2 sekundách
+            setTimeout(() => {
+              navigate('/orders25-list', { replace: true });
+            }, 2000);
             return;
           }
 
           //  KONTROLA ZAMČENÍ podle nové BE logiky (24.10.2025)
           // BE vrací locked: true POUZE když je zamčená JINÝM uživatelem
           // locked: false znamená "můžu editovat" (volná NEBO moje zamčená)
+          // ⚠️ Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired (>15 min)
 
-          if (dbOrder.lock_info?.locked === true) {
+          if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
             // ❌ Zamčená JINÝM uživatelem - BLOKUJ a přesměruj
             const lockInfo = dbOrder.lock_info;
             const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
@@ -6373,16 +7170,12 @@ function OrderForm25() {
             return; // ZABLOKOVAT načtení formuláře
           } else if (dbOrder.lock_info?.is_owned_by_me === true) {
             // ✅ Moje zamčená objednávka - pokračuj v editaci
-            // 🔒 Nastav unlockOrderId pro případ zavření formuláře
-            unlockOrderIdRef.current = editOrderId;
+            // NOTE: unlockOrderIdRef removed - formData.id is used for unlock
           } else {
             // Objednávka není zamčená - normální lock
             try {
-              const lockResult = await lockOrder25({ token, username, orderId: editOrderId });
+              const lockResult = await lockOrderV2({ token, username, orderId: editOrderId });
               if (lockResult.success) {
-                // 🔒 Nastav unlockOrderId po úspěšném zamknutí
-                unlockOrderIdRef.current = editOrderId;
-                
                 showToast?.(
                   `Objednávka zamknuta pro editaci`,
                   'info'
@@ -6412,10 +7205,9 @@ function OrderForm25() {
 
           addDebugLog('success', 'EDIT', 'url-loaded', `Objednávka načtena z URL parametru: ${dbOrder.cislo_objednavky || dbOrder.ev_cislo}`);
 
-          // 🐛 DEBUG: Co BE vrací
-          if (dbOrder.faktury && dbOrder.faktury.length > 0) {
-            if (dbOrder.faktury[0].fa_polozky && dbOrder.faktury[0].fa_polozky.length > 0) {
-            }
+          // � DEBUG RAW DATA POLOŽEK Z API
+          }
+
           }
           // Vytvoř draft pro editaci (stejně jako v Orders25List.js)
           const orderId = dbOrder.id;
@@ -6430,6 +7222,39 @@ function OrderForm25() {
               objednatelDetails = null;
             }
           }
+
+          // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (PŘED vytvořením draft objektu)
+          const fakturyWithAttachments = dbOrder.faktury && Array.isArray(dbOrder.faktury)
+            ? await Promise.all(dbOrder.faktury.map(async faktura => {
+                // Načti přílohy
+                let attachments = [];
+                if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+                  try {
+                    const attachResponse = await listInvoiceAttachments(
+                      faktura.id,
+                      username,
+                      token,
+                      dbOrder.id
+                    );
+                    // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                    const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                    // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                    attachments = rawAttachments.map(att => ({
+                      ...att,
+                      name: att.originalni_nazev_souboru,
+                      size: att.velikost_souboru_b,
+                      klasifikace: att.typ_prilohy,
+                      uploadDate: att.dt_vytvoreni
+                    }));
+                  } catch (err) {
+                    console.error(`❌ [OrderForm25 LOAD] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
+                  }
+                }
+                
+                return { ...faktura, attachments };
+              }))
+            : [];
+          
 
           // Vytvoř údaje objednatele
           let objednatelData = {
@@ -6448,20 +7273,6 @@ function OrderForm25() {
               telefon: objednatelDetails.telefon || ''
             };
           }
-
-          // Helper funkce pro workflow stavy
-          const hasWorkflowState = (workflowCode, state) => {
-            if (!workflowCode) return false;
-            try {
-              if (typeof workflowCode === 'string' && workflowCode.startsWith('[')) {
-                const states = JSON.parse(workflowCode);
-                return Array.isArray(states) && states.includes(state);
-              }
-              return String(workflowCode).includes(state);
-            } catch {
-              return String(workflowCode).includes(state);
-            }
-          };
 
           // Odvození UI stavů ze workflow
           const isSchvalena = hasWorkflowState(dbOrder.stav_workflow_kod, 'SCHVALENA');
@@ -6500,7 +7311,7 @@ function OrderForm25() {
               ev_cislo: dbOrder.cislo_objednavky || dbOrder.ev_cislo || 'CHYBA: Chybí číslo v DB!',
               stav_schvaleni: stavSchvaleni,
               stav_odeslano: isOdeslana,
-              stav_stornovano: isZrusena,
+              // stav_stornovano NEEXISTUJE - storno se řeší přes workflow ZRUSENA
               // 🔧 FÁZE 7: Explicitní parsování věcné správnosti z DB
               // ❌ ODSTRANĚNO: Věcná správnost global fields - refaktorováno na per-invoice
               // vecna_spravnost_potvrzeno: 0,
@@ -6524,8 +7335,8 @@ function OrderForm25() {
               }),
               // 🔧 KRITICKÁ OPRAVA: Mapování faktur z DB na FE formát (stejně jako v řádku 7867)
               faktury: (() => {
-                if (dbOrder.faktury && Array.isArray(dbOrder.faktury)) {
-                  return dbOrder.faktury.map(faktura => {
+                if (fakturyWithAttachments && Array.isArray(fakturyWithAttachments) && fakturyWithAttachments.length > 0) {
+                  return fakturyWithAttachments.map(faktura => {
                     // 🆕 DETEKCE POKLADNÍHO DOKLADU z rozsirujici_data
                     const rozsirujiciData = typeof faktura.rozsirujici_data === 'string'
                       ? JSON.parse(faktura.rozsirujici_data || '{}')
@@ -6538,6 +7349,8 @@ function OrderForm25() {
                       // 🆕 PŘÍZNAK POKLADNY
                       _isPokladna: isPokladna,
                       rozsirujici_data: rozsirujiciData,
+                      // ✅ TYP FAKTURY - zachovat z DB nebo nastavit výchozí BEZNA
+                      fa_typ: faktura.fa_typ || 'BEZNA',
                       // 🔧 MAPOVÁNÍ 1:1 mezi DB sloupci a FE poli
                       fa_dorucena: faktura.fa_datum_doruceni ? 1 : 0, // ✅ Boolean flag zda má datum doručení
                       fa_splatnost: faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '', // DB -> FE: fa_datum_splatnosti -> fa_splatnost
@@ -6601,7 +7414,9 @@ function OrderForm25() {
                     // Zachovat originální DB pole pro API odesílání
                     fa_datum_doruceni: faktura.fa_datum_doruceni,
                     fa_datum_splatnosti: faktura.fa_datum_splatnosti,
-                    fa_datum_vystaveni: faktura.fa_datum_vystaveni
+                    fa_datum_vystaveni: faktura.fa_datum_vystaveni,
+                    // 📎 PŘÍLOHY jsou už načteny v fakturyWithAttachments
+                    attachments: faktura.attachments || []
                     };
 
                     return mappedFaktura;
@@ -6616,23 +7431,11 @@ function OrderForm25() {
             isConceptSaved: true,
             isChanged: false,
             isOrderSavedToDB: true,
-            savedOrderId: orderId,
+            formData.id: orderId,
             attachments: []
           };
 
-          // Vyčisti localStorage a ulož fresh draft
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key && (
-              key.startsWith('orderForm25_') ||
-              key.startsWith('order25_draft_') ||  // ORDER25 STANDARD
-              key.startsWith('order25-draft-') ||  // LEGACY cleanup
-              key.startsWith('orderForm25-') ||
-              key.includes('draft') && key.includes('order')
-            )) {
-              localStorage.removeItem(key);
-            }
-          }
+          // Draft cleanup je nyní řešen automaticky přes draftManager
 
           // 🔥 KRITICKÁ OPRAVA: Pokud DB nemá faktury, explicitně nastav prázdné pole
           if (!freshDraft.formData.faktury || freshDraft.formData.faktury.length === 0) {
@@ -6641,42 +7444,41 @@ function OrderForm25() {
 
           // ✅ Ulož draft přes DraftManager s invalidated: false (editace ze seznamu = validní draft)
           draftManager.setCurrentUser(user_id);
+          
+          // 🔍 DEBUG: Co je v localStorage PŘED uložením
+          const lsKey = `order25_draft_${user_id}`;
+          const existingLS = localStorage.getItem(lsKey);
+          if (existingLS) {
+            // DEBUG: Draft v localStorage před sync
+          }
+          
+          // DEBUG: Načtení z DB před sync
+          
           await draftManager.syncWithDatabase(freshDraft.formData, orderId);
+          
+          // DEBUG: localStorage PO syncWithDatabase
+          
+          // DEBUG: Načtení z DB PO syncWithDatabase
 
           // ✅ PŘIDAT: Explicitně ulož metadata pro EDIT mode
           draftManager.saveMetadata({
             isEditMode: true,
-            savedOrderId: orderId,
-            editOrderId: orderId,  // ✅ KLÍČOVÉ!
+            editOrderId: orderId,
             openConceptNumber: freshDraft.formData.ev_cislo || freshDraft.formData.cislo_objednavky
           });
 
-            orderId,
-            ev_cislo: freshDraft.formData.ev_cislo || freshDraft.formData.cislo_objednavky
-          });
-
-          // 🔄 Aktualizovat MenuBar s načtenou objednávkou
-          broadcastOrderState({
-            isEditMode: true,
-            isNewOrder: false,
-            orderId: orderId,
-            orderNumber: dbOrder.cislo_objednavky || dbOrder.ev_cislo
-          });
+          // ✅ KRITICKÉ: Nastavit isEditMode state komponenty
+          setIsEditMode(true);
 
           // 🎯 DEBUG LOG - FÁZE 2: Objednávka načtena z URL
           const currentPhaseNum = (() => {
             // Highest phases first
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'DOKONCENA')) return 10;
-            // ZKONTROLOVANA - fáze 10 (před dokončením)
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'ZKONTROLOVANA')) return 10;
-            // VECNA_SPRAVNOST - fáze 9 (věcná správnost)
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'VECNA_SPRAVNOST')) return 9;
-            // Fakturace (fáze 8)
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'FAKTURACE')) return 8;
-            // Registr smluv - FÁZE 7
-            if (hasWorkflowState(dbOrder.stav_workflow_kod, 'DOKONCENA')) return 9;
+            // ZKONTROLOVANA - fáze 8 (před dokončením)
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'ZKONTROLOVANA')) return 8;
+            // VECNA_SPRAVNOST - fáze 7 (věcná správnost)
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'VECNA_SPRAVNOST')) return 7;
+            // Fakturace - fáze 6
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'FAKTURACE')) return 6;
             // Pokud UVEREJNENA → FÁZE 6 (Fakturace)
             if (hasWorkflowState(dbOrder.stav_workflow_kod, 'UVEREJNENA')) return 6;
@@ -6711,13 +7513,8 @@ function OrderForm25() {
   // OPRAVA: Použití useRef pro uložení aktuální hodnoty bez triggeru cleanup při změně dependencies
 
 
-  const unlockOrderIdRef = useRef(null);
   const userRoleRef = useRef({ isSuperAdmin: false, isAdmin: false });
-
-  // Aktualizuj ref při změně savedOrderId nebo sourceOrderIdForUnlock
-  useEffect(() => {
-    unlockOrderIdRef.current = sourceOrderIdForUnlock || savedOrderId;
-  }, [sourceOrderIdForUnlock, savedOrderId]);
+  // NOTE: unlockOrderIdRef removed - using formData.id directly in cleanup logic
 
   // Aktualizuj ref s rolemi uživatele
   useEffect(() => {
@@ -6734,6 +7531,9 @@ function OrderForm25() {
 
       const jmeno = `${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim();
 
+      // NOTE: Výchozí hodnoty garanta a příkazce se nyní nastavují v handleDataLoaded
+      // (v loading gate fázi, kde jsou k dispozici všechny číselníky)
+
       setFormData(prev => ({
         ...prev,
         jmeno: jmeno,
@@ -6745,6 +7545,12 @@ function OrderForm25() {
     }
   }, [isNewOrder, isDraftLoaded, formData.jmeno, userDetail, user_id]);
 
+  // 💾 Aktualizace refs pro unmount autosave - musí být vždy aktuální
+  useEffect(() => {
+    formDataRef.current = formData;
+    attachmentsRef.current = attachments;
+  }, [formData, attachments]);
+
   // Cleanup se spustí POUZE při skutečném unmount (prázdné dependencies)
   useEffect(() => {
     return () => {
@@ -6752,13 +7558,41 @@ function OrderForm25() {
       // Zámek se uvolní POUZE explicitně přes handleCancelOrder (tlačítko ZAVŘÍT)
       // nebo při otevření jiné objednávky
       // Tím zajistíme, že i ADMIN/SUPERADMIN drží zámek při Save a zůstávají na formuláři
+
+      // 💾 AUTOSAVE PŘI UNMOUNT: Uložit koncept při opuštění formuláře
+      // Spustí se při:
+      // - Přepnutí na jinou objednávku (z notifikace, universal search, seznamu)
+      // - Navigaci na jinou stránku (dashboard, jiný modul)
+      // - Zavření tabu/okna prohlížeče
+      // NESPUSTÍ SE při:
+      // - Explicitním zavření tlačítkem "Zavřít" (isClosingRef.current = true)
+      if (!isClosingRef.current && user_id && isDraftLoaded) {
+        // Použít aktuální hodnoty z refs (vždy aktuální díky useEffect výše)
+        const currentFormData = formDataRef.current;
+        const currentAttachments = attachmentsRef.current;
+        
+        // Synchronní save přes DraftManager
+        draftManager.setCurrentUser(user_id);
+        draftManager.saveDraft(currentFormData, {
+          orderId: currentFormData.id || null,
+          attachments: currentAttachments || [],
+          metadata: {
+            isChanged: true, // Označit jako změněné aby se v seznamu zobrazilo
+            isEditMode: !!currentFormData.id,
+            isOrderSavedToDB: !!currentFormData.id
+          }
+        }).catch(err => {
+          // Tichá chyba - nemůžeme zobrazit toast při unmount
+          console.error('Chyba při autosave během unmount:', err);
+        });
+      }
     };
   }, []); // ✅ Prázdné dependencies = cleanup POUZE při unmount
 
-  // DEBUG logy odstraněny - způsobovaly nekonečné re-rendery!  // Nastavení stavů při načtení existující objednávky
+  // DEBUG logy odstraněny - způsobovaly nekonečné re-rendery!
+  // NOTE: formData.id sync removed - formData.id is single source of truth
   useEffect(() => {
     if (formData.id) {
-      setSavedOrderId(formData.id);
 
       // KRITICKÉ: Reset validačních stavů pouze při ZMĚNĚ ID (načítá se jiná objednávka)
       // ❌ NEČISTIT validationErrors pokud uživatel právě zkusil uložit (hasTriedToSubmit)
@@ -6895,7 +7729,7 @@ function OrderForm25() {
     }));
     // 🔥 KRITICKÉ: Nastavit isChanged při změně faktur
     setIsChanged(true);
-  }, [formData.faktury]);
+  }, []);
 
   // Zamykání se řeší přímo v saveOrderToAPI() po uložení
 
@@ -6932,7 +7766,6 @@ function OrderForm25() {
         dodavatel_kontakt_telefon: ''
       }));
 
-      // ❌ REMOVED: Mazání chyb dodavatele - zbytečné
       // Validace probíhá POUZE při Save, live mazání chyb není potřeba
     } else {
       // Pokud NENÍ Pokladna, rozbal sekci Dodavatel (aby byla viditelná)
@@ -7011,18 +7844,18 @@ function OrderForm25() {
   }, [totalPrice]);
 
   // Automatické zaškrtávání registru smluv při přechodu do FÁZE 3 (pokud cena BEZ DPH > 50 000 Kč)
-  // ⚠️ POZOR: Automaticky se nastaví jen pokud objednávka JE ULOŽENÁ v DB (má (formData.id || savedOrderId))
+  // ⚠️ POZOR: Automaticky se nastaví jen pokud objednávka JE ULOŽENÁ v DB (má formData.id)
   useEffect(() => {
     const currentPhaseNum = getCurrentPhase();
     const shouldAutoCheck = currentPhaseNum >= 3 &&
                            celkovaCenaBezDPH > 50000 &&
                            !formData.ma_byt_zverejnena &&
-                           (formData.id || savedOrderId); // ✅ Kontrola že objednávka je uložená v DB
+                           formData.id; // ✅ Kontrola že objednávka je uložená v DB
 
     if (shouldAutoCheck) {
       handleInputChange('ma_byt_zverejnena', true);
     }
-  }, [getCurrentPhase(), celkovaCenaBezDPH, formData.id, savedOrderId]); // ✅ Přidána závislost na savedOrderId
+  }, [getCurrentPhase(), celkovaCenaBezDPH, formData.id, formData.id]); // ✅ Přidána závislost na formData.id
 
   // Vynucení typu šablony 'po' ve FÁZI 1 (před schválením)
   useEffect(() => {
@@ -7034,11 +7867,11 @@ function OrderForm25() {
   // Smart načtení příloh při refreshi formuláře (DB + lokální neuložené)
   // POZOR: Načítá se vždy, když má objednávka ID a sekce příloh je viditelná (!sectionStates.prilohy)
   useEffect(() => {
-    if ((formData.id || savedOrderId) && token && username && !isNewOrder && !sectionStates.prilohy) {
+    if (formData.id && token && username && !isNewOrder && !sectionStates.prilohy) {
 
       loadAttachmentsSmartly();
     }
-  }, [formData.id, savedOrderId, token, username, isNewOrder, sectionStates.prilohy]);
+  }, [formData.id, formData.id, token, username, isNewOrder, sectionStates.prilohy]);
 
   // 🗑️ REMOVED: useEffect pro načítání typů příloh - DEPRECATED
   // Typy příloh se načítají při inicializaci přes useDictionaries.loadAll()
@@ -7180,7 +8013,7 @@ function OrderForm25() {
       const activeUsers = allUsers.filter(u => u.aktivni === 1 || u.aktivni === '1' || u.active === 1 || u.active === '1');
 
       // 2. Pokud NENÍ editace nebo není garant, použij jen aktivní
-      const currentOrderId = formData.id || (formData.id || savedOrderId);
+      const currentOrderId = formData.id || formData.id;
 
       if (!formData.garant_uzivatel_id || !currentOrderId) {
         setGarantOptions(activeUsers);
@@ -7246,7 +8079,7 @@ function OrderForm25() {
     };
 
     loadGarantOptions();
-  }, [formData.garant_uzivatel_id, formData.id, allUsers, (formData.id || savedOrderId), username, token, areDictionariesReady]);
+  }, [formData.garant_uzivatel_id, formData.id, allUsers, formData.id, username, token, areDictionariesReady]);
 
   // �🎯 DEPRECATED: Tyto funkce byly nahrazeny FormDataManager
   // 💰 ============================================
@@ -7259,7 +8092,7 @@ function OrderForm25() {
   // 🔥 FUNKCE: Zajistí, že vždy existuje alespoň jedna faktura ve fázi 7+
   // Volá se přímo při renderování sekce Faktury (ne v useEffect)
   const ensureFirstInvoiceExists = React.useCallback(() => {
-    if (!(formData.id || savedOrderId) || currentPhase < 7 || fakturyLoading) {
+    if (!formData.id || currentPhase < 7 || fakturyLoading) {
       return;
     }
 
@@ -7269,8 +8102,10 @@ function OrderForm25() {
 
       const novaFaktura = {
         id: `temp-${Date.now()}`, // Temporary ID
-        objednavka_id: (formData.id || savedOrderId),
+        objednavka_id: formData.id,
+        fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
         fa_datum_doruceni: dnesniDatum,
+        fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
@@ -7279,7 +8114,13 @@ function OrderForm25() {
         fa_poznamka: '',
         vytvoril_uzivatel_id: user_id,
         vytvoril_jmeno: getUserNameById(user_id),
-        dt_vytvoreni: new Date().toISOString(),
+        // 🔥 FIX: Použít lokální český čas místo UTC
+        dt_vytvoreni: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+          return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        })(),
         dt_aktualizace: null,
         aktivni: 1,
         _isNew: true
@@ -7287,12 +8128,25 @@ function OrderForm25() {
 
       updateFaktury([novaFaktura]);
     }
-  }, [(formData.id || savedOrderId), currentPhase, fakturyLoading, formData.faktury, formData.strediska_kod, user_id]);
+  }, [formData.id, currentPhase, fakturyLoading, formData.faktury, formData.strediska_kod, user_id]);
 
   // Přidat novou fakturu
   const handleAddFaktura = async () => {
-    if (!(formData.id || savedOrderId)) {
+    if (!formData.id) {
       showToast && showToast(formatToastMessage('Nejprve uložte objednávku', 'error'), { type: 'error' });
+      return;
+    }
+
+    // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN v určitých stavech
+    const workflow = Array.isArray(formData.stav_workflow_kod) 
+      ? formData.stav_workflow_kod 
+      : (typeof formData.stav_workflow_kod === 'string' ? JSON.parse(formData.stav_workflow_kod || '[]') : []);
+    
+    const currentState = workflow.length > 0 ? workflow[workflow.length - 1] : null;
+    const allowedStates = ['NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'];
+    
+    if (!currentState || !allowedStates.includes(currentState)) {
+      showToast && showToast('❌ Fakturu lze přidat pouze k objednávce ve stavu: NEUVEŘEJNIT, UVEŘEJNĚNA, FAKTURACE, VĚCNÁ SPRÁVNOST nebo ZKONTROLOVANÁ', { type: 'error' });
       return;
     }
 
@@ -7302,8 +8156,18 @@ function OrderForm25() {
       return;
     }
 
-    if (!fakturaFormData.fa_castka || parseFloat(fakturaFormData.fa_castka) <= 0) {
-      showToast && showToast('Částka faktury je povinná a musí být větší než 0', { type: 'error' });
+    if (!fakturaFormData.fa_datum_vystaveni || (typeof fakturaFormData.fa_datum_vystaveni === 'string' && fakturaFormData.fa_datum_vystaveni.trim() === '')) {
+      showToast && showToast('Datum vystavení faktury je povinné', { type: 'error' });
+      return;
+    }
+
+    if (!fakturaFormData.fa_typ || (typeof fakturaFormData.fa_typ === 'string' && fakturaFormData.fa_typ.trim() === '')) {
+      showToast && showToast('Typ faktury je povinný', { type: 'error' });
+      return;
+    }
+
+    if (fakturaFormData.fa_castka === undefined || fakturaFormData.fa_castka === null || fakturaFormData.fa_castka === '') {
+      showToast && showToast('Částka faktury je povinná', { type: 'error' });
       return;
     }
 
@@ -7332,18 +8196,31 @@ function OrderForm25() {
     const newFaktura = {
       ...fakturaFormData,
       id: `temp-${Date.now()}`, // Dočasné ID - BE přiřadí správné při uložení objednávky
-      objednavka_id: (formData.id || savedOrderId),
+      objednavka_id: formData.id,
+      fa_typ: fakturaFormData.fa_typ || 'BEZNA', // ✅ Výchozí typ faktury
       fa_strediska_kod: cleanedStrediska, // ✅ POUŽÍT VYČIŠTĚNÉ STRINGY
       vytvoril_uzivatel_id: user_id,
       vytvoril_jmeno: getUserNameById(user_id),
-      dt_vytvoreni: new Date().toISOString(),
+      // 🔥 FIX: Použít lokální český čas místo UTC
+      dt_vytvoreni: (() => {
+        const now = new Date();
+        const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+        const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+        return `${y}-${m}-${d} ${h}:${min}:${s}`;
+      })(),
       aktivni: 1,
       _isNew: false, // Označit jako uloženou (uloží se s objednávkou)
       // fa_dorucena je VŽDY 1 (boolean flag že faktura je doručená)
       fa_dorucena: 1,
-      // 🔧 OPRAVA MAPOVÁNÍ DATUMOVÝCH POLÍ
-      fa_datum_doruceni: fakturaFormData.fa_dorucena || new Date().toISOString().split('T')[0], // fa_dorucena obsahuje datum doručení!
-      fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || new Date().toISOString().split('T')[0], // Přidat datum vystavení
+      // � FIX: Použít lokální české datum místo UTC
+      fa_datum_doruceni: fakturaFormData.fa_dorucena || (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      })(),
+      fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      })(),
       fa_datum_splatnosti: fakturaFormData.fa_splatnost || '', // fa_splatnost obsahuje datum splatnosti!
       // 📎 PŘÍLOHY FAKTURY - ukládají se do konceptu stejně jako prilohy_dokumenty
       attachments: [], // Pole příloh faktury (formát stejný jako u objednávek)
@@ -7362,7 +8239,9 @@ function OrderForm25() {
 
     setFakturaFormData({
       fa_datum_doruceni: dnesniDatum,
+      fa_datum_vystaveni: '',
       fa_dorucena: 1, // ✅ Boolean flag
+      fa_typ: 'BEZNA',
       fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
       fa_cislo_vema: '',
       fa_strediska_kod: formData.strediska_kod || [],
@@ -7376,11 +8255,113 @@ function OrderForm25() {
     setEditingFaktura(null);
     setShowAddFakturaForm(false);
 
-    showToast && showToast('Faktura přidána - uloží se s objednávkou', { type: 'success' });
+    showToast && showToast(`✅ Faktura úspěšně přidána\n📊 ${fakturaFormData.fa_cislo || 'Nová faktura'}\n💾 Uloží se s objednávkou`, 'success');
 
     // Spustit autosave po změně faktur
     triggerAutosave(true);
   };
+
+  // 💰 LP ČERPÁNÍ: Uložit LP čerpání faktury
+  const saveFakturaLPCerpaniData = useCallback(async (fakturaId, lpCerpaniData) => {
+    // Skip pro temp faktury
+    if (!fakturaId || String(fakturaId).startsWith('temp-')) {
+      console.warn('⚠️ [LP] Nelze uložit LP čerpání pro temp fakturu');
+      return false;
+    }
+
+    // 🔥 FIX: Validace před odesláním
+    if (!Array.isArray(lpCerpaniData)) {
+      console.error('❌ [LP] lpCerpaniData není array:', lpCerpaniData);
+      return false;
+    }
+
+    // Filtrovat jen kompletní řádky
+    const validRows = lpCerpaniData.filter(row => {
+      const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+      const hasCastka = row.castka && parseFloat(row.castka) > 0;
+      return hasLpId && hasCastka;
+    }).map(row => ({
+      // 🔥 KRITICKÉ: Backend validuje lp_cislo podle financovani.lp_kody, které jsou LP ID (čísla)!
+      // lp_cislo MUSÍ být LP ID (ne textový kód), backend to porovnává s allowed_lp_kody
+      lp_cislo: String(row.lp_id).trim(), // ✅ Poslat LP ID jako string (backend parsuje)
+      lp_id: parseInt(row.lp_id, 10),
+      castka: parseFloat(row.castka),
+      poznamka: row.poznamka || ''
+    }));
+
+    // 🔥 DŮLEŽITÉ: Pokud není žádný validní řádek, neodesílat!
+    // Backend vyžaduje min. 1 LP kód pro LP financování
+    if (validRows.length === 0) {
+      return false;
+    }
+
+    try {
+      await saveFakturaLPCerpani(fakturaId, validRows, token, username);
+      
+      // Aktualizovat lokální state
+      setFakturyLPCerpani(prev => ({
+        ...prev,
+        [fakturaId]: {
+          lpCerpani: lpCerpaniData,
+          loaded: true
+        }
+      }));
+      
+      return true;
+    } catch (error) {
+      console.error('❌ [LP] Chyba při ukládání LP čerpání:', error);
+      console.error('❌ [LP] Response data:', error.response?.data);
+      console.error('❌ [LP] Odeslané data byly:', JSON.stringify(validRows, null, 2));
+      throw error;
+    }
+  }, [token, username]);
+
+  // 💰 LP ČERPÁNÍ: Uložit všechny LP čerpání při zavření objednávky
+  const saveAllFakturyLPCerpani = useCallback(async () => {
+    if (!token || !username) {
+      console.warn('⚠️ [LP] Chybí token nebo username, nelze uložit LP čerpání');
+      return { success: 0, failed: 0, skipped: 0 };
+    }
+
+    // 🔥 KONTROLA: Ukládat LP čerpání JEN pokud je objednávka financována z LP
+    const isLPFinancing = formData?.financovani?.typ === 'LP' || 
+                         (formData?.zpusob_financovani && String(formData.zpusob_financovani).toLowerCase().includes('lp'));
+    
+    if (!isLPFinancing) {
+      return { success: 0, failed: 0, skipped: 0 };
+    }
+
+    const results = { success: 0, failed: 0, skipped: 0 };
+    const fakturyIds = Object.keys(fakturyLPCerpani);
+
+    for (const fakturaId of fakturyIds) {
+      // Skip temp faktury
+      if (String(fakturaId).startsWith('temp-')) {
+        results.skipped++;
+        continue;
+      }
+
+      const lpData = fakturyLPCerpani[fakturaId];
+      if (!lpData || !lpData.lpCerpani) {
+        results.skipped++;
+        continue;
+      }
+
+      try {
+        const saved = await saveFakturaLPCerpaniData(fakturaId, lpData.lpCerpani);
+        if (saved) {
+          results.success++;
+        } else {
+          results.skipped++;
+        }
+      } catch (error) {
+        console.error(`❌ [LP] Chyba při ukládání faktury ${fakturaId}:`, error);
+        results.failed++;
+      }
+    }
+
+    return results;
+  }, [fakturyLPCerpani, saveFakturaLPCerpaniData, token, username, formData?.financovani?.typ, formData?.zpusob_financovani]);
 
   const handleUpdateFaktura = async () => {
     if (!editingFaktura) return;
@@ -7391,9 +8372,9 @@ function OrderForm25() {
       return;
     }
 
-    if (!fakturaFormData.fa_castka || parseFloat(fakturaFormData.fa_castka) <= 0) {
+    if (fakturaFormData.fa_castka === undefined || fakturaFormData.fa_castka === null || fakturaFormData.fa_castka === '') {
       console.groupEnd();
-      showToast && showToast('Částka faktury je povinná a musí být větší než 0', { type: 'error' });
+      showToast && showToast('Částka faktury je povinná', { type: 'error' });
       return;
     }
 
@@ -7462,7 +8443,13 @@ function OrderForm25() {
               ...faktura,
               ...fakturaFormData,
               fa_strediska_kod: cleanedStrediska,
-              dt_aktualizace: new Date().toISOString(),
+              // 🔥 FIX: Použít lokální český čas místo UTC
+              dt_aktualizace: (() => {
+                const now = new Date();
+                const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                return `${y}-${m}-${d} ${h}:${min}:${s}`;
+              })(),
               fa_dorucena: 1,
               fa_datum_doruceni: fakturaFormData.fa_datum_doruceni,
               fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || fakturaFormData.fa_datum_doruceni,
@@ -7477,7 +8464,9 @@ function OrderForm25() {
       const dnesniDatum = formatDateForPicker(new Date());
       setFakturaFormData({
         fa_datum_doruceni: dnesniDatum,
+        fa_datum_vystaveni: '',
         fa_dorucena: 1,
+        fa_typ: 'BEZNA',
         fa_castka: '',
         fa_cislo_vema: '',
         fa_strediska_kod: formData.strediska_kod || [],
@@ -7491,7 +8480,7 @@ function OrderForm25() {
       setEditingFaktura(null);
       setShowAddFakturaForm(false);
 
-      showToast && showToast('✅ Faktura úspěšně aktualizována', { type: 'success' });
+      showToast && showToast(`✅ Faktura úspěšně aktualizována\n📊 ${fakturaFormData.fa_cislo || 'Faktura'}\n💾 Změny uloženy`, 'success');
 
     } catch (err) {
       console.group('❌ CHYBA při aktualizaci faktury');
@@ -7528,7 +8517,13 @@ function OrderForm25() {
             fa_poznamka: isdocData.fa_poznamka || faktura.fa_poznamka,
             fa_strediska_kod: isdocData.fa_strediska_kod || faktura.fa_strediska_kod,
             fa_dorucena: 1,
-            dt_aktualizace: new Date().toISOString(),
+            // 🔥 FIX: Použít lokální český čas místo UTC
+            dt_aktualizace: (() => {
+              const now = new Date();
+              const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+              const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+              return `${y}-${m}-${d} ${h}:${min}:${s}`;
+            })(),
             _isdoc_parsed: true,
             _isdoc_polozky: isdocData._isdoc_polozky,
             _isdoc_dodavatel: isdocData._isdoc_dodavatel,
@@ -7566,7 +8561,7 @@ function OrderForm25() {
     // Vytvořit novou fakturu s daty z ISDOC + reálným ID z BE
     const newFaktura = {
       id: realFakturaId, // ✅ REÁLNÉ ID z BE
-      objednavka_id: (formData.id || savedOrderId),
+      objednavka_id: formData.id,
       // Data z ISDOC
       fa_cislo_vema: isdocData.fa_cislo_vema || '',
       fa_datum_vystaveni: isdocData.fa_datum_vystaveni || '',
@@ -7583,7 +8578,13 @@ function OrderForm25() {
       // Metadata
       vytvoril_uzivatel_id: user_id,
       vytvoril_jmeno: getUserNameById(user_id),
-      dt_vytvoreni: new Date().toISOString(),
+      // 🔥 FIX: Použít lokální český čas místo UTC
+      dt_vytvoreni: (() => {
+        const now = new Date();
+        const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+        const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+        return `${y}-${m}-${d} ${h}:${min}:${s}`;
+      })(),
       dt_aktualizace: null,
       aktivni: 1,
       _isdoc_parsed: true,
@@ -7640,10 +8641,11 @@ function OrderForm25() {
           fakturaId,  // invoiceId
           username,   // username
           token,      // token
-          savedOrderId  // orderId
+          formData.id  // orderId
         );
 
-        prilohyCount = (response.data?.attachments || response.data || []).length;
+        // ✅ OPRAVA: Backend vrací response.data.data.attachments
+        prilohyCount = (response.data?.data?.attachments || response.data?.attachments || []).length;
       } catch (err) {
       }
     }
@@ -7659,7 +8661,7 @@ function OrderForm25() {
 
   // Potvrzení smazání faktury z dialogu
   const confirmDeleteFaktura = async () => {
-    const { fakturaId, pocetPriloh } = deleteFacturaDialog;
+    const { fakturaId, fakturaNazev, pocetPriloh } = deleteFacturaDialog;
 
     // Zavřít dialog
     setDeleteFacturaDialog({ isOpen: false, fakturaId: null, fakturaNazev: '', pocetPriloh: 0 });
@@ -7677,10 +8679,11 @@ function OrderForm25() {
             fakturaId,  // invoiceId
             username,   // username
             token,      // token
-            savedOrderId  // orderId
+            formData.id  // orderId
           );
 
-          const prilohy = response.data?.attachments || response.data || [];
+          // ✅ OPRAVA: Backend vrací response.data.data.attachments
+          const prilohy = response.data?.data?.attachments || response.data?.attachments || [];
 
           // Smaž každou přílohu
           for (const priloha of prilohy) {
@@ -7711,7 +8714,7 @@ function OrderForm25() {
         try {
           // ✅ V2 API: deleteInvoiceV2(invoiceId, token, username, hardDelete=true)
           await deleteInvoiceV2(fakturaId, token, username, true);
-          showToast && showToast('✅ Faktura i přílohy byly trvale smazány', { type: 'success' });
+          showToast && showToast(`✅ Faktura trvale smazána\n📊 ${fakturaNazev || 'Faktura'}\n💾 Včetně příloh`, 'success');
         } catch (err) {
           showToast && showToast('Nepodařilo se smazat fakturu', { type: 'error' });
           // Pokračuj i při chybě - odeber fakturu alespoň lokálně
@@ -7775,7 +8778,9 @@ function OrderForm25() {
 
     setFakturaFormData({
       fa_datum_doruceni: faktura.fa_datum_doruceni || dnesniDatum,
+      fa_datum_vystaveni: faktura.fa_datum_vystaveni || '',
       fa_dorucena: faktura.fa_dorucena || 1, // ✅ Boolean flag
+      fa_typ: faktura.fa_typ || 'BEZNA',
       fa_castka: faktura.fa_castka || '', // 🔥 Neauto-vyplňovat při editaci
       fa_cislo_vema: faktura.fa_cislo_vema || '',
       fa_strediska_kod: strediskaArray,
@@ -7795,7 +8800,9 @@ function OrderForm25() {
 
     setFakturaFormData({
       fa_datum_doruceni: dnesniDatum,
+      fa_datum_vystaveni: '',
       fa_dorucena: 1, // ✅ Boolean flag
+      fa_typ: 'BEZNA',
       fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
       fa_cislo_vema: '',
       fa_strediska_kod: formData.strediska_kod || [],
@@ -7827,17 +8834,41 @@ function OrderForm25() {
   const validateInvoiceForAttachments = useCallback((faktura, file = null) => {
     const missingFields = [];
     
-    // Kontrola povinných polí
-    if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
-      missingFields.push('Číslo faktury VEMA');
+    // ✅ Bezpečnostní kontrola - pokud není faktura, vrátit invalid
+    if (!faktura) {
+      return {
+        isValid: false,
+        valid: false,
+        isISDOC: false,
+        missingFields: ['Faktura'],
+        message: 'Faktura není definována'
+      };
     }
     
-    if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
+    // Kontrola povinných polí
+    // ⚠️ DB má sloupec fa_typ (ne fa_typ_faktury)
+    const typFaktury = faktura.fa_typ || faktura.fa_typ_faktury;
+    
+    // ✅ FIX: Kontrola musí být robustnější - akceptovat i prázdný string jako validní hodnotu pro některé typy
+    // Pouze null, undefined nebo skutečně prázdný string po trim() je invalid
+    if (!typFaktury || (typeof typFaktury === 'string' && typFaktury.trim() === '')) {
+      missingFields.push('Typ faktury');
+    }
+    
+    if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
+      missingFields.push('Variabilní symbol');
+    }
+    
+    if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
       missingFields.push('Částka');
     }
     
     if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
       missingFields.push('Datum doručení');
+    }
+    
+    if (!faktura.fa_datum_vystaveni || (typeof faktura.fa_datum_vystaveni === 'string' && faktura.fa_datum_vystaveni.trim() === '')) {
+      missingFields.push('Datum vystavení');
     }
     
     if (!faktura.fa_splatnost || (typeof faktura.fa_splatnost === 'string' && faktura.fa_splatnost.trim() === '')) {
@@ -7867,7 +8898,7 @@ function OrderForm25() {
     // ⚠️ Běžné soubory - vyžadovat vyplněná pole
     if (missingFields.length > 0) {
       return {
-        isValid: false,         // FALSE - blokovat nahrávání
+        isValid: false,
         valid: false,
         isISDOC: false,
         missingFields: missingFields,
@@ -7894,12 +8925,13 @@ function OrderForm25() {
   const handleInvoiceAttachmentsChange = useCallback((fakturaId, newAttachments) => {
     // ✅ OPRAVA: Pokud attachments mají faktura_id, použij to jako skutečné ID
     let realFakturaId = fakturaId;
-    if (newAttachments.length > 0 && newAttachments[0].faktura_id) {
+    if (newAttachments && Array.isArray(newAttachments) && newAttachments.length > 0 && newAttachments[0] && newAttachments[0].faktura_id) {
       realFakturaId = newAttachments[0].faktura_id;
     }
 
     // 🆕 DETEKCE POKLADNÍHO DOKLADU podle klasifikace příloh
-    const hasPokladniDoklad = newAttachments.some(att => {
+    const hasPokladniDoklad = Array.isArray(newAttachments) && newAttachments.some(att => {
+      if (!att) return false;
       const klasifikace = att.klasifikace || att.typ_prilohy || '';
       return klasifikace.toLowerCase().includes('pokladn') ||
              klasifikace.toLowerCase().includes('paragon');
@@ -7955,7 +8987,7 @@ function OrderForm25() {
       }
 
       // Zkontroluj že objednávka je uložená
-      const orderId = formData.id || savedOrderId;
+      const orderId = formData.id || formData.id;
       if (!orderId) {
         throw new Error('Nejdřív uložte objednávku');
       }
@@ -7976,6 +9008,7 @@ function OrderForm25() {
         token,
         username,
         order_id: orderId,
+        fa_typ: faktura.fa_typ || faktura.fa_typ_faktury || 'BEZNA', // ✅ Typ faktury (správný název sloupce)
         fa_cislo_vema: faktura.fa_cislo_vema,
         fa_datum_vystaveni: faktura.fa_datum_doruceni,
         fa_castka: faktura.fa_castka,
@@ -8009,6 +9042,24 @@ function OrderForm25() {
         return { ...prev, faktury: updatedFaktury };
       });
 
+      // 🔔 TRIGGER 1: INVOICE_MATERIAL_CHECK_REQUESTED
+      // Faktura byla vytvořena a přiřazena k objednávce → vyžaduje kontrolu věcné správnosti
+      try {
+        await triggerNotification(
+          'INVOICE_MATERIAL_CHECK_REQUESTED',
+          realFakturaId,
+          user_id,
+          {
+            faktura_cislo: faktura.fa_cislo_vema,
+            objednavka_id: orderId,
+            objednavka_cislo: formData.cislo_objednavky
+          }
+        );
+      } catch (notifErr) {
+        console.error('⚠️ Notification trigger failed:', notifErr);
+        // Neblokovat proces - notifikace je sekundární
+      }
+
       return realFakturaId;
 
     } catch (err) {
@@ -8018,7 +9069,7 @@ function OrderForm25() {
       console.groupEnd();
       throw err;
     }
-  }, [formData, savedOrderId, token, username]);
+  }, [formData, formData.id, token, username]);
 
   /**
    * Handler po úspěšném uploadu přílohy faktury
@@ -8044,7 +9095,7 @@ function OrderForm25() {
   // Automatické vytvoření první faktury (pokud není pokladní objednávka)
   const ensureMinimalFaktura = () => {
     // Pouze pokud je objednávka uložená a není pokladní
-    if (!(formData.id || savedOrderId)) return;
+    if (!formData.id) return;
 
     // Zkontroluj, zda není pokladní objednávka (kontrola dodavatele atd.)
     // TODO: Doplnit kontrolu podle logiky dodavatele/pokladny
@@ -8080,13 +9131,13 @@ function OrderForm25() {
   // 🆕 AUTOMATICKÉ VYTVOŘENÍ PRVNÍ FAKTURY při zobrazení sekce Fakturace
   useEffect(() => {
     // Pouze pokud:
-    // 1. Objednávka je uložená ((formData.id || savedOrderId))
+    // 1. Objednávka je uložená (formData.id)
     // 2. Pole faktur je prázdné
     // 3. Sekce není zamčená
     // 4. Jsme ve fázi 7+ (UVEREJNENA - zobrazuje se Fakturace)
     const faktury = formData.faktury || [];
 
-    if ((formData.id || savedOrderId) &&
+    if (formData.id &&
         faktury.length === 0 &&
         !shouldLockFaktury &&
         currentPhase >= 7) {
@@ -8096,8 +9147,10 @@ function OrderForm25() {
 
       const firstFaktura = {
         id: `temp-${Date.now()}`,
-        objednavka_id: (formData.id || savedOrderId),
+        objednavka_id: formData.id,
+        fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
         fa_datum_doruceni: dnesniDatum,
+        fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
@@ -8106,7 +9159,13 @@ function OrderForm25() {
         fa_splatnost: '',
         vytvoril_uzivatel_id: user_id,
         vytvoril_jmeno: getUserNameById(user_id),
-        dt_vytvoreni: new Date().toISOString(),
+        // 🔥 FIX: Použít lokální český čas místo UTC
+        dt_vytvoreni: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+          return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        })(),
         dt_aktualizace: null,
         aktivni: 1,
         _isNew: true,
@@ -8133,7 +9192,7 @@ function OrderForm25() {
         vecna_spravnost_potvrzeno: 0
       });
     }
-  }, [(formData.id || savedOrderId), formData.faktury?.length, shouldLockFaktury, currentPhase]);
+  }, [formData.id, formData.faktury?.length, shouldLockFaktury, currentPhase]);
   //     const dnesniDatum = formatDateForPicker(new Date());
   //
   //     setFakturaFormData(prev => ({
@@ -8312,24 +9371,26 @@ function OrderForm25() {
 
   // Progress indikátor a přesměrování po úspěšném uložení
   // 🔒 skipUnlock: Pro ADMIN/SUPERADMIN nezamykáme - zůstávají editovat
-  const startSaveProgressAndRedirect = (orderNumber, orderId, skipUnlock = false) => {
+  const startSaveProgressAndRedirect = async (orderNumber, orderId, skipUnlock = false) => {
+    // ✅ Toast zpráva o úspěšném uložení
+    showToast && showToast(`✅ Objednávka úspěšně uložena\n📋 ${orderNumber}\n💾 Databáze aktualizována`, 'success');
+    
     // 🎯 Spustit progress přes DraftManager (automaticky zakáže autosave)
     setShowSaveProgress(true);
     setSaveProgress(0);
     setSaveProgressText('Ukládám objednávku...');
 
-    // Odemkni objednávku na pozadí (POKUD NENÍ skipUnlock)
-    (async () => {
-      const unlockOrderId = sourceOrderIdForUnlock || orderId;
-      if (unlockOrderId && token && username && !skipUnlock) {
-        try {
-          await unlockOrder25({ token, username, orderId: unlockOrderId });
-        } catch (error) {
-          // Ignoruj chybu odemykání
-        }
+    // 🔒 KRITICKÉ: Odemkni objednávku PŘED navigací (AWAIT!) - TUTOVKA!
+    const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
+    if (unlockOrderId && token && username && !skipUnlock) {
+      try {
+        await unlockOrderV2({ token, username, orderId: unlockOrderId });
+      } catch (error) {
+        console.warn('⚠️ Unlock FAILED po uložení:', error.message);
+        // Ignoruj chybu odemykání - pokračuj s navigací
       }
-      setIsChanged(false);
-    })();
+    }
+    setIsChanged(false);
 
     // 🚀 Spustit progress přes DraftManager
     const progressControl = draftManager.startProgress({
@@ -8356,8 +9417,16 @@ function OrderForm25() {
 
         // 3. Počkej 50ms, aby se broadcast propagoval
         setTimeout(() => {
-          // 4. Přepnout na seznam objednávek
-          navigate('/orders25-list', { replace: true });
+          // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na seznam objednávek s forceReload
+          const targetPath = returnToRef.current || '/orders25-list';
+          console.log('🔙 OrderForm25 NAVIGATE (uloženo):', { targetPath, returnToRef: returnToRef.current });
+          navigate(targetPath, { 
+            state: { 
+              forceReload: true,
+              highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+            }, 
+            replace: true 
+          });
           
           // 5. Skrýt progress a ukončit ukládání
           setShowSaveProgress(false);
@@ -8379,15 +9448,15 @@ function OrderForm25() {
     try {
       // Pokud se stav nezměnil, nic neposílej
       if (oldWorkflowState && newWorkflowState === oldWorkflowState) {
+        // Stav se nezměnil, notifikace se neodešlou
         return;
       }
 
 
       // 🆕 NOVÁ VERZE - Backend API s automatickými placeholdery
 
-      // Detekce typu notifikace podle změny stavu
+      // Detekce typu notifikace podle změny workflow stavu
       let notificationType = null;
-      let recipientUserIds = new Set();
 
       // === 1. NOVÁ OBJEDNÁVKA / ODESLÁNA KE SCHVÁLENÍ ===
       // Příjemci: garant, příkazce, příp. schvalovatel
@@ -8396,17 +9465,14 @@ function OrderForm25() {
       const hadKeSchvaleni = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ODESLANA_KE_SCHVALENI') : false;
 
       if (hasKeSchvaleni && !hadKeSchvaleni) {
-        notificationType = 'order_status_ke_schvaleni';
+        notificationType = 'ORDER_PENDING_APPROVAL';
 
 
         if (formData.garant_uzivatel_id) {
-          recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
         }
         if (formData.prikazce_id) {
-          recipientUserIds.add(parseInt(formData.prikazce_id));
         }
         if (formData.schvalovatel_id) {
-          recipientUserIds.add(parseInt(formData.schvalovatel_id));
         }
       }
 
@@ -8420,21 +9486,18 @@ function OrderForm25() {
       const hadZamitnuta = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZAMITNUTA') : false;
 
       if ((hasSchvalena && !hadSchvalena) || (hasZamitnuta && !hadZamitnuta)) {
-        notificationType = hasSchvalena ? 'order_status_schvalena' : 'order_status_zamitnuta';
+        notificationType = hasSchvalena ? 'ORDER_APPROVED' : 'ORDER_REJECTED';
 
 
         // Vždy: objednatel a garant
         if (formData.objednatel_id) {
-          recipientUserIds.add(parseInt(formData.objednatel_id));
         }
         if (formData.garant_uzivatel_id) {
-          recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
         }
 
         // Příkazce JEN pokud je jiný než schvalovatel
         if (formData.prikazce_id && formData.schvalovatel_id &&
             parseInt(formData.prikazce_id) !== parseInt(formData.schvalovatel_id)) {
-          recipientUserIds.add(parseInt(formData.prikazce_id));
         } else if (formData.prikazce_id) {
         }
       }
@@ -8444,14 +9507,12 @@ function OrderForm25() {
       const hadCekaSe = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'CEKA_SE') : false;
 
       if (hasCekaSe && !hadCekaSe) {
-        notificationType = 'order_status_ceka_se';
+        notificationType = 'ORDER_AWAITING_CHANGES';
 
         // Pro čeká: objednatel a garant
         if (formData.objednatel_id) {
-          recipientUserIds.add(parseInt(formData.objednatel_id));
         }
         if (formData.garant_uzivatel_id) {
-          recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
         }
       }
 
@@ -8462,14 +9523,10 @@ function OrderForm25() {
       const hadOdeslana = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ODESLANA') : false;
 
       if (hasOdeslana && !hadOdeslana) {
-        notificationType = 'order_status_odeslana';
+        notificationType = 'ORDER_SENT_TO_SUPPLIER';
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
-        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 4. POTVRZENÍ DODAVATELE - POTVRZENA ===
@@ -8479,14 +9536,10 @@ function OrderForm25() {
       const hadPotvrzena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'POTVRZENA') : false;
 
       if (hasPotvrzena && !hadPotvrzena) {
-        notificationType = 'order_status_potvrzena';
+        notificationType = 'ORDER_CONFIRMED_BY_SUPPLIER';
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
-        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 5. REGISTR - ČEKÁ NA SCHVÁLENÍ ===
@@ -8500,14 +9553,10 @@ function OrderForm25() {
       const hadUverejnena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'UVEREJNENA') : false;
 
       if (hasUverejnena && !hadUverejnena) {
-        notificationType = 'order_status_registr_zverejnena'; // ✅ OPRAVENO: používat správný název z DB
+        notificationType = 'ORDER_REGISTRY_PUBLISHED'; // ✅ OPRAVENO: používat správný název z DB
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
-        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
-        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 6b. REGISTR - ČEKÁ NA ZVEŘEJNĚNÍ (NEUVEREJNENA) ===
@@ -8516,11 +9565,10 @@ function OrderForm25() {
       const hadNeuverejnena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'NEUVEREJNENA') : false;
 
       if (hasNeuverejnena && !hadNeuverejnena) {
-        notificationType = 'order_status_registr_ceka';
+        notificationType = 'ORDER_REGISTRY_PENDING';
 
 
         // Garant + TODO: uživatelé s právy VEREJNE_ZAKAZKY
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
       }
 
       // === 7. FÁZE FAKTURACE - ČEKÁ NA FAKTURU ===
@@ -8530,12 +9578,10 @@ function OrderForm25() {
       const hadFakturace = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'FAKTURACE') : false;
 
       if (hasFakturace && !hadFakturace) {
-        notificationType = 'order_status_faktura_ceka'; // ✅ OPRAVENO: čeká na fakturu, ne "fakturace"
+        notificationType = 'ORDER_INVOICE_PENDING'; // ✅ OPRAVENO: čeká na fakturu, ne "fakturace"
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
       }
 
       // === 8. FÁZE VĚCNÁ SPRÁVNOST - ČEKÁ NA KONTROLU ===
@@ -8544,12 +9590,10 @@ function OrderForm25() {
       const hadVecnaSpravnost = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'VECNA_SPRAVNOST') : false;
 
       if (hasVecnaSpravnost && !hadVecnaSpravnost) {
-        notificationType = 'order_status_kontrola_ceka';
+        notificationType = 'INVOICE_MATERIAL_CHECK_REQUESTED';
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
       }
 
       // === 9. FÁZE ZKONTROLOVÁNA (VĚCNÁ SPRÁVNOST POTVRZENA) ===
@@ -8561,12 +9605,10 @@ function OrderForm25() {
       const hadZkontrolovana = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZKONTROLOVANA') : false;
 
       if (hasZkontrolovana && !hadZkontrolovana) {
-        notificationType = 'order_status_kontrola_potvrzena'; // ✅ OPRAVENO: věcná správnost potvrzena
+        notificationType = 'INVOICE_MATERIAL_CHECK_APPROVED'; // ✅ OPRAVENO: věcná správnost potvrzena
 
 
         // Objednatel (pokud není garant - Set zajistí unikátnost)
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
 
         // TODO: Přidat uživatele s právy VEREJNE_ZAKAZKY, HLAVNI_UCETNI, ROZPOCTAR
         // Vyžaduje volání API pro získání uživatelů podle práv
@@ -8579,14 +9621,10 @@ function OrderForm25() {
       const hadDokoncena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'DOKONCENA') : false;
 
       if (hasDokoncena && !hadDokoncena) {
-        notificationType = 'order_status_dokoncena';
+        notificationType = 'ORDER_COMPLETED';
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
-        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 11. OBJEDNÁVKA ZRUŠENA/STORNOVÁNA ===
@@ -8594,63 +9632,95 @@ function OrderForm25() {
       const hadZrusena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZRUSENA') : false;
 
       if (hasZrusena && !hadZrusena) {
-        notificationType = 'order_status_zrusena';
-
-        // Pro zrušení: všichni relevantní
-        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
-        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
-        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
+        notificationType = 'ORDER_CANCELLED';
       }
 
-      // ✅ FILTR 1: Odfiltrovat aktuálně přihlášeného uživatele (neposílat sám sobě!)
-      // ⚠️ VYJÍMKA: Pokud je aktuální uživatel PŘÍKAZCE objednávky, tak notifikaci DOSTAT MÁ
-      if (user_id) {
-        const currentUserIdInt = parseInt(user_id);
-        const isUserCreator = formData.prikazce_id && parseInt(formData.prikazce_id) === currentUserIdInt;
-
-        if (recipientUserIds.has(currentUserIdInt)) {
-          if (isUserCreator) {
-          } else {
-            recipientUserIds.delete(currentUserIdInt);
-          }
-        }
-      }
-
-      // ✅ FILTR 2: Odstranit nevalidní ID (null, undefined, NaN)
-      const validRecipients = Array.from(recipientUserIds).filter(id => {
-        return id && !isNaN(id) && id > 0;
-      });
-
+      // Detekovaný typ notifikace: notificationType
 
       // Pokud nebyl detekován žádný typ notifikace, skonči
       if (!notificationType) {
+        // Žádný typ notifikace nebyl detekován, končím
         return;
       }
 
-      // Pokud nejsou žádní příjemci, skonči
-      if (validRecipients.length === 0) {
-        return;
-      }
+      // Odesílám notifikace přes org-hierarchy systém
+      // Event Type: notificationType
+      // Order ID: orderId  
+      // Trigger User ID: user_id
+      // Backend najde příjemce v org hierarchii automaticky
 
-      // 🆕 NOVÝ BACKEND API - Odeslat notifikaci s automatickými placeholdery
-      // Backend automaticky naplní 50+ placeholderů z order_id!
+      // ⚠️ DEPRECATED: Tato funkce už není potřeba - notifikace se odesílají přímo v saveOrderToAPI
+      // pomocí triggerNotification() s plnými placeholder daty
+      // 🆕 NOVÝ BACKEND API - Org-hierarchy-aware notifications (Generic Recipient System)
+      // Backend automaticky:
+      // 1. Najde aktivní hierarchický profil
+      // 2. Najde template s tímto event typem
+      // 3. Najde edges z template a určí příjemce pomocí resolveRecipients()
+      // 4. Aplikuje scope_filter (PARTICIPANTS_ALL, PARTICIPANTS_PRIKAZCE, LOCATION, etc.)
+      //    ⚠️ DEPRECATED: onlyOrderParticipants, onlyOrderLocation (nahrazeno scope_filter)
+      // 5. Naplní placeholdery z order_id pomocí loadOrderPlaceholders()
+      // 6. Odešle notifikace s prioritou podle recipientRole (APPROVAL, INFO, EXCEPTIONAL)
 
-      await notificationService.create({
-        token,
-        username,
-        type: notificationType,
-        order_id: orderId,
-        action_user_id: user_id,
-        recipients: validRecipients // Hromadné odeslání
-      });
+      // ❌ DISABLED - Notifikace se odesílají v saveOrderToAPI s plnými daty
+      // await notificationService.trigger(eventType, orderId, user_id);
 
     } catch (error) {
+      console.error('❌ [sendOrderNotifications] Chyba při odesílání notifikací:', error);
       // Nezastavuj workflow kvůli chybě notifikace
     }
   };
 
+  // 📋 CALLBACK: Potvrzení dokončení objednávky (po vygenerování PDF)
+  const handleConfirmCompletion = async (pdfFile) => {
+    // ✅ OKAMŽITĚ zavřít modal - BEZ čekání
+    setShowFinancialControlConfirmation(false);
+    setFinancialControlConfirmed(true);
+    
+    try {
+      // 1. Nahrát PDF jako košilku
+      await uploadOrderAttachment(
+        formData.id,
+        pdfFile,
+        username,
+        token,
+        'KOSILKA',
+        'fk-'
+      );
+      
+      // 2. Uložit objednávku s novým stavem DOKONCENA
+      await saveOrderToAPI(true);
+
+      // 3. Přenačíst přílohy
+      await loadAttachmentsSmartly();
+
+      showToast && showToast('✅ Objednávka dokončena a finanční kontrola uložena', { type: 'success' });
+
+    } catch (error) {
+      console.error('❌ Chyba při dokončení:', error);
+      showToast && showToast(`Chyba: ${error.message || error}`, { type: 'error' });
+    } finally {
+      setFinancialControlConfirmed(false);
+    }
+  };
+
+  // ❌ CALLBACK: Zrušení dokončení objednávky
+  const handleCancelCompletion = () => {
+    // ✅ OKAMŽITĚ zavřít modal a odškrtnout checkbox
+    setShowFinancialControlConfirmation(false);
+    setFinancialControlConfirmed(false);
+
+    // Vrátit checkbox zpět
+    setFormData(prev => ({
+      ...prev,
+      potvrzeni_dokonceni_objednavky: 0
+    }));
+
+    // NEULOŽIT - zrušení bez změn
+    showToast && showToast('ℹ️ Dokončení zrušeno', { type: 'info' });
+  };
+
   // Uložení objednávky do API (když je validní)
-  const saveOrderToAPI = async () => {
+  const saveOrderToAPI = async (skipFinancialControlModal = false) => {
     
     if (!token || !username) {
       showToast && showToast(formatToastMessage('Pro uložení objednávky musíte být přihlášeni', 'error'), { type: 'error' });
@@ -8663,7 +9733,66 @@ function OrderForm25() {
       return;
     }
 
-    // 🔒 KRITICKÉ: Vyčistit workflow update flag na začátku
+    // ✅ VALIDACE DÉLEK LOKALIZAČNÍCH POLÍ (max 20 znaků)
+    const newValidationErrors = {};
+    let hasLocationLengthErrors = false;
+    
+    if (formData.polozky_objednavky && Array.isArray(formData.polozky_objednavky)) {
+      formData.polozky_objednavky.forEach((polozka, index) => {
+        // Kontrola ÚSEK
+        if (polozka.usek_kod && polozka.usek_kod.length > 20) {
+          newValidationErrors[`polozka_${index}_usek_kod`] = `Kód ÚSEKU je příliš dlouhý (max. 20 znaků, zadáno: ${polozka.usek_kod.length})`;
+          hasLocationLengthErrors = true;
+        }
+        
+        // Kontrola BUDOVA
+        if (polozka.budova_kod && polozka.budova_kod.length > 20) {
+          newValidationErrors[`polozka_${index}_budova_kod`] = `Kód BUDOVY je příliš dlouhý (max. 20 znaků, zadáno: ${polozka.budova_kod.length})`;
+          hasLocationLengthErrors = true;
+        }
+        
+        // Kontrola MÍSTNOST
+        if (polozka.mistnost_kod && polozka.mistnost_kod.length > 20) {
+          newValidationErrors[`polozka_${index}_mistnost_kod`] = `Kód MÍSTNOSTI je příliš dlouhý (max. 20 znaků, zadáno: ${polozka.mistnost_kod.length})`;
+          hasLocationLengthErrors = true;
+        }
+      });
+    }
+    
+    if (hasLocationLengthErrors) {
+      setValidationErrors(newValidationErrors);
+      setHasTriedToSubmit(true);
+      
+      // Najít první chybné pole a scrollovat k němu
+      const firstErrorField = Object.keys(newValidationErrors)[0];
+      if (firstErrorField) {
+        setTimeout(() => {
+          const element = document.querySelector(`[name="${firstErrorField}"]`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+      
+      showToast && showToast(formatToastMessage('Některá pole obsahují příliš dlouhé hodnoty. Zkontrolujte označená pole.', 'error'), { type: 'error' });
+      setIsSaving(false);
+      return;
+    }
+
+    // 🛡️ INTERCEPT: Kontrola zda uživatel chce dokončit objednávku
+    // Pokud je zaškrtnutý checkbox dokončení a objednávka NENÍ ve stavu DOKONCENA,
+    // otevře se modal s náhledem finanční kontroly před potvrzením
+    const jeCheckboxZaskrtnut = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
+    const jeUzDokoncena = workflowManager?.hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA') || false;
+    
+    if (jeCheckboxZaskrtnut && !jeUzDokoncena && !financialControlConfirmed && !skipFinancialControlModal) {
+      // 🛑 STOP - NEPOKRAČOVAT v normálním save!
+      // ✅ Otevřít modal pro potvrzení finanční kontroly
+      setShowFinancialControlConfirmation(true);
+      return; // Ukončit - čeká se na uživatelovo rozhodnutí v modalu
+    }
+
+    // �🔒 KRITICKÉ: Vyčistit workflow update flag na začátku
     window.__workflowStateUpdated = false;
 
     // Nastavit saving state
@@ -8714,19 +9843,21 @@ function OrderForm25() {
 
         // Položky (pokud existují)
         if (formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
-          orderData.polozky = formData.polozky_objednavky.map(polozka => ({
-            popis: polozka.popis || '',
-            // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
-            cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            sazba_dph: parseInt(polozka.sazba_dph) || 21,
-            cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            usek_kod: polozka.usek_kod || null,
-            budova_kod: polozka.budova_kod || null,
-            mistnost_kod: polozka.mistnost_kod || null,
-            poznamka: polozka.poznamka || null,
-            // 🎯 LP kód na úrovni položky
-            lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
-          }));
+          orderData.polozky = formData.polozky_objednavky.map(polozka => {
+            return {
+              popis: polozka.popis || '',
+              // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
+              cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
+              cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              usek_kod: polozka.usek_kod || null,
+              budova_kod: polozka.budova_kod || null,
+              mistnost_kod: polozka.mistnost_kod || null,
+              poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
+              // 🎯 LP kód na úrovni položky
+              lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
+            };
+          });
         }
 
         // ✅ KRITICKÉ: dt_objednavky = aktuální datum a čas VŽDY při každém uložení
@@ -8745,20 +9876,23 @@ function OrderForm25() {
         orderData.dt_objednavky = currentDateTime;
 
         // updateOrderV2 vrací přímo data nebo hodí error
-        const updatedOrder = await updateOrderV2(savedOrderId, orderData, token, username);
+        const updatedOrder = await updateOrderV2(formData.id, orderData, token, username);
 
-        showToast && showToast('✅ Archivovaná objednávka aktualizována', { type: 'success' });
+        showToast && showToast(`✅ Objednávka úspěšně aktualizována\n📋 ${formData.cislo_objednavky || 'Archivovaná'}\n💾 Změny uloženy`, 'success');
 
         // Znovu načíst aktuální data z DB (použije se getOrderV2)
-        if (savedOrderId || formData.id) {
-          const freshOrderData = await getOrderV2(parseInt(savedOrderId || formData.id), token, username, true);
+        if (formData.id || formData.id) {
+          const freshOrderData = await getOrderV2(parseInt(formData.id || formData.id), token, username, true);
 
           if (freshOrderData?.id) {
+            // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+            const transformedFreshData = transformBackendDataToFrontend(freshOrderData);
+            
             // Aktualizovat formData s novými daty z DB
             setFormData(prev => {
               const updatedData = {
                 ...prev,
-                ...freshOrderData
+                ...transformedFreshData
               };
               
               // 📸 AKTUALIZOVAT SNAPSHOT po úspěšném uložení archivované objednávky
@@ -8768,7 +9902,7 @@ function OrderForm25() {
             });
 
             // Uložit do konceptu
-            saveDraft(freshOrderData, {
+            saveDraft(transformedFreshData, {
               isOrderSavedToDB: true,
               savedOrderId: freshOrderData.id,
               isChanged: false
@@ -8946,26 +10080,28 @@ function OrderForm25() {
 
       // Položky objednávky - ukládají se při UPDATE (existující objednávka) nebo od FÁZE 3+
       // Posílají se přímo jako pole do root objektu, ne jako JSON string
-      const isUpdateOperation = isOrderSavedToDB && savedOrderId;
+      const isUpdateOperation = isOrderSavedToDB && formData.id;
 
       // ✅ OPRAVA: Pokud existují položky, VŽDY je poslat při UPDATE (i ve fázi 2)
       if (isUpdateOperation) {
         // UPDATE - poslat položky pokud existují (i ve fázi 2)
         if (formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
-          orderData.polozky = formData.polozky_objednavky.map(polozka => ({
-            popis: polozka.popis || '',
-            // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
-            cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            sazba_dph: parseInt(polozka.sazba_dph) || 21,
-            cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            // 🏢 Volitelná lokalizace (úsek, budova, místnost, poznámka)
-            usek_kod: polozka.usek_kod || null,
-            budova_kod: polozka.budova_kod || null,
-            mistnost_kod: polozka.mistnost_kod || null,
-            poznamka: polozka.poznamka || null,
-            // 🎯 LP kód na úrovni položky
-            lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
-          }));
+          orderData.polozky = formData.polozky_objednavky.map(polozka => {
+            return {
+              popis: polozka.popis || '',
+              // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
+              cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
+              cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              // 🏢 Volitelná lokalizace (úsek, budova, místnost, poznámka)
+              usek_kod: polozka.usek_kod || null,
+              budova_kod: polozka.budova_kod || null,
+              mistnost_kod: polozka.mistnost_kod || null,
+              poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
+              // 🎯 LP kód na úrovni položky
+              lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
+            };
+          });
 
           addDebugLog('info', 'SAVE', 'polozky-transform', `Transformace položek objednávky (UPDATE fáze ${currentPhase}): ${formData.polozky_objednavky.length} položek -> přímo do root jako 'polozky' pole`);
         } else {
@@ -8975,17 +10111,19 @@ function OrderForm25() {
         }
       } else if (currentPhase >= 3 && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         // INSERT ve fázi 3+ - poslat položky
-        orderData.polozky = formData.polozky_objednavky.map(polozka => ({
-          popis: polozka.popis || '',
-          cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-          sazba_dph: parseInt(polozka.sazba_dph) || 21,
-          cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-          usek_kod: polozka.usek_kod || null,
-          budova_kod: polozka.budova_kod || null,
-          mistnost_kod: polozka.mistnost_kod || null,
-          poznamka: polozka.poznamka || null,
-          lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
-        }));
+        orderData.polozky = formData.polozky_objednavky.map(polozka => {
+          return {
+            popis: polozka.popis || '',
+            cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+            sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
+            cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+            usek_kod: polozka.usek_kod || null,
+            budova_kod: polozka.budova_kod || null,
+            mistnost_kod: polozka.mistnost_kod || null,
+            poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
+            lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
+          };
+        });
         addDebugLog('info', 'SAVE', 'polozky-transform-insert', `Transformace položek objednávky (INSERT fáze ${currentPhase}): ${formData.polozky_objednavky.length} položek`);
       } else {
         addDebugLog('info', 'SAVE', 'polozky-skip', `Položky se neposílají - INSERT v FÁZI ${currentPhase}`);
@@ -9054,14 +10192,14 @@ function OrderForm25() {
       if (formData.dt_schvaleni) orderData.dt_schvaleni = formData.dt_schvaleni;
 
       // Komentář ke schválení
-      // ✅ Při schválení (stav_schvaleni === 'schvaleno') poslat prázdný string nebo null
-      // Pro zamítnutí a čeká_se poslat hodnotu (povinné pole)
-      if (formData.stav_schvaleni === 'schvaleno') {
-        // Při schválení VŽDY poslat prázdný string (vymazat komentář)
-        orderData.schvaleni_komentar = '';
-      } else if (formData.schvaleni_komentar) {
-        // Pro ostatní stavy poslat hodnotu (pokud existuje)
+      // ✅ ZMĚNA: Ukládat komentář i při schválení (volitelný)
+      // Pro zamítnutí a čeká_se je komentář povinný, pro schválení volitelný
+      if (formData.schvaleni_komentar) {
+        // Poslat hodnotu komentáře pro VŠECHNY stavy (schvaleno, neschvaleno, ceka_se)
         orderData.schvaleni_komentar = formData.schvaleni_komentar;
+      } else {
+        // Pokud není vyplněný, poslat prázdný string
+        orderData.schvaleni_komentar = '';
       }
 
       // stav_workflow_kod - SESTAVUJ SPRÁVNOU POSLOUPNOST PODLE WORKFLOW KONCEPTU
@@ -9072,8 +10210,24 @@ function OrderForm25() {
       // Workflow pořadí: KE_SCHVALENI → SCHVALENA → ROZPRACOVANA → ODESLANA → POTVRZENA → UVEREJNENA → FAKTURACE → DOKONCENA
       let workflowStates = [...existingStates]; // Zachovat existující stavy z DB
 
-      // ✅ KRITICKÉ: Kontrolovat formData.id NEBO savedOrderId pro rozhodnutí INSERT vs UPDATE
-      const hasOrderId = formData.id || savedOrderId;
+      // 🔍 DEBUG: Výpis workflow stavu na začátku
+      console.log('🔍 WORKFLOW DEBUG - ZAČÁTEK ULOŽENÍ:', {
+        původní_workflow: formData.stav_workflow_kod,
+        workflowStates: [...workflowStates],
+        ma_byt_zverejnena: formData.ma_byt_zverejnena,
+        dt_zverejneni: formData.dt_zverejneni,
+        registr_iddt: formData.registr_iddt,
+        dodavatel_potvrzeni: formData.dodavatel_zpusob_potvrzeni?.potvrzeni,
+        financovani_platba: formData.financovani?.platba,
+        dodavatel_platba: formData.dodavatel_zpusob_potvrzeni?.platba,
+        faktury_count: formData.faktury?.length || 0,
+        faktury_ids: formData.faktury?.map(f => f.id || 'NEW') || []
+      });
+
+      // ✅ KRITICKÉ: Kontrolovat formData.id NEBO formData.id pro rozhodnutí INSERT vs UPDATE
+      const hasOrderId = formData.id || formData.id;
+
+      // 🛑 isOrderCancelled je již definován globálně (řádek ~6853)
 
       // 1. První uložení do DB (INSERT)
       if (!hasOrderId) {
@@ -9103,231 +10257,159 @@ function OrderForm25() {
         }
       }
 
-      // 2. Schválení/zamítnutí - přepsat JEN vzájemně se vylučující stavy
-      // ✅ POUŽÍVÁ formData.stav_schvaleni POUZE PRO UI LOGIKU (neposílá se do DB!)
-      const approvalChoice = formData.stav_schvaleni; // UI helper
+      // 2. Schválení/zamítnutí - ✅ CENTRALIZOVÁNO v WorkflowManageru
+      const approvalChoice = formData.stav_schvaleni;
 
       if (approvalChoice === 'schvaleno') {
-        // Odstranit POUZE vylučující se schvalovací stavy (CEKA_SE, ZAMITNUTA)
-        workflowStates = workflowStates.filter(s => !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA'].includes(s));
-        if (!workflowStates.includes('SCHVALENA')) {
-          workflowStates.push('SCHVALENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav SCHVALENA');
-        }
+        workflowStates = workflowManager.handleApproval(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleApproval()');
       } else if (approvalChoice === 'neschvaleno') {
-        // Odstranit POUZE vylučující se schvalovací stavy (SCHVALENA, CEKA_SE)
-        // POZOR: Při zamítnutí NEODSTRAŇOVAT další stavy workflow!
-        workflowStates = workflowStates.filter(s => !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA'].includes(s));
-        if (!workflowStates.includes('ZAMITNUTA')) {
-          workflowStates.push('ZAMITNUTA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav ZAMITNUTA');
-        }
+        workflowStates = workflowManager.handleRejection(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleRejection()');
       } else if (approvalChoice === 'ceka_se') {
-        // Odstranit POUZE vylučující se schvalovací stavy (SCHVALENA, ZAMITNUTA)
-        workflowStates = workflowStates.filter(s => !['ODESLANA_KE_SCHVALENI', 'ZAMITNUTA', 'SCHVALENA'].includes(s));
-        if (!workflowStates.includes('CEKA_SE')) {
-          workflowStates.push('CEKA_SE');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav CEKA_SE');
-        }
+        workflowStates = workflowManager.handleWaitingForApproval(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleWaitingForApproval()');
       }
 
-      // 3. ROZPRACOVANA - FÁZE 3 rozpracovaná (vylučuje se s ODESLANA a ZRUSENA)
-      // Pokud jsme ve FÁZI 3 (máme SCHVALENA) a NENÍ zaškrtnutý checkbox "Odesláno" ani "Stornováno"
-      // → přidej ROZPRACOVANA (uživatel pracuje na objednávce, ale ještě ji neodeslal)
-      // ✅ OPRAVA: NEPŘIDÁVAT ROZPRACOVANA při prvním schválení (pouze když už byla SCHVALENA předtím)
+      // 3. ROZPRACOVANA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const wasAlreadyApproved = existingStates?.includes('SCHVALENA') || false;
       const isJustNowApproved = approvalChoice === 'schvaleno' && !wasAlreadyApproved;
 
       if (workflowStates.includes('SCHVALENA') &&
           !formData.stav_odeslano &&
           !formData.stav_stornovano &&
-          !workflowStates.includes('ROZPRACOVANA') &&
-          !isJustNowApproved) {  // ✅ NOVÁ PODMÍNKA: nepřidávat při prvním schválení
-        // Přidat ROZPRACOVANA (indikátor že se na objednávce pracuje)
-        workflowStates.push('ROZPRACOVANA');
+          !isJustNowApproved) {
+        workflowStates = workflowManager.handleWorkInProgress(workflowStates, wasAlreadyApproved);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleWorkInProgress()');
+      } else {
+        // Odebrat ROZPRACOVANA pokud je odesláno nebo stornováno
+        workflowStates = workflowStates.filter(s => s !== 'ROZPRACOVANA');
         addDebugLog('info', 'SAVE', 'workflow-update', '✅ Přidán stav ROZPRACOVANA - objednávka ve FÁZI 3, ještě neodeslaná');
       }
 
-      // 4. ODESLANA - po odeslání dodavateli (nahrazuje ROZPRACOVANA)
-      // ✅ KRITICKÉ: Workflow MUSÍ být ČISTÝ ["SCHVALENA", "ODESLANA"], vymazat vyšší fáze
+      // 4. ODESLANA - po odeslání dodavateli ✅ CENTRALIZOVÁNO v WorkflowManageru
       if (formData.stav_odeslano && !formData.stav_stornovano) {
-        // Nastavit čistý workflow FÁZE 4
-        workflowStates = ['SCHVALENA', 'ODESLANA'];
-        addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Workflow nastaven na čistou FÁZI 4: ["SCHVALENA", "ODESLANA"]');
+        workflowStates = workflowManager.handleSendToSupplier(workflowStates);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleSendToSupplier()');
       } else if (!formData.stav_odeslano && workflowStates.includes('ODESLANA')) {
         // Pokud ODESLANA existuje ale checkbox není zaškrtnutý → vrátit na SCHVALENA
         workflowStates = ['SCHVALENA'];
         addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Workflow vrácen na FÁZI 3: ["SCHVALENA"]');
       }
 
-      // 5. ZRUSENA - při stornování
+      // 5. ZRUSENA - při stornování ✅ CENTRALIZOVÁNO v WorkflowManageru
       if (formData.stav_stornovano) {
-        if (!workflowStates.includes('ZRUSENA')) {
-          workflowStates.push('ZRUSENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav ZRUSENA');
-        }
-        // Při stornování odstranit některé stavy
-        workflowStates = workflowStates.filter(s => !['ROZPRACOVANA', 'ODESLANA', 'POTVRZENA'].includes(s));
+        workflowStates = workflowManager.handleCancellation(workflowStates, true);
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleCancellation(true)');
       } else {
-        // Odstranit ZRUSENA pokud není stornováno
-        workflowStates = workflowStates.filter(s => s !== 'ZRUSENA');
+        workflowStates = workflowManager.handleCancellation(workflowStates, false);
       }
 
-      // 6. POTVRZENA - potvrzení od dodavatele
+      // 6. POTVRZENA - potvrzení od dodavatele ✅ CENTRALIZOVÁNO v WorkflowManageru
       const isDodavatelPotvrzeno = formData.dodavatel_zpusob_potvrzeni?.potvrzeni === 'ANO' ||
                                   formData.stav_u_dodavatele === 'potvrzeno';
-      if (isDodavatelPotvrzeno && !formData.stav_stornovano) {
-        if (!workflowStates.includes('POTVRZENA')) {
-          workflowStates.push('POTVRZENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', '✅ Přidán stav POTVRZENA - dodavatel potvrdil ANO');
-        }
-      } else if (!isDodavatelPotvrzeno) {
-        // ✅ Dodavatel potvrdil NE → vrátit na čistou FÁZI 4 (vymazat všechny vyšší fáze)
-        workflowStates = workflowStates.filter(s =>
-          !['POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s)
-        );
-        addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Dodavatel potvrdil NE - workflow vrácen na FÁZI 4, vymazány vyšší fáze');
+      workflowStates = workflowManager.handleSupplierConfirmation(workflowStates, isDodavatelPotvrzeno);
+      if (isDodavatelPotvrzeno) {
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleSupplierConfirmation(true)');
+      } else {
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleSupplierConfirmation(false) - vymazány vyšší fáze');
       }
 
-      // 7. UVEREJNENA - při rozhodnutí o zveřejnění v registru smluv
-      // FÁZE 4: Uživatel s oprávněním rozhodne ANO/NE pomocí checkboxu "Má být zveřejněna"
-      //   - Pokud ma_byt_zverejnena = true → UVEREJNIT → FÁZE 5 (vyplnění datum + IDDT)
-      //   - Pokud ma_byt_zverejnena = false → NEUVEREJNIT → přeskočí FÁZI 5 → rovnou FÁZE 6 (Fakturace)
-
-      // UVEREJNOVÁNÍ - rozhodnutí o zveřejnění
-      // Logika:
-      // - Pokud dodavatel potvrdil (POTVRZENA) a ma_byt_zverejnena === true → přidat stav 'UVEREJNIT' (posun na fázi 5)
-      // - Pokud dodavatel potvrdil a ma_byt_zverejnena === false → přidat stav 'NEUVEREJNIT' (přeskočit na fázi 6 - Fakturace)
-      // - Pokud ma_byt_zverejnena není definováno, považovat za false (defaultní chování)
+      // 7. UVEREJNENA - při rozhodnutí o zveřejnění ✅ ČÁSTEČNĚ CENTRALIZOVÁNO
       if (workflowStates.includes('POTVRZENA') && !formData.stav_stornovano) {
         const maBytZverejnena = formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1;
-
-        if (maBytZverejnena) {
-          // Chceme zveřejnit → přidat UVEREJNIT
+        const hasDatum = formData.dt_zverejneni;
+        const hasIddt = formData.registr_iddt;
+        
+        // DEBUG: Zveřejnění check
+        // console.log('🔍 ZVEŘEJNĚNÍ CHECK:', {
+        //   maBytZverejnena, dt_zverejneni: hasDatum, registr_iddt: hasIddt, workflow: workflowStates
+        // });
+        
+        // ✅ POUŽÍT WorkflowManager.handlePublishDecision()
+        workflowStates = workflowManager.handlePublishDecision(workflowStates, maBytZverejnena);
+        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handlePublishDecision(${maBytZverejnena})`);
+        
+        // ✅ POUŽÍT WorkflowManager.handlePublishing() pokud jsou data vyplněná
+        if (maBytZverejnena && hasDatum && hasIddt && workflowStates.includes('UVEREJNIT')) {
+          workflowStates = workflowManager.handlePublishing(workflowStates, hasDatum, hasIddt);
+          addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handlePublishing() - UVEREJNIT → UVEREJNENA + FAKTURACE');
+          console.log('✅ ZVEŘEJNĚNÍ DOKONČENO přes WorkflowManager:', workflowStates);
+        }
+        // Cleanup pokud byla data smazána
+        else if (maBytZverejnena && (!hasDatum || !hasIddt) && workflowStates.includes('UVEREJNENA')) {
+          // Vrátit zpět na UVEREJNIT (smazat UVEREJNENA a vyšší fáze)
+          workflowStates = workflowStates.filter(s => !['UVEREJNENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
           if (!workflowStates.includes('UVEREJNIT')) {
-            // Odstraníme případné NEUVEREJNIT/UVEREJNENA pro konzistenci
-            workflowStates = workflowStates.filter(s => s !== 'NEUVEREJNIT' && s !== 'UVEREJNENA');
             workflowStates.push('UVEREJNIT');
-            addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav UVEREJNIT (ma_byt_zverejnena = true)');
           }
-
-          // ✅ NOVÉ: Pokud je UVEREJNIT a zároveň jsou vyplněné datum + IDDT → posun na UVEREJNENA
-          if (workflowStates.includes('UVEREJNIT') && formData.dt_zverejneni && formData.registr_iddt) {
-            // Odstranit UVEREJNIT (už je dokončeno)
-            workflowStates = workflowStates.filter(s => s !== 'UVEREJNIT');
-            // Přidat UVEREJNENA → posun do FÁZE 6
-            if (!workflowStates.includes('UVEREJNENA')) {
-              workflowStates.push('UVEREJNENA');
-              addDebugLog('info', 'SAVE', 'workflow-update', 'Vyplněn registr smluv (datum + IDDT) → odstraněn UVEREJNIT → přidán UVEREJNENA → FÁZE 6');
-            }
-          }
-        } else {
-          // Nemá být zveřejněno (false, 0, undefined, null) → přidat NEUVEREJNIT
-          workflowStates = workflowStates.filter(s => s !== 'UVEREJNIT' && s !== 'UVEREJNENA');
-          if (!workflowStates.includes('NEUVEREJNIT')) {
-            workflowStates.push('NEUVEREJNIT');
-            addDebugLog('info', 'SAVE', 'workflow-update', `Přidán stav NEUVEREJNIT (ma_byt_zverejnena = ${formData.ma_byt_zverejnena}) → přejít na FAKTURACE`);
-          }
+          addDebugLog('info', 'SAVE', 'workflow-clean', 'Smazána data zveřejnění → vrácen na UVEREJNIT');
         }
       }
 
-      // Pokud POTVRZENA zmizí nebo je stornováno, odstranit jakékoliv zveřejňovací stavy
+      // Pokud POTVRZENA zmizí, odstranit zveřejňovací stavy
       if (!workflowStates.includes('POTVRZENA') || formData.stav_stornovano) {
         workflowStates = workflowStates.filter(s => !['UVEREJNIT', 'NEUVEREJNIT', 'UVEREJNENA'].includes(s));
-        addDebugLog('info', 'SAVE', 'workflow-update', 'Odebrány zveřejňovací stavy (není POTVRZENA nebo je stornováno)');
       }
 
-      // Určit režim platby (POKLADNA vs FAKTURA) - použito pro workflow větvení
-      const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
-      const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
-      const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
+      // ❌ DEPRECATED: POKLADNA režim - existuje vlastní modul Pokladní knihy
+      // Workflow v OrderForm25 již nepodporuje speciální POKLADNA logiku
 
-      // 🆕 POKLADNA: Po ODESLANA automaticky přidat VECNA_SPRAVNOST (přeskočí POTVRZENÍ, REGISTR, FAKTURACI)
-      // Pro POKLADNA skáčeme přímo z FÁZE 3 (ODESLANA) do FÁZE 7 (VECNA_SPRAVNOST)
-      if (isPokladna &&
-          (workflowStates.includes('ODESLANA') ||
-           workflowStates.includes('POTVRZENA') ||
-           workflowStates.includes('UVEREJNENA') ||
-           workflowStates.includes('NEUVEREJNIT')) &&
-          !formData.stav_stornovano) {
-        if (!workflowStates.includes('VECNA_SPRAVNOST')) {
-          workflowStates.push('VECNA_SPRAVNOST');
-          addDebugLog('info', 'SAVE', 'workflow-update', '🏪 Režim POKLADNA → přidán stav VECNA_SPRAVNOST (přeskočeny fáze 4-6) → FÁZE 7/8');
-        }
+      // 8. FAKTURACE - ✅ CENTRALIZOVÁNO v WorkflowManageru
+      const hasRealInvoices = formData.faktury && formData.faktury.length > 0 && 
+        formData.faktury.some(f => f.id || f.fa_cislo || f.fa_castka);
+      
+      // DEBUG: Fakturace check
+      // console.log('🔍 FAKTURACE CHECK:', { faktury_count, má_reálné_faktury: hasRealInvoices });
+      
+      // Nepřidávat faktury pokud jsme ve fázi UVEREJNIT bez dat
+      const jeVeFaziUverejnit = workflowStates.includes('UVEREJNIT') && 
+        !workflowStates.includes('UVEREJNENA') && 
+        !workflowStates.includes('NEUVEREJNIT');
+      
+      if (!jeVeFaziUverejnit) {
+        workflowStates = workflowManager.handleInvoiceChange(workflowStates, hasRealInvoices, false); // isPokladna = false (deprecated)
+        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleInvoiceChange(hasInvoices=${hasRealInvoices}, isPokladna=${isPokladna})`);
       }
 
-      // 8. FAKTURACE - při přidání faktury (pouze když NENÍ pokladna)
-
-      if (!isPokladna && formData.faktury && formData.faktury.length > 0 && !formData.stav_stornovano) {
-        if (!workflowStates.includes('FAKTURACE')) {
-          workflowStates.push('FAKTURACE');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav FAKTURACE → FÁZE 6/8');
-        }
-
-        // ✅ Automaticky přidat VECNA_SPRAVNOST (věcná kontrola) po FAKTURACI
-        if (workflowStates.includes('FAKTURACE') && !workflowStates.includes('VECNA_SPRAVNOST')) {
-          workflowStates.push('VECNA_SPRAVNOST');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav VECNA_SPRAVNOST - faktury uloženy → FÁZE 7/8 (Věcná kontrola)');
-        }
-      } else if (!formData.faktury || formData.faktury.length === 0 || isPokladna) {
-        // Pokud nejsou faktury NEBO je pokladna, odeber FAKTURACE a VECNA_SPRAVNOST
-        const hadFakturace = workflowStates.includes('FAKTURACE');
-        workflowStates = workflowStates.filter(s => s !== 'FAKTURACE' && s !== 'VECNA_SPRAVNOST');
-        if (hadFakturace && isPokladna) {
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Odebrán stav FAKTURACE a VECNA_SPRAVNOST (režim POKLADNA)');
-        }
-      }
-
-      // 8.5. ZKONTROLOVANA - POUZE pokud VŠECHNY faktury mají potvrzenou per-invoice věcnou správnost
-      // ✅ NOVÁ LOGIKA: Kontrola per-invoice checkboxů pro KAŽDOU fakturu
+      // 8.5. ZKONTROLOVANA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
         (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
       
-      if (allFakturyVecneSpravny && !formData.stav_stornovano) {
-        if (!workflowStates.includes('ZKONTROLOVANA')) {
-          workflowStates.push('ZKONTROLOVANA');
-          addDebugLog('info', 'SAVE', 'workflow-update', `✅ VŠECHNY faktury (${formData.faktury.length}x) mají potvrzenou věcnou správnost → přidán stav ZKONTROLOVANA → FÁZE 8/8`);
-        }
-      } else {
-        // ✅ Odebrat ZKONTROLOVANA pokud NENÍ potvrzena věcná správnost VŠECH faktur
-        // Automaticky se vrátí na VECNA_SPRAVNOST → FÁZE 7/8
-        const hadZkontrolovana = workflowStates.includes('ZKONTROLOVANA');
-        workflowStates = workflowStates.filter(s => s !== 'ZKONTROLOVANA');
-        if (hadZkontrolovana) {
-          const nepotvrzeneFaktury = (formData.faktury || []).filter(f => !(f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true)).length;
-          addDebugLog('info', 'SAVE', 'workflow-update', `🔓 NEJSOU potvrzeny všechny faktury (${nepotvrzeneFaktury}x chybí) → odebrán stav ZKONTROLOVANA → návrat na FÁZI 7/8`);
-        }
+      workflowStates = workflowManager.handleQualityConfirmation(workflowStates, allFakturyVecneSpravny);
+      if (allFakturyVecneSpravny) {
+        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleQualityConfirmation(true) - všechny faktury (${formData.faktury.length}x) potvrzeny`);
       }
 
-      // 9. DOKONCENA - při potvrzení finálního dokončení checkboxem
-      // ✅ BEZ kontroly na faktury - objednávka může být dokončená i bez faktur
-      // ✅ Kontrola: obě checkboxy potvrzeny
+      // 9. DOKONCENA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const jeDokonceniPotvrzeno = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
-      // ✅ OPRAVA: Kontrolovat AKTUÁLNÍ stav workflowStates (po přidání ZKONTROLOVANA výše)
       const jeVecnaSprávnostPotvrzena = workflowStates.includes('ZKONTROLOVANA');
+      const mozeDokoncit = jeDokonceniPotvrzeno && jeVecnaSprávnostPotvrzena && !formData.stav_stornovano;
 
-      if (jeDokonceniPotvrzeno && jeVecnaSprávnostPotvrzena && !formData.stav_stornovano) {
-        if (!workflowStates.includes('DOKONCENA')) {
-          workflowStates.push('DOKONCENA');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav DOKONCENA - objednávka finálně dokončena');
-        }
-
-        // 🆕 Automaticky nastavit dokoncil_id a dt_dokonceni při prvním potvrzení
+      workflowStates = workflowManager.handleCompletion(workflowStates, mozeDokoncit);
+      if (mozeDokoncit) {
+        addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleCompletion(true)');
+        // Automaticky nastavit dokoncil_id při prvním potvrzení
         if (!formData.dokoncil_id) {
           orderData.dokoncil_id = user_id;
-          orderData.dt_dokonceni = getMySQLDateTime(); // ✅ JEDNOTNÝ FORMÁT
-          addDebugLog('info', 'SAVE', 'dokonceni', `Nastaveno dokončení objednávky uživatelem ${user_id}`);
+          orderData.dt_dokonceni = getMySQLDateTime();
+          addDebugLog('info', 'SAVE', 'dokonceni', `Nastaveno dokončení uživatelem ${user_id}`);
         }
-      } else {
-        // Odstranit DOKONCENA pokud checkbox není zaškrtnutý
-        workflowStates = workflowStates.filter(s => s !== 'DOKONCENA');
       }
 
       // FINÁLNÍ KONTROLA A ÚPRAVY
       // Odstraň duplicity (zachovej pořadí)
       workflowStates = [...new Set(workflowStates)];
 
-      // 🔧 KRITICKÁ OPRAVA: Odstranit STARÉ/NEPLATNÉ workflow stavy
+      // � DEBUG: Výpis workflow stavu před seřazením
+      console.log('🔍 WORKFLOW DEBUG - PŘED SEŘAZENÍM:', {
+        workflowStates: [...workflowStates],
+        isPokladna: isPokladna,
+        financovani_platba: formData.financovani?.platba,
+        dodavatel_platba: formData.dodavatel_zpusob_potvrzeni?.platba
+      });
+
+      // �🔧 KRITICKÁ OPRAVA: Odstranit STARÉ/NEPLATNÉ workflow stavy
       // Odstranit K_DOKONCENI - již se nepoužívá, nahrazeno ZKONTROLOVANA + DOKONCENA
       workflowStates = workflowStates.filter(s => s !== 'K_DOKONCENI');
 
@@ -9347,6 +10429,13 @@ function OrderForm25() {
         const indexA = workflowOrder.indexOf(a);
         const indexB = workflowOrder.indexOf(b);
         return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+      });
+
+      // 🔍 DEBUG: Finální workflow před uložením
+      console.log('🔍 WORKFLOW DEBUG - FINÁLNÍ PŘED ULOŽENÍM:', {
+        workflowStates: [...workflowStates],
+        poslední_stav: workflowStates[workflowStates.length - 1],
+        jako_string: JSON.stringify(workflowStates)
       });
 
       orderData.stav_workflow_kod = JSON.stringify(workflowStates);
@@ -9425,13 +10514,9 @@ function OrderForm25() {
 
       addDebugLog('info', 'SAVE', 'tracking-fields', `Workflow tracking pole: dodavatel_potvrdil=${orderData.dodavatel_potvrdil_id}, zverejnil=${orderData.zverejnil_id}, vecna_spravnost=${orderData.potvrdil_vecnou_spravnost_id}, fakturant=${orderData.fakturant_id}, dokoncil=${orderData.dokoncil_id}`);
 
-      // Storno metadata - pouze pokud je stornováno (dt_odeslani se řeší výše)
-      if (formData.stav_stornovano) {
-        if (formData.storno_uzivatel_id) orderData.storno_uzivatel_id = formData.storno_uzivatel_id;
-        if (formData.storno_provedl) orderData.storno_provedl = formData.storno_provedl;
-        // odeslani_storno_duvod se řeší v sekci dt_odeslani výše
-        // datum_storna se mapuje na dt_odeslani výše
-      }
+      // 🛑 ODSTRANĚNO: Storno metadata (storno_provedl neexistuje v DB)
+      // odesilatel_id se používá univerzálně pro odeslání i storno
+      // odeslani_storno_duvod rozlišuje zda jde o storno (vyplněný) nebo odeslání (prázdný)
 
       // dt_odeslani se používá jak pro odeslání, tak pro storno
       // ✅ DŮLEŽITÉ: Workflow data měnit POUZE pokud je sekce ODEMČENÁ!
@@ -9469,9 +10554,9 @@ function OrderForm25() {
           else if (formData.stav_stornovano) {
             // ✅ Datum storna nastavit POUZE pokud ještě neexistuje (při prvním stornování)
             if (!formData.dt_odeslani) {
-              const datumStorna = formData.datum_storna || getMySQLDate(); // ✅ JEDNOTNÝ FORMÁT
-              orderData.dt_odeslani = datumStorna;
-              addDebugLog('info', 'SAVE', 'storno-datum-new', `Nastaveno NOVÉ dt_odeslani pro STORNO: ${datumStorna}`);
+              // datum_storna pole neexistuje - použít aktuální datum
+              orderData.dt_odeslani = getMySQLDate();
+              addDebugLog('info', 'SAVE', 'storno-datum-new', `Nastaveno NOVÉ dt_odeslani pro STORNO: ${orderData.dt_odeslani}`);
             } else {
               // Datum již existuje - ZACHOVAT původní hodnotu
               orderData.dt_odeslani = formData.dt_odeslani;
@@ -9607,11 +10692,18 @@ function OrderForm25() {
             fa_castka: String(parseFloat(faktura.fa_castka) || 0),           // ✅ V2 API: VŽDY STRING pro přesnost!
             fa_cislo_vema: faktura.fa_cislo_vema || '',                       // POVINNÉ - číslo faktury (může být '')
             fa_dorucena: 1,                                                   // POVINNÉ - 0 nebo 1 (boolean)
-            fa_datum_vystaveni: faktura.fa_datum_vystaveni || new Date().toISOString().split('T')[0], // DŮLEŽITÉ - datum vystavení
+            // 🔥 FIX: Použít lokální české datum místo UTC
+            fa_datum_vystaveni: faktura.fa_datum_vystaveni || (() => {
+              const now = new Date();
+              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+            })(),
             fa_datum_splatnosti: faktura.fa_splatnost || faktura.fa_datum_splatnosti || '', // ✅ FE -> DB: fa_splatnost -> fa_datum_splatnosti (obousměrný mapping)
             fa_datum_doruceni: (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.match(/^\d{4}-\d{2}-\d{2}$/))
               ? faktura.fa_datum_doruceni
-              : new Date().toISOString().split('T')[0], // ✅ OPRAVA: Použít jen pokud je validní datum
+              : (() => {
+                  const now = new Date();
+                  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                })(),
             fa_strediska_kod: strediskaArray,                                 // ✅ POLE KÓDŮ: ["KLADNO","BENESOV","BEROUN"]
             fa_poznamka: faktura.fa_poznamka || '',                           // VOLITELNÉ - poznámka
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 DB mapping
@@ -9625,7 +10717,13 @@ function OrderForm25() {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
                   typ_platby: 'pokladna',
                   pokladni_doklad: {
-                    datum_vytvoreni: faktura.dt_vytvoreni || new Date().toISOString(),
+                    // 🔥 FIX: Použít lokální český čas místo UTC
+                    datum_vytvoreni: faktura.dt_vytvoreni || (() => {
+                      const now = new Date();
+                      const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                      const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                      return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                    })(),
                     poznamka: faktura.fa_poznamka || '',
                     prilohy_count: faktura.attachments?.length || 0,
                     vytvoril_uzivatel_id: faktura.vytvoril_uzivatel_id,
@@ -9701,14 +10799,8 @@ function OrderForm25() {
 
         addDebugLog('info', 'SAVE-V2', 'create-success', `Order created: ID ${result.id}`);
 
-        if (result.lock_info?.locked && !result.lock_info?.locked_by_user_id) {
-          try {
-            await unlockOrder25({ token, username, orderId: result.id });
-            addDebugLog('info', 'SAVE-V2', 'auto-unlock', `Automaticky odemčena objednávka ${result.id} (byla zamčená bez vlastníka)`);
-          } catch (unlockError) {
-            addDebugLog('warning', 'SAVE-V2', 'auto-unlock-error', `Chyba při odemykání: ${unlockError.message}`);
-          }
-        }
+        // ❌ ODSTRANĚNO: CREATE by neměl vytvářet lock, takže není potřeba unlock
+        // Draft/localStorage operace nemají dělat LOCK/UNLOCK
 
         updatedFormDataImmediate = result;
         orderId = result.id;
@@ -9752,7 +10844,16 @@ function OrderForm25() {
                     token,             // token
                     parsedInsertData.id  // orderId
                   );
-                  attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                  // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                  const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                  // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                  attachments = rawAttachments.map(att => ({
+                    ...att,
+                    name: att.originalni_nazev_souboru,
+                    size: att.velikost_souboru_b,
+                    klasifikace: att.typ_prilohy,
+                    uploadDate: att.dt_vytvoreni
+                  }));
                 } catch (err) {
                 }
               }
@@ -9869,33 +10970,113 @@ function OrderForm25() {
                 return stredisko ? stredisko.label : kod;
               });
               
-              await notificationServiceDual.sendOrderApprovalNotifications({
-                token,
-                username,
-                orderData: {
-                  id: orderId,
-                  ev_cislo: orderNumber,
-                  predmet: formData.predmet || '',
-                  prikazce_id: formData.prikazce_id,
-                  garant_id: formData.garant_uzivatel_id,
-                  vytvoril: formData.objednatel_id,
-                  objednatel_id: formData.objednatel_id,
-                  dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
-                  // 💰 FINANCOVÁNÍ - použít již normalizovaný objekt z orderData (stejný jako jde do DB)
+              // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
+              await triggerNotification(
+                'ORDER_PENDING_APPROVAL',
+                orderId,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu pro backend
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu pro backend
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback na user_id
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
-                  strediska_nazvy: strediskaNazvy,
+                  strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
+                  mimoradna_udalost: formData.mimoradna_udalost || false
                 }
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-new', `Org-hierarchy notifikace triggernuta pro novou objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-new', `Chyba při trigger notifikaci: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání dodavateli (INSERT - okamžité odeslání)
+          if (hasWorkflowState(workflowKod, 'ODESLANA')) {
+            try {
+              const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
+                const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                return stredisko ? stredisko.label : kod;
               });
-              addDebugLog('success', 'NOTIFICATION', 'dual-email-sent-new', `Dual-template EMAILY odeslány pro novou objednávku ${orderNumber}`);
-            } catch (dualError) {
-              addDebugLog('warning', 'NOTIFICATION', 'dual-email-error-new', `Chyba při dual-template emailech: ${dualError.message}`);
+              
+              await triggerNotification(
+                'ORDER_SENT_TO_SUPPLIER',
+                orderId,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
+                  financovani_json: JSON.stringify(orderData.financovani || {}),
+                  strediska_names: strediskaNazvy,
+                  max_price_with_dph: formData.max_cena_s_dph || 0,
+                  mimoradna_udalost: formData.mimoradna_udalost || false
+                }
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana-new', `Org-hierarchy notifikace triggernuta pro nově odeslanou objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              console.error('   Error:', triggerError);
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana-new', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Okamžité schválení při INSERT (pokud příkazce okamžitě schválí)
+          if (hasWorkflowState(workflowKod, 'SCHVALENA')) {
+            try {
+              const notifResponse3 = await triggerNotification('ORDER_APPROVED', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena-new', `Notifikace odeslána: nová objednávka okamžitě schválena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena-new', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
+            }
+          }
+          // 🆕 Okamžité potvrzení dodavatele při INSERT (velmi rare, ale možné)
+          if (hasWorkflowState(workflowKod, 'POTVRZENA')) {
+            try {
+              const notifResponse4 = await triggerNotification('ORDER_CONFIRMED_BY_SUPPLIER', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-potvrzena-new', `Notifikace odeslána: nová objednávka potvrzena dodavatelem ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-potvrzena-new', `Chyba při notifikaci POTVRZENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Okamžité dokončení při INSERT (velmi rare, ale možné)
+          if (hasWorkflowState(workflowKod, 'DOKONCENA')) {
+            try {
+              const notifResponse5 = await triggerNotification('ORDER_COMPLETED', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-dokoncena-new', `Notifikace odeslána: nová objednávka okamžitě dokončena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-dokoncena-new', `Chyba při notifikaci DOKONCENA: ${triggerError.message}`);
             }
           }
         } catch (notifError) {
           // Nezastavuj workflow kvůli chybě notifikace
           addDebugLog('warning', 'SAVE', 'notification-error', `Chyba při odesílání notifikace: ${notifError.message}`);
+        }
+
+        // 💾 ULOŽIT LP ČERPÁNÍ FAKTUR DO DB
+        try {
+          await saveAllFakturyLPCerpani();
+          addDebugLog('success', 'LP', 'saved-on-insert', 'LP čerpání faktur uloženo do DB po INSERT objednávky');
+        } catch (lpError) {
+          addDebugLog('error', 'LP', 'save-error-insert', `Chyba při ukládání LP čerpání: ${lpError.message}`);
+          // Neblokovat uložení objednávky kvůli LP chybě
         }
 
         // Toast notifikace se zobrazí až později (řádek ~5150-5160) - jednotně pro INSERT i UPDATE
@@ -9948,17 +11129,22 @@ function OrderForm25() {
         // 🎯 NAČÍST LP OPTIONS z enriched response (z financovani.lp_nazvy)
         if (result.financovani?.lp_nazvy && Array.isArray(result.financovani.lp_nazvy)) {
           const lpOptions = result.financovani.lp_nazvy
-            .map(lp => ({
-              id: lp.id,
-              kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-              nazev: lp.nazev || 'Bez názvu',
-              kategorie: lp.kategorie,
-              limit: lp.limit || lp.celkovy_limit,
-              cerpano: lp.cerpano || lp.skutecne_cerpano,
-              zbyva: lp.zbyva || lp.zbyva_skutecne,
-              rok: lp.rok,
-              label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-            }))
+            .map(lp => {
+              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+              return {
+                id: lp.id,
+                kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                nazev: lp.nazev || 'Bez názvu',
+                kategorie: lp.kategorie,
+                limit: lp.limit || lp.celkovy_limit,
+                cerpano: lp.cerpano || lp.skutecne_cerpano,
+                zbyva: lp.zbyva || lp.zbyva_skutecne,
+                rok: lp.rok,
+                platne_od: lp.platne_od,
+                platne_do: lp.platne_do,
+                label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+              };
+            })
             .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
           
           setLpOptionsForItems(lpOptions);
@@ -9971,11 +11157,7 @@ function OrderForm25() {
         // 🔒 Reset všech unlock states - sekce se mají zamknout podle nové fáze
         workflowManager.resetAllUnlocks();
 
-        // Označit objednávku jako uloženou DO DB a uložit ID
-        if (orderId) {
-          setSavedOrderId(orderId);
-          // ❌ REMOVED: setPersistedOrderId - duplicitní state, použij savedOrderId
-        }
+        // NOTE: formData.id removed - formData.id is single source of truth (orderId is in formData)
 
         if (shouldShowProgress) {
           // Běžný uživatel - spustí progress a přesměrování
@@ -9992,6 +11174,10 @@ function OrderForm25() {
 
             if (deleted) {
               addDebugLog('success', 'INSERT', 'draftmanager-delete', `Všechny klíče smazány přes DraftManager`);
+              
+              // LP ČERPÁNÍ: Vyčistit fakturyLPCerpani z localStorage
+              const lpKey = `order25_lpCerpani_${user_id}`;
+              localStorage.removeItem(lpKey);
             } else {
             }
           }
@@ -10004,7 +11190,7 @@ function OrderForm25() {
             addDebugLog('error', 'INSERT', 'cache-invalidation-error', `Chyba při invalidaci cache: ${e.message}`);
           }
 
-          startSaveProgressAndRedirect(orderNumber, orderId);
+          await startSaveProgressAndRedirect(orderNumber, orderId);
 
         } else {
           // SUPERADMIN/ADMIN - zůstává na formuláři v edit režimu
@@ -10047,14 +11233,14 @@ function OrderForm25() {
           if (showToast) {
             const isNewOrder = !isOrderSavedToDB; // Byla to nová objednávka nebo update?
             const message = isNewOrder
-              ? `Objednávka ${orderNumber} byla úspěšně vytvořena`
-              : `Objednávka ${orderNumber} byla úspěšně aktualizována`;
-            showToast(message, { type: 'success' });
+              ? '✅ Objednavka uspesne vytvorena\n📋 ' + orderNumber + '\n💾 Databaze aktualizovana'
+              : '✅ Objednavka uspesne aktualizovana\n📋 ' + orderNumber + '\n💾 Zmeny ulozeny';
+            showToast(message, 'success');
           }
 
-          // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
-          // Uživatel má možnost pokračovat tam, kde skončil
-          addDebugLog('info', 'INSERT', 'stay-in-place', 'Zůstaň na stejné pozici po uložení');
+          // ✅ ADMIN: Zustat na stejne pozici - NEAUTOMATICKY scrollovat
+          // Uzivatel ma moznost pokracovat tam, kde skoncil
+          addDebugLog('info', 'INSERT', 'stay-in-place', 'Zustan na stejne pozici po ulozeni');
         }
 
         // RESET isChanged - data jsou synchronizována s DB
@@ -10251,19 +11437,7 @@ function OrderForm25() {
 
         // Už není potřeba explicitní DB reload - BE vrací spolehlivý stav v response
 
-        // Zobrazit success message - POUZE pro běžné uživatele (SUPERADMIN/ADMIN mají toast výše)
-        if (!shouldStayOnForm) {
-          if (result.message) {
-            showToast && showToast(result.message, { type: 'success' });
-          } else if (result.lock_info?.locked_by_user_fullname) {
-            showToast && showToast(
-              `Objednávka byla úspěšně vytvořena (edituje: ${result.lock_info.locked_by_user_fullname})`,
-              { type: 'success' }
-            );
-          } else {
-            showToast && showToast(`Objednávka byla úspěšně vytvořena`, { type: 'success' });
-          }
-        }
+        // ❌ REMOVED: Toast zpráva "Objednávka byla úspěšně vytvořena" - notifikace už informují uživatele
 
         // POZNÁMKA: Autosave byl přesunut do DraftManager.syncWithDatabase()
         // Není potřeba volat saveDraftWithData - způsobovalo duplicitní zápis a race conditions
@@ -10286,7 +11460,7 @@ function OrderForm25() {
         // Aktualizace existující objednávky - používáme partial-update
         const oldWorkflowKod = formData.stav_workflow_kod;
 
-        addDebugLog('info', 'SAVE-V2', 'update-start', `Volam updateOrderV2(${savedOrderId})`);
+        addDebugLog('info', 'SAVE-V2', 'update-start', `Volam updateOrderV2(${formData.id})`);
 
         // ⚠️ prepareDataForAPI() se volá automaticky uvnitř updateOrderV2() - NEMĚNIT ZNOVU!
         // const preparedData = prepareDataForAPI(orderData);  ❌ DUPLICITNÍ - již se dělá v updateOrderV2()
@@ -10296,9 +11470,9 @@ function OrderForm25() {
         if (orderData.faktury && orderData.faktury.length > 0) {
         }
 
-        result = await updateOrderV2(savedOrderId, orderData, token, username);
+        result = await updateOrderV2(formData.id, orderData, token, username);
 
-        addDebugLog('info', 'SAVE-V2', 'update-success', `Order ${savedOrderId} updated`);
+        addDebugLog('info', 'SAVE-V2', 'update-success', `Order ${formData.id} updated`);
 
         // DB RESPONSE LOGGING (UPDATE)
         // 🔧 V2 API: Backend vrací cislo_objednavky (ne ev_cislo)
@@ -10315,17 +11489,17 @@ function OrderForm25() {
 
         // Odeslat notifikace při změně workflow stavu
         try {
-          const orderNumber = formData.ev_cislo || formData.cislo_objednavky || savedOrderId;
+          const orderNumber = result.ev_cislo || result.cislo_objednavky || formData.ev_cislo || formData.cislo_objednavky || formData.id;
           
           // ✅ STANDARDNÍ NOTIFIKACE (zvoneček) - VŽDY zavolat!
-          await sendOrderNotifications(savedOrderId, orderNumber, result.stav_workflow_kod, oldWorkflowKod, formData);
+          await sendOrderNotifications(formData.id, orderNumber, result.stav_workflow_kod, oldWorkflowKod, formData);
           
           // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání ke schválení (NAVÍC k zvonečku)
           const hasKeSchvaleni = hasWorkflowState(result.stav_workflow_kod, 'ODESLANA_KE_SCHVALENI');
           const hadKeSchvaleni = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ODESLANA_KE_SCHVALENI') : false;
           
           if (hasKeSchvaleni && !hadKeSchvaleni) {
-            // Odeslat POUZE EMAILY (zvonečky už vytořila funkce sendOrderNotifications)
+            // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
             try {
               // Převést kódy středisek na názvy (strediskaOptions má strukturu {value, label})
               const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
@@ -10333,31 +11507,237 @@ function OrderForm25() {
                 return stredisko ? stredisko.label : kod;
               });
               
-              await notificationServiceDual.sendOrderApprovalNotifications({
-                token,
-                username,
-                orderData: {
-                  id: savedOrderId,
-                  ev_cislo: orderNumber,
-                  predmet: formData.predmet || '',
-                  prikazce_id: formData.prikazce_id,
-                  garant_id: formData.garant_uzivatel_id,
-                  vytvoril: formData.objednatel_id,
-                  objednatel_id: formData.objednatel_id,
-                  dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
-                  // 💰 FINANCOVÁNÍ - použít již normalizovaný objekt z orderData (stejný jako jde do DB)
+              const notifResponseUpd1 = await triggerNotification(
+                'ORDER_PENDING_APPROVAL',
+                formData.id,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
-                  strediska_nazvy: strediskaNazvy,
+                  strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
+                  mimoradna_udalost: formData.mimoradna_udalost || false
                 }
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent', `Org-hierarchy notifikace triggernuta pro objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error', `Chyba při trigger notifikaci: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání dodavateli (NAVÍC k zvonečku)
+          const hasOdeslana = hasWorkflowState(result.stav_workflow_kod, 'ODESLANA');
+          const hadOdeslana = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ODESLANA') : false;
+          
+          if (hasOdeslana && !hadOdeslana) {
+            try {
+              const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
+                const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                return stredisko ? stredisko.label : kod;
               });
-              addDebugLog('success', 'NOTIFICATION', 'dual-email-sent', `Dual-template EMAILY odeslány pro objednávku ${orderNumber}`);
-            } catch (dualError) {
-              addDebugLog('warning', 'NOTIFICATION', 'dual-email-error', `Chyba při dual-template emailech: ${dualError.message}`);
+              
+              const notifResponseUpd2 = await triggerNotification(
+                'ORDER_SENT_TO_SUPPLIER',
+                formData.id,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
+                  financovani_json: JSON.stringify(orderData.financovani || {}),
+                  strediska_names: strediskaNazvy,
+                  max_price_with_dph: formData.max_cena_s_dph || 0,
+                  mimoradna_udalost: formData.mimoradna_udalost || false
+                }
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana', `Org-hierarchy notifikace triggernuta pro odeslanou objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Schválení objednávky
+          const hasSchvalena = hasWorkflowState(result.stav_workflow_kod, 'SCHVALENA');
+          const hadSchvalena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'SCHVALENA') : false;
+          
+          if (hasSchvalena && !hadSchvalena) {
+            try {
+              const notifResponseUpd3 = await triggerNotification('ORDER_APPROVED', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena', `Notifikace odeslána: objednávka schválena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Zamítnutí objednávky
+          const hasZamitnuta = hasWorkflowState(result.stav_workflow_kod, 'ZAMITNUTA');
+          const hadZamitnuta = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ZAMITNUTA') : false;
+          
+          if (hasZamitnuta && !hadZamitnuta) {
+            try {
+              const notifResponseUpd4 = await triggerNotification('ORDER_REJECTED', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zamitnuta', `Notifikace odeslána: objednávka zamítnuta ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zamitnuta', `Chyba při notifikaci ZAMITNUTA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Vrácení k doplnění
+          const hasCekaSe = hasWorkflowState(result.stav_workflow_kod, 'CEKA_SE');
+          const hadCekaSe = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'CEKA_SE') : false;
+          
+          if (hasCekaSe && !hadCekaSe) {
+            try {
+              const notifResponseUpd5 = await triggerNotification('ORDER_AWAITING_CHANGES', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-ceka-se', `Notifikace odeslána: objednávka vrácena k doplnění ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-ceka-se', `Chyba při notifikaci CEKA_SE: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Potvrzení dodavatele
+          const hasPotvrzena = hasWorkflowState(result.stav_workflow_kod, 'POTVRZENA');
+          const hadPotvrzena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'POTVRZENA') : false;
+          
+          if (hasPotvrzena && !hadPotvrzena) {
+            try {
+              await triggerNotification('ORDER_CONFIRMED_BY_SUPPLIER', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-potvrzena', `Notifikace odeslána: objednávka potvrzena dodavatelem ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-potvrzena', `Chyba při notifikaci POTVRZENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Zveřejnění v registru
+          const hasUverejnena = hasWorkflowState(result.stav_workflow_kod, 'UVEREJNENA');
+          const hadUverejnena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'UVEREJNENA') : false;
+          
+          if (hasUverejnena && !hadUverejnena) {
+            try {
+              await triggerNotification('ORDER_REGISTRY_PUBLISHED', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-uverejnena', `Notifikace odeslána: objednávka zveřejněna v registru ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-uverejnena', `Chyba při notifikaci UVEREJNENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Věcná správnost - čeká na kontrolu - POSLAT PRO KAŽDOU NOVOU FAKTURU ZVLÁŠŤ
+          const hasVecnaSpravnost = hasWorkflowState(result.stav_workflow_kod, 'VECNA_SPRAVNOST');
+          const hadVecnaSpravnost = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'VECNA_SPRAVNOST') : false;
+          
+          if (hasVecnaSpravnost && !hadVecnaSpravnost) {
+            // Načíst faktury z výsledku (aktualizované stavy z DB)
+            const fakturyPoUlozeni = result.faktury || [];
+            // Poslat notifikaci PRO KAŽDOU FAKTURU, která JEŠ  NEMÁ potvrrzenou věcnou správnost
+            const cekajiciNaKontrolu = fakturyPoUlozeni.filter(f => 
+              !f.vecna_spravnost_potvrzeno || f.vecna_spravnost_potvrzeno === 0 || f.vecna_spravnost_potvrzeno === false
+            );
+
+            for (const faktura of cekajiciNaKontrolu) {
+              try {
+                await triggerNotification(
+                  'INVOICE_MATERIAL_CHECK_REQUESTED', 
+                  faktura.id, // ⚠️ INVOICE ID, ne order ID!
+                  user_id || formData.objednatel_id, 
+                  {
+                    order_number: orderNumber,
+                    order_subject: formData.predmet || '',
+                    invoice_number: faktura.fa_cislo_vema || '',
+                    invoice_id: faktura.id
+                  }
+                );
+                addDebugLog('success', 'NOTIFICATION', 'trigger-sent-vecna-spravnost', `✅ Notifikace odeslána: věcná správnost vyžadována FA #${faktura.id} (${faktura.fa_cislo_vema}) pro OBJ ${orderNumber}`);
+              } catch (triggerError) {
+                addDebugLog('warning', 'NOTIFICATION', 'trigger-error-vecna-spravnost', `⚠️ Chyba při notifikaci VECNA_SPRAVNOST pro FA #${faktura.id}: ${triggerError.message}`);
+              }
+            }
+          }
+
+          // 🆕 Věcná správnost potvrzena - POSLAT PRO KAŽDOU FAKTURU ZVLÁŠŤ
+          const hasZkontrolovana = hasWorkflowState(result.stav_workflow_kod, 'ZKONTROLOVANA');
+          const hadZkontrolovana = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ZKONTROLOVANA') : false;
+          
+          // ✅ OPRAVA: Notifikace pro KAŽDOU fakturu, která byla právě potvrzena
+          // Backend dostane invoice_id a načte si z něj order_id
+          if (hasZkontrolovana && !hadZkontrolovana) {
+            // Načíst faktury z výsledku (aktualizované stavy z DB)
+            const fakturyPoUlozeni = result.faktury || [];
+            const potvrzeneVecne = fakturyPoUlozeni.filter(f => 
+              f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true
+            );
+
+            // Poslat notifikaci PRO KAŽDOU POTVRRZENOU FAKTURU
+            for (const faktura of potvrzeneVecne) {
+              try {
+                await triggerNotification(
+                  'INVOICE_MATERIAL_CHECK_APPROVED', 
+                  faktura.id, // ⚠️ INVOICE ID, ne order ID!
+                  user_id || formData.objednatel_id, 
+                  {
+                    order_number: orderNumber,
+                    order_subject: formData.predmet || '',
+                    invoice_number: faktura.fa_cislo_vema || '',
+                    invoice_id: faktura.id
+                  }
+                );
+                addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zkontrolovana', `✅ Notifikace odeslána: věcná správnost potvrzena FA #${faktura.id} (${faktura.fa_cislo_vema}) pro OBJ ${orderNumber}`);
+              } catch (triggerError) {
+                addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zkontrolovana', `⚠️ Chyba při notifikaci ZKONTROLOVANA pro FA #${faktura.id}: ${triggerError.message}`);
+              }
+            }
+          }
+
+          // 🆕 Dokončení objednávky
+          const hasDokoncena = hasWorkflowState(result.stav_workflow_kod, 'DOKONCENA');
+          const hadDokoncena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'DOKONCENA') : false;
+          
+          if (hasDokoncena && !hadDokoncena) {
+            try {
+              await triggerNotification('ORDER_COMPLETED', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-dokoncena', `Notifikace odeslána: objednávka dokončena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-dokoncena', `Chyba při notifikaci DOKONCENA: ${triggerError.message}`);
             }
           }
         } catch (notifError) {
+        }
+
+        // 💾 ULOŽIT LP ČERPÁNÍ FAKTUR DO DB
+        try {
+          await saveAllFakturyLPCerpani();
+          addDebugLog('success', 'LP', 'saved-on-update', 'LP čerpání faktur uloženo do DB po UPDATE objednávky');
+        } catch (lpError) {
+          addDebugLog('error', 'LP', 'save-error-update', `Chyba při ukládání LP čerpání: ${lpError.message}`);
+          // Neblokovat uložení objednávky kvůli LP chybě
         }
 
         // ✅ WORKFLOW REFACTORING: Backend vrací kompletní záznam, použij ho přímo
@@ -10487,10 +11867,20 @@ function OrderForm25() {
                   fakturaFromDB.id,
                   username,
                   token,
-                  savedOrderId  // orderId
+                  formData.id  // orderId
                 );
-                attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                attachments = rawAttachments.map(att => ({
+                  ...att,
+                  name: att.originalni_nazev_souboru,
+                  size: att.velikost_souboru_b,
+                  klasifikace: att.typ_prilohy,
+                  uploadDate: att.dt_vytvoreni
+                }));
               } catch (err) {
+                console.error(`❌ [OrderForm25] Chyba při načítání příloh faktury ID=${fakturaFromDB.id}:`, err);
               }
             }
 
@@ -10535,24 +11925,40 @@ function OrderForm25() {
 
         addDebugLog('success', 'UPDATE', 'formdata-updated', `FormData aktualizován: workflow=${updatedWorkflowKod}, strediska=${parsedUpdateData.strediska_kod.join(', ')}`);
         
-        // 🎯 NAČÍST LP OPTIONS z enriched response (z financovani.lp_nazvy)
-        if (result.financovani?.lp_nazvy && Array.isArray(result.financovani.lp_nazvy)) {
-          const lpOptions = result.financovani.lp_nazvy
-            .map(lp => ({
-              id: lp.id,
-              kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-              nazev: lp.nazev || 'Bez názvu',
-              kategorie: lp.kategorie,
-              limit: lp.limit || lp.celkovy_limit,
-              cerpano: lp.cerpano || lp.skutecne_cerpano,
-              zbyva: lp.zbyva || lp.zbyva_skutecne,
-              rok: lp.rok,
-              label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-            }))
-            .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+        // 🎯 OPRAVA: RELOAD objednávky po UPDATE pro získání enriched dat (včetně financovani.lp_nazvy)
+        // Backend UPDATE nevrací enriched financování → musíme zavolat GET s enriched=true
+        try {
+          const freshOrderDataRaw = await getOrderV2(formData.id, token, username, true); // enriched=true
+          // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+          const freshOrderData = transformBackendDataToFrontend(freshOrderDataRaw);
           
-          setLpOptionsForItems(lpOptions);
-          addDebugLog('success', 'UPDATE', 'lp-options-loaded', `LP options načteny z financovani.lp_nazvy: ${lpOptions.length}`);
+          if (freshOrderData?.financovani?.lp_nazvy && Array.isArray(freshOrderData.financovani.lp_nazvy)) {
+            const lpOptions = freshOrderData.financovani.lp_nazvy
+              .map(lp => {
+                const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+                return {
+                  id: lp.id,
+                  kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                  nazev: lp.nazev || 'Bez názvu',
+                  kategorie: lp.kategorie,
+                  limit: lp.limit || lp.celkovy_limit,
+                  cerpano: lp.cerpano || lp.skutecne_cerpano,
+                  zbyva: lp.zbyva || lp.zbyva_skutecne,
+                  rok: lp.rok,
+                  platne_od: lp.platne_od,
+                  platne_do: lp.platne_do,
+                  label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+                };
+              })
+              .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+            
+            setLpOptionsForItems(lpOptions);
+            addDebugLog('success', 'UPDATE', 'lp-options-reloaded', `LP options načteny z GET po UPDATE: ${lpOptions.length}`);
+          } else {
+            addDebugLog('warning', 'UPDATE', 'lp-options-missing', 'Enriched data neobsahují financovani.lp_nazvy');
+          }
+        } catch (reloadError) {
+          addDebugLog('error', 'UPDATE', 'lp-options-reload-failed', `Chyba při reload LP options: ${reloadError.message}`);
         }
 
         // 📊 Přepočet čerpání smlouvy (pokud je smlouva vybraná a objednávka ve fázi 7-8)
@@ -10606,7 +12012,7 @@ function OrderForm25() {
           return 1;
         };
 
-        const newPhase = calculatePhaseFromWorkflow(updatedWorkflowKod, parsedUpdateData.id || savedOrderId, parsedUpdateData);
+        const newPhase = calculatePhaseFromWorkflow(updatedWorkflowKod, parsedUpdateData.id || formData.id, parsedUpdateData);
         addDebugLog('info', 'UPDATE', 'phase-refreshed', `✨ Fáze EXPLICITNĚ přepočítána: ${newPhase}/10, workflow: ${updatedWorkflowKod}`);
 
 
@@ -10616,14 +12022,14 @@ function OrderForm25() {
         try {
           draftManager.setCurrentUser(user_id);
 
-          // 🔥 FIX: Mergovat updatedFormDataImmediate (obsahuje položky + financování) + parsedUpdateData (DB data)
+          // 🔥 FIX: Mergovat parsedUpdateData (transformovaná data) + updatedFormDataImmediate
           // 🔧 BUGFIX: Zachovat objednatel_id z původního formData, protože backend ho při UPDATE NEVRACÍ
           // 🔥 KRITICKÁ OPRAVA: Zachovat financování z PŮVODNÍHO formData (před UPDATE), ne z odpovědi BE
           const mergedDraftData = {
-            ...updatedFormDataImmediate, // Původní data s položkami
-            ...parsedUpdateData,         // Přepsat DB daty (workflow, atd.) + PARSOVANÉ FINANCOVÁNÍ!
-            // Zachovat položky a faktury z původního formData
-            polozky_objednavky: updatedFormDataImmediate.polozky_objednavky || [],
+            ...parsedUpdateData,         // ✅ TRANSFORMOVANÁ data (poznámky už parsované)
+            ...updatedFormDataImmediate, // Původní data pokud něco chybí
+            // ✅ POUŽÍT TRANSFORMOVANÉ položky z parsedUpdateData (obsahují rozparsované poznámky)
+            polozky_objednavky: parsedUpdateData.polozky_objednavky || updatedFormDataImmediate.polozky_objednavky || [],
             faktury: fakturyWithAttachments.length > 0 ? fakturyWithAttachments : updatedFormDataImmediate.faktury || [], // ✅ PŘÍLOHY!
             // ✅ ZACHOVAT objednatel_id + osobní údaje objednatele z původního formData
             objednatel_id: updatedFormDataImmediate.objednatel_id || parsedUpdateData.objednatel_id,
@@ -10649,7 +12055,7 @@ function OrderForm25() {
               version: '1.4',
               isConceptSaved: true,
               isOrderSavedToDB: true,
-              savedOrderId: savedOrderId,
+              savedOrderId: formData.id,
               isChanged: false, // ✅ FALSE = žádné neuložené změny (vše je v DB)
               dictionaries: {
                 approvers: approvers || [],
@@ -10669,10 +12075,10 @@ function OrderForm25() {
           // 🚀 BROADCAST: Aktualizovat MenuBar (zůstává v edit režimu)
           broadcastOrderState({
             isEditMode: true,
-            orderId: savedOrderId,
+            orderId: formData.id,
             orderNumber: formData.ev_cislo || formData.cislo_objednavky
           });
-          addDebugLog('success', 'UPDATE', 'broadcast', `Broadcast stavu odeslán (isEditMode: true, orderId: ${savedOrderId})`);
+          addDebugLog('success', 'UPDATE', 'broadcast', `Broadcast stavu odeslán (isEditMode: true, orderId: ${formData.id})`);
         } catch (error) {
           addDebugLog('error', 'UPDATE', 'draft-update-error', `Chyba při aktualizaci draftu: ${error.message}`);
         }
@@ -10682,28 +12088,11 @@ function OrderForm25() {
         // FÁZE se automaticky přepočítá z aktualizovaného formData.stav_workflow_kod
         addDebugLog('success', 'UPDATE', 'workflow-state', `DB stav: ${updatedWorkflowKod} - fáze se přepočítá automaticky`);
 
-        // 🎉 TOAST NOTIFIKACE pro UPDATE - zobrazit AŽ PO aktualizaci state
-        if (shouldStayOnForm) {
-          // SUPERADMIN/ADMIN - zůstává na formuláři, zobrazit toast
-          const orderNumber = formData.ev_cislo || formData.cislo_objednavky || savedOrderId;
-          showToast && showToast(`Objednávka ${orderNumber} byla úspěšně aktualizována`, { type: 'success' });
-        } else {
-          // Běžný uživatel - zobrazit obecnou zprávu (bude přesměrován)
-          if (result.message) {
-            showToast && showToast(result.message, { type: 'success' });
-          } else {
-            const orderNumber = formData.ev_cislo || formData.cislo_objednavky || savedOrderId;
-            showToast && showToast(`Objednávka ${orderNumber} byla úspěšně aktualizována`, { type: 'success' });
-          }
-        }
+        // ❌ REMOVED: Toast zpráva "Objednávka byla úspěšně aktualizována" - notifikace už informují uživatele
 
         // Debug: Zkontroluj, zda má workflow stav SCHVALENA
         const hasSchvalena = hasWorkflowState(updatedWorkflowKod, 'SCHVALENA');
         addDebugLog('info', 'UPDATE', 'phase-check', `Má SCHVALENA: ${hasSchvalena}, nová fáze by měla být: ${hasSchvalena ? '2' : '1'}`);
-
-        // 🔒 DŮLEŽITÉ: Zachovat stav isPhase3Unlocked po UPDATE
-        // Zkontrolovat, zda byla Phase 3 před UPDATE odemčena
-        // ❌ REMOVED: isPhase3Unlocked logic - používáme WorkflowManager
 
         // Po úspěšném UPDATE - reset stavů a refresh autosave
         // Reset odemknutí pouze pokud je objednávka skutečně schválená
@@ -10758,7 +12147,7 @@ function OrderForm25() {
         // Použij explicitní data místo aktuálního stavu formData
         // KRITICKÉ: orderId potřebujeme pro další operace (může být použit i níže)
         // ✅ V2 API: result je přímo data objednávky, NE result.data!
-        const updateOrderId = result.id || formData.id || savedOrderId;
+        const updateOrderId = result.id || formData.id || formData.id;
 
         // POZNÁMKA: Autosave byl přesunut do DraftManager.syncWithDatabase()
         // Není potřeba volat saveDraftWithData - způsobovalo duplicitní zápis
@@ -10772,14 +12161,14 @@ function OrderForm25() {
 
         // KRITICKÉ: Pro běžné uživatele spustit progress a přesměrování (stejně jako u INSERT)
         const shouldShowProgress = !shouldStayOnForm; // Běžní uživatelé vidí progress
-        const orderNumber = formData.ev_cislo || formData.cislo_objednavky || savedOrderId;
+        const orderNumber = formData.ev_cislo || formData.cislo_objednavky || formData.id;
 
         if (shouldShowProgress) {
           // � SYNCHRONNÍ MAZÁNÍ VŠECH KLÍČŮ - NESMÍ SE DOSTAT DO RACE CONDITION S NAVIGATE()
           setDisableAutosave(true);
           disableAutosaveRef.current = true; // 🚀 OKAMŽITĚ zakázat autosave (REF)
           setIsEditMode(false);
-          setSavedOrderId(null);
+          // NOTE: formData.id removed
           setIsConceptSaved(false);
 
           // 🎯 Použij DraftManager pro CENTRALIZOVANÉ mazání VŠECH klíčů (ASYNCHRONNĚ pro verifikaci)
@@ -10801,7 +12190,7 @@ function OrderForm25() {
             addDebugLog('error', 'UPDATE', 'cache-invalidation-error', `Chyba při invalidaci cache: ${e.message}`);
           }
 
-          startSaveProgressAndRedirect(orderNumber, updateOrderId);
+          await startSaveProgressAndRedirect(orderNumber, updateOrderId);
         } else {
           // SUPERADMIN/ADMIN - zůstává na formuláři v edit režimu
           // ✅ Povolit autosave zpět (zůstávají editovat)
@@ -10810,6 +12199,9 @@ function OrderForm25() {
           draftManager.setAutosaveEnabled(true, 'SUPERADMIN/ADMIN stays on form after UPDATE');
           addDebugLog('info', 'UPDATE', 'stay-on-form', `SUPERADMIN/ADMIN zůstává na formuláři - koncept NENÍ smazán`);
 
+          // 🎉 TOAST NOTIFIKACE pro SUPERADMIN/ADMIN při UPDATE
+          showToast && showToast('✅ Objednávka úspěšně aktualizována\n📋 ' + orderNumber + '\n💾 Změny uloženy', 'success');
+
           // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
           // Uživatel má možnost pokračovat tam, kde skončil
           addDebugLog('info', 'UPDATE', 'stay-in-place', 'Zůstaň na stejné pozici po uložení');
@@ -10817,7 +12209,7 @@ function OrderForm25() {
       }
 
     } catch (error) {
-      const endpoint = (!isOrderSavedToDB || !savedOrderId) ? 'orders25/partial-insert' : 'orders25/partial-update';
+      const endpoint = (!isOrderSavedToDB || !formData.id) ? 'order-v2/create' : 'order-v2/update';
       addDebugLog('error', 'API', endpoint, error.message);
 
       // Zpracovat HTTP 423 error (zamčeno jiným uživatelem)
@@ -10846,7 +12238,58 @@ function OrderForm25() {
           
           addDebugLog('info', 'LOCK', 'order-owned-by-me', `Lock info přítomen, ale locked=false (moje objednávka)`);
         }
-      } else {
+      } 
+      // ✅ Validační chyby - zobrazit strukturovaně jako na screenu
+      else if (error.validationErrors && Array.isArray(error.validationErrors) && error.validationErrors.length > 0) {
+        const formattedErrors = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              marginBottom: '12px', 
+              color: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+              <span>Pro uložení je nutné vyplnit následující položky:</span>
+            </div>
+            <div style={{ 
+              marginBottom: '10px',
+              padding: '10px',
+              backgroundColor: '#fff1f0',
+              borderRadius: '4px'
+            }}>
+              <div style={{ 
+                fontWeight: '600', 
+                fontSize: '13px',
+                color: '#d32f2f',
+                marginBottom: '6px'
+              }}>
+                Detaily objednávky
+              </div>
+              {error.validationErrors.map((err, errIdx) => (
+                <div key={errIdx} style={{ 
+                  fontSize: '12px',
+                  color: '#666',
+                  marginLeft: '8px',
+                  marginTop: '4px',
+                  display: 'flex',
+                  alignItems: 'flex-start'
+                }}>
+                  <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                  <span>{err}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+        
+        showToast && showToast(formattedErrors, { type: 'error' });
+        addDebugLog('error', 'VALIDATION', 'field-errors', `Validační chyby: ${error.validationErrors.join(', ')}`);
+      }
+      else {
         const errorMsg = translateErrorMessageShort(error.message);
         showToast && showToast(`Nepodařilo se uložit objednávku: ${errorMsg}`, { type: 'error' });
       }
@@ -10903,7 +12346,7 @@ function OrderForm25() {
         // Broadcast by mohl způsobit znovu-vytvoření draftu
         // Zjisti fázi a číslo objednávky pro orderSaved broadcast
         const orderNumber = formData.ev_cislo || formData.cislo_objednavky || '';
-        const orderId = formData.id || savedOrderId;
+        const orderId = formData.id || formData.id;
 
         // 🚫 VYPNUTO: Způsobovalo blikání MenuBaru mezi stavy
         /*
@@ -10979,10 +12422,25 @@ function OrderForm25() {
 
       // Zkontroluj existující draft pro firstSaveDate
       const existingDraft = await draftManager.hasDraft();
+      
       let firstSaveDate = null;
+      
+      // 🔥 KRITICKÉ: Detekce první autosave (NOVA → KONCEPT)
+      const isFirstAutosave = !existingDraft && isAutoSave;
 
-      if (!existingDraft && isAutoSave) {
+      if (isFirstAutosave) {
         firstSaveDate = new Date().toISOString();
+        
+        // 🚀 BROADCAST: Přechod NOVA → KONCEPT při první změně!
+        broadcastOrderState({
+          isEditMode: false,
+          isNewOrder: false, // Už není nová, má koncept
+          orderId: null,
+          orderNumber: '',
+          hasDraft: true, // ← KLÍČOVÉ: Koncept existuje!
+          currentPhase: currentPhase,
+          mainWorkflowState: mainWorkflowState
+        });
       } else if (existingDraft) {
         try {
           const existing = await draftManager.loadDraft();
@@ -10995,8 +12453,15 @@ function OrderForm25() {
       // Připrav formData kopii - ukládá se CELÝ formData včetně individualni_schvaleni a pojistna_udalost_cislo
       const draftFormData = { ...formDataToSave };
 
-      // ❌ DEPRECATED: Starý kód pro zpracování financování - NEPOUŽÍVÁ SE (formData.financovani není objekt)
-      // Nové API používá: zpusob_financovani, lp_kod, cislo_smlouvy, individualni_schvaleni, pojistna_udalost_cislo atd.
+      // 🛡️ CRITICAL: Pokud je to NOVÁ objednávka (bez ID), NIKDY neukládej faktury do draftu!
+      // Faktury patří pouze k existujícím objednávkám v DB
+      if (!draftFormData.id) {
+        if (draftFormData.faktury && draftFormData.faktury.length > 0) {
+          // DRAFT SAVE CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku (bez ID)
+        }
+        draftFormData.faktury = [];
+      }
+
       if (typeof draftFormData.financovani === 'object' && draftFormData.financovani !== null) {
         addDebugLog('warning', 'DRAFT', 'deprecated-financovani-block', '⚠️ DEPRECATED blok se spustil - měl by být mrtvý kód!');
         const financovaniObj = {
@@ -11027,19 +12492,16 @@ function OrderForm25() {
         return att;
       });
 
-      // Určit savedOrderId
-      // 🔧 FIX: Pokud savedOrderId je null, ale formData.id existuje, použij formData.id
-      // (objednávka je v DB, ale savedOrderId state nebyl nastaven při načtení draftu)
+      // Určit formData.id
+      // 🔧 FIX: Pokud formData.id je null, ale formData.id existuje, použij formData.id
+      // (objednávka je v DB, ale formData.id state nebyl nastaven při načtení draftu)
       const effectiveSavedOrderId = explicitSavedOrderId !== undefined
         ? explicitSavedOrderId
-        : (savedOrderId || (formDataToSave.id ? formDataToSave.id : null));
+        : (formData.id || (formDataToSave.id ? formDataToSave.id : null));
 
-      // � FIX: Pokud jsme detekovali savedOrderId z formData.id, aktualizuj state
-      if (!savedOrderId && effectiveSavedOrderId && formDataToSave.id) {
-        setSavedOrderId(effectiveSavedOrderId);
-      }
+      // NOTE: setSavedOrderId removed - formData.id is single source of truth
 
-      // 🔍 DEBUG: savedOrderId tracking
+      // 🔍 DEBUG: formData.id tracking
 
       // Zkontrolovat fáze 7/8 data
       const hasPhase7Or8Data = Boolean(
@@ -11052,6 +12514,7 @@ function OrderForm25() {
       await draftManager.saveDraft(draftFormData, {
         orderId: effectiveSavedOrderId,
         attachments: serializableAttachments,
+        fakturyLPCerpani: fakturyLPCerpani, // 💰 LP čerpání data
         metadata: {
           firstAutoSaveDate: firstSaveDate,
           version: '1.4',
@@ -11079,11 +12542,14 @@ function OrderForm25() {
       }, isAutoSave ? 300 : 0);
 
       if (!isAutoSave) {
-        showToast && showToast('Koncept byl uložen do místního úložiště', { type: 'success' });
+        showToast && showToast(`✅ Koncept úspěšně uložen\n💾 Místní úložiště\n📝 ${formData.cislo_objednavky || 'Nová objednávka'}`, 'success');
       }
 
       return true;
     } catch (error) {
+      console.error('❌ saveDraftUnified CHYBA:', error);
+      console.error('❌ Stack trace:', error.stack);
+      
       if (!isAutoSave) {
         showToast && showToast('Nepodařilo se uložit koncept', { type: 'error' });
       }
@@ -11104,7 +12570,6 @@ function OrderForm25() {
   const saveDraft = async (isAutoSave = false, isAfterDbSave = false, customFormData = null) => {
     // 🚨 KRITICKÁ KONTROLA: Pokud se formulář zavírá, ZABLOKOVAT save
     if (isClosingRef.current) {
-      console.log('🚫 saveDraft BLOCKED - formulář se zavírá');
       return { success: false, reason: 'form_closing' };
     }
     
@@ -11155,7 +12620,9 @@ function OrderForm25() {
 
 
       // ✅ V2 API: Načti objednávku s enriched daty
-      const dbOrder = await getOrderV2(orderId, token, username, true);
+      const dbOrderRaw = await getOrderV2(orderId, token, username, true);
+      // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+      const dbOrder = transformBackendDataToFrontend(dbOrderRaw);
 
       addDebugLog('info', 'REVALIDATE', 'api-response', `API odpověď pro ID ${orderId}: ${JSON.stringify(dbOrder, null, 2)}`);
 
@@ -11231,7 +12698,7 @@ function OrderForm25() {
       // 🔥 RESET STATES po smazání draftu
       setIsEditMode(false);
       setIsConceptSaved(false);
-      setSavedOrderId(null);
+      // NOTE: formData.id removed
 
       // 🔥 Smaž draft přes DraftManager (centralizovaně)
       try {
@@ -11284,16 +12751,21 @@ function OrderForm25() {
       dt_schvaleni: '',
       schvaleni_komentar: '',
       stav_workflow_kod: '["ODESLANA_KE_SCHVALENI"]', // ✅ Nová objednávka začíná rovnou stavem ODESLANA_KE_SCHVALENI
-      // 🔧 KRITICKÁ OPRAVA: Nastavit datumové údaje pro novou objednávku
-      temp_datum_objednavky: new Date().toISOString().split('T')[0], // Dočasné datum objednávky
+      // � FIX: Použít lokální české datum místo UTC
+      temp_datum_objednavky: (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      })(),
       datum_vytvoreni: '', // Datum vytvoření se nastaví až při prvním uložení do DB
-      datum_splatnosti: '' // Datum splatnosti zatím prázdné
+      datum_splatnosti: '', // Datum splatnosti zatím prázdné
+      // 🔥 KRITICKÉ: Vyčistit faktury při resetu - nesmí se přenést ze staré objednávky!
+      faktury: [] // ✅ PRÁZDNÉ POLE - žádné faktury pro novou objednávku
     });
 
     // Reset stavů uložené objednávky
     setIsConceptSaved(false);
-    // isOrderSavedToDB se odvodí automaticky z formData.id
-    setSavedOrderId(null);
+    // NOTE: isOrderSavedToDB se odvodí automaticky z formData.id
+    // NOTE: formData.id removed
 
     // Reset validačních chyb a touched fields
     setValidationErrors({});
@@ -11323,13 +12795,16 @@ function OrderForm25() {
           sectionState: {},
           scrollPosition: 0
         });
-        // 🔥 KRITICKÉ: Smazat draft z localStorage, aby se při načtení nenačetl starý
-        draftManager.deleteDraft();
+        // 🔥 KRITICKÉ: Kompletní čištění všech dat formuláře
+        // Smaže draft, faktury, přílohy objednávky i faktur, cache, UI state
+        draftManager.deleteAllFormData();
+        // resetForm: Kompletní čištění provedeno
       } catch (error) {
+        console.error('❌ resetForm: Chyba při čištění:', error);
       }
     }
 
-    addDebugLog('info', 'FORM', 'reset', 'Formulář resetován do výchozího stavu a draft smazán');
+    addDebugLog('info', 'FORM', 'reset', 'Formulář resetován do výchozího stavu a všechna data smazána');
   };
 
   const hasDraft = () => {
@@ -11352,11 +12827,6 @@ function OrderForm25() {
       setIsFormInitializing(true);
       setIsLoadingCiselniky(true); // 🎯 NOVÉ: Začínáme načítat číselníky
       setInitializationError(null);
-
-      // ❌ DEPRECATED: dictionariesReadyPromiseRef - použij areDictionariesReady
-      // dictionariesReadyPromiseRef.current = new Promise((resolve) => {
-      //   dictionariesReadyResolveRef.current = resolve;
-      // });
 
       // Start progress bar
       if (startGlobalProgress) startGlobalProgress();
@@ -11417,17 +12887,12 @@ function OrderForm25() {
       setInitializationError(errorMsg);
       setIsLoadingCiselniky(false); // 🎯 NOVÉ: Chyba při načítání číselníků
 
-      // ❌ DEPRECATED: dictionariesReadyResolveRef - use areDictionariesReady
-      // if (dictionariesReadyResolveRef.current) {
-      //   dictionariesReadyResolveRef.current(false);
-      // }
-
       if (showToast) showToast(errorMsg, { type: 'error' });
       if (failGlobalProgress) failGlobalProgress();
     }
   };
 
-  // Načítání Phase 2 unlock stavu z localStorage po načtení objednávky
+  // ✅ KRITICKÁ OPRAVA: Spustit initializeForm() JEN PŘI MOUNT (useEffect s prázdnými dependencies)
   // POUZE pokud nebylo zamčení už zpracováno při načítání z DB
   useEffect(() => {
     if (formData.id && user_id && formData.stav_workflow_kod && !isPhase3SectionsLockProcessedFromDB) {
@@ -11575,11 +13040,8 @@ function OrderForm25() {
     // // console.log('🚀 MOUNT OrderForm25 - spouštím INIT');
 
     if (token && username) {
-      // ❌ DEPRECATED: initializeForm() zakázán - nyní řídí useFormController
-      // initializeForm();
-    } // else {
-    //   console.warn('⚠️ Token nebo username chybí, čekám...');
-    // }
+      // Inicializace řízená useFormController
+    }
 
     return () => {
       // // console.log('🧹 UNMOUNT OrderForm25 - čistím state');
@@ -11782,16 +13244,22 @@ function OrderForm25() {
       return;
     }
 
-    setLoadingLpDetails(prev => {
+    setLpDetailsState(prev => {
       // Pokud už máme detaily nebo se právě načítají, nemusíme načítat znovu
-      if (prev[lp_id_or_kod]) return prev;
-      return { ...prev, [lp_id_or_kod]: true };
+      if (prev.loading[lp_id_or_kod]) return prev;
+      return {
+        ...prev,
+        loading: { ...prev.loading, [lp_id_or_kod]: true }
+      };
     });
 
     try {
       const detail = await fetchLPDetail({ token, username, cislo_lp });
       if (detail) {
-        setLpDetails(prev => ({ ...prev, [lp_id_or_kod]: detail }));
+        setLpDetailsState(prev => ({
+          ...prev,
+          details: { ...prev.details, [lp_id_or_kod]: detail }
+        }));
       }
     } catch (error) {
       // Netobrazovat toast pokud je to jen 404 - LP nemusí existovat
@@ -11799,7 +13267,10 @@ function OrderForm25() {
         showToast(`Nepodařilo se načíst detail LP: ${error.message}`, 'error');
       }
     } finally {
-      setLoadingLpDetails(prev => ({ ...prev, [lp_id_or_kod]: false }));
+      setLpDetailsState(prev => ({
+        ...prev,
+        loading: { ...prev.loading, [lp_id_or_kod]: false }
+      }));
     }
   }, [token, username, showToast, lpKodyOptions]);
 
@@ -11815,7 +13286,8 @@ function OrderForm25() {
         token,
         username,
         show_inactive: false,
-        limit: 500 // Načíst max 500 aktivních smluv
+        limit: 500, // Načíst max 500 aktivních smluv
+        pouzit_v_obj_formu: true
       });
 
       if (response?.data && Array.isArray(response.data)) {
@@ -12016,6 +13488,50 @@ function OrderForm25() {
     }
   }, [formData.ev_cislo, formData.zpusob_financovani, financovaniOptions, formData.individualni_schvaleni]);
 
+  // 🎯 Automatické vymazání LP kódů při změně příkazce
+  // ⚠️ Ref pro sledování inicializace - nechceme mazat LP při prvním načtení
+  const lpValidationInitializedRef = useRef(false);
+  const previousPrikazceIdRef = useRef(formData.prikazce_id);
+  
+  useEffect(() => {
+    // 🛡️ GUARD: Nespouštět při prvním načtení (inicializaci)
+    if (!lpValidationInitializedRef.current) {
+      lpValidationInitializedRef.current = true;
+      previousPrikazceIdRef.current = formData.prikazce_id;
+      return;
+    }
+
+    // 🛡️ GUARD: Nespouštět pokud se příkazce nezměnil
+    if (previousPrikazceIdRef.current === formData.prikazce_id) {
+      return;
+    }
+    
+    // Aktualizovat ref s novým příkazce
+    previousPrikazceIdRef.current = formData.prikazce_id;
+
+    // Pouze pokud jsou vybrané nějaké LP kódy
+    if (!formData.lp_kod || !Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) {
+      return;
+    }
+
+    // Zkontrolovat, zda vybrané LP kódy odpovídají novému filtru
+    const selectedLpIds = formData.lp_kod;
+    const validLpIds = filteredLpKodyOptions.map(lp => lp.id || lp.kod);
+
+    // Pokud nějaké vybrané LP již není ve filtru, vymazat všechny LP kódy
+    const hasInvalidLp = selectedLpIds.some(lpId => !validLpIds.includes(lpId));
+
+    if (hasInvalidLp) {
+      setFormData(prev => ({
+        ...prev,
+        lp_kod: []
+      }));
+
+      // ❌ TOAST VYPNUT - objevoval se při načtení stránky i když se LP nemazaly
+      // showToast('LP kódy byly vymazány - příkazce má jiný úsek', 'info');
+    }
+  }, [formData.prikazce_id, filteredLpKodyOptions]); // Spustí se při změně příkazce nebo filtrovaných LP
+
   // 📄 Automatické načtení detailu smlouvy při změně čísla smlouvy
   useEffect(() => {
     if (formData.cislo_smlouvy && formData.cislo_smlouvy.trim()) {
@@ -12117,13 +13633,7 @@ function OrderForm25() {
       } catch (error) {
       }
 
-      // ❌ EMERGENCY SAVE VYPNUT - způsoboval problémy s přepsáním dat
-      // Spoléháme se na rychlý autosave (500ms debounce)
-      // Emergency save nelze spolehlivě implementovat kvůli:
-      // 1) Šifrovaná data nelze synchronně dešifrovat
-      // 2) formData state může být starý (React batching)
-      // 3) beforeunload event je synchronní a nemůže čekat na async operace
-      // Zjisti, jestli máme nějaké neuložené přílohy
+      // 💾 ULOŽENÍ NEULOŽENÝCH PŘÍLOH DO LOCALSTORAGE
       const unsavedAttachments = attachments.filter(att =>
         !att.serverId && // Nemá server ID = není nahráno na server
         att.status !== 'uploaded' && // Není označeno jako nahrané
@@ -12132,44 +13642,71 @@ function OrderForm25() {
       );
 
       const unclassifiedAttachments = attachments.filter(att =>
-        !att.klasifikace || att.klasifikace.trim() === '' // Není klasifikováno
+        (!att.klasifikace || att.klasifikace.trim() === '') && // Není klasifikováno
+        !att.fromServer // Není ze serveru
       );
 
+      // Uložit neuložené přílohy do LocalStorage (bez file objektů kvůli velikosti)
       if (unsavedAttachments.length > 0 || unclassifiedAttachments.length > 0) {
-        const message = `Máte ${unsavedAttachments.length} neuložených a ${unclassifiedAttachments.length} neklasifikovaných příloh. Opravdu chcete opustit stránku? Neuložené přílohy budou ztraceny.`;
-        e.preventDefault();
-        e.returnValue = message; // For Chrome
-        return message; // For other browsers
+        try {
+          const attachmentsToSave = [...unsavedAttachments, ...unclassifiedAttachments].map(att => ({
+            id: att.id,
+            name: att.name,
+            size: att.size,
+            type: att.type,
+            klasifikace: att.klasifikace || '',
+            uploadDate: att.uploadDate,
+            lastModified: att.lastModified || Date.now(),
+            // File object nelze uložit do LS - musí se znovu vybrat
+            needsReselection: true
+          }));
+
+          const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+          localStorage.setItem(storageKey, JSON.stringify(attachmentsToSave));
+          
+          addDebugLog('info', 'ATTACHMENTS', 'save-to-ls', 
+            `Uloženo ${attachmentsToSave.length} neuložených příloh do LocalStorage`);
+        } catch (error) {
+          addDebugLog('error', 'ATTACHMENTS', 'save-to-ls-error', error.message);
+        }
+
+        // Místo browser alertu - bez preventDefault, jen notifikace
+        addDebugLog('warning', 'ATTACHMENTS', 'unsaved-on-exit', 
+          `Opouštíte stránku s ${unsavedAttachments.length} neuloženými a ${unclassifiedAttachments.length} neklasifikovanými přílohami`);
       }
     };
 
     const handlePopState = () => {
-      // Stejná kontrola pro browser back/forward
+      // 💾 ULOŽIT NEULOŽENÉ PŘÍLOHY při navigaci
       const unsavedAttachments = attachments.filter(att =>
         !att.serverId && att.status !== 'uploaded' && !att.fromServer && att.file
       );
       const unclassifiedAttachments = attachments.filter(att =>
-        !att.klasifikace || att.klasifikace.trim() === ''
+        (!att.klasifikace || att.klasifikace.trim() === '') && !att.fromServer
       );
 
       if (unsavedAttachments.length > 0 || unclassifiedAttachments.length > 0) {
-        showToast && showToast(
-          `Máte ${unsavedAttachments.length} neuložených a ${unclassifiedAttachments.length} neklasifikovaných příloh.\n\nOpravdu chcete opustit stránku? Neuložené přílohy budou ztraceny.`, {
-          type: 'warning',
-          timeout: 0,
-          action: {
-            confirmText: 'ANO, OPUSTIT',
-            cancelText: 'Zůstat',
-            onConfirm: () => {
-              // Pokračuj s opuštěním stránky - nemusíme nic dělat, prohlížeč se postará
-            },
-            onCancel: () => {
-              // 🔧 FIX: Zachovat query parametry (např. ?edit=123)
-              const fullUrl = window.location.pathname + window.location.search;
-              window.history.pushState(null, '', fullUrl);
-            }
-          }
-        });
+        // Jen uložit do LS, neblokovat navigaci
+        try {
+          const attachmentsToSave = [...unsavedAttachments, ...unclassifiedAttachments].map(att => ({
+            id: att.id,
+            name: att.name,
+            size: att.size,
+            type: att.type,
+            klasifikace: att.klasifikace || '',
+            uploadDate: att.uploadDate,
+            lastModified: att.lastModified || Date.now(),
+            needsReselection: true
+          }));
+
+          const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+          localStorage.setItem(storageKey, JSON.stringify(attachmentsToSave));
+          
+          addDebugLog('info', 'ATTACHMENTS', 'save-on-navigation', 
+            `Uloženo ${attachmentsToSave.length} neuložených příloh při navigaci`);
+        } catch (error) {
+          addDebugLog('error', 'ATTACHMENTS', 'save-on-navigation-error', error.message);
+        }
       }
     };
 
@@ -12182,15 +13719,11 @@ function OrderForm25() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [attachments, formData, user_id, isOrderSavedToDB, savedOrderId]); // Aktuální data pro emergency save
+  }, [attachments, formData, user_id, isOrderSavedToDB, formData.id]); // Aktuální data pro emergency save
 
   // Funkce pro vyčištění validační chyby při ztrátě fokusu
   const handleFieldBlur = useCallback((fieldName, value) => {
-    // ❌ REMOVED: Automatické mazání chyb při blur - způsobuje mizení červených rámečků
-    // Chyby se mají mazat POUZE při nové validaci, ne při každém blur!
-    // if (validationErrors[fieldName] && value) {
-    //   setValidationErrors(prev => {
-    //     const { [fieldName]: removed, ...rest } = prev;
+    // Validace probíhá POUZE při Save
     //     return rest;
     //   });
     // }
@@ -12242,7 +13775,7 @@ function OrderForm25() {
 
         // Podmínka pro automatické načtení při rozbalení
         // POUZE od FÁZE 3+ (SCHVALENA) - FÁZE 1 a 2 přílohy neřeší
-        if ((formData.id || savedOrderId) && token && username && !isNewOrder && currentPhase >= 3) {
+        if (formData.id && token && username && !isNewOrder && currentPhase >= 3) {
           setTimeout(() => {
             loadAttachmentsSmartly();
           }, 100); // Krátké zpoždění pro správné vykreslení UI
@@ -12293,9 +13826,6 @@ function OrderForm25() {
     // Převést formátovanou hodnotu zpět na číslo
     const numericValue = parseCurrency(formattedValue);
 
-    // ❌ REMOVED: Mazání chyby validace - zbytečné
-    // Validace probíhá POUZE při Save, live mazání chyb není potřeba
-
     // Uložit číselnou hodnotu do formData
     // POZOR: Toto způsobuje re-render a resetuje pozici kurzoru!
     setFormData(prev => ({
@@ -12317,6 +13847,8 @@ function OrderForm25() {
 
   // Funkce pro práci s přílohami - Orders25 API
   const handleFileUpload = (files) => {
+    // handleFileUpload CALLED - files count: files?.length
+
     // 🔒 CENTRÁLNÍ ZAMYKÁNÍ: Blokovat upload pokud je objednávka dokončena/zamítnuta/zrušena
     if (isWorkflowCompleted && !canUnlockAnything) {
       showToast && showToast('Nelze nahrát přílohy - objednávka je dokončena/zamítnuta/zrušena', { type: 'warning' });
@@ -12327,18 +13859,68 @@ function OrderForm25() {
       return;
     }
 
+    // 📊 Kontrola celkové velikosti příloh před upload
+    const existingAttachmentsSize = attachments
+      .filter(f => getFilePrefix(f) === 'obj-' && (f.status === 'uploaded' || f.status === 'uploading'))
+      .reduce((sum, f) => sum + (f.size || 0), 0);
+    
+    const newFilesSize = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+    const totalSize = existingAttachmentsSize + newFilesSize;
+    const maxTotalSize = 100 * 1024 * 1024; // 100MB limit pro celou objednávku
+    
+    if (totalSize > maxTotalSize) {
+      const existingSizeMB = (existingAttachmentsSize / 1024 / 1024).toFixed(2);
+      const newSizeMB = (newFilesSize / 1024 / 1024).toFixed(2);
+      const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+      
+      showToast && showToast(
+        `❌ Překročen limit celkové velikosti příloh!\n\n` +
+        `📊 Současná velikost: ${existingSizeMB} MB\n` +
+        `➕ Nové soubory: ${newSizeMB} MB\n` +
+        `📈 Celkem by bylo: ${totalSizeMB} MB\n` +
+        `🚫 Maximum povoleno: 100 MB\n\n` +
+        `💡 Tip: Smažte některé existující přílohy nebo nahrajte menší soubory`, 
+        { type: 'error', timeout: 10000 }
+      );
+      return;
+    }
+
     setUploadingFiles(true);
 
     // Přidáme soubory do lokálního stavu pro klasifikaci
     const newFiles = Array.from(files).map((file, index) => {
-      // Validace souboru
-      if (!isAllowedFileType25(file.name)) {
-        showToast(`Soubor ${file.name}: Nepodporovaný typ souboru`, 'error');
+      // Validace typu souboru
+      if (!isAllowedFileType(file.name)) {
+        const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'bez přípony';
+        
+        showToast && showToast(
+          `❌ Nepodporovaný typ souboru "${file.name}"\n\n` +
+          `📄 Detekovaná přípona: .${fileExtension}\n` +
+          `✅ Podporované typy:\n` +
+          `  • Dokumenty: PDF, DOC, DOCX, ODT, RTF, TXT\n` +
+          `  • Tabulky: XLS, XLSX, ODS, CSV\n` +
+          `  • Prezentace: PPT, PPTX, ODP\n` +
+          `  • Obrázky: JPG, PNG, GIF, BMP, WEBP, SVG\n` +
+          `  • Archivy: ZIP, RAR, 7Z\n` +
+          `  • Emaily: EML, MSG\n\n` +
+          `💡 Tip: Převeďte soubor do podporovaného formátu`, 
+          { type: 'error', timeout: 10000 }
+        );
         return null;
       }
 
-      if (!isAllowedFileSize25(file.size, 20)) {
-        showToast(`Soubor ${file.name}: Příliš velký (max 20MB)`, 'error');
+      // Validace velikosti souboru
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+      const maxSizeMB = 20;
+      
+      if (!isAllowedFileSize(file.size, maxSizeMB)) {
+        showToast && showToast(
+          `❌ Soubor "${file.name}" je příliš velký\n\n` +
+          `📏 Velikost souboru: ${fileSizeMB} MB\n` +
+          `🚫 Maximální povolená velikost: ${maxSizeMB} MB\n\n` +
+          `💡 Tip: Zkomprimujte soubor nebo nahrajte menší verzi`, 
+          { type: 'error', timeout: 8000 }
+        );
         return null;
       }
 
@@ -12348,10 +13930,10 @@ function OrderForm25() {
       }
 
       // Použij Orders25 metadata generátor
-      const metadata = createAttachmentMetadata25(file);
+      const metadata = createAttachmentMetadata(file);
 
       return {
-        id: metadata.id,
+        id: metadata.guid, // ✅ OPRAVA: Použij guid jako id (unikátní identifikátor)
         guid: metadata.guid,
         name: file.name,
         originalName: metadata.originalName,
@@ -12360,7 +13942,7 @@ function OrderForm25() {
         size: file.size,
         type: file.type,
         klasifikace: '', // Bude se vybírat uživatelem - po výběru se nahraje na server
-        uploadDate: metadata.createdAt,
+        uploadDate: metadata.uploaded_at || new Date().toISOString(),
         status: 'pending_classification', // Čeká na klasifikaci
         file: file, // Pro budoucí upload po klasifikaci
         uploadError: null,
@@ -12371,13 +13953,17 @@ function OrderForm25() {
       };
     }).filter(Boolean); // Odfiltruj nevalidní soubory
 
+
     // Aktualizuj oba state - formData i attachments
     setFormData(prev => ({
       ...prev,
       prilohy_dokumenty: [...(prev.prilohy_dokumenty || []), ...newFiles]
     }));
 
-    setAttachments(prev => [...prev, ...newFiles]);
+    setAttachments(prev => {
+      const updated = [...prev, ...newFiles];
+      return updated;
+    });
 
     setUploadingFiles(false);
 
@@ -12400,13 +13986,27 @@ function OrderForm25() {
 
     // Přidáme soubory s automatickou klasifikací "JINE"
     const newFiles = Array.from(files).map((file, index) => {
-      // Validace souboru
-      if (!isAllowedFileType25(file.name)) {
-        showToast(`Soubor ${file.name}: Nepodporovaný typ souboru`, { type: 'error' });
+      // Validace typu souboru
+      if (!isAllowedFileType(file.name)) {
+        const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'bez přípony';
+        
+        showToast && showToast(
+          `❌ Nepodporovaný typ souboru "${file.name}"\n\n` +
+          `📄 Detekovaná přípona: .${fileExtension}\n` +
+          `✅ Podporované typy:\n` +
+          `  • Dokumenty: PDF, DOC, DOCX, ODT, RTF, TXT\n` +
+          `  • Tabulky: XLS, XLSX, ODS, CSV\n` +
+          `  • Prezentace: PPT, PPTX, ODP\n` +
+          `  • Obrázky: JPG, PNG, GIF, BMP, WEBP, SVG\n` +
+          `  • Archivy: ZIP, RAR, 7Z\n` +
+          `  • Emaily: EML, MSG\n\n` +
+          `💡 Tip: Převeďte soubor do podporovaného formátu`, 
+          { type: 'error', timeout: 10000 }
+        );
         return null;
       }
 
-      if (!isAllowedFileSize25(file.size, 20)) {
+      if (!isAllowedFileSize(file.size, 20)) {
         showToast(`Soubor ${file.name}: Příliš velký (max 20MB)`, { type: 'error' });
         return null;
       }
@@ -12415,10 +14015,10 @@ function OrderForm25() {
       const duplicate = checkDuplicateFileName(file.name);
 
       // Použij Orders25 metadata generátor
-      const metadata = createAttachmentMetadata25(file);
+      const metadata = createAttachmentMetadata(file);
 
       const newFile = {
-        id: metadata.id,
+        id: metadata.guid, // ✅ OPRAVA: Použij guid jako id (unikátní identifikátor)
         guid: metadata.guid,
         name: file.name,
         originalName: metadata.originalName,
@@ -12428,7 +14028,7 @@ function OrderForm25() {
         type: file.type,
         klasifikace: 'JINE', // ✅ Automatická klasifikace jako "JINE"
         file_prefix: 'dd-', // ✅ Prefix pro dodatečné dokumenty
-        uploadDate: metadata.createdAt,
+        uploadDate: metadata.uploaded_at || new Date().toISOString(),
         status: 'pending_upload', // ✅ Ready k uploadu (má již klasifikaci)
         file: file,
         uploadError: null,
@@ -12548,13 +14148,13 @@ function OrderForm25() {
       }
 
       try {
-        const result = await updateAttachment25({
-          token,
-          username,
-          objednavka_id: savedOrderId, // ✅ OPRAVENO: přidán objednavka_id
-          attachment_id: file.serverId,
-          typ_prilohy: klasifikace
-        });
+        const result = await updateAttachmentV2(
+          formData.id,           // orderId
+          file.serverId,         // attachmentId
+          { type: klasifikace }, // updates
+          token,                 // token
+          username               // username
+        );
 
         if (result.status === 'ok' || result.status === 'success') { // ✅ OPRAVENO: backend může vracet 'success'
 
@@ -12581,7 +14181,7 @@ function OrderForm25() {
           // Zkontroluj existence souboru po aktualizaci (pomocí sync kontroly)
           await checkAttachmentsSynchronization25(true); // silentMode = true
 
-          showToast('✅ Klasifikace aktualizována v databázi + kontrola existence OK', 'success');
+          showToast('✅ Klasifikace aktualizována\n📄 ' + file.name + '\n🏷️ ' + klasifikace, 'success');
           // Success log odstraněn
 
           addDebugLog('success', 'ATTACHMENTS', 'update-classification-db',
@@ -12614,8 +14214,30 @@ function OrderForm25() {
       // ✅ LOKÁLNÍ SOUBOR - Standardní chování pro nahrání na server
 
       // Pokud je klasifikace nastavena a objednávka je uložená, nahraj soubor na server
-      if (klasifikace && klasifikace.trim() !== '' && savedOrderId && token && username) {
-        // ✅ Použij původní file_prefix souboru místo hardcoded 'obj-'
+      if (klasifikace && klasifikace.trim() !== '') {
+        if (!formData.id) {
+          // Objednávka není uložená - zobraz varování
+          addDebugLog('warning', 'ATTACHMENTS', 'upload-blocked', 
+            `Nelze nahrát ${file.name} - objednávka není uložená`);
+          
+          showToast && showToast(
+            `⚠️ Nelze nahrát přílohu\n\n` +
+            `📄 Soubor: ${file.name}\n` +
+            `🏷️ Klasifikace nastavena: ${klasifikace}\n\n` +
+            `💡 Nejprve ulož objednávku, pak se přílohy automaticky nahrají`, 
+            { type: 'warning', timeout: 6000 }
+          );
+          return;
+        }
+        
+        if (!token || !username) {
+          addDebugLog('error', 'ATTACHMENTS', 'upload-blocked', 
+            `Nelze nahrát ${file.name} - chybí token nebo username`);
+          showToast && showToast('❌ Chyba autentizace - nelze nahrát přílohu', { type: 'error' });
+          return;
+        }
+        
+        // ✅ Vše OK - zahaj upload
         const filePrefix = file.file_prefix || 'obj-';
         await uploadFileToServer25(fileId, klasifikace, filePrefix);
       }
@@ -12624,12 +14246,49 @@ function OrderForm25() {
 
   // Upload souboru na server Orders25 po klasifikaci
   const uploadFileToServer25 = async (fileId, klasifikace, filePrefix = 'obj-') => {
+    // ✅ KONTROLA DUPLIKACE: Pokud se soubor už uploaduje nebo byl uploadnutý, přeskoč
+    if (uploadingFilesRef.current.has(fileId)) {
+      addDebugLog('warning', 'ATTACHMENTS', 'upload-already-in-progress',
+        `Soubor ${fileId} se již uploaduje - přeskakuji`);
+      return;
+    }
+    if (uploadedFilesRef.current.has(fileId)) {
+      addDebugLog('warning', 'ATTACHMENTS', 'upload-already-done',
+        `Soubor ${fileId} už byl uploadnutý - přeskakuji`);
+      return;
+    }
+    
     const file = formData.prilohy_dokumenty?.find(f => f.id === fileId);
-    if (!file || !file.file || file.status === 'uploaded') {
+    
+    if (!file) {
+      addDebugLog('error', 'ATTACHMENTS', 'upload-no-file', 
+        `Soubor s ID ${fileId} nebyl nalezen v prilohy_dokumenty`);
+      return;
+    }
+    
+    if (!file.file) {
+      addDebugLog('error', 'ATTACHMENTS', 'upload-no-file-object', 
+        `Soubor ${file.name} nemá File objekt - možná již byl nahrán nebo ztracen`);
+      showToast && showToast(
+        `⚠️ Nelze nahrát "${file.name}"\n\n` +
+        `Soubor nemá přiřazený File objekt.\n` +
+        `Zkuste soubor znovu vybrat.`, 
+        { type: 'warning', timeout: 5000 }
+      );
+      return;
+    }
+    
+    if (file.status === 'uploaded') {
+      addDebugLog('info', 'ATTACHMENTS', 'already-uploaded', 
+        `Soubor ${file.name} je již nahrán na serveru`);
+      uploadedFilesRef.current.add(fileId);
       return;
     }
 
     try {
+      // Označit jako uploadující se
+      uploadingFilesRef.current.add(fileId);
+      
       // Označ jako nahrávající se v obou state
       setFormData(prev => ({
         ...prev,
@@ -12649,14 +14308,14 @@ function OrderForm25() {
       addDebugLog('info', 'ATTACHMENTS', 'upload-start',
         `Nahrávám soubor ${file.name} s klasifikací ${klasifikace} a prefixem ${filePrefix} na server V2 API...`);
 
-      // KONTROLA: pokud není savedOrderId, zastav upload a zobraz chybu
-      if (!savedOrderId) {
+      // KONTROLA: pokud není formData.id, zastav upload a zobraz chybu
+      if (!formData.id) {
         showToast('❌ Nelze nahrát přílohu - objednávka nemá ID! Nejprve ulož objednávku.', 'error');
-        throw new Error('Missing savedOrderId - order must be saved first');
+        throw new Error('Missing formData.id - order must be saved first');
       }
 
       const result = await uploadOrderAttachment(
-        savedOrderId,      // orderId
+        formData.id,      // orderId
         file.file,         // file
         username,          // username
         token,             // token
@@ -12681,7 +14340,9 @@ function OrderForm25() {
                 serverId: attachmentId,
                 serverGuid: result.data?.guid || file.systemovy_nazev,
                 uploadError: null,
-                file: null // Uvolnit paměť - soubor je už na serveru
+                file: null, // Uvolnit paměť - soubor je už na serveru
+                nahrano_uzivatel_id: result.data?.uploaded_by_user_id,
+                nahrano_uzivatel: result.data?.nahrano_uzivatel
               }
             : f
         )
@@ -12695,13 +14356,68 @@ function OrderForm25() {
               serverId: attachmentId,
               serverGuid: result.data?.guid || file.systemovy_nazev,
               uploadError: null,
-              file: null // Uvolnit paměť - soubor je už na serveru
+              file: null, // Uvolnit paměť - soubor je už na serveru
+              nahrano_uzivatel_id: result.data?.uploaded_by_user_id,
+              nahrano_uzivatel: result.data?.nahrano_uzivatel
             }
           : f
       ));
+      
+      // Označit jako uploadnutý
+      uploadingFilesRef.current.delete(fileId);
+      uploadedFilesRef.current.add(fileId);
 
       // Toast při úspěšném nahrání na server
-      showToast(`✅ Příloha "${file.name}" byla úspěšně nahrána na server`, 'success');
+      const successMessage = (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+          <div style={{ 
+            fontSize: '15px', 
+            fontWeight: '600', 
+            marginBottom: '8px', 
+            color: '#1a1a1a',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <span>Příloha úspěšně nahrána</span>
+          </div>
+          <div style={{ 
+            padding: '8px',
+            backgroundColor: '#f0fdf4',
+            borderRadius: '4px',
+            fontSize: '13px',
+            color: '#166534'
+          }}>
+            {file.name}
+          </div>
+        </div>
+      );
+      showToast && showToast(successMessage, { type: 'success' });
+
+      // 🧹 VYČIŠTĚNÍ LOCALSTORAGE po úspěšném uploadu
+      try {
+        const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+        const savedAttachmentsStr = localStorage.getItem(storageKey);
+        
+        if (savedAttachmentsStr) {
+          const savedAttachments = JSON.parse(savedAttachmentsStr);
+          // Odstranit nahraný soubor ze seznamu
+          const filteredAttachments = savedAttachments.filter(att => att.id !== fileId);
+          
+          if (filteredAttachments.length === 0) {
+            // Všechny přílohy nahrány - smazat celý LocalStorage klíč
+            localStorage.removeItem(storageKey);
+            addDebugLog('info', 'ATTACHMENTS', 'ls-cleared', 'LocalStorage vyčištěn - všechny přílohy nahrány');
+          } else {
+            // Aktualizovat seznam bez nahrané přílohy
+            localStorage.setItem(storageKey, JSON.stringify(filteredAttachments));
+            addDebugLog('info', 'ATTACHMENTS', 'ls-updated', `LocalStorage aktualizován - zbývá ${filteredAttachments.length} příloh`);
+          }
+        }
+      } catch (error) {
+        addDebugLog('error', 'ATTACHMENTS', 'ls-clear-error', error.message);
+      }
 
     } catch (error) {
       addDebugLog('error', 'ATTACHMENTS', 'upload-error',
@@ -12739,7 +14455,7 @@ function OrderForm25() {
 
   // Kontrola synchronizace příloh s DB a diskem
   const checkAttachmentsSynchronization25 = async (silentMode = false) => {
-    if (!savedOrderId) {
+    if (!formData.id) {
       showToast('Není ID objednávky pro kontrolu synchronizace', 'warning');
       return;
     }
@@ -12750,7 +14466,7 @@ function OrderForm25() {
       // 1. NAČTI PŘÍLOHY VEDENÉ V DB
 
       const serverResult = await listOrderAttachments(
-        savedOrderId,      // orderId
+        formData.id,      // orderId
         username,          // username
         token              // token
       );
@@ -12764,7 +14480,7 @@ function OrderForm25() {
       if (dbAttachments.length > 0) {
         try {
           verifyResult = await verifyOrderAttachments(
-            savedOrderId,  // orderId
+            formData.id,  // orderId
             username,      // username
             token          // token
           );
@@ -12973,14 +14689,14 @@ function OrderForm25() {
     try {
       // Pokud nejsou předané data, načti z API
       if (!dbAttachments || !Array.isArray(dbAttachments)) {
-        if (!savedOrderId) {
+        if (!formData.id) {
           showToast('Není ID objednávky pro načtení příloh z DB', 'warning');
           return;
         }
 
         try {
           const result = await listOrderAttachments(
-            savedOrderId,  // orderId
+            formData.id,  // orderId
             username,      // username
             token          // token
           );
@@ -13029,7 +14745,7 @@ function OrderForm25() {
   // POZOR: Načítá se pouze pokud je sekce příloh viditelná
   // POZOR: Načítá se POUZE od FÁZE 3+ (SCHVALENA) - FÁZE 1 a 2 přílohy neřeší
   const loadAttachmentsSmartly = async () => {
-    if (!savedOrderId || !token || !username) {
+    if (!formData.id || !token || !username) {
       return;
     }
 
@@ -13077,7 +14793,7 @@ function OrderForm25() {
   // POZOR: Načítá se pouze pokud je sekce příloh viditelná
   // POZOR: Načítá se POUZE od FÁZE 3+ (SCHVALENA) - FÁZE 1 a 2 přílohy neřeší
   const loadAttachmentsFromServer25 = async () => {
-    if (!savedOrderId || !token || !username) {
+    if (!formData.id || !token || !username) {
       return;
     }
 
@@ -13092,10 +14808,10 @@ function OrderForm25() {
 
     try {
       addDebugLog('info', 'ATTACHMENTS', 'load-start',
-        `Načítám přílohy pro objednávku ${savedOrderId} ze serveru V2 API...`);
+        `Načítám přílohy pro objednávku ${formData.id} ze serveru V2 API...`);
 
       const result = await listOrderAttachments(
-        savedOrderId,  // orderId
+        formData.id,  // orderId
         username,      // username
         token          // token
       );
@@ -13162,15 +14878,21 @@ function OrderForm25() {
         `Stahování přílohy ${attachment.name} ze serveru...`);
 
       const blob = await downloadOrderAttachment(
-        savedOrderId,           // orderId
+        formData.id,           // orderId
         attachment.serverId,    // attachmentId
         username,               // username
         token                   // token
       );
 
       // Přímo stáhnout soubor bez dialogů
-      const { createDownloadLink25 } = await import('../services/api25orders');
-      createDownloadLink25(blob, attachment.name);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.name || 'priloha';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
       addDebugLog('success', 'ATTACHMENTS', 'download-success',
         `Příloha ${attachment.name} stažena úspěšně`);
@@ -13183,9 +14905,13 @@ function OrderForm25() {
       // Error už byl zpracován v API vrstvě, stačí zobrazit error.message
       const errorMessage = error.message || 'Nepodařilo se stáhnout přílohu';
       
-      showToast(errorMessage, 'error');
+      // ⚠️ Detekce missing file - zobrazit jako warning (validační toast) místo error
+      const isMissingFile = errorMessage.includes('Soubor nebyl nalezen na serveru') || 
+                           errorMessage.includes('chybí fyzický soubor');
       
-      addDebugLog('error', 'ATTACHMENTS', 'download-error',
+      showToast(errorMessage, { type: isMissingFile ? 'warning' : 'error' });
+      
+      addDebugLog(isMissingFile ? 'warning' : 'error', 'ATTACHMENTS', 'download-error',
         `Chyba při stahování ${attachment.name}: ${errorMessage}`);
     }
   };
@@ -13209,7 +14935,7 @@ function OrderForm25() {
           `Mazání přílohy ${attachment.name} ze serveru...`);
 
         const deleteResult = await deleteOrderAttachment(
-          savedOrderId,           // orderId
+          formData.id,           // orderId
           attachment.serverId,    // attachmentId
           username,               // username
           token                   // token
@@ -13318,7 +15044,7 @@ function OrderForm25() {
   // Centrální funkce pro načtení příloh z API
   // POZOR: Načítá se pouze pokud je sekce příloh viditelná
   const fetchAttachmentsFromAPI = async () => {
-    if (!savedOrderId || !token || !username) {
+    if (!formData.id || !token || !username) {
       throw new Error('Chybí potřebné údaje pro načtení příloh');
     }
 
@@ -13327,7 +15053,7 @@ function OrderForm25() {
     }
 
     const result = await listOrderAttachments(
-      savedOrderId,  // orderId
+      formData.id,  // orderId
       username,      // username
       token          // token
     );
@@ -13344,10 +15070,10 @@ function OrderForm25() {
 
   // Centrální mapování přílohy z API response na lokální objekt - 1:1 mapování bez transformací
   const mapApiAttachmentToLocal = (attachment) => {
-    // V2 API používá: original_name, file_size, upload_date, uploaded_by_user_id, type, system_path
+    // ✅ ČESKÉ NÁZVY 1:1 Z DB jsou primární
 
     // 🔍 EXTRAKCE file_prefix ze system_path (backend pole)
-    const systemPath = attachment.system_path || attachment.systemovy_nazev || attachment.final_filename || '';
+    const systemPath = attachment.systemova_cesta || attachment.system_path || attachment.systemovy_nazev || attachment.final_filename || '';
     const fileName = systemPath.split('/').pop() || systemPath; // Vezmi název souboru (poslední část cesty)
 
     let filePrefix = 'obj-'; // Default
@@ -13358,26 +15084,26 @@ function OrderForm25() {
     }
 
     const mapped = {
-      // Přímé mapování z DB/API struktury
+      // Přímé mapování z DB/API struktury - ČESKÉ NÁZVY PRIMÁRNÍ
       id: `server_${attachment.id}`,
       serverId: attachment.id,
-      objednavka_id: attachment.order_id || attachment.objednavka_id,
+      objednavka_id: attachment.objednavka_id || attachment.order_id,
       guid: attachment.guid,
-      typ_prilohy: attachment.type || attachment.typ_prilohy,
-      originalni_nazev_souboru: attachment.original_name || attachment.originalni_nazev_souboru,
-      systemovy_nazev: attachment.system_path, // ✅ Backend vrací system_path
-      systemova_cesta: attachment.system_path, // ✅ Backend vrací system_path
-      velikost: attachment.file_size || attachment.velikost || attachment.velikost_souboru_b,
-      dt_vytvoreni: attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni,
-      dt_aktualizace: attachment.updated_at || attachment.dt_aktualizace,
-      nahrano_uzivatel_id: attachment.uploaded_by_user_id || attachment.nahrano_uzivatel_id,
+      typ_prilohy: attachment.typ_prilohy || attachment.type,
+      originalni_nazev_souboru: attachment.originalni_nazev_souboru || attachment.original_name,
+      systemovy_nazev: attachment.systemova_cesta || attachment.system_path, // ✅ Backend vrací systemova_cesta
+      systemova_cesta: attachment.systemova_cesta || attachment.system_path, // ✅ Backend vrací systemova_cesta
+      velikost: attachment.velikost_souboru_b || attachment.file_size || attachment.velikost,
+      dt_vytvoreni: attachment.dt_vytvoreni || attachment.upload_date || attachment.created_at,
+      dt_aktualizace: attachment.dt_aktualizace || attachment.updated_at,
+      nahrano_uzivatel_id: attachment.nahrano_uzivatel_id || attachment.uploaded_by_user_id,
       nahrano_uzivatel: attachment.nahrano_uzivatel,
       file_exists: attachment.file_exists,
       file_prefix: filePrefix, // ✅ Extrahováno ze system_path
 
       // Kompatibilita s frontendem (aliasy)
-      name: attachment.original_name || attachment.originalni_nazev_souboru,
-      size: attachment.file_size || attachment.velikost || attachment.velikost_souboru_b,
+      name: attachment.originalni_nazev_souboru || attachment.original_name,
+      size: attachment.velikost_souboru_b || attachment.file_size || attachment.velikost,
       type: 'application/octet-stream',
       lastModified: new Date(attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni || Date.now()).getTime(),
       klasifikace: attachment.type || attachment.typ_prilohy,
@@ -13385,7 +15111,7 @@ function OrderForm25() {
 
       // Status a metadata
       status: 'uploaded',
-      uploadDate: attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni || new Date().toISOString(),
+      uploadDate: attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni || attachment.dt_aktualizace || null,
       serverGuid: attachment.guid,
       fromServer: true
     };
@@ -13535,11 +15261,33 @@ function OrderForm25() {
   const updatePolozka = (id, field, value) => {
     setFormData(prev => ({
       ...prev,
-      polozky_objednavky: (prev.polozky_objednavky || []).map(polozka => {
+      polozky_objednavky: (prev.polozky_objednavky || []).map((polozka, index) => {
         if (polozka.id === id) {
           const updatedPolozka = { ...polozka, [field]: value };
 
+          // ✅ Validace délky lokalizačních polí při změně
+          if (field === 'usek_kod' || field === 'budova_kod' || field === 'mistnost_kod') {
+            const fieldKey = `polozka_${index}_${field}`;
+            
+            // Pokud je hodnota v pořádku (≤ 20 znaků), odebrat případnou chybu
+            if (!value || value.length <= 20) {
+              setValidationErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[fieldKey];
+                return newErrors;
+              });
+            } 
+            // Pokud je hodnota příliš dlouhá, přidat chybu
+            else if (value.length > 20) {
+              setValidationErrors(prev => ({
+                ...prev,
+                [fieldKey]: `Kód ${field === 'usek_kod' ? 'ÚSEKU' : field === 'budova_kod' ? 'BUDOVY' : 'MÍSTNOSTI'} je příliš dlouhý (max. 20 znaků, zadáno: ${value.length})`
+              }));
+            }
+          }
+
           // Pokud se mění cena bez DPH nebo DPH sazba, přepočítej cenu s DPH
+          // ✅ Bezpečné pro DPH 0%: (1 + 0/100) = 1, tedy cena_s_dph = cena_bez_dph
           if (field === 'cena_bez_dph' || field === 'sazba_dph') {
             const cenaBezDph = parseFloat((updatedPolozka.cena_bez_dph || '0').replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
             const dphSazba = parseFloat(updatedPolozka.sazba_dph) || 0;
@@ -13549,6 +15297,7 @@ function OrderForm25() {
           }
 
           // Pokud se mění cena s DPH, přepočítej cenu bez DPH
+          // ✅ Bezpečné pro DPH 0%: dělíme (1 + 0/100) = 1, nikoli nulou!
           if (field === 'cena_s_dph') {
             const cenaSdph = parseFloat((updatedPolozka.cena_s_dph || '0').replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
             const dphSazba = parseFloat(updatedPolozka.sazba_dph) || 0;
@@ -13603,16 +15352,6 @@ function OrderForm25() {
   const handleAddSupplierToDirectory = async () => {
     // DEBUG: Add to directory button click - logging removed
     // DEBUG: ADD TO DIRECTORY logging removed for performance
-    /*// console.log('📊 [ADD TO DIRECTORY] formData dodavatele:', {
-      nazev: formData.dodavatel_nazev,
-      adresa: formData.dodavatel_adresa,
-      ico: formData.dodavatel_ico,
-      dic: formData.dodavatel_dic,
-      zastoupeny: formData.dodavatel_zastoupeny,
-      kontakt_jmeno: formData.dodavatel_kontakt_jmeno,
-      kontakt_email: formData.dodavatel_kontakt_email,
-      kontakt_telefon: formData.dodavatel_kontakt_telefon
-    });*/
 
     if (!checkSupplierRequiredFields()) {
       showToast?.('Vyplňte všechny povinné údaje dodavatele (název, adresa, IČO)', 'warning');
@@ -13631,11 +15370,11 @@ function OrderForm25() {
         user_id,
         usek_zkr: userDetail?.usek_zkr,
         ico: ico, // Filtruj podle IČO
-        load_all: hasPermission && hasPermission('CONTACT_MANAGE')
+        load_all: hasAdminRole && hasAdminRole() // Pouze admin vidí všechny kontakty všech uživatelů
       });
 
-      // Práva pro výběr Global scope
-      const canManageGlobal = hasPermission && hasPermission('CONTACT_MANAGE');
+      // Práva pro výběr Global scope - admin nebo uživatel s CREATE/EDIT právem může editovat globální kontakty
+      const canManageGlobal = (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')));
 
       // 🔍 DEBUG: Co backend vrátil
 
@@ -13724,9 +15463,6 @@ function OrderForm25() {
   // 🎯 Handler pro uložení dodavatele do adresáře
   const handleSaveSupplierToDirectory = async (supplierData, scope, useky = null) => {
     // DEBUG: SAVE TO DIRECTORY logging removed for performance
-    /*// console.log('💾 [SAVE TO DIRECTORY] Začátek ukládání');
-    // console.log('📊 [SAVE TO DIRECTORY] Příchozí supplierData:', supplierData);
-    // console.log('🎯 [SAVE TO DIRECTORY] Scope:', scope, 'Úseky:', useky);*/
 
     try {
       // Určení user_id a usek_zkr podle scope
@@ -13760,20 +15496,10 @@ function OrderForm25() {
         usek_zkr: usekZkr // Backend očekává array nebo null (NE JSON string!)
       };
 
-      // console.log('📦 [SAVE TO DIRECTORY] Data připravená k odeslání:', dataToSave);
-
       let result;
 
       if (existingSupplierCheck?.exists && scope === existingSupplierCheck.scope) {
         // Aktualizace existujícího dodavatele ve stejném scope
-        // console.log('🔄 [SAVE TO DIRECTORY] Aktualizace existujícího dodavatele');
-        /*console.log('📤 [SAVE TO DIRECTORY] Parametry pro updateSupplierByIco:', {
-          ico: dataToSave.ico,
-          nazev: dataToSave.nazev,
-          adresa: dataToSave.adresa,
-          userId,
-          usekZkr
-        });*/
 
         result = await updateSupplierByIco({
           token,
@@ -13790,16 +15516,9 @@ function OrderForm25() {
           kontakt_telefon: dataToSave.kontakt_telefon
         });
 
-        // console.log('✅ [SAVE TO DIRECTORY] Update úspěšný, odpověď:', result);
         showToast?.('Dodavatel byl úspěšně aktualizován v adresáři', 'success');
       } else {
         // Vytvoření nového dodavatele (nebo přidání do jiného scope)
-        // console.log('➕ [SAVE TO DIRECTORY] Vytváření nového dodavatele');
-        /*console.log('📤 [SAVE TO DIRECTORY] Parametry pro createSupplier:', {
-          userId,  // ← Správný userId podle scope
-          usekZkr,  // ← Správný usekZkr podle scope
-          ...dataToSave
-        });*/
 
         // 🔧 FIX: createSupplier očekává FLAT parametry, ne data objekt!
         // 🔧 FIX 2: Použít SPRÁVNÝ userId a usekZkr podle vybraného scope!
@@ -13822,7 +15541,6 @@ function OrderForm25() {
           kontakt_telefon: dataToSave.kontakt_telefon
         });
 
-        // console.log('✅ [SAVE TO DIRECTORY] Create úspěšný, odpověď:', result);
         showToast?.('Dodavatel byl úspěšně přidán do adresáře', 'success');
       }
 
@@ -13857,7 +15575,7 @@ function OrderForm25() {
         username: username,
         user_id: user_id,
         usek_zkr: userDetail?.usek_zkr || undefined,
-        load_all: hasPermission && hasPermission('CONTACT_MANAGE') // Load all contacts for CONTACT_MANAGE users
+        load_all: hasAdminRole && hasAdminRole() // Pouze admin vidí všechny kontakty všech uživatelů
       });
 
       if (Array.isArray(result)) {
@@ -14086,7 +15804,7 @@ function OrderForm25() {
                 user_id,
                 usek_zkr: userDetail?.usek_zkr,
                 ico: aresItem.ico,
-                load_all: hasPermission && hasPermission('CONTACT_MANAGE')
+                load_all: hasAdminRole && hasAdminRole()
               });
 
               const filteredResults = Array.isArray(dbResults)
@@ -14592,9 +16310,6 @@ function OrderForm25() {
       // Pro střediska a LP kódy kontroluj délku pole
       const valueToValidate = (field === 'strediska_kod' || field === 'lp_kod') ? value : value;
       validateField(field, valueToValidate);
-    } else {
-      // ❌ REMOVED: Mazání chyby - zbytečné
-      // Validace probíhá POUZE při Save, live mazání chyb není potřeba
     }
 
     setFormData(prev => {
@@ -14612,6 +16327,7 @@ function OrderForm25() {
       if (field === 'zpusob_financovani') {
         // Vyčistit VŠECHNY dynamické fieldy z všech typů financování
         newData.lp_kod = [];
+        newData.lp_poznamka = '';
         newData.cislo_smlouvy = '';
         newData.smlouva_poznamka = '';
         newData.individualni_schvaleni = '';
@@ -14721,7 +16437,7 @@ function OrderForm25() {
           const hasZruseno = hasWorkflowState(currentWorkflowState, 'ZRUSENA');
 
           // Pokud je objednávka ODESLANÁ/ZRUŠENÁ - NIKDY NEČISTIT zamčení
-          if (hasOdeslano || hasZruseno || prev.stav_stornovano) {
+          if (hasOdeslano || hasZruseno || hasWorkflowState(prev.stav_workflow_kod, 'ZRUSENA')) {
             addDebugLog('warning', 'PHASE2-UNLOCK', 'clear-blocked-final', `BLOKACE clearPhase2UnlockState - objednávka je ODESLANÁ/ZRUŠENÁ (workflow=${currentWorkflowState})`);
           } else {
             // Pouze pro objednávky které NEJSOU odeslaná/zrušená
@@ -14731,44 +16447,8 @@ function OrderForm25() {
         }
       }
 
-      // Pokud se mění stav stornování, automaticky nastav datum
-      if (field === 'stav_stornovano') {
-        if (value === true && !prev.datum_storna) {
-          // Při zaškrtnutí "Stornováno" automaticky vyplň aktuální datum, pokud není vyplněno
-          newData.datum_storna = getCurrentDate();
-
-          // Přidat ID přihlášeného uživatele do storno dat (pro DB)
-          if (user_id && !prev.storno_uzivatel_id) {
-            newData.storno_uzivatel_id = user_id;
-          }
-
-          // Přidat jméno přihlášeného uživatele do storno dat (pro zobrazení)
-          if (userDetail && !prev.storno_provedl) {
-            const jmeno = `${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim();
-            newData.storno_provedl = jmeno;
-          }
-        } else if (value === false) {
-          // Při zrušení zaškrtnutí vymaž datum storna a související data
-          newData.datum_storna = '';
-          newData.storno_uzivatel_id = '';
-          newData.storno_provedl = '';
-          newData.odeslani_storno_duvod = '';
-
-          // KRITICKÁ KONTROLA: NIKDY nevolat clearPhase2UnlockState pokud je objednávka ODESLANÁ/ZRUŠENÁ
-          const currentWorkflowState = prev.stav_workflow_kod || 'NOVA';
-          const hasOdeslano = hasWorkflowState(currentWorkflowState, 'ODESLANA');
-          const hasZruseno = hasWorkflowState(currentWorkflowState, 'ZRUSENA');
-
-          // Pokud je objednávka ODESLANÁ/ZRUŠENÁ - NIKDY NEČISTIT zamčení
-          if (hasOdeslano || hasZruseno) {
-            addDebugLog('warning', 'PHASE2-UNLOCK', 'clear-blocked-storno-final', `BLOKACE clearPhase2UnlockState při storno změně - objednávka je ODESLANÁ/ZRUŠENÁ (workflow=${currentWorkflowState})`);
-          } else {
-            // Pouze pro objednávky které NEJSOU odeslaná/zrušená
-            addDebugLog('info', 'PHASE2-UNLOCK', 'clear-allowed-storno', `Čištění Phase 2 unlock po storno změně povoleno - objednávka není v zamčeném stavu`);
-            clearPhase2UnlockState();
-          }
-        }
-      }
+      // 🛑 ODSTR ANĚNO: stav_stornovano handler - pole neexistuje v DB
+      // Storno se řeší přes workflow stav ZRUSENA, nikoliv samostatné checkbox pole
 
       // 🆕 FÁZE 7: Checkbox věcné správnosti
       // DŮLEŽITÉ: Nastavit ID a timestamp IHNED po zaškrtnutí, aby byly dostupné pro autosave!
@@ -14846,7 +16526,7 @@ function OrderForm25() {
       'druh_objednavky_kod',
       'stav_schvaleni',
       'stav_odeslano',
-      'stav_stornovano',
+      // 🛑 ODSTRANĚNO: 'stav_stornovano' - pole neexistuje v DB, používá se workflow stav ZRUSENA
       // 'potvrzeni_vecne_spravnosti',         // 🚫 FÁZE 7: VYPNUTO - uložení až při Save button
       // 'potvrzeni_dokonceni_objednavky'      // 🚫 FÁZE 8: VYPNUTO - uložení až při Save button (stejně jako Fáze 7)
     ];
@@ -15040,7 +16720,9 @@ function OrderForm25() {
       addDebugLog('info', 'STATUS-RELOAD', 'start', `Načítám aktuální stav objednávky ID: ${formData.id}, uživatel: ${userDetail.id}`);
 
       // ✅ V2 API: GET order by ID (enriched=false pro rychlejší reload)
-      const orderData = await getOrderV2(parseInt(formData.id), token, username, false);
+      const orderDataRaw = await getOrderV2(parseInt(formData.id), token, username, false);
+      // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+      const orderData = transformBackendDataToFrontend(orderDataRaw);
 
       if (!orderData || !orderData.id) {
         throw new Error('Nepodařilo se načíst stav objednávky z databáze');
@@ -15110,7 +16792,7 @@ function OrderForm25() {
   }, [formData.id, formData.stav_workflow_kod, currentPhase, hasWorkflowState, mainWorkflowState]);
 
   // 📄 Handler pro generování DOCX dokumentu
-  const handleGenerateDocx = useCallback(() => {
+  const handleGenerateDocx = useCallback(async () => {
     if (!canGenerateDocx()) {
       // Zobraz specifickou chybu podle toho, co chybí
       if (!formData.id) {
@@ -15126,22 +16808,24 @@ function OrderForm25() {
     try {
       addDebugLog('info', 'DOCX-GENERATOR', 'open-dialog', `Otevírám DOCX generátor pro objednávku ID: ${formData.id}`);
 
-      // Vytvoř order objekt kompatibilní s DocxGeneratorModal
-      const orderForDocx = {
-        objednavka_id: formData.id,
-        cislo_objednavky: formData.cislo_objednavky,
-        nazev_objednavky: formData.nazev_objednavky || formData.nazev,
-        ...formData
-      };
+      // 🔄 KRITICKÁ OPRAVA: Načti fresh enriched data z API (účastníci workflow s cele_jmeno)
+      // Toto zajistí, že DocxGeneratorModal má k dispozici garant_uzivatel, prikazce_uzivatel, atd.
+      const enrichedOrder = await getOrderV2(formData.id, token, username, true, 0);
 
-      setDocxModalOrder(orderForDocx);
+      if (!enrichedOrder) {
+        showToast && showToast('Nepodařilo se načíst data objednávky', { type: 'error' });
+        return;
+      }
+
+      // ✅ Předej enriched data do dialogu (teď už máme garanta, příkazce, schvalovatele s cele_jmeno)
+      setDocxModalOrder(enrichedOrder);
       setDocxModalOpen(true);
 
     } catch (error) {
       addDebugLog('error', 'DOCX-GENERATOR', 'error', error.message);
       showToast && showToast(`Chyba při otevírání DOCX generátoru: ${error.message}`, { type: 'error' });
     }
-  }, [formData, currentPhase, showToast]);
+  }, [formData, currentPhase, showToast, token, username]);
 
   const handleDocxModalClose = useCallback(() => {
     setDocxModalOpen(false);
@@ -15149,17 +16833,20 @@ function OrderForm25() {
   }, []);
 
   const handleCancelOrder = useCallback(async () => {
-    // 🎯 Pokud je objednávka DOKONČENA, zavři rovnou bez dotazu
+    // 🎯 Pokud je objednávka v KONEČNÉM STAVU (DOKONČENA/ZAMÍTNUTA/STORNOVÁNA), zavři rovnou bez dotazu
     // (už je uložená v DB, není co ztratit)
-    if (isOrderCompleted) {
+    if (isWorkflowCompleted) {
       try {
-        // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
+        // � NOVÉ: Před zavřením uložit všechny LP čerpání faktur
+        await saveAllFakturyLPCerpani();
+        
+        // �🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
         
         // 0. GLOBÁLNÍ FLAG - zablokuje saveDraft na úrovni funkce (první linie obrany)
         isClosingRef.current = true;
         
         // 1. Zablokovat autosave v DraftManager
-        draftManager.setAutosaveEnabled(false, 'Closing completed order');
+        draftManager.setAutosaveEnabled(false, 'Closing completed/rejected/cancelled order');
         
         // 2. Zablokovat autosave přes ref (okamžitá kontrola)
         disableAutosaveRef.current = true;
@@ -15182,36 +16869,42 @@ function OrderForm25() {
         if (user_id) {
           draftManager.setCurrentUser(user_id);
           await draftManager.deleteAllDraftKeys();
+          
+          // 🔥 EXPLICITNĚ vymazat metadata (isEditMode) - důležité pro MenuBar
+          try {
+            localStorage.removeItem(`order_form_isEditMode_${user_id}`);
+            localStorage.removeItem(`openOrderInConcept-${user_id}`);
+            localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
+            localStorage.removeItem(`savedOrderId-${user_id}`);
+            
+            // LP ČERPÁNÍ: Vyčistit fakturyLPCerpani z localStorage
+            localStorage.removeItem(`order25_lpCerpani_${user_id}`);
+          } catch (e) {
+            // ignoruj chybu
+          }
         }
         
-        // 🧹 KRITICKÉ: Vymazat VŠECHNY orderID z localStorage
-        localStorage.removeItem('activeOrderEditId');
-        
-        // 🧹 Vyčistit i staré formáty (pro jistotu)
-        if (user_id) {
-          localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
-          localStorage.removeItem(`savedOrderId-${user_id}`);
-          localStorage.removeItem(`highlightOrderId-${user_id}`);
-        }
-        
-        // 🧹 Resetovat všechny state proměnné související s orderID
-        setSavedOrderId(null);
-        setSourceOrderIdForUnlock(null);
+        // NOTE: formData.id and sourceOrderIdForUnlock removed - using formData.id
 
-        // Odemkni objednávku (pokud je editace)
-        const unlockOrderId = sourceOrderIdForUnlock || savedOrderId;
+        // Odemkni objednávku (pokud je editace) - použij editOrderId nebo formData.id
+        // ✅ FIX: editOrderId je stabilnější než formData.id (může být undefined po smazání draftu)
+        const unlockOrderId = editOrderId || formData.id;
+        
         if (unlockOrderId && token && username) {
           try {
-            await unlockOrder25({ token, username, orderId: unlockOrderId });
-            // 🔒 KRITICKÉ: Zabránit duplicitnímu unlock z useEffect cleanup
-            unlockOrderIdRef.current = null;
+            await unlockOrderV2({ token, username, orderId: unlockOrderId });
+            // 🔒 KRITICKÉ: Zabránit duplicitnímu unlock z useEffect cleanup (již neexistuje)
           } catch (error) {
+            console.warn('⚠️ UNLOCK OrderForm25: FAILED - obj #' + unlockOrderId, error.message);
             // Ignoruj chybu odemykání
           }
         }
 
         // Reset MenuBaru
         try {
+          // 🔥 KRITICKÉ: Nastavit isEditMode state na false PŘED broadcastem
+          setIsEditMode(false);
+          
           broadcastDraftDeleted(user_id);
           broadcastOrderState({
             isEditMode: false,
@@ -15226,8 +16919,15 @@ function OrderForm25() {
           // Ignoruj chybu broadcastu
         }
 
-        // Přesměruj na seznam s force reload z DB
-        navigate('/orders25-list', { state: { forceReload: true } });
+        // Přesměruj na uloženou cestu (returnTo) nebo fallback na seznam
+        const targetPath = returnToRef.current || '/orders25-list';
+        console.log('🔙 OrderForm25 NAVIGATE (dokončená):', { targetPath, returnToRef: returnToRef.current });
+        navigate(targetPath, { 
+          state: { 
+            forceReload: true,
+            highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+          } 
+        });
       } catch (error) {
         showToast && showToast(`Chyba při zavírání: ${error.message}`, { type: 'error' });
       }
@@ -15251,24 +16951,17 @@ function OrderForm25() {
     // Zobraz confirm modal místo toast
     setCancelWarningMessage(warningMessage);
     setShowCancelConfirmModal(true);
-  }, [attachments, isOrderCompleted, user_id, sourceOrderIdForUnlock, savedOrderId, token, username, showToast, navigate]);
+  }, [attachments, isWorkflowCompleted, user_id, formData.id, token, username, showToast, navigate]);
 
   const handleCancelConfirm = useCallback(async () => {
     // 🎯 ZJEDNODUŠENÉ ZAVŘENÍ přes DraftManager
     addDebugLog('info', 'CANCEL', 'draftmanager-close', 'Zavírám formulář přes DraftManager');
-    
-    // 🧹 KRITICKÉ: Vymazat VŠECHNY orderID z localStorage
-    localStorage.removeItem('activeOrderEditId');
-    
-    // 🧹 Vyčistit i staré formáty (pro jistotu)
-    if (user_id) {
-      localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
-      localStorage.removeItem(`savedOrderId-${user_id}`);
-      localStorage.removeItem(`highlightOrderId-${user_id}`);
-    }
 
     try {
-      // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
+      // � NOVÉ: Před zavřením uložit všechny LP čerpání faktur
+      await saveAllFakturyLPCerpani();
+      
+      // �🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
       
       // 0. GLOBÁLNÍ FLAG - zablokuje saveDraft na úrovni funkce (první linie obrany)
       isClosingRef.current = true;
@@ -15306,12 +16999,8 @@ function OrderForm25() {
         window._activeProgressControl = null;
       }
 
-      // 🚨 Nastavit flag pro unmount - zabráníme duplicitnímu unlock
-      unlockOrderIdRef.current = null;
-      
-      // 🧹 Resetovat všechny state proměnné související s orderID
-      setSavedOrderId(null);
-      setSourceOrderIdForUnlock(null);
+      // NOTE: unlockOrderIdRef removed
+      // NOTE: formData.id and sourceOrderIdForUnlock removed - using formData.id
 
       // 🎯 1. Vyčistit VŠECHNY draft data přes DraftManager (centralizovaně)
       if (user_id) {
@@ -15330,15 +17019,31 @@ function OrderForm25() {
           await draftManager.deleteAllDraftKeys();
         } else {
         }
+        
+        // 🔥 EXPLICITNĚ vymazat metadata (isEditMode) - důležité pro MenuBar
+        try {
+          localStorage.removeItem(`order_form_isEditMode_${user_id}`);
+          localStorage.removeItem(`openOrderInConcept-${user_id}`);
+          localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
+          localStorage.removeItem(`savedOrderId-${user_id}`);
+          
+          // LP ČERPÁNÍ: Vyčistit fakturyLPCerpani z localStorage
+          localStorage.removeItem(`order25_lpCerpani_${user_id}`);
+        } catch (e) {
+          // ignoruj chybu
+        }
       }
 
       // 2. Odemkni objednávku (pokud je editace) - graceful handling
-      const unlockOrderId = sourceOrderIdForUnlock || savedOrderId;
+      // ✅ FIX: Použít editOrderId místo formData.id (po smazání draftu může být formData prázdné)
+      const unlockOrderId = editOrderId || formData.id;
+      
       if (unlockOrderId && token && username) {
         try {
-          await unlockOrder25({ token, username, orderId: unlockOrderId });
+          await unlockOrderV2({ token, username, orderId: unlockOrderId });
           addDebugLog('success', 'CANCEL', 'unlock', `Objednávka ${unlockOrderId} byla odemknuta`);
         } catch (error) {
+          console.warn('⚠️ UNLOCK OrderForm25: FAILED - obj #' + unlockOrderId, error.message);
           addDebugLog('warning', 'CANCEL', 'unlock-error', `Chyba při odemykání: ${error.message} - ignorováno`);
           // Ignoruj chybu - formulář se zavře i když odemykání selže
         }
@@ -15346,6 +17051,9 @@ function OrderForm25() {
 
       // 3. Reset MenuBaru
       try {
+        // 🔥 KRITICKÉ: Nastavit isEditMode state na false PŘED broadcastem
+        setIsEditMode(false);
+        
         broadcastDraftDeleted(user_id);
 
         // Počkej krátce, aby se broadcast stihl zpracovat
@@ -15367,11 +17075,18 @@ function OrderForm25() {
       setShowCancelConfirmModal(false);
       setCancelWarningMessage('');
 
-      addDebugLog('info', 'CANCEL', 'redirect', 'Přesměrovávám na seznam objednávek');
+      const targetPath = returnToRef.current || '/orders25-list';
+      console.log('🔙 OrderForm25 NAVIGATE (koncept zrušen):', { targetPath, returnToRef: returnToRef.current });
+      addDebugLog('info', 'CANCEL', 'redirect', `Přesměrovávám na: ${targetPath}`);
 
       // 5. Přesměruj s dostatečným zpožděním, aby se stihly dokončit všechny async operace
       setTimeout(() => {
-        navigate('/orders25-list', { state: { forceReload: true } });
+        navigate(targetPath, { 
+          state: { 
+            forceReload: true,
+            highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+          } 
+        });
       }, 200);
 
     } catch (error) {
@@ -15385,11 +17100,18 @@ function OrderForm25() {
       setCancelWarningMessage('');
 
       // Přesměruj i přes chybu (lepší než zůstat na formuláři)
+      const targetPath = returnToRef.current || '/orders25-list';
+      console.log('🔙 OrderForm25 NAVIGATE (error při zavírání):', { targetPath, returnToRef: returnToRef.current });
       setTimeout(() => {
-        navigate('/orders25-list', { state: { forceReload: true } });
+        navigate(targetPath, { 
+          state: { 
+            forceReload: true,
+            highlightOrderId: highlightOrderIdRef.current // 🎯 Pro scroll a highlight
+          } 
+        });
       }, 100);
     }
-  }, [user_id, draftManager, sourceOrderIdForUnlock, savedOrderId, token, username, showToast, navigate]);
+  }, [user_id, draftManager, formData.id, token, username, showToast, navigate]);
 
   const handleCancelCancel = useCallback(() => {
     setShowCancelConfirmModal(false);
@@ -15436,14 +17158,13 @@ function OrderForm25() {
           const cleanStates = existingStates.filter(s => s !== 'ODESLANA' && s !== 'ZRUSENA');
           orderData.stav_workflow_kod = JSON.stringify(cleanStates);
 
-          // Storno checkboxy - false
+          // Storno checkboxy - false (stav_stornovano neexistuje v DB)
           orderData.stav_odeslano = false;
-          orderData.stav_stornovano = false;
 
           // Zavolej API přímo (bez progress baru) - V2 API
           // ⚠️ prepareDataForAPI() se volá automaticky uvnitř updateOrderV2() - NEMĚNIT ZNOVU!
           // const preparedData = prepareDataForAPI(orderData);  ❌ DUPLICITNÍ - již se dělá v updateOrderV2()
-          await updateOrderV2(savedOrderId, orderData, token, username);
+          await updateOrderV2(formData.id, orderData, token, username);
 
         } catch (error) {
           showToast && showToast(`Chyba při ukládání: ${error.message}`, { type: 'error' });
@@ -15609,13 +17330,16 @@ function OrderForm25() {
       const validationWorkflowCode = currentPhase === 1 ? 'NOVA' : mainWorkflowState;
 
       // ✅ Připrav informaci o viditelnosti a zamčení sekcí
+      // ✅ KRITICKÉ: Použít extendedSectionStates pro registr_smluv_vyplneni, protože ten filtruje podle práv!
+      const registrVyplneniExtended = extendedSectionStates.registr_smluv_vyplneni || registrVyplneniState;
+      
       const sectionStates = {
         phase1: { visible: currentPhase >= 1, locked: shouldLockPhase1Sections },
         phase2: { visible: currentPhase >= 2, locked: shouldLockPhase2Sections },
         financovani: { visible: financovaniState.visible, locked: !financovaniState.enabled }, // Samostatná sekce pro financování
         phase3: { visible: currentPhase >= 3, locked: shouldLockPhase3Sections },
         phase4to6: { visible: currentPhase >= 4, locked: shouldLockPhase4to6Sections },
-        registr_smluv_vyplneni: { visible: registrVyplneniState.visible, locked: isRegistrVyplneniLocked } // FÁZE 5: Zveřejnění
+        registr_smluv_vyplneni: { visible: registrVyplneniExtended.visible, locked: !registrVyplneniExtended.enabled } // FÁZE 5: Zveřejnění - s filtrem práv
       };
 
       // ✅ FIX: Merge errors místo přepsání - jinak ztratíme FÁZE 5 validaci!
@@ -15734,7 +17458,6 @@ function OrderForm25() {
           }
           if (!polozka.mistnost_kod || !polozka.mistnost_kod.trim()) {
             errors[`polozka_${index}_mistnost_kod`] = `Položka ${index + 1}: Vyberte místnost - určení lokace je povinné u majetkových položek`;
-            console.log(`❌ Položka ${index + 1}: Chybí místnost`);
           }
         });
       }
@@ -15750,19 +17473,29 @@ function OrderForm25() {
         formData.faktury.forEach((faktura, index) => {
           const fakturaPrefix = `faktura_${index + 1}`;
 
+          // Typ faktury je povinný
+          if (!faktura.fa_typ || (typeof faktura.fa_typ === 'string' && faktura.fa_typ.trim() === '')) {
+            errors[`${fakturaPrefix}_typ`] = `Faktura ${index + 1}: Vyberte typ faktury`;
+          }
+
           // Variabilní symbol je povinný
           if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
             errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Zadejte variabilní symbol faktury`;
           }
 
-          // Částka je povinná a musí být větší než 0
-          if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
-            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury (musí být větší než 0 Kč)`;
+          // Částka je povinná (může být 0 nebo záporná)
+          if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
+            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury`;
           }
 
           // Datum doručení je povinné - kontroluj fa_datum_doruceni (ne fa_dorucena, to je boolean)
           if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
-            errors[`${fakturaPrefix}_dorucena`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
+            errors[`${fakturaPrefix}_datum_doruceni`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
+          }
+
+          // Datum vystavení je povinné
+          if (!faktura.fa_datum_vystaveni || (typeof faktura.fa_datum_vystaveni === 'string' && faktura.fa_datum_vystaveni.trim() === '')) {
+            errors[`${fakturaPrefix}_datum_vystaveni`] = `Faktura ${index + 1}: Zadejte datum vystavení faktury`;
           }
 
           // Datum splatnosti je povinné
@@ -15792,25 +17525,81 @@ function OrderForm25() {
           if (fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
             errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky (${maxCena.toFixed(2)} Kč)`;
           }
+          
+          // 💰 VALIDACE LP ČERPÁNÍ - kontrola prázdných/neúplných řádků
+          const fakturaId = faktura.id;
+          const lpData = fakturyLPCerpani[fakturaId];
+          const isLPFinancing = formData.zpusob_financovani?.toUpperCase() === 'LP' || 
+                                formData.zpusob_financovani?.toUpperCase() === 'LIMITOVANY_PRISLIB';
+          
+          if (isLPFinancing && lpData && lpData.lpCerpani && lpData.lpCerpani.length > 0) {
+            const lpRows = lpData.lpCerpani;
+            
+            // Prázdné řádky (kompletně prázdné - bez LP i částky)
+            const emptyRows = lpRows.filter(r => r.id && !r.lp_id && (!r.castka || r.castka <= 0));
+            if (emptyRows.length > 0) {
+              errors[`vecna_lp_faktura_${index + 1}_empty`] = `Faktura ${index + 1}: Máte ${emptyRows.length} prázdný řádek LP. Vyplňte LP kód a částku nebo jej smažte.`;
+            }
+            
+            // Neúplné řádky (má LP ale chybí částka NEBO má částku ale chybí LP)
+            const incompleteRows = lpRows.filter(r => 
+              (r.lp_id && r.castka === null || r.castka === undefined) || 
+              (!r.lp_id && r.castka !== null && r.castka !== undefined)
+            );
+            if (incompleteRows.length > 0) {
+              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku (může být i 0 Kč)`;
+            }
+            
+            // Kontrola alespoň jednoho LP řádku (částka může být i 0)
+            const validRows = lpRows.filter(r => r.lp_id && r.lp_cislo && (r.castka !== null && r.castka !== undefined));
+            if (validRows.length === 0) {
+              errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód`;
+            }
+          }
         });
+      }
+
+      // 📎 VALIDACE PŘÍLOH: Všechny přílohy MUSÍ mít klasifikaci před uložením
+      // Kontrola pouze pokud má objednávka ID (přílohy se zobrazují až po prvním uložení)
+      if (formData.id && attachments && attachments.length > 0) {
+        const objFiles = attachments.filter(a => {
+          // Filtrovat pouze hlavní přílohy objednávky (obj- prefix)
+          const prefix = getFilePrefix(a);
+          return prefix === 'obj-';
+        });
+
+        const unclassifiedFiles = objFiles.filter(file => 
+          !file.klasifikace || file.klasifikace.trim() === ''
+        );
+
+        if (unclassifiedFiles.length > 0) {
+          errors.prilohy_klasifikace = `Nelze uložit objednávku - ${unclassifiedFiles.length} ${unclassifiedFiles.length === 1 ? 'příloha nemá' : 'příloh nemá'} klasifikaci. Všechny přílohy musí být klasifikovány (Objednávka/Faktura/Košilka/Jiné) před uložením.`;
+          
+          // Rozbalit sekci Přílohy pokud je sbalená
+          if (sectionStates.prilohy) {
+            setSectionStates(prev => ({ ...prev, prilohy: false }));
+          }
+          
+          // Uložit ID první neklasifikované přílohy pro scroll po render
+          if (unclassifiedFiles[0]?.id) {
+            setTimeout(() => {
+              const attachmentElement = document.querySelector(`[data-attachment-id="${unclassifiedFiles[0].id}"]`);
+              if (attachmentElement) {
+                attachmentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Zvýraznit přílohu animací
+                attachmentElement.style.transition = 'all 0.3s';
+                attachmentElement.style.boxShadow = '0 0 0 3px #dc2626';
+                setTimeout(() => {
+                  attachmentElement.style.boxShadow = '';
+                }, 2000);
+              }
+            }, 100);
+          }
+        }
       }
     }
 
     const hasErrors = Object.keys(errors).length > 0;
-    
-    // 🐞 DEBUG: Výpis validačních chyb ve fázi 7/8
-    if ((currentPhase === 7 || currentPhase === 8) && hasErrors) {
-      console.log('🔍 VALIDACE ve fázi', currentPhase, '- Nalezené chyby:');
-      console.log('📋 Počet chyb:', Object.keys(errors).length);
-      console.log('📝 Detail chyb:', errors);
-      console.log('🎯 Validační workflow kód:', currentPhase === 1 ? 'NOVA' : mainWorkflowState);
-      console.log('📦 FormData stav:', {
-        stav_stornovano: formData.stav_stornovano,
-        ma_byt_zverejnena: formData.ma_byt_zverejnena,
-        faktury: formData.faktury?.length || 0,
-        polozky: formData.polozky_objednavky?.length || 0
-      });
-    }
     
     // ⚡ KRITICKÉ: Použít flushSync k okamžitému nastavení validationErrors
     // PŘED otevřením panelů - jinak se panely otevřou ale chyby ještě nebudou v DOM
@@ -15852,25 +17641,13 @@ function OrderForm25() {
     if (hasErrors) {
       const errorCount = Object.keys(errors).length;
       
-      console.log('🍞 TOAST - zobrazuji chyby:', {
-        errorCount,
-        errorKeys: Object.keys(errors),
-        errors
-      });
+      // Strukturovaná chybová zpráva (včetně stornování)
+      const structuredMessage = formatValidationErrors(errors);
       
-      if (formData.stav_stornovano) {
-        // Speciální zpráva pro stornování
-        showToast && showToast(`Nelze stornovat - zkontrolujte vyznačená pole`, { type: 'error' });
-      } else {
-        // Strukturovaná chybová zpráva
-        const structuredMessage = formatValidationErrors(errors);
-        console.log('🍞 TOAST - formatovaná zpráva:', structuredMessage);
-        
-        showToast && showToast(structuredMessage, { 
-          type: 'error', 
-          timeout: 10000
-        });
-      }
+      showToast && showToast(structuredMessage, { 
+        type: 'error', 
+        timeout: 10000
+      });
 
       // Scroll na první chybový element s mírným zpožděním
       setTimeout(() => {
@@ -16029,25 +17806,38 @@ function OrderForm25() {
 
       // �💰 TICHÁ VALIDACE FAKTUR - pouze pro zobrazení červených polí
       // ✅ POUZE validovat faktury ve FÁZI 6+ (když je sekce Fakturace viditelná)
-      if (currentPhase >= 6 && formData.faktury && formData.faktury.length > 0) {
+      const isPlatbaPokladnaObjSilent = formData.financovani?.platba === 'pokladna';
+      const isPlatbaPokladnaDodavatelSilent = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
+      const isPokladnaSilent = isPlatbaPokladnaObjSilent || isPlatbaPokladnaDodavatelSilent;
+
+      if (currentPhase >= 6 && !isPokladnaSilent && formData.faktury && formData.faktury.length > 0) {
         formData.faktury.forEach((faktura, index) => {
           const fakturaPrefix = `faktura_${index + 1}`;
 
-          if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
-            errors[`${fakturaPrefix}_cislo`] = `Variabilní symbol je povinný`;
+          if (!faktura.fa_typ || (typeof faktura.fa_typ === 'string' && faktura.fa_typ.trim() === '')) {
+            errors[`${fakturaPrefix}_typ`] = `Faktura ${index + 1}: Vyberte typ faktury`;
           }
 
-          if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
-            errors[`${fakturaPrefix}_castka`] = `Částka je povinná`;
+          if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
+            errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Zadejte variabilní symbol faktury`;
+          }
+
+          if (faktura.fa_castka === undefined || faktura.fa_castka === null || faktura.fa_castka === '') {
+            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury`;
           }
 
           // Datum doručení - kontroluj fa_datum_doruceni (ne fa_dorucena, to je boolean)
           if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
-            errors[`${fakturaPrefix}_dorucena`] = `Datum doručení je povinné`;
+            errors[`${fakturaPrefix}_datum_doruceni`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
+          }
+
+          // Datum vystavení
+          if (!faktura.fa_datum_vystaveni || (typeof faktura.fa_datum_vystaveni === 'string' && faktura.fa_datum_vystaveni.trim() === '')) {
+            errors[`${fakturaPrefix}_datum_vystaveni`] = `Faktura ${index + 1}: Zadejte datum vystavení faktury`;
           }
 
           if (!faktura.fa_splatnost || (typeof faktura.fa_splatnost === 'string' && faktura.fa_splatnost.trim() === '')) {
-            errors[`${fakturaPrefix}_splatnost`] = `Datum splatnosti je povinné`;
+            errors[`${fakturaPrefix}_splatnost`] = `Faktura ${index + 1}: Zadejte datum splatnosti faktury`;
           }
         });
       }
@@ -16085,7 +17875,6 @@ function OrderForm25() {
     formData.ma_byt_zverejnena,
     formData.dt_zverejneni,
     formData.registr_iddt
-    // ❌ REMOVED: hasTriedToSubmit - způsobovalo race condition!
   ]);
   */
 
@@ -16285,12 +18074,15 @@ function OrderForm25() {
   };
 
   const handleSaveOrder = async () => {
+    // 🔒 OCHRANA PROTI DVOJKLIKU (race condition prevention)
+    if (isSaving) {
+      console.warn('⚠️ Ukládání již probíhá, ignoruji duplicitní požadavek');
+      return;
+    }
+
     // Vymazat debug konzoli před uložením
     clearDebugLogs();
     addDebugLog('info', 'SAVE', 'order-save-start', 'Začínám ukládání objednávky...');
-
-    // ❌ REMOVED: setValidationErrors({}) - nečistit chyby před validací!
-    // Validace se provede v saveOrderToAPI() a chyby se nastaví tam
 
     // Zavolej naši API funkci
     await saveOrderToAPI();
@@ -16869,7 +18661,7 @@ function OrderForm25() {
   // Helper: Mapování polí na sekce (FÁZE 2)
   const getFieldsForSections = () => ({
     financovani: [
-      'zpusob_financovani', 'financovani', 'lp_kod', 'cislo_smlouvy', 'smlouva_poznamka',
+      'zpusob_financovani', 'financovani', 'lp_kod', 'lp_poznamka', 'cislo_smlouvy', 'smlouva_poznamka',
       'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka'
     ],
     dodavatel: [
@@ -16935,6 +18727,7 @@ function OrderForm25() {
     // ✅ Zachovat financování (součást PO sekce ve FÁZI 1)
     next.zpusob_financovani = prev.zpusob_financovani;
     next.lp_kod = prev.lp_kod;
+    next.lp_poznamka = prev.lp_poznamka;
     next.cislo_smlouvy = prev.cislo_smlouvy;
     next.smlouva_poznamka = prev.smlouva_poznamka;
     next.individualni_schvaleni = prev.individualni_schvaleni;
@@ -17075,7 +18868,8 @@ function OrderForm25() {
           return 'Neznámý';
         }
         const fullName = `${option.titul_pred ? option.titul_pred + ' ' : ''}${option.jmeno || ''} ${option.prijmeni || ''}${option.titul_za ? ', ' + option.titul_za : ''}`.replace(/\s+/g, ' ').trim();
-        return fullName || 'Neznámý';
+        const usekSuffix = option.usek_zkr ? ` (${option.usek_zkr})` : '';
+        return (fullName || 'Neznámý') + usekSuffix;
       case 'strediska':
       case 'strediska_kod':
         // Pro hierarchické střediska použij label (už obsahuje odsazení)
@@ -17089,13 +18883,18 @@ function OrderForm25() {
         // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek
         return option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
       case 'lp_kod':
-        // 🆕 OPRAVA: Použít cislo_lp a nazev_uctu místo kod a nazev
-        return option.cislo_lp
-          ? `${option.cislo_lp} - ${option.nazev_uctu || 'Bez názvu'}`
-          : `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
+        // 🆕 OPRAVA: Použít cislo_lp a nazev_uctu místo kod a nazev + rok
+        if (option.cislo_lp) {
+          const lpKodWithYear = formatLpWithYear(option.cislo_lp, option.platne_do);
+          return `${lpKodWithYear} - ${option.nazev_uctu || 'Bez názvu'}`;
+        }
+        return `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
       case 'druh_objednavky_kod':
-        // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek
-        return option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
+        // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek + indikátor majetku
+        const druhLabel = option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
+        const isMajetek = option.atribut_objektu === 1 || option.atribut_objektu === '1';
+        // Přidat (majetek) tag malým písmem jako část labelu
+        return isMajetek ? `${druhLabel}   (majetek)` : druhLabel;
       // Pro Orders25List compatibility
       case 'statusFilter':
         return option.nazev_stavu || option.nazev || option.popis || option.kod_stavu || option.kod || String(option);
@@ -17110,6 +18909,9 @@ function OrderForm25() {
         return option.displayName || option.jmeno_prijmeni || `${option.jmeno || ''} ${option.prijmeni || ''}`.trim() || 'Neznámý';
       case 'pageSize':
         return option.label || String(option.value || option);
+      case 'fa_typ':
+        // Typy faktury - použij nazev nebo nazev_stavu
+        return option.nazev || option.nazev_stavu || option.label || String(option);
       default:
         // 🎯 FALLBACK: Pokud field začíná na "polozka_" a končí na "_lp", je to LP položky
         if (field && typeof field === 'string' && field.startsWith('polozka_') && field.endsWith('_lp')) {
@@ -17595,6 +19397,27 @@ function OrderForm25() {
     return false;
   }, [isLoadingCiselniky, isLoadingFormData]);
 
+  // ⏱️ TIMEOUT PROTECTION: Pokud loading trvá déle než 20 sekund, zobrazit error
+  // MUSÍ BÝT PŘED VŠEMI EARLY RETURNS (React Rules of Hooks)
+  useEffect(() => {
+    if (!lifecycle.isReady && token && username) {
+      const timeoutId = setTimeout(() => {
+        if (!lifecycle.isReady) {
+          showToast?.(
+            'Načítání formuláře trvá příliš dlouho. Zkuste obnovit stránku nebo kontaktujte podporu.',
+            { type: 'error', autoClose: false }
+          );
+          // Přesměruj zpět na seznam po 3 sekundách
+          setTimeout(() => {
+            navigate('/orders25-list', { replace: true });
+          }, 3000);
+        }
+      }, 20000); // 20 sekund timeout
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [lifecycle.isReady, token, username, navigate, showToast]);
+
   // 🛡️ AUTH GATE: Pokud není token/username, zobrazit loading a počkat
   // MUSÍ BÝT AŽ PO VŠECH HOOKS (React Rules of Hooks)
   if (!token || !username) {
@@ -17606,12 +19429,6 @@ function OrderForm25() {
       </LoadingOverlay>
     );
   }
-
-  // ❌ DEPRECATED: Starý loading gate - zakázán, používá staré flagy které se nenastavují
-  // if (isFormLoading) {
-  //   return (
-  //     <LoadingOverlay $visible={true}>
-  //       <LoadingSpinner $visible={true} />
   //       <LoadingMessage $visible={true}>
   //         {isLoadingCiselniky && !isLoadingFormData && 'Načítám číselníky...'}
   //         {isLoadingCiselniky && isLoadingFormData && 'Načítám číselníky a data objednávky...'}
@@ -17644,17 +19461,18 @@ function OrderForm25() {
         <LoadingSubtext $visible={true}>
           {!dictionaries.isReady && `Načítám ${dictionaries.loadedCount || 0}/${dictionaries.totalToLoad || 8} číselníků...`}
           {dictionaries.isReady && lifecycle.isLoadingFormData && 'Načítám data objednávky...'}
-          {dictionaries.isReady && !lifecycle.isLoadingFormData && !lifecycle.isReady && 'Zpracovávám data...'}
+          {dictionaries.isReady && !lifecycle.isLoadingFormData && !lifecycle.isReady && (
+            <div style={{ textAlign: 'center' }}>
+              <div>Zpracovávám data...</div>
+              <div style={{ fontSize: '0.75rem', marginTop: '8px', opacity: 0.7 }}>
+                Pokud načítání trvá déle než 10 sekund, zkuste obnovit stránku (Ctrl+Shift+R)
+              </div>
+            </div>
+          )}
         </LoadingSubtext>
       </LoadingOverlay>
     );
   }
-
-  // ❌ DEPRECATED: Starý loading overlay - nahrazeno lifecycle.isReady
-  // if (isFormInitializing) {
-  //   return (
-  //     <LoadingOverlay $visible={true}>
-  //       <LoadingSpinner $visible={true} />
   //       <LoadingMessage $visible={true}>Načítám formulář objednávky</LoadingMessage>
   //       <LoadingSubtext $visible={true}>Zpracovávám data z databáze...</LoadingSubtext>
   //     </LoadingOverlay>
@@ -17722,10 +19540,6 @@ function OrderForm25() {
       />
 
       {/* 🎤 Indikátor hlasového nahrávání je v Layout.js - globální pro celou aplikaci */}
-
-      {/* ❌ DEPRECATED: Loading overlay pro částečné operace - ODSTRANĚNO */}
-      {/* Číselníky se načítají v lifecycle fázi, takže tento overlay je zbytečný */}
-      {/* Pokud potřebujeme loading během runtime operací, přidáme specifický indicator */}
 
       {/* Varování při částečné chybě inicializace */}
       {initializationError && (
@@ -17941,13 +19755,14 @@ function OrderForm25() {
                     const isNegative = zbyva < 0;
                     const lpOption = lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id);
                     const lpCislo = lpOption?.cislo_lp || lp_id;
+                    const lpCisloWithYear = formatLpWithYear(lpCislo, lpOption?.platne_do);
                     const lpNazev = lpOption?.nazev_uctu || lpOption?.nazev || '';
                     
                     // Získat informaci o správci z detail (pokud je načten)
                     const spravce = detail?.spravce;
                     const spravceText = spravce ? `${spravce.jmeno || ''} ${spravce.prijmeni || ''}`.trim() : '';
                     const tooltipText = [
-                      lpNazev ? `${lpCislo} - ${lpNazev}` : lpCislo,
+                      lpNazev ? `${lpCisloWithYear} - ${lpNazev}` : lpCisloWithYear,
                       spravceText ? `PO: ${spravceText}` : ''
                     ].filter(Boolean).join('\n');
                     
@@ -18001,8 +19816,17 @@ function OrderForm25() {
             })()}
 
             {/* Řádek s fází a akcemi NEBO zelený info box pro dokončenou objednávku NEBO červený pro zamítnutou NEBO oranžový pro stornovanou */}
-            {isWorkflowRejected ? (
-              // 🔴 Červený info box pro zamítnutou objednávku
+            {isWorkflowRejected && !(
+              // Kontrola POUZE VE FÁZI SCHVALOVÁNÍ (2-3) - v jiných fázích standardní chování
+              (currentPhase === 2 || currentPhase === 3) && (
+                (userDetail?.roles?.some(role => role.kod_role === 'PRIKAZCE')) ||  // Obecná role PRIKAZCE
+                (userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN')) || // Obecná role SUPERADMIN  
+                (userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR')) || // Obecná role ADMINISTRATOR
+                (parseInt(formData.prikazce_id, 10) === user_id) // NEBO je příkazcem této objednávky
+              )
+            ) ? (
+              // 🔴 Červený info box pro zamítnutou objednávku - SKRYTÝ pro speciální role a příkazce objednávky
+              // Pro speciální role a příkazce objednávky se nezobrazuje červený box, ale checkboxy schvalování zůstávají aktivní
               <div style={{
                 padding: '1rem 1.5rem',
                 marginTop: '1rem',
@@ -18118,7 +19942,7 @@ function OrderForm25() {
                   {formData.odesilatel_id && (
                     <div style={{ fontWeight: 'normal', fontSize: '0.875rem' }}>
                       <strong>Stornoval:</strong> {getUserNameById(formData.odesilatel_id)}
-                      {formData.dt_odeslani && ` • ${new Date(formData.dt_odeslani).toLocaleDateString('cs-CZ')} ${new Date(formData.dt_odeslani).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`}
+                      {formData.dt_odeslani && ` • ${formatDateOnly(formData.dt_odeslani)}`}
                     </div>
                   )}
                 </div>
@@ -18178,8 +20002,16 @@ function OrderForm25() {
                   )}
                 </div>
               </div>
-            ) : isWorkflowCompleted ? (
-              // 🔒 Zelený info box pro dokončenou objednávku
+            ) : isWorkflowCompleted && !(
+              // Pro zamítnuté objednávky VE FÁZI SCHVALOVÁNÍ - SKRÝT zelený box u speciálních rolí
+              isWorkflowRejected && (currentPhase === 2 || currentPhase === 3) && (
+                (userDetail?.roles?.some(role => 
+                  role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+                )) ||
+                (parseInt(formData.prikazce_id, 10) === user_id)
+              )
+            ) ? (
+              // Zeleny info box pro dokoncenouobjednavku - SKRYTY pro zamitnute objednavky u specialnich roli
               <div style={{
                 padding: '1rem 1.5rem',
                 marginTop: '1rem',
@@ -18195,7 +20027,7 @@ function OrderForm25() {
                 <Lock size={20} style={{ marginTop: '0.25rem', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ marginBottom: '0.5rem' }}>
-                    ✅ Objednávka byla úspěšně dokončena. Všechny kroky byly splněny.
+                    Objednavka byla uspesne dokoncena. Vsechny kroky byly splneny.
                   </div>
                   {formData.dokoncil_id && (
                     <div style={{ fontWeight: 'normal', fontSize: '0.875rem' }}>
@@ -18273,7 +20105,7 @@ function OrderForm25() {
                   <PhaseText>
                     {(() => {
                       // Používá novou 8-fázovou logiku
-                      if (formData.stav_stornovano || hasWorkflowState(formData.stav_workflow_kod, 'ZRUSENA')) {
+                      if (isOrderCancelled || hasWorkflowState(formData.stav_workflow_kod, 'ZRUSENA')) {
                         return "Stornovaná objednávka";
                       }
 
@@ -18412,14 +20244,30 @@ function OrderForm25() {
                 <ActionButton
                   className="save-btn"
                   onClick={handleSaveOrder}
-                  disabled={
-                    isSaving ||
-                    showSaveProgress ||
-                    !canSaveOrder ||
-                    (isWorkflowCompleted && !canUnlockAnything) ||
-                    isLoadingEvCislo ||  // 🆕 ŘEŠENÍ #1: Blokovat během loading
-                    !isValidEvCislo(formData.ev_cislo)  // 🆕 ŘEŠENÍ #3: Blokovat pokud není platné
-                  }
+                  disabled={(() => {
+                    // Základní blokovací podmínky
+                    if (isSaving || showSaveProgress || !canSaveOrder || isLoadingEvCislo || !isValidEvCislo(formData.ev_cislo)) {
+                      return true;
+                    }
+                    
+                    // Pro speciální role ve fázi schvalování (2-3) - povolit uložit i u zamítnutých
+                    if (isWorkflowCompleted && (currentPhase === 2 || currentPhase === 3)) {
+                      const hasGeneralRole = userDetail?.roles?.some(role => 
+                        role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+                      );
+                      const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
+                      const hasSpecialRights = hasGeneralRole || isPrikazceOfOrder;
+                      const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
+                      
+                      // Pokud má speciální práva a je to zamítnutá objednávka ve fázi schvalování, povolit uložit
+                      if (hasSpecialRights && isRejectedOrder) {
+                        return false; // POVOLIT uložit
+                      }
+                    }
+                    
+                    // Standardní logika - dokončené objednávky blokovat (mimo výše uvedené výjimky)
+                    return isWorkflowCompleted && !canUnlockAnything;
+                  })()}
                   title={
                     isLoadingEvCislo
                       ? 'Načítá se evidenční číslo...'
@@ -18722,7 +20570,7 @@ function OrderForm25() {
           <FormRow>
             <FormGroup data-custom-select>
               <LabelWithClear>
-                <LabelText required>PŘÍKAZCE</LabelText>
+                <LabelText required>SCHVALOVATEL/PŘÍKAZCE</LabelText>
                 <ClearSelectButton
                   type="button"
                   $visible={!!formData.prikazce_id}
@@ -18776,7 +20624,7 @@ function OrderForm25() {
                 <EmergencyToggleSwitch 
                   checked={formData.mimoradna_udalost || false}
                   disabled={shouldLockPhase1Sections}
-                >
+                  >
                   <input
                     type="checkbox"
                     checked={formData.mimoradna_udalost || false}
@@ -18876,43 +20724,80 @@ function OrderForm25() {
               {(() => {
                 const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
                 const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
-                return nazev.includes('Limitovan') || nazev.includes('příslib');
+                // Kontrola s i bez diakritiky pro spolehlivost
+                return nazev.includes('Limitovan') || nazev.includes('příslib') || nazev.includes('prislib');
               })() && (
-                <FormRow>
-                  <FormGroup style={{gridColumn: '1 / -1'}}>
-                    <LabelWithClear>
-                      <LabelText required>LP KÓD</LabelText>
-                      <ClearSelectButton
-                        type="button"
-                        $visible={Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0}
-                        onClick={() => handleInputChange('lp_kod', [])}
-                        title="Vymazat výběr"
-                      >
-                        <X size={12} />
-                      </ClearSelectButton>
-                    </LabelWithClear>
-                    <StableCustomSelect
-                      value={formData.lp_kod || []}
-                      onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
-                      onBlur={(field, value) => handleFieldBlur('lp_kod', value)}
-                      options={lpKodyOptions}
-                      placeholder="Vyberte LP kódy..."
-                      field="lp_kod"
-                      loading={false}
-                      loadingText=""
-                      icon={<Hash />}
-                      disabled={shouldLockFinancovaniSection}
-                      hasError={!!validationErrors.lp_kod}
-                      required={true}
-                      multiple={true}
-                      getOptionLabel={getOptionLabel}
-                      // getOptionValue ODEBRÁN - použij default (opt.id || opt.value || opt)
-                    />
-                    {validationErrors.lp_kod && (
-                      <ErrorText>{validationErrors.lp_kod}</ErrorText>
-                    )}
-                  </FormGroup>
-                </FormRow>
+                <>
+                  <FormRow>
+                    <FormGroup style={{gridColumn: '1 / -1'}}>
+                      <LabelWithClear>
+                        <LabelText required>LP KÓD</LabelText>
+                        <ClearSelectButton
+                          type="button"
+                          $visible={Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0}
+                          onClick={() => handleInputChange('lp_kod', [])}
+                          title="Vymazat výběr"
+                        >
+                          <X size={12} />
+                        </ClearSelectButton>
+                      </LabelWithClear>
+                      <StableCustomSelect
+                        value={formData.lp_kod || []}
+                        onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
+                        onBlur={(field, value) => handleFieldBlur('lp_kod', value)}
+                        options={filteredLpKodyOptions}
+                        placeholder={(() => {
+                          if (!formData.prikazce_id) return "Nejprve vyberte příkazce";
+                          if (filteredLpKodyOptions.length === 0) return "Žádné dostupné LP kódy";
+                          
+                          // Zobrazit prvních 4-5 LP kódů
+                          const maxShow = 5;
+                          const lpCodes = filteredLpKodyOptions
+                            .slice(0, maxShow)
+                            .map(lp => lp.cislo_lp || lp.kod)
+                            .join(', ');
+                          
+                          const hasMore = filteredLpKodyOptions.length > maxShow;
+                          return hasMore ? `např. ${lpCodes}, ...` : `např. ${lpCodes}`;
+                        })()}
+                        field="lp_kod"
+                        loading={false}
+                        loadingText=""
+                        icon={<Hash />}
+                        disabled={shouldLockFinancovaniSection || !formData.prikazce_id}
+                        hasError={!!validationErrors.lp_kod}
+                        required={true}
+                        multiple={true}
+                        getOptionLabel={getOptionLabel}
+                        // getOptionValue ODEBRÁN - použij default (opt.id || opt.value || opt)
+                      />
+                      {validationErrors.lp_kod && (
+                        <ErrorText>{validationErrors.lp_kod}</ErrorText>
+                      )}
+                    </FormGroup>
+                  </FormRow>
+                  
+                  {/* LP Poznámka - zobrazi se po LP kódech */}
+                  <FormRow>
+                    <FormGroup style={{gridColumn: '1 / -1'}}>
+                      <Label>POZNÁMKA K LP</Label>
+                      <InputWithIcon hasIcon>
+                        <FileText />
+                        <Input
+                          type="text"
+                          name="lp_poznamka"
+                          placeholder="Dodatečné informace k limitovanému příslibu"
+                          value={formData.lp_poznamka || ''}
+                          onChange={(e) => handleInputChange('lp_poznamka', e.target.value)}
+                          onBlur={() => handleFieldBlur('lp_poznamka', formData.lp_poznamka)}
+                          disabled={shouldLockFinancovaniSection}
+                          hasError={!!validationErrors.lp_poznamka}
+                          hasIcon
+                        />
+                      </InputWithIcon>
+                    </FormGroup>
+                  </FormRow>
+                </>
               )}
 
               {(() => {
@@ -19282,13 +21167,13 @@ function OrderForm25() {
               {/* 🔧 Sekce STAV SCHVÁLENÍ se zobrazí když:
                   1. Objednávka je uložena v DB (má ID)
                   2. Workflow NENÍ ve stavu NOVA (tzn. má jiný stav než nová objednávka)
-                  3. Uživatel má oprávnění ke schvalování (admin nebo ORDER_APPROVAL role)
+                  3. Uživatel má oprávnění ke schvalování nebo je v rolích PRIKAZCE, SUPERADMIN, ADMINISTRATOR
 
                   Zobrazuje se pro stavy: CEKA_SE, ZAMITNUTO, SCHVALENO, ODESLAN_KE_SCHVALENI a další
                   Skrývá se pouze pro stav NOVA nebo pokud uživatel nemá oprávnění */}
               {!!formData.id &&
                !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
-               (canApproveOrders || canManageOrders) && (
+               canViewApprovalSection && (
                 <>
                   {/* Šedivá oddělovací linka NAD celou sekcí schválení */}
                   <div style={{
@@ -19476,9 +21361,9 @@ function OrderForm25() {
                       )}
                     </label>
 
-                    {/* Důvod na stejném řádku */}
-                    {(formData.stav_schvaleni === 'neschvaleno' || formData.stav_schvaleni === 'ceka_se') && (
-                      <div style={{ flex: '1', minWidth: '300px' }}>
+                    {/* Komentář/Důvod - zobrazuje se pro VŠECHNY stavy */}
+                    {formData.stav_schvaleni && (
+                      <div style={{ flex: '1', minWidth: '300px', marginTop: '1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <label style={{
                             fontWeight: '500',
@@ -19486,8 +21371,11 @@ function OrderForm25() {
                             fontSize: '0.875rem',
                             whiteSpace: 'nowrap'
                           }}>
-                            Důvod:
-                            <span style={{ color: '#dc2626', marginLeft: '2px' }}>*</span>
+                            {formData.stav_schvaleni === 'schvaleno' ? 'Poznámka:' : 'Důvod:'}
+                            {/* Povinný pouze pro neschvaleno a ceka_se */}
+                            {(formData.stav_schvaleni === 'neschvaleno' || formData.stav_schvaleni === 'ceka_se') && (
+                              <span style={{ color: '#dc2626', marginLeft: '2px' }}>*</span>
+                            )}
                           </label>
                           <InputWithIcon hasIcon style={{ flex: 1 }}>
                             <FileText />
@@ -19497,7 +21385,9 @@ function OrderForm25() {
                               onChange={(e) => handleInputChange('schvaleni_komentar', e.target.value)}
                               onBlur={() => handleFieldBlur('schvaleni_komentar', formData.schvaleni_komentar)}
                               placeholder={
-                                formData.stav_schvaleni === 'neschvaleno'
+                                formData.stav_schvaleni === 'schvaleno'
+                                  ? "Volitelná poznámka ke schválení..."
+                                  : formData.stav_schvaleni === 'neschvaleno'
                                   ? "Uveďte důvod neschválení..."
                                   : "Uveďte důvod čekání na schválení..."
                               }
@@ -19511,8 +21401,8 @@ function OrderForm25() {
                         )}
                       </div>
                     )}
-                    </>
-                  )}
+                      </>
+                    )}
 
                   {/* 📊 INFO BOX - Zobrazí se POD checkboxy AŽ PO ULOŽENÍ DO DATABÁZE */}
                   {/* Zobrazí se pouze když workflow stav obsahuje SCHVALENA (= uloženo v DB se schválením) */}
@@ -19551,11 +21441,12 @@ function OrderForm25() {
                              formData.stav_schvaleni === 'neschvaleno' ? 'Zamítl:' : 'Vrátil:'}
                           </strong> {getUserNameById(formData.schvalovatel_id)}
                         </div>
-                        {/* Komentář se NEZOBRAZUJE pro stav schvaleno (schválení nepotřebuje zdůvodnění) */}
-                        {formData.schvaleni_komentar && formData.stav_schvaleni !== 'schvaleno' && (
+                        {/* Zobrazení komentáře pro VŠECHNY stavy včetně schválení */}
+                        {formData.schvaleni_komentar && (
                           <div>
                             <strong>
-                              {formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
+                              {formData.stav_schvaleni === 'schvaleno' ? 'Poznámka:' :
+                               formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
                                formData.stav_schvaleni === 'ceka_se' ? 'Důvod vrácení:' : 'Komentář:'}
                             </strong> {formData.schvaleni_komentar}
                           </div>
@@ -19563,7 +21454,7 @@ function OrderForm25() {
                       </div>
                     </div>
                   )}
-                  </div>
+                </div>
                 </>
               )}
 
@@ -19607,11 +21498,12 @@ function OrderForm25() {
                          formData.stav_schvaleni === 'neschvaleno' ? 'Zamítl:' : 'Vrátil:'}
                       </strong> {getUserNameById(formData.schvalovatel_id)}
                     </div>
-                    {/* Komentář se NEZOBRAZUJE pro stav schvaleno (schválení nepotřebuje zdůvodnění) */}
-                    {formData.schvaleni_komentar && formData.stav_schvaleni !== 'schvaleno' && (
+                    {/* Zobrazení komentáře pro VŠECHNY stavy včetně schválení */}
+                    {formData.schvaleni_komentar && (
                       <div>
                         <strong>
-                          {formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
+                          {formData.stav_schvaleni === 'schvaleno' ? 'Poznámka:' :
+                           formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
                            formData.stav_schvaleni === 'ceka_se' ? 'Důvod vrácení:' : 'Komentář:'}
                         </strong> {formData.schvaleni_komentar}
                       </div>
@@ -19676,12 +21568,11 @@ function OrderForm25() {
                       )}
                     </SectionTitle>
                     <SectionControls>
-                      {/* 🏢 Ikona "Přidat do adresáře" - zobrazí se pouze pokud má právo CONTACT_MANAGE nebo CONTACT_EDIT */}
+                      {/* 🏢 Ikona "Přidat do adresáře" - zobrazí se pouze pokud má právo vytvářet/editovat kontakty */}
                       {checkSupplierRequiredFields() &&
                        !shouldLockPhase3Sections &&
                        !isPokladna &&
-                       hasPermission &&
-                       (hasPermission('CONTACT_MANAGE') || hasPermission('CONTACT_EDIT')) && (
+                       ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))) && (
                         <AddToDirectoryIcon
                           isActive={true}
                           onClick={handleAddSupplierToDirectory}
@@ -20296,6 +22187,7 @@ function OrderForm25() {
                             width: '80px'
                           }}
                         >
+                          <option value="0">0%</option>
                           <option value="12">12%</option>
                           <option value="21">21%</option>
                         </select>
@@ -20688,17 +22580,21 @@ function OrderForm25() {
                         onChange={(e) => {
                           const isChecked = e.target.checked;
 
-                          // Při zaškrtnutí "Odesláno" odškrtnout "Stornováno" a smazat storno data
                           if (isChecked) {
-                            handleInputChange('stav_stornovano', false);
-                            handleInputChange('datum_storna', '');
-                            handleInputChange('odeslani_storno_duvod', ''); // Smazat důvod storna při odeslání
-                            handleInputChange('storno_uzivatel_id', '');
-                            handleInputChange('storno_provedl', '');
+                            // Okamžitě odškrtnout druhý checkbox a nastavit datum
+                            setFormData(prev => ({
+                              ...prev,
+                              stav_odeslano: true,
+                              datum_odeslani: prev.datum_odeslani || getCurrentDateFormatted(),
+                              stav_stornovano: false,
+                              datum_storna: '',
+                              odeslani_storno_duvod: '',
+                              storno_uzivatel_id: '',
+                              storno_provedl: ''
+                            }));
+                          } else {
+                            handleInputChange('stav_odeslano', false);
                           }
-
-                          // Hlavní změna stavu - handleInputChange už obsahuje logiku pro nastavení datumu
-                          handleInputChange('stav_odeslano', isChecked);
                         }}
                         style={{
                           width: '20px',
@@ -20772,14 +22668,24 @@ function OrderForm25() {
                         onChange={(e) => {
                           const isChecked = e.target.checked;
 
-                          // Při zaškrtnutí "Stornováno" odškrtnout "Odesláno"
                           if (isChecked) {
-                            handleInputChange('stav_odeslano', false);
-                            handleInputChange('datum_odeslani', '');
+                            // Okamžitě odškrtnout druhý checkbox a nastavit datum
+                            setFormData(prev => ({
+                              ...prev,
+                              stav_stornovano: true,
+                              datum_storna: prev.datum_storna || getCurrentDateFormatted(),
+                              stav_odeslano: false,
+                              datum_odeslani: ''
+                            }));
+                          } else {
+                            // Při odškrtnutí vymazat datum a důvod
+                            setFormData(prev => ({
+                              ...prev,
+                              stav_stornovano: false,
+                              datum_storna: '',
+                              odeslani_storno_duvod: ''
+                            }));
                           }
-
-                          // ✅ HLAVNÍ ZMĚNA - handleInputChange automaticky nastaví datum v logice
-                          handleInputChange('stav_stornovano', isChecked);
                         }}
                         style={{
                           width: '20px',
@@ -20853,9 +22759,6 @@ function OrderForm25() {
                   {validationErrors.datum_odeslani && (
                     <ErrorText style={{ marginTop: '0.5rem' }}>{validationErrors.datum_odeslani}</ErrorText>
                   )}
-                  {validationErrors.datum_storna && (
-                    <ErrorText style={{ marginTop: '0.5rem' }}>{validationErrors.datum_storna}</ErrorText>
-                  )}
 
                   {/* Informace o stavu */}
                   {formData.stav_odeslano ? (
@@ -20891,7 +22794,7 @@ function OrderForm25() {
                         )}
                       </div>
                     </div>
-                  ) : formData.stav_stornovano ? (
+                  ) : isOrderCancelled ? (
                     <div style={{
                       marginTop: '1rem',
                       padding: '0.75rem 1rem',
@@ -20920,7 +22823,7 @@ function OrderForm25() {
                         ) : (
                           // Byla stornována po uložení
                           <>
-                            ❌ Objednávka byla stornována {formData.datum_storna ? `dne ${formatDateOnly(new Date(formData.datum_storna))}` : 'po uložení'}
+                            ❌ Objednávka byla stornována {formData.dt_odeslani ? `dne ${formatDateOnly(new Date(formData.dt_odeslani))}` : 'po uložení'}
                             {formData.odeslani_storno_duvod && (
                               <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', fontWeight: 'normal' }}>
                                 <strong>Důvod stornování:</strong> {formData.odeslani_storno_duvod}
@@ -21782,30 +23685,15 @@ function OrderForm25() {
                   4. 🆕 Pokud platba = 'faktura' → "Fakturace" s plným blokem faktur
               */}
               {(() => {
-                // 🆕 Určit typ platby: pokladna nebo faktura
-                // Kontroluje platbu z financování objednávky A z potvrzení dodavatele
-                const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
-                const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
-                const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
-
-                // ❌ SKRÝT sekci Fakturace když je pokladna
-                // 🔒 PRÁVA: 
-                // - Uživatelé S právem INVOICE_MANAGE vidí sekci od FÁZE 6 (mohou přidávat faktury)
-                // - Uživatelé BEZ práva vidí sekci když:
-                //   a) jsou ve FÁZI 7+ (aktivní fáze po fakturaci)
-                //   b) existují faktury (sekce je již vyplněná)
-                const hasFaktury = formData.faktury && formData.faktury.length > 0;
-                const shouldShow = !isPokladna && (
-                  canManageInvoices 
-                    ? currentPhase >= 6  // S právem: vidí od FÁZE 6
-                    : (currentPhase >= 7 || hasFaktury)  // Bez práva: vidí od FÁZE 7 nebo když jsou faktury
-                );
+                // ✅ POUŽÍT CENTRALIZOVANÉ SECTION STATES místo duplicitní logiky
+                const fakturaceVisible = extendedSectionStates.fakturace?.visible;
+                if (!fakturaceVisible) return null;
 
                 // Pokud není určen typ platby, zobrazit jako fakturu (default)
                 const sectionTitle = 'Fakturace k objednávce';
                 const sectionDescription = `(počet: ${formData.faktury?.length || 0})`;
 
-                return shouldShow ? (
+                return (
                 <FormSection data-section="fakturace">
                   <SectionHeader
                     sectionTheme="section-invoice"
@@ -21871,7 +23759,7 @@ function OrderForm25() {
                               const dnesniDatum = formatDateForPicker(new Date());
                               const pokladniDoklad = {
                                 id: `temp-pokladna-${Date.now()}`,
-                                objednavka_id: (formData.id || savedOrderId),
+                                objednavka_id: formData.id,
                                 fa_datum_doruceni: dnesniDatum,
                                 fa_dorucena: 1,
                                 fa_castka: null, // Nepovinné pro pokladnu
@@ -21881,7 +23769,13 @@ function OrderForm25() {
                                 fa_poznamka: '',
                                 vytvoril_uzivatel_id: user_id,
                                 vytvoril_jmeno: getUserNameById(user_id),
-                                dt_vytvoreni: new Date().toISOString(),
+                                // 🔥 FIX: Použít lokální český čas místo UTC
+                                dt_vytvoreni: (() => {
+                                  const now = new Date();
+                                  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                                  const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                                  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                                })(),
                                 dt_aktualizace: null,
                                 aktivni: 1,
                                 _isNew: true,
@@ -21936,13 +23830,17 @@ function OrderForm25() {
                                   fakturaId={formData.faktury[0].id}
                                   objednavkaId={formData.id}
                                   fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
-                                  readOnly={shouldLockFaktury}
+                                  readOnly={!!formData.faktury[0].vecna_spravnost_potvrzeno || currentPhase >= 8}
                                   onISDOCParsed={handleISDOCParsed}
                                   formData={formData}
                                   faktura={formData.faktury[0]}
                                   validateInvoiceForAttachments={validateInvoiceForAttachments}
                                   isPokladna={true}
-                                  attachments={formData.faktury[0].attachments || []}
+                                  allUsers={allUsers}
+                                  attachments={(() => {
+                                    const atts = formData.faktury[0].attachments || [];
+                                    return atts;
+                                  })()}
                                   onAttachmentsChange={(newAttachments) => {
                                     handleInvoiceAttachmentsChange(formData.faktury[0].id, newAttachments);
                                   }}
@@ -22006,8 +23904,10 @@ function OrderForm25() {
                           const dnesniDatum = formatDateForPicker(new Date());
                           const novaFaktura = {
                             id: `temp-${Date.now()}`,
-                            objednavka_id: (formData.id || savedOrderId),
+                            objednavka_id: formData.id,
+                            fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
                             fa_datum_doruceni: dnesniDatum,
+                            fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
                             fa_dorucena: 1,
                             fa_castka: '',
                             fa_cislo_vema: '',
@@ -22016,7 +23916,13 @@ function OrderForm25() {
                             fa_poznamka: '',
                             vytvoril_uzivatel_id: user_id,
                             vytvoril_jmeno: getUserNameById(user_id),
-                            dt_vytvoreni: new Date().toISOString(),
+                            // 🔥 FIX: Použít lokální český čas místo UTC
+                            dt_vytvoreni: (() => {
+                              const now = new Date();
+                              const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                              const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                              return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                            })(),
                             dt_aktualizace: null,
                             aktivni: 1,
                             _isNew: true,
@@ -22295,81 +24201,7 @@ function OrderForm25() {
                                   </FakturaInfoIconWrapper>
                                 </div>
                                 <div style={{display: 'flex', gap: '0.5rem'}}>
-                                  {/* Tlačítko přidat další fakturu */}
-                                  <button
-                                    type="button"
-                                    disabled={shouldLockFaktury}
-                                    onClick={() => {
-                                      // Nejdřív uložit aktuálně editovanou fakturu (pokud je editace aktivní)
-                                      if (isEditing) {
-                                        handleUpdateFaktura();
-                                      }
-
-                                      // Vytvořit novou fakturu BEZ auto-vyplnění ceny (uživatel vyplní a ověří sám)
-                                      const dnesniDatum = formatDateForPicker(new Date());
-
-                                      const newFaktura = {
-                                        id: `temp-${Date.now()}`,
-                                        objednavka_id: (formData.id || savedOrderId),
-                                        fa_datum_doruceni: dnesniDatum, // ✅ Správné pole pro datum
-                                        fa_dorucena: 1, // ✅ Boolean flag
-                                        fa_castka: '', // ❌ NEBUDEME auto-vyplňovat - uživatel ověří sám
-                                        fa_cislo_vema: '',
-                                        fa_strediska_kod: Array.isArray(formData.strediska_kod) ? formData.strediska_kod : [],
-                                        fa_poznamka: '',
-                                        fa_splatnost: '',
-                                        vytvoril_uzivatel_id: user_id,
-                                        vytvoril_jmeno: getUserNameById(user_id),
-                                        dt_vytvoreni: new Date().toISOString(),
-                                        dt_aktualizace: null,
-                                        aktivni: 1,
-                                        _isNew: true,
-                                        // ✅ NOVÉ: Per-invoice věcná správnost
-                                        vecna_spravnost_umisteni_majetku: '',
-                                        vecna_spravnost_poznamka: '',
-                                        vecna_spravnost_potvrzeno: 0
-                                      };
-
-                                      const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
-                                      updateFaktury([...currentFaktury, newFaktura]);
-                                      setEditingFaktura(newFaktura);
-                                      setFakturaFormData({
-                                        fa_datum_doruceni: dnesniDatum, // ✅ Správné pole pro datum
-                                        fa_dorucena: 1, // ✅ Boolean flag
-                                        fa_castka: '', // ❌ NEBUDEME auto-vyplňovat - uživatel ověří sám
-                                        fa_cislo_vema: '',
-                                        fa_strediska_kod: formData.strediska_kod || [],
-                                        fa_poznamka: '',
-                                        fa_splatnost: '',
-                                        // ✅ NOVÉ: Per-invoice věcná správnost
-                                        vecna_spravnost_umisteni_majetku: '',
-                                        vecna_spravnost_poznamka: '',
-                                        vecna_spravnost_potvrzeno: 0
-                                      });
-                                    }}
-                                    title="Přidat další fakturu"
-                                    style={{
-                                      background: shouldLockFaktury ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.2)',
-                                      color: 'white',
-                                      border: '1px solid rgba(255,255,255,0.5)',
-                                      borderRadius: '6px',
-                                      padding: '0.4rem',
-                                      fontSize: '0.875rem',
-                                      fontWeight: '500',
-                                      cursor: shouldLockFaktury ? 'not-allowed' : 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      width: '32px',
-                                      height: '32px',
-                                      opacity: shouldLockFaktury ? 0.6 : 1,
-                                      transition: 'all 0.2s ease'
-                                    }}
-                                  >
-                                    <Plus size={16} />
-                                  </button>
-
-                                  {/* Tlačítko smazat fakturu - umožnit smazání i jedné faktury */}
+                                  {/* Tlačítko smazat fakturu */}
                                   <button
                                     type="button"
                                     disabled={shouldLockFaktury}
@@ -22423,50 +24255,125 @@ function OrderForm25() {
                               {/* Content wrapper pro fakturu */}
                               <div style={{ padding: '1.25rem' }}>
 
-                              {/* INLINE EDITOVATELNÁ POLE - 3 sloupce: datum fixní, zbytek proporcionálně */}
-                              <FormRow style={{gridTemplateColumns: '280px 1fr 1fr'}}>
+                              {/* INLINE EDITOVATELNÁ POLE - 3 sloupce */}
+                              {/* Řádek 1: Datum doručení | Datum vystavení | Datum splatnosti */}
+                              <FormRow style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                                 <FormGroup>
                                   <Label required>Datum doručení</Label>
                                   <DatePicker
-                                    fieldName="fa_datum_doruceni"
-                                    value={isEditing ? currentData.fa_datum_doruceni : (faktura.fa_datum_doruceni || formatDateForPicker(new Date()))}
+                                    fieldName={`fa_${index + 1}_datum_doruceni`}
+                                    value={faktura.fa_datum_doruceni ?? (faktura._isNew ? formatDateForPicker(new Date()) : '')}
                                     hasError={!!validationErrors[`faktura_${index + 1}_datum_doruceni`]}
                                     disabled={shouldLockFaktury}
                                     onChange={(value) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_datum_doruceni: value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_datum_doruceni: value,
-                                              fa_dorucena: 1,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
+                                          ? { 
+                                              ...f, 
+                                              fa_datum_doruceni: value, 
+                                              fa_dorucena: value ? 1 : 0,
+                                              _isNew: false // 🔥 Odstranit _isNew flag při jakékoliv změně
                                             }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
                                     }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label required>Datum vystavení</Label>
+                                  <DatePicker
+                                    fieldName={`fa_${index + 1}_datum_vystaveni`}
+                                    value={faktura.fa_datum_vystaveni ?? ''}
+                                    hasError={!!validationErrors[`faktura_${index + 1}_datum_vystaveni`]}
+                                    disabled={shouldLockFaktury}
+                                    onChange={(value) => {
+                                      const updatedFaktury = formData.faktury.map(f =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_datum_vystaveni: value, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
                                     }}
-                                    placeholder="Vyberte datum doručení"
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label required>Datum splatnosti</Label>
+                                  <DatePicker
+                                    fieldName={`fa_${index + 1}_splatnost`}
+                                    value={(() => {
+                                      // 🔥 Po editaci (_isNew: false) ignoruj fa_datum_splatnosti fallback
+                                      if (faktura._isNew === false) {
+                                        return faktura.fa_splatnost ?? '';
+                                      }
+                                      // Nová faktura - zkus fa_splatnost, pak fa_datum_splatnosti (z DB), pak prázdné
+                                      return faktura.fa_splatnost ?? (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '');
+                                    })()}
+                                    hasError={!!validationErrors[`faktura_${index + 1}_splatnost`]}
+                                    disabled={shouldLockFaktury}
+                                    onChange={(value) => {
+                                      const updatedFaktury = formData.faktury.map(f =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_splatnost: value, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+                              </FormRow>
+
+                              {/* Řádek 2: Typ faktury | Variabilní symbol | Částka */}
+                              <FormRow style={{gridTemplateColumns: '1fr 1fr 1fr'}}>
+                                <FormGroup data-custom-select>
+                                  <LabelWithClear>
+                                    <LabelText required>Typ faktury</LabelText>
+                                    <ClearSelectButton
+                                      type="button"
+                                      $visible={!!faktura.fa_typ}
+                                      onClick={() => {
+                                        const updatedFaktury = formData.faktury.map(f =>
+                                          f.id === faktura.id ? { ...f, fa_typ: 'BEZNA', _isNew: false } : f
+                                        );
+                                        updateFaktury(updatedFaktury);
+                                      }}
+                                      title="Vymazat výběr"
+                                    >
+                                      <X size={12} />
+                                    </ClearSelectButton>
+                                  </LabelWithClear>
+                                  <StableCustomSelect
+                                    value={faktura.fa_typ || 'BEZNA'}
+                                    disabled={shouldLockFaktury}
+                                    hasError={!!validationErrors[`faktura_${index + 1}_typ`]}
+                                    onChange={(selected) => {
+                                      const selectedValue = typeof selected === 'object' ? (selected.value || selected.kod) : selected;
+                                      const updatedFaktury = formData.faktury.map(f =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_typ: selectedValue, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    options={[
+                                      { kod: 'BEZNA', nazev: 'Běžná', value: 'BEZNA' },
+                                      { kod: 'ZALOHOVA', nazev: 'Zálohová', value: 'ZALOHOVA' },
+                                      { kod: 'VYUCTOVACI', nazev: 'Vyúčtovací', value: 'VYUCTOVACI' },
+                                      { kod: 'OPRAVNA', nazev: 'Opravná', value: 'OPRAVNA' },
+                                      { kod: 'DOBROPIS', nazev: 'Dobropis', value: 'DOBROPIS' }
+                                    ]}
+                                    placeholder="-- Vyberte typ --"
+                                    field="fa_typ"
+                                    required={true}
+                                    multiple={false}
+                                    icon={<FileText />}
+                                    getOptionLabel={getOptionLabel}
+                                    getOptionValue={(option) => option.value || option.kod || option}
                                   />
                                 </FormGroup>
 
@@ -22476,42 +24383,16 @@ function OrderForm25() {
                                     <FontAwesomeIcon icon={faHashtag} />
                                     <Input
                                       type="text"
-                                      value={isEditing ? currentData.fa_cislo_vema : (faktura.fa_cislo_vema || '')}
+                                      value={faktura.fa_cislo_vema || ''}
                                       hasError={!!validationErrors[`faktura_${index + 1}_cislo`]}
                                       disabled={shouldLockFaktury}
                                       onChange={(e) => {
-                                        if (!isEditing) {
-                                          handleEditFaktura(faktura);
-                                        }
-                                        setFakturaFormData(prev => ({
-                                          ...prev,
-                                          fa_cislo_vema: e.target.value
-                                        }));
-
-                                        // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                         const updatedFaktury = formData.faktury.map(f =>
                                           f.id === faktura.id
-                                            ? {
-                                                ...f,
-                                                fa_cislo_vema: e.target.value,
-                                                // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                                ...(isEditing ? {
-                                                  fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                  fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                  fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                  fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                  fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                  fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                                } : {})
-                                              }
+                                            ? { ...f, fa_cislo_vema: e.target.value, _isNew: false }
                                             : f
                                         );
                                         updateFaktury(updatedFaktury);
-                                      }}
-                                      onBlur={() => {
-                                        if (isEditing && !faktura._isNew) {
-                                          handleUpdateFaktura();
-                                        }
                                       }}
                                       required
                                       placeholder="12345678"
@@ -22524,122 +24405,36 @@ function OrderForm25() {
                                   <Label required>Částka vč. DPH</Label>
                                   <CurrencyInput
                                     fieldName="fa_castka"
-                                    value={isEditing ? (currentData.fa_castka ?? '') : (faktura.fa_castka ?? '')}
+                                    value={faktura.fa_castka ?? ''}
                                     hasError={!!validationErrors[`faktura_${index + 1}_castka`]}
                                     disabled={shouldLockFaktury}
                                     onChange={(field, value) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_castka: value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_castka: value,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_castka: value, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
                                     }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
-                                    }}
-                                    placeholder="25000.50"
+                                    placeholder="25 000,50 Kč"
                                   />
                                 </FormGroup>
                               </FormRow>
 
-                              <FormRow style={{gridTemplateColumns: '280px 1fr'}}>
-                                <FormGroup>
-                                  <Label required>Datum splatnosti</Label>
-                                  <DatePicker
-                                    fieldName="fa_splatnost"
-                                    value={isEditing ? currentData.fa_splatnost : (() => {
-                                      // 🔧 Priorita: fa_splatnost (FE formát) > fa_datum_splatnosti (DB formát)
-                                      if (faktura.fa_splatnost) return faktura.fa_splatnost;
-                                      if (faktura.fa_datum_splatnosti) {
-                                        // Ořezat čas, vzít jen datum
-                                        return faktura.fa_datum_splatnosti.split(' ')[0];
-                                      }
-                                      return '';
-                                    })()}
-                                    hasError={!!validationErrors[`faktura_${index + 1}_splatnost`]}
-                                    disabled={shouldLockFaktury}
-                                    onChange={(value) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_splatnost: value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
-                                      const updatedFaktury = formData.faktury.map(f =>
-                                        f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_splatnost: value,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
-                                            }
-                                          : f
-                                      );
-                                      updateFaktury(updatedFaktury);
-                                    }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
-                                    }}
-                                    placeholder="Vyberte datum splatnosti"
-                                  />
-                                </FormGroup>
-
-                                <FormGroup data-custom-select style={{gridColumn: '2 / -1'}}>
+                              {/* Řádek 3: Střediska (celá šířka) */}
+                              <FormRow>
+                                <FormGroup data-custom-select style={{gridColumn: '1 / -1'}}>
                                   <LabelWithClear>
                                     <LabelText>Střediska</LabelText>
                                     <ClearSelectButton
                                       type="button"
                                       $visible={(() => {
-                                        const currentData = isEditing ? fakturaFormData : faktura;
-                                        const strediska = currentData.fa_strediska_kod || [];
+                                        const strediska = faktura.fa_strediska_kod || [];
                                         return Array.isArray(strediska) && strediska.length > 0;
                                       })()}
                                       onClick={() => {
-                                        if (!isEditing) {
-                                          handleEditFaktura(faktura);
-                                        }
-                                        setFakturaFormData(prev => ({
-                                          ...prev,
-                                          fa_strediska_kod: []
-                                        }));
                                         const updatedFaktury = formData.faktury.map(f =>
-                                          f.id === faktura.id ? { ...f, fa_strediska_kod: [] } : f
+                                          f.id === faktura.id ? { ...f, fa_strediska_kod: [], _isNew: false } : f
                                         );
                                         updateFaktury(updatedFaktury);
                                       }}
@@ -22650,54 +24445,24 @@ function OrderForm25() {
                                   </LabelWithClear>
                                   <StableCustomSelect
                                     value={(() => {
-                                      // 🔧 NORMALIZE: Parse string → array pokud je potřeba
-                                      const rawValue = isEditing
-                                        ? (currentData.fa_strediska_kod || formData.strediska_kod || [])
-                                        : (faktura.fa_strediska_kod || formData.strediska_kod || []);
-
-                                      // Pokud je string (např. "STR01,STR02"), parsuj na array
+                                      const rawValue = faktura.fa_strediska_kod || formData.strediska_kod || [];
                                       if (typeof rawValue === 'string' && rawValue.trim()) {
                                         return rawValue.split(',').map(s => s.trim()).filter(Boolean);
                                       }
-
-                                      // Pokud už je array, vrať ho
                                       return Array.isArray(rawValue) ? rawValue : [];
                                     })()}
                                     disabled={shouldLockFaktury}
                                     onChange={(selectedValues) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-
-                                      // ✅ EXTRAHOVAT JEN STRINGY (kódy) z objektů/stringů
                                       const strediskaKody = Array.isArray(selectedValues)
                                         ? selectedValues.map(item => {
-                                            if (typeof item === 'string') return item; // Už je string
-                                            return item.value || item.kod_stavu || item.id || item; // Extrahuj z objektu
+                                            if (typeof item === 'string') return item;
+                                            return item.value || item.kod_stavu || item.id || item;
                                           })
                                         : [];
 
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_strediska_kod: strediskaKody
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_strediska_kod: strediskaKody,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_strediska_kod: strediskaKody, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
@@ -22718,41 +24483,15 @@ function OrderForm25() {
                                 <FormGroup style={{gridColumn: '1 / -1'}}>
                                   <Label>Poznámka</Label>
                                   <TextArea
-                                    value={isEditing ? currentData.fa_poznamka : (faktura.fa_poznamka || '')}
+                                    value={faktura.fa_poznamka || ''}
                                     disabled={shouldLockFaktury}
                                     onChange={(e) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_poznamka: e.target.value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_poznamka: e.target.value,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_poznamka: e.target.value, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
-                                    }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
                                     }}
                                     placeholder="Volitelná poznámka..."
                                     rows={2}
@@ -22783,6 +24522,100 @@ function OrderForm25() {
                                     <FontAwesomeIcon icon={faCheckCircle} />
                                     Věcná správnost faktury #{index + 1}
                                   </div>
+
+                                  {/* 💰 LP ČERPÁNÍ EDITOR - pro faktury s LP financováním */}
+                                  {(() => {
+                                    
+                                    // Skip pokud není LP financování
+                                    const financovani = formData.financovani;
+                                    if (!financovani) {
+                                      return null;
+                                    }
+                                    
+                                    try {
+                                      const fin = typeof financovani === 'string' 
+                                        ? JSON.parse(financovani) 
+                                        : financovani;
+                                      
+                                      // Zobrazit LP editor pouze pokud:
+                                      // 1. typ === 'LP' NEBO
+                                      // 2. typ_financovani obsahuje "LP" NEBO
+                                      // 3. má vybrané LP kódy v lp_kod
+                                      const isLPFinancing = (
+                                        fin?.typ === 'LP' ||
+                                        (fin?.typ_financovani && fin.typ_financovani.includes('LP')) ||
+                                        (Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0)
+                                      );
+                                      
+                                      if (!isLPFinancing) {
+                                        return null;
+                                      }
+                                      
+                                      // Získat fakturaId a LP data z state
+                                      const fakturaId = faktura.id;
+                                      const isRealInvoice = fakturaId && !String(fakturaId).startsWith('temp-');
+                                      const lpData = fakturyLPCerpani[fakturaId] || { lpCerpani: [], loaded: false };
+                                      
+                                      // 🔄 Načíst LP čerpání pokud ještě není načtené
+                                      if (isRealInvoice && !lpData.loaded && !loadedFakturyRef.current.has(fakturaId)) {
+                                        loadFakturaLPCerpani(fakturaId);
+                                      }
+                                      
+                                      return (
+                                        <div style={{ 
+                                          marginBottom: '1.5rem',
+                                          padding: '1rem',
+                                          background: '#fff8e1',
+                                          border: '2px solid #ffb300',
+                                          borderRadius: '8px'
+                                        }}>
+                                          <div style={{
+                                            fontWeight: '600',
+                                            color: '#e65100',
+                                            marginBottom: '1rem',
+                                            fontSize: '0.9rem'
+                                          }}>
+                                            💰 Rozdělení faktury mezi LP kódy
+                                          </div>
+                                          <LPCerpaniEditor
+                                            faktura={{ ...faktura, invoice_id: faktura.id }}
+                                            orderData={formData}
+                                            lpCerpani={lpData.lpCerpani}
+                                            availableLPCodes={lpKodyOptions || []}
+                                            hasTriedToSubmit={hasTriedToSubmit}
+                                            onChange={(newLpCerpani) => {
+                                              // Aktualizovat lokální state se všemi řádky (pro zobrazení)
+                                              setFakturyLPCerpani(prev => ({
+                                                ...prev,
+                                                [fakturaId]: {
+                                                  lpCerpani: newLpCerpani,
+                                                  loaded: true
+                                                }
+                                              }));
+                                              
+                                              // [LP] TRIGGEROVAT AUTOSAVE: Zmena LP kodu = draft save s debouncem
+                                              triggerAutosave(false); // false = s 3s debouncem
+                                            }}
+                                            disabled={faktura.vecna_spravnost_potvrzeno === 1 || faktura.vecna_spravnost_potvrzeno === true}
+                                          />
+                                        </div>
+                                      );
+                                    } catch (e) {
+                                      console.error('[LP Editor] Chyba pri zpracovani LP editoru:', e);
+                                      return (
+                                        <div style={{
+                                          padding: '1rem',
+                                          background: '#fee2e2',
+                                          border: '1px solid #f87171',
+                                          borderRadius: '6px',
+                                          color: '#dc2626',
+                                          marginBottom: '1rem'
+                                        }}>
+                                          ❌ Chyba při načítání LP editoru: {e.message}
+                                        </div>
+                                      );
+                                    }
+                                  })()}
 
                                   {/* Porovnání MAX CENA vs FAKTURA */}
                                   {(() => {
@@ -22834,21 +24667,12 @@ function OrderForm25() {
                                     <FormGroup style={{gridColumn: '1 / -1'}}>
                                       <Label>Umístění majetku</Label>
                                       <Input
-                                        value={isEditing ? (currentData.vecna_spravnost_umisteni_majetku || '') : (faktura.vecna_spravnost_umisteni_majetku || '')}
+                                        value={faktura.vecna_spravnost_umisteni_majetku || ''}
                                         disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
-                                          if (!isEditing) {
-                                            handleEditFaktura(faktura);
-                                          }
-                                          setFakturaFormData(prev => ({
-                                            ...prev,
-                                            vecna_spravnost_umisteni_majetku: e.target.value
-                                          }));
-
-                                          // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
-                                              ? { ...f, vecna_spravnost_umisteni_majetku: e.target.value }
+                                              ? { ...f, vecna_spravnost_umisteni_majetku: e.target.value, _isNew: false }
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
@@ -22865,22 +24689,13 @@ function OrderForm25() {
                                         return <Label required={prekroceno} style={prekroceno ? {color: '#dc2626', fontWeight: '700'} : {}}>Poznámka k věcné správnosti{prekroceno ? ' (POVINNÁ - faktura překračuje MAX cenu)' : ''}</Label>;
                                       })()}
                                       <TextArea
-                                        value={isEditing ? (currentData.vecna_spravnost_poznamka || '') : (faktura.vecna_spravnost_poznamka || '')}
+                                        value={faktura.vecna_spravnost_poznamka || ''}
                                         disabled={shouldLockVecnaSpravnost}
                                         hasError={!!validationErrors[`faktura_${index + 1}_poznamka_vs`]}
                                         onChange={(e) => {
-                                          if (!isEditing) {
-                                            handleEditFaktura(faktura);
-                                          }
-                                          setFakturaFormData(prev => ({
-                                            ...prev,
-                                            vecna_spravnost_poznamka: e.target.value
-                                          }));
-
-                                          // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
-                                              ? { ...f, vecna_spravnost_poznamka: e.target.value }
+                                              ? { ...f, vecna_spravnost_poznamka: e.target.value, _isNew: false }
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
@@ -22917,17 +24732,52 @@ function OrderForm25() {
                                           }}>
                                             <input
                                               type="checkbox"
-                                              checked={isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1)}
+                                              checked={faktura.vecna_spravnost_potvrzeno === 1}
                                               disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           const newValue = e.target.checked ? 1 : 0;
-                                          
-                                          if (!isEditing) {
-                                            handleEditFaktura(faktura);
+
+                                          // 💰 LP VALIDACE: Pokud se potvrzuje věcná správnost (newValue === 1)
+                                          if (newValue === 1) {
+                                            // Zkontrolovat LP financování
+                                            const financovani = formData.financovani;
+                                            if (financovani) {
+                                              try {
+                                                const fin = typeof financovani === 'string' 
+                                                  ? JSON.parse(financovani) 
+                                                  : financovani;
+                                                
+                                                if (fin?.typ === 'LP') {
+                                                  // Pro LP financování validovat čerpání
+                                                  const fakturaId = faktura.id;
+                                                  const lpData = fakturyLPCerpani[fakturaId];
+                                                  const lpCerpani = lpData?.lpCerpani || [];
+                                                  
+                                                  // Validace: MUSÍ být přiřazen minimálně 1 LP kód
+                                                  if (!lpCerpani || lpCerpani.length === 0 || lpCerpani.every(lp => !lp.lp_cislo || lp.castka <= 0)) {
+                                                    showToast && showToast('Pro LP financování je povinné rozdělit fakturu mezi LP kódy', 'error');
+                                                    return; // Nepovolí zaškrtnutí
+                                                  }
+                                                  
+                                                  // Validace: Součet nesmí překročit fa_castka
+                                                  const totalLP = lpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
+                                                  const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+                                                  
+                                                  if (totalLP > fakturaCastka) {
+                                                    showToast && showToast(`Součet LP čerpání (${totalLP.toLocaleString('cs-CZ')} Kč) překračuje částku faktury (${fakturaCastka.toLocaleString('cs-CZ')} Kč)`, 'error');
+                                                    return; // Nepovolí zaškrtnutí
+                                                  }
+                                                  
+                                                }
+                                              } catch (e) {
+                                                console.error('❌ Chyba při validaci LP čerpání:', e);
+                                                showToast && showToast('Chyba při validaci LP čerpání', 'error');
+                                                return;
+                                              }
+                                            }
                                           }
 
-                                          // 🆕 Při zaškrtnutí nastavit ID uživatele a timestamp
-                                          let updatedFields = { vecna_spravnost_potvrzeno: newValue };
+                                          let updatedFields = { vecna_spravnost_potvrzeno: newValue, _isNew: false };
                                           if (newValue === 1 && user_id && !faktura.potvrdil_vecnou_spravnost_id) {
                                             const now = new Date();
                                             const year = now.getFullYear();
@@ -22943,18 +24793,15 @@ function OrderForm25() {
                                             addDebugLog('info', 'VECNA-FAKTURA', 'metadata-set', `Faktura #${faktura.id}: Nastaveno ID=${user_id}, dt=${localTimestamp}`);
                                           }
 
-                                          setFakturaFormData(prev => ({
-                                            ...prev,
-                                            ...updatedFields
-                                          }));
-
-                                          // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
                                               ? { ...f, ...updatedFields }
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
+
+                                          // ❌ ZRUŠENO: Trigger se volá pouze při uložení objednávky, ne při checked
+                                          // Notifikace se pošle v saveOrderToAPI při detekci změny workflow stavu
                                         }}
                                         style={{
                                           width: '18px',
@@ -22966,7 +24813,7 @@ function OrderForm25() {
                                       <span style={{ flex: 1 }}>
                                         Potvrzuji věcnou správnost faktury #{index + 1}
                                       </span>
-                                      {((isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1))) && (
+                                      {(faktura.vecna_spravnost_potvrzeno === 1) && (
                                         <span style={{
                                           fontSize: '0.75rem',
                                           color: '#16a34a',
@@ -23023,26 +24870,32 @@ function OrderForm25() {
                               )}
 
                               {/* 📎 PŘÍLOHY FAKTURY - Kompaktní komponenta s API validací */}
-                              <InvoiceAttachmentsCompact
-                                key={`invoice-attachments-${index}-${formData.id}`}
-                                fakturaId={faktura.id}
-                                objednavkaId={formData.id}
-                                fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
-                                readOnly={shouldLockFaktury}
-                                onISDOCParsed={handleISDOCParsed}
-                                formData={formData}
-                                faktura={faktura}
-                                validateInvoiceForAttachments={validateInvoiceForAttachments}
-                                attachments={faktura.attachments || []}
-                                onAttachmentsChange={(newAttachments) => {
-                                  handleInvoiceAttachmentsChange(faktura.id, newAttachments);
-                                }}
-                                onAttachmentUploaded={(uploadedAttachment) => {
-                                  // 💾 Po uploadu přílohy
-                                  handleInvoiceAttachmentUploaded(faktura.id, uploadedAttachment);
-                                }}
-                                onCreateInvoiceInDB={handleCreateInvoiceInDB}
-                              />
+                              {(() => {
+                                const isReadOnly = !!faktura.vecna_spravnost_potvrzeno || currentPhase >= 8;
+                                return (
+                                  <InvoiceAttachmentsCompact
+                                    key={`invoice-attachments-${index}-${formData.id}`}
+                                    fakturaId={faktura.id}
+                                    objednavkaId={formData.id}
+                                    fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
+                                    readOnly={isReadOnly}
+                                    onISDOCParsed={handleISDOCParsed}
+                                    formData={formData}
+                                    faktura={faktura}
+                                    validateInvoiceForAttachments={validateInvoiceForAttachments}
+                                    allUsers={allUsers}
+                                    attachments={faktura.attachments || []}
+                                    onAttachmentsChange={(newAttachments) => {
+                                      handleInvoiceAttachmentsChange(faktura.id, newAttachments);
+                                    }}
+                                    onAttachmentUploaded={(uploadedAttachment) => {
+                                      // 💾 Po uploadu přílohy
+                                      handleInvoiceAttachmentUploaded(faktura.id, uploadedAttachment);
+                                    }}
+                                    onCreateInvoiceInDB={handleCreateInvoiceInDB}
+                                  />
+                                );
+                              })()}
 
                               {/* Faktury se ukládají automaticky s objednávkou - tlačítko "Uložit fakturu" odstraněno */}
 
@@ -23071,6 +24924,90 @@ function OrderForm25() {
 
                             </div>
                           )}))}
+
+                          {/* ➕ TLAČÍTKO PŘIDAT DALŠÍ FAKTURU - pod seznamem faktur */}
+                          {!shouldLockFaktury && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const dnesniDatum = formatDateForPicker(new Date());
+                                const newFaktura = {
+                                  id: `temp-${Date.now()}`,
+                                  objednavka_id: formData.id,
+                                  fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
+                                  fa_datum_doruceni: dnesniDatum,
+                                  fa_datum_vystaveni: '', // Nechám prázdné - uživatel vyplní
+                                  fa_dorucena: 1,
+                                  fa_castka: '',
+                                  fa_cislo_vema: '',
+                                  fa_strediska_kod: Array.isArray(formData.strediska_kod) ? formData.strediska_kod : [],
+                                  fa_poznamka: '',
+                                  fa_splatnost: '',
+                                  vytvoril_uzivatel_id: user_id,
+                                  vytvoril_jmeno: getUserNameById(user_id),
+                                  // 🔥 FIX: Použít lokální český čas místo UTC
+                                  dt_vytvoreni: (() => {
+                                    const now = new Date();
+                                    const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                                    const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                                    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                                  })(),
+                                  dt_aktualizace: null,
+                                  aktivni: 1,
+                                  _isNew: true,
+                                  vecna_spravnost_umisteni_majetku: '',
+                                  vecna_spravnost_poznamka: '',
+                                  vecna_spravnost_potvrzeno: 0
+                                };
+                                const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
+                                const updatedFaktury = [...currentFaktury, newFaktura];
+                                updateFaktury(updatedFaktury);
+                                setEditingFaktura(newFaktura);
+                                setFakturaFormData({
+                                  fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
+                                  fa_datum_doruceni: dnesniDatum,
+                                  fa_datum_vystaveni: dnesniDatum, // ✅ Výchozí datum vystavení
+                                  fa_dorucena: 1,
+                                  fa_castka: '',
+                                  fa_cislo_vema: '',
+                                  fa_strediska_kod: formData.strediska_kod || [],
+                                  fa_poznamka: '',
+                                  fa_splatnost: '',
+                                  vecna_spravnost_umisteni_majetku: '',
+                                  vecna_spravnost_poznamka: '',
+                                  vecna_spravnost_potvrzeno: 0
+                                });
+                              }}
+                              style={{
+                                width: '100%',
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                background: 'transparent',
+                                color: '#3b82f6',
+                                border: '2px dashed #3b82f6',
+                                borderRadius: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.05)';
+                                e.currentTarget.style.borderColor = '#2563eb';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.borderColor = '#3b82f6';
+                              }}
+                            >
+                              <Plus size={18} />
+                              Přidat další fakturu
+                            </button>
+                          )}
                         </div>
                       )}
 
@@ -23098,7 +25035,7 @@ function OrderForm25() {
                     </div>
                   </SectionContent>
                 </FormSection>
-              ) : null;
+              );
               })()}
 
               {/* 📝 INFO BOX PRO UŽIVATELE BEZ PRÁV INVOICE_MANAGE - čeká se na doplnění faktur */}
@@ -23157,12 +25094,6 @@ function OrderForm25() {
                   </div>
                 </div>
               )}
-
-              {/* ❌ SEKCE "DODATEČNÉ DOKUMENTY" ODSTRANĚNA - nahrazena univerzální sekcí "Přílohy k objednávce" */}
-              {/* ❌ SEKCE "VĚCNÁ SPRÁVNOST" ODSTRANĚNA - refaktorováno na per-invoice checkboxy */}
-
-              {/* ✅ TODO: Zde bude nová per-invoice věcná správnost logika (checkboxy u každé faktury) */}
-
 
               {/* ✅ SEKCE: DOKONČENÍ OBJEDNÁVKY - FÁZE 10 */}
               {/* ZOBRAZIT pouze pokud: */}
@@ -23436,7 +25367,7 @@ function OrderForm25() {
                     </div>
                   </SectionContent>
                 </FormSection>
-                );
+              );
               })()}
 
               {/* 📝 INFO BOX PRO BĚŽNÉ UŽIVATELE - čeká se na věcnou kontrolu */}
@@ -23948,10 +25879,17 @@ function OrderForm25() {
                         {uploadingFiles ? 'Nahrávám soubory...' : dragOver ? 'Pusť soubory zde!' : 'Přetáhni nebo vyber soubory'}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>
-                        Každá příloha musí být klasifikována: Objednávka / Faktura / Košilka / Jiné.
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: '500' }}>
-                        📤 Orders25 API: Přílohy se automaticky nahrají na server po klasifikaci pomocí Orders25 attachment API.
+                        Každá příloha musí být klasifikována: Objednávka / Faktura / Košilka / Jiné.<br/>
+                        <span style={{ fontSize: '0.8rem', color: '#f59e0b' }}>
+                          📏 Max. velikost souboru: 20 MB | Max. celková velikost: 100 MB<br/>
+                          📄 Podporované formáty:<br/>
+                          &nbsp;&nbsp;• Dokumenty: PDF, DOC, DOCX, ODT, RTF, TXT<br/>
+                          &nbsp;&nbsp;• Tabulky: XLS, XLSX, ODS, CSV<br/>
+                          &nbsp;&nbsp;• Prezentace: PPT, PPTX, ODP<br/>
+                          &nbsp;&nbsp;• Obrázky: JPG, PNG, GIF, BMP, SVG<br/>
+                          &nbsp;&nbsp;• Archivy: ZIP, RAR, 7Z<br/>
+                          &nbsp;&nbsp;• Emaily: EML, MSG
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -23990,17 +25928,25 @@ function OrderForm25() {
                     />
 
                     {/* Seznam nahraných souborů - pouze obj- prefix */}
-                    {attachments && attachments.filter(a => getFilePrefix(a) === 'obj-').length > 0 && (
-                      <div style={{ marginTop: '1rem' }}>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '1rem'
-                        }}>
+                    {(() => {
+                      const objFiles = attachments?.filter(a => getFilePrefix(a) === 'obj-') || [];
+                      return objFiles.length > 0 && (
+                        <div style={{ marginTop: '1rem' }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem'
+                          }}>
                           <Label>
-                            Počet příloh: <strong>{attachments.filter(a => getFilePrefix(a) === 'obj-').length}</strong> |
-                            Nahráno: <span style={{color: '#16a34a'}}><strong>{attachments.filter(f => getFilePrefix(f) === 'obj-' && f.status === 'uploaded').length}</strong></span>
+                            Počet příloh: <strong>{objFiles.length}</strong> |
+                            Nahráno: <span style={{color: '#16a34a'}}><strong>{objFiles.filter(f => f.status === 'uploaded').length}</strong></span> |
+                            Velikost: <strong>{(() => {
+                              const totalSize = objFiles
+                                .filter(f => f.status === 'uploaded')
+                                .reduce((sum, f) => sum + (f.size || 0), 0);
+                              return totalSize > 0 ? `${(totalSize / 1024 / 1024).toFixed(2)} MB` : '0 MB';
+                            })()}</strong>
                           </Label>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -24089,8 +26035,11 @@ function OrderForm25() {
                             )}
                           </div>
                         </div>
-                        {attachments.filter(a => getFilePrefix(a) === 'obj-').map((file, index) => (
-                          <div key={file.id} style={{
+                        {objFiles.map((file, index) => (
+                          <div 
+                            key={file.id}
+                            data-attachment-id={file.id}
+                            style={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.75rem',
@@ -24276,7 +26225,12 @@ function OrderForm25() {
                                 alignItems: 'center',
                                 gap: '0.5rem'
                               }}>
-                                <span>{formatDateOnly(new Date(file.uploadDate))} {new Date(file.uploadDate).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>
+                                  {file.uploadDate && !isNaN(new Date(file.uploadDate).getTime()) 
+                                    ? `${formatDateOnly(new Date(file.uploadDate))} ${new Date(file.uploadDate).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Datum neuvedeno'
+                                  }
+                                </span>
                                 <span>•</span>
                                 <span style={{
                                   textTransform: 'uppercase',
@@ -24298,7 +26252,7 @@ function OrderForm25() {
                                   fontSize: '0.6875rem',
                                   fontWeight: '500'
                                 }}>
-                                  Nahráno: {file.nahrano_uzivatel?.prijmeni || 'ADMIN'} {file.nahrano_uzivatel?.jmeno || 'Super'}
+                                  Nahráno: {file.nahrano_uzivatel?.prijmeni || userDetail?.prijmeni || 'Neznámý'} {file.nahrano_uzivatel?.jmeno || userDetail?.jmeno || 'uživatel'}
                                 </span>
                               </div>
                             </div>
@@ -24340,7 +26294,8 @@ function OrderForm25() {
                           </div>
                         ))}
                       </div>
-                    )}
+                    );
+                    })()}
 
                     {/* Varovná zpráva o okamžitých změnách v přílohách */}
                     <div style={{
@@ -24374,8 +26329,8 @@ function OrderForm25() {
                 </FormRow>
               </SectionContent>
             </FormSection>
-            );
-          })()}
+          );
+        })()}
 
           </ScrollableInner>
         </ScrollableContent>
@@ -24539,9 +26494,9 @@ function OrderForm25() {
                   <AresScopeOption
                     type="button"
                     selected={aresSelectedScope === 'usek'}
-                    onClick={() => hasPermission && hasPermission('CONTACT_EDIT') && setAresSelectedScope('usek')}
-                    disabled={!hasPermission || !hasPermission('CONTACT_EDIT')}
-                    title={(!hasPermission || !hasPermission('CONTACT_EDIT')) ? "Nemáte oprávnění pro úsekový kontakt" : ""}
+                    onClick={() => ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))) && setAresSelectedScope('usek')}
+                    disabled={!((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT'))))}
+                    title={!((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))) ? "Nemáte oprávnění pro úsekový kontakt" : ""}
                   >
                     <FontAwesomeIcon icon={faBuilding} />
                     <span>Úsek</span>
@@ -24551,9 +26506,9 @@ function OrderForm25() {
                   <AresScopeOption
                     type="button"
                     selected={aresSelectedScope === 'global'}
-                    onClick={() => hasPermission && hasPermission('CONTACT_MANAGE') && setAresSelectedScope('global')}
-                    disabled={!hasPermission || !hasPermission('CONTACT_MANAGE')}
-                    title={(!hasPermission || !hasPermission('CONTACT_MANAGE')) ? "Nemáte oprávnění pro globální kontakt" : ""}
+                    onClick={() => ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE'))) && setAresSelectedScope('global')}
+                    disabled={!((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')))}
+                    title={!((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE'))) ? "Globální adresář je dostupný pouze pro administrátory a uživatele s právem SUPPLIER_MANAGE" : ""}
                   >
                     <FontAwesomeIcon icon={faGlobe} />
                     <span>Globální</span>
@@ -24565,7 +26520,7 @@ function OrderForm25() {
               {aresSelectedScope === 'usek' && (
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: '#262626', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {canManageUsers ? 'Výběr úseků' : `Váš úsek: ${userDetail?.usek_zkr || 'N/A'}`}
+                    {(hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')) ? 'Výběr úseků' : `Váš úsek: ${userDetail?.usek_zkr || 'N/A'}`}
                   </div>
                   {usekyLoading ? (
                     <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280' }}>
@@ -24577,7 +26532,7 @@ function OrderForm25() {
                     </div>
                   ) : (
                     <AresUsekGrid>
-                      {(canManageUsers ? availableUseky :
+                      {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')) ? availableUseky :
                         availableUseky.filter(usek => usek.usek_zkr === userDetail?.usek_zkr)
                       ).map((usek, index) => (
                         <AresUsekItem
@@ -24770,8 +26725,8 @@ function OrderForm25() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[
                     { value: 'new', label: '✨ Nová', disabled: false },
-                    { value: 'update', label: '🔄 Aktualizovat', disabled: [...savedTemplates, ...serverTemplates].length === 0 },
-                    { value: 'merge', label: '🔗 Sloučit', disabled: [...savedTemplates, ...serverTemplates].length === 0 }
+                    { value: 'update', label: '🔄 Aktualizovat', disabled: [...(savedTemplates || []), ...(serverTemplates || [])].length === 0 },
+                    { value: 'merge', label: '🔗 Sloučit', disabled: [...(savedTemplates || []), ...(serverTemplates || [])].length === 0 }
                   ].map(option => (
                     <label key={option.value} style={{
                       flex: 1,
@@ -24813,14 +26768,14 @@ function OrderForm25() {
                     value={selectedTargetTemplate?.id || selectedTargetTemplate?.ts || ''}
                     onChange={(selectedValue) => {
                       // ✅ OPRAVA: StableCustomSelect posílá hodnotu přímo, ne event!
-                      const allTemplates = [...savedTemplates, ...serverTemplates];
+                      const allTemplates = [...(savedTemplates || []), ...(serverTemplates || [])];
                       const selected = allTemplates.find(t => (t.id || t.ts).toString() === String(selectedValue));
                       setSelectedTargetTemplate(selected);
                       if (saveMode === 'update' && selected) {
                         setTemplateName(selected.name || '');
                       }
                     }}
-                    options={[...savedTemplates, ...serverTemplates]}
+                    options={[...(savedTemplates || []), ...(serverTemplates || [])]}
                     placeholder="Vyberte šablonu..."
                     getOptionLabel={(option) => {
                       const source = option.__fromServer ? 'server' : 'lokální';
@@ -25437,22 +27392,40 @@ function OrderForm25() {
           ? formData.stav_workflow_kod
           : (formData.stav_workflow_kod ? [formData.stav_workflow_kod] : []);
 
-        // Odebrat UVEREJNENA (pokud existuje) a přidat UVEREJNIT
-        const updatedStates = currentStates.filter(s => s !== 'UVEREJNENA');
+        // 🔧 FIX: Při odemykání bloku pro UVEREJNIT je nutné odebrat VŠECHNY následující fáze
+        // Povolené stavy pro FÁZI 5 (UVEREJNIT): SCHVALENA, ODESLANA, POTVRZENA, UVEREJNIT
+        const allowedStatesPhase5 = ['SCHVALENA', 'ODESLANA', 'POTVRZENA', 'UVEREJNIT'];
+        const higherPhaseStates = ['UVEREJNENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'];
+        
+        // Odebrat všechny vyšší fáze než FÁZE 5
+        let updatedStates = currentStates.filter(s => !higherPhaseStates.includes(s));
+        
+        // Ujistit se, že jsou tam základní stavy pro FÁZI 5
+        if (!updatedStates.includes('SCHVALENA')) updatedStates.push('SCHVALENA');
+        if (!updatedStates.includes('ODESLANA')) updatedStates.push('ODESLANA');
+        if (!updatedStates.includes('POTVRZENA')) updatedStates.push('POTVRZENA');
+        
+        // Přidat UVEREJNIT na konec
         if (!updatedStates.includes('UVEREJNIT')) {
           updatedStates.push('UVEREJNIT');
         }
 
-        // Ujistit se, že jsou tam základní stavy pro FÁZI 5
-        if (!updatedStates.includes('ODESLANA')) updatedStates.push('ODESLANA');
-        if (!updatedStates.includes('POTVRZENA')) updatedStates.push('POTVRZENA');
-
         setFormData(prev => ({
           ...prev,
-          stav_workflow_kod: updatedStates
+          stav_workflow_kod: updatedStates,
+          // Vymazat data z vyšších fází
+          dt_zverejneni: '',
+          registr_iddt: '',
+          zverejnil_id: null,
+          vecna_spravnost_potvrzeno: 0,
+          dt_potvrzeni_vecne_spravnosti: '',
+          potvrdil_vecnou_spravnost_id: null,
+          potvrzeni_dokonceni_objednavky: 0,
+          dt_dokonceni: '',
+          dokoncil_id: null
         }));
 
-        addDebugLog('info', 'UNLOCK', 'registr-vyplneni', 'Odemčena sekce Registr smluv - nastaveno UVEREJNIT (FÁZE 5)');
+        addDebugLog('info', 'UNLOCK', 'registr-vyplneni', '🔓 Odemčena FÁZE 5 (UVEREJNIT) - odstraněny vyšší fáze (FAKTURACE, VECNA_SPRAVNOST, DOKONCENA)');
 
         // Okamžité uložení
         setTimeout(() => {
@@ -25569,22 +27542,27 @@ function OrderForm25() {
         setShowUnlockFakturaceConfirm(false);
         workflowManager.unlockSection('fakturace');
 
-        // ✅ Odebrat FAKTURACE + VŠE CO NÁSLEDUJE → návrat na FÁZI 6
+        // ✅ Odebrat VŠE CO JE VÝŠE NEŽ FAKTURACE → vrátit na FÁZI 6 (FAKTURACE)
         const currentStates = Array.isArray(formData.stav_workflow_kod)
           ? formData.stav_workflow_kod
           : (formData.stav_workflow_kod ? [formData.stav_workflow_kod] : []);
 
-        // Odebrat FAKTURACE a všechny vyšší stavy
+        // Odebrat pouze VYŠŠÍ stavy než FAKTURACE, FAKTURACE ponechat
         const updatedStates = currentStates.filter(s =>
-          !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s)
+          !['VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s)
         );
+        
+        // Zajistit že FAKTURACE tam je (pro návrat na fázi 6)
+        if (!updatedStates.includes('FAKTURACE')) {
+          updatedStates.push('FAKTURACE');
+        }
 
         setFormData(prev => ({
           ...prev,
           stav_workflow_kod: updatedStates
         }));
 
-        addDebugLog('info', 'UNLOCK', 'fakturace', 'Odemčena sekce Fakturace - odebrány stavy FAKTURACE, KONTROLA, ZKONTROLOVANA, DOKONCENA → FÁZE 6/8');
+        addDebugLog('info', 'UNLOCK', 'fakturace', 'Odemčena sekce Fakturace - odebrány stavy VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA → FÁZE 6 (FAKTURACE)');
 
         // 🔄 Reset vyšších checkboxů
         resetHigherPhaseCheckboxes('fakturace');
@@ -25598,7 +27576,7 @@ function OrderForm25() {
     >
       <p>Opravdu chcete odemknout sekci <strong>Fakturace</strong> pro editaci?</p>
       <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>
-        Budou odebrány stavy <strong>FAKTURACE, VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA</strong> a workflow se vrátí na <strong>FÁZI 6/8</strong>.
+        Budou odebrány stavy <strong>VECNA_SPRAVNOST, ZKONTROLOVANA, DOKONCENA</strong> a workflow se vrátí na <strong>FÁZI 6 (FAKTURACE)</strong>.
       </p>
     </ConfirmDialog>
 
@@ -25673,10 +27651,23 @@ function OrderForm25() {
         addDebugLog('info', 'UNLOCK', 'cancelled', `🔓 Odemykám stornovanou objednávku ID: ${formData.id}`);
         
         // Odebrat ZRUSENA stav z workflow
-        const updatedWorkflow = (formData.stav_workflow_kod || '')
-          .split(',')
-          .filter(s => s.trim() !== 'ZRUSENA')
-          .join(',');
+        const currentWorkflow = formData.stav_workflow_kod;
+        let updatedWorkflow;
+        
+        if (Array.isArray(currentWorkflow)) {
+          // Už je to array
+          updatedWorkflow = currentWorkflow.filter(s => s !== 'ZRUSENA');
+        } else if (typeof currentWorkflow === 'string') {
+          // Je to string nebo JSON string
+          try {
+            const parsed = JSON.parse(currentWorkflow);
+            updatedWorkflow = Array.isArray(parsed) ? parsed.filter(s => s !== 'ZRUSENA') : [currentWorkflow].filter(s => s !== 'ZRUSENA');
+          } catch {
+            updatedWorkflow = currentWorkflow.split(',').filter(s => s.trim() !== 'ZRUSENA');
+          }
+        } else {
+          updatedWorkflow = [];
+        }
         
         // Vymazat storno data
         const clearedData = {
@@ -25685,7 +27676,7 @@ function OrderForm25() {
           storno_duvod: null,
           storno_user_id: null,
           dt_storno: null,
-          stav_stornovano: 0
+          // 🛑 ODSTRANĚNO: stav_stornovano - pole neexistuje v DB
         };
         
         // Uložit do DB přes useWorkflowManager
@@ -25750,9 +27741,9 @@ function OrderForm25() {
       existsInUsek={existingSupplierCheck?.existsInUsek || null}
       existsInGlobal={existingSupplierCheck?.existsInGlobal || null}
       userPermissions={{
-        canAddPersonal: hasPermission && (hasPermission('CONTACT_MANAGE') || hasPermission('CONTACT_EDIT')), // CONTACT_MANAGE nebo CONTACT_EDIT
-        canAddUsek: hasPermission && (hasPermission('CONTACT_MANAGE') || hasPermission('CONTACT_EDIT')), // CONTACT_MANAGE nebo CONTACT_EDIT pro své úseky
-        canAddGlobal: hasPermission && hasPermission('CONTACT_MANAGE') // Pouze CONTACT_MANAGE
+        canAddPersonal: ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))),
+        canAddUsek: ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))),
+        canAddGlobal: ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')))
       }}
     />
 
@@ -25763,18 +27754,31 @@ function OrderForm25() {
       />
     )}
 
-    {/* 📄 DOCX Generator Modal - Lazy loaded for better performance */}
+    {/* 📄 DOCX Generator Modal */}
     {docxModalOpen && (
-      <Suspense fallback={<div>Načítání DOCX generátoru...</div>}>
-        <DocxGeneratorModal
-          order={docxModalOrder}
-          isOpen={docxModalOpen}
-          onClose={handleDocxModalClose}
-        />
-      </Suspense>
+      <DocxGeneratorModal
+        order={docxModalOrder}
+        isOpen={docxModalOpen}
+        onClose={handleDocxModalClose}
+      />
     )}
 
-    {/* 💾 Save Overlay - rozmaže zbytek stránky při ukládání (kromě hlavičky s progress barem) */}
+    {/* � Financial Control Confirmation Modal - Potvrzení dokončení objednávky */}
+    {showFinancialControlConfirmation && (
+      <FinancialControlConfirmationModal
+        order={formData}
+        onConfirm={handleConfirmCompletion}
+        onCancel={handleCancelCompletion}
+        generatedBy={{
+          fullName: userDetail ? `${userDetail.titul_pred || ''} ${userDetail.jmeno || ''} ${userDetail.prijmeni || ''} ${userDetail.titul_za || ''}`.trim() : username,
+          position: userDetail?.pozice_nazev || 'Uživatel'
+        }}
+        token={token}
+        username={username}
+      />
+    )}
+
+    {/* �💾 Save Overlay - rozmaže zbytek stránky při ukládání (kromě hlavičky s progress barem) */}
     {(showSaveProgress || isSaving) && (
       <SaveOverlay $visible={true} />
     )}
@@ -25924,7 +27928,7 @@ const StableSelectOption = styled.div`
   padding: ${props => props.level === 0 ? '0.75rem 1rem' : '0.5rem 1rem 0.5rem 2rem'};
   cursor: ${props => props.isHeader ? 'default' : 'pointer'};
   font-size: 0.875rem;
-  color: ${props => props.level === 0 ? '#111827' : '#4b5563'};
+  color: #111827;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -25934,7 +27938,7 @@ const StableSelectOption = styled.div`
   };
   border-left: ${props => props.selected ? '3px solid #3b82f6' : '3px solid transparent'};
   border-bottom: ${props => props.level === 0 ? '1px solid #e5e7eb' : 'none'};
-  font-weight: ${props => props.selected ? '600' : '400'} !important; /* Bold jen pro vybranou možnost */
+  font-weight: 600 !important;
   /* Focusable pro tab navigaci */
   outline: none;
 
@@ -25943,7 +27947,6 @@ const StableSelectOption = styled.div`
       props.isHeader ? '#f3f4f6' :
       props.selected ? '#dbeafe' : '#f8fafc'
     };
-    font-weight: ${props => props.selected ? '600' : '400'} !important; /* Zůstává stejné i při hover */
   }
 
   &:focus {
@@ -25963,7 +27966,7 @@ const StableSelectOption = styled.div`
 
   span {
     padding-left: ${props => (props.level || 0) * 20}px;
-    font-weight: ${props => props.selected ? '600' : '400'} !important; /* Bold jen pro vybranou možnost */
+    font-weight: 600 !important;
   }
 `;
 
@@ -25972,6 +27975,7 @@ const StableSelectValue = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
 `;
 
 // Helper funkce pro normalizaci textu (odstranění diakritiky pro vyhledávání)
@@ -26307,7 +28311,36 @@ const StableCustomSelect = React.memo(({
           </span>
         )}
         <StableSelectValue title={displayValue}>
-          {displayValue}
+          {(() => {
+            // 🏷️ Check if selected option is majetek for druh_objednavky_kod
+            if (field === 'druh_objednavky_kod' && normalizedValue) {
+              const selectedOption = options.find(opt => {
+                const optVal = getOptionValue ? getOptionValue(opt, field) : (opt.id || opt.value || opt.kod_stavu || opt.kod || opt);
+                return optVal == normalizedValue;
+              });
+              if (selectedOption && (selectedOption.atribut_objektu === 1 || selectedOption.atribut_objektu === '1')) {
+                const cleanLabel = displayValue.replace('   (majetek)', '');
+                return (
+                  <>
+                    <span>{cleanLabel}</span>
+                    <span style={{
+                      marginLeft: '8px',
+                      fontSize: '0.75rem',
+                      color: '#dc2626',
+                      fontWeight: '500',
+                      padding: '2px 6px',
+                      backgroundColor: '#fee2e2',
+                      borderRadius: '4px',
+                      border: '1px solid #fca5a5'
+                    }}>
+                      (majetek)
+                    </span>
+                  </>
+                );
+              }
+            }
+            return displayValue;
+          })()}
         </StableSelectValue>
         {isClearable && !disabled && hasValue && (
           <span
@@ -26449,6 +28482,9 @@ const StableCustomSelect = React.memo(({
               const selected = isSelected(option);
               const level = option.level || 0;
               const isHeader = option.isHeader || (level === 0 && !option.value && !option.id);
+              
+              // 🏷️ Check if this is druh_objednavky with majetek flag
+              const isMajetekOption = field === 'druh_objednavky_kod' && (option.atribut_objektu === 1 || option.atribut_objektu === '1');
 
               return (
                 <StableSelectOption
@@ -26539,7 +28575,25 @@ const StableCustomSelect = React.memo(({
                       onChange={() => {}} // Prázdný handler aby nedával warning
                     />
                   )}
-                  <span>{optionLabel}</span>
+                  {isMajetekOption ? (
+                    <>
+                      <span>{optionLabel.replace('   (majetek)', '')}</span>
+                      <span style={{
+                        marginLeft: '8px',
+                        fontSize: '0.75rem',
+                        color: '#dc2626',
+                        fontWeight: '500',
+                        padding: '2px 6px',
+                        backgroundColor: '#fee2e2',
+                        borderRadius: '4px',
+                        border: '1px solid #fca5a5'
+                      }}>
+                        (majetek)
+                      </span>
+                    </>
+                  ) : (
+                    <span>{optionLabel}</span>
+                  )}
                 </StableSelectOption>
               );
             })

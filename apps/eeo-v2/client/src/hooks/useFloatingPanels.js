@@ -149,13 +149,11 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
       const nk = localStorage.getItem(`layout_notes_${sid}`);
       if (!nk) return { notes: '', transcription: '' };
 
-      // console.log('🔍 [loadStoredNotes] Raw localStorage:', nk.substring(0, 200));
 
       // Zkus parsovat jako JSON (nový formát)
       try {
         const parsed = JSON.parse(nk);
         if (parsed && typeof parsed === 'object' && 'notes' in parsed) {
-          // console.log('✅ [loadStoredNotes] Parsed as new JSON format');
 
           // 🔧 MIGRACE: Zkontroluj, jestli notes content je sám JSON string (chyba v minulosti)
           if (parsed.notes && typeof parsed.notes === 'string') {
@@ -180,7 +178,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
         }
       } catch (parseError) {
         // Není JSON nebo je špatně formátovaný
-        // console.log('⚠️ [loadStoredNotes] Failed to parse as JSON, using fallback:', parseError.message);
       }
 
       // Fallback: starý formát (prostý string) - považuj za notes
@@ -237,8 +234,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
   // Notes (init sync)
   const [notesText, setNotesText] = useState(() => {
     const loaded = loadStoredNotes(storageId);
-    // console.log('🔍 [notesText init] loaded:', loaded);
-    // console.log('🔍 [notesText init] loaded.notes type:', typeof loaded.notes, loaded.notes);
     // Initialize notes from localStorage - zajisti že je to string
     const notesValue = loaded.notes;
     if (typeof notesValue !== 'string') {
@@ -252,7 +247,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
   // State pro Okamžitý přepis (transcription tab)
   const [transcriptionText, setTranscriptionText] = useState(() => {
     const loaded = loadStoredNotes(storageId);
-    // console.log('🔍 [transcriptionText init] loaded.transcription type:', typeof loaded.transcription, loaded.transcription);
     const transcriptionValue = loaded.transcription;
     if (typeof transcriptionValue !== 'string') {
       return '';
@@ -785,7 +779,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
       if (e.key === `layout_notes_${storageId}` && !document.hidden) {
         // GUARD 1: De-duplicate rapid-fire storage events
         if (now - lastStorageEventRef.notes < DEDUPE_THRESHOLD_MS) {
-          // console.log('🔄 [NOTES SYNC] Skipping duplicate storage event (<%dms)', DEDUPE_THRESHOLD_MS);
           return;
         }
         lastStorageEventRef.notes = now;
@@ -807,10 +800,8 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
               const hasCurrentContent = notesText && notesText.trim();
 
               if (hasNewContent || !hasCurrentContent) {
-                // console.log('✅ [NOTES SYNC] Updating notes (safe to update)');
                 setNotesText(val.notes);
               } else {
-                // console.log('⚠️ [NOTES SYNC] Skipping notes update (would delete data)');
               }
             }
 
@@ -819,10 +810,8 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
               const hasCurrentContent = transcriptionText && transcriptionText.trim();
 
               if (hasNewContent || !hasCurrentContent) {
-                // console.log('✅ [NOTES SYNC] Updating transcription (safe to update)');
                 setTranscriptionText(val.transcription);
               } else {
-                // console.log('⚠️ [NOTES SYNC] Skipping transcription update (would delete data)');
               }
             }
           }
@@ -832,7 +821,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
       else if (e.key === `layout_tasks_${storageId}` && !document.hidden) {
         // GUARD 1: De-duplicate rapid-fire storage events
         if (now - lastStorageEventRef.tasks < DEDUPE_THRESHOLD_MS) {
-          // console.log('🔄 [TODO SYNC] Skipping duplicate storage event (<%dms)', DEDUPE_THRESHOLD_MS);
           return;
         }
         lastStorageEventRef.tasks = now;
@@ -849,10 +837,8 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
             const hasCurrentContent = tasks && tasks.length > 0;
 
             if (hasNewContent || !hasCurrentContent) {
-              // console.log('✅ [TODO SYNC] Updating tasks (safe to update)');
               setTasks(list);
             } else {
-              // console.log('⚠️ [TODO SYNC] Skipping tasks update (would delete data)');
             }
           }
         } catch {}
@@ -882,7 +868,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
       return;
     }
 
-    // console.log('🔄 [STORAGE_ID_CHANGE] Detected change:', prevStorageIdRef.current, '→', storageId);
     prevStorageIdRef.current = storageId;
 
     // reload everything when storageId changes (login / logout)
@@ -1067,7 +1052,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
           }
         }
       } catch (notesError) {
-        // console.log('ℹ️ Poznámky ze serveru nejsou dostupné:', notesError.message);
       }
 
         // Načtení TODO ze serveru
@@ -1140,7 +1124,6 @@ export function useFloatingPanels(user_id, isLoggedIn, token = null, username = 
             }
           }
         } catch (todoError) {
-          // console.log('ℹ️ TODO ze serveru nejsou dostupné:', todoError.message);
         }
 
       // Synchronizace dokončena

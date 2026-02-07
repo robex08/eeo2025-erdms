@@ -8,40 +8,40 @@ export const NOTIFICATION_TYPES = {
   // ====================================================================
   // FÁZE 1-2: Základní stavy objednávky
   // ====================================================================
-  ORDER_STATUS_NOVA: 'order_status_nova',
-  ORDER_STATUS_ROZPRACOVANA: 'order_status_rozpracovana',
-  ORDER_STATUS_KE_SCHVALENI: 'order_status_ke_schvaleni', // ⚡ HIGH
-  ORDER_STATUS_SCHVALENA: 'order_status_schvalena',
-  ORDER_STATUS_ZAMITNUTA: 'order_status_zamitnuta', // ⚡ HIGH
-  ORDER_STATUS_CEKA_SE: 'order_status_ceka_se',
+  ORDER_STATUS_NOVA: 'ORDER_CREATED',
+  ORDER_STATUS_ROZPRACOVANA: 'ORDER_DRAFT',
+  ORDER_STATUS_KE_SCHVALENI: 'ORDER_PENDING_APPROVAL', // ⚡ HIGH
+  ORDER_STATUS_SCHVALENA: 'ORDER_APPROVED',
+  ORDER_STATUS_ZAMITNUTA: 'ORDER_REJECTED', // ⚡ HIGH
+  ORDER_STATUS_CEKA_SE: 'ORDER_AWAITING_CHANGES',
 
   // ====================================================================
   // FÁZE 3-4: Odeslání dodavateli a potvrzení
   // ====================================================================
-  ORDER_STATUS_ODESLANA: 'order_status_odeslana',
-  ORDER_STATUS_CEKA_POTVRZENI: 'order_status_ceka_potvrzeni',
-  ORDER_STATUS_POTVRZENA: 'order_status_potvrzena',
+  ORDER_STATUS_ODESLANA: 'ORDER_SENT_TO_SUPPLIER',
+  ORDER_STATUS_CEKA_POTVRZENI: 'ORDER_AWAITING_CONFIRMATION',
+  ORDER_STATUS_POTVRZENA: 'ORDER_CONFIRMED_BY_SUPPLIER',
 
   // ====================================================================
   // FÁZE 5: Registr smluv (NOVÉ)
   // ====================================================================
-  ORDER_STATUS_REGISTR_CEKA: 'order_status_registr_ceka',
-  ORDER_STATUS_REGISTR_ZVEREJNENA: 'order_status_registr_zverejnena',
+  ORDER_STATUS_REGISTR_CEKA: 'ORDER_REGISTRY_PENDING',
+  ORDER_STATUS_REGISTR_ZVEREJNENA: 'ORDER_REGISTRY_PUBLISHED',
 
   // ====================================================================
   // FÁZE 6: Fakturace (NOVÉ)
   // ====================================================================
-  ORDER_STATUS_FAKTURA_CEKA: 'order_status_faktura_ceka',
-  ORDER_STATUS_FAKTURA_PRIDANA: 'order_status_faktura_pridana',
-  ORDER_STATUS_FAKTURA_SCHVALENA: 'order_status_faktura_schvalena',
-  ORDER_STATUS_FAKTURA_UHRAZENA: 'order_status_faktura_uhrazena',
+  ORDER_STATUS_FAKTURA_CEKA: 'ORDER_INVOICE_PENDING',
+  ORDER_STATUS_FAKTURA_PRIDANA: 'ORDER_INVOICE_ADDED',
+  ORDER_STATUS_FAKTURA_SCHVALENA: 'ORDER_INVOICE_APPROVED',
+  ORDER_STATUS_FAKTURA_UHRAZENA: 'ORDER_INVOICE_PAID',
 
   // ====================================================================
   // FÁZE 7: Věcná správnost (NOVÉ)
   // ====================================================================
-  ORDER_STATUS_KONTROLA_CEKA: 'order_status_kontrola_ceka', // ⚡ HIGH
-  ORDER_STATUS_KONTROLA_POTVRZENA: 'order_status_kontrola_potvrzena',
-  ORDER_STATUS_KONTROLA_ZAMITNUTA: 'order_status_kontrola_zamitnuta', // ⚡ HIGH (reklamace)
+  ORDER_STATUS_KONTROLA_CEKA: 'INVOICE_MATERIAL_CHECK_REQUESTED', // ⚡ HIGH (faktury)
+  ORDER_STATUS_KONTROLA_POTVRZENA: 'INVOICE_MATERIAL_CHECK_APPROVED', // (faktury)
+  ORDER_STATUS_KONTROLA_ZAMITNUTA: 'INVOICE_MATERIAL_CHECK_REJECTED', // ⚡ HIGH (reklamace - zatím nepoužito)
 
   // ====================================================================
   // TODO ALARMY (připraveno pro budoucnost)
@@ -71,14 +71,7 @@ export const NOTIFICATION_TYPES = {
   // ====================================================================
   USER_MENTION: 'user_mention',
   DEADLINE_REMINDER: 'deadline_reminder', // ⚡ HIGH
-  ORDER_UNLOCK_FORCED: 'order_unlock_forced', // ⚡ HIGH
-
-  // ====================================================================
-  // DEPRECATED (pro zpětnou kompatibilitu)
-  // ====================================================================
-  ORDER_APPROVED: 'order_approved', // ❌ DEPRECATED → použij ORDER_STATUS_SCHVALENA
-  ORDER_REJECTED: 'order_rejected', // ❌ DEPRECATED → použij ORDER_STATUS_ZAMITNUTA
-  ORDER_CREATED: 'order_created'    // ❌ DEPRECATED → použij ORDER_STATUS_KE_SCHVALENI
+  ORDER_UNLOCK_FORCED: 'order_unlock_forced' // ⚡ HIGH
 };
 
 /**
@@ -90,32 +83,32 @@ export const NOTIFICATION_TYPES = {
 export const getNotificationTypeName = (type) => {
   const names = {
     // FÁZE 1-2
-    'order_status_nova': 'Nová objednávka',
-    'order_status_rozpracovana': 'Rozpracovaná objednávka',
-    'order_status_ke_schvaleni': 'Objednávka ke schválení',
-    'order_status_schvalena': 'Objednávka schválena',
-    'order_status_zamitnuta': 'Objednávka zamítnuta',
-    'order_status_ceka_se': 'Vrácena k doplnění',
+    'ORDER_CREATED': 'Nová objednávka',
+    'ORDER_DRAFT': 'Rozpracovaná objednávka',
+    'ORDER_PENDING_APPROVAL': 'Objednávka ke schválení',
+    'ORDER_APPROVED': 'Objednávka schválena',
+    'ORDER_REJECTED': 'Objednávka zamítnuta',
+    'ORDER_AWAITING_CHANGES': 'Vrácena k doplnění',
 
     // FÁZE 3-4
-    'order_status_odeslana': 'Odeslána dodavateli',
-    'order_status_ceka_potvrzeni': 'Čeká na potvrzení',
-    'order_status_potvrzena': 'Potvrzena dodavatelem',
+    'ORDER_SENT_TO_SUPPLIER': 'Odeslána dodavateli',
+    'ORDER_AWAITING_CONFIRMATION': 'Čeká na potvrzení',
+    'ORDER_CONFIRMED_BY_SUPPLIER': 'Potvrzena dodavatelem',
 
     // FÁZE 5
-    'order_status_registr_ceka': 'Čeká na registr smluv',
-    'order_status_registr_zverejnena': 'Zveřejněna v registru',
+    'ORDER_REGISTRY_PENDING': 'Čeká na registr smluv',
+    'ORDER_REGISTRY_PUBLISHED': 'Zveřejněna v registru',
 
     // FÁZE 6
-    'order_status_faktura_ceka': 'Čeká na fakturu',
-    'order_status_faktura_pridana': 'Faktura přidána',
-    'order_status_faktura_schvalena': 'Faktura schválena',
-    'order_status_faktura_uhrazena': 'Faktura uhrazena',
+    'ORDER_INVOICE_PENDING': 'Čeká na fakturu',
+    'ORDER_INVOICE_ADDED': 'Faktura přidána',
+    'ORDER_INVOICE_APPROVED': 'Faktura schválena',
+    'ORDER_INVOICE_PAID': 'Faktura uhrazena',
 
     // FÁZE 7
-    'order_status_kontrola_ceka': 'Čeká na kontrolu věcné správnosti',
-    'order_status_kontrola_potvrzena': 'Věcná správnost potvrzena',
-    'order_status_kontrola_zamitnuta': 'Věcná správnost zamítnuta (reklamace)',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': 'Čeká na kontrolu věcné správnosti faktury',
+    'INVOICE_MATERIAL_CHECK_APPROVED': 'Věcná správnost faktury potvrzena',
+    'INVOICE_MATERIAL_CHECK_REJECTED': 'Věcná správnost zamítnuta (reklamace)',
 
     // TODO
     'alarm_todo_normal': 'TODO - Připomínka',
@@ -159,32 +152,32 @@ export const getNotificationTypeName = (type) => {
 export const getNotificationIcon = (type) => {
   const icons = {
     // FÁZE 1-2
-    'order_status_nova': '📝',
-    'order_status_rozpracovana': '✏️',
-    'order_status_ke_schvaleni': '⏫',
-    'order_status_schvalena': '✅',
-    'order_status_zamitnuta': '❌',
-    'order_status_ceka_se': '⏸️',
+    'ORDER_CREATED': '📝',
+    'ORDER_DRAFT': '✏️',
+    'ORDER_PENDING_APPROVAL': '⏫',
+    'ORDER_APPROVED': '✅',
+    'ORDER_REJECTED': '❌',
+    'ORDER_AWAITING_CHANGES': '⏸️',
 
     // FÁZE 3-4
-    'order_status_odeslana': '📤',
-    'order_status_ceka_potvrzeni': '⏳',
-    'order_status_potvrzena': '✔️',
+    'ORDER_SENT_TO_SUPPLIER': '📤',
+    'ORDER_AWAITING_CONFIRMATION': '⏳',
+    'ORDER_CONFIRMED_BY_SUPPLIER': '✔️',
 
     // FÁZE 5
-    'order_status_registr_ceka': '📋',
-    'order_status_registr_zverejnena': '📢',
+    'ORDER_REGISTRY_PENDING': '📋',
+    'ORDER_REGISTRY_PUBLISHED': '📢',
 
     // FÁZE 6
-    'order_status_faktura_ceka': '💰',
-    'order_status_faktura_pridana': '📄',
-    'order_status_faktura_schvalena': '✅',
-    'order_status_faktura_uhrazena': '💵',
+    'ORDER_INVOICE_PENDING': '💰',
+    'ORDER_INVOICE_ADDED': '📄',
+    'ORDER_INVOICE_APPROVED': '✅',
+    'ORDER_INVOICE_PAID': '💵',
 
     // FÁZE 7
-    'order_status_kontrola_ceka': '🔍',
-    'order_status_kontrola_potvrzena': '✔️',
-    'order_status_kontrola_zamitnuta': '⚠️',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': '🔍',
+    'INVOICE_MATERIAL_CHECK_APPROVED': '✔️',
+    'INVOICE_MATERIAL_CHECK_REJECTED': '⚠️',
 
     // TODO
     'alarm_todo_normal': '🔔',
@@ -228,10 +221,10 @@ export const getNotificationPriority = (type) => {
     'system_security_alert': 'urgent',
 
     // HIGH (vysoká priorita)
-    'order_status_ke_schvaleni': 'high',
-    'order_status_zamitnuta': 'high',
-    'order_status_kontrola_ceka': 'high',
-    'order_status_kontrola_zamitnuta': 'high',
+    'ORDER_PENDING_APPROVAL': 'high',
+    'ORDER_REJECTED': 'high',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': 'high',
+    'INVOICE_MATERIAL_CHECK_REJECTED': 'high',
     'alarm_todo_expired': 'high',
     'system_maintenance_scheduled': 'high',
     'system_user_login_alert': 'high',
@@ -240,16 +233,16 @@ export const getNotificationPriority = (type) => {
     'order_unlock_forced': 'high',
 
     // NORMAL (normální priorita)
-    'order_status_schvalena': 'normal',
-    'order_status_odeslana': 'normal',
-    'order_status_potvrzena': 'normal',
-    'order_status_registr_ceka': 'normal',
-    'order_status_registr_zverejnena': 'normal',
-    'order_status_faktura_ceka': 'normal',
-    'order_status_faktura_pridana': 'normal',
-    'order_status_faktura_schvalena': 'normal',
-    'order_status_faktura_uhrazena': 'normal',
-    'order_status_kontrola_potvrzena': 'normal',
+    'ORDER_APPROVED': 'normal',
+    'ORDER_SENT_TO_SUPPLIER': 'normal',
+    'ORDER_CONFIRMED_BY_SUPPLIER': 'normal',
+    'ORDER_REGISTRY_PENDING': 'normal',
+    'ORDER_REGISTRY_PUBLISHED': 'normal',
+    'ORDER_INVOICE_PENDING': 'normal',
+    'ORDER_INVOICE_ADDED': 'normal',
+    'ORDER_INVOICE_APPROVED': 'normal',
+    'ORDER_INVOICE_PAID': 'normal',
+    'INVOICE_MATERIAL_CHECK_APPROVED': 'normal',
     'alarm_todo_normal': 'normal',
     'todo_assigned': 'normal',
     'system_maintenance_finished': 'normal',
@@ -258,8 +251,8 @@ export const getNotificationPriority = (type) => {
     'system_session_expired': 'normal',
 
     // LOW (nízká priorita)
-    'order_status_nova': 'low',
-    'order_status_rozpracovana': 'low',
+    'ORDER_CREATED': 'low',
+    'ORDER_DRAFT': 'low',
     'todo_completed': 'low',
     'system_backup_completed': 'low',
     'user_mention': 'low'

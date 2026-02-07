@@ -6,8 +6,11 @@ node_modules/
 # Testing
 /coverage
 
-# Production build
+# Production builds
 /build
+/build-dev
+/build-prod
+/build_temp
 
 # Environment variables
 .env
@@ -98,4 +101,4 @@ test-debug/
 
 # Backup directories with embedded git repos
 _BCK_/
-podklady/
+podklady/.webpack-cache/

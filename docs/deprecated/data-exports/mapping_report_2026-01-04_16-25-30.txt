@@ -1,0 +1,114 @@
+=== REPORT PÁROVÁNÍ UŽIVATELŮ ===
+Datum: 2026-01-04 16:25:30
+
+=== NALEZENÉ SHODY (8) ===
+EEO_ID	EEO_Jméno	EEO_Telefon	|	Ext_Jméno	Ext_Telefon
+47	Tereza Balousová	123123123	|	Tereza Balousova	777123456
+102	Tereza Bezoušková	737851735	|	Tereza Bezouskova	737851735
+86	Tereza Brodecká	777934462	|	Tereza Brodecka	777934462
+101	Jan Černohorský	731137	|	Jan Cernohorsky	607121582
+57	Ján Čižmárik	725567579	|	Jan Cizmarik	725567579
+63	Vít Dvořák	705891519	|	Vit Dvorak	705891519
+104	Jindřich Fajka	736131215	|	Jindrich Fajka	736131215
+100	Robert Holovský	731137077	|	Robert Holovsky	731137100
+
+=== AKTUALIZACE TELEFONŮ (3) ===
+ID	Jméno	Starý_telefon	Nový_telefon
+47	Tereza Balousová	123123123	777123456
+101	Jan Černohorský	731137	607121582
+100	Robert Holovský	731137077	731137100
+
+=== JEN V EEO (89) ===
+1	RH ADMIN	731137100
+96	Robert ADMIN	731137100
+37	Veronika Aulická	
+66	Markéta Bednářová	
+105	Tereza Bezoušková (THP)	737851735
+17	Anna Blažková Kozlíková	
+69	Hana Broučková	312256623
+50	Anna Brožová	
+45	Hana Brožová	
+88	Ivana Bubnová	
+29	Tomáš Čech	
+84	Hana Černá	
+80	Andrea Čiháková	
+94	Veronika Doksanská	
+41	Lucie Dudáková	
+31	Eva Durasová	
+35	Zuzana Ekrtová	
+6	Zuzana Frolíková	
+108	system global	
+92	Renata Grossmannová	
+28	Jiří Hájek	731137152
+20	Marie Hanibalová Šimáková	123123123
+56	Jiří Havel	
+24	Jakub Holeňa	
+18	Robert Holovský (THP Tester)	777007763
+42	Robert Holovský (vyřazení)	777007763
+7	Roman Chochola	
+27	Jitka Indrová	731124487
+13	Dana Jirsová	607675334
+52	Hana Jonášová	731137164
+103	Hana Jonášová (THP)	731137164
+107	Monika Jurová	731137100
+43	Štěpánka Kachlířová	
+15	Šárka Kehlová	
+14	Jiří Knor	
+54	Petr Kolínský	
+44	Nikola Konopásková	+420123456789
+78	Zdena Kosprtová	123123123
+74	Marie křížová	
+59	Zuzana Kubáňová	
+38	Hana Kubešková	
+53	Štěpánka Kubíčková	731137168
+67	Denisa Kvapilová	731137010
+11	Petr Mach	
+34	Peter Matej	
+48	Michal Matoušek	
+75	Alice Menšíková	603815389
+8	Patrik Merhaut	
+99	Radek Mojžíš	731191854
+22	Miroslava Němcová	
+3	Michaela Nováková	
+65	Monika Nováková	605398242
+95	Jan Ondrák	731137137
+68	Kateřina Pávková	
+55	Jitka Pellichová	
+25	Ivana Plíšková	731137076
+76	Lucie Poláčková	605203815
+110	Kladno Primář	731137077
+2	Leoš Procházka	
+87	Michaela Procházková	
+89	Luboš Příhoda	
+73	Pavlína Püchnerová	
+49	Jan Roth	
+21	Olga Roučková	
+16	Olina Roučková	
+64	Pavel Rusý	722952400
+62	Jan Sedláček	603812244
+58	Patricia Sedláčková	
+70	Martina Slezáčková	123123123
+77	Hana Sochůrková	723623637
+79	Michaela Steklá	705782469
+60	Pavlína Stinková	
+36	Lenka Škarvadová	604206234
+61	Jaroslav Štěpán	
+19	Soňa Štursová	
+106	Klára Šulgánová	776640155
+23	Iva Švehlová	731137105
+33	Pavel Tlustý	
+40	Marie Tůmová	
+98	Radka Vacinová	705591291
+32	Jakub Vachek	
+83	Kateřina Veselá	123123123
+90	Vojtěch Voštinka	111111111
+97	Michal Witosz	
+82	Karolína Wlachová	705764145
+71	Jaroslava Zahrádková Vavrochová	+420111111111
+12	Pavel Zahradníček	
+39	Barbora Zemanová	
+10	Věra Zemanová	
+
+=== JEN V EXTERNÍM ZDROJI (2) ===
+Pavel Novak	Dr.	608123456
+Jan Svoboda		721987654

@@ -11,17 +11,51 @@ import {
   faSync,
   faMinus,
   faSquare,
-  faWindowRestore
+  faWindowRestore,
+  faExpand,
+  faSearch
 } from '@fortawesome/free-solid-svg-icons';
 import { Sparkles } from 'lucide-react';
 import { PanelBase, PanelHeader, TinyBtn, edgeHandles } from './PanelPrimitives';
 import styled from '@emotion/styled';
 import { extractTextFromPDF, extractInvoiceData } from '../../utils/invoiceOCR';
+import { getSpisovkaZpracovaniList, deleteSpisovkaZpracovani } from '../../services/apiSpisovkaZpracovani';
 import ErrorDialog from '../ErrorDialog';
 
 // ============================================================
-// STYLED COMPONENTS
+// STYLED COMPONENTS + ANIMATIONS
 // ============================================================
+
+// CSS animace pro pulsující tečku a spinning ikonu
+const globalStyles = `
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.2);
+    }
+  }
+  
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+// Přidat globální styly
+if (typeof document !== 'undefined' && !document.getElementById('spisovka-pulse-animation')) {
+  const styleTag = document.createElement('style');
+  styleTag.id = 'spisovka-pulse-animation';
+  styleTag.textContent = globalStyles;
+  document.head.appendChild(styleTag);
+}
 
 const InboxContainer = styled.div`
   display: flex;
@@ -29,32 +63,38 @@ const InboxContainer = styled.div`
   gap: 0.5rem;
   flex: 1;
   min-height: 0;
+  /* Žádná min-width - panel si určuje šířku sám */
 `;
 
 const InboxHeader = styled.div`
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  padding: 0.6rem;
-  border-radius: 6px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  padding: 0.875rem 1rem;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #60a5fa;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  margin-bottom: 0.75rem;
 `;
 
 const InboxTitle = styled.div`
-  font-size: 0.75rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  color: #f1f5f9;
-  letter-spacing: 0.5px;
+  color: white;
+  letter-spacing: 0.3px;
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  alignItems: 'center';
+  gap: 0.625rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 `;
 
 const InboxStats = styled.div`
-  font-size: 0.65rem;
-  color: #cbd5e1;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
 `;
 
 const InboxContent = styled.div`
@@ -62,47 +102,98 @@ const InboxContent = styled.div`
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.3rem;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: #f9fafb;
+  border-radius: 8px;
   min-height: 0;
+  border: 1px solid #e5e7eb;
 
   scrollbar-width: thin;
-  scrollbar-color: #93c5fd rgba(255, 255, 255, 0.05);
+  scrollbar-color: #10b981 #f3f4f6;
 
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 10px;
   }
 
   &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    background: #f3f4f6;
+    border-radius: 5px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #93c5fd;
-    border-radius: 4px;
-    border: 2px solid rgba(15, 23, 42, 0.92);
+    background: linear-gradient(135deg, #10b981, #059669);
+    border-radius: 5px;
+    border: 2px solid #f9fafb;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #60a5fa;
+    background: linear-gradient(135deg, #059669, #047857);
   }
 `;
 
+// 📋 Status Badge pro zpracované dokumenty
+const StatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  
+  ${props => {
+    switch (props.$status) {
+      case 'ZAEVIDOVANO':
+        return `
+          background: #d1fae5;
+          color: #065f46;
+          border: 1px solid #10b981;
+        `;
+      case 'NENI_FAKTURA':
+        return `
+          background: #fef3c7;
+          color: #92400e;
+          border: 1px solid #f59e0b;
+        `;
+      case 'CHYBA':
+        return `
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #ef4444;
+        `;
+      case 'DUPLIKAT':
+        return `
+          background: #e0e7ff;
+          color: #3730a3;
+          border: 1px solid #6366f1;
+        `;
+      default:
+        return `
+          background: #f3f4f6;
+          color: #6b7280;
+          border: 1px solid #d1d5db;
+        `;
+    }
+  }}
+`;
+
 const FakturaCard = styled.div`
-  background: linear-gradient(135deg, rgba(147, 197, 253, 0.12), rgba(96, 165, 250, 0.08));
-  border: 1px solid rgba(96, 165, 250, 0.3);
-  border-radius: 8px;
-  padding: 0.7rem;
-  transition: all 0.2s;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1rem;
+  transition: all 0.2s ease;
   cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
   &:hover {
-    background: linear-gradient(135deg, rgba(147, 197, 253, 0.18), rgba(96, 165, 250, 0.12));
-    border-color: rgba(96, 165, 250, 0.5);
-    transform: translateX(2px);
+    background: #f0fdf4;
+    border-color: #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+    transform: translateY(-2px);
   }
 `;
 
@@ -115,29 +206,30 @@ const FakturaHeader = styled.div`
 `;
 
 const FakturaNazev = styled.div`
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #1f2937;
   line-height: 1.3;
   flex: 1;
 `;
 
 const FakturaID = styled.div`
-  font-size: 0.6rem;
-  color: #60a5fa;
+  font-size: 0.7rem;
+  color: #059669;
   font-family: 'Courier New', monospace;
-  background: rgba(96, 165, 250, 0.2);
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
+  background: #d1fae5;
+  padding: 0.3rem 0.6rem;
+  border-radius: 5px;
   white-space: nowrap;
+  font-weight: 600;
 `;
 
 const FakturaInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.65rem;
-  color: #cbd5e1;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: #4b5563;
 `;
 
 const InfoRow = styled.div`
@@ -147,42 +239,45 @@ const InfoRow = styled.div`
 `;
 
 const InfoLabel = styled.span`
-  color: #94a3b8;
-  font-weight: 600;
+  color: #6b7280;
+  font-weight: 700;
 `;
 
 const InfoValue = styled.span`
-  color: #e2e8f0;
+  color: #374151;
+  font-weight: 500;
 `;
 
 const PrilohaSection = styled.div`
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid rgba(96, 165, 250, 0.25);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid #e5e7eb;
 `;
 
 const PrilohaTitle = styled.div`
-  font-size: 0.65rem;
-  color: #94a3b8;
-  font-weight: 600;
-  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.4rem;
 `;
 
 const PrilohaItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.4rem;
-  background: rgba(96, 165, 250, 0.1);
-  border-radius: 5px;
-  margin-bottom: 0.3rem;
-  transition: background 0.15s;
+  padding: 0.65rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(96, 165, 250, 0.18);
+    background: #f0fdf4;
+    border-color: #10b981;
   }
 
   &:last-child {
@@ -196,41 +291,43 @@ const PrilohaInfo = styled.div`
 `;
 
 const PrilohaFilename = styled.div`
-  font-size: 0.65rem;
-  color: #f1f5f9;
-  font-weight: 500;
+  font-size: 0.75rem;
+  color: #1f2937;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
 const PrilohaMeta = styled.div`
-  font-size: 0.55rem;
-  color: #cbd5e1;
-  margin-top: 0.15rem;
+  font-size: 0.65rem;
+  color: #6b7280;
+  margin-top: 0.2rem;
 `;
 
 const PrilohaButton = styled.a`
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.5rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: #10b981;
   color: white;
-  border-radius: 4px;
+  border-radius: 6px;
   text-decoration: none;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
   white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    transform: scale(1.05);
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.25);
   }
 
   svg {
-    font-size: 0.65rem;
+    font-size: 0.75rem;
   }
 `;
 
@@ -238,22 +335,22 @@ const LoadingBox = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  color: #94a3b8;
-  font-size: 0.75rem;
-  gap: 0.5rem;
+  padding: 2.5rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+  gap: 0.75rem;
 `;
 
 const ErrorBox = styled.div`
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 6px;
-  padding: 0.7rem;
-  color: #fca5a5;
-  font-size: 0.7rem;
+  background: #fef2f2;
+  border: 2px solid #fca5a5;
+  border-radius: 8px;
+  padding: 1rem;
+  color: #dc2626;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 `;
 
 const EmptyBox = styled.div`
@@ -261,31 +358,34 @@ const EmptyBox = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  color: #94a3b8;
-  font-size: 0.75rem;
+  padding: 3rem 1.5rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
   text-align: center;
-  gap: 0.5rem;
-  opacity: 0.7;
+  gap: 0.75rem;
+  opacity: 0.8;
 `;
 
 const RefreshButton = styled.button`
-  background: rgba(100, 116, 139, 0.15);
-  border: 1px solid rgba(100, 116, 139, 0.3);
-  color: #94a3b8;
-  padding: 0.3rem 0.6rem;
-  border-radius: 5px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  color: #6b7280;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  transition: all 0.2s;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
   &:hover {
-    background: rgba(16, 185, 129, 0.25);
-    border-color: rgba(16, 185, 129, 0.5);
+    background: #f0fdf4;
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15);
   }
 
   &:disabled {
@@ -326,8 +426,9 @@ const FileModalHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.5rem;
-  background: linear-gradient(135deg, #475569, #334155);
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 `;
 
 const FileModalTitle = styled.div`
@@ -387,17 +488,18 @@ const DownloadButton = styled.a`
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: #10b981;
   color: white;
   border-radius: 8px;
   text-decoration: none;
   font-weight: 600;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
   }
 `;
 
@@ -407,15 +509,16 @@ const TxtViewer = styled.pre`
   padding: 2rem;
   margin: 0;
   font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   line-height: 1.6;
-  background: #1e293b;
-  color: #e2e8f0;
+  background: #f9fafb;
+  color: #1f2937;
   white-space: pre-wrap;
   word-wrap: break-word;
+  border: 1px solid #e5e7eb;
 
   scrollbar-width: thin;
-  scrollbar-color: #64748b #1e293b;
+  scrollbar-color: #10b981 #f9fafb;
 
   &::-webkit-scrollbar {
     width: 10px;
@@ -423,16 +526,16 @@ const TxtViewer = styled.pre`
   }
 
   &::-webkit-scrollbar-track {
-    background: #1e293b;
+    background: #f9fafb;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #64748b;
+    background: linear-gradient(180deg, #10b981, #059669);
     border-radius: 5px;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: linear-gradient(180deg, #059669, #047857);
   }
 `;
 
@@ -440,11 +543,20 @@ const TxtViewer = styled.pre`
 // MAIN COMPONENT
 // ============================================================
 
-const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted }) => {
+const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted, token, username, showToast, onRefreshRequested, refreshCounter }) => {
   const [faktury, setFaktury] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
+  const [pagination, setPagination] = useState({ total: 0, limit: 1000, offset: 0 }); // Zvýšen limit pro datum filtry
+  const [zpracovaneIds, setZpracovaneIds] = useState(new Set()); // 📋 Set zpracovaných dokument_id
+  const [zpracovaneDetails, setZpracovaneDetails] = useState(new Map()); // 📋 Map dokument_id → {uzivatel_jmeno, zpracovano_kdy, fa_cislo_vema}
+  const [filterMode, setFilterMode] = useState('nezaevidovane'); // 'vse' | 'nezaevidovane' | 'zaevidovane' - VÝCHOZÍ: Nezaevidované
+  const [yearFilter, setYearFilter] = useState(new Date().getFullYear()); // Rok (2025, 2024...)
+  const [dateRange, setDateRange] = useState('dnes'); // 'dnes' | 'tyden' | 'mesic' | 'kvartal' | 'rok' - VÝCHOZÍ: Dnes
+  const [searchTerm, setSearchTerm] = useState(''); // 🔍 Fulltext vyhledávání v názvech, JID, číslech jednacích
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // 🕐 Debounced search term pro API
+  const [activeDokumentId, setActiveDokumentId] = useState(null); // 🎯 ID dokumentu, se kterým uživatel právě pracuje
+  const [expandedAttachments, setExpandedAttachments] = useState(new Set()); // 📎 Set expandovaných faktur (dokument_id)
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
   const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
   const [fileViewerPosition, setFileViewerPosition] = useState(() => {
@@ -458,6 +570,20 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   });
   const [isDraggingViewer, setIsDraggingViewer] = useState(false);
   const [errorDialog, setErrorDialog] = useState({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+
+  // 🕐 Debouncing pro search term - delay 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // � Reset pagination při změně debounced search termu
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  }, [debouncedSearchTerm]);
 
   const fetchTxtContent = async (url) => {
     try {
@@ -517,8 +643,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       // Použít proxy-file endpoint pro stažení PDF (řešení CORS)
       const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(priloha.download_url)}`;
       
-      console.log(`📄 Fetching PDF via proxy: ${proxyUrl}`);
-      console.log(`📄 Original URL: ${priloha.download_url}`);
       const response = await fetch(proxyUrl);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -526,7 +650,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       
       const contentType = response.headers.get('content-type');
       const contentLength = response.headers.get('content-length');
-      console.log(`📄 Response received, Content-Type: ${contentType}, Length: ${contentLength}`);
       
       // Validace response
       if (!contentType || !contentType.includes('pdf')) {
@@ -537,7 +660,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       
       // DŮLEŽITÉ: Počkáme na kompletní stažení jako ArrayBuffer
       const arrayBuffer = await response.arrayBuffer();
-      console.log(`✅ PDF completely downloaded: ${arrayBuffer.byteLength} bytes`);
       
       // Validace stažených dat
       if (arrayBuffer.byteLength === 0) {
@@ -556,7 +678,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         throw new Error('Stažený soubor není platné PDF (chybí PDF header).');
       }
       
-      console.log(`✅ PDF validated: header="${headerStr}", size=${arrayBuffer.byteLength} bytes`);
       
       setOcrProgress({ visible: true, progress: 5, message: 'PDF staženo, připravuji OCR...' });
 
@@ -589,21 +710,22 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           });
         }).then((proceed) => {
           if (!proceed) {
-            console.log('📄 OCR zrušeno uživatelem - dokument není faktura');
             throw new Error('OCR_CANCELLED');
           }
         });
       }
 
-      // Zavolat callback s daty
+      // Zavolat callback s daty + Spisovka metadata pro tracking
       if (onOCRDataExtracted) {
-        onOCRDataExtracted(data);
+        onOCRDataExtracted({
+          ...data,
+          // 📋 SPISOVKA METADATA pro automatický tracking
+          spisovka_dokument_id: dokumentId,
+          spisovka_priloha_id: priloha.priloha_id
+        });
       }
-
-      console.log('📄 OCR Data:', data);
       
       // ✅ AUTOMATICKY OTEVŘÍT PDF pro kontrolu výsledků OCR
-      console.log('📄 Opening PDF for verification...');
       setFileViewer({
         visible: true,
         url: priloha.download_url,
@@ -644,12 +766,167 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     }
   };
 
+  // 📅 Helper: Výpočet datum rozsahu
+  const calculateDateRange = useCallback((range, year) => {
+    const now = new Date();
+    const currentYear = year || now.getFullYear();
+    let dateFrom, dateTo;
+
+    switch (range) {
+      case 'dnes':
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateTo = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        break;
+      case 'tyden':
+        const weekAgo = new Date(now);
+        weekAgo.setDate(now.getDate() - 7);
+        dateFrom = weekAgo;
+        dateTo = now;
+        break;
+      case 'mesic':
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(now.getMonth() - 1);
+        dateFrom = monthAgo;
+        dateTo = now;
+        break;
+      case 'kvartal':
+        const quarterAgo = new Date(now);
+        quarterAgo.setMonth(now.getMonth() - 3);
+        dateFrom = quarterAgo;
+        dateTo = now;
+        break;
+      case 'rok':
+        dateFrom = new Date(currentYear, 0, 1); // 1. ledna
+        dateTo = new Date(currentYear, 11, 31, 23, 59, 59); // 31. prosince
+        break;
+      default:
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateTo = now;
+    }
+
+    return {
+      dateFrom: dateFrom.toISOString().split('T')[0], // YYYY-MM-DD
+      dateTo: dateTo.toISOString().split('T')[0]
+    };
+  }, []);
+
+  // 📋 Načíst zpracované dokumenty pro označení
+  const fetchZpracovaneDokumenty = useCallback(async () => {
+    try {
+      // Token a username přicházejí jako props z InvoiceEvidencePage
+      if (!token || !username) {
+        console.warn('⚠️ Token nebo username chybí - nelze načíst zpracované dokumenty');
+        return;
+      }
+
+      const response = await getSpisovkaZpracovaniList({
+        username,
+        token,
+        limit: 1000, // Načíst všechny zpracované dokumenty
+        offset: 0
+      });
+
+      if (response.status === 'ok' && response.data) {
+        // Vytvořit Set z dokument_id pro rychlé vyhledávání
+        const processedIds = new Set(response.data.map(item => item.dokument_id));
+        setZpracovaneIds(processedIds);
+        
+        // Vytvořit Map s detaily pro každý dokument
+        const detailsMap = new Map();
+        response.data.forEach(item => {
+          detailsMap.set(item.dokument_id, {
+            uzivatel_jmeno: item.uzivatel_jmeno || 'Neznámý',
+            zpracovano_kdy: item.zpracovano_kdy,
+            fa_cislo_vema: item.fa_cislo_vema,
+            faktura_id: item.faktura_id, // 🆕 Pro případné smazání faktury
+            stav: item.stav
+          });
+        });
+        setZpracovaneDetails(detailsMap);
+      }
+    } catch (err) {
+      console.warn('⚠️ Nepodařilo se načíst zpracované dokumenty:', err);
+      
+      // 🔴 403 Forbidden - nedostatečná oprávnění → zobrazit toast
+      if (err.message && err.message.includes('403')) {
+        showToast('❌ Nemáte oprávnění ke správě File Registru. Vyžadováno právo FILE_REGISTRY_MANAGE nebo ADMIN role.', 'error');
+      }
+      
+      // Neblokujeme - panel může fungovat i bez tohoto
+    }
+  }, [token, username, showToast]);
+
+  // 🗑️ Zrušit zpracování Spisovka dokumentu
+  const handleCancelProcessing = useCallback(async (dokumentId, fakturaId, faCisloVema) => {
+    setErrorDialog({
+      isOpen: true,
+      title: '🗑️ Zrušit zpracování dokumentu',
+      message: (
+        <div style={{ fontFamily: 'system-ui', lineHeight: '1.6' }}>
+          <p style={{ marginBottom: '12px' }}>
+            Chcete zrušit zpracování tohoto dokumentu ze Spisovky?
+          </p>
+          {faCisloVema && (
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#fef3c7',
+              borderRadius: '6px',
+              fontSize: '13px',
+              marginBottom: '12px'
+            }}>
+              <div><strong>Zaevidovaná faktura:</strong> {faCisloVema}</div>
+              {fakturaId && <div style={{ fontSize: '12px', color: '#78716c', marginTop: '4px' }}>ID: {fakturaId}</div>}
+            </div>
+          )}
+          <p style={{ marginBottom: '8px', fontWeight: 600, color: '#dc2626' }}>
+            ⚠️ Pozor: Toto pouze odstraní vazbu mezi dokumentem a fakturou.
+          </p>
+          <p style={{ fontSize: '13px', color: '#6b7280' }}>
+            Fakturu můžete smazat ručně z formuláře editace faktury.
+          </p>
+        </div>
+      ),
+      onConfirm: async () => {
+        try {
+          // Smazat tracking
+          await deleteSpisovkaZpracovani({
+            username,
+            token,
+            dokument_id: dokumentId
+          });
+          
+          // Vyčistit localStorage pokud je to aktivní dokument
+          if (activeDokumentId === dokumentId) {
+            localStorage.removeItem('spisovka_active_dokument');
+            setActiveDokumentId(null);
+          }
+          
+          // Refresh seznamu
+          await fetchZpracovaneDokumenty();
+          
+          showToast && showToast('✅ Evidence zrušena', { type: 'success' });
+          setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+        } catch (err) {
+          showToast && showToast(`❌ Chyba: ${err.message}`, { type: 'error' });
+          setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+        }
+      }
+    });
+  }, [username, token, activeDokumentId, fetchZpracovaneDokumenty, showToast, setActiveDokumentId, setErrorDialog]);
+
   const fetchFaktury = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${pagination.rok}`;
+      // Načíst faktury pro zvolený rok (vždy celý rok, pak client-side filtrujeme podle dateRange)
+      let apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${yearFilter}`;
+      
+      // 🔍 Přidat search parametr pokud je vyplněn
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        apiUrl += `&search=${encodeURIComponent(debouncedSearchTerm.trim())}`;
+      }
+      
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
@@ -660,7 +937,10 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
 
       if (data.status === 'success') {
         setFaktury(data.data);
-        setPagination(data.pagination);
+        setPagination(prev => ({ ...prev, total: data.pagination?.total || data.data.length }));
+        
+        // 📋 Načíst zpracované dokumenty po načtení faktur
+        fetchZpracovaneDokumenty();
       } else {
         throw new Error(data.message || 'Nepodařilo se načíst faktury');
       }
@@ -670,22 +950,76 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit, pagination.offset, pagination.rok]);
+  }, [pagination.limit, pagination.offset, yearFilter, debouncedSearchTerm, dateRange, fetchZpracovaneDokumenty, token, username]);
 
-  // Initial fetch
+  // Initial fetch + refetch při změně roku, search termu nebo období
   useEffect(() => {
     fetchFaktury();
-  }, []);
+  }, [yearFilter, debouncedSearchTerm, dateRange]); // 📅 Refetch při změně roku, vyhledávání (debounced) nebo období
+
+  // 📋 Fetch zpracovaných dokumentů - při mount, změně credentials nebo filtrů
+  useEffect(() => {
+    if (token && username) {
+      fetchZpracovaneDokumenty();
+    }
+  }, [token, username, fetchZpracovaneDokumenty, yearFilter, debouncedSearchTerm, dateRange]); // 🎯 Fetch při mount, credentials nebo filtrech
 
   // Background refresh every 5 minutes
   useEffect(() => {
     const interval = setInterval(() => {
-      console.log('🔄 Spisovka auto-refresh (5 minut)');
       fetchFaktury();
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(interval);
   }, [fetchFaktury]);
+
+  // 🔄 Refresh panelu při změně refreshCounter (po označení dokumentu jako zpracovaný)
+  useEffect(() => {
+    if (refreshCounter > 0) {
+      console.log('📋 Refreshing Spisovka panel after document processed...');
+      fetchZpracovaneDokumenty();
+      // Následně se odložený fetch faktur provede automaticky
+    }
+  }, [refreshCounter, fetchZpracovaneDokumenty]);
+
+  // 🎯 Polling pro aktivní dokument z localStorage
+  useEffect(() => {
+    const checkActiveDocument = () => {
+      const activeDokId = localStorage.getItem('spisovka_active_dokument');
+      const parsedDokId = activeDokId ? parseInt(activeDokId, 10) : null;
+      
+      // Pouze update stavu, scroll se provede v samostatném effectu
+      setActiveDokumentId(parsedDokId);
+    };
+
+    // Initial check
+    checkActiveDocument();
+
+    // Poll každých 500ms (rychlá reakce na změny)
+    const interval = setInterval(checkActiveDocument, 500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // 🎯 SCROLL NA AKTIVNÍ DOKUMENT po načtení seznamu
+  useEffect(() => {
+    if (activeDokumentId && faktury.length > 0) {
+      // Počkat na render a pak scrollovat
+      const timeoutId = setTimeout(() => {
+        const element = document.querySelector(`[data-section="dokument-${activeDokumentId}"]`);
+        if (element) {
+          element.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+            inline: 'nearest'
+          });
+        } else {
+        }
+      }, 300); // Delay pro zajištění renderování
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [activeDokumentId, faktury]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -706,8 +1040,53 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const handleSnapRight = () => {
+    // 📌 Snap panel doprava - zjistit šířku z pravého náhledového panelu (45% okna)
+    // LAYOUT: fixed header (96px) + menubar (48px) = 144px top offset
+    // Footer: 54px
+    const headerHeight = 96; // Fixed header
+    const menubarHeight = 48; // Menubar
+    const footerHeight = 54; // Layout footer
+    const topOffset = headerHeight + menubarHeight; // 144px celkem
+    const minWidth = 620; // Minimální šířka aby tlačítka nevytekala
+    
+    // Najít pravý náhledový panel podle textu "Náhled" v SectionTitle
+    let targetWidth = panelState.w; // Fallback na aktuální šířku
+    
+    const previewHeaders = Array.from(document.querySelectorAll('div')).filter(el => 
+      el.textContent.includes('Náhled') && el.style.width && el.parentElement
+    );
+    
+    if (previewHeaders.length > 0) {
+      // Najít parent container (pravý sloupec)
+      let previewColumn = previewHeaders[0].parentElement;
+      while (previewColumn && !previewColumn.style.width?.includes('%')) {
+        previewColumn = previewColumn.parentElement;
+      }
+      if (previewColumn) {
+        const previewWidth = previewColumn.getBoundingClientRect().width;
+        targetWidth = Math.max(previewWidth, minWidth);
+      }
+    }
+    
+    if (targetWidth === panelState.w) {
+      // Fallback: použít 45% šířky okna (jako PreviewColumn)
+      targetWidth = Math.max(Math.floor(window.innerWidth * 0.45), minWidth);
+    }
+    
+    setPanelState(prev => ({
+      ...prev,
+      x: window.innerWidth - targetWidth, // Zarovnat k pravému okraji
+      y: topOffset, // Pod header + menubar
+      w: targetWidth,
+      h: window.innerHeight - topOffset - footerHeight, // Celá výška minus header, menubar, footer
+      minimized: false
+    }));
+  };
+
   const handleMinimize = () => {
-    setPanelState(s => ({ ...s, minimized: !s.minimized }));
+    // ✅ OPRAVENO: Minimize = zavřít celý panel (ne jen obsah)
+    if (onClose) onClose();
   };
 
   const handleClose = () => {
@@ -733,10 +1112,23 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         style={{ cursor: 'move' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <FontAwesomeIcon icon={faBookOpen} style={{ color: '#94a3b8' }} />
+          <FontAwesomeIcon icon={faBookOpen} style={{ color: '#1f2937' }} />
           Spisovka Inbox
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <TinyBtn 
+            onClick={() => {
+              fetchFaktury();
+              fetchZpracovaneDokumenty();
+            }} 
+            title="Obnovit data (Spisovka + Tracking)"
+            style={{ opacity: loading ? 0.5 : 1 }}
+          >
+            <FontAwesomeIcon icon={faSync} spin={loading} />
+          </TinyBtn>
+          <TinyBtn onClick={handleSnapRight} title="Zarovnat doprava (celá výška)">
+            <FontAwesomeIcon icon={faExpand} />
+          </TinyBtn>
           <TinyBtn onClick={handleMinimize} title={panelState.minimized ? 'Obnovit' : 'Minimalizovat'}>
             <FontAwesomeIcon icon={panelState.minimized ? faWindowRestore : faMinus} />
           </TinyBtn>
@@ -746,17 +1138,399 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         </div>
       </PanelHeader>
 
-      {!panelState.minimized && (
+      {!panelState.minimized && (() => {
+        // 📊 Spočítat filtrované faktury podle všech režimů (pre zobrazení v headeru)
+        const { dateFrom, dateTo } = calculateDateRange(dateRange, yearFilter);
+        const dateFromTs = new Date(dateFrom).getTime();
+        const dateToTs = new Date(dateTo + ' 23:59:59').getTime();
+        
+        // 🧮 Počítání podle všech režimů s aplikováním datum + název filtrů
+        let nezaevidovaneCount = 0;
+        let zaevidovaneCount = 0;
+        
+        faktury.forEach(faktura => {
+          // 0. Filter podle názvu - pouze faktury (stejná logika jako v filteredFaktury)
+          const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                            /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+          
+          if (!isFaktura) return; // Není faktura podle názvu
+          
+          // 1. Filter podle dateRange
+          const fakturaDate = new Date(faktura.datum_vzniku);
+          const fakturaTs = fakturaDate.getTime();
+          if (fakturaTs < dateFromTs || fakturaTs > dateToTs) return; // Mimo datum rozsah
+          
+          // 2. Počítání podle zpracování
+          const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
+          if (isZaevidovano) {
+            zaevidovaneCount++;
+          } else {
+            nezaevidovaneCount++;
+          }
+        });
+        
+        //  Aktuálně zobrazený počet (podle filterMode)
+        const filteredCount = faktury.filter(faktura => {
+          // Aplikovat všechny filtry stejně jako výše
+          const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                            /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+          
+          if (!isFaktura) return false;
+          
+          const fakturaDate = new Date(faktura.datum_vzniku);
+          const fakturaTs = fakturaDate.getTime();
+          if (fakturaTs < dateFromTs || fakturaTs > dateToTs) return false;
+          
+          const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
+          if (filterMode === 'nezaevidovane') return !isZaevidovano;
+          if (filterMode === 'zaevidovane') return isZaevidovano;
+          return true; // 'vse'
+        }).length;
+        
+        return (
         <InboxContainer>
           <InboxHeader>
-            <InboxTitle>
+            <InboxTitle style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
               <FontAwesomeIcon icon={faBookOpen} />
-              Faktury {pagination.rok}
+              Faktury
+              <select
+                value={yearFilter}
+                onChange={(e) => {
+                  setYearFilter(parseInt(e.target.value));
+                  // Reset pagination při změně roku
+                  setPagination(prev => ({ ...prev, offset: 0 }));
+                }}
+                style={{
+                  padding: '0.3rem 1.8rem 0.3rem 0.6rem',
+                  borderRadius: '5px',
+                  border: '1px solid rgba(255, 255, 255, 0.6)',
+                  background: 'rgba(255, 255, 255, 0.9)',
+                  color: '#1f2937',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.5rem center',
+                  backgroundSize: '10px',
+                  minWidth: '75px',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.borderColor = '#22c55e';
+                  e.currentTarget.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.2), 0 2px 6px rgba(0, 0, 0, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                }}
+              >
+                {(() => {
+                  const currentYear = new Date().getFullYear();
+                  const startYear = 2025; // Počáteční rok evidence
+                  const years = [];
+                  for (let y = currentYear; y >= startYear; y--) {
+                    years.push(y);
+                  }
+                  return years.map(year => (
+                    <option 
+                      key={year} 
+                      value={year} 
+                      style={{ 
+                        background: '#ffffff', 
+                        color: '#1f2937',
+                        padding: '0.4rem 0.6rem',
+                        fontWeight: 600,
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      {year}
+                    </option>
+                  ));
+                })()}
+              </select>
             </InboxTitle>
             <InboxStats>
-              {pagination.total} celkem
+              {filteredCount} / {pagination.total} celkem
             </InboxStats>
           </InboxHeader>
+          
+          {/* 📅 DATUM FILTRY */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+            borderBottom: '1px solid #bae6fd',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {/* Datum range filtry */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+              <span style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 600 }}>Období:</span>
+              {['dnes', 'tyden', 'mesic', 'kvartal', 'rok'].map(range => (
+                <button
+                  key={range}
+                  onClick={() => {
+                    setDateRange(range);
+                    // Reset pagination při změně období
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    border: dateRange === range ? '2px solid #0284c7' : '1px solid #94a3b8',
+                    background: dateRange === range ? '#e0f2fe' : 'white',
+                    color: dateRange === range ? '#0c4a6e' : '#64748b',
+                    fontSize: '0.8rem',
+                    fontWeight: dateRange === range ? 600 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (dateRange !== range) {
+                      e.currentTarget.style.borderColor = '#0284c7';
+                      e.currentTarget.style.color = '#0c4a6e';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (dateRange !== range) {
+                      e.currentTarget.style.borderColor = '#94a3b8';
+                      e.currentTarget.style.color = '#64748b';
+                    }
+                  }}
+                >
+                  {range === 'dnes' && 'Dnes'}
+                  {range === 'tyden' && 'Týden zpět'}
+                  {range === 'mesic' && 'Měsíc zpět'}
+                  {range === 'kvartal' && 'Kvartál zpět'}
+                  {range === 'rok' && 'Celý rok'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 🔘 FILTROVACÍ TLAČÍTKA (Vše / Nezaevidované / Zaevidované) */}
+          <div style={{
+            display: 'flex',
+            gap: '0.5rem',
+            padding: '0.75rem 1rem',
+            background: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>Zobrazit:</span>
+              {['vse', 'nezaevidovane', 'zaevidovane'].map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setFilterMode(mode);
+                    // Reset pagination při změně režimu filtrování  
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    border: filterMode === mode ? '2px solid #10b981' : '1px solid #d1d5db',
+                    background: filterMode === mode ? '#ecfdf5' : 'white',
+                  color: filterMode === mode ? '#059669' : '#6b7280',
+                  fontSize: '0.8rem',
+                  fontWeight: filterMode === mode ? 600 : 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={(e) => {
+                  if (filterMode !== mode) {
+                    e.currentTarget.style.borderColor = '#10b981';
+                    e.currentTarget.style.color = '#059669';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (filterMode !== mode) {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.color = '#6b7280';
+                  }
+                }}
+              >
+                {mode === 'vse' && 'Vše'}
+                {mode === 'nezaevidovane' && `Nezaevidované (${nezaevidovaneCount})`}
+                {mode === 'zaevidovane' && `Zaevidované (${zaevidovaneCount})`}
+              </button>
+            ))}
+            </div>
+            
+            {/* 🎯 IKONA SCROLL NA AKTIVNÍ DOKUMENT */}
+            {activeDokumentId && (
+              <button
+                onClick={() => {
+                  const element = document.querySelector(`[data-section="dokument-${activeDokumentId}"]`);
+                  if (element) {
+                    element.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'center',
+                      inline: 'nearest'
+                    });
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '6px',
+                  color: '#1e40af',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(59, 130, 246, 0.25)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+                  e.currentTarget.style.transform = 'scale(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                title="Jdi na fakturu, se kterou právě pracuji"
+              >
+                ⚡
+              </button>
+            )}
+          </div>
+
+          {/* 🔍 SEARCH BOX pro fulltext vyhledávání */}
+          <div style={{
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+            borderBottom: '2px solid #e2e8f0',
+            position: 'relative'
+          }}>
+            <div style={{ position: 'relative' }}>
+              <FontAwesomeIcon 
+                icon={searchTerm !== debouncedSearchTerm ? faSpinner : faSearch}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#64748b',
+                  fontSize: '14px',
+                  pointerEvents: 'none',
+                  ...(searchTerm !== debouncedSearchTerm ? { animation: 'spin 1s linear infinite' } : {})
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Vyhledat v názvech, JID, číslech jednacích..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem 0.6rem 2.5rem',
+                  border: '2px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  background: 'white',
+                  color: '#1f2937',
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#3b82f6';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    // Reset pagination při vymazání vyhledávání
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f1f5f9';
+                    e.currentTarget.style.color = '#374151';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = '#64748b';
+                  }}
+                  title="Vymazat vyhledávání"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <div style={{ 
+                fontSize: '0.75rem', 
+                color: '#64748b', 
+                marginTop: '0.5rem',
+                fontStyle: 'italic',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                💡 Vyhledává se v názvech dokumentů, JID a číslech jednacích
+                {searchTerm !== debouncedSearchTerm && (
+                  <span style={{ color: '#f59e0b', fontWeight: '600' }}>
+                    ⏳ Vyhledávání...
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
 
           {loading && (
             <LoadingBox>
@@ -783,12 +1557,109 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             </EmptyBox>
           )}
 
-          {!loading && !error && faktury.length > 0 && (
+          {!loading && !error && faktury.length > 0 && (() => {
+            // 📅 Výpočet datum rozsahu
+            const { dateFrom, dateTo } = calculateDateRange(dateRange, yearFilter);
+            const dateFromTs = new Date(dateFrom).getTime();
+            const dateToTs = new Date(dateTo + ' 23:59:59').getTime();
+            
+            // 🔍 Filtrování faktur podle režimu + datum rozsahu + název (pouze faktury)
+            const filteredFaktury = faktury.filter(faktura => {
+              // 0. Filter podle názvu - pouze dokumenty obsahující "Faktura", "Fa č.", "Fač.", "FA" atd.
+              // Regex zachytí: 
+              // - faktura/faktúra
+              // - fa.č./fa.c./fa č./fa c./fač./fac.
+              // - fak.č./fak.c./fak č./fak c.
+              // - daňový doklad č./danovy doklad c.
+              // - zálohová fa č./zalohova fa c.
+              // - dobropis č./dobropis c.
+              // - FA na začátku
+              const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Normalizace diakritiky
+              const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|dan[oóů]v[yýá][\s]+doklad[\s]+(c|č)[\s\.]?|z[aá]lohov[aá][\s]+fa[\s]+(c|č)[\s\.]?|dobropis[\s]+(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                                /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|dan[oóů]v[yýá][\s]+doklad[\s]+(c|č)[\s\.]?|z[aá]lohov[aá][\s]+fa[\s]+(c|č)[\s\.]?|dobropis[\s]+(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+              
+              if (!isFaktura) {
+                return false; // Není faktura podle názvu
+              }
+              
+              // 1. Filter podle dateRange
+              const fakturaDate = new Date(faktura.datum_vzniku);
+              const fakturaTs = fakturaDate.getTime();
+              if (fakturaTs < dateFromTs || fakturaTs > dateToTs) {
+                return false; // Mimo datum rozsah
+              }
+              
+              // 2. Filter podle režimu (Vše / Nezaevidované / Zaevidované)
+              const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
+              if (filterMode === 'nezaevidovane') return !isZaevidovano;
+              if (filterMode === 'zaevidovane') return isZaevidovano;
+              return true; // 'vse'
+            });
+            
+            if (filteredFaktury.length === 0) {
+              return (
+                <EmptyBox>
+                  <FontAwesomeIcon icon={faBookOpen} size="2x" />
+                  {filterMode === 'nezaevidovane' && 'Všechny faktury jsou zaevidované ✓'}
+                  {filterMode === 'zaevidovane' && 'Zatím žádné zaevidované faktury'}
+                </EmptyBox>
+              );
+            }
+            
+            return (
             <InboxContent>
-              {faktury.map((faktura) => (
+              {filteredFaktury.map((faktura) => {
+                const isActive = activeDokumentId === faktura.dokument_id;
+                const isOtherActive = activeDokumentId && !isActive;
+                
+                return (
                 <FakturaCard 
                   key={faktura.dokument_id}
+                  data-section={`dokument-${faktura.dokument_id}`}
+                  style={{
+                    opacity: isOtherActive ? 0.4 : 1,
+                    transition: 'opacity 0.3s ease',
+                    position: 'relative'
+                  }}
                 >
+                  {/* 🎯 Indikátor aktivního dokumentu */}
+                  {isActive && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: '4px',
+                      background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+                      borderRadius: '6px 6px 0 0',
+                      zIndex: 1
+                    }} />
+                  )}
+                  {isActive && (
+                    <div style={{
+                      padding: '6px 12px',
+                      marginBottom: '12px',
+                      background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                      borderBottom: '1px solid #93c5fd',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#1e40af'
+                    }}>
+                      <span style={{ fontSize: '16px' }}>⚡</span>
+                      <span>Právě pracuji s touto fakturou</span>
+                      <div style={{
+                        marginLeft: 'auto',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: '#3b82f6',
+                        animation: 'pulse 2s infinite'
+                      }} />
+                    </div>
+                  )}
                   <FakturaHeader
                     draggable={faktura.prilohy && faktura.prilohy.length > 0}
                     onDragStart={(e) => {
@@ -796,11 +1667,14 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                         e.stopPropagation();
                         e.currentTarget.style.cursor = 'grabbing';
                         e.currentTarget.style.opacity = '0.6';
-                        // Předat všechny přílohy jako JSON
+                        // Předat všechny přílohy jako JSON + Spisovka metadata pro tracking
                         const attachmentsData = faktura.prilohy.map(p => ({
                           url: p.download_url,
                           filename: p.filename,
-                          mime_type: p.mime_type || 'application/octet-stream'
+                          mime_type: p.mime_type || 'application/octet-stream',
+                          // 📋 SPISOVKA METADATA pro automatický tracking
+                          spisovka_dokument_id: faktura.dokument_id,
+                          spisovka_file_id: p.file_id || p.priloha_id
                         }));
                         e.dataTransfer.setData('text/spisovka-attachments', JSON.stringify(attachmentsData));
                         e.dataTransfer.effectAllowed = 'copy';
@@ -814,8 +1688,19 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                     style={{ cursor: (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default' }}
                     title={(faktura.prilohy && faktura.prilohy.length > 0) ? `Přetáhněte hlavičku pro nahrání všech ${faktura.prilohy.length} příloh` : ''}
                   >
-                    <FakturaNazev>{faktura.nazev}</FakturaNazev>
-                    <FakturaID>#{faktura.dokument_id}</FakturaID>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}>
+                        <FakturaNazev>{faktura.nazev}</FakturaNazev>
+                        <FakturaID>#{faktura.dokument_id}</FakturaID>
+                      </div>
+                      {zpracovaneIds.has(faktura.dokument_id) && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <StatusBadge $status="ZAEVIDOVANO">
+                            ✓ Zaevidováno
+                          </StatusBadge>
+                        </div>
+                      )}
+                    </div>
                   </FakturaHeader>
 
                   <FakturaInfo>
@@ -833,12 +1718,100 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                     </InfoRow>
                   </FakturaInfo>
 
+                  {/* 📋 INFO O ZPRACOVÁNÍ (pokud je zaevidováno) */}
+                  {zpracovaneIds.has(faktura.dokument_id) && zpracovaneDetails.has(faktura.dokument_id) && (() => {
+                    const detail = zpracovaneDetails.get(faktura.dokument_id);
+                    const zpracovanoDate = new Date(detail.zpracovano_kdy);
+                    const timeAgo = Math.floor((Date.now() - zpracovanoDate.getTime()) / 1000);
+                    let timeText = '';
+                    if (timeAgo < 60) timeText = 'před chvílí';
+                    else if (timeAgo < 3600) timeText = `před ${Math.floor(timeAgo / 60)} min`;
+                    else if (timeAgo < 86400) timeText = `před ${Math.floor(timeAgo / 3600)} h`;
+                    else timeText = `před ${Math.floor(timeAgo / 86400)} dny`;
+                    
+                    return (
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                        borderTop: '1px solid #a7f3d0',
+                        borderBottom: '1px solid #a7f3d0',
+                        marginBottom: '0.5rem'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          fontSize: '0.8rem',
+                          color: '#047857',
+                          fontWeight: 500
+                        }}>
+                          <span>✓</span>
+                          <span>
+                            Zaevidováno <strong>{timeText}</strong>
+                            {detail.fa_cislo_vema && <> jako <strong>{detail.fa_cislo_vema}</strong></>}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancelProcessing(faktura.dokument_id, detail.faktura_id, detail.fa_cislo_vema);
+                            }}
+                            style={{
+                              marginLeft: 'auto',
+                              padding: '4px 8px',
+                              fontSize: '0.75rem',
+                              backgroundColor: '#dc2626',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 600
+                            }}
+                            title="Zrušit zpracování tohoto dokumentu"
+                          >
+                            <span>🗑️</span>
+                            <span>Zrušit</span>
+                          </button>
+                        </div>
+                        <div style={{
+                          fontSize: '0.75rem',
+                          color: '#059669',
+                          marginTop: '0.25rem',
+                          paddingLeft: '1.5rem'
+                        }}>
+                          Uživatel: <strong>{detail.uzivatel_jmeno}</strong> • {zpracovanoDate.toLocaleString('cs-CZ')}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {faktura.prilohy && faktura.prilohy.length > 0 && (
                     <PrilohaSection>
                       <PrilohaTitle>
                         📎 Přílohy ({faktura.prilohy.length})
                       </PrilohaTitle>
-                      {faktura.prilohy.slice(0, 3).map((priloha) => {
+                      {(() => {
+                        const isExpanded = expandedAttachments.has(faktura.dokument_id);
+                        
+                        // 🔄 Seřazení příloh: 1. PDF, 2. obrázky, 3. TXT, 4. ostatní
+                        const sortedPrilohy = [...faktura.prilohy].sort((a, b) => {
+                          const getFileType = (priloha) => {
+                            const mime = (priloha.mime_type || '').toLowerCase();
+                            const filename = (priloha.filename || '').toLowerCase();
+                            
+                            if (mime === 'application/pdf' || filename.endsWith('.pdf')) return 1; // PDF první
+                            if (mime.startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|svg|webp)$/.test(filename)) return 2; // Obrázky druhé
+                            if (mime === 'text/plain' || filename.endsWith('.txt')) return 4; // TXT poslední
+                            return 3; // Ostatní uprostřed
+                          };
+                          
+                          return getFileType(a) - getFileType(b);
+                        });
+                        
+                        const attachmentsToShow = isExpanded ? sortedPrilohy : sortedPrilohy.slice(0, 3);
+                        return attachmentsToShow.map((priloha) => {
                         const isPdf = priloha.mime_type === 'application/pdf';
                         const isTxt = priloha.mime_type === 'text/plain' || priloha.filename.toLowerCase().endsWith('.txt');
                         const canPreview = isPdf || isTxt;
@@ -853,6 +1826,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                               e.dataTransfer.setData('text/spisovka-file-url', priloha.download_url);
                               e.dataTransfer.setData('text/spisovka-file-name', priloha.filename);
                               e.dataTransfer.setData('text/spisovka-file-mime', priloha.mime_type || 'application/octet-stream');
+                              e.dataTransfer.setData('text/spisovka-file-id', priloha.file_id); // 🆕 ID přílohy
+                              e.dataTransfer.setData('text/spisovka-dokument-id', faktura.dokument_id); // 🆕 ID dokumentu
                               e.dataTransfer.effectAllowed = 'copy';
                             }}
                             style={{ cursor: 'grab' }}
@@ -879,31 +1854,34 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                                     handleOCRExtraction(priloha, faktura.dokument_id);
                                   }}
                                   style={{
-                                    background: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
+                                    background: '#3b82f6',
                                     border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '4px 6px',
+                                    borderRadius: '6px',
+                                    padding: '0.5rem 0.75rem',
                                     cursor: 'pointer',
-                                    display: 'flex',
+                                    display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '3px',
+                                    gap: '0.4rem',
                                     color: 'white',
-                                    fontSize: '0.65rem',
+                                    fontSize: '0.7rem',
                                     fontWeight: '600',
-                                    boxShadow: '0 1px 3px rgba(139, 92, 246, 0.3)',
-                                    transition: 'all 0.2s ease'
+                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap'
                                   }}
                                   onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'scale(1.05)';
-                                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(139, 92, 246, 0.5)';
+                                    e.currentTarget.style.background = '#2563eb';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.25)';
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'scale(1)';
-                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(139, 92, 246, 0.3)';
+                                    e.currentTarget.style.background = '#3b82f6';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
                                   }}
                                   title="Vytěžit údaje pomocí OCR"
                                 >
-                                  <Sparkles size={12} />
+                                  <Sparkles size={14} />
                                   <span>OCR</span>
                                 </button>
                               )}
@@ -943,20 +1921,59 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                             </div>
                           </PrilohaItem>
                         );
-                      })}
+                        });
+                      })()}
                       {faktura.prilohy.length > 3 && (
-                        <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: '0.3rem', textAlign: 'center' }}>
-                          +{faktura.prilohy.length - 3} další
+                        <div 
+                          style={{ 
+                            fontSize: '0.75rem', 
+                            color: '#3b82f6', 
+                            marginTop: '0.5rem', 
+                            textAlign: 'center', 
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            padding: '0.5rem',
+                            borderRadius: '4px',
+                            background: '#eff6ff',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedAttachments(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(faktura.dokument_id)) {
+                                newSet.delete(faktura.dokument_id);
+                              } else {
+                                newSet.add(faktura.dokument_id);
+                              }
+                              return newSet;
+                            });
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#dbeafe';
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#eff6ff';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                          }}
+                        >
+                          {expandedAttachments.has(faktura.dokument_id) 
+                            ? '▲ Skrýt přílohy' 
+                            : `▼ Zobrazit +${faktura.prilohy.length - 3} další`}
                         </div>
                       )}
                     </PrilohaSection>
                   )}
                 </FakturaCard>
-              ))}
+              );
+              })}
             </InboxContent>
-          )}
+            );
+          })()}
         </InboxContainer>
-      )}
+        );
+      })()}
 
       {/* OCR Progress Overlay */}
       {ocrProgress.visible && (
@@ -966,31 +1983,73 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(255, 255, 255, 0.95)',
+          background: 'linear-gradient(135deg, rgba(249, 250, 251, 0.98) 0%, rgba(243, 244, 246, 0.98) 100%)',
+          backdropFilter: 'blur(8px)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '1rem',
+          gap: '1.25rem',
           zIndex: 1000,
-          borderRadius: '8px'
+          borderRadius: '8px',
+          border: '2px solid #e5e7eb',
+          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
         }}>
-          <Sparkles size={48} color="#8b5cf6" style={{ animation: 'spin 2s linear infinite' }} />
-          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#1a1a1a' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            borderRadius: '50%',
+            width: '80px',
+            height: '80px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+          }}>
+            <Sparkles size={40} color="white" style={{ animation: 'spin 2s linear infinite' }} />
+          </div>
+          <div style={{ 
+            fontSize: '1.1rem', 
+            fontWeight: '700', 
+            color: '#1f2937',
+            textAlign: 'center'
+          }}>
+            <FontAwesomeIcon icon={faFileAlt} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
             OCR extrakce z PDF
           </div>
-          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+          <div style={{ 
+            fontSize: '0.9rem', 
+            color: '#6b7280',
+            textAlign: 'center',
+            maxWidth: '300px'
+          }}>
             {ocrProgress.message}
           </div>
-          <div style={{ width: '80%', maxWidth: '300px', height: '8px', backgroundColor: '#e9d5ff', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ 
+            width: '85%', 
+            maxWidth: '320px', 
+            height: '10px', 
+            backgroundColor: '#e5e7eb', 
+            borderRadius: '5px', 
+            overflow: 'hidden',
+            border: '1px solid #d1d5db',
+            boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.1)'
+          }}>
             <div style={{ 
               height: '100%', 
               width: `${ocrProgress.progress}%`, 
-              backgroundColor: '#8b5cf6', 
-              transition: 'width 0.3s ease' 
+              background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+              transition: 'width 0.3s ease',
+              boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)'
             }} />
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: '600' }}>
+          <div style={{ 
+            fontSize: '0.85rem', 
+            color: '#1e40af', 
+            fontWeight: '700',
+            background: 'rgba(59, 130, 246, 0.1)',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '12px'
+          }}>
             {Math.round(ocrProgress.progress)}%
           </div>
         </div>

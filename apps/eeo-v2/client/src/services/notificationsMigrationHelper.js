@@ -66,7 +66,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadKeSchvaleni = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ODESLANA_KE_SCHVALENI') : false;
 
     if (hasKeSchvaleni && !hadKeSchvaleni) {
-      notificationType = 'order_status_ke_schvaleni';
+      notificationType = 'ORDER_PENDING_APPROVAL';
     }
 
     // Objednávka byla schválena
@@ -74,7 +74,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadSchvalena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'SCHVALENA') : false;
 
     if (hasSchvalena && !hadSchvalena) {
-      notificationType = 'order_status_schvalena';
+      notificationType = 'ORDER_APPROVED';
     }
 
     // Objednávka byla zamítnuta (neschválena)
@@ -82,7 +82,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadZamitnuta = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZAMITNUTA') : false;
 
     if (hasZamitnuta && !hadZamitnuta) {
-      notificationType = 'order_status_zamitnuta';
+      notificationType = 'ORDER_REJECTED';
     }
 
     // Objednávka čeká (CEKA_SE) - schvalovatel vrátil k doplnění
@@ -90,7 +90,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadCekaSe = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'CEKA_SE') : false;
 
     if (hasCekaSe && !hadCekaSe) {
-      notificationType = 'order_status_ceka_se';
+      notificationType = 'ORDER_AWAITING_CHANGES';
     }
 
     // === FÁZE 2: ODESLANA - Před/po odeslání dodavateli ===
@@ -98,7 +98,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadOdeslana = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ODESLANA') : false;
 
     if (hasOdeslana && !hadOdeslana) {
-      notificationType = 'order_status_odeslana';
+      notificationType = 'ORDER_SENT_TO_SUPPLIER';
     }
 
     // Objednávka byla zrušena/stornována
@@ -106,7 +106,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadZrusena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZRUSENA') : false;
 
     if (hasZrusena && !hadZrusena) {
-      notificationType = 'order_status_zrusena';
+      notificationType = 'ORDER_CANCELLED';
     }
 
     // === FÁZE 3: POTVRZENA - Po potvrzení dodavatelem ===
@@ -114,7 +114,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
     const hadPotvrzena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'POTVRZENA') : false;
 
     if (hasPotvrzena && !hadPotvrzena) {
-      notificationType = 'order_status_potvrzena';
+      notificationType = 'ORDER_CONFIRMED_BY_SUPPLIER';
     }
 
     // Pokud nebyl detekován žádný typ notifikace, skonči
@@ -182,7 +182,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
  *     n.type,
  *     u.username,
  *     n.message,
- *     n.is_read,
+ *     n.precteno,
  *     n.created_at
  *   FROM 25_notifications n
  *   LEFT JOIN 25_users u ON n.user_id = u.id

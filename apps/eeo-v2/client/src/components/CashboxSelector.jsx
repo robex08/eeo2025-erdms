@@ -266,20 +266,29 @@ const CashboxSelector = ({
   const availableCashboxes = useMemo(() => {
     let boxes = [];
     if (canReadAll && allCashboxes.length > 0) {
-      // ✅ FIX: Pro adminy - zobrazit JEN hlavní assignments (je_hlavni === 1)
-      // aby se každá pokladna zobrazila jen jednou
-      boxes = allCashboxes.filter(cb => parseInt(cb.je_hlavni, 10) === 1);
-
-      // Pokud žádný assignment nemá je_hlavni=1, vzít první z každé pokladny
-      if (boxes.length === 0) {
-        const seen = new Set();
-        boxes = allCashboxes.filter(cb => {
-          const key = cb.cislo_pokladny || cb.id;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      }
+      // ✅ FIX: Pro adminy - seskupit podle cislo_pokladny/pokladna_id
+      // Zobrazit každou pokladnu jen jednou, preferovat hlavního uživatele
+      const cashboxMap = new Map();
+      
+      allCashboxes.forEach(cb => {
+        const key = cb.pokladna_id || cb.cislo_pokladny || cb.id;
+        
+        if (!cashboxMap.has(key)) {
+          // První výskyt - přidat
+          cashboxMap.set(key, cb);
+        } else {
+          // Existuje již - nahradit jen pokud tento má je_hlavni=1 a předchozí ne
+          const existing = cashboxMap.get(key);
+          const isMainAssignment = parseInt(cb.je_hlavni, 10) === 1;
+          const existingIsMain = parseInt(existing.je_hlavni, 10) === 1;
+          
+          if (isMainAssignment && !existingIsMain) {
+            cashboxMap.set(key, cb);
+          }
+        }
+      });
+      
+      boxes = Array.from(cashboxMap.values());
     } else {
       boxes = userCashboxes;
     }

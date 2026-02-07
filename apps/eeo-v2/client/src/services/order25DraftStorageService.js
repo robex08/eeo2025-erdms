@@ -87,7 +87,8 @@ class Order25DraftStorageService {
       orderId = null,        // ✅ savedOrderId - pokud je vyplněno = editace existující
       step = 0,
       attachments = [],
-      metadata = {}          // isChanged, isEditMode, atd.
+      metadata = {},         // isChanged, isEditMode, atd.
+      fakturyLPCerpani = {}  // 💰 LP čerpání dat
     } = options;
 
     try {
@@ -105,7 +106,7 @@ class Order25DraftStorageService {
         // Ignoruj chyby načítání - není to kritické
       }
 
-      // ✅ UNIFIED DRAFT: Obsahuje všechno (formData + metadata)
+      // ✅ UNIFIED DRAFT: Obsahuje všechno (formData + metadata + fakturyLPCerpani)
       const draftData = {
         formData,
         timestamp: Date.now(),
@@ -114,6 +115,8 @@ class Order25DraftStorageService {
         savedOrderId: orderId,     // ✅ null = nová, number = editace
         lastDBUpdate: formData.datum_posledni_zmeny || null,  // ✅ DB timestamp pro sync check
         ...metadata,               // isChanged, isEditMode, isOrderSavedToDB, atd.
+        // 💰 LP čerpání: Ukládat pouze pokud existují data
+        ...(fakturyLPCerpani && Object.keys(fakturyLPCerpani).length > 0 && { fakturyLPCerpani }),
         // 🚫 KRITICKÉ: ZACHOVEJ existující invalidated flag!
         invalidated: metadata.invalidated !== undefined ? metadata.invalidated : existingInvalidated
       };
@@ -380,6 +383,122 @@ class Order25DraftStorageService {
     window.dispatchEvent(new CustomEvent('orderDraftChange', {
       detail: { hasDraft: false }
     }));
+  }
+
+  /**
+   * 🧹 KOMPLETNÍ ČIŠTĚNÍ všech dat formuláře při zavření
+   * Vymaže draft, faktury, přílohy objednávky, přílohy faktur, cache, UI state
+   * @param {string|number} userId - ID uživatele
+   * @returns {boolean} True pokud úspěšně vyčištěno
+   */
+  deleteAllFormData(userId) {
+    try {
+      if (!userId) return false;
+
+      const userIdStr = typeof userId === 'object' ? String(userId?.id || userId) : String(userId);
+      if (userIdStr === '[object Object]') {
+        return false;
+      }
+
+      // KOMPLETNÍ ČIŠTĚNÍ dat formuláře pro userId: ${userIdStr}
+
+      // 1. 📋 Draft klíče (všechny varianty)
+      const draftKeys = [
+        `order25_draft_${userIdStr}`,
+        `order25_draft_${userIdStr}_metadata`,
+        `order25_draft_${userIdStr}_attachments`,
+        `order25_draft_new_${userIdStr}`,
+        `order25_draft_new_${userIdStr}_metadata`,
+        `order25_draft_new_${userIdStr}_attachments`,
+        `order25_draft_edit_${userIdStr}`,
+        `order25_draft_edit_${userIdStr}_metadata`,
+        `order25_draft_edit_${userIdStr}_attachments`,
+        `order25-draft-${userIdStr}`,
+        `order_draft_${userIdStr}`
+      ];
+
+      // 2. 💰 Faktury cache
+      const fakturyKeys = [
+        `order25_faktury_${userIdStr}`,
+        `order25_faktury_cache_${userIdStr}`,
+        `faktury_draft_${userIdStr}`
+      ];
+
+      // 3. 📎 Přílohy objednávky
+      const prilohyObjednavkyKeys = [
+        `order25_attachments_${userIdStr}`,
+        `order25_prilohy_${userIdStr}`,
+        `obj_attachments_${userIdStr}`
+      ];
+
+      // 4. 📎 Přílohy faktur
+      const prilohyFakturKeys = [
+        `order25_faktura_attachments_${userIdStr}`,
+        `faktura_prilohy_${userIdStr}`,
+        `fa_attachments_${userIdStr}`
+      ];
+
+      // 5. 🎯 UI State
+      const uiStateKeys = [
+        `order_form_isEditMode_${userIdStr}`,
+        `order_form_savedOrderId_${userIdStr}`,
+        `order_form_sectionState_${userIdStr}`,
+        `order25_scroll_${userIdStr}`,
+        `order25-scroll-${userIdStr}`,
+        `order25-phase2-unlocked-${userIdStr}`,
+        `phase2-unlocked-${userIdStr}`,
+        `openOrderInConcept-${userIdStr}`,
+        `savedOrderId-${userIdStr}`,
+        `highlightOrderId-${userIdStr}`
+      ];
+
+      // 6. 🔍 Cache a ostatní
+      const cacheKeys = [
+        `order25_lp_details_${userIdStr}`,
+        `order25_smlouvy_cache_${userIdStr}`,
+        `order25_dodavatel_cache_${userIdStr}`,
+        `order25_validation_${userIdStr}`
+      ];
+
+      // Sloučit všechny klíče
+      const allKeys = [
+        ...draftKeys,
+        ...fakturyKeys,
+        ...prilohyObjednavkyKeys,
+        ...prilohyFakturKeys,
+        ...uiStateKeys,
+        ...cacheKeys
+      ];
+
+      let removedCount = 0;
+      allKeys.forEach(key => {
+        if (localStorage.getItem(key) !== null) {
+          localStorage.removeItem(key);
+          removedCount++;
+          // Vymazán klíč: ${key}
+        }
+      });
+
+      // Zruš všechny pending auto-save timery
+      if (this.autoSaveTimers.size > 0) {
+        this.autoSaveTimers.forEach((timer, key) => {
+          clearTimeout(timer);
+        });
+        this.autoSaveTimers.clear();
+      }
+
+      // Upozorni menu bar
+      window.dispatchEvent(new CustomEvent('orderDraftChange', {
+        detail: { hasDraft: false }
+      }));
+
+      // Vyčištěno celkem ${removedCount} klíčů z localStorage
+      return true;
+
+    } catch (error) {
+      console.error('❌ Chyba při čištění dat formuláře:', error);
+      return false;
+    }
   }
 
   /**

@@ -5,6 +5,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* Výchozí bílé pozadí pro desktop verzi */
+  background: #ffffff;
 }
 
 code {

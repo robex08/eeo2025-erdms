@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
-import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search } from 'lucide-react';
+import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search, DollarSign } from 'lucide-react';
 import cashbookAPI from '../../services/cashbookService';
 import { getUsekyList } from '../../services/apiv2Dictionaries';
 import { fetchAllUsers } from '../../services/api2auth';
@@ -115,61 +115,78 @@ const CloseButton = styled.button`
 `;
 
 const ModalBody = styled.div`
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 0;
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  max-height: calc(75vh - 140px);
+  padding: 1.25rem 1.5rem;
+`;
+
+const TopSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
 `;
 
 const LeftSection = styled.div`
-  padding: 2rem;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
-  overflow-y: auto;
+  padding-right: 0.75rem;
+  border-right: 2px solid #e2e8f0;
 `;
 
 const RightSection = styled.div`
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  gap: 1rem;
+  padding-left: 0.75rem;
+`;
+
+const BottomSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e2e8f0;
+`;
+
+const BottomLeftColumn = styled.div`
+  padding-right: 0.75rem;
+  border-right: 2px solid #e2e8f0;
+`;
+
+const BottomRightColumn = styled.div`
+  padding-left: 0.75rem;
 `;
 
 const SectionTitle = styled.h3`
-  margin: 0 0 1.25rem 0;
-  font-size: 0.875rem;
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #475569;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
 
   svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     color: #64748b;
   }
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.875rem;
 `;
 
 const FormRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.5rem;
-  font-size: 0.875rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: #1e293b;
 
@@ -183,10 +200,10 @@ const Label = styled.label`
 
 const Input = styled.input`
   width: 100%;
-  padding: 0.625rem 0.875rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
   border-radius: 6px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   transition: all 0.15s;
   background: white;
 
@@ -201,6 +218,34 @@ const Input = styled.input`
     cursor: not-allowed;
     opacity: 0.6;
   }
+`;
+
+const InputWithCurrency = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const CurrencyInput = styled(Input)`
+  padding-right: 2.5rem;
+  text-align: right;
+  
+  /* Odstranění spin tlačítek */
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  -moz-appearance: textfield;
+`;
+
+const CurrencySuffix = styled.span`
+  position: absolute;
+  right: 0.75rem;
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  pointer-events: none;
 `;
 
 const ErrorText = styled.div`
@@ -222,6 +267,16 @@ const HintText = styled.div`
   color: #64748b;
   font-size: 0.75rem;
   margin-top: 0.375rem;
+`;
+
+const HelpText = styled.div`
+  color: #64748b;
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f1f5f9;
+  border-radius: 4px;
+  line-height: 1.4;
 `;
 
 const Textarea = styled.textarea`
@@ -256,7 +311,7 @@ const Textarea = styled.textarea`
 const UsersList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex: 1;
 `;
 
@@ -264,10 +319,10 @@ const UserItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.875rem;
+  padding: 0.625rem 0.75rem;
   background: ${props => props.isMain ? '#ecfdf5' : 'white'};
   border: 1px solid ${props => props.isMain ? '#10b981' : '#e2e8f0'};
-  border-radius: 8px;
+  border-radius: 6px;
   transition: all 0.15s;
 
   &:hover {
@@ -279,13 +334,13 @@ const UserItem = styled.div`
 const UserInfo = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex: 1;
 `;
 
 const UserAvatar = styled.div`
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: ${props => props.isMain ?
     'linear-gradient(135deg, #059669 0%, #10b981 100%)' :
@@ -295,7 +350,7 @@ const UserAvatar = styled.div`
   justify-content: center;
   color: white;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   flex-shrink: 0;
 `;
 
@@ -305,7 +360,7 @@ const UserDetails = styled.div`
 `;
 
 const UserName = styled.div`
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: #1e293b;
   margin-bottom: 0.125rem;
@@ -365,17 +420,17 @@ const IconButton = styled.button`
 const AddUserSection = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
+  gap: 0.625rem;
+  padding: 0.75rem;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
-  border-radius: 8px;
+  border-radius: 6px;
 `;
 
 const AddUserForm = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.5rem;
 `;
 
 const Select = styled.select`
@@ -486,20 +541,20 @@ const ButtonGroup = styled.div`
 `;
 
 const EmptyUsersState = styled.div`
-  padding: 2rem;
+  padding: 1rem;
   text-align: center;
   color: #94a3b8;
 
   svg {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 0.75rem;
-    opacity: 0.5;
+    width: 32px;
+    height: 32px;
+    margin-bottom: 0.5rem;
+    opacity: 0.4;
   }
 
   p {
     margin: 0;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
   }
 `;
 
@@ -838,6 +893,7 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
     nazev: '',
     kod_pracoviste: '',
     nazev_pracoviste: '',
+    pocatecni_stav_rok: '', // 🆕 Počáteční stav pro nový rok (NULL = převod z prosince)
     ciselna_rada_vpd: '',
     vpd_od_cislo: '1',
     ciselna_rada_ppd: '',
@@ -872,6 +928,7 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
         nazev: '',
         kod_pracoviste: '',
         nazev_pracoviste: '',
+        pocatecni_stav_rok: '',
         ciselna_rada_vpd: '',
         vpd_od_cislo: '1',
         ciselna_rada_ppd: '',
@@ -898,7 +955,8 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
       const [usersResult, usekyResult] = await Promise.all([
         fetchAllUsers({
           token: token,
-          username: user.username
+          username: user.username,
+          show_inactive: false // Pouze aktivní uživatelé
         }),
         getUsekyList({
           token: token,
@@ -947,7 +1005,7 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
   };
 
   // Přidání uživatele
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUserForm.uzivatel_id) {
       showToast('Vyberte uživatele', 'error');
       return;
@@ -968,9 +1026,39 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
     }
 
     // Pokud přidáváme hlavního (ne zástupce), odebrat hlavní status ostatním
-    const jeHlavni = !newUserForm.je_zastupce;
+    let jeHlavni = !newUserForm.je_zastupce;
+    
+    // Kontrola, jestli uživatel už není hlavním správcem jiné pokladny
     if (jeHlavni) {
-      setAssignedUsers(prev => prev.map(u => ({ ...u, je_hlavni: false })));
+      try {
+        const allAssignmentsResult = await cashbookAPI.listAssignments(parseInt(userId), true);
+        const existingMain = allAssignmentsResult.data.assignments.find(
+          a => parseInt(a.je_hlavni) === 1 && a.pokladna_id !== formData.id
+        );
+        
+        if (existingMain) {
+          const cashboxName = existingMain.cislo_pokladny || `Pokladna ${existingMain.pokladna_id}`;
+          const confirmed = window.confirm(
+            `Uživatel "${userName}" je již hlavním správcem pokladny "${cashboxName}".\n\n` +
+            `Uživatel může být hlavním správcem pouze u jedné pokladny.\n\n` +
+            `Chcete jej přidat jako zástupce?`
+          );
+          
+          if (!confirmed) {
+            return;
+          }
+          
+          jeHlavni = false;
+          showToast('Uživatel přidán jako zástupce', 'info');
+        } else {
+          // Pokud je hlavní a nemá jinou hlavní pokladnu, odebrat hlavní status ostatním v této pokladně
+          setAssignedUsers(prev => prev.map(u => ({ ...u, je_hlavni: false })));
+        }
+      } catch (error) {
+        console.error('Chyba při kontrole přiřazení:', error);
+        showToast('Chyba při kontrole přiřazení uživatele', 'error');
+        return;
+      }
     }
 
     // Jméno může být v různých strukturách: prijmeni+jmeno, nebo cele_jmeno, nebo username
@@ -1056,6 +1144,7 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
         nazev: formData.nazev,
         kod_pracoviste: formData.kod_pracoviste || null,
         nazev_pracoviste: formData.nazev_pracoviste || null,
+        pocatecni_stav_rok: formData.pocatecni_stav_rok !== '' ? parseFloat(formData.pocatecni_stav_rok.replace(/\s/g, '')) : null,
         ciselna_rada_vpd: formData.ciselna_rada_vpd,
         vpd_od_cislo: parseInt(formData.vpd_od_cislo),
         ciselna_rada_ppd: formData.ciselna_rada_ppd,
@@ -1119,271 +1208,328 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
         </ModalHeader>
 
         <ModalBody>
-          {/* LEVÁ SEKCE - Informace o pokladně */}
-          <LeftSection>
-            <SectionTitle>
-              <Building size={16} />
-              Základní informace
-            </SectionTitle>
-
-            <FormGroup>
-              <Label required>Číslo pokladny</Label>
-              <Input
-                type="text"
-                value={formData.cislo_pokladny}
-                onChange={(e) => handleChange('cislo_pokladny', e.target.value)}
-                placeholder="100"
-                hasError={!!errors.cislo_pokladny}
-                disabled={loading}
-              />
-              {errors.cislo_pokladny && (
-                <ErrorText>
-                  <AlertTriangle size={12} />
-                  {errors.cislo_pokladny}
-                </ErrorText>
-              )}
-            </FormGroup>
-
-            <FormGroup>
-              <Label required>Název pokladny</Label>
-              <Input
-                type="text"
-                value={formData.nazev}
-                onChange={(e) => handleChange('nazev', e.target.value)}
-                placeholder="Hlavní pokladna"
-                hasError={!!errors.nazev}
-                disabled={loading}
-              />
-              {errors.nazev && (
-                <ErrorText>
-                  <AlertTriangle size={12} />
-                  {errors.nazev}
-                </ErrorText>
-              )}
-            </FormGroup>
-
-            <FormGroup>
-              <Label>
-                <Building size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                Úsek (zkratka)
-              </Label>
-              <SearchableSelect
-                value={selectedUsek?.id || ''}
-                onChange={(val) => handleUsekChange(val)}
-                options={useky.map(usek => ({
-                  value: usek.id,
-                  label: `${usek.usek_zkr} - ${usek.usek_nazev}`
-                }))}
-                placeholder="Vyberte úsek..."
-                searchPlaceholder="Hledat úsek..."
-                disabled={loadingData}
-                icon={<Building size={16} />}
-              />
-
-              {selectedUsek && (
-                <UsekDisplay>
-                  <UsekBadge>{selectedUsek.usek_zkr}</UsekBadge>
-                  <UsekName>{selectedUsek.usek_nazev}</UsekName>
-                </UsekDisplay>
-              )}
-            </FormGroup>
-
-            <SectionTitle style={{ marginTop: '2rem' }}>
-              <Hash size={16} />
-              Číselné řady dokladů
-            </SectionTitle>
-
-            <FormRow>
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>
-                  <Hash size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                  VPD prefix *
-                </Label>
-                <Input
-                  type="text"
-                  value={formData.ciselna_rada_vpd}
-                  onChange={(e) => handleChange('ciselna_rada_vpd', e.target.value)}
-                  placeholder="599"
-                  hasError={!!errors.ciselna_rada_vpd}
-                  disabled={loading}
-                />
-              </FormGroup>
-
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>VPD od čísla</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.vpd_od_cislo}
-                  onChange={(e) => handleChange('vpd_od_cislo', e.target.value)}
-                  placeholder="1"
-                  hasError={!!errors.vpd_od_cislo}
-                  disabled={loading}
-                />
-              </FormGroup>
-            </FormRow>
-
-            <FormRow>
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>
-                  <Hash size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                  PPD prefix *
-                </Label>
-                <Input
-                  type="text"
-                  value={formData.ciselna_rada_ppd}
-                  onChange={(e) => handleChange('ciselna_rada_ppd', e.target.value)}
-                  placeholder="499"
-                  hasError={!!errors.ciselna_rada_ppd}
-                  disabled={loading}
-                />
-              </FormGroup>
-
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>PPD od čísla</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.ppd_od_cislo}
-                  onChange={(e) => handleChange('ppd_od_cislo', e.target.value)}
-                  placeholder="1"
-                  hasError={!!errors.ppd_od_cislo}
-                  disabled={loading}
-                />
-              </FormGroup>
-            </FormRow>
-
-            <FormGroup>
-              <Label>Poznámka</Label>
-              <Textarea
-                value={formData.poznamka}
-                onChange={(e) => handleChange('poznamka', e.target.value)}
-                placeholder="Volitelná poznámka..."
-                rows={2}
-                disabled={loading}
-              />
-            </FormGroup>
-          </LeftSection>
-
-          {/* PRAVÁ SEKCE - Přiřazení uživatelé */}
-          <RightSection>
-            <SectionTitle>
-              <User size={16} />
-              Přiřazení uživatelé ({assignedUsers.length})
-            </SectionTitle>
-
-            {/* Seznam přiřazených uživatelů */}
-            <UsersList>
-              {assignedUsers.length === 0 ? (
-                <EmptyUsersState>
-                  <User size={48} />
-                  <p>Zatím nejsou přiřazeni žádní uživatelé</p>
-                </EmptyUsersState>
-              ) : (
-                assignedUsers.map(user => (
-                  <UserItem key={user.uzivatel_id} isMain={user.je_hlavni}>
-                    <UserInfo>
-                      <UserAvatar isMain={user.je_hlavni}>
-                        {user.uzivatel_jmeno.substring(0, 2).toUpperCase()}
-                      </UserAvatar>
-                      <UserDetails>
-                        <UserName>
-                          {user.uzivatel_jmeno}
-                          {user.je_hlavni && <MainBadge>Hlavní</MainBadge>}
-                        </UserName>
-                        <UserDates>
-                          {user.platne_od && `Od: ${user.platne_od}`}
-                          {user.platne_do && ` | Do: ${user.platne_do}`}
-                        </UserDates>
-                      </UserDetails>
-                    </UserInfo>
-                    <UserActions>
-                      {!user.je_hlavni && (
-                        <IconButton
-                          onClick={() => handleSetMainUser(user.uzivatel_id)}
-                          title="Nastavit jako hlavního"
-                        >
-                          <User size={16} />
-                        </IconButton>
-                      )}
-                      <IconButton
-                        danger
-                        onClick={() => handleRemoveUser(user.uzivatel_id)}
-                        title="Odebrat"
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
-                    </UserActions>
-                  </UserItem>
-                ))
-              )}
-            </UsersList>
-
-            {/* Formulář pro přidání uživatele */}
-            <AddUserSection>
-              <SectionTitle style={{ margin: 0 }}>
-                <Plus size={16} />
-                Přidat uživatele
+          {/* HORNÍ SEKCE - DVOUSLOUPCOVÝ LAYOUT */}
+          <TopSection>
+            {/* LEVÁ ČÁST - Základní informace */}
+            <LeftSection>
+              <SectionTitle>
+                <Building size={14} />
+                Základní informace
               </SectionTitle>
 
               <FormGroup>
-                <Label>Uživatel</Label>
-                <SearchableSelect
-                  value={newUserForm.uzivatel_id}
-                  onChange={(val) => setNewUserForm(prev => ({ ...prev, uzivatel_id: val }))}
-                  options={availableUsers.map(user => ({
-                    value: user.id,
-                    label: user.cele_jmeno || `${user.prijmeni || ''} ${user.jmeno || ''}`.trim() || user.username
-                  }))}
-                  placeholder="Vyberte uživatele..."
-                  searchPlaceholder="Hledat uživatele..."
-                  disabled={loading || loadingData}
-                  icon={<User size={16} />}
-                />
-              </FormGroup>
-
-              <AddUserForm>
-                <div>
-                  <Label>Platné od</Label>
-                  <DatePicker
-                    value={newUserForm.platne_od}
-                    onChange={(newValue) => setNewUserForm(prev => ({ ...prev, platne_od: newValue }))}
-                    placeholder="Vyberte datum"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <Label>Platné do</Label>
-                  <DatePicker
-                    value={newUserForm.platne_do}
-                    onChange={(newValue) => setNewUserForm(prev => ({ ...prev, platne_do: newValue }))}
-                    placeholder="Nevyplnit = navždy"
-                    disabled={loading}
-                  />
-                </div>
-              </AddUserForm>
-
-              <CheckboxGroup style={{ marginBottom: '1rem' }}>
-                <input
-                  type="checkbox"
-                  checked={newUserForm.je_zastupce}
-                  onChange={(e) => setNewUserForm(prev => ({ ...prev, je_zastupce: e.target.checked }))}
+                <Label required>Číslo pokladny</Label>
+                <Input
+                  type="text"
+                  value={formData.cislo_pokladny}
+                  onChange={(e) => handleChange('cislo_pokladny', e.target.value)}
+                  placeholder="100"
+                  hasError={!!errors.cislo_pokladny}
                   disabled={loading}
                 />
-                Zástupce (pokud nezaškrtnuto, bude hlavní pokladník)
-              </CheckboxGroup>
+                {errors.cislo_pokladny && (
+                  <ErrorText>
+                    <AlertTriangle size={12} />
+                    {errors.cislo_pokladny}
+                  </ErrorText>
+                )}
+              </FormGroup>
 
-              <Button
-                className="secondary"
-                onClick={handleAddUser}
-                disabled={loading || !newUserForm.uzivatel_id}
-              >
-                <Plus size={16} />
-                Přidat uživatele
-              </Button>
-            </AddUserSection>
-          </RightSection>
+              <FormGroup>
+                <Label required>Název pokladny</Label>
+                <Input
+                  type="text"
+                  value={formData.nazev}
+                  onChange={(e) => handleChange('nazev', e.target.value)}
+                  placeholder="Hlavní pokladna"
+                  hasError={!!errors.nazev}
+                  disabled={loading}
+                />
+                {errors.nazev && (
+                  <ErrorText>
+                    <AlertTriangle size={12} />
+                    {errors.nazev}
+                  </ErrorText>
+                )}
+              </FormGroup>
+
+              <FormGroup>
+                <Label>
+                  <Building size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                  Úsek (zkratka)
+                </Label>
+                <SearchableSelect
+                  value={selectedUsek?.id || ''}
+                  onChange={(val) => handleUsekChange(val)}
+                  options={useky.map(usek => ({
+                    value: usek.id,
+                    label: `${usek.usek_zkr} - ${usek.usek_nazev}`
+                  }))}
+                  placeholder="Vyberte úsek..."
+                  searchPlaceholder="Hledat úsek..."
+                  disabled={loadingData}
+                  icon={<Building size={16} />}
+                />
+
+                {selectedUsek && (
+                  <UsekDisplay>
+                    <UsekBadge>{selectedUsek.usek_zkr}</UsekBadge>
+                    <UsekName>{selectedUsek.usek_nazev}</UsekName>
+                  </UsekDisplay>
+                )}
+              </FormGroup>
+
+              <FormGroup>
+                <Label>Poznámka</Label>
+                <Textarea
+                  value={formData.poznamka}
+                  onChange={(e) => handleChange('poznamka', e.target.value)}
+                  placeholder="Volitelná poznámka..."
+                  rows={2}
+                  disabled={loading}
+                />
+              </FormGroup>
+            </LeftSection>
+
+            {/* PRAVÁ ČÁST - Uživatelé */}
+            <RightSection>
+              <SectionTitle>
+                <User size={14} />
+                Přiřazení uživatelé ({assignedUsers.length})
+              </SectionTitle>
+
+              {/* Seznam přiřazených uživatelů */}
+              <UsersList style={{ marginBottom: '0.75rem' }}>
+                {assignedUsers.length === 0 ? (
+                  <EmptyUsersState>
+                    <User size={28} />
+                    <p style={{ fontSize: '0.75rem' }}>Zatím nejsou přiřazeni žádní uživatelé</p>
+                  </EmptyUsersState>
+                ) : (
+                  assignedUsers.map(user => (
+                    <UserItem key={user.uzivatel_id} isMain={user.je_hlavni}>
+                      <UserInfo>
+                        <UserAvatar isMain={user.je_hlavni}>
+                          {user.uzivatel_jmeno.substring(0, 2).toUpperCase()}
+                        </UserAvatar>
+                        <UserDetails>
+                          <UserName>
+                            {user.uzivatel_jmeno}
+                            {user.je_hlavni && <MainBadge>Hlavní</MainBadge>}
+                          </UserName>
+                          <UserDates>
+                            {user.platne_od && `Od: ${user.platne_od}`}
+                            {user.platne_do && ` | Do: ${user.platne_do}`}
+                          </UserDates>
+                        </UserDetails>
+                      </UserInfo>
+                      <UserActions>
+                        {!user.je_hlavni && (
+                          <IconButton
+                            onClick={() => handleSetMainUser(user.uzivatel_id)}
+                            title="Nastavit jako hlavního"
+                          >
+                            <User size={16} />
+                          </IconButton>
+                        )}
+                        <IconButton
+                          danger
+                          onClick={() => handleRemoveUser(user.uzivatel_id)}
+                          title="Odebrat"
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </UserActions>
+                    </UserItem>
+                  ))
+                )}
+              </UsersList>
+
+              {/* Formulář pro přidání uživatele */}
+              <AddUserSection>
+                <SectionTitle style={{ fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
+                  <Plus size={12} />
+                  Přidat uživatele
+                </SectionTitle>
+
+                <FormGroup>
+                  <Label>Uživatel</Label>
+                  <SearchableSelect
+                    value={newUserForm.uzivatel_id}
+                    onChange={(val) => setNewUserForm(prev => ({ ...prev, uzivatel_id: val }))}
+                    options={availableUsers.map(user => ({
+                      value: user.id,
+                      label: user.cele_jmeno || `${user.prijmeni || ''} ${user.jmeno || ''}`.trim() || user.username
+                    }))}
+                    placeholder="Vyberte uživatele..."
+                    searchPlaceholder="Hledat uživatele..."
+                    disabled={loading || loadingData}
+                    icon={<User size={14} />}
+                  />
+                </FormGroup>
+
+                <AddUserForm>
+                  <div>
+                    <Label>Platné od</Label>
+                    <DatePicker
+                      value={newUserForm.platne_od}
+                      onChange={(newValue) => setNewUserForm(prev => ({ ...prev, platne_od: newValue }))}
+                      placeholder="Vyberte datum"
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Platné do</Label>
+                    <DatePicker
+                      value={newUserForm.platne_do}
+                      onChange={(newValue) => setNewUserForm(prev => ({ ...prev, platne_do: newValue }))}
+                      placeholder="Nevyplnit = navždy"
+                      disabled={loading}
+                    />
+                  </div>
+                </AddUserForm>
+
+                <CheckboxGroup style={{ marginBottom: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={newUserForm.je_zastupce}
+                    onChange={(e) => setNewUserForm(prev => ({ ...prev, je_zastupce: e.target.checked }))}
+                    disabled={loading}
+                  />
+                  Zástupce (pokud nezaškrtnuto, bude hlavní pokladník)
+                </CheckboxGroup>
+
+                <Button
+                  className="secondary"
+                  onClick={handleAddUser}
+                  disabled={loading || !newUserForm.uzivatel_id}
+                  style={{ width: '100%', fontSize: '0.875rem', padding: '0.5rem 0.75rem' }}
+                >
+                  <Plus size={16} />
+                  Přidat uživatele
+                </Button>
+              </AddUserSection>
+            </RightSection>
+          </TopSection>
+
+          {/* DOLNÍ SEKCE - DVOUSLOUPCOVÝ LAYOUT */}
+          <BottomSection>
+            {/* LEVÁ ČÁST DOLE - Prefixy VPD/PPD */}
+            <BottomLeftColumn>
+              <SectionTitle>
+                <Hash size={14} />
+                Číselné řady dokladů (Prefixy)
+              </SectionTitle>
+
+              <FormRow>
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>
+                    <Hash size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                    VPD prefix *
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.ciselna_rada_vpd}
+                    onChange={(e) => handleChange('ciselna_rada_vpd', e.target.value)}
+                    placeholder="599"
+                    hasError={!!errors.ciselna_rada_vpd}
+                    disabled={loading}
+                  />
+                </FormGroup>
+
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>VPD od čísla</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={formData.vpd_od_cislo}
+                    onChange={(e) => handleChange('vpd_od_cislo', e.target.value)}
+                    placeholder="1"
+                    hasError={!!errors.vpd_od_cislo}
+                    disabled={loading}
+                  />
+                </FormGroup>
+              </FormRow>
+
+              <FormRow>
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>
+                    <Hash size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                    PPD prefix *
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.ciselna_rada_ppd}
+                    onChange={(e) => handleChange('ciselna_rada_ppd', e.target.value)}
+                    placeholder="499"
+                    hasError={!!errors.ciselna_rada_ppd}
+                    disabled={loading}
+                  />
+                </FormGroup>
+
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>PPD od čísla</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={formData.ppd_od_cislo}
+                    onChange={(e) => handleChange('ppd_od_cislo', e.target.value)}
+                    placeholder="1"
+                    hasError={!!errors.ppd_od_cislo}
+                    disabled={loading}
+                  />
+                </FormGroup>
+              </FormRow>
+            </BottomLeftColumn>
+
+            {/* PRAVÁ ČÁST DOLE - Počáteční stav */}
+            <BottomRightColumn>
+              <SectionTitle>
+                <DollarSign size={14} />
+                Počáteční stav roku
+              </SectionTitle>
+
+              <FormGroup>
+                <Label>
+                  <DollarSign size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                  Počáteční stav 1. ledna (nový rok)
+                </Label>
+                <InputWithCurrency>
+                  <CurrencyInput
+                    type="text"
+                    value={formData.pocatecni_stav_rok}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw === '' || /^\d*\.?\d{0,2}$/.test(raw)) {
+                        handleChange('pocatecni_stav_rok', raw);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw && !isNaN(raw)) {
+                        const num = parseFloat(raw);
+                        const formatted = num.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                        handleChange('pocatecni_stav_rok', formatted.replace(/,/g, '.'));
+                      }
+                    }}
+                    onFocus={(e) => {
+                      const val = e.target.value.replace(/\s/g, '');
+                      handleChange('pocatecni_stav_rok', val);
+                    }}
+                    placeholder="Ponechte prázdné pro převod z prosince"
+                    disabled={loading}
+                  />
+                  <CurrencySuffix>Kč</CurrencySuffix>
+                </InputWithCurrency>
+                <HelpText>
+                  ⓘ <strong>Použije se při vytvoření knihy pro leden každého nového roku:</strong><br/>
+                  • Zadejte hodnotu (včetně 0) = použije se jako počáteční stav<br/>
+                  • Ponechte prázdné = převezme se koncový stav z prosince předchozího roku
+                </HelpText>
+              </FormGroup>
+            </BottomRightColumn>
+          </BottomSection>
         </ModalBody>
 
         <ModalFooter>

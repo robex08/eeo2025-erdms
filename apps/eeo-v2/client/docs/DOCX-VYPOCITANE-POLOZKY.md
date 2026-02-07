@@ -19,13 +19,13 @@ Všechna vypočítaná pole jsou dostupná pod kategorií `vypocitane.*`:
 ### 💰 Cenové součty
 
 | Pole | Popis | Příklad |
-|------|-------|---------|
-| `vypocitane.celkova_cena_bez_dph` | Součet všech položek bez DPH | `82644.63` |
-| `vypocitane.celkova_cena_s_dph` | Součet všech položek s DPH | `100000.00` |
-| `vypocitane.vypoctene_dph` | Vypočtené DPH (rozdíl) | `17355.37` |
-| `vypocitane.celkova_cena_bez_dph_kc` | Součet bez DPH s jednotkou | `82 644.63 Kč` |
-| `vypocitane.celkova_cena_s_dph_kc` | Součet s DPH s jednotkou | `100 000.00 Kč` |
-| `vypocitane.vypoctene_dph_kc` | DPH s jednotkou | `17 355.37 Kč` |
+|------|-------|------|
+| `vypocitane.celkova_cena_bez_dph` | Součet všech položek bez DPH | `82644,63` |
+| `vypocitane.celkova_cena_s_dph` | Součet všech položek s DPH | `100000,00` |
+| `vypocitane.vypoctene_dph` | Vypočtené DPH (rozdíl) | `17355,37` |
+| `vypocitane.celkova_cena_bez_dph_kc` | Součet bez DPH s jednotkou | `82 644,63 Kč` |
+| `vypocitane.celkova_cena_s_dph_kc` | Součet s DPH s jednotkou | `100 000,00 Kč` |
+| `vypocitane.vypoctene_dph_kc` | DPH s jednotkou | `17 355,37 Kč` |
 
 ### 📊 Statistiky
 
@@ -185,7 +185,7 @@ _______________________________________
 
 ## 📝 Poznámky
 
-1. **Formátování měny:** Používá mezery jako oddělovače tisíců (např. `82 644.63`)
+1. **Formátování měny:** Používá mezery jako oddělovače tisíců a čárku jako desetinný oddělovač (např. `82 644,63`) - **český standard**, zabraňuje interpretaci MS Word jako data
 2. **Datum:** Formát DD.MM.YYYY bez mezer za tečkou (např. `16.11.2025`)
 3. **Čas:** Formát HH:MM (např. `14:30`)
 4. **Počítání:** Sčítá se `cena_bez_dph` a `cena_s_dph` ze všech položek objednávky

@@ -10,20 +10,24 @@
 import { encryptData, decryptData } from './encryption.js';
 import { shouldEncryptData, ENCRYPTION_CONFIG } from './encryptionConfig.js';
 
+// 🔧 Detekce DEV prostředí (PUBLIC_URL obsahuje /dev/)
+const IS_DEV_ENV = window.location.pathname.startsWith('/dev/');
+const ENV_PREFIX = IS_DEV_ENV ? 'dev_' : '';
+
 // Klíče pro localStorage s persistent tokenem (24h expiration)
 const PERSISTENT_KEYS = {
-  TOKEN: 'auth_token_persistent',
-  USER: 'auth_user_persistent',
-  USER_DETAIL: 'auth_user_detail_persistent',
-  USER_PERMISSIONS: 'auth_user_permissions_persistent'
+  TOKEN: `${ENV_PREFIX}auth_token_persistent`,
+  USER: `${ENV_PREFIX}auth_user_persistent`,
+  USER_DETAIL: `${ENV_PREFIX}auth_user_detail_persistent`,
+  USER_PERMISSIONS: `${ENV_PREFIX}auth_user_permissions_persistent`
 };
 
 // Klíče pro sessionStorage (dočasná data)
 const SESSION_KEYS = {
-  TOKEN: 'auth_token',
-  USER: 'auth_user',
-  USER_DETAIL: 'auth_user_detail',
-  USER_PERMISSIONS: 'auth_user_permissions'
+  TOKEN: `${ENV_PREFIX}auth_token`,
+  USER: `${ENV_PREFIX}auth_user`,
+  USER_DETAIL: `${ENV_PREFIX}auth_user_detail`,
+  USER_PERMISSIONS: `${ENV_PREFIX}auth_user_permissions`
 };
 
 // Klíče pro localStorage (méně citlivá data)
@@ -32,8 +36,8 @@ const LOCAL_KEYS = {
   UI_SETTINGS: 'ui_settings'
 };
 
-// Konstanta pro dobu platnosti tokenu (7 dní - rozšířeno z 24 hodin)
-const TOKEN_EXPIRY_HOURS = 24 * 7; // 7 dní
+// Konstanta pro dobu platnosti tokenu (12 hodin - zkráceno pro bezpečnost)
+const TOKEN_EXPIRY_HOURS = 12; // 12 hodin
 
 /**
  * Uložení autentifikačních dat do localStorage s expirací (smart šifrování)
@@ -43,7 +47,7 @@ export const saveAuthData = {
     try {
       const tokenData = {
         value: token,
-        expires: Date.now() + (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000) // 7 dní
+        expires: Date.now() + (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000) // 12 hodin
       };
 
       const dataString = JSON.stringify(tokenData);
@@ -61,7 +65,6 @@ export const saveAuthData = {
       // Fallback na nešifrované uložení
       localStorage.setItem(PERSISTENT_KEYS.TOKEN, dataString);
       if (process.env.NODE_ENV === 'development') {
-        // console.log('⚠️ Token uložen NEŠIFROVANĚ s expirací 24h (fallback)');
       }
     } catch (error) {
       // Fallback na nešifrované uložení
@@ -80,17 +83,28 @@ export const saveAuthData = {
           if (process.env.NODE_ENV === 'development') {
             // console.log('🔒 User data zašifrována a uložena');
           }
+          // Uložit username samostatně pro snadný přístup (nezašifrovaný)
+          if (userData.username) {
+            localStorage.setItem('username', userData.username);
+          }
           return;
         }
       }
       // Fallback na nešifrované uložení
       localStorage.setItem(PERSISTENT_KEYS.USER, jsonData);
       if (process.env.NODE_ENV === 'development') {
-        // console.log('⚠️ User data uložena NEŠIFROVANĚ (fallback)');
+      }
+      // Uložit username samostatně pro snadný přístup
+      if (userData.username) {
+        localStorage.setItem('username', userData.username);
       }
     } catch (error) {
       // Fallback
       localStorage.setItem(PERSISTENT_KEYS.USER, JSON.stringify(userData));
+      // Uložit username samostatně pro snadný přístup
+      if (userData.username) {
+        localStorage.setItem('username', userData.username);
+      }
     }
   },
 

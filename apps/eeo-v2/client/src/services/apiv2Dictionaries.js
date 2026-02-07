@@ -52,7 +52,7 @@
 import axios from 'axios';
 
 // Base URL pro číselníky API - nové finální API včetně api.eeo prefixu
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 // Axios instance - VŠE přes POST s prefixem ciselniky/
 const api = axios.create({
@@ -844,8 +844,6 @@ export async function deletePravo({ token, username, id }) {
 
 export async function createRole({ token, username, nazev_role, popis, aktivni }) {
   try {
-    console.log('🟢 createRole REQUEST:', { nazev_role, popis, aktivni });
-    
     const response = await api.post('ciselniky/role/insert', {
       username,
       token,
@@ -853,8 +851,6 @@ export async function createRole({ token, username, nazev_role, popis, aktivni }
       popis,
       aktivni: aktivni ? 1 : 0
     });
-
-    console.log('🟢 createRole RESPONSE:', response.data);
 
     const data = checkResponse(response, 'Vytváření role');
     return data.data || null;
@@ -908,12 +904,8 @@ export async function assignPravoToRole({ token, username, role_id, pravo_id }) 
       pravo_id: parseInt(pravo_id, 10)  // Ensure integer
     };
     
-    console.log('🔵 assignPravoToRole REQUEST:', payload);
-    
     const response = await api.post('ciselniky/role/assign-pravo', payload);
     
-    console.log('🔵 assignPravoToRole RESPONSE:', response.data);
-
     const data = checkResponse(response, 'Přidělení práva k roli');
     return data;
   } catch (error) {
@@ -932,12 +924,8 @@ export async function removePravoFromRole({ token, username, role_id, pravo_id }
       pravo_id: parseInt(pravo_id, 10)  // Ensure integer
     };
     
-    console.log('🟡 removePravoFromRole REQUEST:', payload);
-    
     const response = await api.post('ciselniky/role/remove-pravo', payload);
     
-    console.log('🟡 removePravoFromRole RESPONSE:', response.data);
-
     const data = checkResponse(response, 'Odebrání práva z role');
     return data;
   } catch (error) {
@@ -959,8 +947,6 @@ export async function removePravoFromRole({ token, username, role_id, pravo_id }
  */
 export async function cleanupDuplicatePrava({ token, username, dry_run = false }) {
   try {
-    console.log('🔵 REQUEST cleanupDuplicatePrava:', { username, dry_run });
-    
     const response = await api.post('ciselniky/role/cleanup-duplicates', {
       username,
       token,
@@ -968,7 +954,6 @@ export async function cleanupDuplicatePrava({ token, username, dry_run = false }
       dry_run
     });
 
-    console.log('🔵 RESPONSE cleanupDuplicatePrava:', response.data);
     return checkResponse(response, dry_run ? 'Náhled duplicit načten' : 'Duplicity byly vyčištěny');
   } catch (error) {
     console.error('🔴 ERROR cleanupDuplicatePrava:', error);
@@ -1019,7 +1004,7 @@ export async function bulkUpdateRolePrava({
 /**
  * Seznam všech DOCX šablon
  */
-export async function getDocxSablonyList({ token, username, aktivni = null, typ_dokumentu = null, search = null }) {
+export async function getDocxSablonyList({ token, username, aktivni = null, typ_dokumentu = null, search = null, cena_bez_dph = null }) {
   try {
     const requestData = {
       username,
@@ -1030,6 +1015,7 @@ export async function getDocxSablonyList({ token, username, aktivni = null, typ_
     if (aktivni !== null) requestData.aktivni = aktivni;
     if (typ_dokumentu) requestData.typ_dokumentu = typ_dokumentu;
     if (search) requestData.search = search;
+    if (cena_bez_dph !== null && cena_bez_dph !== undefined) requestData.cena_bez_dph = cena_bez_dph;
 
     const response = await api.post('sablona_docx/list', requestData);
 
@@ -1079,7 +1065,7 @@ export const createDocxSablona = async (token, formData) => {
 /**
  * Aktualizace pouze metadata (bez souboru)
  */
-export async function updateDocxSablona({ token, username, id, nazev, popis, typ_dokumentu, aktivni, verze, castka, platnost_od, platnost_do, mapovani_json, docx_mapping }) {
+export async function updateDocxSablona({ token, username, id, nazev, popis, typ_dokumentu, aktivni, verze, castka_od, castka_do, platnost_od, platnost_do, mapovani_json, docx_mapping }) {
   try {
     const requestData = {
       username,
@@ -1093,7 +1079,8 @@ export async function updateDocxSablona({ token, username, id, nazev, popis, typ
     if (typ_dokumentu !== undefined) requestData.typ_dokumentu = typ_dokumentu;
     if (aktivni !== undefined) requestData.aktivni = aktivni;
     if (verze !== undefined) requestData.verze = verze;
-    if (castka !== undefined) requestData.castka = castka; // ⭐ Přidáno pole castka
+    if (castka_od !== undefined) requestData.castka_od = castka_od;
+    if (castka_do !== undefined) requestData.castka_do = castka_do;
     if (platnost_od !== undefined) requestData.platnost_od = platnost_od;
     if (platnost_do !== undefined) requestData.platnost_do = platnost_do;
     // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
@@ -1103,9 +1090,6 @@ export async function updateDocxSablona({ token, username, id, nazev, popis, typ
         ? docx_mapping
         : JSON.stringify(docx_mapping);
     }
-
-    console.log('🚀 [API] updateDocxSablona - odesílám requestData:', requestData);
-    console.log('🚀 [API] castka v requestData:', requestData.castka, typeof requestData.castka);
 
     const response = await api.post('sablona_docx/update', requestData);
 
@@ -1416,4 +1400,70 @@ export default {
   downloadDocxSablonaAsFile,
   verifyDocxSablony,
   verifySingleDocxSablona,
+  
+  // Roční poplatky - číselníky
+  getDruhyRocnichPoplatku,
+  getPlatbyRocnichPoplatku,
+  getStavyRocnichPoplatku,
 };
+
+// =============================================================================
+// ROČNÍ POPLATKY - Číselníky
+// =============================================================================
+
+/**
+ * Načte druhy ročních poplatků z číselníku
+ */
+export async function getDruhyRocnichPoplatku({ token, username, show_inactive = false }) {
+  try {
+    const response = await api.post('ciselniky/annual-fees-druhy/list', {
+      username,
+      token,
+      show_inactive
+    });
+
+    const data = checkResponse(response, 'Načítání druhů ročních poplatků');
+    return Array.isArray(data.data) ? data.data : [];
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání druhů ročních poplatků');
+    throw error;
+  }
+}
+
+/**
+ * Načte typy plateb ročních poplatků z číselníku
+ */
+export async function getPlatbyRocnichPoplatku({ token, username, show_inactive = false }) {
+  try {
+    const response = await api.post('ciselniky/annual-fees-platby/list', {
+      username,
+      token,
+      show_inactive
+    });
+
+    const data = checkResponse(response, 'Načítání typů plateb');
+    return Array.isArray(data.data) ? data.data : [];
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání typů plateb');
+    throw error;
+  }
+}
+
+/**
+ * Načte stavy ročních poplatků z číselníku
+ */
+export async function getStavyRocnichPoplatku({ token, username, show_inactive = false }) {
+  try {
+    const response = await api.post('ciselniky/annual-fees-stavy/list', {
+      username,
+      token,
+      show_inactive
+    });
+
+    const data = checkResponse(response, 'Načítání stavů ročních poplatků');
+    return Array.isArray(data.data) ? data.data : [];
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání stavů ročních poplatků');
+    throw error;
+  }
+}

@@ -285,10 +285,13 @@ const NotificationTestPanel = () => {
   const [recipientUserIds, setRecipientUserIds] = useState('3,5,8');
   const [testOrderId, setTestOrderId] = useState(''); // ID objednávky pro testování
   const [loadingLastOrder, setLoadingLastOrder] = useState(false);
+  const [testInvoiceId, setTestInvoiceId] = useState(''); // ID faktury pro testování
+  const [loadingLastInvoice, setLoadingLastInvoice] = useState(false);
 
   useEffect(() => {
     checkAuth();
     loadLastOrderId(); // Automaticky načti poslední objednávku
+    loadLastInvoiceId(); // Automaticky načti poslední fakturu
   }, []);
 
   const checkAuth = async () => {
@@ -320,7 +323,7 @@ const NotificationTestPanel = () => {
         return;
       }
 
-      const baseURL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
       // Načti seznam objednávek (poslední první)
       const response = await fetch(`${baseURL}order-v2/list`, {
@@ -355,6 +358,53 @@ const NotificationTestPanel = () => {
     }
   };
 
+  const loadLastInvoiceId = async () => {
+    setLoadingLastInvoice(true);
+    try {
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+
+      if (!token || !user?.username) {
+        addLog('⚠️ Cannot load invoice - not authenticated', 'warning');
+        setLoadingLastInvoice(false);
+        return;
+      }
+
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+
+      // Načti seznam faktur (poslední první)
+      const response = await fetch(`${baseURL}invoices25/list`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          username: user.username,
+          limit: 1,
+          offset: 0,
+          sort_by: 'id',
+          sort_order: 'DESC'
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'ok' && data.faktury && data.faktury.length > 0) {
+        const lastInvoiceId = data.faktury[0].id;
+        setTestInvoiceId(lastInvoiceId.toString());
+        addLog(`✅ Auto-loaded last invoice ID: ${lastInvoiceId}`, 'success');
+      } else {
+        addLog('⚠️ No invoices found in database', 'warning');
+        setTestInvoiceId('38'); // Fallback k známé faktuře
+      }
+
+    } catch (error) {
+      addLog(`❌ Failed to load last invoice: ${error.message}`, 'error');
+      setTestInvoiceId('38'); // Fallback k známé faktuře
+    } finally {
+      setLoadingLastInvoice(false);
+    }
+  };
+
   const addLog = (message, type = 'info') => {
     setLogs(prev => [...prev, { time: new Date(), message, type }]);
   };
@@ -365,7 +415,7 @@ const NotificationTestPanel = () => {
 
   const createNotification = async (type) => {
     addLog(`Creating notification: ${type}`, 'info');
-    const baseURL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+    const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
     // Zobraz info o příjemci
     let recipientInfo = '';
@@ -474,24 +524,154 @@ const NotificationTestPanel = () => {
     }
   };
 
+  // === 🎯 NOVÉ: TEST ORG HIERARCHY TRIGGER ===
+  const testOrgHierarchyTrigger = async (eventType) => {
+    addLog(`🎯 Testing ORG HIERARCHY trigger: ${eventType}`, 'info');
+    
+    try {
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+      
+      if (!token || !user?.username) {
+        addLog('ERROR: Not authenticated!', 'error');
+        return;
+      }
+      
+      // Determine which object ID to use based on event type
+      let objectIdToUse, objectType;
+      if (eventType.startsWith('INVOICE_')) {
+        objectIdToUse = parseInt(testInvoiceId) || 38; // Use invoice ID for invoice events
+        objectType = 'invoice';
+        addLog(`🧾 Using invoice_id: ${objectIdToUse}`, 'info');
+      } else {
+        objectIdToUse = parseInt(testOrderId) || 1; // Use order ID for order events
+        objectType = 'order';
+        addLog(`📋 Using order_id: ${objectIdToUse}`, 'info');
+      }
+      addLog(`👤 Trigger user: ${user.username} (ID: ${user.id})`, 'info');
+      
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+      const url = `${baseURL}notifications/trigger`;
+      
+      addLog(`📤 POST ${url}`, 'info');
+      
+      const payload = {
+        token: token,
+        username: user.username,
+        event_type: eventType,
+        object_id: objectIdToUse,
+        trigger_user_id: user.id,
+        debug: true  // ✅ Request debug info from backend
+      };
+      
+      addLog(`📦 Payload: ${JSON.stringify(payload, null, 2)}`, 'info');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await response.json();
+      
+      // ✅ ENHANCED: Show hierarchy debug info
+      if (data.debug_info) {
+        addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+        addLog(`🔍 ORG HIERARCHY DEBUG INFO`, 'info');
+        addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+        
+        const debug = data.debug_info;
+        
+        if (debug.hierarchy_enabled !== undefined) {
+          addLog(`⚙️ Hierarchy enabled: ${debug.hierarchy_enabled ? '✅ YES' : '❌ NO'}`, debug.hierarchy_enabled ? 'success' : 'warning');
+        }
+        
+        if (debug.profile_name) {
+          addLog(`📋 Active profile: "${debug.profile_name}" (ID: ${debug.profile_id})`, 'info');
+        }
+        
+        if (debug.event_type_found !== undefined) {
+          addLog(`🎯 Event type in DB: ${debug.event_type_found ? '✅ FOUND' : '❌ NOT FOUND'} (${eventType})`, debug.event_type_found ? 'success' : 'error');
+        }
+        
+        if (debug.matching_edges !== undefined) {
+          addLog(`🔗 Matching edges: ${debug.matching_edges} edge(s) found`, debug.matching_edges > 0 ? 'success' : 'warning');
+        }
+        
+        if (debug.rules && debug.rules.length > 0) {
+          addLog(`📜 Hierarchy rules applied (${debug.rules.length}):`, 'info');
+          debug.rules.forEach((rule, index) => {
+            addLog(`   ${index + 1}. ${rule.node_label || 'Unknown node'}`, 'info');
+            addLog(`      └─ Type: ${rule.node_type || 'N/A'}`, 'info');
+            addLog(`      └─ Scope: ${rule.scope_type || 'N/A'}`, 'info');
+            if (rule.scope_details) {
+              addLog(`      └─ Details: ${rule.scope_details}`, 'info');
+            }
+            if (rule.recipients_count !== undefined) {
+              addLog(`      └─ Recipients found: ${rule.recipients_count}`, rule.recipients_count > 0 ? 'success' : 'warning');
+            }
+          });
+        } else if (debug.matching_edges === 0) {
+          addLog(`⚠️ No hierarchy rules configured for event type "${eventType}"`, 'warning');
+          addLog(`   → Configure in: Administrace → Workflow hierarchie`, 'warning');
+        }
+        
+        if (debug.recipients && debug.recipients.length > 0) {
+          addLog(`👥 Recipients resolved (${debug.recipients.length}):`, 'success');
+          debug.recipients.forEach(recipient => {
+            const name = recipient.name || `User ID ${recipient.user_id}`;
+            const email = recipient.email ? ` <${recipient.email}>` : '';
+            const delivery = [];
+            if (recipient.in_app) delivery.push('📱 App');
+            if (recipient.email_enabled) delivery.push('📧 Email');
+            if (recipient.sms) delivery.push('💬 SMS');
+            const deliveryStr = delivery.length > 0 ? ` [${delivery.join(', ')}]` : '';
+            addLog(`   • ${name}${email}${deliveryStr}`, 'success');
+          });
+        }
+        
+        addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+      } else {
+        // Fallback - show raw response
+        addLog(`📦 Response: ${JSON.stringify(data, null, 2)}`, 'info');
+      }
+      
+      // Show result summary
+      if (data.status === 'ok') {
+        addLog(`✅ SUCCESS: ${data.zprava}`, 'success');
+        addLog(`📊 Recipients sent: ${data.sent}`, data.sent > 0 ? 'success' : 'warning');
+        if (data.errors && data.errors.length > 0) {
+          addLog(`⚠️ Errors: ${JSON.stringify(data.errors)}`, 'warning');
+        }
+      } else {
+        addLog(`❌ FAILED: ${data.err || 'Unknown error'}`, 'error');
+      }
+      
+    } catch (error) {
+      addLog(`❌ ERROR: ${error.message}`, 'error');
+    }
+  };
+
   // === 2️⃣ CREATE ALL NOTIFICATIONS (for bulk testing) ===
   const createAllNotifications = async () => {
     addLog('🚀 Creating all notification types...', 'info');
 
     const types = [
       // Stavy objednávek (12 typů)
-      'order_status_nova',
-      'order_status_ke_schvaleni',
-      'order_status_schvalena',
-      'order_status_zamitnuta',
-      'order_status_ceka_se',
-      'order_status_odeslana',
-      'order_status_potvrzena',
-      'order_status_dokoncena',
-      'order_status_zrusena',
-      'order_status_ceka_potvrzeni',
-      'order_status_smazana',
-      'order_status_rozpracovana',
+      'ORDER_CREATED',
+      'ORDER_PENDING_APPROVAL',
+      'ORDER_APPROVED',
+      'ORDER_REJECTED',
+      'ORDER_AWAITING_CHANGES',
+      'ORDER_SENT_TO_SUPPLIER',
+      'ORDER_CONFIRMED_BY_SUPPLIER',
+      'ORDER_COMPLETED',
+      'ORDER_CANCELLED',
+      'ORDER_AWAITING_CONFIRMATION',
+      'ORDER_DELETED',
+      'ORDER_DRAFT',
       // Obecné notifikace (6 typů)
       'order_approved',
       'order_rejected',
@@ -661,6 +841,29 @@ const NotificationTestPanel = () => {
         </RecipientSelector>
 
         <RecipientSelector>
+          <h3>🧾 ID Faktury pro testování</h3>
+          <InputGroup>
+            <input
+              type="number"
+              placeholder="např. 38"
+              value={testInvoiceId}
+              onChange={(e) => setTestInvoiceId(e.target.value)}
+              disabled={loadingLastInvoice}
+            />
+            <small>
+              {loadingLastInvoice ? '⏳ Načítám poslední fakturu...' :
+               testInvoiceId ? `✅ Backend načte data z faktury ID: ${testInvoiceId}` :
+               '⚠️ Zadej ID existující faktury z databáze'}
+            </small>
+          </InputGroup>
+          <ButtonRow>
+            <Button onClick={loadLastInvoiceId} disabled={loadingLastInvoice}>
+              🔄 Načíst poslední fakturu
+            </Button>
+          </ButtonRow>
+        </RecipientSelector>
+
+        <RecipientSelector>
           <h3>👥 Komu poslat notifikaci?</h3>
           <RadioGroup>
             <RadioOption>
@@ -735,64 +938,64 @@ const NotificationTestPanel = () => {
           <h2>� STAVY OBJEDNÁVEK (12 typů)</h2>
           <ButtonGrid>
             <TestButton style={{background: 'linear-gradient(135deg, #64748b, #475569)', color: 'white'}}
-                        onClick={() => createNotification('order_status_nova')}>
+                        onClick={() => createNotification('ORDER_CREATED')}>
               <span className="icon">📝</span>
               <span>Nová objednávka</span>
             </TestButton>
 
-            <BtnInfo onClick={() => createNotification('order_status_ke_schvaleni')}>
+            <BtnInfo onClick={() => createNotification('ORDER_PENDING_APPROVAL')}>
               <span className="icon">�📋</span>
               <span>Ke schválení</span>
             </BtnInfo>
 
-            <BtnSuccess onClick={() => createNotification('order_status_schvalena')}>
+            <BtnSuccess onClick={() => createNotification('ORDER_APPROVED')}>
               <span className="icon">✅</span>
               <span>Schválena</span>
             </BtnSuccess>
 
-            <BtnDanger onClick={() => createNotification('order_status_zamitnuta')}>
+            <BtnDanger onClick={() => createNotification('ORDER_REJECTED')}>
               <span className="icon">❌</span>
               <span>Zamítnuta</span>
             </BtnDanger>
 
-            <BtnWarning onClick={() => createNotification('order_status_ceka_se')}>
+            <BtnWarning onClick={() => createNotification('ORDER_AWAITING_CHANGES')}>
               <span className="icon">⏸️</span>
               <span>Čeká se</span>
             </BtnWarning>
 
-            <BtnInfo onClick={() => createNotification('order_status_odeslana')}>
+            <BtnInfo onClick={() => createNotification('ORDER_SENT_TO_SUPPLIER')}>
               <span className="icon">📤</span>
               <span>Odeslána</span>
             </BtnInfo>
 
-            <BtnSuccess onClick={() => createNotification('order_status_potvrzena')}>
+            <BtnSuccess onClick={() => createNotification('ORDER_CONFIRMED_BY_SUPPLIER')}>
               <span className="icon">✔️</span>
               <span>Potvrzena</span>
             </BtnSuccess>
 
-            <BtnSuccess onClick={() => createNotification('order_status_dokoncena')}>
+            <BtnSuccess onClick={() => createNotification('ORDER_COMPLETED')}>
               <span className="icon">🎉</span>
               <span>Dokončena</span>
             </BtnSuccess>
 
-            <BtnDanger onClick={() => createNotification('order_status_zrusena')}>
+            <BtnDanger onClick={() => createNotification('ORDER_CANCELLED')}>
               <span className="icon">🚫</span>
               <span>Zrušena</span>
             </BtnDanger>
 
-            <BtnWarning onClick={() => createNotification('order_status_ceka_potvrzeni')}>
+            <BtnWarning onClick={() => createNotification('ORDER_AWAITING_CONFIRMATION')}>
               <span className="icon">⏳</span>
               <span>Čeká na potvrzení</span>
             </BtnWarning>
 
             <TestButton style={{background: 'linear-gradient(135deg, #991b1b, #7f1d1d)', color: 'white'}}
-                        onClick={() => createNotification('order_status_smazana')}>
+                        onClick={() => createNotification('ORDER_DELETED')}>
               <span className="icon">🗑️</span>
               <span>Smazána</span>
             </TestButton>
 
             <TestButton style={{background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white'}}
-                        onClick={() => createNotification('order_status_rozpracovana')}>
+                        onClick={() => createNotification('ORDER_DRAFT')}>
               <span className="icon">🔄</span>
               <span>Rozpracována</span>
             </TestButton>
@@ -906,6 +1109,90 @@ const NotificationTestPanel = () => {
             <span className="icon">🔔</span>
             <span>Vytvořit všechny typy notifikací najednou</span>
           </BtnAll>
+        </Section>
+
+        <Section>
+          <h2>🎯 TEST ORG HIERARCHY TRIGGER (Backend Routing)</h2>
+          <p style={{fontSize: '14px', color: '#64748b', marginBottom: '16px'}}>
+            ⚙️ Tyto tlačítka volají <code>/api.eeo/notifications/trigger</code> endpoint,
+            který <strong>použije organizační hierarchii</strong> pro určení příjemců.
+            Na rozdíl od přímého vytváření notifikací výše, tento způsob emuluje reálný workflow.
+          </p>
+          
+          <h3 style={{fontSize: '16px', marginTop: '24px', marginBottom: '12px'}}>📋 OBJEDNÁVKY (Order Events)</h3>
+          <ButtonGrid>
+            <TestButton style={{background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_PENDING_APPROVAL')}>
+              <span className="icon">⏳</span>
+              <span>Čeká na schválení</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_APPROVED')}>
+              <span className="icon">✅</span>
+              <span>Schváleno</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_REJECTED')}>
+              <span className="icon">❌</span>
+              <span>Zamítnuto</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #f97316, #ea580c)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_AWAITING_CHANGES')}>
+              <span className="icon">🔄</span>
+              <span>Čeká na úpravy</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_SENT_TO_SUPPLIER')}>
+              <span className="icon">📤</span>
+              <span>Odesláno dodavateli</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_COMPLETED')}>
+              <span className="icon">🏁</span>
+              <span>Dokončeno</span>
+            </TestButton>
+          </ButtonGrid>
+
+          <h3 style={{fontSize: '16px', marginTop: '24px', marginBottom: '12px'}}>🧾 FAKTURY & VĚCNÁ SPRÁVNOST (Invoice Events)</h3>
+          <ButtonGrid>
+            <TestButton style={{background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('INVOICE_MATERIAL_CHECK_REQUESTED')}>
+              <span className="icon">📨</span>
+              <span>Faktura přiřazena - čeká na věcnou kontrolu</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('INVOICE_MATERIAL_CHECK_APPROVED')}>
+              <span className="icon">✅</span>
+              <span>Věcná správnost potvrzena</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('INVOICE_OVERDUE')}>
+              <span className="icon">⚠️</span>
+              <span>Faktura po splatnosti</span>
+            </TestButton>
+          </ButtonGrid>
+
+          <h3 style={{fontSize: '16px', marginTop: '24px', marginBottom: '12px'}}>📄 SMLOUVY & POKLADNA (Contract & Cashbook Events)</h3>
+          <ButtonGrid>
+            <TestButton style={{background: 'linear-gradient(135deg, #f97316, #ea580c)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('CONTRACT_EXPIRING')}>
+              <span className="icon">📅</span>
+              <span>Smlouva vypršela</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('CASHBOOK_PAYMENT_RECEIVED')}>
+              <span className="icon">💰</span>
+              <span>Platba přijata</span>
+            </TestButton>
+          </ButtonGrid>
         </Section>
 
         <Section>

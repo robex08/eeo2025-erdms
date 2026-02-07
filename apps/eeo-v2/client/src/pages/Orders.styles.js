@@ -491,42 +491,98 @@ const styles = css`
     text-align: left; /* left-align subrow paragraph content */
   }
 
+  /* Moderní filter box - F P R | fulltext | multiselect | multiselect */
   .filter-box {
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    padding: 15px;
-    margin-bottom: 20px;
-    background-color: #f9f9f9;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
     width: 100%;
     box-sizing: border-box;
+    padding: 16px;
+    background-color: #ffffff;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
   }
 
+  /* Tlačítka F, P, R */
+  .filter-buttons {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .filter-button {
+    height: 48px;
+    min-width: 48px;
+    padding: 0 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1f2937;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .filter-button:hover {
+    background-color: #f9fafb;
+    border-color: #3b82f6;
+  }
+
+  .filter-button.active {
+    background-color: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+  }
+
+  /* Fulltext input - zabírá celou šířku */
   .filter-input-wrapper {
     position: relative;
     flex: 1;
-    margin-right: 12px; /* smaller gap so input stretches to selects */
+    min-width: 250px;
   }
 
-  .filter-input {
+  input.filter-input {
     width: 100%;
-    padding: 10px 10px 10px 36px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 19.32px;
+    height: 48px !important;
+    padding: 0 2.5rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
     box-sizing: border-box;
+    background: #ffffff;
+    transition: all 0.2s ease;
+    font-weight: 400;
+    color: #1f2937;
+    line-height: 48px;
+  }
+
+  input.filter-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  input.filter-input::placeholder {
+    color: #9ca3af;
+    font-weight: 400;
   }
 
   .search-icon {
     position: absolute;
-    left: 10px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
-    color: #6b7280;
+    color: #9ca3af;
     pointer-events: none;
     font-size: 16px;
+    z-index: 1;
   }
 
   .clear-filter-button {
@@ -536,63 +592,48 @@ const styles = css`
     transform: translateY(-50%);
     background: none;
     border: none;
-    font-size: 16px;
-    color: #666;
+    font-size: 20px;
+    font-weight: 600;
+    color: #9ca3af;
     cursor: pointer;
-    padding: 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    line-height: 1;
+    z-index: 1;
   }
 
   .clear-filter-button:hover {
-    color: #000;
+    color: #374151;
+    background: #f3f4f6;
   }
 
+  /* Multi-select dropdown wrapper */
   .filter-group {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     flex-shrink: 0;
   }
 
   .filter-select {
-    padding: 8px 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 16px;
+    height: 48px;
+    padding: 0 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
     line-height: 1.2;
-    white-space: nowrap;
-    text-align: right;
-    text-align-last: right;
-  }
-
-  .filter-select option {
-    text-align: left;
-  }
-
-  .filter-buttons {
-    display: flex;
-    gap: 10px;
-    margin-right: 20px;
-  }
-
-  .filter-button {
-    padding: 10px 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-    color: #333;
-    font-size: 14px;
+    background-color: #ffffff;
+    color: #1f2937;
     cursor: pointer;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
   }
 
-  .filter-button:hover {
-    background-color: #e0e0e0;
-  }
-
-  .filter-button.active {
-    background-color: #202d65;
-    color: white;
-    border-color: #170d79;
+  .filter-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
   .orders-boxes {
@@ -634,12 +675,11 @@ const styles = css`
 
   .stats-box {
     position: relative;
-    padding: 12px;
+    padding: 24px;
     border: none;
     border-radius: 10px;
     background-color: #fff;
     box-shadow: none;
-    min-height: 210px;
   }
 
   .stats-box canvas,

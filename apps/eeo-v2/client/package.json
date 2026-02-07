@@ -1,16 +1,16 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "1.86a",
+  "version": "2.24.0",
   "private": true,
-  "homepage": "/eeo-v2",
-  "proxy": "https://erdms.zachranka.cz",
+  "homepage": "/dev/eeo-v2",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
-    "@fortawesome/free-regular-svg-icons": "^7.0.1",
+    "@fortawesome/free-regular-svg-icons": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@fortawesome/react-fontawesome": "^0.2.6",
+    "@hello-pangea/dnd": "^18.0.1",
     "@mui/icons-material": "^6.5.0",
     "@mui/material": "^6.4.8",
     "@react-pdf/renderer": "^4.3.1",
@@ -22,8 +22,10 @@
     "axios": "^1.8.4",
     "buffer": "^6.0.3",
     "chart.js": "^4.5.1",
+    "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-datalabels": "^2.2.0",
     "crypto-js": "^4.2.0",
+    "dagre": "^0.8.5",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "jszip": "^3.10.1",
@@ -35,16 +37,26 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
+    "react-resizable-panels": "^3.0.6",
     "react-router-dom": "^7.4.0",
     "react-scripts": "5.0.1",
     "react-toastify": "^11.0.5",
+    "reactflow": "^11.11.4",
+    "styled-components": "^6.1.19",
     "tesseract.js": "^6.0.1",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "start": "NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired start",
-    "build": "NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
+    "start": "NODE_OPTIONS=--max_old_space_size=2048 react-app-rewired start",
+    "build": "NODE_OPTIONS=--max_old_space_size=8192 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
+    "build:dev": "NODE_ENV=development BUILD_PATH=build PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
+    "build:dev:explicit": "REACT_APP_VERSION=2.24-DEV REACT_APP_API_BASE_URL=/api REACT_APP_API2_BASE_URL=/dev/api.eeo/ REACT_APP_OLD_ATTACHMENTS_URL=/prilohy/ PUBLIC_URL=/dev/eeo-v2 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
+    "build:prod": "NODE_ENV=production BUILD_PATH=build-prod PUBLIC_URL=/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build-prod",
+    "deploy-maintenance": "npm run deploy-maintenance:prepare && npm run deploy-maintenance:build && npm run deploy-maintenance:finalize",
+    "deploy-maintenance:prepare": "shx rm -rf build && shx mkdir -p build && shx cp maintenance.html build/index.html",
+    "deploy-maintenance:build": "cross-env BUILD_PATH=build_temp NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
+    "deploy-maintenance:finalize": "shx rm -rf build && shx mv build_temp build",
     "test": "react-app-rewired test",
     "eject": "react-scripts eject"
   },
@@ -78,7 +90,9 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
+    "cross-env": "^10.1.0",
     "postcss": "^8.5.6",
-    "react-app-rewired": "^2.2.1"
+    "react-app-rewired": "^2.2.1",
+    "shx": "^0.4.0"
   }
 }

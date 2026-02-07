@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Invoice xmlns="http://isdoc.cz/namespace/2013" version="6.0.1">
+  <DocumentType>1</DocumentType>
+  <ID>250100528</ID>
+  <UUID>8858186F-F7DA-4071-82B2-89D3C6396E19</UUID>
+  <IssuingSystem>Ekonomický a informační systém POHODA</IssuingSystem>
+  <IssueDate>2025-09-08</IssueDate>
+  <TaxPointDate>2025-09-08</TaxPointDate>
+  <VATApplicable>true</VATApplicable>
+  <ElectronicPossibilityAgreementReference/>
+  <Note>WM 35860</Note>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <CurrRate>1</CurrRate>
+  <RefCurrRate>1</RefCurrRate>
+  <AccountingSupplierParty>
+    <Party>
+      <PartyIdentification>
+        <ID>63886731</ID>
+      </PartyIdentification>
+      <PartyName>
+        <Name>MEDIPRAX CB s.r.o.</Name>
+      </PartyName>
+      <PostalAddress>
+        <StreetName>Husova tř. 1858/43</StreetName>
+        <BuildingNumber/>
+        <CityName>České Budějovice</CityName>
+        <PostalZone>370 05</PostalZone>
+        <Country>
+          <IdentificationCode/>
+          <Name/>
+        </Country>
+      </PostalAddress>
+      <PartyTaxScheme>
+        <CompanyID>CZ63886731</CompanyID>
+        <TaxScheme>VAT</TaxScheme>
+      </PartyTaxScheme>
+      <RegisterIdentification>
+        <Preformatted>Firma MEDIPRAX CB s.r.o. je zapsána v obchodním rejstříku vedeném u Krajského soudu v Českých Budějovicích, oddíl C, vložka 5633.</Preformatted>
+      </RegisterIdentification>
+      <Contact>
+        <Name>Mach Jan</Name>
+        <Telephone>385 310 382</Telephone>
+        <ElectronicMail>mediprax@mediprax.cz</ElectronicMail>
+      </Contact>
+    </Party>
+  </AccountingSupplierParty>
+  <AccountingCustomerParty>
+    <Party>
+      <PartyIdentification>
+        <ID>75030926</ID>
+      </PartyIdentification>
+      <PartyName>
+        <Name>Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</Name>
+      </PartyName>
+      <PostalAddress>
+        <StreetName>Vančurova 1544</StreetName>
+        <BuildingNumber/>
+        <CityName>Kladno</CityName>
+        <PostalZone>272 01</PostalZone>
+        <Country>
+          <IdentificationCode/>
+          <Name/>
+        </Country>
+      </PostalAddress>
+      <Contact>
+        <ElectronicMail>podatelna@zachranka.cz; marie.tumova@zachranka.cz</ElectronicMail>
+      </Contact>
+    </Party>
+  </AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine>
+      <ID>DA5FDC94-85D3-4D19-8689-761B7C7CD474</ID>
+      <InvoicedQuantity unitCode="ks">50</InvoicedQuantity>
+      <LineExtensionAmount>35250</LineExtensionAmount>
+      <LineExtensionAmountTaxInclusive>39480</LineExtensionAmountTaxInclusive>
+      <LineExtensionTaxAmount>4230</LineExtensionTaxAmount>
+      <UnitPrice>705</UnitPrice>
+      <UnitPriceTaxInclusive>789.6</UnitPriceTaxInclusive>
+      <ClassifiedTaxCategory>
+        <Percent>12</Percent>
+        <VATCalculationMethod>0</VATCalculationMethod>
+        <VATApplicable>true</VATApplicable>
+      </ClassifiedTaxCategory>
+      <Item>
+        <Description>Pacientský okruh pro MEDUVENT Standard, jednorázový</Description>
+        <CatalogueItemIdentification>
+          <ID>4054685277284</ID>
+        </CatalogueItemIdentification>
+        <SellersItemIdentification>
+          <ID>WM 35860</ID>
+        </SellersItemIdentification>
+        <StoreBatches>
+          <StoreBatch>
+            <Name>20250616</Name>
+            <Quantity>50</Quantity>
+            <BatchOrSerialNumber>B</BatchOrSerialNumber>
+          </StoreBatch>
+        </StoreBatches>
+      </Item>
+    </InvoiceLine>
+  </InvoiceLines>
+  <TaxTotal>
+    <TaxSubTotal>
+      <TaxableAmount>35250</TaxableAmount>
+      <TaxAmount>4230</TaxAmount>
+      <TaxInclusiveAmount>39480</TaxInclusiveAmount>
+      <AlreadyClaimedTaxableAmount>0</AlreadyClaimedTaxableAmount>
+      <AlreadyClaimedTaxAmount>0</AlreadyClaimedTaxAmount>
+      <AlreadyClaimedTaxInclusiveAmount>0</AlreadyClaimedTaxInclusiveAmount>
+      <DifferenceTaxableAmount>35250</DifferenceTaxableAmount>
+      <DifferenceTaxAmount>4230</DifferenceTaxAmount>
+      <DifferenceTaxInclusiveAmount>39480</DifferenceTaxInclusiveAmount>
+      <TaxCategory>
+        <Percent>12</Percent>
+        <VATApplicable>true</VATApplicable>
+        <LocalReverseChargeFlag>false</LocalReverseChargeFlag>
+      </TaxCategory>
+    </TaxSubTotal>
+    <TaxAmount>4230</TaxAmount>
+  </TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount>35250</TaxExclusiveAmount>
+    <TaxInclusiveAmount>39480</TaxInclusiveAmount>
+    <AlreadyClaimedTaxExclusiveAmount>0</AlreadyClaimedTaxExclusiveAmount>
+    <AlreadyClaimedTaxInclusiveAmount>0</AlreadyClaimedTaxInclusiveAmount>
+    <DifferenceTaxExclusiveAmount>35250</DifferenceTaxExclusiveAmount>
+    <DifferenceTaxInclusiveAmount>39480</DifferenceTaxInclusiveAmount>
+    <PayableRoundingAmount>0</PayableRoundingAmount>
+    <PaidDepositsAmount>0</PaidDepositsAmount>
+    <PayableAmount>39480</PayableAmount>
+  </LegalMonetaryTotal>
+  <PaymentMeans>
+    <Payment>
+      <PaidAmount>39480</PaidAmount>
+      <PaymentMeansCode>42</PaymentMeansCode>
+      <Details>
+        <PaymentDueDate>2025-09-23</PaymentDueDate>
+        <ID>712046453</ID>
+        <BankCode>0300</BankCode>
+        <Name>Československá obchodní banka, a.s.</Name>
+        <IBAN>CZ26 0300 0000 0007 1204 6453</IBAN>
+        <BIC>CEKOCZPP</BIC>
+        <VariableSymbol>250100528</VariableSymbol>
+        <ConstantSymbol>0008</ConstantSymbol>
+      </Details>
+    </Payment>
+  </PaymentMeans>
+</Invoice>

@@ -1,0 +1,76 @@
+=== ANALÝZA WORKFLOW STAVŮ OBJEDNÁVKY O-0046 ===
+
+📊 PŘEHLED TABULKY 25a_objednavky - STAV SLOUPCE:
+
+🔹 SLOUPCE SOUVISEJÍCÍ SE STAVEM:
+   • stav_workflow_kod (varchar 256) - JSON array workflow stavů
+   • stav_objednavky (varchar 64) - Textový popis současného stavu
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 NALEZENÉ OBJEDNÁVKY O-0046 (všechny roky):
+
+┌─────────────────────────────────────────────────────────────────┐
+│ O-0046/75030926/2026/IT (ID: 11558) - AKTIVNÍ ⚡                │
+├─────────────────────────────────────────────────────────────────┤
+│ 🔄 Workflow:                                                    │
+│    ["SCHVALENA","ODESLANA","POTVRZENA","NEUVEREJNIT",           │
+│     "FAKTURACE","VECNA_SPRAVNOST"]                              │
+│                                                                 │
+│ 📈 Současný stav: Věcná správnost                               │
+│ 📅 Vytvořeno: 2026-01-04 12:28:41                              │
+│ 📅 Aktualizováno: 2026-01-04 13:12:07                          │
+│ 👤 Uživatel: ID 1                                              │
+│                                                                 │
+│ 🎯 WORKFLOW FÁZE:                                               │
+│    1️⃣ SCHVALENA - ✅ Schválena                                  │
+│    2️⃣ ODESLANA - ✅ Odeslána dodavateli                         │
+│    3️⃣ POTVRZENA - ✅ Potvrzena dodavatelem                      │
+│    4️⃣ NEUVEREJNIT - ✅ Označena jako nezveřejňovat             │
+│    5️⃣ FAKTURACE - ✅ Ve fázi fakturace                          │
+│    6️⃣ VECNA_SPRAVNOST - 🔄 Čeká na kontrolu věcné správnosti   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ARCHIVOVANÉ OBJEDNÁVKY O-0046:                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ • O-0046/75030926/2025/PTN (ID: 4044) - ARCHIVOVANO            │
+│ • O-0046/75030926/2024/PTN (ID: 2820) - ARCHIVOVANO            │
+│ • O-0046/75030926/2023/AD  (ID: 2280) - ARCHIVOVANO            │
+│ • O-0046/75030926/2022/AD  (ID: 7157) - ARCHIVOVANO            │
+│ • O-0046/75030926/2021/TSO (ID: 7989) - ARCHIVOVANO            │
+│                                                                 │
+│ 📊 Všechny archivované jsou ve stavu:                          │
+│    ["SCHVALENA","ODESLANA","POTVRZENA"]                         │
+│    = Dokončené základní workflow, bez pokročilých fází         │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 INTERPRETACE PRO ROK 2026:
+
+🟢 SOUČASNÝ STAV: Objednávka O-0046/75030926/2026/IT je ve fázi "Věcná správnost"
+
+🔄 WORKFLOW PROGRES:
+   ✅ Fáze 1: Schválení - DOKONČENA
+   ✅ Fáze 2: Odeslání dodavateli - DOKONČENA  
+   ✅ Fáze 3: Potvrzení dodavatelem - DOKONČENA
+   ✅ Fáze 4: Rozhodnutí o zveřejnění (NEUVEREJNIT) - DOKONČENA
+   ✅ Fáze 5: Fakturace - DOKONČENA
+   🔄 Fáze 6: Kontrola věcné správnosti - PROBÍHÁ
+
+📌 DALŠÍ KROKY:
+   • Čeká na dokončení kontroly věcné správnosti
+   • Po kladné kontrole bude přesunuta do stavu "ZKONTROLOVANA"
+   • Finální stav bude "DOKONCENA"
+
+📊 STATISTIKY WORKFLOW STAVŮ V DATABÁZI:
+   • Největší počet: ARCHIVOVANO (9,472 objednávek)
+   • Ke schválení: 92 objednávek  
+   • Schválené: 79 objednávek
+   • Dokončené: 33 + 8 + 2 = 43 objednávek
+   • Věcná správnost: 14 + 1 = 15 objednávek (včetně O-0046/2026)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Datum analýzy: 4. ledna 2026

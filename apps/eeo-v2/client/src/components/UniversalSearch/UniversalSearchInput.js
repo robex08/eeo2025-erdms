@@ -9,13 +9,16 @@
  * - Enter = okamžité hledání
  */
 
-import React, { useRef, useEffect, useState, useContext } from 'react';
+import React, { useRef, useEffect, useState, useContext, useCallback, useMemo } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faTimes, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import useUniversalSearch from '../../hooks/useUniversalSearch';
 import SearchResultsDropdown from './SearchResultsDropdown';
+import SearchHistory from './SearchHistory';
 import { AuthContext } from '../../context/AuthContext';
+import { getSearchHistory, saveSearchToHistory, removeSearchFromHistory, clearSearchHistory } from '../../utils/searchHistory';
+import BitcoinCrashScreen from '../EasterEgg/BitcoinCrashScreen';
 
 // Styled components
 const SearchWrapper = styled.div`
@@ -81,6 +84,19 @@ const RightIcons = styled.div`
   z-index: 2;
 `;
 
+const ShortcutHint = styled.div`
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  user-select: none;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  z-index: 1;
+`;
+
 const IconButton = styled.button`
   background: none;
   border: none;
@@ -142,7 +158,7 @@ const HintText = styled.div`
  * Universal Search Input Component
  */
 const UniversalSearchInput = () => {
-  const { username, token, hasPermission } = useContext(AuthContext) || {};
+  const { username, token, hasPermission, user_id } = useContext(AuthContext) || {};
   
   // Kontrola oprávnění - admin vidí všechny výsledky
   const canViewAllOrders = hasPermission && (
@@ -150,6 +166,16 @@ const UniversalSearchInput = () => {
     hasPermission('ORDER_MANAGE') || 
     hasPermission('ADMIN')
   );
+  
+  // Callback po úspěšném vyhledání - uložíme do historie
+  const handleSearchSuccess = useCallback((searchQuery, categories) => {
+    if (user_id && searchQuery && searchQuery.length >= 2) {
+      saveSearchToHistory(user_id, searchQuery, categories);
+      // Reload historie
+      const updatedHistory = getSearchHistory(user_id);
+      setSearchHistory(updatedHistory);
+    }
+  }, [user_id]);
   
   const {
     query,
@@ -162,12 +188,71 @@ const UniversalSearchInput = () => {
     clearResults,
     hasResults,
     isEmpty
-  } = useUniversalSearch();
+  } = useUniversalSearch(handleSearchSuccess);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1);
+  const [selectedResultIndex, setSelectedResultIndex] = useState(-1);
+  const [resultActionTrigger, setResultActionTrigger] = useState(0);
+  const [resultActionType, setResultActionType] = useState('enter'); // 'enter', 'expand', 'collapse'
+  
+  // 🥚 Easter Egg State - Bitcoin Crash Screen
+  const [showBitcoinCrash, setShowBitcoinCrash] = useState(false);
+  
+  const navigableItemsRef = useRef([]);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
+  
+  // Callback pro update navigovatelných položek
+  const handleNavigableItemsChange = useCallback((items) => {
+    navigableItemsRef.current = items || [];
+    
+    // Pokud je selectedResultIndex >= počtu položek, resetuj ho
+    if (selectedResultIndex >= items.length) {
+      setSelectedResultIndex(items.length > 0 ? items.length - 1 : -1);
+    }
+  }, [selectedResultIndex]);
+
+  /**
+   * Načíst historii při mount nebo změně user_id
+   */
+  useEffect(() => {
+    if (user_id) {
+      setSearchHistory(getSearchHistory(user_id));
+    }
+  }, [user_id]);
+  
+  /**
+   * Globální keyboard shortcut: Win+G nebo Cmd+G = focus do search
+   */
+  useEffect(() => {
+    const handleGlobalKeydown = (e) => {
+      // Win+G (Windows/Linux) nebo Cmd+G (Mac) - POUZE metaKey
+      if (e.metaKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select(); // Vybere celý text pokud nějaký je
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleGlobalKeydown);
+    return () => document.removeEventListener('keydown', handleGlobalKeydown);
+  }, []);
+  
+  /**
+   * Spočítat celkový počet výsledků pro navigaci
+   */
+  const totalResults = useMemo(() => {
+    if (!results?.categories) return 0;
+    return Object.values(results.categories).reduce((sum, cat) => 
+      sum + (cat.results?.length || 0), 0
+    );
+  }, [results]);
 
   /**
    * Handle input change
@@ -176,43 +261,181 @@ const UniversalSearchInput = () => {
     const newQuery = e.target.value;
     updateQuery(newQuery);
 
-    // Zobrazit dropdown pokud je něco napsáno
-    if (newQuery.length > 0) {
+    // Zobrazit historii pokud je input prázdný nebo < 2 znaky
+    if (newQuery.length < 2) {
+      setShowHistory(true);
+      setShowDropdown(false);
+      setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
+    } else {
+      setShowHistory(false);
       setShowDropdown(true);
+      setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
       
       // Debounced search pouze pokud je >= 4 znaky
       if (newQuery.length >= 4) {
-        console.log('🔐 [UniversalSearchInput] Debounced search - oprávnění:', {
-          username,
-          canViewAllOrders,
-          search_all: canViewAllOrders
-        });
         search(newQuery, { search_all: canViewAllOrders });
       }
-    } else {
-      setShowDropdown(false);
     }
   };
 
   /**
-   * Handle Enter key - immediate search
+   * Handle keyboard navigation
    */
   const handleKeyDown = (e) => {
+    // Arrow navigation v historii (priorita ma historie pokud je zobrazena)
+    if (showHistory && searchHistory.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedHistoryIndex(prev => 
+          prev < searchHistory.length - 1 ? prev + 1 : prev
+        );
+        return;
+      }
+      
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedHistoryIndex(prev => prev > 0 ? prev - 1 : -1);
+        return;
+      }
+      
+      // Enter - vyber položku z historie
+      if (e.key === 'Enter' && selectedHistoryIndex >= 0) {
+        e.preventDefault();
+        const selectedItem = searchHistory[selectedHistoryIndex];
+        if (selectedItem) {
+          handleSelectFromHistory(selectedItem.query);
+        }
+        return;
+      }
+    }
+    
+    // Arrow navigation ve výsledcích vyhledávání (když NEJSOU zobrazena historie)
+    if (!showHistory && showDropdown) {
+      const maxIndex = navigableItemsRef.current.length - 1;
+      
+      if (e.key === 'ArrowDown' && maxIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedResultIndex(prev => {
+          if (prev === -1) return 0; // První položka
+          return prev < maxIndex ? prev + 1 : prev;
+        });
+        return;
+      }
+      
+      if (e.key === 'ArrowUp' && maxIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedResultIndex(prev => {
+          if (prev <= 0) return -1; // Zpět na input
+          return prev - 1;
+        });
+        return;
+      }
+      
+      // ArrowRight - rozbalit kategorii (pokud je vybraná kategorie)
+      if (e.key === 'ArrowRight' && selectedResultIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        const selectedItem = navigableItemsRef.current[selectedResultIndex];
+        if (selectedItem && selectedItem.type === 'category') {
+          setResultActionType('expand');
+          setResultActionTrigger(prev => prev + 1);
+        }
+        return;
+      }
+      
+      // ArrowLeft - sbalit kategorii (pokud je vybraná kategorie)
+      if (e.key === 'ArrowLeft' && selectedResultIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        const selectedItem = navigableItemsRef.current[selectedResultIndex];
+        if (selectedItem && selectedItem.type === 'category') {
+          setResultActionType('collapse');
+          setResultActionTrigger(prev => prev + 1);
+        }
+        return;
+      }
+      
+      // Enter - otevři detail vybraného výsledku
+      if (e.key === 'Enter' && selectedResultIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        setResultActionType('enter');
+        setResultActionTrigger(prev => prev + 1); // Trigger akce v SearchResultsDropdown
+        return;
+      }
+    }
+    
+    // 🥚 Easter Egg: Shift+Enter s "BitcoiN" = Bitcoin Crash Screen
+    if (e.key === 'Enter' && e.shiftKey && query === 'BitcoiN') {
+      e.preventDefault();
+      setShowBitcoinCrash(true);
+      // Zavři dropdown
+      setShowDropdown(false);
+      setShowHistory(false);
+      setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
+      return;
+    }
+    
+    // Enter - immediate search
     if (e.key === 'Enter' && query.length >= 4) {
       e.preventDefault();
-      console.log('🔐 [UniversalSearchInput] Immediate search (Enter) - oprávnění:', {
-        username,
-        canViewAllOrders,
-        search_all: canViewAllOrders
-      });
       immediateSearch(query, { search_all: canViewAllOrders });
       setShowDropdown(true);
+      setShowHistory(false);
+      setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
     }
 
     // Escape - zavři dropdown
     if (e.key === 'Escape') {
       setShowDropdown(false);
+      setShowHistory(false);
+      setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
       inputRef.current?.blur();
+    }
+  };
+
+  /**
+   * Vyber query z historie
+   */
+  const handleSelectFromHistory = (selectedQuery) => {
+    updateQuery(selectedQuery);
+    setShowHistory(false);
+    setSelectedHistoryIndex(-1);
+    
+    // Proveď hledání
+    if (selectedQuery.length >= 4) {
+      immediateSearch(selectedQuery, { search_all: canViewAllOrders });
+      setShowDropdown(true);
+    }
+  };
+
+  /**
+   * Odstraň položku z historie
+   */
+  const handleRemoveFromHistory = (queryToRemove) => {
+    if (user_id) {
+      removeSearchFromHistory(user_id, queryToRemove);
+      const updated = getSearchHistory(user_id);
+      setSearchHistory(updated);
+      setSelectedHistoryIndex(-1);
+    }
+  };
+
+  /**
+   * Vymaž celou historii
+   */
+  const handleClearHistory = () => {
+    if (user_id) {
+      clearSearchHistory(user_id);
+      setSearchHistory([]);
+      setSelectedHistoryIndex(-1);
     }
   };
 
@@ -222,7 +445,18 @@ const UniversalSearchInput = () => {
   const handleClear = () => {
     clearResults();
     setShowDropdown(false);
+    setShowHistory(false);
     inputRef.current?.focus();
+  };
+
+  /**
+   * 🥚 Close Bitcoin Crash Screen Easter Egg
+   */
+  const handleCloseBitcoinCrash = () => {
+    setShowBitcoinCrash(false);
+    // Clear search field po easter egg
+    updateQuery('');
+    clearResults();
   };
 
   /**
@@ -235,6 +469,7 @@ const UniversalSearchInput = () => {
       
       if (wrapperRef.current && !wrapperRef.current.contains(e.target) && !isClickOnSlidePanel) {
         setShowDropdown(false);
+        setShowHistory(false);
       }
     };
 
@@ -261,11 +496,12 @@ const UniversalSearchInput = () => {
         // Kontrola, jestli není otevřený slide panel
         const isSlidePanel = document.querySelector('[data-slide-panel]');
         
-        // ESC zavře dropdown pouze pokud není otevřený slide panel
-        if (showDropdown && !isSlidePanel) {
+        // ESC zavře dropdown/history pouze pokud není otevřený slide panel
+        if ((showDropdown || showHistory) && !isSlidePanel) {
           e.preventDefault();
           e.stopPropagation();
           setShowDropdown(false);
+          setShowHistory(false);
           inputRef.current?.focus();
         }
       }
@@ -273,7 +509,7 @@ const UniversalSearchInput = () => {
 
     document.addEventListener('keydown', handleEscKey);
     return () => document.removeEventListener('keydown', handleEscKey);
-  }, [showDropdown]);
+  }, [showDropdown, showHistory]);
 
   return (
     <SearchWrapper ref={wrapperRef}>
@@ -290,7 +526,10 @@ const UniversalSearchInput = () => {
           onKeyDown={handleKeyDown}
           onFocus={() => {
             setInputFocused(true);
-            if (query.length > 0) {
+            // Pokud je input prázdný, zobraz historii
+            if (query.length < 2) {
+              setShowHistory(true);
+            } else if (query.length > 0) {
               setShowDropdown(true);
             }
           }}
@@ -298,6 +537,11 @@ const UniversalSearchInput = () => {
           placeholder="Hledat cokoliv kdekoliv 😊"
           $hasError={!!error && query.length > 0}
         />
+        
+        {/* Shortcut hint - zobrazit pouze když není focus a není text */}
+        {!inputFocused && !query && (
+          <ShortcutHint>Win+G</ShortcutHint>
+        )}
 
         <RightIcons>
           {loading && (
@@ -318,7 +562,16 @@ const UniversalSearchInput = () => {
         </RightIcons>
       </SearchInputContainer>
 
-      {/* Results dropdown */}
+      {/* Search History - zobrazit když je input krátký a má focus */}
+        {showHistory && inputFocused && searchHistory.length > 0 && (
+          <SearchHistory
+            history={searchHistory}
+            onSelectQuery={handleSelectFromHistory}
+            onRemoveItem={handleRemoveFromHistory}
+            onClearAll={handleClearHistory}
+            selectedIndex={selectedHistoryIndex}
+          />
+        )}      {/* Results dropdown */}
       {showDropdown && query.length > 0 && (
         <SearchResultsDropdown
           results={results}
@@ -328,8 +581,18 @@ const UniversalSearchInput = () => {
           inputRef={inputRef}
           username={username}
           token={token}
+          selectedResultIndex={selectedResultIndex}
+          onResultAction={resultActionTrigger}
+          onNavigableItemsChange={handleNavigableItemsChange}
+          resultActionType={resultActionType}
         />
       )}
+
+      {/* 🥚 Bitcoin Crash Screen Easter Egg */}
+      <BitcoinCrashScreen 
+        isVisible={showBitcoinCrash}
+        onClose={handleCloseBitcoinCrash}
+      />
     </SearchWrapper>
   );
 };

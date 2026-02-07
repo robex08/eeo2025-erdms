@@ -16,7 +16,7 @@ import {
   fetchPrava,
   fetchUseky
 } from '../../services/api2auth';
-import { User, Shield, Building, X, Save, AlertCircle, Check, Mail, Phone, Key, MapPin, Briefcase, Award, Search } from 'lucide-react';
+import { User, Shield, Building, X, Save, AlertCircle, Check, Mail, Phone, Key, MapPin, Briefcase, Award, Search, Eye, EyeOff, Shuffle } from 'lucide-react';
 import { CustomSelect } from '../CustomSelect';
 import PasswordStrengthValidator, { validatePasswordStrength } from '../PasswordStrengthValidator';
 
@@ -222,7 +222,7 @@ const FormGrid = styled.div`
 
 const FormGrid3Col = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, 1fr); /* 3 sloupce pro Username | Heslo | Vynutit změnu */
   gap: 1rem 1.25rem; /* row-gap column-gap */
 
   @media (max-width: 1024px) {
@@ -291,6 +291,101 @@ const InputWithIcon = styled.div`
     pointer-events: none;
     width: 15px !important;
     height: 15px !important;
+  }
+`;
+
+// Wrapper pro password input s více ikonami
+const PasswordInputWrapper = styled.div`
+  position: relative;
+  width: 100%;
+
+  > svg:first-of-type {
+    position: absolute;
+    left: 0.625rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    z-index: 1;
+    pointer-events: none;
+    width: 15px !important;
+    height: 15px !important;
+  }
+`;
+
+const PasswordActionIcons = styled.div`
+  position: absolute;
+  right: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0.375rem;
+  z-index: 2;
+`;
+
+const PasswordIcon = styled.div`
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid #e2e8f0;
+  
+  svg {
+    width: 14px !important;
+    height: 14px !important;
+    color: #64748b !important;
+  }
+  
+  &:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    
+    svg {
+      color: #334155 !important;
+    }
+  }
+  
+  &:active {
+    transform: scale(0.95);
+    background: #e2e8f0;
+  }
+`;
+
+const PasswordInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.625rem 5rem 0.625rem 2.25rem; /* Více místa vpravo pro ikony */
+  border: 2px solid ${props => props.hasError ? '#dc2626' : '#e5e7eb'};
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  transition: all 0.2s ease;
+  background: ${props => props.hasError ? '#fef2f2' : '#ffffff'};
+
+  color: ${props => props.value && props.value !== '' ? '#1f2937' : '#6b7280'};
+  font-weight: ${props => {
+    if (props.disabled) return '400';
+    return props.value && props.value !== '' ? '600' : '400';
+  }};
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.hasError ? '#dc2626' : '#3b82f6'};
+    box-shadow: 0 0 0 3px ${props => props.hasError ? 'rgba(220, 38, 38, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+  }
+
+  &:disabled {
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: not-allowed;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+    font-weight: 400;
   }
 `;
 
@@ -405,7 +500,7 @@ const SectionTitle = styled.h3`
   letter-spacing: 0.05em;
   border-bottom: 1px solid #e5e7eb;
 
-  &:first-child {
+  &:first-of-type {
     margin-top: 0;
   }
 `;
@@ -477,6 +572,7 @@ const ToggleContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  height: 2.375rem; /* Same height as input (padding 0.625rem top/bottom + border + content) */
 `;
 
 const ToggleLabel = styled.div`
@@ -827,6 +923,7 @@ const UserManagementModal = ({
     pozice_id: null,
     organizace_id: null,
     aktivni: 1,
+    vynucena_zmena_hesla: 0,
     roles: [],
     direct_rights: []
   });
@@ -843,6 +940,7 @@ const UserManagementModal = ({
   const [roleFilter, setRoleFilter] = useState('');
   const [pravaFilter, setPravaFilter] = useState('');
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(false); // 🎯 Checkbox pro zobrazení jen nepřiřazených práv
+  const [showPassword, setShowPassword] = useState(false); // 👁️ State pro zobrazení hesla
 
   // Práva načtená z rolí (pro zobrazení jako disabled/readonly)
   const [rightsFromRoles, setRightsFromRoles] = useState(new Set());
@@ -865,8 +963,9 @@ const UserManagementModal = ({
     // Nepřiřazená = práva, která uživatel NEMÁ (nejsou ani z role, ani přímo přiřazená)
     if (showOnlyUnassigned) {
       filtered = filtered.filter(p => {
-        const isFromRole = rightsFromRoles.has(p.id);
-        const isDirectlySelected = formData.direct_rights.includes(p.id);
+        const pravoId = Number(p.id); // ❗ Konverze na NUMBER
+        const isFromRole = rightsFromRoles.has(pravoId);
+        const isDirectlySelected = formData.direct_rights.includes(pravoId);
         const isChecked = isFromRole || isDirectlySelected;
         // Zobrazit pouze NEZAŠKRTNUTÁ práva (uživatel je NEMÁ)
         return !isChecked;
@@ -895,55 +994,60 @@ const UserManagementModal = ({
     }
   }, [isOpen, token, user]);
 
-  // Pre-fill data v edit mode - ALE AŽ KDYŽ JSOU NAČTENÉ ČÍSELNÍKY!
+  // Pre-fill data v edit mode - ROVNOU bez čekání na číselníky!
   useEffect(() => {
-    // Pro edit mode čekáme, až budou číselníky načtené (useky.length > 0 jako indikátor)
-    if (isOpen && mode === 'edit' && userData && !loadingData && useky.length > 0) {
+    // Při edit mode rovnou inicializuj formData z userData (CustomSelect si najde hodnoty sám)
+    if (isOpen && mode === 'edit' && userData) {
       // Debug pouze pokud jsou problémy
-      // console.log('🔍 UserManagementModal - userData:', userData);
 
-      // EXTRAHUJ ID z různých formátů dat - VŽDY PŘEVEĎ NA STRING!
+      // EXTRAHUJ ID z různých formátů dat - CustomSelect potřebuje NUMBER pro strict comparison!
       const extractedIds = {
         // Úsek - může být usek_id přímo nebo vnořený objekt usek.id
-        usek_id: String(userData.usek_id || userData.usek?.id || ''),
+        usek_id: userData.usek_id || userData.usek?.id || null,
 
         // Lokalita - může být lokalita_id přímo, vnořený objekt lokalita.id, nebo najdeme podle názvu
-        lokalita_id: String(userData.lokalita_id ||
+        lokalita_id: userData.lokalita_id ||
           userData.lokalita?.id ||
           (userData.lokalita_nazev ?
             lokality.find(l => l.nazev === userData.lokalita_nazev)?.id
-            : '') || ''),
+            : null) || null,
 
         // Pozice - může být pozice_id přímo, vnořený objekt pozice.id, nebo najdeme podle názvu
-        pozice_id: String(userData.pozice_id ||
+        pozice_id: userData.pozice_id ||
           userData.pozice?.id ||
           (userData.nazev_pozice ?
             pozice.find(p => p.nazev_pozice === userData.nazev_pozice)?.id
-            : '') || ''),
+            : null) || null,
 
         // Organizace - může být organizace_id přímo nebo vnořený objekt organizace.id
-        organizace_id: String(userData.organizace_id ||
+        organizace_id: userData.organizace_id ||
           userData.organizace?.id ||
-          '')
+          null
       };
 
       // Zpracuj role - najdi ID podle nazev_role v načtených rolích
       let rolesIds = [];
       if (Array.isArray(userData.roles)) {
         rolesIds = userData.roles.map(r => {
+          let id = null;
           if (typeof r === 'object' && r !== null) {
             // Pokud má ID, použij ho
             if (r.id || r.role_id) {
-              return r.id || r.role_id;
+              id = r.id || r.role_id;
             }
-            // Jinak najdi v číselníku podle nazev_role
-            if (r.nazev_role) {
-              const foundRole = role.find(roleItem => roleItem.nazev_role === r.nazev_role);
-              return foundRole?.id;
+            // Jinak najdi v číselníku podle nazev_role nebo kod_role
+            else if (r.nazev_role || r.kod_role) {
+              const foundRole = role.find(roleItem => 
+                roleItem.nazev_role === r.nazev_role || roleItem.kod_role === r.kod_role
+              );
+              id = foundRole?.id;
             }
+          } else {
+            // Pokud je číslo/string, použij přímo
+            id = r;
           }
-          // Pokud je číslo/string, použij přímo
-          return r;
+          // ❗ KONVERZE NA NUMBER pro strict comparison v checkbox
+          return id != null ? Number(id) : null;
         }).filter(x => x != null);
       }
 
@@ -951,19 +1055,23 @@ const UserManagementModal = ({
       let rightsIds = [];
       if (Array.isArray(userData.direct_rights)) {
         rightsIds = userData.direct_rights.map(p => {
+          let id = null;
           if (typeof p === 'object' && p !== null) {
             // Pokud má ID, použij ho
             if (p.id || p.pravo_id) {
-              return p.id || p.pravo_id;
+              id = p.id || p.pravo_id;
             }
             // Jinak najdi v číselníku podle kod_prava
-            if (p.kod_prava) {
+            else if (p.kod_prava) {
               const foundRight = prava.find(pravaItem => pravaItem.kod_prava === p.kod_prava);
-              return foundRight?.id;
+              id = foundRight?.id;
             }
+          } else {
+            // Pokud je číslo/string, použij přímo
+            id = p;
           }
-          // Pokud je číslo/string, použij přímo
-          return p;
+          // ❗ KONVERZE NA NUMBER pro strict comparison v checkbox
+          return id != null ? Number(id) : null;
         }).filter(x => x != null);
       }
 
@@ -981,11 +1089,11 @@ const UserManagementModal = ({
         pozice_id: extractedIds.pozice_id,
         organizace_id: extractedIds.organizace_id,
         aktivni: userData.aktivni === 'Ano' || userData.aktivni === 1 || userData.aktivni === '1' ? 1 : 0,
+        vynucena_zmena_hesla: userData.vynucena_zmena_hesla === 1 || userData.vynucena_zmena_hesla === '1' ? 1 : 0,
         roles: rolesIds,
         direct_rights: rightsIds
       };
 
-      // console.log('📝 Nastavuji formData (číselníky jsou načtené):', newFormData);
       setFormData(newFormData);
       setErrors({});
       setSuccessMessage('');
@@ -1005,6 +1113,7 @@ const UserManagementModal = ({
         pozice_id: null,
         organizace_id: null,
         aktivni: 1,
+        vynucena_zmena_hesla: 0,
         roles: [],
         direct_rights: []
       });
@@ -1012,7 +1121,7 @@ const UserManagementModal = ({
       setSuccessMessage('');
       setErrorMessage('');
     }
-  }, [isOpen, mode, userData, loadingData, useky]);
+  }, [isOpen, mode, userData]);
 
   const loadReferenceData = async () => {
     setLoadingData(true);
@@ -1044,8 +1153,6 @@ const UserManagementModal = ({
 
       // DEBUG: Zjistit jestli role obsahují práva
       // if (roleData && roleData.length > 0) {
-      //   console.log('🔍 První role (kontrola struktury):', roleData[0]);
-      //   console.log('🔍 Má role práva?', roleData[0]?.rights ? 'ANO' : 'NE');
       // }
 
       // Vytvoření hierarchické struktury lokalit (okres -> stanoviště)
@@ -1121,6 +1228,52 @@ const UserManagementModal = ({
     return '';
   };
 
+  // 🔑 Funkce pro generování náhodného hesla
+  const generatePassword = (length = 12, complexity = 'high') => {
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    
+    let charset = lowercase;
+    let password = '';
+    
+    if (complexity === 'medium' || complexity === 'high') {
+      charset += uppercase + numbers;
+    }
+    if (complexity === 'high') {
+      charset += special;
+    }
+    
+    // Zajistit alespoň jeden znak z každé kategorie při high complexity
+    if (complexity === 'high') {
+      password += lowercase.charAt(Math.floor(Math.random() * lowercase.length));
+      password += uppercase.charAt(Math.floor(Math.random() * uppercase.length));
+      password += numbers.charAt(Math.floor(Math.random() * numbers.length));
+      password += special.charAt(Math.floor(Math.random() * special.length));
+      length -= 4;
+    }
+    
+    // Doplnit zbývající znaky náhodně
+    for (let i = 0; i < length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    
+    // Zamíchat znaky
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  };
+
+  // 👁️ Funkce pro přepínání zobrazení hesla
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  // 🎲 Funkce pro vygenerování a nastavení nového hesla
+  const handleGeneratePassword = () => {
+    const newPassword = generatePassword(12, 'high');
+    handleChange('password', newPassword);
+  };
+
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -1131,12 +1284,10 @@ const UserManagementModal = ({
   // Funkce pro načtení práv ze všech vybraných rolí
   const loadRightsFromRoles = async (roleIds) => {
     if (!roleIds || roleIds.length === 0) {
-      // console.log('⚠️ Žádné role k načtení');
       setRightsFromRoles(new Set());
       return;
     }
 
-    // console.log('🔍 Začínám načítat práva pro role:', roleIds);
 
     try {
       const allRights = new Set();
@@ -1154,15 +1305,13 @@ const UserManagementModal = ({
           // console.log(`  ✓ Role ${roleId} má ${roleDetail.prava.length} práv:`, roleDetail.prava.map(p => p.kod_prava));
           roleDetail.prava.forEach(p => {
             if (p.id) {
-              allRights.add(p.id);
+              allRights.add(Number(p.id)); // ❗ Konverze na NUMBER
             }
           });
         } else {
-          // console.log(`  ⚠️ Role ${roleId} nemá práva nebo špatná struktura`);
         }
       }
 
-      // console.log(`✅ Načteno celkem ${allRights.size} unikátních práv z ${roleIds.length} rolí`);
       setRightsFromRoles(allRights);
     } catch (error) {
       setRightsFromRoles(new Set());
@@ -1172,10 +1321,8 @@ const UserManagementModal = ({
   // Při změně rolí přenačíst jejich práva
   useEffect(() => {
     if (isOpen && formData.roles && formData.roles.length > 0 && token && user?.username) {
-      // console.log('🔄 Načítám práva pro role:', formData.roles);
       loadRightsFromRoles(formData.roles);
     } else if (isOpen) {
-      // console.log('🔄 Žádné role, vynulování práv');
       setRightsFromRoles(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1297,6 +1444,7 @@ const UserManagementModal = ({
         pozice_id: formData.pozice_id || null,
         organizace_id: formData.organizace_id || null,
         aktivni: formData.aktivni,
+        vynucena_zmena_hesla: formData.vynucena_zmena_hesla,
         roles: formData.roles,
         direct_rights: formData.direct_rights
       };
@@ -1529,18 +1677,31 @@ const UserManagementModal = ({
                         Heslo
                         {mode === 'edit' && <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 400 }}> (ponechat prázdné)</span>}
                       </Label>
-                      <InputWithIcon>
+                      <PasswordInputWrapper>
                         <Key size={16} />
-                        <Input
-                          hasIcon
-                          type="password"
+                        <PasswordInput
+                          type={showPassword ? 'text' : 'password'}
                           value={formData.password}
                           onChange={(e) => handleChange('password', e.target.value)}
                           placeholder={mode === 'edit' ? 'Nové heslo (volitelné)' : 'Heslo'}
                           autoComplete="new-password"
                           hasError={!!errors.password}
                         />
-                      </InputWithIcon>
+                        <PasswordActionIcons>
+                          <PasswordIcon 
+                            onClick={handleGeneratePassword}
+                            title="Vygenerovat náhodné heslo"
+                          >
+                            <Shuffle />
+                          </PasswordIcon>
+                          <PasswordIcon 
+                            onClick={togglePasswordVisibility}
+                            title={showPassword ? 'Skrýt heslo' : 'Zobrazit heslo'}
+                          >
+                            {showPassword ? <EyeOff /> : <Eye />}
+                          </PasswordIcon>
+                        </PasswordActionIcons>
+                      </PasswordInputWrapper>
                       {errors.password && <ErrorText><AlertCircle size={12} />{errors.password}</ErrorText>}
                       {formData.password && (
                         <PasswordStrengthValidator
@@ -1551,18 +1712,18 @@ const UserManagementModal = ({
                     </FormGroup>
 
                     <FormGroup>
-                      <Label>Aktivní</Label>
+                      <Label>Vynutit změnu</Label>
                       <ToggleContainer>
                         <ToggleSwitch>
                           <input
                             type="checkbox"
-                            checked={formData.aktivni === 1}
-                            onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
+                            checked={formData.vynucena_zmena_hesla === 1}
+                            onChange={(e) => handleChange('vynucena_zmena_hesla', e.target.checked ? 1 : 0)}
                           />
                           <span></span>
                         </ToggleSwitch>
-                        <ToggleLabel $active={formData.aktivni === 1}>
-                          {formData.aktivni === 1 ? 'Aktivní' : 'Neaktivní'}
+                        <ToggleLabel $active={formData.vynucena_zmena_hesla === 1}>
+                          {formData.vynucena_zmena_hesla === 1 ? 'Vynutit' : 'Normální'}
                         </ToggleLabel>
                       </ToggleContainer>
                     </FormGroup>
@@ -1627,8 +1788,8 @@ const UserManagementModal = ({
                     </FormGroup>
                   </FormGrid4Col>
 
-                  <FormGrid style={{ marginTop: '1rem' }}>
-                    <FormGroup>
+                  <FormGrid4Col style={{ marginTop: '1rem' }}>
+                    <FormGroup $fullWidth>
                       <Label required>Email</Label>
                       <InputWithIcon>
                         <Mail size={16} />
@@ -1658,7 +1819,24 @@ const UserManagementModal = ({
                       </InputWithIcon>
                       {errors.telefon && <ErrorText><AlertCircle size={12} />{errors.telefon}</ErrorText>}
                     </FormGroup>
-                  </FormGrid>
+
+                    <FormGroup>
+                      <Label>Aktivní</Label>
+                      <ToggleContainer>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={formData.aktivni === 1}
+                            onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                        <ToggleLabel $active={formData.aktivni === 1}>
+                          {formData.aktivni === 1 ? 'Aktivní' : 'Neaktivní'}
+                        </ToggleLabel>
+                      </ToggleContainer>
+                    </FormGroup>
+                  </FormGrid4Col>
                 </FormSection>
               )}
 
@@ -1696,22 +1874,26 @@ const UserManagementModal = ({
                     <EmptyState>Žádné role nenalezeny</EmptyState>
                   ) : (
                     <CheckboxGrid>
-                      {filteredRoles.map(r => (
+                      {filteredRoles.map(r => {
+                        const roleId = Number(r.id); // ❗ Konverze na NUMBER
+                        const isChecked = formData.roles.includes(roleId);
+                        return (
                         <CheckboxLabel
                           key={r.id}
-                          $checked={formData.roles.includes(r.id)}
+                          $checked={isChecked}
                         >
                           <Checkbox
                             type="checkbox"
-                            checked={formData.roles.includes(r.id)}
-                            onChange={() => handleCheckboxChange('roles', r.id)}
+                            checked={isChecked}
+                            onChange={() => handleCheckboxChange('roles', roleId)}
                           />
                           <CheckboxContent>
                             <CheckboxTitle>{r.nazev_role || r.nazev}</CheckboxTitle>
                             {r.popis && <CheckboxDescription>{r.popis}</CheckboxDescription>}
                           </CheckboxContent>
                         </CheckboxLabel>
-                      ))}
+                        );
+                      })}
                     </CheckboxGrid>
                   )}
                 </FormSection>
@@ -1768,8 +1950,9 @@ const UserManagementModal = ({
                   ) : (
                     <CheckboxGrid>
                       {filteredPrava.map(p => {
-                        const isFromRole = rightsFromRoles.has(p.id);
-                        const isDirectlySelected = formData.direct_rights.includes(p.id);
+                        const pravoId = Number(p.id); // ❗ Konverze na NUMBER
+                        const isFromRole = rightsFromRoles.has(pravoId);
+                        const isDirectlySelected = formData.direct_rights.includes(pravoId);
                         const isChecked = isFromRole || isDirectlySelected;
 
                         return (
@@ -1785,7 +1968,7 @@ const UserManagementModal = ({
                               type="checkbox"
                               checked={isChecked}
                               disabled={isFromRole && !isDirectlySelected}
-                              onChange={() => handleCheckboxChange('direct_rights', p.id)}
+                              onChange={() => handleCheckboxChange('direct_rights', pravoId)}
                               style={{ cursor: isFromRole && !isDirectlySelected ? 'not-allowed' : 'pointer' }}
                             />
                             <CheckboxContent>

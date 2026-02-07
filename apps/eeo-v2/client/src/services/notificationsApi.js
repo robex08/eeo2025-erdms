@@ -34,9 +34,6 @@
  * - order_status_zkontrolovana - Zkontrolována (NOVÉ 2025-11-04)
  *
  * OBECNÉ:
- * - order_approved - Objednávka schválena (starý typ - deprecated)
- * - order_rejected - Objednávka zamítnuta (starý typ - deprecated)
- * - order_created - Nová objednávka k schválení (starý typ - deprecated)
  * - system_maintenance - Systémová údržba
  * - user_mention - Zmínka v komentáři
  * - deadline_reminder - Upozornění na termín
@@ -51,32 +48,29 @@ import { loadAuthData } from '../utils/authStorage';
 
 export const NOTIFICATION_TYPES = {
   // STAVY OBJEDNÁVEK (NOVÉ - podle DB)
-  ORDER_STATUS_NOVA: 'order_status_nova',
-  ORDER_STATUS_KE_SCHVALENI: 'order_status_ke_schvaleni',
-  ORDER_STATUS_SCHVALENA: 'order_status_schvalena',
-  ORDER_STATUS_ZAMITNUTA: 'order_status_zamitnuta',
-  ORDER_STATUS_CEKA_SE: 'order_status_ceka_se',
-  ORDER_STATUS_ODESLANA: 'order_status_odeslana',
-  ORDER_STATUS_POTVRZENA: 'order_status_potvrzena',
-  ORDER_STATUS_DOKONCENA: 'order_status_dokoncena',
-  ORDER_STATUS_ZRUSENA: 'order_status_zrusena',
-  ORDER_STATUS_CEKA_POTVRZENI: 'order_status_ceka_potvrzeni',
-  ORDER_STATUS_SMAZANA: 'order_status_smazana',
-  ORDER_STATUS_ROZPRACOVANA: 'order_status_rozpracovana',
+  ORDER_STATUS_NOVA: 'ORDER_CREATED',
+  ORDER_STATUS_KE_SCHVALENI: 'ORDER_PENDING_APPROVAL',
+  ORDER_STATUS_SCHVALENA: 'ORDER_APPROVED',
+  ORDER_STATUS_ZAMITNUTA: 'ORDER_REJECTED',
+  ORDER_STATUS_CEKA_SE: 'ORDER_AWAITING_CHANGES',
+  ORDER_STATUS_ODESLANA: 'ORDER_SENT_TO_SUPPLIER',
+  ORDER_STATUS_POTVRZENA: 'ORDER_CONFIRMED_BY_SUPPLIER',
+  ORDER_STATUS_DOKONCENA: 'ORDER_COMPLETED',
+  ORDER_STATUS_ZRUSENA: 'ORDER_CANCELLED',
+  ORDER_STATUS_CEKA_POTVRZENI: 'ORDER_AWAITING_CONFIRMATION',
+  ORDER_STATUS_SMAZANA: 'ORDER_DELETED',
+  ORDER_STATUS_ROZPRACOVANA: 'ORDER_DRAFT',
 
   // REGISTR SMLUV + FINALIZACE (NOVÉ - 2025-11-04)
   // Používáme existující názvy z DB (25_notification_templates)
-  ORDER_STATUS_UVEREJNIT: 'order_status_registr_ceka',        // Má být zveřejněna (DB: id 13)
-  ORDER_STATUS_UVEREJNENA: 'order_status_registr_zverejnena', // Byla zveřejněna (DB: id 14)
+  ORDER_STATUS_UVEREJNIT: 'ORDER_REGISTRY_PENDING',        // Má být zveřejněna (DB: id 13)
+  ORDER_STATUS_UVEREJNENA: 'ORDER_REGISTRY_PUBLISHED', // Byla zveřejněna (DB: id 14)
   ORDER_STATUS_NEUVEREJNIT: 'order_status_neuverejnit',       // Nebude zveřejňovat (TODO: přidat do DB)
   ORDER_STATUS_FAKTURACE: 'order_status_faktura_prirazena',   // Fáze fakturace (DB: id 60)
   ORDER_STATUS_VECNA_SPRAVNOST: 'order_status_zkontrolovana', // Kontrola věcné správnosti (TODO: ověřit)
-  ORDER_STATUS_ZKONTROLOVANA: 'order_status_kontrola_ceka',   // Zkontrolována (DB: id 19)
+  ORDER_STATUS_ZKONTROLOVANA: 'INVOICE_MATERIAL_CHECK_REQUESTED',   // Faktura - čeká na kontrolu věcné správnosti (DB: id 17)
 
-  // OBECNÉ (STARÉ - deprecated, ale ponecháno pro kompatibilitu)
-  ORDER_APPROVED: 'order_approved',
-  ORDER_REJECTED: 'order_rejected',
-  ORDER_CREATED: 'order_created',
+  // OBECNÉ
   SYSTEM_MAINTENANCE: 'system_maintenance',
   USER_MENTION: 'user_mention',
   DEADLINE_REMINDER: 'deadline_reminder',
@@ -88,6 +82,10 @@ export const NOTIFICATION_TYPES = {
 
   // FORCE UNLOCK (Násilné převzetí objednávky)
   ORDER_UNLOCK_FORCED: 'order_unlock_forced', // Notifikace pro uživatele, kterému byla objednávka násilně odebrána
+
+  // FAKTURY - VĚCNÁ SPRÁVNOST (NOVÉ 2026-01-11)
+  INVOICE_MATERIAL_CHECK_REQUESTED: 'INVOICE_MATERIAL_CHECK_REQUESTED', // Faktura vyžaduje kontrolu věcné správnosti (DB: id 17)
+  INVOICE_MATERIAL_CHECK_APPROVED: 'INVOICE_MATERIAL_CHECK_APPROVED',   // Věcná správnost faktury potvrzena (DB: id 19)
 
   // SYSTÉMOVÉ NOTIFIKACE (NOVÉ z DB)
   SYSTEM_MAINTENANCE_SCHEDULED: 'system_maintenance_scheduled',
@@ -192,25 +190,7 @@ export const NOTIFICATION_CONFIG = {
     priority: 'low'
   },
 
-  // OBECNÉ (STARÉ - deprecated)
-  [NOTIFICATION_TYPES.ORDER_APPROVED]: {
-    icon: '✅',
-    color: '#16a34a',
-    category: 'orders',
-    label: 'Objednávka schválena'
-  },
-  [NOTIFICATION_TYPES.ORDER_REJECTED]: {
-    icon: '❌',
-    color: '#dc2626',
-    category: 'orders',
-    label: 'Objednávka zamítnuta'
-  },
-  [NOTIFICATION_TYPES.ORDER_CREATED]: {
-    icon: '📋',
-    color: '#3b82f6',
-    category: 'orders',
-    label: 'Nová objednávka k schválení'
-  },
+  // OBECNÉ SYSTÉMOVÉ
   [NOTIFICATION_TYPES.SYSTEM_MAINTENANCE]: {
     icon: '🔧',
     color: '#f59e0b',
@@ -398,17 +378,25 @@ const getAuthData = async () => {
     const user = await loadAuthData.user();
 
     if (!token || !user?.username) {
+      console.error('❌ [getAuthData] CHYBA: Chybí token nebo username!');
+      console.error('   token exists:', !!token);
+      console.error('   user exists:', !!user);
+      console.error('   user.username:', user?.username);
       throw new Error('Missing authentication data');
     }
 
-    // Backend potřebuje from_user_id pro identifikaci odesílatele notifikace
-    return {
+    const authData = {
       token,
       username: user.username,
-      from_user_id: user.id,  // ✅ ID uživatele pro from_user_id
-      from_user_name: user.fullName || `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || user.username  // ✅ Celé jméno
+      from_user_id: user.id,
+      from_user_name: user.fullName || `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || user.username
     };
+
+    return authData;
   } catch (error) {
+    console.error('❌ [getAuthData] EXCEPTION:', error);
+    console.error('   Error message:', error.message);
+    console.error('   Error stack:', error.stack);
     throw new Error('Missing authentication data');
   }
 };
@@ -496,7 +484,7 @@ export const markNotificationAsRead = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
     const response = await notificationsApi.post('/notifications/mark-read', payload);
     const result = handleApiResponse(response);
@@ -534,7 +522,7 @@ export const dismissNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
     const response = await notificationsApi.post('/notifications/dismiss', payload);
     const result = handleApiResponse(response);
@@ -574,7 +562,7 @@ export const restoreNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
     const response = await notificationsApi.post('/notifications/restore', payload);
     const result = handleApiResponse(response);
@@ -596,7 +584,7 @@ export const deleteNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
     const response = await notificationsApi.post('/notifications/delete', payload);
     const result = handleApiResponse(response);
@@ -727,7 +715,7 @@ export const clearHiddenNotificationsInDropdown = (userId) => {
  * @example
  * // Notifikace pro konkrétního uživatele
  * await createNotification({
- *   type: 'order_approved',
+ *   type: 'ORDER_APPROVED',
  *   title: 'Objednávka schválena',
  *   message: 'Objednávka č. 2025-001 byla schválena',
  *   to_user_id: 5,
@@ -739,7 +727,7 @@ export const clearHiddenNotificationsInDropdown = (userId) => {
  * @example
  * // Notifikace pro skupinu uživatelů (GARANT + PŘÍKAZCE)
  * await createNotification({
- *   type: 'order_created',
+ *   type: 'ORDER_PENDING_APPROVAL',
  *   title: 'Nová objednávka k schválení',
  *   message: 'Objednávka č. 2025-002 čeká na schválení',
  *   to_users: [3, 5, 8],
@@ -762,9 +750,28 @@ export const createNotification = async (notificationData) => {
   try {
     const auth = await getAuthData();
 
+    // ⚠️ MAPPING: Frontend FE používá `type` ale backend BE očekává `typ`
+    const mappedData = {
+      ...notificationData,
+      typ: notificationData.type,  // Mapuj type → typ pro backend
+      pro_uzivatele_id: notificationData.to_user_id,  // Mapuj to_user_id → pro_uzivatele_id
+      pro_vsechny: notificationData.to_all_users,  // Mapuj to_all_users → pro_vsechny
+      odeslat_email: notificationData.send_email,  // Mapuj send_email → odeslat_email
+      objekt_typ: notificationData.related_object_type,  // Mapuj related_object_type → objekt_typ
+      objekt_id: notificationData.related_object_id  // Mapuj related_object_id → objekt_id
+    };
+
+    // Odstraň původní FE názvy, které už byly namapovány
+    delete mappedData.type;
+    delete mappedData.to_user_id;
+    delete mappedData.to_all_users;
+    delete mappedData.send_email;
+    delete mappedData.related_object_type;
+    delete mappedData.related_object_id;
+
     const payload = {
       ...auth,
-      ...notificationData
+      ...mappedData
     };
 
     const response = await notificationsApi.post('/notifications/create', payload);
@@ -773,6 +780,40 @@ export const createNotification = async (notificationData) => {
     return result;
 
   } catch (error) {
+    console.error('❌ [NotificationsAPI] Chyba při odesílání notifikace:', error);
+    throw error;
+  }
+};
+
+/**
+ * 🆕 NOVÝ: Trigger notifikace podle organizational hierarchy
+ * Backend automaticky najde příjemce v hierarchii podle event typu
+ * 
+ * @param {string} eventType - Event type code (order_status_ke_schvaleni, order_status_schvalena, INVOICE_CREATED, ...)
+ * @param {number} objectId - ID objektu (objednávka, faktura, ...)
+ * @param {number} triggerUserId - ID uživatele, který akci provedl
+ * @param {Object} placeholderData - Volitelná placeholder data (backend je načte automaticky z object_id)
+ * @returns {Promise<Object>} - Výsledek {status: 'ok', sent: number, errors: array}
+ */
+export const triggerNotification = async (eventType, objectId, triggerUserId, placeholderData = {}) => {
+  try {
+    const auth = await getAuthData();
+
+    const payload = {
+      ...auth,
+      event_type: eventType,
+      object_id: objectId,
+      trigger_user_id: triggerUserId,
+      placeholder_data: placeholderData
+    };
+    
+    const response = await notificationsApi.post('/notifications/trigger', payload);
+    const result = handleApiResponse(response);
+
+    return result;
+
+  } catch (error) {
+    console.error('Error triggering notification:', error);
     throw error;
   }
 };
@@ -1272,6 +1313,7 @@ export default {
   deleteNotification,
   deleteAllNotifications,
   createNotification,
+  trigger: triggerNotification,  // 🆕 NOVÝ: Org-hierarchy-aware notifications
   // Dropdown hide helpers (DEPRECATED - use dismiss/delete APIs)
   hideNotificationInDropdown,
   hideAllNotificationsInDropdown,

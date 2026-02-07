@@ -3,20 +3,19 @@ import { css } from '@emotion/react';
 
 export const PanelBase = styled.div`
 	position:fixed; width:340px; height:400px; max-width:94vw; max-height:75vh;
-	background: rgba(0,0,0,0.85); /* fallback */
-	background: linear-gradient(180deg, rgba(15,23,42,0.92), rgba(9,12,20,0.92));
-	backdrop-filter: blur(2px);
-	border: 1px solid var(--app-dark-border, #374151);
-	border-radius: 10px; padding:0.6rem 0.6rem 0.75rem; display:flex; flex-direction:column; gap:0.5rem;
-	color: var(--panel-foreground, #f8fafc); font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,0.55); z-index:100001; user-select:none;
+	background: white;
+	backdrop-filter: blur(8px);
+	border: 2px solid #e5e7eb;
+	border-radius: 12px; padding:0.8rem; display:flex; flex-direction:column; gap:0.5rem;
+	color: #1f2937; font-size:12px; box-shadow:0 12px 40px rgba(0,0,0,0.15); z-index:100001; user-select:none;
 `;
 export const PanelHeader = styled.div`display:flex; align-items:center; justify-content:space-between; gap:.5rem; font-size:.7rem; font-weight:600; letter-spacing:.75px; text-transform:uppercase;`;
 export const TinyBtn = styled.button`
-	background: var(--panel-btn-bg, #1f2937);
-	border: 1px solid var(--panel-btn-border, #334155);
-	color: var(--panel-btn-color, #e2e8f0);
-	padding:0.25rem 0.55rem; border-radius:4px; cursor:pointer; font-size:.55rem; letter-spacing:.5px; display:inline-flex; align-items:center; gap:.35rem;
-	&:hover{ background: var(--panel-btn-bg-hover, #334155); }
+	background: white;
+	border: 2px solid #e5e7eb;
+	color: #6b7280;
+	padding:0.35rem 0.7rem; border-radius:6px; cursor:pointer; font-size:.65rem; font-weight:600; letter-spacing:.3px; display:inline-flex; align-items:center; gap:.4rem; transition: all 0.2s ease;
+	&:hover{ background: #f0fdf4; border-color: #10b981; color: #10b981; }
 `;
 
 export const edgeHandles = (beginDrag, key) => (

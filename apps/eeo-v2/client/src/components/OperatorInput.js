@@ -1,0 +1,190 @@
+/**
+ * OperatorInput Component
+ * Input pole s prefixem pro výběr operátoru (=, <, >)
+ */
+
+import React from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faTimes } from '@fortawesome/free-solid-svg-icons';
+
+const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearButton, onClear }) => {
+  // Rozdělit value na operátor a číslo
+  // Formát: "=5000" nebo ">1000" nebo "<500"
+  const parseValue = (val) => {
+    if (!val) return { operator: '=', number: '' };
+    
+    const match = val.match(/^([=<>])(.*)$/);
+    if (match) {
+      return { operator: match[1], number: match[2].trim() };
+    }
+    // Pokud není operátor, předpokládej =
+    return { operator: '=', number: val };
+  };
+
+  const { operator, number } = parseValue(value);
+
+  const handleOperatorChange = (newOperator) => {
+    // Pokud není číslo, neposílej prázdný string - zachovej operátor
+    if (!number || number.trim() === '') {
+      // Vrať jen operátor bez čísla - tím se filtr neaktivuje, ale uživatel vidí vybraný operátor
+      onChange(newOperator);
+    } else {
+      // DŮLEŽITÉ: Odstranit mezery před odesláním do API
+      const valueWithoutSpaces = number.replace(/\s/g, '');
+      onChange(`${newOperator}${valueWithoutSpaces}`);
+    }
+  };
+
+  const handleNumberChange = (e) => {
+    const rawValue = e.target.value;
+    // Povolit pouze číslice, mezery a případně desetinnou tečku/čárku
+    const cleanValue = rawValue.replace(/[^\d\s,.]/g, '');
+    
+    // Pokud je číslo prázdné, vrať jen operátor (bez čísla se filtr neaktivuje)
+    if (!cleanValue || cleanValue.trim() === '') {
+      onChange(operator);
+    } else {
+      // DŮLEŽITÉ: Odstranit mezery před odesláním do API
+      const valueWithoutSpaces = cleanValue.replace(/\s/g, '');
+      onChange(operator + valueWithoutSpaces);
+    }
+  };
+
+  // Formátování čísla s mezerami (1000 -> 1 000)
+  const formatNumberWithSpaces = (num) => {
+    if (!num) return '';
+    const cleaned = num.replace(/\s/g, '');
+    return cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  };
+
+  return (
+    <Wrapper>
+      <OperatorSelect 
+        value={operator} 
+        onChange={(e) => handleOperatorChange(e.target.value)}
+        title="Vyberte operátor porovnání"
+      >
+        <option value="=">=</option>
+        <option value="<">&lt;</option>
+        <option value=">">&gt;</option>
+      </OperatorSelect>
+      <Separator>|</Separator>
+      <NumberInput
+        type="text"
+        placeholder={placeholder}
+        value={formatNumberWithSpaces(number)}
+        onChange={handleNumberChange}
+        $hasValue={!!(number && number.trim())}
+      />
+      {number && number.trim() && clearButton && onClear && (
+        <ClearButton onClick={onClear} title="Vymazat filtr">
+          <FontAwesomeIcon icon={faTimes} style={{ width: '10px', height: '10px' }} />
+        </ClearButton>
+      )}
+    </Wrapper>
+  );
+};
+
+const Wrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: visible; /* Změna z hidden na visible pro clear button */
+  width: 100%;
+  max-width: 180px; /* Omezit maximální šířku pro úsporu místa */
+
+  &:focus-within {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const OperatorSelect = styled.select`
+  border: none;
+  background: #f8fafc;
+  padding: 0.35rem 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+  border-right: 1px solid #e2e8f0;
+  min-width: 38px;
+  text-align: center;
+
+  &:hover {
+    background: #f1f5f9;
+  }
+
+  option {
+    font-size: 1rem;
+  }
+`;
+
+const Separator = styled.span`
+  color: #cbd5e1;
+  font-weight: 300;
+  padding: 0 0.25rem;
+  user-select: none;
+  font-size: 0.875rem;
+`;
+
+const IconWrapper = styled.div`
+  position: absolute;
+  right: 0.5rem;
+  color: #94a3b8;
+  pointer-events: none;
+`;
+
+const ClearButton = styled.button`
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 1;
+
+  &:hover {
+    color: #6b7280;
+  }
+`;
+
+const NumberInput = styled.input`
+  flex: 1;
+  border: none;
+  padding: 0.35rem 0.3rem;
+  padding-right: 2rem; /* Vždy místo pro clear button */
+  font-size: 0.75rem;
+  color: #1e293b;
+  outline: none;
+  text-align: right;
+  background: transparent;
+  min-width: 50px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
+export default OperatorInput;

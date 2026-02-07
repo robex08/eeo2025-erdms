@@ -1,0 +1,247 @@
+/* ============================================
+   📱 MOBILE CONFIRM DIALOG - Touch-friendly modal
+   ============================================ */
+
+/* Overlay */
+.mobile-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialog box */
+.mobile-confirm-dialog {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 480px;
+  width: 100%;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+[data-theme="dark"] .mobile-confirm-dialog {
+  background: #1f2937;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Header */
+.mobile-confirm-header {
+  padding: 20px 20px 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+[data-theme="dark"] .mobile-confirm-header {
+  border-bottom-color: #374151;
+}
+
+.mobile-confirm-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+[data-theme="dark"] .mobile-confirm-header h3 {
+  color: #f3f4f6;
+}
+
+/* Body */
+.mobile-confirm-body {
+  padding: 20px;
+}
+
+.mobile-confirm-message {
+  margin: 0 0 16px 0;
+  color: #4b5563;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+[data-theme="dark"] .mobile-confirm-message {
+  color: #d1d5db;
+}
+
+/* Reason textarea */
+.mobile-confirm-reason {
+  margin-bottom: 0;
+}
+
+.mobile-confirm-reason textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  color: #1f2937;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.2s;
+}
+
+.mobile-confirm-reason textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.mobile-confirm-reason textarea::placeholder {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .mobile-confirm-reason textarea {
+  background: #111827;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .mobile-confirm-reason textarea:focus {
+  border-color: #60a5fa;
+}
+
+[data-theme="dark"] .mobile-confirm-reason textarea::placeholder {
+  color: #6b7280;
+}
+
+/* Error message */
+.mobile-confirm-error {
+  margin-top: 8px;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .mobile-confirm-error {
+  color: #f87171;
+}
+
+/* Actions */
+.mobile-confirm-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px 20px 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+[data-theme="dark"] .mobile-confirm-actions {
+  border-top-color: #374151;
+}
+
+.mobile-confirm-btn {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 48px; /* Touch-friendly */
+}
+
+.mobile-confirm-btn:active {
+  transform: scale(0.98);
+}
+
+/* Cancel button */
+.mobile-confirm-btn.cancel {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.mobile-confirm-btn.cancel:hover {
+  background: #e5e7eb;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.cancel {
+  background: #374151;
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.cancel:hover {
+  background: #4b5563;
+}
+
+/* Confirm button - variants */
+.mobile-confirm-btn.confirm.primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.mobile-confirm-btn.confirm.primary:hover {
+  background: #2563eb;
+}
+
+.mobile-confirm-btn.confirm.danger {
+  background: #dc2626;
+  color: white;
+}
+
+.mobile-confirm-btn.confirm.danger:hover {
+  background: #b91c1c;
+}
+
+.mobile-confirm-btn.confirm.warning {
+  background: #f59e0b;
+  color: white;
+}
+
+.mobile-confirm-btn.confirm.warning:hover {
+  background: #d97706;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.confirm.primary {
+  background: #60a5fa;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.confirm.primary:hover {
+  background: #3b82f6;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.confirm.danger {
+  background: #f87171;
+  color: #1f2937;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.confirm.danger:hover {
+  background: #dc2626;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.confirm.warning {
+  background: #fbbf24;
+  color: #1f2937;
+}
+
+[data-theme="dark"] .mobile-confirm-btn.confirm.warning:hover {
+  background: #f59e0b;
+}

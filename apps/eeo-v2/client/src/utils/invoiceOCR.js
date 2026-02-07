@@ -7,8 +7,6 @@ async function pdfToCanvas(arrayBuffer) {
   // Dynamicky importujeme pdfjs-dist
   const pdfjsLib = await import('pdfjs-dist/webpack');
   
-  console.log(`📄 Loading PDF from ArrayBuffer (${arrayBuffer.byteLength} bytes)...`);
-  
   // Načteme PDF z ArrayBuffer
   const loadingTask = pdfjsLib.getDocument({ 
     data: arrayBuffer,
@@ -16,15 +14,12 @@ async function pdfToCanvas(arrayBuffer) {
   });
   
   const pdf = await loadingTask.promise;
-  console.log(`📄 PDF loaded: ${pdf.numPages} pages`);
   
   // Získáme první stranu
   const page = await pdf.getPage(1);
-  console.log(`📄 Page 1 loaded`);
   
   // Nastavíme viewport (scale 2 pro lepší kvalitu OCR)
   const viewport = page.getViewport({ scale: 2.0 });
-  console.log(`📄 Viewport: ${viewport.width}x${viewport.height}px`);
   
   // Vytvoříme canvas
   const canvas = document.createElement('canvas');
@@ -39,7 +34,6 @@ async function pdfToCanvas(arrayBuffer) {
   });
   
   await renderTask.promise;
-  console.log(`✅ PDF rendered to canvas`);
   
   return canvas;
 }
@@ -60,7 +54,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       throw new Error('Neplatný ArrayBuffer');
     }
 
-    console.log(`📄 Starting OCR extraction (${arrayBuffer.byteLength} bytes, attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     onProgress(0, 'Načítám PDF...');
     
     // Validace velikosti
@@ -83,13 +76,11 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
           setTimeout(() => reject(new Error('Timeout při konverzi PDF (30s)')), 30000)
         )
       ]);
-      console.log(`✅ PDF converted to canvas: ${canvas.width}x${canvas.height}px`);
     } catch (conversionError) {
       console.error('❌ PDF conversion error:', conversionError);
       
       // Retry logic
       if (retryCount < MAX_RETRIES) {
-        console.log(`🔄 Retrying PDF conversion (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
         onProgress(5, `Opakuji pokus ${retryCount + 2}/${MAX_RETRIES + 1}...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return extractTextFromPDF(arrayBuffer, onProgress, retryCount + 1);
@@ -124,13 +115,11 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
         tessedit_char_whitelist: '0123456789.,/:- ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž', // Povolené znaky
       });
       
-      console.log(`📐 Canvas size: ${canvas.width}x${canvas.height}px (scale: 2.0x)`);
       
     } catch (workerError) {
       console.error('❌ Worker creation error:', workerError);
       
       if (retryCount < MAX_RETRIES) {
-        console.log(`🔄 Retrying OCR init (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
         onProgress(5, `Opakuji pokus ${retryCount + 2}/${MAX_RETRIES + 1}...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return extractTextFromPDF(arrayBuffer, onProgress, retryCount + 1);
@@ -154,7 +143,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       text = result?.data?.text || '';
       const confidence = result?.data?.confidence || 0;
       
-      console.log(`✅ OCR completed: ${text.length} characters, confidence: ${confidence.toFixed(1)}%`);
       
       if (!text || text.trim().length === 0) {
         throw new Error('PDF neobsahuje rozpoznatelný text. Dokument může být prázdný nebo ve špatné kvalitě.');
@@ -163,7 +151,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       console.error('❌ Recognition error:', recognizeError);
       
       if (retryCount < MAX_RETRIES && !recognizeError.message.includes('Timeout')) {
-        console.log(`🔄 Retrying recognition (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
         await worker.terminate();
         return extractTextFromPDF(arrayBuffer, onProgress, retryCount + 1);
       }
@@ -283,11 +270,6 @@ export function extractInvoiceData(text) {
     }
   }
   
-  console.log(`📅 Found ${allDateMatches.length} dates in document:`);
-  allDateMatches.forEach((d, i) => {
-    console.log(`  ${i + 1}. ${d.date} (${d.parsed}) - context: ...${d.contextBefore.slice(-30)}[DATE]${d.contextAfter.slice(0, 30)}...`);
-  });
-  
   // ========== ROBUSTNÍ Hledání Datumu vystavení ==========
   // Více variant klíčových slov (včetně OCR chyb: í→i, ě→e, ř→r, atd.)
   const issueDateKeywords = [
@@ -369,10 +351,6 @@ export function extractInvoiceData(text) {
       foundKeywords.push('-weak_dne(penalty)');
     }
     
-    if (foundKeywords.length > 0) {
-      console.log(`  📅 Date ${dateMatch.date}: Keywords: ${foundKeywords.join(', ')} → score: ${score}`);
-    }
-    
     if (score > bestIssueScore) {
       bestIssueScore = score;
       bestIssueDate = dateMatch.parsed;
@@ -381,7 +359,6 @@ export function extractInvoiceData(text) {
   }
   
   result.datumVystaveni = bestIssueDate;
-  console.log(`✅ Best datum vystavení: ${bestIssueDate} (score: ${bestIssueScore}) - ${bestIssueDebug}`);
   
   // ========== ROBUSTNÍ Hledání Datumu splatnosti ==========
   // Více variant klíčových slov (včetně OCR chyb)
@@ -465,10 +442,6 @@ export function extractInvoiceData(text) {
       foundKeywords.push('-same_as_issue(penalty)');
     }
     
-    if (foundKeywords.length > 0) {
-      console.log(`  📅 Date ${dateMatch.date}: Keywords: ${foundKeywords.join(', ')} → score: ${score}`);
-    }
-    
     if (score > bestDueScore) {
       bestDueScore = score;
       bestDueDate = dateMatch.parsed;
@@ -477,7 +450,6 @@ export function extractInvoiceData(text) {
   }
   
   result.datumSplatnosti = bestDueDate;
-  console.log(`✅ Best datum splatnosti: ${bestDueDate} (score: ${bestDueScore}) - ${bestDueDebug}`);
 
   // ========== Hledání Částky vč. DPH ==========
   // Hledáme částku s označením různých variant
@@ -580,7 +552,6 @@ function parseAmount(amountStr) {
   }
   
   const result = parseFloat(normalized);
-  console.log(`💰 parseAmount: "${amountStr}" → "${cleaned}" → "${normalized}" → ${result}`);
   
   return isNaN(result) ? null : result;
 }

@@ -210,6 +210,33 @@ class DraftManager {
   }
 
   /**
+   * 🧹 KOMPLETNÍ ČIŠTĚNÍ všech dat formuláře
+   * Použít při zavření formuláře (unmount) pro vymazání všech dat
+   * Vymaže draft, faktury, přílohy, cache, UI state
+   * @returns {boolean} True pokud úspěšně vyčištěno
+   */
+  async deleteAllFormData() {
+    if (!this.currentUserId) {
+      console.warn('⚠️ deleteAllFormData: Není nastaven currentUserId');
+      return false;
+    }
+
+    try {
+      // Zavolej komplexní cleanup ve storage service
+      const result = await order25DraftStorageService.deleteAllFormData(this.currentUserId);
+
+      if (result) {
+        this._notifyDraftChange();
+      }
+
+      return result;
+    } catch (error) {
+      console.error('❌ DraftManager: Chyba při kompletním čištění:', error);
+      return false;
+    }
+  }
+
+  /**
    * Reset při logout - vyčistí stav ale NEmaže persisted drafty
    */
   logout() {
@@ -412,6 +439,28 @@ class DraftManager {
 
     } catch (error) {
       return null;
+    }
+  }
+
+  /**
+   * 🧹 Vyčistí všechna metadata
+   */
+  clearMetadata() {
+    if (!this.currentUserId) {
+      return false;
+    }
+
+    try {
+      const userId = this.currentUserId;
+
+      localStorage.removeItem(`order_form_isEditMode_${userId}`);
+      localStorage.removeItem(`order_form_savedOrderId_${userId}`);
+      localStorage.removeItem(`openOrderInConcept-${userId}`);
+
+      return true;
+
+    } catch (error) {
+      return false;
     }
   }
 

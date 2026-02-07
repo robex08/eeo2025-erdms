@@ -10,6 +10,7 @@ import {
 
 const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
   const [year, setYear] = useState(new Date().getFullYear());
+  const [recalculateBalances, setRecalculateBalances] = useState(true); // 🆕 Checkbox pro přepočet zůstatků
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [error, setError] = useState(null);
@@ -17,12 +18,9 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
   const [resultData, setResultData] = useState(null); // ✨ Uložení výsledku přepočtu
 
   const handleConfirm = async (e) => {
-    console.log('🔘 KLIKNUTO NA PROVÉST PŘEPOČET - handleConfirm() volán');
-
     if (e) {
       e.preventDefault();
       e.stopPropagation();
-      console.log('✅ Event.preventDefault() a stopPropagation() zavolány');
     }
 
     // ✅ Reset všech stavů (včetně předchozí chyby)
@@ -38,24 +36,47 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
 
       // ✅ PO ZMĚNĚ (commit 945cc8e): Používá se pokladna_id místo assignment.id
       const pokladnaId = assignment.pokladna_id;
-      console.log('🔧 Force přepočet START:', { pokladnaId, year });
 
       const result = await onConfirm(pokladnaId, year);
 
-      console.log('🔧 Force přepočet RESPONSE:', result);
-      console.log('🔍 FULL RESPONSE (včetně debug):', JSON.stringify(result, null, 2));
-
       if (result && result.status === 'ok') {
+        let finalResult = { ...result.data };
+        
+        // 🆕 Pokud je zaškrtnut checkbox, přepočítat zůstatky všech lednových knih
+        if (recalculateBalances) {
+          setProgress({
+            current: 3,
+            total: 5,
+            phase: 'Přepočítávám zůstatky položek...'
+          });
+          
+          try {
+            // Import cashbookAPI pro volání recalculate endpointu
+            const { default: cashbookAPI } = await import('../../services/cashbookService');
+            
+            // Volání backend endpointu pro přepočet všech lednových knih dané pokladny
+            const recalcResponse = await cashbookAPI.recalculateJanuaryBalances(pokladnaId, year);
+            
+            if (recalcResponse && recalcResponse.status === 'ok') {
+              finalResult.balances_recalculated = recalcResponse.data?.recalculated_books || 0;
+              finalResult.balance_info = `Přepočítáno ${recalcResponse.data?.recalculated_books || 0} lednových knih`;
+            }
+          } catch (recalcErr) {
+            console.warn('⚠️ Přepočet zůstatků selhal:', recalcErr);
+            finalResult.balance_warning = 'Přepočet zůstatků se nezdařil';
+          }
+        }
+        
         // Úspěch - zobraz finální progress
         setProgress({
-          current: 4,
-          total: 4,
-          phase: `Hotovo! Přečíslováno ${result.data.total_renumbered} položek`
+          current: 5,
+          total: 5,
+          phase: `Hotovo! Přečíslováno ${result.data.total_renumbered} položek${recalculateBalances ? ' + zůstatky přepočítány' : ''}`
         });
 
         // ✅ Ulož CELÝ result (včetně debug) pro zobrazení
         setResultData({
-          ...result.data,
+          ...finalResult,
           debug: result.debug || null  // Přidej debug data pokud existují
         });
 
@@ -95,7 +116,6 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
   };
 
   const handleClose = () => {
-    console.log('🚪 ZAVÍRÁM DIALOG - handleClose() volán');
     // Reset state při zavírání
     setIsProcessing(false);
     setIsCompleted(false);
@@ -114,7 +134,12 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
           <WarningIconLarge>
             <FontAwesomeIcon icon={faExclamationTriangle} />
           </WarningIconLarge>
-          <h2>⚠️ FORCE PŘEPOČET DOKLADŮ</h2>
+          <DialogTitle>
+            <h2>⚠️ FORCE PŘEPOČET DOKLADŮ</h2>
+            {assignment?.nazev && (
+              <CashboxName>📦 {assignment.nazev}</CashboxName>
+            )}
+          </DialogTitle>
           <CloseButton onClick={handleClose} disabled={isProcessing}>
             <FontAwesomeIcon icon={faTimes} />
           </CloseButton>
@@ -178,6 +203,24 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
                 disabled={isProcessing || isCompleted}
               />
             </YearInput>
+            
+            {/* 🆕 Checkbox pro přepočet zůstatků */}
+            <CheckboxWrapper>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={recalculateBalances}
+                  onChange={(e) => setRecalculateBalances(e.target.checked)}
+                  disabled={isProcessing || isCompleted}
+                />
+                <CheckboxLabel>
+                  <strong>✨ Přepočítat zůstatky položek</strong>
+                  <CheckboxHint>
+                    Přepočítá zustatek_po_operaci všech položek v lednových knihách od počátečního stavu
+                  </CheckboxHint>
+                </CheckboxLabel>
+              </label>
+            </CheckboxWrapper>
             {(isProcessing || isCompleted) && progress.phase && (
               <ProgressBox $completed={isCompleted}>
                 <ProgressLabel $completed={isCompleted}>
@@ -223,6 +266,18 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
                       <ResultLabel>📥 Příjmy (PPD):</ResultLabel>
                       <ResultValue>{resultData.ppd_renumbered} položek</ResultValue>
                     </ResultItem>
+                    {resultData.balances_recalculated !== undefined && (
+                      <ResultItem $highlight>
+                        <ResultLabel>✨ Zůstatky přepočítány:</ResultLabel>
+                        <ResultValue>{resultData.balances_recalculated} lednových knih</ResultValue>
+                      </ResultItem>
+                    )}
+                    {resultData.balance_warning && (
+                      <ResultItem $warning>
+                        <ResultLabel>⚠️</ResultLabel>
+                        <ResultValue>{resultData.balance_warning}</ResultValue>
+                      </ResultItem>
+                    )}
                   </ResultGrid>
                 </ResultBox>
 
@@ -365,6 +420,30 @@ const DialogHeader = styled.div`
     margin: 0.5rem 0 0 0;
     font-size: 1.5rem;
   }
+`;
+
+const DialogTitle = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+
+  h2 {
+    margin: 0.5rem 0 0 0;
+    font-size: 1.5rem;
+  }
+`;
+
+const CashboxName = styled.div`
+  font-size: 1rem;
+  font-weight: 600;
+  color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  padding: 0.5rem 1.5rem;
+  border-radius: 20px;
+  border: 2px solid #3b82f6;
+  margin-top: 0.25rem;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
 `;
 
 const WarningIconLarge = styled.div`
@@ -846,6 +925,47 @@ const ConfirmButton = styled.button`
     cursor: not-allowed;
     transform: none;
   }
+`;
+
+// 🆕 Styled komponenty pro checkbox
+const CheckboxWrapper = styled.div`
+  margin: 1rem 0;
+  padding: 1rem;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+
+  label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    cursor: pointer;
+  }
+
+  input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+`;
+
+const CheckboxLabel = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  
+  strong {
+    color: #92400e;
+    font-size: 0.95rem;
+  }
+`;
+
+const CheckboxHint = styled.div`
+  font-size: 0.85rem;
+  color: #78350f;
+  line-height: 1.4;
 `;
 
 export default ForceRenumberDialog;

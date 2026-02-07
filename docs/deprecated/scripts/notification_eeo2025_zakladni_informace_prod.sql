@@ -1,0 +1,179 @@
+USE `eeo2025`;
+
+-- ============================================================================
+-- POST-LOGIN MODAL NOTIFIKACE: Základní vstupní informace (EEO v2 © 2026)
+-- ============================================================================
+-- Vytvořeno: 2026-01-03
+-- Popis: Moderní clean design post-login notifikace s důležitými informacemi
+--        pro uživatele při prvním přihlášení do EEO 2026
+-- ============================================================================
+
+-- Smazat starou notifikaci pokud existuje
+DELETE FROM 25_notifikace WHERE id = 977;
+
+-- Vložit novou notifikaci
+INSERT INTO 25_notifikace (
+    id,
+    typ,
+    nadpis,
+    zprava,
+    priorita,
+    kategorie,
+    aktivni,
+    dt_created
+) VALUES (
+    977,
+    'system_announcement',
+    '📋 Základní vstupní informace',
+    '<div class="eeo-notification" style="font-family: -apple-system, BlinkMacSystemFont, ''Segoe UI'', Roboto, Oxygen, Ubuntu, Cantarell, ''Helvetica Neue'', sans-serif; color: #374151; font-size: 15px; line-height: 1.7; max-width: 800px; margin: 0 auto;">
+        
+        <!-- Hlavní nadpis -->
+        <div style="text-align: center; margin-bottom: 40px;">
+            <h1 style="font-size: 26px; font-weight: 600; color: #111827; margin: 0; letter-spacing: -0.3px;">
+                Základní vstupní informace
+            </h1>
+            <p style="margin: 8px 0 0 0; color: #6b7280; font-size: 14px;">EEO v2 © 2026</p>
+        </div>
+
+        <!-- Objednávky roku 2025 -->
+        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 12px 0;">
+                Objednávky roku 2025
+            </h3>
+            <p style="margin: 0 0 16px 0; color: #4b5563; line-height: 1.7;">
+                Pokud potřebujete dokončit nebo vložit objednávky ještě do roku 2025, zašlete Objednávkový formulář s případnými přílohami a informacemi na 
+                <a href="mailto:Faktury@zachranka.cz" style="color: #2563eb; font-weight: 500; text-decoration: none;">Faktury@zachranka.cz</a>.
+            </p>
+            <div style="background: #fef2f2; border-left: 3px solid #dc2626; padding: 16px; border-radius: 6px;">
+                <p style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: #991b1b;">
+                    ⚠️ V žádném případě nezadávejte objednávky roku 2025 do nového EEO 2026!
+                </p>
+                <p style="margin: 0; font-size: 14px; color: #7f1d1d; line-height: 1.6;">
+                    Čerpali by jste tím špatné finanční prostředky.
+                </p>
+            </div>
+        </div>
+
+        <!-- Pokladníci -->
+        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 12px 0;">
+                Pokladníci
+            </h3>
+            <p style="margin: 0 0 12px 0; color: #4b5563; line-height: 1.7;">
+                Do uzavření inventarizace roku 2025 a&nbsp;vložení počátečního stavu z&nbsp;oddělení účetnictví, bude <strong style="font-weight: 600;">EEO Pokladna ukazovat minusový konečný stav</strong>.
+            </p>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 14px; border-radius: 6px;">
+                <p style="margin: 0; font-size: 14px; color: #6b7280;">
+                    📝 <strong style="font-weight: 600; color: #374151;">Vše popsáno v návodu:</strong> <a href="#" onclick="event.preventDefault(); window.location.href=''help''; return false;" style="color: #2563eb; font-weight: 500; text-decoration: none; border-bottom: 1px solid #93c5fd; cursor: pointer;">Jak poprvé pracovat s Pokladnou</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Evidence -->
+        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 12px 0;">
+                Nezapomeňte, že s novým EEO se musí evidovat
+            </h3>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                    <span style="color: #9ca3af; font-weight: 600; flex-shrink: 0;">•</span>
+                    <p style="margin: 0; color: #4b5563; line-height: 1.7;">
+                        <strong style="font-weight: 600; color: #374151;">objednávky</strong>, které <strong style="font-weight: 600; color: #374151;">nejsou na základě smlouvy</strong>, tedy jejich čerpání je z Limitovaného příslíbu nebo z Individuálního schválení
+                    </p>
+                </div>
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                    <span style="color: #9ca3af; font-weight: 600; flex-shrink: 0;">•</span>
+                    <p style="margin: 0; color: #4b5563; line-height: 1.7;">
+                        <strong style="font-weight: 600; color: #374151;">nově i objednávek</strong> z rámcových smluv, které <strong style="font-weight: 600; color: #374151;">mají postupné čerpání</strong>
+                    </p>
+                </div>
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                    <span style="color: #9ca3af; font-weight: 600; flex-shrink: 0;">•</span>
+                    <p style="margin: 0; color: #4b5563; line-height: 1.7;">
+                        <strong style="font-weight: 600; color: #374151;">požadavky</strong> na externí vzdělávací kurzy
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Oprávnění -->
+        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 12px 0;">
+                Oprávnění
+            </h3>
+            <p style="margin: 0; color: #4b5563; line-height: 1.7;">
+                V případě, že nedisponujete vyššími oprávněními za úsek či oblast, je možné, že do vytvoření své první objednávky uvidíte přehled naprosto prázdný.
+            </p>
+        </div>
+
+        <!-- Teams podpora -->
+        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 12px 0;">
+                Online Teams podpora
+            </h3>
+            <p style="margin: 0; color: #4b5563; line-height: 1.7;">
+                V první měsíci bude <strong style="font-weight: 600; color: #374151;">pravidelně k&nbsp;dispozici</strong> pro hromadné dotazy nebo i&nbsp;podrobné školení, o&nbsp;termínech budete informováni.
+            </p>
+        </div>
+
+        <!-- Nápověda -->
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+            <p style="margin: 0; font-size: 15px; color: #78350f; line-height: 1.7;">
+                💡 <strong style="font-weight: 600;">Prosím prostudujte si návody</strong>, naleznete je v&nbsp;pravém horním rohu aplikace pod ikonou otazníku <a href="help" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #374151; color: white; border-radius: 50%; font-size: 13px; vertical-align: middle; text-decoration: none; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background=''#1f2937''" onmouseout="this.style.background=''#374151''">?</a>
+            </p>
+        </div>
+
+        <!-- Kontakt -->
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 24px; border-radius: 8px; text-align: center;">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 16px 0;">
+                Potřebujete pomoc?
+            </h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; font-size: 14px;">
+                <a href="mailto:helpdesk@zachranka.cz" style="color: #2563eb; font-weight: 500; text-decoration: none;">📧 helpdesk@zachranka.cz</a>
+                <span style="color: #d1d5db;">|</span>
+                <span style="color: #374151; font-weight: 500;">☎️ 731 137 100</span>
+            </div>
+        </div>
+
+    </div>',
+    5,
+    'system',
+    1,
+    NOW()
+);
+
+-- ============================================================================
+-- KONFIGURACE POST-LOGIN MODALU
+-- ============================================================================
+-- Nastavení globálního systému pro zobrazení modalu po přihlášení
+
+UPDATE 25a_nastaveni_globalni 
+SET hodnota = '977'
+WHERE klic = 'post_login_modal_message_id';
+
+UPDATE 25a_nastaveni_globalni 
+SET hodnota = 'modal_eeo2026_info_v2_clean'
+WHERE klic = 'post_login_modal_guid';
+
+UPDATE 25a_nastaveni_globalni 
+SET hodnota = '2026-01-31'
+WHERE klic = 'post_login_modal_valid_to';
+
+UPDATE 25a_nastaveni_globalni 
+SET hodnota = '1'
+WHERE klic = 'post_login_modal_enabled';
+
+-- ============================================================================
+-- KONTROLA
+-- ============================================================================
+SELECT 
+    klic AS 'Nastavení',
+    hodnota AS 'Hodnota'
+FROM 25a_nastaveni_globalni 
+WHERE klic IN (
+    'post_login_modal_message_id',
+    'post_login_modal_guid',
+    'post_login_modal_valid_to',
+    'post_login_modal_enabled'
+)
+ORDER BY klic;

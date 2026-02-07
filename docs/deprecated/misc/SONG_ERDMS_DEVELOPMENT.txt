@@ -1,0 +1,124 @@
+═══════════════════════════════════════════════════════════════
+    SLOKA: VÝVOJ ERDMS - CESTA JEDNÉ APLIKACE
+    Formát: SUNO Music Structure
+    Autor: GitHub Copilot (Claude Haiku 4.5)
+    Datum: 1. ledna 2026
+═══════════════════════════════════════════════════════════════
+
+[INTRO - Pomalý, meditativní začátek]
+Něco se rodilo, v tichu kódu spalo...
+
+
+═══════════════════════════════════════════════════════════════
+SLOKA 1: POČÁTKY
+═══════════════════════════════════════════════════════════════
+
+Byl jednou čas, když startup pálil,
+ZZS Admin mezi noci psát jen vytrval,
+PHP a databáze, staré silné znalosti,
+Záchranná služba, tam kde záleží na poslnosti.
+
+Řádky kódu psáty v rohu tmavém,
+Mariadb švehoval svým údajem chladným,
+Legacy systém, ale pevný jako skála,
+Jeden muž, jeden cíl, když ostatní spala.
+
+
+═══════════════════════════════════════════════════════════════
+SLOKA 2: MODERNÍ ÉTOS
+═══════════════════════════════════════════════════════════════
+
+Pak přišla vzpoura - React! Vite! Node.js! Nové věci!
+GitHub Copilot Claude brání v tom měšti,
+PDO migrace, security oprávka,
+DEV a PROD oddělení - byla to pěkná práce!
+
+Tisíce commitů, funkce za funkcí,
+Hierarchie uživatelů, oprávnění v slunci,
+Faktury, objednávky, kalkulace cen,
+Azure AD přihlášení - v tom je nový sen.
+
+
+═══════════════════════════════════════════════════════════════
+SLOKA 3: PŘEKÁŽKY A VÍTĚZSTVÍ
+═══════════════════════════════════════════════════════════════
+
+Notifikační triggery - ta byla bitva!
+Audit trails, bezpečnost - cesta drsná, krutá,
+Ale tým (i když někdy jen duše a algoritmy),
+Znal kód, znal srdce, překonal všechny boje.
+
+Chyby v kalkulacích - opraveny brzo,
+HTML šablony - ladění bylo mrzo,
+Ale aplikace rostla, kvetla, zrála,
+Každou noc, každý den - o práce se nejedná!
+
+
+═══════════════════════════════════════════════════════════════
+SLOKA 4: VIZE BUDOUCNOSTI
+═══════════════════════════════════════════════════════════════
+
+Teď stojíme v lednu, na prahu roka nového,
+ERDMS žije - systém ten obrovský!
+Ze dev větví rostou features generické,
+Recipient systém - architektura klasické!
+
+Pro záchranáře, pro správce, pro každého,
+Kdo chce být připraven, být rychlý, být chytrý,
+Tato aplikace, tento kód, tato vize,
+Je monument odvahy - v bitech vzývá si!
+
+ZZS bude silnější, data pečlivě střežena,
+Legacy s modernem - krásně sjednocena,
+ERDMS žije v produkci, v DEV větvích roste,
+Příběh vývoje - to je skutečné umění!
+
+
+═══════════════════════════════════════════════════════════════
+OUTRO - Reflektivní závěr
+═══════════════════════════════════════════════════════════════
+
+Jeden server, dva světy, jeden tým,
+Kód, který píšeme - to je naš hymn...
+ERDMS, ERDMS - emergency v srdci,
+Data management - v každém řádku se smrcí!
+
+
+═══════════════════════════════════════════════════════════════
+METADATA SUNO
+═══════════════════════════════════════════════════════════════
+
+Genre: Folk-Tech Ballad (Lidová epická balada s tech motivy)
+Mood: Inspirativní, Epický, Nostalgicky-Futuristický
+Tempo: 90 BPM (pomalé až střední)
+Key: E minor (Eminor - tragická energia)
+
+INSTRUMENTS:
+- Hlavní: Akustická kytara (fingerpicking)
+- Druhá: Violy, Cella (smutný folk vibe)
+- Vedlejší: Subtilní syntetizátor (tech prvky)
+- Pozadí: Ambient zvuky psaní na klávesnici (Easter egg)
+
+VOCAL STYLE: Mužský hlas - Storyteller (ne rapper, spíše tradicionalní vypravěč)
+PRONUNCIATION: Česky, zřetelně, s cítěním
+
+Production Notes:
+- Sloka 1: Pomalá, melancholická, osamoceného vývojáře
+- Sloka 2: Méně pomalá, energie roste - nové technologie
+- Sloka 3: Dynamičtější - drama, překážky, výzvy
+- Sloka 4: Triumfální, vznešená - epilog, vize budoucnosti
+- Outro: Zase pomalé - reflexe, meditace, závěr
+
+═══════════════════════════════════════════════════════════════
+
+NOTER PRO SUNO AI:
+Tato skladba by měla znít jako nová česká tech-folková balada.
+Kombinuje prvky lidové épiky (ballady o válečnících) s příběhem
+softwarového vývoje. Měla by vzbudit pocit odkazu, hrdosti a
+posvátnosti údajů v zdravotnické záchranné službě.
+
+Vhodný prompt pro SUNO: "Czech tech ballad about emergency response 
+system development, mix of folk and digital sounds, male storyteller 
+voice, epic and inspiring mood, mentions legacy and modern systems"
+
+═══════════════════════════════════════════════════════════════

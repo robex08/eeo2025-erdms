@@ -1,0 +1,427 @@
+/* ============================================
+   🎨 MOBILE DASHBOARD - Light & Dark Mode
+   ============================================ */
+
+.mobile-dashboard {
+  /* ŽÁDNÉ výškové omezení - obsah definuje výšku */
+  background: #f3f4f6;
+  padding-top: 60px;
+  padding-bottom: 40px;
+}
+
+/* 🌙 Dark Mode */
+[data-mobile-theme="dark"] .mobile-dashboard {
+  background: #111827;
+}
+
+.mobile-dashboard-content {
+  padding: 16px;
+  padding-bottom: 100px;
+}
+
+/* Loading */
+.mobile-dashboard-loading {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  color: white;
+}
+
+.mobile-dashboard-loading p {
+  margin-top: 16px;
+  font-size: 16px;
+}
+
+.spinner-circle {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.spinner-circle.small {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Refresh indicator */
+.mobile-refresh-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+[data-mobile-theme="dark"] .mobile-refresh-indicator {
+  background: rgba(30, 41, 59, 0.95);
+  color: #e2e8f0;
+}
+
+/* Sekce widgetů */
+.mobile-widget-section {
+  margin-bottom: 24px;
+}
+
+.mobile-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.mobile-section-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.mobile-section-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+  text-align: right;
+}
+
+.mobile-summary-count {
+  color: #6b7280;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mobile-summary-amount {
+  color: #059669;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Grid widgetů */
+.mobile-widget-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+/* Widget karta */
+.mobile-widget-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.mobile-widget-card:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Barevné varianty */
+.mobile-widget-card.orange {
+  border-left: 4px solid #f97316;
+}
+
+.mobile-widget-card.orange .mobile-widget-icon {
+  background: #fff7ed;
+  color: #f97316;
+}
+
+.mobile-widget-card.green {
+  border-left: 4px solid #10b981;
+}
+
+.mobile-widget-card.green .mobile-widget-icon {
+  background: #ecfdf5;
+  color: #10b981;
+}
+
+.mobile-widget-card.blue {
+  border-left: 4px solid #3b82f6;
+}
+
+.mobile-widget-card.blue .mobile-widget-icon {
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
+.mobile-widget-card.teal {
+  border-left: 4px solid #14b8a6;
+}
+
+.mobile-widget-card.teal .mobile-widget-icon {
+  background: #f0fdfa;
+  color: #14b8a6;
+}
+
+.mobile-widget-card.red {
+  border-left: 4px solid #ef4444;
+}
+
+.mobile-widget-card.red .mobile-widget-icon {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.mobile-widget-card.gray {
+  border-left: 4px solid #6b7280;
+}
+
+.mobile-widget-card.gray .mobile-widget-icon {
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+.mobile-widget-card.purple {
+  border-left: 4px solid #a855f7;
+}
+
+.mobile-widget-card.purple .mobile-widget-icon {
+  background: #faf5ff;
+  color: #a855f7;
+}
+
+/* Ikona widgetu */
+.mobile-widget-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+}
+
+.mobile-widget-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Obsah widgetu */
+.mobile-widget-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-widget-count {
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+}
+
+.mobile-widget-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  line-height: 1.3;
+}
+
+.mobile-widget-subtitle {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.2;
+}
+
+.mobile-widget-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: #059669;
+  margin-top: 6px;
+  line-height: 1.2;
+}
+
+/* Prázdný stav */
+.mobile-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.mobile-empty-state svg {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.mobile-empty-state p {
+  font-size: 16px;
+  margin: 0;
+}
+
+/* Tlačítko obnovení */
+.mobile-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  color: #374151;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  margin-top: 16px;
+}
+
+.mobile-refresh-btn:active:not(:disabled) {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.mobile-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mobile-refresh-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Responzivní úpravy */
+@media (max-width: 360px) {
+  .mobile-widget-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .mobile-widget-count {
+    font-size: 24px;
+  }
+}
+
+@media (min-width: 500px) {
+  .mobile-widget-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+/* ============================================
+   🌙 DARK MODE - Mobilní Dashboard
+   ============================================ */
+
+[data-mobile-theme="dark"] .mobile-dashboard-loading {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+}
+
+[data-mobile-theme="dark"] .mobile-refresh-indicator {
+  background: #1f2937;
+  color: #9ca3af;
+}
+
+[data-mobile-theme="dark"] .mobile-section-header h2 {
+  color: #f9fafb;
+}
+
+[data-mobile-theme="dark"] .mobile-summary-count {
+  color: #9ca3af;
+}
+
+[data-mobile-theme="dark"] .mobile-summary-amount {
+  color: #10b981;
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card {
+  background: #1f2937;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card:active {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Dark mode - barevné varianty widgetů */
+[data-mobile-theme="dark"] .mobile-widget-card.orange .mobile-widget-icon {
+  background: rgba(249, 115, 22, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card.green .mobile-widget-icon {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card.blue .mobile-widget-icon {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card.teal .mobile-widget-icon {
+  background: rgba(20, 184, 166, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card.red .mobile-widget-icon {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card.gray .mobile-widget-icon {
+  background: rgba(107, 114, 128, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-card.purple .mobile-widget-icon {
+  background: rgba(168, 85, 247, 0.15);
+}
+
+[data-mobile-theme="dark"] .mobile-widget-count {
+  color: #f9fafb;
+}
+
+[data-mobile-theme="dark"] .mobile-widget-title {
+  color: #e5e7eb;
+}
+
+[data-mobile-theme="dark"] .mobile-widget-subtitle {
+  color: #9ca3af;
+}
+
+[data-mobile-theme="dark"] .mobile-widget-amount {
+  color: #10b981;
+  font-weight: 700;
+}
+
+[data-mobile-theme="dark"] .mobile-empty-state {
+  color: #6b7280;
+}
+
+[data-mobile-theme="dark"] .mobile-refresh-btn {
+  background: #1f2937;
+  border-color: #374151;
+  color: #e5e7eb;
+}
+
+[data-mobile-theme="dark"] .mobile-refresh-btn:active:not(:disabled) {
+  background: #111827;
+  border-color: #4b5563;
+}
