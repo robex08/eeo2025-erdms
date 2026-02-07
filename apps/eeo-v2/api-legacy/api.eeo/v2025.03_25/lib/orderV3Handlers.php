@@ -471,8 +471,9 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Status - filtr podle pole workflow kódů
         if (!empty($filters['stav']) && is_array($filters['stav'])) {
-            // Převést české názvy na workflow kódy
+            // UNIVERZÁLNÍ MAPOVÁNÍ - podporuje jak UI klíče tak workflow kódy
             $stav_map = array(
+                // ✅ UI klíče (z číselníku select)
                 'NOVA' => 'NOVA',
                 'KE_SCHVALENI' => 'ODESLANA_KE_SCHVALENI',
                 'SCHVALENA' => 'SCHVALENA',
@@ -480,28 +481,31 @@ function handle_order_v3_list($input, $config, $queries) {
                 'ROZPRACOVANA' => 'ROZPRACOVANA',
                 'ODESLANA' => 'ODESLANA',
                 'POTVRZENA' => 'POTVRZENA',
-                'K_UVEREJNENI_DO_REGISTRU' => 'UVEREJNIT', // ✅ Fixed mapping
+                'K_UVEREJNENI_DO_REGISTRU' => 'UVEREJNIT',
                 'UVEREJNENA' => 'UVEREJNIT',
                 'FAKTURACE' => 'FAKTURACE',
                 'VECNA_SPRAVNOST' => 'VECNA_SPRAVNOST',
                 'ZKONTROLOVANA' => 'ZKONTROLOVANA',
                 'DOKONCENA' => 'DOKONCENA',
                 'ZRUSENA' => 'ZRUSENA',
-                'SMAZANA' => 'SMAZANA'
+                'SMAZANA' => 'SMAZANA',
+                // ✅ Workflow kódy (identity mapping) - pro přímé API volání
+                'ODESLANA_KE_SCHVALENI' => 'ODESLANA_KE_SCHVALENI',
+                'UVEREJNIT' => 'UVEREJNIT'
             );
             
             $workflow_conditions = array();
             foreach ($filters['stav'] as $stav_key) {
-                if (isset($stav_map[$stav_key])) {
-                    $workflow_kod = $stav_map[$stav_key];
-                    if ($stav_key === 'NOVA') {
-                        $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
-                    } else {
-                        $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
-                    }
-                    $where_params[] = $workflow_kod;
+                $workflow_kod = $stav_map[$stav_key] ?? $stav_key; // Fallback na původní hodnotu
+                
+                if ($workflow_kod === 'NOVA') {
+                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
+                } else {
+                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
                 }
+                $where_params[] = $workflow_kod;
             }
+            
             if (!empty($workflow_conditions)) {
                 $where_conditions[] = '(' . implode(' OR ', $workflow_conditions) . ')';
             }
