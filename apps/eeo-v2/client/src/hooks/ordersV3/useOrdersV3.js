@@ -18,6 +18,7 @@ import { listOrdersV3 } from '../../services/apiOrdersV3';
  * @param {number} params.userId - User ID
  * @param {Function} params.showProgress - Progress callback
  * @param {Function} params.hideProgress - Hide progress callback
+ * @param {Array} params.sorting - Sorting array [{ id: 'column', desc: true/false }]
  * @returns {Object} State a funkce pro práci s objednávkami
  */
 export function useOrdersV3({ 
@@ -25,7 +26,8 @@ export function useOrdersV3({
   username, 
   userId,
   showProgress, 
-  hideProgress 
+  hideProgress,
+  sorting = []
 }) {
   const navigate = useNavigate();
   
@@ -433,7 +435,7 @@ export function useOrdersV3({
         per_page: itemsPerPage,
         period: selectedPeriod,
         filters: activeFilters,
-        sorting: [], // TODO: Přidat podporu multi-column sorting
+        sorting: sorting,
       });
       
       // 🔍 DEBUG: Zobrazit celý response
@@ -478,6 +480,7 @@ export function useOrdersV3({
     selectedPeriod,
     columnFilters,
     dashboardFilters,
+    sorting,
     convertFiltersForBackend,
     showProgress,
     hideProgress,

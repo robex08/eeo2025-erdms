@@ -693,6 +693,7 @@ function Orders25ListV3() {
     userId: user_id,
     showProgress,
     hideProgress,
+    sorting: sorting,
   });
 
   // Helper funkce pro získání labelu období
