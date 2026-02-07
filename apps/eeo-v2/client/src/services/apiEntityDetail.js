@@ -7,7 +7,7 @@
 
 import { loadAuthData, getStoredUsername } from '../utils/authStorage';
 
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 /**
  * Helper pro vytvoření auth body
@@ -33,7 +33,7 @@ const getAuthBody = async (additionalData = {}) => {
 export const getUserDetail = async (userId) => {
   try {
     const body = await getAuthBody({ user_id: userId });
-    const response = await fetch(`${API_BASE_URL}users/detail`, {
+    const response = await fetch(`${API_BASE_URL}user/detail`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)

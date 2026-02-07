@@ -1,0 +1,242 @@
+/* ============================================
+   📱 ORDER APPROVAL CARD - Mobilní karta ke schválení
+   ============================================ */
+
+.mobile-approval-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 12px;
+}
+
+.mobile-approval-card.urgent {
+  background: #fef2f2;
+  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.25);
+}
+
+[data-theme="dark"] .mobile-approval-card {
+  background: #1f2937;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .mobile-approval-card.urgent {
+  background: #450a0a;
+  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.4);
+}
+
+/* Header */
+.mobile-approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+[data-theme="dark"] .mobile-approval-header {
+  border-bottom-color: #374151;
+}
+
+.mobile-approval-number {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-theme="dark"] .mobile-approval-number {
+  color: #60a5fa;
+}
+
+.mobile-approval-urgent-badge {
+  color: #dc2626;
+  font-size: 16px;
+  line-height: 1;
+}
+
+[data-theme="dark"] .mobile-approval-urgent-badge {
+  color: #f87171;
+}
+
+.mobile-approval-objednatel {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: right;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .mobile-approval-objednatel {
+  color: #9ca3af;
+}
+
+/* Předmět */
+.mobile-approval-subject {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .mobile-approval-subject {
+  color: #f9fafb;
+}
+
+/* Detaily */
+.mobile-approval-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.mobile-approval-detail-row {
+  display: flex;
+  gap: 8px;
+}
+
+.mobile-approval-detail {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.mobile-approval-detail-half {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-approval-card.urgent .mobile-approval-detail {
+  background: rgba(254, 226, 226, 0.6);
+}
+
+[data-theme="dark"] .mobile-approval-detail {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .mobile-approval-card.urgent .mobile-approval-detail {
+  background: rgba(127, 29, 29, 0.3);
+}
+
+.mobile-approval-label {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .mobile-approval-label {
+  color: #9ca3af;
+}
+
+.mobile-approval-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+  text-align: right;
+}
+
+[data-theme="dark"] .mobile-approval-value {
+  color: #e5e7eb;
+}
+
+/* Akce - 3 čtvercová tlačítka */
+.mobile-approval-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.mobile-approval-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 64px;
+}
+
+.mobile-approval-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mobile-approval-btn svg {
+  font-size: 20px;
+}
+
+.mobile-approval-btn span {
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Schválit - zelená */
+.mobile-approval-btn.approve {
+  background: #10b981;
+  color: white;
+}
+
+.mobile-approval-btn.approve:active:not(:disabled) {
+  background: #059669;
+  transform: scale(0.95);
+}
+
+[data-theme="dark"] .mobile-approval-btn.approve {
+  background: #059669;
+}
+
+[data-theme="dark"] .mobile-approval-btn.approve:active:not(:disabled) {
+  background: #047857;
+}
+
+/* Zamítnout - červená */
+.mobile-approval-btn.reject {
+  background: #ef4444;
+  color: white;
+}
+
+.mobile-approval-btn.reject:active:not(:disabled) {
+  background: #dc2626;
+  transform: scale(0.95);
+}
+
+[data-theme="dark"] .mobile-approval-btn.reject {
+  background: #dc2626;
+}
+
+[data-theme="dark"] .mobile-approval-btn.reject:active:not(:disabled) {
+  background: #b91c1c;
+}
+
+/* Čeká se - oranžová */
+.mobile-approval-btn.wait {
+  background: #f59e0b;
+  color: white;
+}
+
+.mobile-approval-btn.wait:active:not(:disabled) {
+  background: #d97706;
+  transform: scale(0.95);
+}
+
+[data-theme="dark"] .mobile-approval-btn.wait {
+  background: #d97706;
+}
+
+[data-theme="dark"] .mobile-approval-btn.wait:active:not(:disabled) {
+  background: #b45309;
+}

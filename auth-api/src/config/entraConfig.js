@@ -20,8 +20,15 @@ const msalConfig = {
 const REDIRECT_URI = process.env.ENTRA_REDIRECT_URI;
 const POST_LOGOUT_REDIRECT_URI = process.env.CLIENT_URL;
 
-// Scopes pro přístup k uživatelským údajům
-const SCOPES = ['User.Read', 'email', 'openid', 'profile'];
+// Scopes pro přístup k uživatelským údajům a kalendáři
+const SCOPES = [
+  'User.Read',
+  'email',
+  'openid',
+  'profile',
+  'Calendars.Read',
+  'Calendars.Read.Shared'
+];
 
 module.exports = {
   msalConfig,

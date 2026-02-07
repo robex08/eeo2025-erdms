@@ -63,11 +63,8 @@ const logDebug = (type, endpoint, data, response) => {
 api25orders.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Token expired - could redirect to login or show notification
-
-      // If we're in a browser environment, we could show a global notification
+    // 🔐 401 Unauthorized - token expired → logout
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -75,6 +72,7 @@ api25orders.interceptors.response.use(
         window.dispatchEvent(event);
       }
     }
+    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, jen vrátit error
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';
@@ -1496,7 +1494,7 @@ export const getTypyPriloh25 = async ({ token, username, aktivni = 1 }) => {
   }
 };
 
-// 📎 Načtení typů FAKTUR z databáze (FAKTURA_TYP klasifikace)
+// 📎 Načtení typů FAKTUR z databáze (FAKTURA_TYP klasifikace příloh)
 export const getTypyFaktur25 = async ({ token, username, aktivni = 1 }) => {
   try {
     const requestData = {
@@ -1536,6 +1534,52 @@ export const getTypyFaktur25 = async ({ token, username, aktivni = 1 }) => {
 
   } catch (error) {
     logDebug('error', 'states25/by-object-type FAKTURA_TYP', null, error.message);
+    throw new Error(`Chyba při načítání typů faktur: ${error.message}`);
+  }
+};
+
+// 📋 Načtení typů FAKTUR z databáze (FAKTURA - typy faktur pro pole fa_typ)
+// Používá typ_objektu='FAKTURA' z číselníku 25_ciselnik_stavy
+export const getInvoiceTypes25 = async ({ token, username, aktivni = 1 }) => {
+  try {
+    const requestData = {
+      token,
+      username,
+      typ_objektu: 'FAKTURA',
+      aktivni: aktivni
+    };
+
+    logDebug('request', 'states25/by-object-type', {
+      ...requestData,
+      token: token ? `${token.substring(0, 10)}...` : 'null'
+    });
+
+    const response = await api25orders.post('states25/by-object-type', requestData);
+
+    // Zpracování odpovědi
+    const rawData = response.data?.data || [];
+
+    // Transformace dat na formát pro CustomSelect komponentu (id + nazev)
+    const invoiceTypesOptions = rawData
+      .filter(item => item.kod_stavu && item.nazev_stavu) // Pouze platné záznamy
+      .sort((a, b) => (a.nazev_stavu || '').localeCompare(b.nazev_stavu || '', 'cs')) // Řazení podle názvu
+      .map(item => ({
+        id: item.kod_stavu,        // Pro CustomSelect používá 'id'
+        nazev: item.nazev_stavu,   // Pro CustomSelect používá 'nazev'
+        kod_stavu: item.kod_stavu,
+        nazev_stavu: item.nazev_stavu,
+        popis: item.popis
+      }));
+
+    logDebug('success', 'states25/by-object-type FAKTURA', null, {
+      loaded_count: invoiceTypesOptions.length,
+      sample: invoiceTypesOptions.slice(0, 3)
+    });
+
+    return invoiceTypesOptions;
+
+  } catch (error) {
+    logDebug('error', 'states25/by-object-type FAKTURA', null, error.message);
     throw new Error(`Chyba při načítání typů faktur: ${error.message}`);
   }
 };
@@ -2027,31 +2071,57 @@ export function isPreviewableInBrowser(filename) {
 }
 
 /**
- * Stáhne soubor přímo bez otevírání dialogu
+ * Otevře soubor v prohlížeči (PDF náhled) nebo stáhne
  * @param {Blob} blob - Blob data souboru
  * @param {string} filename - Název souboru
- * @returns {boolean} True pokud se podařilo stáhnout
+ * @returns {boolean} True pokud se podařilo otevřít/stáhnout
  */
 export function openInBrowser25(blob, filename) {
   try {
-    // Místo window.open používáme přímé stažení
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename || 'soubor';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const ext = filename.toLowerCase().split('.').pop();
     
-    // Uvolnění URL po krátké pauze
-    setTimeout(() => {
-      window.URL.revokeObjectURL(url);
-    }, 100);
-    
-    return true;
+    // Pro PDF a obrázky otevři v novém okně (náhled)
+    if (['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
+      // Otevři v novém okně pro náhled
+      const newWindow = window.open(url, '_blank');
+      
+      if (newWindow) {
+        // Nastavení titulku okna
+        newWindow.document.title = filename;
+        
+        // Uvolnění URL po načtení
+        newWindow.addEventListener('load', () => {
+          setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+          }, 1000);
+        });
+        
+        return true;
+      } else {
+        // Pokud se nepodařilo otevřít okno, stáhni soubor
+        window.URL.revokeObjectURL(url);
+        return false;
+      }
+    } else {
+      // Pro ostatní soubory přímé stažení
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'soubor';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Uvolnění URL po krátké pauze
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      return true;
+    }
   } catch (error) {
-    console.error('Chyba při stahování souboru:', error);
+    console.error('Chyba při otevírání/stahování souboru:', error);
     return false;
   }
 }

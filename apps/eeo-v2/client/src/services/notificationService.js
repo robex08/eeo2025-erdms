@@ -193,7 +193,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_schvalena',
+      type: 'ORDER_APPROVED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -215,7 +215,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_zamitnuta',
+      type: 'ORDER_REJECTED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -240,7 +240,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_ke_schvaleni',
+      type: 'ORDER_PENDING_APPROVAL',
       order_id,
       action_user_id,
       to_user_id: garant_id,
@@ -263,7 +263,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_ceka_se',
+      type: 'ORDER_AWAITING_CHANGES',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -288,7 +288,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_odeslana',
+      type: 'ORDER_SENT_TO_SUPPLIER',
       order_id,
       action_user_id,
       recipients,
@@ -309,7 +309,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_potvrzena',
+      type: 'ORDER_CONFIRMED_BY_SUPPLIER',
       order_id,
       action_user_id,
       recipients,
@@ -330,7 +330,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_registr_zverejnena',
+      type: 'ORDER_REGISTRY_PUBLISHED',
       order_id,
       action_user_id,
       recipients,
@@ -351,7 +351,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_pridana',
+      type: 'ORDER_INVOICE_ADDED',
       order_id,
       action_user_id,
       to_user_id: garant_id,
@@ -372,7 +372,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_schvalena',
+      type: 'ORDER_INVOICE_APPROVED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -393,7 +393,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_faktura_uhrazena',
+      type: 'ORDER_INVOICE_PAID',
       order_id,
       action_user_id,
       recipients,
@@ -414,7 +414,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_kontrola_potvrzena',
+      type: 'INVOICE_MATERIAL_CHECK_APPROVED',
       order_id,
       action_user_id,
       recipients,
@@ -436,7 +436,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_kontrola_zamitnuta',
+      type: 'INVOICE_MATERIAL_CHECK_REJECTED', // TODO: implementovat nebo odstranit
       order_id,
       action_user_id,
       recipients,
@@ -449,6 +449,9 @@ class NotificationService {
   }
 
   /**
+   * @deprecated ⚠️ DEPRECATED - Use triggerNotification() from notificationsApi.js instead
+   * This function bypasses organizational hierarchy and ignores edge sendEmail settings
+   * 
    * Odeslat DUAL-TEMPLATE notifikace při odeslání ke schválení
    * 
    * @param {Object} params
@@ -462,6 +465,13 @@ class NotificationService {
     username,
     orderData
   }) {
+    console.error('════════════════════════════════════════════════════════════════');
+    console.error('⚠️ DEPRECATED: sendOrderApprovalNotifications()');
+    console.error('   This function bypasses organizational hierarchy');
+    console.error('   Use: triggerNotification() from notificationsApi.js');
+    console.error('   Event: order_status_ke_schvaleni');
+    console.error('════════════════════════════════════════════════════════════════');
+    
     try {
       // Sestavit FROM (SUBMITTER - zelená šablona) a TO (APPROVER - červená šablona)
       const fromSet = new Set();
@@ -510,13 +520,10 @@ class NotificationService {
         from,  // SUBMITTER recipients (zelená šablona)
         to     // APPROVER recipients (červená/oranžová šablona)
       };
-      
-      console.log('Dual notification payload:', { fromCount: from.length, toCount: to.length, strediska: payload.strediska_names.length, urgent: payload.is_urgent });
 
       // Volat backend API pro dual-template odeslání
       const response = await api.post('/notifications/send-dual', payload);
 
-      console.log('sendOrderApprovalNotifications SUCCESS:', response);
       return response;
 
     } catch (error) {
@@ -527,6 +534,61 @@ class NotificationService {
         message: error.message || 'Failed to send notifications',
         sent: 0 
       };
+    }
+  }
+
+  /**
+   * Načte notifikace pro výběr v admin rozhraní (pro post-login modal)
+   * @param {string} token - Auth token
+   * @param {string} username - Username
+   * @returns {Promise<Array>} Seznam notifikací pro select
+   */
+  async getNotificationsForSelect(token, username) {
+    try {
+      const payload = {
+        token,
+        username,
+        for_select: true
+      };
+
+      const response = await api.post('/notifications/list-for-select', payload);
+      
+      if (response.status === 200 && response.data) {
+        return response.data;
+      }
+      
+      return [];
+    } catch (error) {
+      console.warn('Chyba při načítání notifikací pro select:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Načte notifikaci podle ID (pro post-login modal)
+   * @param {number} id - ID notifikace
+   * @param {string} token - Auth token
+   * @param {string} username - Username
+   * @returns {Promise<Object>} Notifikace s obsahem
+   */
+  async getNotificationById(id, token, username) {
+    try {
+      const payload = {
+        token,
+        username,
+        id: id
+      };
+
+      const response = await api.post('/notifications/get-by-id', payload);
+      
+      if (response.status === 200 && response.data) {
+        return response.data;
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Chyba při načítání notifikace ID', id, ':', error);
+      return null;
     }
   }
 }

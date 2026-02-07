@@ -194,8 +194,6 @@ const SmlouvaPreview = ({ smlouvaData, loading }) => {
     );
   }
 
-  console.log('🎨 SmlouvaPreview rendering with data:', smlouva);
-
   return (
     <PreviewContainer>
       <PreviewHeader>
@@ -216,13 +214,34 @@ const SmlouvaPreview = ({ smlouvaData, loading }) => {
         </StatusBadge>
       </PreviewHeader>
 
-      {/* Celková částka plnění */}
+      {/* Celková částka čerpání */}
       <AmountDisplay>
         <AmountLabel>
-          <FontAwesomeIcon icon={faMoneyBillWave} /> Celkem plnění s DPH
+          <FontAwesomeIcon icon={faMoneyBillWave} /> Celkem čerpáno s DPH
         </AmountLabel>
         <AmountValue>
-          {formatCurrency(smlouva.hodnota_s_dph || 0)}
+          {(() => {
+            const cerpano = smlouva.cerpano_skutecne || smlouva.cerpano_celkem || 0;
+            const strop = smlouva.hodnota_s_dph || 0;
+            
+            if (strop > 0) {
+              // Smlouva se stropem - zobrazit "čerpáno / strop"
+              return (
+                <>
+                  {formatCurrency(cerpano)}
+                  <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '4px' }}>
+                    {' / '}
+                  </span>
+                  <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    {formatCurrency(strop)}
+                  </span>
+                </>
+              );
+            } else {
+              // Neomezená smlouva - jen čerpání
+              return formatCurrency(cerpano);
+            }
+          })()}
         </AmountValue>
       </AmountDisplay>
 
@@ -309,7 +328,7 @@ const SmlouvaPreview = ({ smlouvaData, loading }) => {
       )}
 
       {/* Čerpání */}
-      {(smlouva.cerpano_celkem !== undefined || smlouva.cerpano !== undefined) && (
+      {(smlouva.cerpano_celkem !== undefined || smlouva.cerpano !== undefined || smlouva.cerpano_skutecne !== undefined) && (
         <Section>
           <SectionTitle>
             <FontAwesomeIcon icon={faMoneyBillWave} />
@@ -317,18 +336,43 @@ const SmlouvaPreview = ({ smlouvaData, loading }) => {
           </SectionTitle>
           <InfoGrid>
             <InfoItem>
-              <InfoLabel>Čerpáno</InfoLabel>
-              <InfoValue>{formatCurrency(smlouva.cerpano_celkem || smlouva.cerpano || 0)}</InfoValue>
+              <InfoLabel>Skutečně čerpáno</InfoLabel>
+              <InfoValue>
+                {formatCurrency(smlouva.cerpano_skutecne || smlouva.cerpano_celkem || smlouva.cerpano || 0)}
+              </InfoValue>
             </InfoItem>
             <InfoItem>
               <InfoLabel>Zbývá</InfoLabel>
               <InfoValue>
-                {formatCurrency(
-                  (smlouva.hodnota_s_dph || smlouva.celkova_castka || 0) - 
-                  (smlouva.cerpano_celkem || smlouva.cerpano || 0)
-                )}
+                {(() => {
+                  const hodnota = smlouva.hodnota_s_dph || smlouva.celkova_castka || 0;
+                  const cerpano = smlouva.cerpano_skutecne || smlouva.cerpano_celkem || smlouva.cerpano || 0;
+                  
+                  // Smlouva bez stropu (hodnota = 0) → Neomezené
+                  if (hodnota === 0 || hodnota === '0') {
+                    return <span style={{ color: '#10b981', fontWeight: 'bold' }}>Neomezené</span>;
+                  }
+                  
+                  // Smlouva se stropem → zobrazit zbývající částku
+                  const zbyva = hodnota - cerpano;
+                  const color = zbyva < 0 ? '#ef4444' : zbyva < hodnota * 0.1 ? '#f59e0b' : '#10b981';
+                  
+                  return <span style={{ color }}>{formatCurrency(zbyva)}</span>;
+                })()}
               </InfoValue>
             </InfoItem>
+            {smlouva.hodnota_s_dph > 0 && smlouva.procento_skutecne !== null && smlouva.procento_skutecne !== undefined && (
+              <InfoItem>
+                <InfoLabel>Čerpání</InfoLabel>
+                <InfoValue>
+                  {(() => {
+                    const procento = parseFloat(smlouva.procento_skutecne || smlouva.procento_cerpani || 0);
+                    const color = procento > 100 ? '#ef4444' : procento > 90 ? '#f59e0b' : '#10b981';
+                    return <span style={{ color }}>{procento.toFixed(1)} %</span>;
+                  })()}
+                </InfoValue>
+              </InfoItem>
+            )}
           </InfoGrid>
         </Section>
       )}

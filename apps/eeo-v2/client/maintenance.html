@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="30">
+    <title>Upgrade aplikace | ERDMS Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #1a1a1a;
+        }
+
+        .maintenance-container {
+            text-align: center;
+            padding: 3rem 2rem;
+            max-width: 700px;
+        }
+
+        .logo-section {
+            margin-bottom: 3rem;
+        }
+
+        .logo {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .app-name {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2563eb;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
+        }
+
+        .platform-name {
+            font-size: 1.1rem;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.5rem 1.25rem;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin: 2rem 0;
+            letter-spacing: 0.5px;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            line-height: 1.2;
+        }
+
+        .description {
+            font-size: 1.15rem;
+            color: #475569;
+            margin-bottom: 2.5rem;
+            line-height: 1.7;
+            max-width: 550px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .spinner-container {
+            margin: 2.5rem 0;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto;
+            border: 3px solid #e5e7eb;
+            border-top: 3px solid #2563eb;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .progress-text {
+            font-size: 0.95rem;
+            color: #64748b;
+            margin-top: 1rem;
+            font-weight: 500;
+        }
+
+        .info-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-top: 3rem;
+        }
+
+        .info-box p {
+            font-size: 0.95rem;
+            color: #64748b;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .info-box strong {
+            color: #1e293b;
+        }
+
+        .features {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+
+        .feature-icon {
+            color: #22c55e;
+            font-size: 1.2rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @media (max-width: 768px) {
+            .app-name {
+                font-size: 1.6rem;
+            }
+            h1 {
+                font-size: 1.8rem;
+            }
+            .description {
+                font-size: 1rem;
+            }
+            .features {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="maintenance-container">
+        <div class="logo-section">
+            <div class="logo">🚀</div>
+            <div class="app-name">EEO v2</div>
+            <div class="platform-name">ERDMS Multi-aplikační platforma</div>
+        </div>
+
+        <div class="status-badge">● PROBÍHÁ UPGRADE</div>
+
+        <h1>Upgrade na novou verzi</h1>
+        
+        <p class="description">
+            Právě instalujeme nejnovější verzi aplikace EEO v2 s vylepšeními a novými funkcemi. 
+            Aplikace bude dostupná za několik okamžiků.
+        </p>
+
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p class="progress-text">Instalace probíhá...</p>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span>Vyšší výkon</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span>Nové funkce</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span>Vylepšená stabilita</span>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <p>
+                <strong>Stránka se automaticky obnoví</strong> po dokončení upgradu.<br>
+                Není potřeba nic dělat, jen chvíli vyčkejte. Děkujeme za trpělivost! 🙏
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh každých 30 sekund
+        setTimeout(() => {
+            window.location.reload();
+        }, 30000);
+
+        // Kontrola dostupnosti aplikace každých 5 sekund
+        const checkInterval = setInterval(() => {
+            fetch(window.location.href, { method: 'HEAD', cache: 'no-cache' })
+                .then(response => {
+                    if (response.ok) {
+                        fetch(window.location.href)
+                            .then(r => r.text())
+                            .then(html => {
+                                if (!html.includes('PROBÍHÁ UPGRADE')) {
+                                    clearInterval(checkInterval);
+                                    window.location.reload();
+                                }
+                            });
+                    }
+                })
+                .catch(() => {
+                    // Pokračuje upgrade
+                });
+        }, 5000);
+    </script>
+</body>
+</html>

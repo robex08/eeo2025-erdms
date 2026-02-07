@@ -651,17 +651,25 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         setLoading(true);
         setError(null);
 
-        const response = await getDocxSablonyList({
+        // Příprava parametrů pro načtení šablon
+        const params = {
           token,
           username: user?.username,
           aktivni: 1 // Pouze aktivní šablony
-        });
+        };
+
+        // Pokud máme cenu objednávky, pošleme ji pro filtrování šablon
+        if (order?.cena_bez_dph !== undefined && order?.cena_bez_dph !== null) {
+          params.cena_bez_dph = order.cena_bez_dph;
+        }
+
+        const response = await getDocxSablonyList(params);
 
         const templates = response?.data || [];
         setTemplates(templates);
 
         if (templates.length === 0) {
-          setError('V databázi nejsou k dispozici žádné aktivní DOCX šablony');
+          setError('V databázi nejsou k dispozici žádné aktivní DOCX šablony pro tuto cenovou kategorii');
         } else if (templates.length === 1) {
           // Automaticky vyber první šablonu pokud je jen jedna
           setSelectedTemplate(templates[0]);
@@ -694,7 +702,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
     const selectedUser = availableUsers[selectedUserIndex];
     const selectedUserId = selectedUser.id;
 
-
     try {
       setGenerating(true);
 
@@ -710,6 +717,7 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
       // === NOVÝ SYSTÉM - DOCX generátor: enriched endpoint ===
       // ✅ orderData parametr už NENÍ POTŘEBA - používáme enriched endpoint!
       // Backend vrací KOMPLETNÍ data včetně všech enriched uživatelů
+      
       const generatedDocx = await generateDocxDocument({
         templateId: selectedTemplate.id,
         orderId: orderId,
@@ -719,8 +727,12 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         selectedUserId: selectedUserId // ✅ ID vybraného uživatele pro podpis
       });
 
-      // Stáhni vygenerovaný dokument
-      const fileName = `objednavka_${order.cislo_objednavky || orderId}_${selectedTemplate.nazev}.docx`;
+      // Stáhni vygenerovaný dokument - odstraň "(šablona)" z názvu (včetně variant s/bez diakritiky)
+      const templateName = selectedTemplate.nazev
+        .replace(/\s*\([^\)]*[šsŠS][aáAÁ][bB][lL][oóOÓ][nňNŇ][aáAÁ][^\)]*\)\s*/gi, '') // Odstraň (šablona)/(sablona) všude
+        .replace(/\s+/g, ' ')
+        .trim();
+      const fileName = `objednavka_${order.cislo_objednavky || orderId}_${templateName}.docx`;
       downloadGeneratedDocx(generatedDocx, fileName);
 
       showToast?.(

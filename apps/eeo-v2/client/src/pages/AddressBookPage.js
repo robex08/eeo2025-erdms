@@ -9,6 +9,7 @@ import { ToastContext } from '../context/ToastContext';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import ContactManagement from '../components/ContactManagement';
 import EmployeeManagement from '../components/EmployeeManagement';
+import { createDictionaryPermissionHelper } from '../utils/dictionaryPermissions';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -245,9 +246,16 @@ const UserManagementLink = styled.span`
 `;
 
 const AddressBookPage = () => {
-  const { hasPermission, userDetail } = useContext(AuthContext);
+  const { hasPermission, hasAdminRole, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext) || {};
   const navigate = useNavigate();
+
+  // Permission helper
+  const permissions = createDictionaryPermissionHelper('PHONEBOOK', hasPermission, hasAdminRole);
+
+  // Kontrola oprávnění pro zobrazení záložek
+  const canManageSuppliers = hasAdminRole?.() || hasPermission?.('SUPPLIER_MANAGE');
+  const canManagePhonebook = hasAdminRole?.() || hasPermission?.('PHONEBOOK_MANAGE');
 
   // Refs pro volání refresh funkcí v child komponentách
   const contactManagementRef = useRef(null);
@@ -277,28 +285,17 @@ const AddressBookPage = () => {
   };
 
   const [activeTab, setActiveTab] = useState(() => {
-    return getUserStorage('addressBook_activeTab', 'suppliers');
+    const savedTab = getUserStorage('addressBook_activeTab', 'suppliers');
+    // Pokud má uživatel pouze jedno právo, nastav odpovídající záložku
+    if (canManageSuppliers && !canManagePhonebook) return 'suppliers';
+    if (canManagePhonebook && !canManageSuppliers) return 'employees';
+    return savedTab;
   });
 
   // Uložení activeTab do localStorage při změně
   useEffect(() => {
     setUserStorage('addressBook_activeTab', activeTab);
   }, [activeTab, user_id]);
-
-  // Permission checks - hierarchická struktura oprávnění
-  const hasContactManage = hasPermission('CONTACT_MANAGE');
-  const hasContactEdit = hasContactManage || hasPermission('CONTACT_EDIT');
-  const hasContactRead = hasContactManage || hasPermission('CONTACT_READ');
-
-  // Determine user's permission level
-  const getPermissionLevel = () => {
-    if (hasContactManage) return 'MANAGE';
-    if (hasContactEdit && hasPermission('CONTACT_EDIT')) return 'EDIT';
-    if (hasContactRead) return 'READ';
-    return 'NONE';
-  };
-
-  const permissionLevel = getPermissionLevel();
 
   // Funkce pro refresh dat z databáze
   const handleRefresh = () => {
@@ -309,8 +306,8 @@ const AddressBookPage = () => {
     }
   };
 
-  // Access control
-  if (permissionLevel === 'NONE') {
+  // Access control - pokud nemá žádné právo, zobrazíme prázdný stav
+  if (!permissions.hasAnyPermission()) {
     return (
       <PageContainer>
         <ContentWrapper>
@@ -339,25 +336,40 @@ const AddressBookPage = () => {
   }
 
   const getPermissionDescription = () => {
-    switch (permissionLevel) {
-      case 'MANAGE':
-        return (
-          <>
-            🔓 Máte plná oprávnění pro správu všech kontaktů (globální, osobní kontakty a kontakty úseku).
-            Správa uživatelských kontaktů se provádí v sekci{' '}
-            <UserManagementLink onClick={() => navigate('/users')}>
-              Uživatelé
-            </UserManagementLink>.
-          </>
-        );
-      case 'EDIT':
-        return '✏️ Můžete editovat svoje kontakty a kontakty svého úseku';
-      case 'READ':
-        return '👁️ Máte oprávnění pouze pro čtení kontaktů';
-      default:
-        return '';
+    if (hasAdminRole()) {
+      return (
+        <>
+          🔓 Máte plná oprávnění (administrátor) pro správu všech kontaktů.
+          Správa uživatelských kontaktů se provádí v sekci{' '}
+          <UserManagementLink onClick={() => navigate('/users')}>
+            Uživatelé
+          </UserManagementLink>.
+        </>
+      );
     }
+
+    const parts = [];
+    if (permissions.canView()) parts.push('👁️ zobrazení');
+    if (permissions.canCreate()) parts.push('➕ vytváření');
+    if (permissions.canEdit()) parts.push('✏️ úpravy');
+    if (permissions.canDelete()) parts.push('🗑️ mazání');
+
+    if (parts.length === 0) {
+      return '🔒 Nemáte žádná oprávnění pro práci s kontakty';
+    }
+
+    return `Máte oprávnění: ${parts.join(', ')}`;
   };
+
+  // Convert granular permissions to legacy permissionLevel format for child components
+  const getPermissionLevel = () => {
+    if (hasAdminRole()) return 'MANAGE';
+    if (permissions.canEdit() || permissions.canCreate() || permissions.canDelete()) return 'EDIT';
+    if (permissions.canView()) return 'READ';
+    return 'NONE';
+  };
+
+  const permissionLevel = getPermissionLevel();
 
   return (
     <PageContainer>
@@ -380,18 +392,22 @@ const AddressBookPage = () => {
 
         <TabContainer>
           <TabHeader>
-            <Tab
-              active={activeTab === 'suppliers'}
-              onClick={() => setActiveTab('suppliers')}
-            >
-              <span>🏢</span> Adresář dodavatelů
-            </Tab>
-            <Tab
-              active={activeTab === 'employees'}
-              onClick={() => setActiveTab('employees')}
-            >
-              <span>👥</span> Adresář zaměstnanců
-            </Tab>
+            {canManageSuppliers && (
+              <Tab
+                active={activeTab === 'suppliers'}
+                onClick={() => setActiveTab('suppliers')}
+              >
+                <span>🏢</span> Adresář dodavatelů
+              </Tab>
+            )}
+            {canManagePhonebook && (
+              <Tab
+                active={activeTab === 'employees'}
+                onClick={() => setActiveTab('employees')}
+              >
+                <span>👥</span> Adresář zaměstnanců
+              </Tab>
+            )}
           </TabHeader>
 
           <TabContent>

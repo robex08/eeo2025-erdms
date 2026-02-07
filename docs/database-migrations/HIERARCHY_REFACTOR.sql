@@ -1,0 +1,119 @@
+-- =====================================================
+-- HIERARCHY REFACTOR - Optimalizace na 1 tabulku
+-- =====================================================
+-- Datum: 16. prosince 2025
+-- Cíl: Sjednotit hierarchii do 25_hierarchie_profily
+-- =====================================================
+
+-- =====================================================
+-- KROK 1: ALTER TABLE - Přidat structure_json
+-- =====================================================
+
+ALTER TABLE 25_hierarchie_profily 
+ADD COLUMN structure_json LONGTEXT NULL 
+COMMENT 'Vizuální graf: {nodes: [], edges: []} - vztahy, scope, notifikace, pozice';
+
+-- =====================================================
+-- KROK 2: DROP TABLE - Odstranit starou tabulku vztahů
+-- =====================================================
+
+DROP TABLE IF EXISTS 25_hierarchie_vztahy;
+
+-- =====================================================
+-- HOTOVO!
+-- =====================================================
+-- Struktura JSON v structure_json:
+-- {
+--   "nodes": [
+--     {
+--       "id": "user-123",
+--       "typ": "user",
+--       "pozice": {"x": 100, "y": 50},
+--       "data": {
+--         "uzivatel_id": 123,
+--         "username": "robert",
+--         "jmeno": "Robert Novák"
+--       }
+--     },
+--     {
+--       "id": "role-ucetni",
+--       "typ": "role",
+--       "pozice": {"x": 300, "y": 50},
+--       "data": {
+--         "role_id": 5,
+--         "role_kod": "UCETNI",
+--         "role_nazev": "Účetní"
+--       }
+--     },
+--     {
+--       "id": "lokalita-praha",
+--       "typ": "location",
+--       "pozice": {"x": 500, "y": 50},
+--       "data": {
+--         "lokalita_id": 1,
+--         "nazev": "Praha"
+--       }
+--     },
+--     {
+--       "id": "usek-it",
+--       "typ": "department",
+--       "pozice": {"x": 700, "y": 50},
+--       "data": {
+--         "usek_id": 3,
+--         "nazev": "IT oddělení"
+--       }
+--     },
+--     {
+--       "id": "template-order-approved",
+--       "typ": "template",
+--       "pozice": {"x": 900, "y": 50},
+--       "data": {
+--         "template_id": 3,
+--         "nazev": "Objednávka schválena",
+--         "eventTypes": ["ORDER_APPROVED", "ORDER_REJECTED"]
+--       }
+--     }
+--   ],
+--   "edges": [
+--     {
+--       "id": "edge-1",
+--       "source": "template-order-approved",
+--       "target": "role-ucetni",
+--       "typ": "notification",
+--       "data": {
+--         "notifications": {
+--           "email": true,
+--           "inapp": true,
+--           "recipientRole": "APPROVAL",
+--           "types": ["ORDER_APPROVED"]
+--         },
+--         "scope": "TEAM",
+--         "modules": {
+--           "orders": true,
+--           "invoices": false,
+--           "contracts": false,
+--           "cashbook": false
+--         },
+--         "permissions": {
+--           "level": "READ_WRITE",
+--           "viditelnost_objednavky": true,
+--           "viditelnost_faktury": false
+--         }
+--       }
+--     },
+--     {
+--       "id": "edge-2",
+--       "source": "user-123",
+--       "target": "lokalita-praha",
+--       "typ": "relation",
+--       "data": {
+--         "druh_vztahu": "prime",
+--         "scope": "LOCATION",
+--         "modules": {
+--           "orders": true,
+--           "invoices": true
+--         }
+--       }
+--     }
+--   ]
+-- }

@@ -7,7 +7,7 @@ import { css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext'; // Import AuthContext
 
 const OrderFormTabs = ({ orderId, onClose }) => {
-  const { token, fullName } = useContext(AuthContext); // Retrieve token and fullName from global context
+  const { token, fullName, user_id } = useContext(AuthContext); // Retrieve token, fullName and user_id from global context
   const [activeTab, setActiveTab] = useState('order');
   const [formData, setFormData] = useState({}); // Initialize as an empty object to avoid null errors
   const [error, setError] = useState(null);
@@ -155,11 +155,11 @@ const OrderFormTabs = ({ orderId, onClose }) => {
   // cached order data (debug log removed)
         setFormData(formattedData);
 
-        if (orderId) {
-          localStorage.setItem('orderData', JSON.stringify(data));
+        if (orderId && user_id) {
+          localStorage.setItem(`orderData_${user_id}`, JSON.stringify(data));
         }
 
-  // saved order data to localStorage (debug log removed)
+  // saved order data to localStorage with user_id (debug log removed)
       } catch (err) {
         // Normalize server errors to a consistent Czech message, otherwise show a local fallback
         try {

@@ -669,7 +669,7 @@ CREATE TABLE `25_smlouvy_import_log` (
   `pocet_aktualizovanych` int(11) DEFAULT 0 COMMENT 'Počet aktualizovaných existujících',
   `pocet_preskoceno` int(11) DEFAULT 0 COMMENT 'Počet přeskočených (duplicity)',
   `pocet_chyb` int(11) DEFAULT 0 COMMENT 'Počet chyb při importu',
-  `chybove_zaznamy` text DEFAULT NULL COMMENT 'JSON se seznamem chyb: [{row, field, message}]',
+  `chybove_zaznamy` MEDIUMTEXT DEFAULT NULL COMMENT 'JSON se seznamem chyb: [{row, field, message}] - MEDIUMTEXT pro velké importy (16MB)',
   `status` enum('SUCCESS','PARTIAL','FAILED') DEFAULT 'SUCCESS' COMMENT 'Stav importu - SUCCESS=vše OK, PARTIAL=některé chyby, FAILED=selhalo',
   `overwrite_existing` tinyint(1) DEFAULT 0 COMMENT 'Zda se přepisovaly existující záznamy',
   PRIMARY KEY (`id`),

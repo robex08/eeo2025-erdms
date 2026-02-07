@@ -32,6 +32,32 @@ export const getGarantNameForSearch = (order, getUserDisplayName) => {
   return '';
 };
 
+export const getPrikazceNameForSearch = (order, getUserDisplayName) => {
+  const enriched = order._enriched || {};
+
+  if (enriched.prikazce_uzivatel) {
+    return getUserDisplayName(null, enriched.prikazce_uzivatel);
+  }
+
+  if (order.prikazce) {
+    if (order.prikazce.jmeno && order.prikazce.prijmeni) {
+      const titul_pred_str = order.prikazce.titul_pred ? order.prikazce.titul_pred + ' ' : '';
+      const titul_za_str = order.prikazce.titul_za ? ', ' + order.prikazce.titul_za : '';
+      return `${titul_pred_str}${order.prikazce.jmeno} ${order.prikazce.prijmeni}${titul_za_str}`.replace(/\s+/g, ' ').trim();
+    } else if (order.prikazce.cele_jmeno) {
+      return order.prikazce.cele_jmeno;
+    } else {
+      return order.prikazce.username || '';
+    }
+  }
+
+  if (order.prikazce_id) {
+    return getUserDisplayName(order.prikazce_id);
+  }
+
+  return '';
+};
+
 export const getSchvalovatelNameForSearch = (order, getUserDisplayName) => {
   const enriched = order._enriched || {};
 
@@ -44,6 +70,8 @@ export const getSchvalovatelNameForSearch = (order, getUserDisplayName) => {
       const titul_pred_str = order.schvalovatel.titul_pred ? order.schvalovatel.titul_pred + ' ' : '';
       const titul_za_str = order.schvalovatel.titul_za ? ', ' + order.schvalovatel.titul_za : '';
       return `${titul_pred_str}${order.schvalovatel.jmeno} ${order.schvalovatel.prijmeni}${titul_za_str}`.replace(/\s+/g, ' ').trim();
+    } else if (order.schvalovatel.cele_jmeno) {
+      return order.schvalovatel.cele_jmeno;
     } else {
       return order.schvalovatel.username || '';
     }
@@ -110,6 +138,7 @@ export const filterByGlobalSearch = (order, searchText, getUserDisplayName, getO
     // Uživatelé
     enriched.uzivatel ? getUserDisplayName(null, enriched.uzivatel) : '',
     getGarantNameForSearch(order, getUserDisplayName),
+    getPrikazceNameForSearch(order, getUserDisplayName),
     getSchvalovatelNameForSearch(order, getUserDisplayName),
     getUserDisplayName(order.uzivatel_id),
     getUserDisplayName(order.objednatel_id),
@@ -242,30 +271,40 @@ export const filterByGlobalSearch = (order, searchText, getUserDisplayName, getO
 export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) => {
   if (!statusFilter || !Array.isArray(statusFilter) || statusFilter.length === 0) return true;
 
-  // 🔧 POROVNÁVEJ PŘÍMO ČESKÉ NÁZVY z order.stav_objednavky
-  const orderStatus = order.stav_objednavky;
-
-  if (!orderStatus) {
-    // Pokud objednávka nemá stav, počítej jako NOVA nebo koncept
-    return statusFilter.includes('Nová') || statusFilter.includes('Koncept') || statusFilter.includes('NOVA') || statusFilter.includes('DRAFT');
-  }
-
-  // Normalizuj název stavu (bez diakritiky, lowercase, bez extra mezer)
-  const normalizeStatus = (status) => {
-    return String(status)
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Odstraň diakritiku
-      .replace(/\s+/g, ' '); // Normalizuj mezery
+  // 🔧 MAPOVÁNÍ: České názvy → Systémové kódy
+  const czechToSystemCode = {
+    'Nová': 'NOVA',
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
+    'Schválená': 'SCHVALENA',
+    'Zamítnutá': 'ZAMITNUTA',
+    'Čeká se': 'CEKA_SE',
+    'Rozpracovaná': 'ROZPRACOVANA',
+    'Odeslaná dodavateli': 'ODESLANA',
+    'Potvrzená dodavatelem': 'POTVRZENA',
+    'Ke zveřejnění': 'K_UVEREJNENI_DO_REGISTRU',
+    'Zveřejněno': 'UVEREJNENA',
+    'Fakturace': 'FAKTURACE',
+    'Čeká na potvrzení': 'CEKA_POTVRZENI',
+    'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Dokončená': 'DOKONCENA',
+    'Vyřízená': 'VYRIZENA',
+    'Zrušená': 'ZRUSENA',
+    'Smazaná': 'SMAZANA',
+    'Archivováno': 'ARCHIVOVANO'
   };
 
-  const normalizedOrderStatus = normalizeStatus(orderStatus);
+  // Získej systémový stav objednávky (bere v úvahu registr_smluv)
+  const systemStatus = getOrderSystemStatus(order);
+  
+  if (!systemStatus) {
+    return statusFilter.includes('Nová') || statusFilter.includes('Koncept');
+  }
 
-  // Porovnej s normalizovanými hodnotami z filtru
+  // Porovnej systémový stav s filtrem
   return statusFilter.some(filterValue => {
-    const normalizedFilterValue = normalizeStatus(filterValue);
-    return normalizedFilterValue === normalizedOrderStatus;
+    const expectedSystemCode = czechToSystemCode[filterValue];
+    // Porovnej buď systémový kód nebo přímou shodu
+    return expectedSystemCode === systemStatus || filterValue === systemStatus;
   });
 };
 

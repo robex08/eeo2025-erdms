@@ -1,0 +1,30 @@
+Verze formatu;1.10
+LKQ.CZ:BENESOV - faktura c.;1446000714
+Datum vystaveni;7.1.2026
+Datum splatnosti;6.2.2026
+Forma uhrady;prevodem
+Mena;Kč
+Zakaznik;Zdravotnická zachranná služba Středočeského kraje,
+Adresa sidla;Vančurova 1544, 272 01 Kladno
+Adresa pro doruceni;Máchova 400, 256 01 Benešov
+ICO;75030926        
+DIC;                
+Dodavatel;LKQ CZ BENESOV
+ICO;24787426
+DIC;CZ24787426
+Adresa;Erbenova 134, 256 01 Benešov
+Vystavil(a);kmul02
+Cislo;Kod;Nazev;Mnozstvi;MOC bez DPH/ks;VOC bez DPH/ks;Sleva (%);DPH (%);Cena/ks;Celkem s DPH;Merne mnozstvi;Merna velicina;poznámka zákazníka
+1;BO 1986A01050;Alternátor BOSCH;1;14559.00;14559.00;0.00;21;10336.89;12507.64;1.00;ks;
+2;LM 42177 01;Uložení stabilizátoru LEMFÖRDER;8;329.00;329.00;0.00;21;210.56;2038.22;1.00;ks;
+3;BO 0986474193;Brzdový třmen BOSCH přední, pravý;1;3199.00;3199.00;0.00;21;2111.34;2554.72;1.00;ks;
+4;BRE 09.B498.11;Brzdový kotouč BREMBO PRIME - lakovaný;2;3729.00;3729.00;0.00;21;2311.98;5594.99;1.00;ks;
+5;BRE P85 083;Sada brzdových destiček BREMBO PRIME;4;1469.00;1469.00;0.00;21;954.85;4621.47;1.00;ks;
+6;DF 28487439;Vysokotlaký ventil;1;1599.00;1599.00;0.00;21;1359.15;1644.57;1.00;ks;
+7;VAG 03L131512DQ;chladič zpětného vedení spalin, EGR ORIGINÁL;1;11487.00;11487.00;0.00;21;11487.00;13899.27;1.00;ks;
+8;VAG 03L131547N;těsnění trubky zpětného vedení spalin ORIGINÁL;6;203.00;203.00;0.00;21;192.85;1400.09;1.00;ks;
+9;VAG 04L906054E;Snímač tlaku paliva ORIGINÁL;1;1767.00;1767.00;0.00;21;1678.65;2031.17;1.00;ks;
+Sazba DPH (%);Bez DPH;DPH;Cena s DPH
+21;38257.97;8034.17;46292.14
+Celkem;38257.97;8034.17;46292.14
+

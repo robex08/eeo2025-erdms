@@ -8,7 +8,7 @@ import axios from 'axios';
 
 // Axios instance pro User Settings API
 const settingsApi = axios.create({
-  baseURL: process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/',
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 
     'Content-Type': 'application/json',
     'X-Endpoint': 'user/settings'
@@ -169,7 +169,6 @@ export const clearSettingsFromLocalStorage = (userId) => {
   try {
     const key = getLocalStorageKey(userId);
     localStorage.removeItem(key);
-    console.log(`[UserSettings] Smazáno z localStorage pro user_id=${userId}`);
   } catch (error) {
     console.error('[UserSettings] Chyba při mazání z localStorage:', error);
   }
@@ -190,8 +189,26 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
       params: { token, username }
     });
     
-    if (response.data.status === 'ok' && response.data.data?.nastaveni) {
-      const settings = response.data.data.nastaveni;
+    // ✅ PODPORA PRO response.data.status === 'ok'
+    if (response.data.status === 'ok') {
+      // ⚠️ FALLBACK: Pokud backend vrátí null nebo prázdné nastavení, vrať výchozí
+      const settings = response.data.data?.nastaveni || null;
+      
+      // Pokud je nastavení null nebo prázdné, použij výchozí z localStorage nebo výchozí default
+      if (!settings || Object.keys(settings).length === 0) {
+        console.debug('[UserSettings] Backend vrátil prázdné nastavení - použijí se výchozí');
+        const localSettings = loadSettingsFromLocalStorage(userId);
+        if (localSettings) {
+          return localSettings;
+        }
+        // Výchozí nastavení
+        return {
+          theme: 'light',
+          language: 'cs',
+          notifications: { email: true, inapp: true },
+          vychozi_sekce_po_prihlaseni: 'orders'
+        };
+      }
       
       // 🔧 EXTRAKCE: Vyextrahuj .value z objektů před uložením do localStorage
       const cleanedSettings = { ...settings };
@@ -227,7 +244,20 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
       return cleanedSettings;
     }
     
-    throw new Error('Neplatná odpověď z API');
+    // ⚠️ FALLBACK: Backend vrátil neočekávanou strukturu
+    console.warn('[UserSettings] ⚠️ Neplatná odpověď z API - použije se fallback');
+    const localSettings = loadSettingsFromLocalStorage(userId);
+    if (localSettings) {
+      return localSettings;
+    }
+    
+    // Výchozí nastavení jako poslední fallback
+    return {
+      theme: 'light',
+      language: 'cs',
+      notifications: { email: true, inapp: true },
+      vychozi_sekce_po_prihlaseni: 'orders'
+    };
     
   } catch (error) {
     console.error('[UserSettings] ❌ Chyba při načítání z API:', error);
@@ -235,12 +265,10 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
     // Fallback: zkusit localStorage
     const localSettings = loadSettingsFromLocalStorage(userId);
     if (localSettings) {
-      console.log('[UserSettings] Použit fallback z localStorage');
       return localSettings;
     }
     
     // Fallback: výchozí nastavení
-    console.log('[UserSettings] Použito výchozí nastavení');
     return DEFAULT_USER_SETTINGS;
   }
 };
@@ -257,24 +285,16 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
  */
 export const saveUserSettings = async ({ token, username, userId, nastaveni }) => {
   try {
-    console.log(`[UserSettings] Ukládání do API pro username=${username}`);
-    console.log('[UserSettings] 📦 Payload being sent to backend:', JSON.stringify(nastaveni, null, 2));
-    console.log('[UserSettings] 🎯 vychozi_rok in payload:', nastaveni.vychozi_rok);
-    console.log('[UserSettings] 🎯 vychozi_obdobi in payload:', nastaveni.vychozi_obdobi);
-    
     const response = await settingsApi.post('/user/settings', {
       token,
       username,
       nastaveni
     });
     
-    console.log('[UserSettings] 📨 Backend response:', response.data);
-    
     if (response.data.status === 'ok') {
       // Uložit do localStorage
       saveSettingsToLocalStorage(userId, nastaveni);
       
-      console.log('[UserSettings] ✅ Úspěšně uloženo do API a localStorage');
       return response.data;
     }
     

@@ -25,8 +25,8 @@ const apiDocxOrders = axios.create({
 apiDocxOrders.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 🔐 401 Unauthorized - token expired → logout
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -34,6 +34,7 @@ apiDocxOrders.interceptors.response.use(
         window.dispatchEvent(event);
       }
     }
+    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';

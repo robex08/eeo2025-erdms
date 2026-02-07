@@ -27,6 +27,7 @@ import {
 import { prettyDate } from '../utils/format';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ResetPasswordModal from '../components/ResetPasswordModal';
+import ForcePasswordChangeModal from '../components/ForcePasswordChangeModal';
 import UserManagementModal from '../components/userManagement/UserManagementModal';
 import UserContextMenu from '../components/UserContextMenu';
 import ModernHelper from '../components/ModernHelper';
@@ -168,7 +169,7 @@ const DashboardPanel = styled.div`
 
 const DashboardGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: 3fr 2.25fr 2.25fr 2.25fr 2.25fr;
   gap: 1.5rem;
 
   @media (max-width: 1200px) {
@@ -182,8 +183,8 @@ const DashboardGrid = styled.div`
 `;
 
 const TallStatCard = styled.div`
-  grid-column: span 3;
-  grid-row: span 2;
+  grid-column: 1;
+  grid-row: 1 / 3;
   background: linear-gradient(145deg, #ffffff, #f9fafb);
   border-radius: 12px;
   padding: 1rem;
@@ -216,7 +217,6 @@ const TallStatCard = styled.div`
 `;
 
 const SmallStatCard = styled.div`
-  grid-column: span 3;
   background: ${props => props.$isActive ?
     `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
     'linear-gradient(145deg, #ffffff, #f9fafb)'};
@@ -250,6 +250,49 @@ const SmallStatCard = styled.div`
 
   @media (max-width: 1200px) {
     grid-column: span 3;
+  }
+
+  @media (max-width: 768px) {
+    grid-column: span 1;
+    min-height: 100px;
+  }
+`;
+
+const MediumStatCard = styled.div`
+  grid-row: 2;
+  background: ${props => props.$isActive ?
+    `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
+    'linear-gradient(145deg, #ffffff, #f9fafb)'};
+  border-radius: 12px;
+  padding: 1rem;
+  border-left: 4px solid ${props => props.$color || '#3b82f6'};
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  &:hover {
+    transform: ${props => props.$clickable ? 'translateY(-2px)' : 'translateY(-1px)'};
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.1),
+      0 2px 6px rgba(0, 0, 0, 0.06);
+    ${props => props.$clickable && `
+      background: linear-gradient(145deg, ${props.$color || '#3b82f6'}25, ${props.$color || '#3b82f6'}15);
+    `}
+  }
+
+  ${props => props.$isActive && `
+    border-left-width: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 0 0 2px ${props.$color || '#3b82f6'}40;
+  `}
+
+  @media (max-width: 1200px) {
+    grid-column: span 6;
   }
 
   @media (max-width: 768px) {
@@ -1255,6 +1298,9 @@ const Users = () => {
   const [statusFilter, setStatusFilter] = useState(() => {
     return getUserStorage('users_statusFilter', 'all'); // 'all', 'active', 'inactive'
   });
+  const [forcePasswordChangeFilter, setForcePasswordChangeFilter] = useState(() => {
+    return getUserStorage('users_forcePasswordChangeFilter', 'all'); // 'all', 'forced', 'normal'
+  });
   const [showFilters, setShowFilters] = useState(() => {
     return getUserStorage('users_showFilters', false); // Rozšířený filtr defaultně skrytý
   });
@@ -1319,8 +1365,11 @@ const Users = () => {
   });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
+  const [isForcePasswordChangeModalOpen, setIsForcePasswordChangeModalOpen] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [dialogAction, setDialogAction] = useState(null);
+  const [deleteType, setDeleteType] = useState('soft'); // 'soft' nebo 'hard'
   const [activeUsers, setActiveUsers] = useState([]);
 
   // Debug panel - user-specific
@@ -1429,10 +1478,12 @@ const Users = () => {
       }
 
       // Přidáme timestamp do requestu, aby se vyhnul browser cache
+      // Pro modul Users načítáme VŠECHNY uživatele (aktivní i neaktivní)
       const data = await fetchAllUsers({
         token,
         username,
-        _cacheBust: Date.now() // Force bypass any HTTP cache
+        _cacheBust: Date.now(), // Force bypass any HTTP cache
+        show_inactive: true // Načíst i neaktivní uživatele (číselník)
       });
 
       // Save raw API data for debug modal
@@ -1491,6 +1542,7 @@ const Users = () => {
         ),
         phone: user.phone || user.telefon || 'N/A',
         active: user.aktivni === 1 || user.aktivni === '1' || user.aktivni === true || user.active === 'a' || user.active === true,
+        vynucena_zmena_hesla: user.vynucena_zmena_hesla === 1 || user.vynucena_zmena_hesla === '1' || user.vynucena_zmena_hesla === true ? 1 : 0,
         roles: user.roles || [],
         direct_rights: user.direct_rights || [],
         group_name: user.roles && user.roles.length > 0
@@ -1501,6 +1553,7 @@ const Users = () => {
               .join(', ')
           : (user.group_name || user.nazev_role || 'Bez role'),
         dt_activity: user.dt_activity || user.dt_posledni_aktivita || user.posl_aktivita || null,
+        aktivita_metadata: user.aktivita_metadata || null,
       }));
 
       // Users processed successfully
@@ -1563,6 +1616,39 @@ const Users = () => {
     const interval = setInterval(fetchActiveUsersData, 30000);
     return () => clearInterval(interval);
   }, [fetchActiveUsersData]);
+
+  // Načítání email šablon
+  useEffect(() => {
+    const fetchEmailTemplates = async () => {
+      if (!token || !username) return;
+      
+      try {
+        // Používám relativní cestu aby fungovalo přes proxy (setupProxy.js)
+        const response = await fetch('/api.eeo/notifications/templates', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            token,
+            username,
+            active_only: true
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'ok' && data.data) {
+            setEmailTemplates(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('Chyba při načítání šablon:', error);
+      }
+    };
+
+    fetchEmailTemplates();
+  }, [token, username]);
 
   // Načítání počtů objednávek pro uživatele - PARALELNÍ VERZE s CACHE
   const fetchOrdersCounts = useCallback(async (forceRefresh = false) => {
@@ -1689,6 +1775,7 @@ const Users = () => {
     const total = users.length;
     const active = users.filter(u => u.active).length;
     const inactive = total - active;
+    const forcePasswordChange = users.filter(u => u.vynucena_zmena_hesla === 1).length;
 
     const departments = {};
     users.forEach(u => {
@@ -1702,7 +1789,7 @@ const Users = () => {
       groups[group] = (groups[group] || 0) + 1;
     });
 
-    return { total, active, inactive, departments, groups };
+    return { total, active, inactive, forcePasswordChange, departments, groups };
   }, [users]);
 
   // Utility function pro normalizaci textu (odstranění diakritiky a převod na malá písmena)
@@ -1719,6 +1806,10 @@ const Users = () => {
       // Status filtr (všichni/aktivní/neaktivní) - MUSÍ BÝT PRVNÍ!
       if (statusFilter === 'active' && !user.active) return false;
       if (statusFilter === 'inactive' && user.active) return false;
+
+      // Filtr vynucené změny hesla
+      if (forcePasswordChangeFilter === 'forced' && user.vynucena_zmena_hesla !== 1) return false;
+      if (forcePasswordChangeFilter === 'normal' && user.vynucena_zmena_hesla === 1) return false;
 
       // Global filter (Fultext) - bez diakritiky
       if (globalFilter) {
@@ -1745,6 +1836,7 @@ const Users = () => {
       if (columnFilters.username && !normalizeForSearch(user.username).includes(normalizeForSearch(columnFilters.username))) return false;
       if (columnFilters.fullName && !normalizeForSearch(user.fullName).includes(normalizeForSearch(columnFilters.fullName))) return false;
       if (columnFilters.email && !normalizeForSearch(user.email).includes(normalizeForSearch(columnFilters.email))) return false;
+      if (columnFilters.phone && !normalizeForSearch(user.phone || user.telefon).includes(normalizeForSearch(columnFilters.phone))) return false;
       if (columnFilters.location && !normalizeForSearch(user.location).includes(normalizeForSearch(columnFilters.location))) return false;
       if (columnFilters.department && !normalizeForSearch(user.department).includes(normalizeForSearch(columnFilters.department))) return false;
       if (columnFilters.position && !normalizeForSearch(user.position).includes(normalizeForSearch(columnFilters.position))) return false;
@@ -1787,7 +1879,7 @@ const Users = () => {
 
       return true;
     });
-  }, [users, globalFilter, statusFilter, departmentFilter, groupFilter, locationFilter, positionFilter, columnFilters, normalizeForSearch]);
+  }, [users, globalFilter, statusFilter, forcePasswordChangeFilter, departmentFilter, groupFilter, locationFilter, positionFilter, columnFilters, normalizeForSearch]);
 
   const columns = useMemo(() => [
     {
@@ -1808,7 +1900,9 @@ const Users = () => {
     },
     {
       accessorKey: 'username',
-      header: 'Uživatelské jméno',
+      header: 'Username',
+      size: 180,
+      maxSize: 180,
       cell: ({ row }) => (
         <div style={{ fontWeight: 600, color: '#1e293b' }}>
           {row.original.username}
@@ -1826,7 +1920,9 @@ const Users = () => {
     },
     {
       accessorKey: 'fullName',
-      header: 'Celé jméno',
+      header: 'Jméno',
+      size: 160,
+      maxSize: 160,
       cell: (info) => <div style={{ fontWeight: 500 }}>{info.getValue()}</div>,
     },
     {
@@ -1965,8 +2061,41 @@ const Users = () => {
       },
     },
     {
+      accessorKey: 'vynucena_zmena_hesla',
+      header: 'Vynucení',
+      size: 80,
+      maxSize: 80,
+      cell: ({ row }) => {
+        const isForced = row.original.vynucena_zmena_hesla === 1;
+        return (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              fontSize: '1.1rem',
+              cursor: 'pointer',
+              padding: '4px'
+            }}
+            title={isForced ? 'Uživatel musí změnit heslo při příštím přihlášení' : 'Normální přihlašování'}
+            onClick={() => handleToggleForcePasswordChange(row.original)}
+          >
+            <FontAwesomeIcon
+              icon={isForced ? faExclamationTriangle : faQuestionCircle}
+              style={{ 
+                color: isForced ? '#f59e0b' : '#94a3b8',
+                transition: 'color 0.2s ease'
+              }}
+            />
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: 'active',
       header: 'Status',
+      size: 80,
+      maxSize: 80,
       cell: ({ row }) => (
         <div
           style={{
@@ -2120,6 +2249,10 @@ const Users = () => {
   }, [statusFilter, user_id]);
 
   useEffect(() => {
+    setUserStorage('users_forcePasswordChangeFilter', forcePasswordChangeFilter);
+  }, [forcePasswordChangeFilter, user_id]);
+
+  useEffect(() => {
     setUserStorage('users_showFilters', showFilters);
   }, [showFilters, user_id]);
 
@@ -2200,6 +2333,136 @@ const Users = () => {
     setIsDialogOpen(true);
   };
 
+  const handleToggleForcePasswordChange = async (user) => {
+    // Otevřít modal s možnostmi
+    setSelectedUser(user);
+    setIsForcePasswordChangeModalOpen(true);
+  };
+
+  const handleForcePasswordChangeConfirm = async (options) => {
+    const user = selectedUser;
+    if (!user) return;
+
+    const currentValue = user.vynucena_zmena_hesla === 1;
+    const isForcing = !currentValue;
+
+    try {
+      startGlobalProgress();
+      setGlobalProgress(20);
+
+      // Pokud je volba "remove-force", jen odstraníme vynucení
+      if (options.option === 'remove-force') {
+        const result = await partialUpdateUser({
+          token,
+          username,
+          id: user.id,
+          vynucena_zmena_hesla: 0
+        });
+
+        setGlobalProgress(70);
+
+        // Update local data
+        const updatedUsers = users.map(u => 
+          u.id === user.id 
+            ? { ...u, vynucena_zmena_hesla: 0 }
+            : u
+        );
+        setUsers(updatedUsers);
+
+        setGlobalProgress(100);
+        doneGlobalProgress();
+        setIsForcePasswordChangeModalOpen(false);
+
+        if (showToast) {
+          showToast(`✓ Vynucení změny hesla bylo zrušeno pro ${user.fullName || user.username}`, { type: 'success' });
+        }
+        return;
+      }
+
+      // Vynucení změny hesla
+      const result = await partialUpdateUser({
+        token,
+        username,
+        id: user.id,
+        vynucena_zmena_hesla: 1
+      });
+
+      setGlobalProgress(40);
+
+      // Pokud má být zaslán email s novým heslem
+      let emailResult = null;
+      if (options.option === 'with-email' && options.templateId) {
+        try {
+          const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+          const response = await fetch(`${API_BASE_URL}users/generate-temp-password`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              token,
+              username,
+              user_ids: [user.id],
+              template_id: options.templateId,
+            }),
+          });
+
+          setGlobalProgress(70);
+
+          emailResult = await response.json();
+          
+          if (emailResult.status !== 'ok') {
+            throw new Error(emailResult.err || 'Nepodařilo se odeslat email s novým heslem');
+          }
+
+          if (showToast) {
+            const results = emailResult.results || [];
+            const userResult = results.find(r => r.user_id === user.id);
+            if (userResult && userResult.success) {
+              showToast(`✓ Nové heslo bylo vygenerováno a odesláno na ${user.email}`, { type: 'success' });
+              // Refresh seznamu uživatelů (mohli jsme aktivovat neaktivního uživatele)
+              await fetchUsers();
+            } else {
+              const errorMsg = userResult?.error || 'Email se nepodařilo odeslat';
+              showToast(`⚠️ Heslo bylo vygenerováno, ale ${errorMsg}`, { type: 'warning' });
+            }
+          }
+        } catch (emailError) {
+          if (showToast) {
+            showToast(`⚠️ Vynucení bylo nastaveno, ale email se nepodařilo odeslat: ${emailError.message}`, { type: 'warning' });
+          }
+        }
+      }
+
+      // Update local data - pokud nebyl reload (při chybě emailu)
+      if (options.option !== 'with-email' || !emailResult?.results?.find(r => r.user_id === user.id && r.success)) {
+        const updatedUsers = users.map(u => 
+          u.id === user.id 
+            ? { ...u, vynucena_zmena_hesla: 1 }
+            : u
+        );
+        setUsers(updatedUsers);
+      }
+
+      setGlobalProgress(100);
+      doneGlobalProgress();
+      setIsForcePasswordChangeModalOpen(false);
+
+      if (showToast && options.option === 'without-email') {
+        showToast(`✓ Vynucení změny hesla bylo nastaveno pro ${user.fullName || user.username}`, { type: 'success' });
+      }
+
+    } catch (error) {
+      doneGlobalProgress();
+      setIsForcePasswordChangeModalOpen(false);
+
+      const errorMessage = error.message || 'Chyba při změně nastavení hesla';
+      if (showToast) {
+        showToast(`✗ ${errorMessage}`, { type: 'error' });
+      }
+    }
+  };
+
   const handleResetPassword = (user) => {
     setSelectedUser(user);
     setIsResetPasswordModalOpen(true);
@@ -2257,6 +2520,7 @@ const Users = () => {
         });
       } catch (apiError) {
         // API detail selhal, použije se fallback data
+        console.error('❌ handleEditUser - API error:', apiError);
       }
 
       // POKUS 2: Pokud API nevrátilo ID pole, najdi uživatele v rawApiData
@@ -2335,6 +2599,7 @@ const Users = () => {
     }
     setSelectedUser(user);
     setDialogAction('delete');
+    setDeleteType('soft'); // Reset na soft delete
     setIsDialogOpen(true);
   };
 
@@ -2347,12 +2612,13 @@ const Users = () => {
 
       switch (dialogAction) {
         case 'delete': {
-          // Kontrola práv - pokud má USER_DELETE, skutečně smazat, jinak jen deaktivovat
+          // Kontrola práv - pokud má USER_DELETE a vybral hard delete, skutečně smazat
           const canHardDelete = hasPermission && hasPermission('USER_DELETE');
           const fullName = selectedUser.fullName || selectedUser.username;
+          const isHardDelete = deleteType === 'hard' && canHardDelete;
 
-          if (canHardDelete) {
-            // Hard delete
+          if (isHardDelete) {
+            // Hard delete - trvalé smazání
             await deleteUser({
               token,
               username,
@@ -2516,8 +2782,86 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
+        // Pro adminy s právem USER_DELETE zobrazíme volbu typu mazání
         if (canHardDelete) {
-          return `Opravdu chcete trvale smazat uživatele?\n\n${userName}\n\nTato akce je nevratná a všechna data uživatele budou trvale odstraněna z databáze.`;
+          return (
+            <div>
+              <p style={{ marginBottom: '1.5rem' }}>
+                Opravdu chcete odstranit uživatele <strong>{userName}</strong>?
+              </p>
+              
+              <div style={{
+                background: '#f8fafc',
+                border: '2px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '1rem'
+              }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                  🔧 Vyberte typ odstranění:
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'soft' ? '#eff6ff' : 'white',
+                    transition: 'all 0.2s'
+                  }}>
+                    <input
+                      type="radio"
+                      name="deleteType"
+                      value="soft"
+                      checked={deleteType === 'soft'}
+                      onChange={(e) => setDeleteType(e.target.value)}
+                      style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>
+                        Deaktivace (SOFT DELETE)
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                        Uživatel bude deaktivován. Data zůstanou zachována, lze později obnovit.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                    transition: 'all 0.2s'
+                  }}>
+                    <input
+                      type="radio"
+                      name="deleteType"
+                      value="hard"
+                      checked={deleteType === 'hard'}
+                      onChange={(e) => setDeleteType(e.target.value)}
+                      style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
+                        ⚠️ Trvalé smazání (HARD DELETE)
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#991b1b' }}>
+                        <strong>NEVRATNÉ!</strong> Uživatel bude trvale smazán z databáze včetně všech vazeb.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          );
         } else {
           return `Opravdu chcete deaktivovat uživatele?\n\n${userName}\n\nNemáte oprávnění USER_DELETE, proto bude uživatel pouze deaktivován (soft delete). Jeho data zůstanou zachována, ale nebude se moci přihlásit do systému.`;
         }
@@ -2535,7 +2879,8 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
-        return canHardDelete ? 'Smazat trvale' : 'Deaktivovat';
+        if (!canHardDelete) return 'Deaktivovat';
+        return deleteType === 'hard' ? '⚠️ Smazat trvale' : 'Deaktivovat';
       case 'toggle':
         return selectedUser?.active ? 'Deaktivovat' : 'Aktivovat';
       default:
@@ -2548,7 +2893,8 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
-        return canHardDelete ? 'danger' : 'warning';
+        if (!canHardDelete) return 'warning';
+        return deleteType === 'hard' ? 'danger' : 'warning';
       case 'toggle':
         return selectedUser?.active ? 'warning' : 'primary';
       default:
@@ -2561,7 +2907,8 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
-        return canHardDelete ? faTrash : faExclamationTriangle;
+        if (!canHardDelete) return faExclamationTriangle;
+        return deleteType === 'hard' ? faTrash : faExclamationTriangle;
       case 'toggle':
         return selectedUser?.active ? faUserSlash : faUserCheck;
       default:
@@ -2577,6 +2924,14 @@ const Users = () => {
     });
   };
 
+  const handleForcePasswordChangeFilterClick = () => {
+    setForcePasswordChangeFilter(prev => {
+      if (prev === 'all') return 'forced';
+      if (prev === 'forced') return 'normal';
+      return 'all';
+    });
+  };
+
   const handleClearFilters = () => {
     setGlobalFilter('');
     setDepartmentFilter('');
@@ -2584,6 +2939,7 @@ const Users = () => {
     setLocationFilter('');
     setPositionFilter('');
     setStatusFilter('all'); // Reset na defaultní hodnotu
+    setForcePasswordChangeFilter('all'); // Reset na defaultní hodnotu
     setColumnFilters({}); // Vymazat i column filtry v tabulce
     // localStorage will be updated automatically via useEffect hooks
   };
@@ -2887,57 +3243,97 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                     // Formátovat datum a čas v CZ formátu
                     const dateTimeText = prettyDate(activityTime);
 
+                    // Parse aktivita_metadata
+                    let metadata = null;
+                    try {
+                      if (user.aktivita_metadata) {
+                        metadata = typeof user.aktivita_metadata === 'string' 
+                          ? JSON.parse(user.aktivita_metadata)
+                          : user.aktivita_metadata;
+                      }
+                    } catch (e) {
+                      // Ignore parse errors
+                    }
+
                     return (
                       <div key={index} style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.35rem 0.5rem',
-                        borderRadius: '4px',
-                        transition: 'background 0.2s'
+                        flexDirection: 'column',
+                        gap: '0.25rem',
+                        padding: '0.5rem',
+                        borderRadius: '6px',
+                        transition: 'background 0.2s',
+                        background: 'transparent'
                       }}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 0, 0, 0.02)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <div style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          flexShrink: 0,
-                          background: status === 'active' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#ef4444'
-                        }} />
-                        <div style={{
-                          fontSize: '0.875rem',
-                          color: '#1f2937',
-                          fontWeight: 500,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          flex: 1
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
                         }}>
-                          {user.cele_jmeno}
+                          <div style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            background: status === 'active' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#ef4444'
+                          }} />
+                          <div style={{
+                            fontSize: '0.875rem',
+                            color: '#1f2937',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            flex: 1
+                          }}>
+                            {user.cele_jmeno}
+                          </div>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#9ca3af',
+                            fontWeight: 400,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            minWidth: '150px',
+                            textAlign: 'right'
+                          }}>
+                            {dateTimeText}
+                          </div>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#9ca3af',
+                            fontWeight: 400,
+                            flexShrink: 0,
+                            minWidth: '40px',
+                            textAlign: 'right'
+                          }}>
+                            {timeText}
+                          </div>
                         </div>
-                        <div style={{
-                          fontSize: '0.75rem',
-                          color: '#9ca3af',
-                          fontWeight: 400,
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                          minWidth: '150px',
-                          textAlign: 'right'
-                        }}>
-                          {dateTimeText}
-                        </div>
-                        <div style={{
-                          fontSize: '0.75rem',
-                          color: '#9ca3af',
-                          fontWeight: 400,
-                          flexShrink: 0,
-                          minWidth: '40px',
-                          textAlign: 'right'
-                        }}>
-                          {timeText}
-                        </div>
+                        {metadata && (metadata.last_module || metadata.last_ip) && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            paddingLeft: '1.25rem',
+                            fontSize: '0.75rem',
+                            color: '#6b7280'
+                          }}>
+                            {metadata.last_module && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                📍 {metadata.last_module}
+                              </span>
+                            )}
+                            {metadata.last_ip && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                🌐 {metadata.last_ip}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -2964,7 +3360,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               $color="#16a34a"
               $clickable
               $isActive={statusFilter === 'active'}
-              onClick={() => setStatusFilter('active')}
+              onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
               title="Klikněte pro filtrování pouze aktivních uživatelů"
             >
               <StatHeader>
@@ -2978,7 +3374,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               $color="#dc2626"
               $clickable
               $isActive={statusFilter === 'inactive'}
-              onClick={() => setStatusFilter('inactive')}
+              onClick={() => setStatusFilter(statusFilter === 'inactive' ? 'all' : 'inactive')}
               title="Klikněte pro filtrování pouze neaktivních uživatelů"
             >
               <StatHeader>
@@ -2988,23 +3384,37 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               <StatLabel>Neaktivní uživatelé</StatLabel>
             </SmallStatCard>
 
-            <SmallStatCard $color="#f59e0b">
+            <SmallStatCard
+              $color="#f59e0b"
+              $clickable
+              $isActive={forcePasswordChangeFilter === 'forced'}
+              onClick={() => setForcePasswordChangeFilter(forcePasswordChangeFilter === 'forced' ? 'all' : 'forced')}
+              title="Klikněte pro filtrování uživatelů s vynucenou změnou hesla"
+            >
+              <StatHeader>
+                <StatValue>{stats.forcePasswordChange}</StatValue>
+                <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faExclamationTriangle} /></StatIcon>
+              </StatHeader>
+              <StatLabel>Vynucená změna hesla</StatLabel>
+            </SmallStatCard>
+
+            <MediumStatCard $color="#8b5cf6">
               <StatHeader>
                 <StatValue>{Object.keys(stats.departments).length}</StatValue>
-                <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faBuilding} /></StatIcon>
+                <StatIcon $color="#8b5cf6"><FontAwesomeIcon icon={faBuilding} /></StatIcon>
               </StatHeader>
               <StatLabel>Počet úseků</StatLabel>
-            </SmallStatCard>
+            </MediumStatCard>
 
-            <SmallStatCard $color="#8b5cf6">
+            <MediumStatCard $color="#10b981">
               <StatHeader>
                 <StatValue>{Object.keys(stats.groups).length}</StatValue>
-                <StatIcon $color="#8b5cf6"><FontAwesomeIcon icon={faShield} /></StatIcon>
+                <StatIcon $color="#10b981"><FontAwesomeIcon icon={faShield} /></StatIcon>
               </StatHeader>
               <StatLabel>Počet skupin/rolí</StatLabel>
-            </SmallStatCard>
+            </MediumStatCard>
 
-            <SmallStatCard $color="#ec4899">
+            <MediumStatCard $color="#ec4899">
               <StatHeader>
                 <StatValue>
                   {Object.keys(ordersCount).length > 0 ?
@@ -3015,7 +3425,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                 <StatIcon $color="#ec4899"><FontAwesomeIcon icon={faUserCheck} /></StatIcon>
               </StatHeader>
               <StatLabel>Uživatelů s objednávkami</StatLabel>
-            </SmallStatCard>
+            </MediumStatCard>
           </DashboardGrid>
         </DashboardPanel>
       )}
@@ -3281,6 +3691,40 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                         )}
                       </IconFilterButton>
                     </div>
+                  ) : header.column.columnDef.accessorKey === 'vynucena_zmena_hesla' ? (
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <IconFilterButton
+                        onClick={handleForcePasswordChangeFilterClick}
+                        title={
+                          forcePasswordChangeFilter === 'all' ? 'Zobrazit vše' :
+                          forcePasswordChangeFilter === 'forced' ? 'Jen s vynucenou změnou' :
+                          'Jen bez vynucené změny'
+                        }
+                      >
+                        {forcePasswordChangeFilter === 'all' && (
+                          <svg viewBox="0 0 512 512" style={{ width: '20px', height: '20px' }}>
+                            <defs>
+                              <clipPath id="clip-left-force">
+                                <rect x="0" y="0" width="256" height="512"/>
+                              </clipPath>
+                              <clipPath id="clip-right-force">
+                                <rect x="256" y="0" width="256" height="512"/>
+                              </clipPath>
+                            </defs>
+                            <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z"
+                                  fill="#f59e0b" clipPath="url(#clip-left-force)"/>
+                            <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z"
+                                  fill="#94a3b8" clipPath="url(#clip-right-force)"/>
+                          </svg>
+                        )}
+                        {forcePasswordChangeFilter === 'forced' && (
+                          <FontAwesomeIcon icon={faExclamationTriangle} style={{ color: '#f59e0b', fontSize: '20px' }}/>
+                        )}
+                        {forcePasswordChangeFilter === 'normal' && (
+                          <FontAwesomeIcon icon={faQuestionCircle} style={{ color: '#94a3b8', fontSize: '20px' }}/>
+                        )}
+                      </IconFilterButton>
+                    </div>
                   ) : (
                     <ColumnFilterWrapper>
                       <FontAwesomeIcon icon={faSearch} />
@@ -3371,6 +3815,46 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                               <InfoLabel>Poslední aktivita:</InfoLabel>
                               <InfoValue>{row.original.dt_activity ? prettyDate(row.original.dt_activity) : 'Nikdy'}</InfoValue>
                             </InfoRow>
+                            {(() => {
+                              try {
+                                const metadata = row.original.aktivita_metadata
+                                  ? (typeof row.original.aktivita_metadata === 'string'
+                                      ? JSON.parse(row.original.aktivita_metadata)
+                                      : row.original.aktivita_metadata)
+                                  : null;
+                                
+                                // Support both old format (last_ip) and new format (last_public_ip, last_local_ip)
+                                const publicIp = metadata?.last_public_ip || metadata?.last_ip;
+                                const localIp = metadata?.last_local_ip;
+                                
+                                if (metadata && (metadata.last_module || publicIp || localIp)) {
+                                  return (
+                                    <>
+                                      {metadata.last_module && (
+                                        <InfoRow>
+                                          <InfoLabel>Modul:</InfoLabel>
+                                          <InfoValue style={{ fontWeight: 500 }}>{metadata.last_module}</InfoValue>
+                                        </InfoRow>
+                                      )}
+                                      {publicIp && (
+                                        <InfoRow>
+                                          <InfoLabel>Veřejná IP:</InfoLabel>
+                                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{publicIp}</InfoValue>
+                                        </InfoRow>
+                                      )}
+                                      {localIp && (
+                                        <InfoRow>
+                                          <InfoLabel>Lokální IP:</InfoLabel>
+                                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{localIp}</InfoValue>
+                                        </InfoRow>
+                                      )}
+                                    </>
+                                  );
+                                }
+                              } catch (e) {
+                                return null;
+                              }
+                            })()}
                           </InfoCard>
 
                           {/* Role a práva - NOVÁ VERZE S UNIKÁTNÍMI PRÁVY */}
@@ -3965,6 +4449,18 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
         }}
         onConfirm={handleResetPasswordConfirm}
         userData={selectedUser}
+      />
+
+      {/* Force Password Change Modal */}
+      <ForcePasswordChangeModal
+        isOpen={isForcePasswordChangeModalOpen}
+        onClose={() => {
+          setIsForcePasswordChangeModalOpen(false);
+          setSelectedUser(null);
+        }}
+        onConfirm={handleForcePasswordChangeConfirm}
+        userData={selectedUser}
+        templates={emailTemplates}
       />
 
       {/* User Management Modal */}

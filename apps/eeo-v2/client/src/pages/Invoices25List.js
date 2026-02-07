@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useContext, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
@@ -7,22 +8,141 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFileInvoice, faSearch, faFilter, faTimes, faPlus, faEdit, faEye, faTrash,
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
-  faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
+  faCalendarAlt, faCalendarCheck, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
-  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract
+  faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
+  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
 import { translateErrorMessage } from '../utils/errorTranslation';
 import { TooltipWrapper } from '../styles/GlobalTooltip';
+import '../styles/tableFiltersImprovement.css';
 import DatePicker from '../components/DatePicker';
+import { CustomSelect } from '../components/CustomSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
-import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
+import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
+import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
+import OrderAttachmentsTooltip from '../components/orders/OrderAttachmentsTooltip';
+import AttachmentViewer from '../components/invoices/AttachmentViewer';
+import OperatorInput from '../components/OperatorInput';
+import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, restoreInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
+import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
+import { getOrderV2 } from '../services/apiOrderV2';
+import { toggleInvoiceCheck, getInvoiceChecks } from '../services/apiInvoiceCheck';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
 // =============================================================================
+
+// 🔒 LOCK Dialog komponenty
+const UserInfo = styled.div`
+  padding: 1rem;
+  background: #f8fafc;
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+  margin: 1rem 0;
+  font-size: 1.1rem;
+`;
+
+const InfoText = styled.p`
+  margin: 0.75rem 0;
+  color: #64748b;
+  line-height: 1.6;
+`;
+
+const WarningText = styled.p`
+  margin: 0.75rem 0;
+  color: #dc2626;
+  font-weight: 600;
+  line-height: 1.6;
+`;
+
+const ContactInfo = styled.div`
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+`;
+
+const ContactItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  color: #1e40af;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #e0e7ff;
+  }
+
+  svg {
+    color: #3b82f6;
+    width: 18px;
+    height: 18px;
+  }
+
+  a {
+    color: #1e40af;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #1e3a8a;
+      text-decoration: underline;
+    }
+  }
+`;
+
+// 💰 Roční poplatky badge
+const InfoIconBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-radius: 50%;
+  color: white;
+  font-size: 11px;
+  margin-left: 8px;
+  cursor: help;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+  transition: all 0.2s ease;
+  
+  &:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
+  }
+`;
+
+const ContactLabel = styled.span`
+  font-weight: 600;
+  min-width: 80px;
+  color: #64748b;
+`;
+
+const LockTimeInfo = styled.div`
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  svg {
+    color: #f59e0b;
+    width: 16px;
+    height: 16px;
+  }
+`;
 
 const Container = styled.div`
   position: relative;
@@ -32,6 +152,11 @@ const Container = styled.div`
   box-sizing: border-box;
   overflow: visible;
   isolation: isolate;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 `;
 
 // Year Filter Panel (prominent position above main header)
@@ -181,6 +306,42 @@ const ClearAllButton = styled.button`
   
   &:active {
     transform: translateY(0);
+  }
+`;
+
+// 🔧 ADMIN: Checkbox pro zobrazení neaktivních faktur
+const AdminCheckboxWrapper = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #fef3c7;
+  border: 2px solid #fbbf24;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #92400e;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: #fde68a;
+    border-color: #f59e0b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+  }
+  
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #f59e0b;
+  }
+  
+  svg {
+    color: #d97706;
+    font-size: 1rem;
   }
 `;
 
@@ -480,7 +641,7 @@ const LargeStatCard = styled.div`
 `;
 
 const LargeStatValue = styled.div`
-  font-size: clamp(2rem, 3vw, 2.75rem);
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
   font-weight: 700;
   color: #1e293b;
   text-align: left;
@@ -530,12 +691,62 @@ const SummaryValue = styled.div`
 `;
 
 // Table styles
-const TableWrapper = styled.div`
+const TableScrollWrapper = styled.div`
+  position: relative;
   background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  margin-top: 1rem;
+
+  /* Shadow indikátory na okrajích když je možné scrollovat */
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 40px;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.3s ease;
+  }
+
+  /* Levý shadow - když není na začátku */
+  &::before {
+    left: 0;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
+    opacity: ${props => props.$showLeftShadow ? 1 : 0};
+    border-radius: 8px 0 0 8px;
+  }
+
+  /* Pravý shadow - když není na konci */
+  &::after {
+    right: 0;
+    background: linear-gradient(to left, rgba(0, 0, 0, 0.1), transparent);
+    opacity: ${props => props.$showRightShadow ? 1 : 0};
+    border-radius: 0 8px 8px 0;
+  }
+`;
+
+const TableContainer = styled.div`
+  /* Horizontální scrollování když se tabulka nevejde */
+  overflow-x: auto;
+  overflow-y: visible;
+  position: relative;
+
+  /* Smooth scrolling pro lepší UX */
+  scroll-behavior: smooth;
+
+  /* Skrýt scrollbar - zabránit blikání */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Firefox scrollbar - skrýt */
+  scrollbar-width: none;
+  
+  /* IE a Edge - skrýt */
+  -ms-overflow-style: none;
 `;
 
 const Table = styled.table`
@@ -558,6 +769,35 @@ const TableRow = styled.tr`
   &:hover {
     background: #f8fafc;
   }
+
+  /* STORNO state styling - jen text obsahu */
+  &[data-storno="true"] .storno-content {
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+
+  /* Buňka se stavem (dropdown) - bez stylování */
+  &[data-storno="true"] td:nth-of-type(9) {
+    text-decoration: none;
+    opacity: 1;
+  }
+  
+  /* 🔧 NEAKTIVNÍ (SMAZANÉ) FAKTURY - admin view */
+  &[data-inactive="true"] {
+    background: #fef2f2 !important;
+    opacity: 0.75;
+    
+    &:hover {
+      background: #fee2e2 !important;
+    }
+    
+    /* Dvojité přeškrtnutí textu */
+    .inactive-content {
+      text-decoration: line-through double;
+      text-decoration-color: #dc2626;
+      opacity: 0.7;
+    }
+  }
 `;
 
 const TableHeader = styled.th`
@@ -568,66 +808,10 @@ const TableHeader = styled.th`
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
   user-select: none;
-  width: auto;
-  min-width: 100px;
   position: relative;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
-  }
-  
-  /* Užší sloupce pro data */
-  &.date-column {
-    min-width: 80px;
-    max-width: 90px;
-  }
-  
-  /* Širší sloupce pro Faktura VS a Číslo obj/Sml */
-  &.wide-column {
-    min-width: 140px;
-    max-width: 160px;
-  }
-  
-  /* Středně široký sloupec pro Stav */
-  &.status-column {
-    min-width: 125px;
-    max-width: 145px;
-  }
-  
-  /* Úzký sloupec pro zkrácená jména */
-  &.narrow-column {
-    min-width: 90px;
-    max-width: 110px;
-  }
-  
-  /* Úzký sloupec pro částku */
-  &.amount-column {
-    min-width: 80px;
-    max-width: 100px;
-  }
-  
-  /* Sorting indicator */
-  &.sortable {
-    padding-right: 1.5rem;
-    
-    .sort-icon {
-      position: absolute;
-      right: 0.5rem;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 0.75rem;
-      opacity: 0.6;
-      transition: opacity 0.2s;
-    }
-    
-    &:hover .sort-icon {
-      opacity: 1;
-    }
-    
-    &.active .sort-icon {
-      opacity: 1;
-      color: #fbbf24;
-    }
   }
 `;
 
@@ -635,8 +819,6 @@ const TableCell = styled.td`
   padding: 0.375rem;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  color: #1e293b;
-  text-align: left;
   
   &.center {
     text-align: center;
@@ -647,25 +829,56 @@ const TableCell = styled.td`
   }
 `;
 
+// Floating panel který se zobrazí při scrollování
+const FloatingHeaderPanel = styled.div`
+  position: fixed;
+  top: calc(var(--app-header-height, 96px) + 48px); /* Pod fixní hlavičkou + menu bar (96px + 48px = 144px) */
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9999; /* Vysoký z-index pro jistotu viditelnosti */
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  border-top: 2px solid #cbd5e1; /* Světle šedý top border pro oddělení od menu baru */
+  border-bottom: 3px solid #3b82f6;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transform: translateY(${props => props.$visible ? '0' : '-10px'});
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+`;
+
+const FloatingTableWrapper = styled.div`
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 0 1rem; /* Stejný padding jako Container */
+  box-sizing: border-box;
+  
+  /* Stejné písmo jako hlavní tabulka */
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+`;
+
 const ColumnFilterWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 0.25rem;
+  padding: 0.5rem;
+  min-height: 45px;
 
   & > svg {
     position: absolute;
-    left: 0.75rem;
-    color: #94a3b8;
-    font-size: 0.75rem;
+    left: 1rem;
+    color: #4285f4;
+    font-size: 0.875rem;
     pointer-events: none;
+    z-index: 2;
   }
 `;
 
-const ColumnFilterInput = styled.input`
+const ColumnFilterSelect = styled.select`
   width: 100%;
-  padding: 0.375rem 0.625rem 0.375rem 2rem;
+  padding: 0.375rem 0.625rem;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.75rem;
@@ -673,6 +886,11 @@ const ColumnFilterInput = styled.input`
   color: #1e293b;
   transition: all 0.2s ease;
   cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 2rem;
 
   &:focus {
     outline: none;
@@ -680,8 +898,66 @@ const ColumnFilterInput = styled.input`
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
+  &:disabled {
+    opacity: 0.7;
+    cursor: wait;
+    background-color: #f8f9fa;
+  }
+`;
+
+// Wrapper pro kompaktní CustomSelect v tabulce
+const CompactSelectWrapper = styled.div`
+  width: 100%;
+  
+  /* Override CustomSelect styles pro tabulku */
+  & [data-custom-select] {
+    width: 100%;
+  }
+  
+  & > div > div:first-of-type {
+    height: auto !important;
+    min-height: 42px;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    transition: all 0.2s ease !important;
+    
+    &:hover {
+      border-color: #4285f4 !important;
+    }
+  }
+`;
+
+const ColumnFilterInput = styled.input`
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: white;
+  color: #1e293b;
+  transition: all 0.2s ease;
+  cursor: text;
+  min-height: 42px;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #4285f4;
+    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+  }
+
+  &:hover {
+    border-color: #4285f4;
+  }
+
   &::placeholder {
-    color: #94a3b8;
+    color: #9ca3af;
+    font-weight: 400;
   }
 
   &[type="date"] {
@@ -750,6 +1026,11 @@ const ActionMenuButton = styled.button`
   &.edit:hover:not(:disabled) {
     color: #3b82f6;
     background: #eff6ff;
+  }
+
+  &.unlink:hover:not(:disabled) {
+    color: #f97316;
+    background: #fff7ed;
   }
 
   &.delete:hover:not(:disabled) {
@@ -922,6 +1203,46 @@ const LoadingSubtext = styled.div`
   text-align: center;
 `;
 
+// Jemný overlay pro filtrování (když už jsou zobrazené faktury)
+const FilteringOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+  backdrop-filter: blur(2px);
+`;
+
+const FilteringSpinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(229, 231, 235, 0.8);
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+const FilteringText = styled.div`
+  margin-left: 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.02em;
+`;
+
 // =============================================================================
 // SLIDE PANEL - Detail faktury styled components
 // =============================================================================
@@ -970,6 +1291,10 @@ const SectionTitle = styled.h3`
 const InfoGrid = styled.div`
   display: grid;
   gap: 1rem;
+  
+  &:not(:last-child) {
+    margin-bottom: 1rem;
+  }
   
   /* Dva sloupce pro větší obrazovky */
   @media (min-width: 768px) {
@@ -1188,8 +1513,44 @@ const Invoices25List = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [invoiceChecks, setInvoiceChecks] = useState({});
+  const [checksLoading, setChecksLoading] = useState(false);
+  
+  // ⚠️ DEPRECATED: Tento stav se již nepoužívá - check_status je přímo v invoice objektu z BE
+  // Ponecháno pro kompatibilitu s toggle funkcionalitou
   const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
+  
+  // Debouncing pro filtry - 400ms delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedColumnFilters(columnFilters);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [columnFilters]);
+  
+  // State pro CustomSelect komponenty
+  const [selectStates, setSelectStates] = useState({
+    fa_typ: false,
+    stav: false,
+    vecna_kontrola: false,
+    ma_prilohy: false,
+    ma_prilohy_floating: false,
+  });
+  
+  // Search states pro CustomSelect
+  const [searchStates, setSearchStates] = useState({
+    fa_typ: '',
+    stav: '',
+    vecna_kontrola: '',
+    ma_prilohy: '',
+    ma_prilohy_floating: '',
+  });
+  
+  // Tracking které Custom Select fields byly "touched"
+  const [touchedSelectFields, setTouchedSelectFields] = useState(new Set());
   
   // Filters state pro dashboard cards
   const [filters, setFilters] = useState(savedState?.filters || {
@@ -1202,9 +1563,25 @@ const Invoices25List = () => {
   // 🔍 Globální vyhledávání (nový state)
   const [globalSearchTerm, setGlobalSearchTerm] = useState(savedState?.globalSearchTerm || '');
   
-  // 📊 Sorting state (client-side)
+  // � ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
+  // Checkbox viditelný pouze pro role ADMINISTRATOR a SUPERADMIN
+  const [showOnlyInactive, setShowOnlyInactive] = useState(false); // NEVER persisted to localStorage
+  
+  // �📊 Sorting state (client-side)
   const [sortField, setSortField] = useState(savedState?.sortField || null);
   const [sortDirection, setSortDirection] = useState(savedState?.sortDirection || 'asc'); // 'asc' nebo 'desc'
+  
+  // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
+  const isAdmin = hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR'));
+  
+  // Check if user can control invoices (KONTROLOR_FAKTUR role)
+  const canControlInvoices = React.useMemo(() => {
+    return hasPermission && (
+      hasPermission('SUPERADMIN') || 
+      hasPermission('ADMINISTRATOR') || 
+      hasPermission('KONTROLOR_FAKTUR')
+    );
+  }, [hasPermission]);
   
   // Dashboard statistiky (z BE - celkové součty podle filtru, NE jen aktuální stránka!)
   const [stats, setStats] = useState({
@@ -1212,13 +1589,38 @@ const Invoices25List = () => {
     paid: 0,            // Počet zaplacených
     unpaid: 0,          // Počet nezaplacených
     overdue: 0,         // Počet po splatnosti
+    withinDue: 0,       // Počet ve splatnosti (nezaplacené, ale ne po splatnosti)
     totalAmount: 0,     // Celková částka (všechny)
     paidAmount: 0,      // Částka zaplacených
     unpaidAmount: 0,    // Částka nezaplacených
     overdueAmount: 0,   // Částka po splatnosti
-    withoutOrder: 0,    // Faktury bez přiřazené objednávky
-    myInvoices: 0       // Moje faktury (jen pro admin/invoice_manage)
+    withinDueAmount: 0, // Částka ve splatnosti
+    withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
+    myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
+    kontrolovano: 0     // Zkontrolované faktury (kontrola_radku)
   });
+  
+  // 🔍 Sidebar search pro objednávky bez faktury
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [debouncedSidebarSearch, setDebouncedSidebarSearch] = useState('');
+  
+  // Debouncing pro sidebar search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSidebarSearch(sidebarSearch);
+    }, 300); // 300ms delay
+    
+    return () => clearTimeout(timer);
+  }, [sidebarSearch]);
+  
+  // Helper funkce pro normalizaci textu (bez diakritiky + lowercase)
+  const normalizeSearchText = useCallback((text) => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }, []);
 
   // Helper: Save state to localStorage
   const saveToLS = useCallback((state) => {
@@ -1238,9 +1640,88 @@ const Invoices25List = () => {
     return hasPermission && hasPermission('INVOICE_MANAGE');
   }, [hasPermission]);
   
-  const isAdmin = React.useMemo(() => {
-    return hasPermission && hasPermission('ADMIN');
+  // Právo pro věcnou kontrolu - vyžaduje OBĚ práva současně (pokud org. hierarchie neříká jinak)
+  const canConfirmVecnaKontrola = React.useMemo(() => {
+    return hasPermission && 
+           hasPermission('INVOICE_VIEW') && 
+           hasPermission('INVOICE_MATERIAL_CORRECTNESS');
   }, [hasPermission]);
+  
+  // 🎯 Floating header panel state
+  const [showFloatingHeader, setShowFloatingHeader] = useState(false);
+  const [columnWidths, setColumnWidths] = useState([]);
+  const tableRef = useRef(null);
+  
+  // Sledování scrollování - zobrazí floating header když hlavička tabulky zmizí nad viewport
+  useEffect(() => {
+    if (!tableRef.current) return;
+    
+    const thead = tableRef.current.querySelector('thead');
+    if (!thead) return;
+    
+    const appHeaderHeight = 96;
+    const menuBarHeight = 48;
+    const totalHeaderHeight = appHeaderHeight + menuBarHeight; // 144px
+    
+    // Intersection Observer - sleduje viditelnost thead elementu
+    let previousShowState = false;
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Kontrola skutečné pozice: pokud spodní okraj thead je nad fixním headerem (< 144px),
+        // znamená to, že hlavička je schovaná a zobrazíme floating header
+        const theadBottom = entry.boundingClientRect.bottom;
+        const shouldShow = theadBottom < totalHeaderHeight;
+        
+        // Track floating header state globally for DatePicker scroll handlers
+        window.__floatingHeaderVisible = shouldShow;
+        
+        // Close dropdowns only when floating header visibility actually changes
+        if (shouldShow !== previousShowState) {
+          window.dispatchEvent(new Event('closeAllDatePickers'));
+          previousShowState = shouldShow;
+        }
+        
+        setShowFloatingHeader(shouldShow);
+      },
+      {
+        // threshold 0 = spustí se při jakékoli změně viditelnosti
+        threshold: 0
+      }
+    );
+    
+    observer.observe(thead);
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  
+  // Měření šířek sloupců z originální tabulky
+  useEffect(() => {
+    const measureColumnWidths = () => {
+      if (!tableRef.current) return;
+      
+      // Najdeme všechny th elementy v prvním řádku hlavičky
+      const headerCells = tableRef.current.querySelectorAll('thead tr:first-child th');
+      const widths = Array.from(headerCells).map(cell => cell.offsetWidth);
+      setColumnWidths(widths);
+    };
+    
+    // Změř hned po načtení
+    measureColumnWidths();
+    
+    // Změř znovu po změně velikosti okna
+    window.addEventListener('resize', measureColumnWidths);
+    
+    // Změř znovu po načtení dat (malé zpoždění pro jistotu)
+    const timer = setTimeout(measureColumnWidths, 100);
+    
+    return () => {
+      window.removeEventListener('resize', measureColumnWidths);
+      clearTimeout(timer);
+    };
+  }, [invoices, loading]);
   
   // State pro delete dialog
   const [deleteDialog, setDeleteDialog] = useState({
@@ -1256,15 +1737,320 @@ const Invoices25List = () => {
     newStatus: false
   });
   
+  // State pro workflow status change dialog (změna ze ZAPLACENO)
+  const [statusChangeDialog, setStatusChangeDialog] = useState({
+    isOpen: false,
+    invoice: null,
+    newStatus: null
+  });
+  
+  // State pro confirm dialog (unlink, atd.)
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    onCancel: null
+  });
+  
+  // 🔒 State pro LOCK dialog system
+  const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
+  const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
+  const [isCheckingLock, setIsCheckingLock] = useState(false); // Prevent multiple clicks
+  
   // State pro slide panel (náhled faktury)
   const [slidePanelOpen, setSlidePanelOpen] = useState(false);
   const [slidePanelInvoice, setSlidePanelInvoice] = useState(null);
   const [slidePanelLoading, setSlidePanelLoading] = useState(false);
   const [slidePanelAttachments, setSlidePanelAttachments] = useState([]);
   
+  // State pro attachments tooltip
+  const [attachmentsTooltip, setAttachmentsTooltip] = useState(null);
+  const [orderAttachmentsTooltip, setOrderAttachmentsTooltip] = useState(null);
+  
+  // State pro attachment viewer
+  const [viewerAttachment, setViewerAttachment] = useState(null);
+  
+  // Typy faktur z DB (pro filtr a zobrazení)
+  const [invoiceTypes, setInvoiceTypes] = useState([]);
+  const [invoiceTypesLoading, setInvoiceTypesLoading] = useState(false);
+  
+  // 📋 State pro sidebar s objednávkami připravenými k fakturaci
+  const [showOrdersSidebar, setShowOrdersSidebar] = useState(false);
+  const [ordersReadyForInvoice, setOrdersReadyForInvoice] = useState([]);
+  const [ordersReadyCount, setOrdersReadyCount] = useState(0);
+  const [loadingOrdersReady, setLoadingOrdersReady] = useState(false);
+  
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
-    navigate('/invoice-evidence');
+    // Vymazat localStorage aby se otevřel čistý formulář
+    localStorage.removeItem('invoiceFormData');
+    localStorage.removeItem('invoiceAttachments');
+    // Nastavit sessionStorage flag pro detekci fresh navigation
+    sessionStorage.setItem('invoice_fresh_navigation', 'true');
+    navigate('/invoice-evidence', {
+      state: {
+        clearForm: true, // Flag pro InvoiceEvidencePage
+        timestamp: Date.now() // Timestamp pro detekci F5 (po F5 zmizí)
+      }
+    });
+  };
+
+  // 🎯 Handler pro editaci objednávky - PŘESNĚ podle Orders25List
+  const handleEditOrder = async (invoice) => {
+    // Zabránit vícenásobnému kliknutí
+    if (isCheckingLock) {
+      return;
+    }
+
+    if (!invoice.objednavka_id) {
+      showToast('Faktura není přiřazena k objednávce', { type: 'warning' });
+      return;
+    }
+
+    setIsCheckingLock(true);
+
+    try {
+      // 🔒 KONTROLA LOCK - načti aktuální data z DB
+      const dbOrder = await getOrderV2(invoice.objednavka_id, token, username, true);
+
+      if (!dbOrder) {
+        showToast('Nepodařilo se načíst objednávku z databáze', { type: 'error' });
+        setIsCheckingLock(false);
+        return;
+      }
+
+      // 🔒 Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
+        const lockInfo = dbOrder.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+        // Zjisti, zda má uživatel právo na force unlock
+        const canForceUnlock = hasPermission && (
+          hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR')
+        );
+
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockedAt: lockInfo.locked_at || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes || null,
+          canForceUnlock,
+          orderId: invoice.objednavka_id,
+          userRoleName: canForceUnlock ? 'administrátor' : null
+        });
+        setShowLockedOrderDialog(true);
+        setIsCheckingLock(false);
+        return;
+      }
+
+      // ✅ Není zamčená - naviguj na editaci objednávky
+      console.log('📋 Invoices25List → OrderForm25 (z tabulky):', {
+        orderId: invoice.objednavka_id,
+        returnTo: '/invoices25-list',
+        navigateTo: `/order-form-25?edit=${invoice.objednavka_id}`
+      });
+      setIsCheckingLock(false);
+      navigate(`/order-form-25?edit=${invoice.objednavka_id}`, {
+        state: {
+          returnTo: '/invoices25-list'
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Chyba při kontrole zámku objednávky:', error);
+      showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
+      setIsCheckingLock(false);
+    }
+  };
+
+  // 🎯 Handler pro zobrazení faktur přiřazených ke smlouvě
+  const handleViewContractInvoices = (invoice) => {
+    if (!invoice.smlouva_id) {
+      showToast('Faktura není přiřazena ke smlouvě', { type: 'warning' });
+      return;
+    }
+
+    // Otevřít fakturu k editaci/potvrzení věcné správnosti
+    // Používáme stejnou logiku jako handleEditInvoice, ale pro faktury se smlouvou
+    handleEditInvoice(invoice);
+  };
+
+  // Handler: Otevřít fakturu k náhledu kliknutím na číslo objednávky/smlouvy
+  // 🔒 Handler pro zavření LOCK dialogu
+  const handleLockedOrderCancel = () => {
+    setShowLockedOrderDialog(false);
+    setLockedOrderInfo(null);
+    setIsCheckingLock(false); // Odemknout pro další pokus
+  };
+  
+  // 📋 Handler: Načíst objednávky připravené k fakturaci (DOKONCENA, bez faktury)
+  const loadOrdersReadyForInvoice = async () => {
+    setLoadingOrdersReady(true);
+    try {
+      // Načti všechny aktivní objednávky aktuálního roku
+      const currentYear = new Date().getFullYear();
+      const response = await getOrdersList25({
+        token,
+        username,
+        filters: {
+          rok: currentYear,
+          stav_objednavky: 'FAKTURACE'
+        }
+      });
+
+      if (Array.isArray(response)) {
+        // Filtruj na FE: pouze objednávky BEZ faktury
+        const filteredOrders = response.filter(order => {
+          const hasNoInvoice = (!order.faktury || order.faktury.length === 0) && (!order.faktury_count || order.faktury_count === 0);
+          return hasNoInvoice;
+        });
+        
+        const orders = filteredOrders.map(order => {
+          return {
+            id: order.id,
+            cislo_objednavky: order.cislo_objednavky,
+            predmet: order.predmet,
+            dodavatel_nazev: order._enriched?.dodavatel?.nazev || order.dodavatel_nazev,
+            dodavatel_ico: order._enriched?.dodavatel?.ico || order.dodavatel_ico,
+            max_cena_s_dph: order.max_cena_s_dph,
+            polozky_celkova_cena_s_dph: order.polozky_celkova_cena_s_dph,
+            dt_vytvoreni: order.dt_vytvoreni,
+            // Financování - předej celý objekt, zobrazení bude v UI
+            financovani: order.financovani,
+            // Účastníci
+            objednatel: order._enriched?.objednatel || order._enriched?.uzivatel || null,
+            garant: order._enriched?.garant_uzivatel || order._enriched?.garant || null,
+            prikazce: order._enriched?.prikazce || null,
+            schvalovatel: order._enriched?.schvalovatel || null,
+            // Přílohy
+            prilohy: order.prilohy || order._enriched?.prilohy || [],
+            pocet_priloh: order.pocet_priloh || order.prilohy?.length || 0
+          };
+        });
+        
+        setOrdersReadyForInvoice(orders);
+        setOrdersReadyCount(orders.length);
+      } else {
+        setOrdersReadyForInvoice([]);
+        setOrdersReadyCount(0);
+      }
+    } catch (error) {
+      console.error('❌ Chyba při načítání objednávek připravených k fakturaci:', error);
+      setOrdersReadyForInvoice([]);
+      setOrdersReadyCount(0);
+    } finally {
+      setLoadingOrdersReady(false);
+    }
+  };
+
+  // 📋 Handler: Otevřít sidebar s objednávkami
+  const handleOpenOrdersSidebar = () => {
+    setShowOrdersSidebar(true);
+    loadOrdersReadyForInvoice(); // Načti aktuální seznam
+  };
+
+  // 📋 Handler: Zavřít sidebar
+  const handleCloseOrdersSidebar = () => {
+    setShowOrdersSidebar(false);
+    // Zavřít i tooltip s přílohami pokud je otevřený
+    setOrderAttachmentsTooltip(null);
+  };
+
+  // 📋 Handler: Vybrat objednávku a přejít na evidenci faktury
+  // 📋 Handler: Vybrat objednávku a přejít na evidenci faktury
+  const handleSelectOrderForInvoice = (order) => {
+    setShowOrdersSidebar(false);
+    // Zavřít i tooltip s přílohami pokud je otevřený
+    setOrderAttachmentsTooltip(null);
+    // Naviguj na evidenci faktury s předvyplněným order ID v URL
+    navigate(`/invoice-evidence/${order.id}`, {
+      state: {
+        fromOrdersReadyList: true,
+        orderNumber: order.cislo_objednavky,
+        orderIdForLoad: order.id, // Přidat ID objednávky pro načtení
+        prefillSearchTerm: order.cislo_objednavky || `#${order.id}`, // Předvyplnit našeptávač
+        timestamp: Date.now()
+      }
+    });
+  };
+  
+  const handleAddInvoiceToEntity = async (invoice) => {
+    // ⚠️ Zabránit vícenásobnému kliknutí
+    if (isCheckingLock) {
+      return;
+    }
+    
+    if (invoice.objednavka_id) {
+      setIsCheckingLock(true); // Zamknout funkci
+      
+      // 🔒 KONTROLA LOCK před otevřením faktury k objednávce
+      try {
+        const { getOrderV2 } = await import('../services/apiOrderV2');
+        const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
+        
+        // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
+        // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
+        // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
+        if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
+          const lockInfo = orderCheck.lock_info;
+          const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+          
+          // Ulož info o zamčení
+          setLockedOrderInfo({
+            lockedByUserName,
+            lockedByUserEmail: lockInfo.locked_by_user_email || null,
+            lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+            lockedAt: lockInfo.locked_at || null,
+            lockAgeMinutes: lockInfo.lock_age_minutes || null,
+            canForceUnlock: false, // V invoice listu neumožňujeme force unlock
+            orderId: invoice.objednavka_id
+          });
+          setShowLockedOrderDialog(true);
+          setIsCheckingLock(false); // Odemknout
+          return; // ⚠️ NEPOKRAČUJ - nepřecházej na jinou stránku!
+        }
+      } catch (err) {
+        // ⚠️ DŮLEŽITÉ: Chyba při kontrole LOCK - zobraz dialog, NEPŘECHÁZEJ na stránku
+        console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        console.error('⚠️ Error details:', err);
+        
+        // Pro VŠECHNY chyby zobraz dialog s informací
+        const lockInfo = {
+          lockedByUserName: 'Nedostupné',
+          lockedByUserEmail: null,
+          lockedByUserTelefon: null,
+          lockedAt: null,
+          lockAgeMinutes: null,
+          canForceUnlock: false,
+          orderId: invoice.objednavka_id,
+          errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
+        };
+        
+        setLockedOrderInfo(lockInfo);
+        setShowLockedOrderDialog(true);
+        setIsCheckingLock(false); // Odemknout
+        return; // ⚠️ VŽDY ukonči - NIKDY nenaviguj při chybě
+      }
+      
+      // ✅ Není zamčená - otevřít fakturu k náhledu (s editInvoiceId pro načtení dat faktury)
+      setIsCheckingLock(false); // Odemknout
+      navigate('/invoice-evidence', {
+        state: {
+          editInvoiceId: invoice.id,
+          orderIdForLoad: invoice.objednavka_id
+        }
+      });
+    } else if (invoice.smlouva_id) {
+      // Otevřít fakturu ke smlouvě
+      navigate('/invoice-evidence', {
+        state: {
+          editInvoiceId: invoice.id,
+          smlouvaIdForLoad: invoice.smlouva_id
+        }
+      });
+    }
   };
   
   // Handler pro kliknutí na dashboard kartu - filtrování
@@ -1302,6 +2088,77 @@ const Invoices25List = () => {
     setShowDashboard(prev => !prev);
   }, []);
   
+  // Helper funkce pro CustomSelect komponenty
+  const toggleSelect = useCallback((selectName) => {
+    setSelectStates(prev => {
+      // Zavři všechny selecty
+      const newState = {
+        fa_typ: false,
+        stav: false,
+        vecna_kontrola: false,
+        ma_prilohy: false,
+        ma_prilohy_floating: false,
+      };
+      // Otevři pouze vybraný select (pokud byl zavřený)
+      newState[selectName] = !prev[selectName];
+      return newState;
+    });
+  }, []);
+  
+  const closeAllSelects = useCallback(() => {
+    setSelectStates({
+      fa_typ: false,
+      stav: false,
+      vecna_kontrola: false,
+      ma_prilohy: false,
+      ma_prilohy_floating: false,
+    });
+  }, []);
+  
+  // Funkce pro filtraci možností podle vyhledávání
+  const filterOptions = useCallback((options, searchTerm, searchField) => {
+    if (!searchTerm) return options;
+    const filtered = options.filter(option => {
+      const label = getOptionLabel(option, searchField);
+      return label.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+    return filtered;
+  }, []);
+  
+  // Funkce pro získání labelu možnosti
+  const getOptionLabel = useCallback((option, field) => {
+    if (!option) return '';
+    
+    switch (field) {
+      case 'fa_typ':
+      case 'floating_fa_typ':
+        return option.nazev || option.label || '';
+      case 'stav':
+      case 'floating_stav':
+        return option.label || option.value || '';
+      case 'vecna_kontrola':
+      case 'floating_vecna_kontrola':
+        return option.label || option.value || '';
+      case 'ma_prilohy':
+      case 'ma_prilohy_floating':
+        return option.label || option.value || '';
+      default:
+        return option.label || option.nazev || option.value || '';
+    }
+  }, []);
+  
+  // 🧹 Vyčistit všechny filtry (sloupcové + dashboard + fulltext)
+  const handleClearAllFilters = useCallback(() => {
+    setColumnFilters({});
+    setFilters({ filter_status: '' });
+    setActiveFilterStatus(null);
+    setGlobalSearchTerm('');
+    setShowOnlyInactive(false); // 🔧 Reset admin checkbox
+    setCurrentPage(1);
+  }, []);
+  
+
+  
   // Pagination state (server-side)
   const [currentPage, setCurrentPage] = useState(savedState?.currentPage || 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState?.itemsPerPage || 50);
@@ -1316,14 +2173,24 @@ const Invoices25List = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    // 1️⃣ Pokud je ZAPLACENÁ (fa_zaplacena = 1) → ZAPLACENO
-    if (invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true) {
+    // 1️⃣ Pokud má stav ZAPLACENO nebo DOKONCENA → ZAPLACENO
+    // ⚠️ DŮLEŽITÉ: fa_zaplacena ignorujeme! Rozhoduje pouze workflow stav!
+    if (invoice.stav === 'ZAPLACENO' || invoice.stav === 'DOKONCENA') {
       return 'paid';
     }
     
-    // 2️⃣ Pokud NENÍ zaplacená a má datum splatnosti → kontrola po splatnosti
-    if (invoice.fa_datum_splatnosti) {
-      const splatnost = new Date(invoice.fa_datum_splatnosti);
+    // 🚫 Pokud je STORNO → vrátit 'paid' (aby se nepočítala do "po splatnosti" ani "nezaplaceno")
+    // Stornované faktury jsou zrušené a neřeší se
+    if (invoice.stav === 'STORNO') {
+      return 'paid'; // Technicky není 'paid', ale nechceme ji v overdue/unpaid
+    }
+    
+    // 2️⃣ Pokud má datum splatnosti → kontrola po splatnosti
+    // ⚠️ DŮLEŽITÉ: Stav K_ZAPLACENI je PŘED zaplacením, takže MŮŽE být po splatnosti!
+    // Pouze stavy ZAPLACENO, DOKONCENA a STORNO se NIKDY nepočítají jako "po splatnosti"
+    const datumSplatnosti = invoice.datum_splatnosti || invoice.fa_datum_splatnosti;
+    if (datumSplatnosti) {
+      const splatnost = new Date(datumSplatnosti);
       splatnost.setHours(0, 0, 0, 0);
       
       // Pokud je splatnost v minulosti → PO SPLATNOSTI
@@ -1335,6 +2202,29 @@ const Invoices25List = () => {
     // 3️⃣ Jinak → NEZAPLACENO (ale ještě není po splatnosti)
     return 'unpaid';
   }, []);
+
+  // ⏰ Funkce pro výpočet počtu dní po splatnosti
+  const getDaysOverdue = useCallback((invoice) => {
+    if (!invoice.datum_splatnosti && !invoice.fa_datum_splatnosti) {
+      return 0;
+    }
+
+    const status = getInvoiceStatus(invoice);
+    if (status !== 'overdue') {
+      return 0;
+    }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    const splatnost = new Date(invoice.datum_splatnosti || invoice.fa_datum_splatnosti);
+    splatnost.setHours(0, 0, 0, 0);
+    
+    const diffTime = now - splatnost;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays > 0 ? diffDays : 0;
+  }, [getInvoiceStatus]);
 
   // 💾 Ukládání stavu do localStorage při změnách
   useEffect(() => {
@@ -1391,66 +2281,125 @@ const Invoices25List = () => {
       
       // 📋 Sloupcové filtry - OPRAVENÉ!
       
+      // Datum doručení (přesná shoda)
+      if (debouncedColumnFilters.datum_doruceni && typeof debouncedColumnFilters.datum_doruceni === 'string' && debouncedColumnFilters.datum_doruceni.trim()) {
+        apiParams.filter_datum_doruceni = debouncedColumnFilters.datum_doruceni.trim();
+      }
+      
+      // Datum aktualizace (přesná shoda)
+      if (debouncedColumnFilters.dt_aktualizace && typeof debouncedColumnFilters.dt_aktualizace === 'string' && debouncedColumnFilters.dt_aktualizace.trim()) {
+        apiParams.filter_dt_aktualizace = debouncedColumnFilters.dt_aktualizace.trim();
+      }
+      
+      // Typ faktury (přesná shoda) - pouze pokud není "Všechny typy"
+      const faTypValue = typeof debouncedColumnFilters.fa_typ === 'object' ? debouncedColumnFilters.fa_typ?.value : debouncedColumnFilters.fa_typ;
+      if (faTypValue && faTypValue.toString().trim() !== '') {
+        apiParams.filter_fa_typ = faTypValue;
+      }
+      
       // Číslo faktury (LIKE - částečná shoda)
-      if (columnFilters.cislo_faktury && columnFilters.cislo_faktury.trim()) {
-        apiParams.fa_cislo_vema = columnFilters.cislo_faktury.trim();
+      if (debouncedColumnFilters.cislo_faktury && typeof debouncedColumnFilters.cislo_faktury === 'string' && debouncedColumnFilters.cislo_faktury.trim()) {
+        apiParams.fa_cislo_vema = debouncedColumnFilters.cislo_faktury.trim();
       }
       
       // Číslo objednávky (LIKE - částečná shoda)
-      if (columnFilters.cislo_objednavky && columnFilters.cislo_objednavky.trim()) {
-        apiParams.cislo_objednavky = columnFilters.cislo_objednavky.trim();
+      if (debouncedColumnFilters.cislo_objednavky && typeof debouncedColumnFilters.cislo_objednavky === 'string' && debouncedColumnFilters.cislo_objednavky.trim()) {
+        apiParams.cislo_objednavky = debouncedColumnFilters.cislo_objednavky.trim();
       }
       
       // Datum vystavení (přesná shoda)
-      if (columnFilters.datum_vystaveni) {
-        apiParams.filter_datum_vystaveni = columnFilters.datum_vystaveni;
+      if (debouncedColumnFilters.datum_vystaveni && typeof debouncedColumnFilters.datum_vystaveni === 'string' && debouncedColumnFilters.datum_vystaveni.trim()) {
+        apiParams.filter_datum_vystaveni = debouncedColumnFilters.datum_vystaveni.trim();
       }
       
       // Datum splatnosti (přesná shoda)
-      if (columnFilters.datum_splatnosti) {
-        apiParams.filter_datum_splatnosti = columnFilters.datum_splatnosti;
+      if (debouncedColumnFilters.datum_splatnosti && typeof debouncedColumnFilters.datum_splatnosti === 'string' && debouncedColumnFilters.datum_splatnosti.trim()) {
+        apiParams.filter_datum_splatnosti = debouncedColumnFilters.datum_splatnosti.trim();
       }
       
-      // Stav faktury (paid/unpaid/overdue)
-      if (columnFilters.stav) {
-        apiParams.filter_stav = columnFilters.stav;
+      // Stav faktury - pouze pokud není "Všechny stavy"
+      const stavValue = typeof debouncedColumnFilters.stav === 'object' ? debouncedColumnFilters.stav?.value : debouncedColumnFilters.stav;
+      if (stavValue && stavValue.toString().trim() !== '') {
+        apiParams.filter_stav = stavValue;
       }
       
       // Uživatel - celé jméno (LIKE - hledá v jméně i příjmení)
-      if (columnFilters.vytvoril_uzivatel && columnFilters.vytvoril_uzivatel.trim()) {
-        apiParams.filter_vytvoril_uzivatel = columnFilters.vytvoril_uzivatel.trim();
+      if (debouncedColumnFilters.vytvoril_uzivatel && typeof debouncedColumnFilters.vytvoril_uzivatel === 'string' && debouncedColumnFilters.vytvoril_uzivatel.trim()) {
+        apiParams.filter_vytvoril_uzivatel = debouncedColumnFilters.vytvoril_uzivatel.trim();
       }
       
-      // Částka - rozsahový filtr (min/max)
-      if (columnFilters.castka_min) {
-        apiParams.castka_min = parseFloat(columnFilters.castka_min);
+      // Kontrola řádku (all/kontrolovano/nekontrolovano)
+      if (debouncedColumnFilters.kontrola_radku && debouncedColumnFilters.kontrola_radku !== 'all') {
+        apiParams.filter_kontrola_radku = debouncedColumnFilters.kontrola_radku;
       }
-      if (columnFilters.castka_max) {
-        apiParams.castka_max = parseFloat(columnFilters.castka_max);
+      
+      // Částka - operátor-based filtr (=, <, >)
+      // Format: "=5000" nebo ">1000" nebo "<500"
+      // POZOR: Pokud je jen operátor bez čísla (např. ">"), ignoruj (neparsuj)
+      if (debouncedColumnFilters.castka && debouncedColumnFilters.castka.trim()) {
+        const castkaTrimmed = debouncedColumnFilters.castka.trim();
+        const match = castkaTrimmed.match(/^([=<>])(.+)$/);
+        
+        if (match && match[2]) { // ✅ Kontrola že existuje číslo za operátorem
+          const operator = match[1];
+          const amountStr = match[2].replace(/\s/g, '').replace(/,/g, '');
+          
+          if (amountStr) { // ✅ Kontrola že není prázdný string
+            const amount = parseFloat(amountStr);
+            
+            if (!isNaN(amount) && amount > 0) { // ✅ Kontrola že je to platné číslo větší než 0
+              // Přeložit operátor na API parametry
+              if (operator === '=') {
+                apiParams.castka_eq = amount;
+              } else if (operator === '<') {
+                apiParams.castka_lt = amount;
+              } else if (operator === '>') {
+                apiParams.castka_gt = amount;
+              }
+            }
+          }
+        }
       }
       
       // Přílohy - filtr podle existence příloh
-      if (columnFilters.ma_prilohy === 'with') {
+      const maPrilobyValue = typeof debouncedColumnFilters.ma_prilohy === 'object' ? debouncedColumnFilters.ma_prilohy?.value : debouncedColumnFilters.ma_prilohy;
+      if (maPrilobyValue === 'with') {
         apiParams.filter_ma_prilohy = 1; // Pouze s přílohami
-      } else if (columnFilters.ma_prilohy === 'without') {
+      } else if (maPrilobyValue === 'without') {
         apiParams.filter_ma_prilohy = 0; // Pouze bez příloh
+      } else if (maPrilobyValue === 'spisovka') {
+        apiParams.filter_ma_prilohy = 2; // Pouze ze spisovky
       }
       
       // Věcná kontrola - filtr
-      if (columnFilters.vecna_kontrola === 'yes') {
+      const vecnaKontrolaValue = typeof debouncedColumnFilters.vecna_kontrola === 'object' ? debouncedColumnFilters.vecna_kontrola?.value : debouncedColumnFilters.vecna_kontrola;
+      if (vecnaKontrolaValue === 'yes') {
         apiParams.filter_vecna_kontrola = 1; // Pouze provedena
-      } else if (columnFilters.vecna_kontrola === 'no') {
+      } else if (vecnaKontrolaValue === 'no') {
         apiParams.filter_vecna_kontrola = 0; // Pouze neprovedena
       }
+      // Jinak (prázdný string nebo '') neposílej nic
       
       // Věcnou provedl - text filtr
-      if (columnFilters.vecnou_provedl) {
-        apiParams.filter_vecnou_provedl = columnFilters.vecnou_provedl.trim();
+      if (debouncedColumnFilters.vecnou_provedl && typeof debouncedColumnFilters.vecnou_provedl === 'string') {
+        apiParams.filter_vecnou_provedl = debouncedColumnFilters.vecnou_provedl.trim();
       }
       
       // Předáno zaměstnanci - text filtr
-      if (columnFilters.predano_zamestnanec) {
-        apiParams.filter_predano_zamestnanec = columnFilters.predano_zamestnanec.trim();
+      if (debouncedColumnFilters.predano_zamestnanec && typeof debouncedColumnFilters.predano_zamestnanec === 'string') {
+        apiParams.filter_predano_zamestnanec = debouncedColumnFilters.predano_zamestnanec.trim();
+      }
+      
+      // 📥 ŘAZENÍ - podle sortField a sortDirection
+      if (sortField && sortField.trim()) {
+        apiParams.order_by = sortField.trim();
+        apiParams.order_direction = sortDirection || 'desc'; // default DESC
+      }
+      
+      // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
+      // Pouze pokud je uživatel ADMIN a checkbox je zaškrtnutý
+      if (isAdmin && showOnlyInactive) {
+        apiParams.show_only_inactive = 1;
       }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
@@ -1478,6 +2427,9 @@ const Invoices25List = () => {
         smlouva_id: typeof invoice.smlouva_id === 'string' ? parseInt(invoice.smlouva_id) : invoice.smlouva_id,
         cislo_smlouvy: invoice.cislo_smlouvy || '',
         
+        // ✅ TŘÍFÁZOVÝ SYSTÉM KONTROLY - check_status z BE
+        check_status: invoice.check_status || 'unchecked',
+        
         // Organizace
         organizace_id: invoice.organizace_id || null,
         organizace_nazev: invoice.organizace_nazev || '',
@@ -1498,6 +2450,9 @@ const Invoices25List = () => {
         dorucena: invoice.fa_dorucena === 1 || invoice.fa_dorucena === true,
         zaplacena: invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true, // ✅ NOVÉ pole
         
+        // Workflow stav (ENUM hodnota z DB)
+        stav: invoice.stav || 'ZAEVIDOVANA', // ✅ Workflow stav faktury
+        
         // ✅ BE už vrací naparsovaná pole - použít přímo!
         strediska_kod: Array.isArray(invoice.fa_strediska_kod) ? invoice.fa_strediska_kod : [],
         poznamka: invoice.fa_poznamka || '',
@@ -1507,6 +2462,10 @@ const Invoices25List = () => {
         pocet_priloh: invoice.pocet_priloh || 0,
         ma_prilohy: invoice.ma_prilohy || false,
         prilohy: Array.isArray(invoice.prilohy) ? invoice.prilohy : [],
+        
+        // Spisovka tracking
+        from_spisovka: invoice.from_spisovka || false,
+        spisovka_dokument_id: invoice.spisovka_dokument_id || null,
         
         // Meta - vytvoril uživatel (NOVÉ: BE vrací kompletní info)
         vytvoril_uzivatel_id: typeof invoice.vytvoril_uzivatel_id === 'string' ? 
@@ -1552,6 +2511,14 @@ const Invoices25List = () => {
         vytvoril_uzivatel_zkracene: invoice.vytvoril_uzivatel_zkracene || null,
         potvrdil_vecnou_spravnost_zkracene: invoice.potvrdil_vecnou_spravnost_zkracene || null,
         
+        // 🎯 DODAVATEL - info z objednávky nebo smlouvy
+        dodavatel_nazev: invoice.dodavatel_nazev || null,
+        dodavatel_ico: invoice.dodavatel_ico || null,
+        
+        // 🎯 STAV OBJEDNÁVKY - pro zelené/oranžové/modré zbarvení
+        objednavka_je_dokoncena: invoice.objednavka_je_dokoncena || false,
+        objednavka_je_zkontrolovana: invoice.objednavka_je_zkontrolovana || false,
+        
         // Vypočítaný status pro UI
         status: getInvoiceStatus(invoice)
       }));
@@ -1562,23 +2529,28 @@ const Invoices25List = () => {
       if (response.statistiky) {
         // BE vrací kompletní statistiky za celý filtr
         
-        // Lokální počítání jen pro položky, které BE nevrací v statistikách
-        const withoutOrderCount = transformedInvoices.filter(inv => !inv.objednavka_id).length;
-        const myInvoicesCount = user_id 
-          ? transformedInvoices.filter(inv => inv.vytvoril_uzivatel_id === user_id).length
-          : 0;
-        
         setStats({
           total: response.pagination?.total || 0,
           paid: response.statistiky.pocet_zaplaceno || 0,
           unpaid: response.statistiky.pocet_nezaplaceno || 0,
           overdue: response.statistiky.pocet_po_splatnosti || 0,
+          withinDue: response.statistiky.pocet_ve_splatnosti || 0,
+          storno: response.statistiky.pocet_storno || 0,
+          vecnaSpravnost: response.statistiky.pocet_vecna_spravnost || 0,
           totalAmount: parseFloat(response.statistiky.celkem_castka) || 0,
           paidAmount: parseFloat(response.statistiky.celkem_zaplaceno) || 0,
           unpaidAmount: parseFloat(response.statistiky.celkem_nezaplaceno) || 0,
           overdueAmount: parseFloat(response.statistiky.celkem_po_splatnosti) || 0,
-          withoutOrder: withoutOrderCount,
-          myInvoices: response.statistiky.pocet_moje_faktury || myInvoicesCount
+          withinDueAmount: parseFloat(response.statistiky.celkem_ve_splatnosti) || 0,
+          stornoAmount: parseFloat(response.statistiky.celkem_storno) || 0,
+          vecnaSpravnostAmount: parseFloat(response.statistiky.celkem_vecna_spravnost) || 0,
+          myInvoices: response.statistiky.pocet_moje_faktury || 0,
+          // ✅ Nové statistiky z BE
+          withOrder: response.statistiky.pocet_s_objednavkou || 0,
+          withContract: response.statistiky.pocet_s_smlouvou || 0,
+          withoutOrder: response.statistiky.pocet_bez_prirazeni || 0,
+          fromSpisovka: response.statistiky.pocet_ze_spisovky || 0,
+          kontrolovano: response.statistiky.pocet_zkontrolovano || 0
         });
       } else {
         // Fallback: pokud BE nevrátilo statistiky, spočítej lokálně (jen aktuální stránka!)
@@ -1598,9 +2570,24 @@ const Invoices25List = () => {
             acc.overdueAmount += inv.castka;
           }
           
-          // Faktury bez objednávky
-          if (!inv.objednavka_id) {
+          // Faktury bez přiřazení (bez obj. ANI smlouvy)
+          if (!inv.objednavka_id && !inv.smlouva_id) {
             acc.withoutOrder++;
+          }
+          
+          // S objednávkou
+          if (inv.objednavka_id) {
+            acc.withOrder++;
+          }
+          
+          // Se smlouvou
+          if (inv.smlouva_id) {
+            acc.withContract++;
+          }
+          
+          // Ze Spisovky
+          if (inv.from_spisovka) {
+            acc.fromSpisovka++;
           }
           
           // Moje faktury
@@ -1609,7 +2596,7 @@ const Invoices25List = () => {
           }
           
           return acc;
-        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0 });
+        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0 });
         
         localStats.total = response.pagination?.total || transformedInvoices.length;
         setStats(localStats);
@@ -1635,12 +2622,146 @@ const Invoices25List = () => {
       setLoading(false);
       hideProgress?.();
     }
-  }, [token, username, selectedYear, currentPage, itemsPerPage, columnFilters, filters, globalSearchTerm, showProgress, hideProgress, showToast, getInvoiceStatus]);
+  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, globalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
   // Initial load
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadData]); // showOnlyInactive is already in loadData dependencies
+
+  // ⚠️ DEPRECATED: Načtení stavů kontrol - již se nepoužívá!
+  // Backend nyní vrací check_status přímo v seznamu faktur
+  // Tento useEffect ponecháno pouze pro případ toggle kontroly (refresh jedné faktury)
+  useEffect(() => {
+    // Již se nenačítá automaticky - check_status je v invoice objektu
+    // Tento hook se spustí pouze po toggle kontroly (když se změní invoiceChecks)
+  }, [invoices, token, username]);
+
+  // Načtení typů faktur z DB (pouze jednou při mount)
+  useEffect(() => {
+    const loadInvoiceTypes = async () => {
+      if (!token || !username || invoiceTypes.length > 0) return;
+      
+      setInvoiceTypesLoading(true);
+      try {
+        const data = await getInvoiceTypes25({ token, username, aktivni: 1 });
+        if (data && Array.isArray(data)) {
+          setInvoiceTypes(data);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání typů faktur:', err);
+      } finally {
+        setInvoiceTypesLoading(false);
+      }
+    };
+
+    loadInvoiceTypes();
+  }, [token, username, invoiceTypes.length]);
+  
+  // 📋 Načtení počtu objednávek připravených k fakturaci (pouze při mount)
+  useEffect(() => {
+    const loadCount = async () => {
+      if (!token || !username || !(canManageInvoices || isAdmin)) {
+        return;
+      }
+      
+      try {
+        const currentYear = new Date().getFullYear();
+        
+        const response = await getOrdersList25({
+          token,
+          username,
+          filters: {
+            rok: currentYear,
+            stav_objednavky: 'FAKTURACE' // 📋 Filtr na BE - jen objednávky ve stavu FAKTURACE
+          }
+        });
+
+        if (Array.isArray(response)) {
+          // Filtruj na FE: pouze bez faktury
+          const count = response.filter(order => 
+            (!order.faktury || order.faktury.length === 0) && 
+            (!order.faktury_count || order.faktury_count === 0)
+          ).length;
+          
+          setOrdersReadyCount(count);
+        }
+      } catch (error) {
+        console.error('❌ Chyba při načítání počtu objednávek:', error);
+      }
+    };
+    
+    loadCount();
+  }, [token, username, canManageInvoices, isAdmin]);
+  
+  // 📋 Refresh count při návratu na stránku (například po evidenci faktury)
+  useEffect(() => {
+    // Pokud se uživatel vrátí na stránku, aktualizuj počet
+    const handleVisibilityChange = () => {
+      if (!document.hidden && token && username && (canManageInvoices || isAdmin)) {
+        // Stránka se stala viditelnou, refresh count
+        const loadCount = async () => {
+          try {
+            const currentYear = new Date().getFullYear();
+            const response = await getOrdersList25({
+              token,
+              username,
+              filters: {
+                rok: currentYear,
+                stav_objednavky: 'FAKTURACE' // 📋 Filtr na BE
+              }
+            });
+
+            if (Array.isArray(response)) {
+              const count = response.filter(order => 
+                (!order.faktury || order.faktury.length === 0) && 
+                (!order.faktury_count || order.faktury_count === 0)
+              ).length;
+              setOrdersReadyCount(count);
+            }
+          } catch (error) {
+            console.error('❌ Chyba při aktualizaci počtu objednávek:', error);
+          }
+        };
+        loadCount();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [token, username, canManageInvoices, isAdmin]);
+  
+  // Připravit options pro CustomSelect komponenty
+  const invoiceTypeOptions = useMemo(() => {
+    const types = invoiceTypes.map(type => ({
+      value: type.id,
+      label: type.nazev.toUpperCase(),
+      nazev: type.nazev
+    }));
+    return [{ value: '', label: 'Vše', nazev: 'Vše' }, ...types];
+  }, [invoiceTypes]);
+  
+  const stavOptions = useMemo(() => {
+    const options = [
+      { value: '', label: 'Vše' },
+      { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
+      { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
+      { value: 'V_RESENI', label: 'V řešení' },
+      { value: 'PREDANA_PO', label: 'Předaná PO' },
+      { value: 'K_ZAPLACENI', label: 'K zaplacení' },
+      { value: 'ZAPLACENO', label: 'Zaplaceno' },
+      { value: 'DOKONCENA', label: 'Dokončená' },
+      { value: 'STORNO', label: 'Storno' },
+    ];
+    return options;
+  }, []);
+  
+  const vecnaKontrolaOptions = useMemo(() => [
+    { value: '', label: 'Vše' },
+    { value: 'yes', label: 'Provedena' },
+    { value: 'no', label: 'Neprovedena' },
+  ], []);
 
   // Reset na první stránku při změně filtrů
   useEffect(() => {
@@ -1655,9 +2776,35 @@ const Invoices25List = () => {
     return new Intl.NumberFormat('cs-CZ', {
       style: 'currency',
       currency: 'CZK',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount);
+  };
+
+  // Get invoice type display name
+  const getInvoiceTypeName = (invoice) => {
+    // Pokud backend vrací fa_typ_nazev z JOINu, použij ho
+    if (invoice.fa_typ_nazev) {
+      return invoice.fa_typ_nazev.toUpperCase();
+    }
+    
+    // Fallback: najdi typ v načtených typech z DB
+    const foundType = invoiceTypes.find(type => type.id === invoice.fa_typ);
+    if (foundType) {
+      return foundType.nazev.toUpperCase();
+    }
+    
+    // Poslední fallback: hardcoded názvy
+    switch(invoice.fa_typ) {
+      case 'BEZNA': return 'BĚŽNÁ';
+      case 'ZALOHOVA': return 'ZÁLOHOVÁ';
+      case 'OPRAVNA': return 'OPRAVNÁ';
+      case 'PROFORMA': return 'PROFORMA';
+      case 'DOBROPIS': return 'DOBROPIS';
+      case 'VYUCTOVACI': return 'VYÚČTOVACÍ';
+      case 'JINA': return 'JINÁ';
+      default: return invoice.fa_typ || '—';
+    }
   };
 
   // Get status label
@@ -1680,63 +2827,88 @@ const Invoices25List = () => {
     }
   };
 
+  // Překlad workflow stavů faktury (skutečný stav ze sloupce 'stav')
+  const getWorkflowStatusLabel = (stav) => {
+    switch(stav) {
+      case 'NOVA': return 'Nová';
+      case 'NEZAPLACENO': return 'Nezaplaceno';
+      case 'K_ZAPLACENI': return 'K zaplacení';
+      case 'ZAPLACENO': return 'Zaplaceno';
+      case 'DOKONCENA': return 'Dokončena';
+      case 'STORNO': return 'Storno';
+      case 'VECNA_SPRAVNOST': return 'Věcná správnost';
+      case 'SCHVALENO': return 'Schváleno';
+      default: return stav || 'Neznámý';
+    }
+  };
+
+  // Ikona pro workflow stav
+  const getWorkflowStatusIcon = (stav) => {
+    switch(stav) {
+      case 'NOVA': return faFileInvoice;
+      case 'NEZAPLACENO': return faHourglassHalf;
+      case 'K_ZAPLACENI': return faMoneyBillWave;
+      case 'ZAPLACENO': return faCheckCircle;
+      case 'DOKONCENA': return faCheckCircle;
+      case 'STORNO': return faTimesCircle;
+      case 'VECNA_SPRAVNOST': return faCheckSquare;
+      case 'SCHVALENO': return faCheck;
+      default: return faFileInvoice;
+    }
+  };
+
+  // Barva pro workflow stav
+  const getWorkflowStatusColor = (stav) => {
+    switch(stav) {
+      case 'NOVA': return '#3b82f6';
+      case 'NEZAPLACENO': return '#f59e0b';
+      case 'K_ZAPLACENI': return '#10b981';
+      case 'ZAPLACENO': return '#059669';
+      case 'DOKONCENA': return '#059669';
+      case 'STORNO': return '#ef4444';
+      case 'VECNA_SPRAVNOST': return '#8b5cf6';
+      case 'SCHVALENO': return '#10b981';
+      default: return '#64748b';
+    }
+  };
+
   // Handler pro třídění tabulky
   const handleSort = useCallback((field) => {
     if (sortField === field) {
-      // Toggle směr třídění
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      // Cycle: ASC → DESC → NONE (reset)
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        // Zrušit třídění
+        setSortField('');
+        setSortDirection('asc');
+      }
     } else {
       // Nové pole -> výchozí směr ASC
       setSortField(field);
       setSortDirection('asc');
     }
-  }, [sortField]);
+  }, [sortField, sortDirection]);
 
-  // Třídění faktur (client-side)
+  // ⚠️ ŘAZENÍ DĚLÁ BACKEND - invoices už jsou seřazené podle sortField a sortDirection!
+  // Client-side řazení je zakázáno - používáme data přímo z BE
   const sortedInvoices = useMemo(() => {
-    if (!sortField) return invoices;
-
-    return [...invoices].sort((a, b) => {
-      let aVal = a[sortField];
-      let bVal = b[sortField];
-
-      // Speciální handling pro různé typy dat
-      if (sortField === 'castka') {
-        aVal = parseFloat(aVal) || 0;
-        bVal = parseFloat(bVal) || 0;
-      } else if (sortField.includes('datum')) {
-        aVal = aVal ? new Date(aVal).getTime() : 0;
-        bVal = bVal ? new Date(bVal).getTime() : 0;
-      } else if (sortField === 'pocet_priloh') {
-        aVal = parseInt(aVal) || 0;
-        bVal = parseInt(bVal) || 0;
-      } else if (typeof aVal === 'string') {
-        aVal = aVal.toLowerCase();
-        bVal = (bVal || '').toLowerCase();
-      }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [invoices, sortField, sortDirection]);
+    return invoices; // Backend už vrací seřazená a filtrovaná data
+  }, [invoices]);
 
   // ⚠️ Filtrování a pagination dělá BE - invoices už jsou filtrované a stránkované!
   
   // Handlers
-  const handleRefresh = () => {
-    setCurrentPage(1); // Reset na první stránku
-    loadData();
+  const handleRefresh = async () => {
+    try {
+      setCurrentPage(1); // Reset na první stránku
+      await loadData();
+      showToast?.('✅ Seznam faktur byl obnoven z databáze', 'success');
+    } catch (err) {
+      console.error('❌ Chyba při obnovování seznamu faktur:', err);
+      showToast?.('❌ Chyba při obnovování seznamu faktur', 'error');
+    }
   };
-  
-  // Handler pro vymazání všech filtrů
-  const handleClearAllFilters = useCallback(() => {
-    setGlobalSearchTerm('');
-    setColumnFilters({});
-    setActiveFilterStatus(null);
-    setFilters({ filter_status: '' });
-    setCurrentPage(1);
-  }, []);
   
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
@@ -1748,19 +2920,6 @@ const Invoices25List = () => {
   };
 
   const handleViewInvoice = async (invoice) => {
-    console.log('🔍 [Invoices25List] Opening slide panel for invoice:', invoice);
-    console.log('🔍 [Invoices25List] ALL invoice keys:', Object.keys(invoice));
-    console.log('🔍 [Invoices25List] Keys containing "vecn":', Object.keys(invoice).filter(k => k.toLowerCase().includes('vecn')));
-    console.log('🔍 [Invoices25List] Keys containing "potvrd":', Object.keys(invoice).filter(k => k.toLowerCase().includes('potvrd')));
-    console.log('🔍 [Invoices25List] Věcná správnost data:', {
-      potvrdil_vecnou_spravnost_jmeno: invoice.potvrdil_vecnou_spravnost_jmeno,
-      vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno,
-      dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti,
-      vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka,
-      vecna_spravnost_umisteni_majetku: invoice.vecna_spravnost_umisteni_majetku,
-      potvrdil_vecnou_spravnost_id: invoice.potvrdil_vecnou_spravnost_id
-    });
-    
     setSlidePanelInvoice(invoice);
     setSlidePanelOpen(true);
     
@@ -1769,8 +2928,55 @@ const Invoices25List = () => {
     setSlidePanelLoading(false);
   };
 
-  const handleEditInvoice = (invoice) => {
-    // Navigace na evidenční stránku s parametrem pro editaci
+  const handleEditInvoice = async (invoice) => {
+    // 🔒 KONTROLA LOCK před editací faktury s objednávkou
+    if (invoice.objednavka_id) {
+      try {
+        const { getOrderV2 } = await import('../services/apiOrderV2');
+        const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
+        
+        // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
+        // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
+        // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
+        if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
+          const lockInfo = orderCheck.lock_info;
+          const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+          
+          // Ulož info o zamčení
+          setLockedOrderInfo({
+            lockedByUserName,
+            lockedByUserEmail: lockInfo.locked_by_user_email || null,
+            lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+            lockedAt: lockInfo.locked_at || null,
+            lockAgeMinutes: lockInfo.lock_age_minutes || null,
+            canForceUnlock: false, // V invoice listu neumožňujeme force unlock
+            orderId: invoice.objednavka_id
+          });
+          setShowLockedOrderDialog(true);
+          return;
+        }
+      } catch (err) {
+        // ⚠️ DŮLEŽITÉ: Chyba při kontrole LOCK - zobraz dialog, NEPŘECHÁZEJ na stránku
+        console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        
+        const lockInfo = {
+          lockedByUserName: 'Nedostupné',
+          lockedByUserEmail: null,
+          lockedByUserTelefon: null,
+          lockedAt: null,
+          lockAgeMinutes: null,
+          canForceUnlock: false,
+          orderId: invoice.objednavka_id,
+          errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
+        };
+        
+        setLockedOrderInfo(lockInfo);
+        setShowLockedOrderDialog(true);
+        return; // ⚠️ VŽDY ukonči - NIKDY nenaviguj při chybě
+      }
+    }
+    
+    // ✅ Není zamčená nebo nemá objednávku - pokračuj s editací
     navigate('/invoice-evidence', { 
       state: { 
         editInvoiceId: invoice.id,
@@ -1779,15 +2985,171 @@ const Invoices25List = () => {
     });
   };
 
+  // Handler pro odpojení faktury od objednávky/smlouvy
+  const handleUnlinkInvoice = (invoice) => {
+    const entityType = invoice.objednavka_id ? 'objednávky' : invoice.smlouva_id ? 'smlouvy' : null;
+    const entityNumber = invoice.objednavka_id 
+      ? (invoice.cislo_objednavky || `#${invoice.objednavka_id}`)
+      : invoice.smlouva_id 
+        ? (invoice.cislo_smlouvy || `#${invoice.smlouva_id}`)
+        : null;
+    
+    if (!entityType) {
+      showToast?.('Faktura není přiřazena k žádné objednávce ani smlouvě', { type: 'warning' });
+      return;
+    }
+    
+    setConfirmDialog({
+      isOpen: true,
+      title: `⚠️ Odpojit fakturu od ${entityType}?`,
+      message: `Opravdu chcete odpojit fakturu ${invoice.fa_cislo_vema || invoice.cislo_faktury || `#${invoice.id}`} od ${entityType} ${entityNumber}?\n\n` +
+        `Co se stane:\n` +
+        `• Faktura zůstane v systému jako SAMOSTATNÁ\n` +
+        `• ${entityType === 'objednávky' ? 'Objednávka' : 'Smlouva'} už nebude vidět tuto fakturu\n` +
+        `• Workflow ${entityType === 'objednávky' ? 'objednávky' : 'smlouvy'} se může změnit\n` +
+        `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n` +
+        `• Věcná správnost bude VYMAZÁNA (datum, umístění, potvrzující uživatel)\n` +
+        `• Předání zaměstnanci bude VYMAZÁNO (komu, datum předání i vrácení)\n\n` +
+        `⚠️ Tuto akci NELZE vzít zpět!`,
+      onConfirm: async () => {
+        try {
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          
+          // API call pro odpojení
+          const { updateInvoiceV2 } = await import('../services/api25invoices');
+          const updateData = {};
+          
+          // Nastavit správné pole podle entity type
+          if (invoice.objednavka_id) {
+            updateData.objednavka_id = null; // Odpojit od objednávky
+          }
+          if (invoice.smlouva_id) {
+            updateData.smlouva_id = null; // Odpojit od smlouvy
+          }
+          
+          // ✅ Vymazat všechny údaje o věcné kontrole při odpojení
+          // Protože věcná kontrola byla prováděna pro původní entitu
+          updateData.dt_potvrzeni_vecne_spravnosti = null;
+          updateData.vecna_spravnost_umisteni_majetku = null;
+          updateData.vecna_spravnost_poznamka = null;
+          updateData.potvrdil_vecnou_spravnost_id = null;
+          updateData.vecna_spravnost_potvrzeno = 0;
+          
+          // ✅ Vymazat všechny údaje o předání zaměstnanci při odpojení
+          updateData.fa_predana_zam_id = null;
+          updateData.fa_datum_predani_zam = null;
+          updateData.fa_datum_vraceni_zam = null;
+          
+          await updateInvoiceV2({
+            token,
+            username,
+            invoice_id: invoice.id,
+            updateData
+          });
+          
+          // Refresh seznam faktur
+          loadData();
+          
+          showToast?.(
+            `✅ Faktura ${invoice.fa_cislo_vema || invoice.cislo_faktury || `#${invoice.id}`} byla odpojena od ${entityType} ${entityNumber}`,
+            { type: 'success' }
+          );
+        } catch (err) {
+          console.error('❌ Chyba při odpojování faktury:', err);
+          showToast?.(
+            `Nepodařilo se odpojit fakturu: ${err.message || 'Neznámá chyba'}`,
+            { type: 'error' }
+          );
+        }
+      },
+      onCancel: () => {
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+      }
+    });
+  };
+
   const handleDeleteInvoice = (invoice) => {
-    // Otevře dialog a resetuje typ mazání na 'soft'
-    setDeleteType('soft');
+    // Pokud je faktura neaktivní, nastav výchozí akci na 'restore'
+    const initialType = (!invoice.aktivni && isAdmin) ? 'restore' : 'soft';
+    setDeleteType(initialType);
     setDeleteDialog({
       isOpen: true,
       invoice
     });
   };
   
+  // Handler pro otevření dialogu věcné kontroly
+  const handleOpenVecnaKontrola = async (invoice) => {
+    
+    // 🔒 KONTROLA LOCK před otevřením věcné kontroly faktury s objednávkou
+    if (invoice.objednavka_id) {
+      try {
+        const { getOrderV2 } = await import('../services/apiOrderV2');
+        const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
+        
+        // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
+        // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
+        // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
+        if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
+          const lockInfo = orderCheck.lock_info;
+          const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+          
+          // Ulož info o zamčení
+          setLockedOrderInfo({
+            lockedByUserName,
+            lockedByUserEmail: lockInfo.locked_by_user_email || null,
+            lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+            lockedAt: lockInfo.locked_at || null,
+            lockAgeMinutes: lockInfo.lock_age_minutes || null,
+            canForceUnlock: false, // V invoice listu neumozňujeme force unlock
+            orderId: invoice.objednavka_id
+          });
+          setShowLockedOrderDialog(true);
+          return; // Přeruš otevírání dialogu věcné kontroly
+        }
+      } catch (err) {
+        // ⚠️ DŮLEŽITÉ: Rozlišit typ chyby
+        console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        
+        // 🔥 403 Forbidden - uživatel nemá právo vidět objednávku
+        if (err?.message?.includes('Nemáte oprávnění') || err?.message?.includes('oprávnění')) {
+          showToast?.(
+            `Nemáte oprávnění k zobrazení objednávky #${invoice.objednavka_id}. Faktura může být přiřazena k objednávce z jiné organizace.`,
+            { type: 'error', duration: 6000 }
+          );
+          return; // ⚠️ Nepokračuj - uživatel nemá právo
+        }
+        
+        // 🔥 Jiná chyba - zobraz locked dialog s chybovou hláškou
+        const lockInfo = {
+          lockedByUserName: 'Nedostupné',
+          lockedByUserEmail: null,
+          lockedByUserTelefon: null,
+          lockedAt: null,
+          lockAgeMinutes: null,
+          canForceUnlock: false,
+          orderId: invoice.objednavka_id,
+          errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
+        };
+        
+        setLockedOrderInfo(lockInfo);
+        setShowLockedOrderDialog(true);
+        return; // ⚠️ VŽDY ukonči
+      }
+    }
+    
+    // ✅ Není zamčená nebo nemá objednávku - otevři formular věcné kontroly
+    
+    // Navigovat na InvoiceEvidencePage s editInvoiceId a příznakem materialCorrectness
+    navigate('/invoice-evidence', { 
+      state: { 
+        editInvoiceId: invoice.id,
+        orderIdForLoad: invoice.objednavka_id || null,
+        openMaterialCorrectness: true // Příznak pro automatické otevření sekce věcné kontroly
+      } 
+    });
+  };
+
   const confirmDeleteInvoice = async (hardDelete = false) => {
     const { invoice } = deleteDialog;
     
@@ -1811,13 +3173,142 @@ const Invoices25List = () => {
       
     } catch (err) {
       console.error('Error deleting invoice:', err);
-      showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
+      
+      // 🔍 Pokud je 404, faktura již byla smazána - jen refreshnout seznam
+      if (err.message?.includes('nenalezena') || err.message?.includes('404')) {
+        showToast?.(`Faktura ${invoice.cislo_faktury} již byla dříve smazána`, { type: 'info' });
+        loadData();
+      } else if (err.message?.includes('oprávnění') || err.message?.includes('administrátor') || err.message?.includes('SUPERADMIN')) {
+        // ⚠️ 403 Forbidden - permission error (NEODHLAŠOVAT!)
+        showToast?.(err.message || 'Nemáte oprávnění k této akci', { type: 'error', duration: 5000 });
+      } else {
+        showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
+      }
+      
+      // ✅ VŽDY zavřít dialog při jakékoliv chybě
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
     } finally {
       hideProgress?.();
     }
   };
 
-  // Handle payment status toggle (open dialog only for unpaid change)
+  const confirmRestoreInvoice = async () => {
+    const { invoice } = deleteDialog;
+    
+    if (!invoice) return;
+    
+    try {
+      showProgress?.('Obnovuji fakturu...');
+      
+      await restoreInvoiceV2(invoice.id, token, username);
+      
+      showToast?.(`Faktura ${invoice.cislo_faktury} byla úspěšně obnovena`, { 
+        type: 'success' 
+      });
+      
+      // Zavřít dialog
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
+      // Obnovit seznam
+      loadData();
+      
+    } catch (err) {
+      console.error('Error restoring invoice:', err);
+      
+      if (err.message?.includes('oprávnění') || err.message?.includes('administrátor') || err.message?.includes('SUPERADMIN')) {
+        showToast?.(err.message || 'Nemáte oprávnění k této akci', { type: 'error', duration: 5000 });
+      } else {
+        showToast?.(err.message || 'Chyba při obnově faktury', { type: 'error' });
+      }
+      
+      // Zavřít dialog
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
+    } finally {
+      hideProgress?.();
+    }
+  };
+
+  // Handle invoice status change (workflow state)
+  const handleStatusChange = async (invoice, newStatus) => {
+    if (!invoice || !newStatus) return;
+    
+    // ⚠️ KONTROLA: Pokud je současný stav ZAPLACENO a uživatel mění na jiný stav -> zobrazit warning
+    const currentStatus = invoice.stav || 'ZAEVIDOVANA';
+    if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO') {
+      setStatusChangeDialog({
+        isOpen: true,
+        invoice: invoice,
+        newStatus: newStatus
+      });
+      return; // Přerušit - čeká se na potvrzení
+    }
+    
+    // Provést změnu přímo (bez dialogu)
+    await performStatusChange(invoice, newStatus);
+  };
+  
+  // Provést změnu workflow stavu (voláno přímo nebo po potvrzení dialogu)
+  const performStatusChange = async (invoice, newStatus) => {
+    if (!invoice || !newStatus) return;
+    
+    const currentStatus = invoice.stav || 'ZAEVIDOVANA';
+    
+    try {
+      showProgress?.(`Měním stav faktury na ${newStatus}...`);
+      
+      await updateInvoiceV2({
+        token,
+        username,
+        invoice_id: invoice.id,
+        updateData: {
+          stav: newStatus
+        }
+      });
+      
+      // Lokální update faktury - optimistický update
+      setInvoices(prevInvoices => 
+        prevInvoices.map(inv => {
+          if (inv.id === invoice.id) {
+            const updates = { stav: newStatus };
+            
+            // Pokud měníme Z ZAPLACENO na jiný stav -> zrušit fa_zaplacena flag
+            if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO') {
+              updates.zaplacena = false;
+              updates.fa_zaplacena = false;
+            }
+            
+            // Pokud měníme NA ZAPLACENO -> nastavit fa_zaplacena flag
+            if (newStatus === 'ZAPLACENO') {
+              updates.zaplacena = true;
+              updates.fa_zaplacena = true;
+            }
+            
+            return { ...inv, ...updates };
+          }
+          return inv;
+        })
+      );
+      
+      showToast?.(
+        `Stav faktury ${invoice.cislo_faktury} byl změněn`, 
+        { type: 'success' }
+      );
+      
+    } catch (err) {
+      console.error('Error updating invoice status:', err);
+      showToast?.(translateErrorMessage(err?.message) || 'Chyba při aktualizaci stavu faktury', { type: 'error' });
+      // Při chybě obnov data ze serveru
+      loadData();
+    } finally {
+      hideProgress?.();
+    }
+  };
+
   const handleTogglePaymentStatus = (invoice) => {
     // Use transformed 'zaplacena' field which is boolean
     const currentlyPaid = invoice.zaplacena;
@@ -1843,14 +3334,34 @@ const Invoices25List = () => {
     try {
       showProgress?.('Aktualizuji stav platby...');
       
+      const updateData = {
+        fa_zaplacena: newStatus ? 1 : 0,
+        // 🔥 FIX: Použít lokální české datum místo UTC
+        fa_datum_uhrazeni: newStatus ? (() => {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        })() : null
+      };
+      
+      // 🔄 Synchronizace workflow stavu s platbou
+      if (newStatus) {
+        // Nastavuji na ZAPLACENO → workflow stav = ZAPLACENO
+        updateData.stav = 'ZAPLACENO';
+      } else {
+        // Zrušuji ZAPLACENO → pokud je workflow stav ZAPLACENO, vrátit na K_ZAPLACENI
+        if (invoice.stav === 'ZAPLACENO') {
+          updateData.stav = 'K_ZAPLACENI';
+        }
+      }
+      
       await updateInvoiceV2({
         token,
         username,
         invoice_id: invoice.id,
-        updateData: {
-          fa_zaplacena: newStatus ? 1 : 0,
-          fa_datum_uhrazeni: newStatus ? new Date().toISOString().split('T')[0] : null
-        }
+        updateData
       });
       
       showToast?.(
@@ -1876,7 +3387,7 @@ const Invoices25List = () => {
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let year = currentYear; year >= 2020; year--) {
+    for (let year = currentYear; year >= 2025; year--) {
       years.push(year);
     }
     return years;
@@ -1884,12 +3395,18 @@ const Invoices25List = () => {
 
   return (
     <>
-      {/* Loading Overlay */}
+      {/* Loading Overlay - při prvním načítání */}
       <LoadingOverlay $visible={loading && invoices.length === 0}>
         <LoadingSpinner $visible={loading} />
         <LoadingMessage $visible={loading}>Načítám faktury...</LoadingMessage>
         <LoadingSubtext $visible={loading}>Vytvářím přehled faktur pro rok {selectedYear}</LoadingSubtext>
       </LoadingOverlay>
+
+      {/* Filtering Overlay - jemný při filtrování už načtených faktur */}
+      <FilteringOverlay $visible={loading && invoices.length > 0}>
+        <FilteringSpinner />
+        <FilteringText>Filtruji...</FilteringText>
+      </FilteringOverlay>
 
       <Container>
         {/* Year Filter Panel */}
@@ -1919,10 +3436,26 @@ const Invoices25List = () => {
 
         {/* Action Bar - hlavní */}
         <ActionBar>
-          <ActionButton $primary onClick={handleNavigateToEvidence}>
-            <FontAwesomeIcon icon={faPlus} />
-            Zaevidovat fakturu
-          </ActionButton>
+          {canManageInvoices && (
+            <ActionButton $primary onClick={handleNavigateToEvidence}>
+              <FontAwesomeIcon icon={faPlus} />
+              Zaevidovat fakturu
+            </ActionButton>
+          )}
+          
+          {/* 📋 Tlačítko pro objednávky připravené k fakturaci */}
+          {(canManageInvoices || isAdmin) && (
+            <TooltipWrapper text="Zobrazit seznam objednávek připravených k fakturaci" preferredPosition="bottom">
+              <ActionButton 
+                onClick={handleOpenOrdersSidebar}
+                disabled={ordersReadyCount === 0}
+                style={{ opacity: ordersReadyCount === 0 ? 0.5 : 1, cursor: ordersReadyCount === 0 ? 'not-allowed' : 'pointer' }}
+              >
+                <FontAwesomeIcon icon={faFileInvoice} />
+                Zaevidovat fakturu k objednávce ({ordersReadyCount})
+              </ActionButton>
+            </TooltipWrapper>
+          )}
           
           {!showDashboard && (
             <TooltipWrapper text="Zobrazit přehledový dashboard s grafy" preferredPosition="bottom">
@@ -1933,10 +3466,13 @@ const Invoices25List = () => {
             </TooltipWrapper>
           )}
           
-          <ActionButton onClick={handleRefresh}>
-            <FontAwesomeIcon icon={faDownload} />
-            Export
-          </ActionButton>
+          {/* Export button - TEMPORARILY HIDDEN */}
+          {false && (
+            <ActionButton onClick={handleRefresh}>
+              <FontAwesomeIcon icon={faDownload} />
+              Export
+            </ActionButton>
+          )}
         </ActionBar>
 
         {/* Dashboard Cards - podmíneněně viditelný */}
@@ -1995,6 +3531,22 @@ const Invoices25List = () => {
               <StatLabel>Všechny faktury {selectedYear}</StatLabel>
             </DashboardCard>
 
+            {/* Věcná správnost */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('vecna_spravnost')}
+              $isActive={activeFilterStatus === 'vecna_spravnost'}
+              $color="#3b82f6"
+            >
+              <StatHeader>
+                <StatLabel>Věcná správnost</StatLabel>
+                <StatIcon $color="#3b82f6">
+                  <FontAwesomeIcon icon={faCheckSquare} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.vecnaSpravnost}</StatValue>
+              <StatLabel>Ve věcné kontrole</StatLabel>
+            </DashboardCard>
+
             {/* Zaplaceno */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('paid')}
@@ -2027,6 +3579,22 @@ const Invoices25List = () => {
               <StatLabel>Čekající na platbu</StatLabel>
             </DashboardCard>
 
+            {/* Ve splatnosti */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('within_due')}
+              $isActive={activeFilterStatus === 'within_due'}
+              $color="#10b981"
+            >
+              <StatHeader>
+                <StatLabel>Ve splatnosti</StatLabel>
+                <StatIcon $color="#10b981">
+                  <FontAwesomeIcon icon={faCheckCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withinDue}</StatValue>
+              <StatLabel>Nezaplacené ve lhůtě</StatLabel>
+            </DashboardCard>
+
             {/* Po splatnosti */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('overdue')}
@@ -2043,6 +3611,22 @@ const Invoices25List = () => {
               <StatLabel>Překročená splatnost</StatLabel>
             </DashboardCard>
 
+            {/* Storno */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('storno')}
+              $isActive={activeFilterStatus === 'storno'}
+              $color="#64748b"
+            >
+              <StatHeader>
+                <StatLabel>Storno</StatLabel>
+                <StatIcon $color="#64748b">
+                  <FontAwesomeIcon icon={faTimesCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.storno}</StatValue>
+              <StatLabel>Stornované faktury</StatLabel>
+            </DashboardCard>
+
             {/* Faktury bez objednávky */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('without_order')}
@@ -2050,13 +3634,77 @@ const Invoices25List = () => {
               $color="#94a3b8"
             >
               <StatHeader>
-                <StatLabel>Bez objednávky</StatLabel>
+                <StatLabel>Bez přiřazení</StatLabel>
                 <StatIcon $color="#94a3b8">
                   <FontAwesomeIcon icon={faTimesCircle} />
                 </StatIcon>
               </StatHeader>
               <StatValue>{stats.withoutOrder}</StatValue>
               <StatLabel>Nepřiřazené faktury</StatLabel>
+            </DashboardCard>
+
+            {/* Přiřazené k objednávce */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('with_order')}
+              $isActive={activeFilterStatus === 'with_order'}
+              $color="#8b5cf6"
+            >
+              <StatHeader>
+                <StatLabel>Přiřazené OBJ</StatLabel>
+                <StatIcon $color="#8b5cf6">
+                  <FontAwesomeIcon icon={faFileContract} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withOrder}</StatValue>
+              <StatLabel>S objednávkou</StatLabel>
+            </DashboardCard>
+
+            {/* Přiřazené ke smlouvě */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('with_contract')}
+              $isActive={activeFilterStatus === 'with_contract'}
+              $color="#0ea5e9"
+            >
+              <StatHeader>
+                <StatLabel>Přiřazené SML</StatLabel>
+                <StatIcon $color="#0ea5e9">
+                  <FontAwesomeIcon icon={faIdCard} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withContract}</StatValue>
+              <StatLabel>Se smlouvou</StatLabel>
+            </DashboardCard>
+
+            {/* Ze Spisovky */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('from_spisovka')}
+              $isActive={activeFilterStatus === 'from_spisovka'}
+              $color="#10b981"
+            >
+              <StatHeader>
+                <StatLabel>Ze Spisovky</StatLabel>
+                <StatIcon $color="#10b981">
+                  <FontAwesomeIcon icon={faDatabase} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.fromSpisovka}</StatValue>
+              <StatLabel>Import ze Spisovky</StatLabel>
+            </DashboardCard>
+
+            {/* Kontrola faktur */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('kontrolovano')}
+              $isActive={activeFilterStatus === 'kontrolovano'}
+              $color="#22c55e"
+            >
+              <StatHeader>
+                <StatLabel>Kontrola faktur</StatLabel>
+                <StatIcon $color="#22c55e">
+                  <FontAwesomeIcon icon={faCheckCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.kontrolovano}</StatValue>
+              <StatLabel>Zkontrolováno</StatLabel>
             </DashboardCard>
 
             {/* Moje faktury - pouze pro admin/invoice_manage */}
@@ -2073,7 +3721,7 @@ const Invoices25List = () => {
                   </StatIcon>
                 </StatHeader>
                 <StatValue>{stats.myInvoices}</StatValue>
-                <StatLabel>Mnou zaevidované</StatLabel>
+                <StatLabel>Předané / Věcná</StatLabel>
               </DashboardCard>
             )}
             </DashboardGrid>
@@ -2087,12 +3735,28 @@ const Invoices25List = () => {
               <FontAwesomeIcon icon={faSearch} />
               Vyhledávání
             </SearchPanelTitle>
-            {(globalSearchTerm || Object.keys(columnFilters).some(key => columnFilters[key])) && (
-              <ClearAllButton onClick={handleClearAllFilters}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* 🔧 ADMIN: Checkbox pro zobrazení POUZE neaktivních faktur */}
+              {isAdmin && (
+                <AdminCheckboxWrapper title="Zobrazit pouze neaktivní (smazané) faktury - viditelné pouze pro administrátory">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyInactive}
+                    onChange={(e) => {
+                      const newValue = e.target.checked;
+                      setShowOnlyInactive(newValue);
+                      setCurrentPage(1); // Reset to first page when toggling
+                    }}
+                  />
+                  <FontAwesomeIcon icon={faEyeSlash} />
+                  <span>Pouze neaktivní</span>
+                </AdminCheckboxWrapper>
+              )}
+              <ClearAllButton onClick={handleClearAllFilters} title="Vymazat všechny filtry">
                 <FontAwesomeIcon icon={faEraser} />
-                Vymazat všechny filtry
+                Vymazat filtry
               </ClearAllButton>
-            )}
+            </div>
           </SearchPanelHeader>
           
           <SearchInputWrapper>
@@ -2124,11 +3788,64 @@ const Invoices25List = () => {
         </SearchPanel>
 
         {/* Table - vždy zobrazená s hlavičkou */}
-        <TableWrapper>
-          <Table>
+        <TableScrollWrapper>
+          <TableContainer ref={tableRef}>
+            <Table>
               <TableHead>
                 {/* Hlavní řádek se jmény sloupců */}
                 <tr>
+                  {/* PRVNÍ SLOUPEC - Kontrola řádku */}
+                  <TableHeader title="Kontrola">
+                    <FontAwesomeIcon icon={faCheckSquare} style={{ color: '#64748b' }} />
+                  </TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'dt_aktualizace' ? 'active' : ''}`}
+                    onClick={() => handleSort('dt_aktualizace')}
+                  >
+                    Aktualizováno
+                    {sortField === 'dt_aktualizace' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_faktury')}
+                    style={{ textAlign: 'center' }}
+                  >
+                    Faktura VS
+                    {sortField === 'cislo_faktury' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
+                    onClick={() => handleSort('fa_typ')}
+                  >
+                    Typ
+                    {sortField === 'fa_typ' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_objednavky')}
+                    style={{ whiteSpace: 'nowrap', textAlign: 'center' }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <span>Obj/SML/Dodavatel</span>
+                    </div>
+                    {sortField === 'cislo_objednavky' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_doruceni' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_doruceni')}
@@ -2152,50 +3869,6 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader 
-                    className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
-                    onClick={() => handleSort('fa_typ')}
-                  >
-                    Typ
-                    {sortField === 'fa_typ' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
-                    onClick={() => handleSort('cislo_faktury')}
-                  >
-                    Faktura VS
-                    {sortField === 'cislo_faktury' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
-                    onClick={() => handleSort('cislo_objednavky')}
-                  >
-                    Objednávka/Smlouva
-                    {sortField === 'cislo_objednavky' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
-                    onClick={() => handleSort('castka')}
-                  >
-                    Částka
-                    {sortField === 'castka' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_splatnosti')}
                   >
@@ -2207,8 +3880,21 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader 
+                    className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
+                    onClick={() => handleSort('castka')}
+                    style={{ textAlign: 'center', minWidth: '180px', width: '180px' }}
+                  >
+                    Částka
+                    {sortField === 'castka' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
                     className={`status-column sortable ${sortField === 'status' ? 'active' : ''}`}
                     onClick={() => handleSort('status')}
+                    style={{ textAlign: 'center' }}
                   >
                     Stav
                     {sortField === 'status' && (
@@ -2233,7 +3919,7 @@ const Invoices25List = () => {
                     onClick={() => handleSort('fa_predana_zam_jmeno')}
                     style={{ minWidth: '120px' }}
                   >
-                    Předáno zaměstnanci
+                    Předáno
                     {sortField === 'fa_predana_zam_jmeno' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -2275,292 +3961,373 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader>
-                    <FontAwesomeIcon icon={faBoltLightning} style={{ color: '#fbbf24' }} />
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
-                {/* Druhý řádek s filtry ve sloupcích */}
-                <tr>
-                  {/* Doručení - datum filtr - PRVNÍ SLOUPEC */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_doruceni"
-                        value={columnFilters.datum_doruceni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Vystavení - datum filtr */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_vystaveni"
-                        value={columnFilters.datum_vystaveni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Typ faktury - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.fa_typ || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, fa_typ: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white',
-                        cursor: 'pointer'
+                {/* NOVÝ KONZISTENTNÍ FILTROVACÍ ŘÁDEK */}
+                <tr className="filter-row">
+                  {/* Kontrola řádku - PRVNÍ SLOUPEC */}
+                  <TableHeader className="filter-cell">
+                    <button
+                      onClick={() => {
+                        const currentState = columnFilters.kontrola_radku || 'all';
+                        const nextState = currentState === 'all' ? 'kontrolovano' : 
+                                         currentState === 'kontrolovano' ? 'nekontrolovano' : 
+                                         'all';
+                        setColumnFilters({...columnFilters, kontrola_radku: nextState});
                       }}
+                      style={{
+                        padding: '6px 10px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        transition: 'all 0.2s'
+                      }}
+                      title={(() => {
+                        const state = columnFilters.kontrola_radku || 'all';
+                        if (state === 'kontrolovano') return 'Filtr: Pouze zkontrolované (klikněte pro nekontrolované)';
+                        if (state === 'nekontrolovano') return 'Filtr: Pouze nekontrolované (klikněte pro vše)';
+                        return 'Filtr: Vše (klikněte pro zkontrolované)';
+                      })()}
                     >
-                      <option value="">Všechny typy</option>
-                      <option value="BEZNA">BĚŽNÁ</option>
-                      <option value="ZALOHOVA">ZÁLOHOVÁ</option>
-                      <option value="OPRAVNA">OPRAVNÁ</option>
-                      <option value="PROFORMA">PROFORMA</option>
-                      <option value="DOBROPIS">DOBROPIS</option>
-                    </select>
+                      {(() => {
+                        const state = columnFilters.kontrola_radku || 'all';
+                        if (state === 'all') {
+                          return (
+                            <svg viewBox="0 0 448 512" style={{ width: '20px', height: '20px' }}>
+                              <defs>
+                                <clipPath id="clip-left-kontrola">
+                                  <rect x="0" y="0" width="224" height="512"/>
+                                </clipPath>
+                                <clipPath id="clip-right-kontrola">
+                                  <rect x="224" y="0" width="224" height="512"/>
+                                </clipPath>
+                              </defs>
+                              {/* Plný vyplněný čtvereček - levá polovina zelená */}
+                              <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384z"
+                                    fill="#10b981" clipPath="url(#clip-left-kontrola)"/>
+                              {/* Plný vyplněný čtvereček - pravá polovina šedá */}
+                              <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384z"
+                                    fill="#94a3b8" clipPath="url(#clip-right-kontrola)"/>
+                            </svg>
+                          );
+                        }
+                        if (state === 'kontrolovano') {
+                          return <FontAwesomeIcon icon={faCheckSquare} style={{ color: '#10b981', fontSize: '20px' }}/>;
+                        }
+                        // Nekontrolováno - prázdný čtvereček se silnějším obrysem
+                        return (
+                          <svg viewBox="0 0 448 512" style={{ width: '20px', height: '20px' }}>
+                            <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384zM384 80H64C55.16 80 48 87.16 48 96V416C48 424.8 55.16 432 64 432H384C392.8 432 400 424.8 400 416V96C400 87.16 392.8 80 384 80z"
+                                  fill="#64748b" 
+                                  stroke="#64748b" 
+                                  strokeWidth="32"/>
+                          </svg>
+                        );
+                      })()}
+                    </button>
                   </TableHeader>
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
+                  
+                  {/* Aktualizováno */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="dt_aktualizace"
+                        value={columnFilters.dt_aktualizace || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, dt_aktualizace: value})}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Číslo faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Hledat číslo..."
+                        className="filter-input"
+                        placeholder="Číslo faktury..."
                         value={columnFilters.cislo_faktury || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
                       />
                       {columnFilters.cislo_faktury && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
-                        type="text"
-                        placeholder="Obj/Sml..."
-                        value={columnFilters.cislo_objednavky || ''}
-                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
-                        title="Hledá v číslech objednávek i smluv"
-                      />
-                      {columnFilters.cislo_objednavky && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  {/* Částka - rozsahový filtr */}
-                  <TableHeader className="amount-column" style={{ padding: '0.5rem 0.25rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Min"
-                        value={columnFilters.castka_min || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_min: newVal});
-                        }}
-                        style={{
-                          width: '45px',
-                          padding: '0.35rem 0.25rem',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          textAlign: 'center'
-                        }}
-                      />
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>-</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Max"
-                        value={columnFilters.castka_max || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_max: newVal});
-                        }}
-                        style={{
-                          width: '45px',
-                          padding: '0.35rem 0.25rem',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          textAlign: 'center'
-                        }}
-                      />
-                      {(columnFilters.castka_min || columnFilters.castka_max) && (
                         <button
-                          onClick={() => setColumnFilters({...columnFilters, castka_min: '', castka_max: ''})}
-                          style={{
-                            position: 'absolute',
-                            right: '-0.25rem',
-                            top: '-0.25rem',
-                            background: '#dc2626',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '16px',
-                            height: '16px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: 'white',
-                            fontSize: '0.6rem',
-                            padding: 0
-                          }}
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}
                         >
                           <FontAwesomeIcon icon={faTimes} />
                         </button>
                       )}
                     </div>
                   </TableHeader>
-                  {/* Splatnost - datum filtr */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
+
+                  {/* Typ faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.fa_typ || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, fa_typ: value})}
+                        options={invoiceTypeOptions}
+                        field="fa_typ"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny typy"
+                        disabled={invoiceTypesLoading}
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Objednávka/Smlouva */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
+                        placeholder="Obj./Smlouva..."
+                        value={columnFilters.cislo_objednavky || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
+                        title="Hledá v číslech objednávek i smluv"
+                      />
+                      {columnFilters.cislo_objednavky && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Doručení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
                       <DatePicker
-                        fieldName="filter_datum_splatnosti"
-                        value={columnFilters.datum_splatnosti || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
-                        placeholder="Datum"
+                        fieldName="datum_doruceni"
+                        value={columnFilters.datum_doruceni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
+                        placeholder="Doručení"
                         variant="compact"
                       />
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.stav || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, stav: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="paid">Zaplaceno</option>
-                      <option value="unpaid">Nezaplaceno</option>
-                      <option value="overdue">Po splatnosti</option>
-                    </select>
+
+                  {/* Vystavení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_vystaveni"
+                        value={columnFilters.datum_vystaveni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
+                        placeholder="Vystavení"
+                        variant="compact"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Zaevidoval - filtr uživatele */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Splatnost */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_splatnosti"
+                        value={columnFilters.datum_splatnosti || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
+                        placeholder="Splatnost"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Částka */}
+                  <TableHeader className="filter-cell amount-column">
+                    <div className="operator-filter-wrapper">
+                      <OperatorInput
+                        value={columnFilters.castka || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, castka: value})}
+                        placeholder="Částka"
+                        clearButton={true}
+                        onClear={() => {
+                          setColumnFilters({...columnFilters, castka: ''});
+                        }}
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Stav */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.stav || ''}
+                        onChange={(value) => {
+                          setColumnFilters({...columnFilters, stav: value});
+                        }}
+                        options={stavOptions}
+                        field="stav"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny stavy"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Zaevidoval */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
+                        className="filter-input"
                         placeholder="Jméno..."
                         value={columnFilters.vytvoril_uzivatel || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, vytvoril_uzivatel: e.target.value})}
                       />
                       {columnFilters.vytvoril_uzivatel && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Předáno zaměstnanci - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)', minWidth: '120px' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Předáno zaměstnanci */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Celé jméno..."
+                        className="filter-input"
+                        placeholder="Jméno..."
                         value={columnFilters.predano_zamestnanec || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
                       />
                       {columnFilters.predano_zamestnanec && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Věcnou provedl - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Věcnou provedl */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Celé jméno..."
+                        className="filter-input"
+                        placeholder="Jméno..."
                         value={columnFilters.vecnou_provedl || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, vecnou_provedl: e.target.value})}
                       />
                       {columnFilters.vecnou_provedl && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Věcná kontrola - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.vecna_kontrola || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, vecna_kontrola: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="yes">Provedena</option>
-                      <option value="no">Neprovedena</option>
-                    </select>
+
+                  {/* Věcná kontrola */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.vecna_kontrola || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, vecna_kontrola: value})}
+                        options={vecnaKontrolaOptions}
+                        field="vecna_kontrola"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Přílohy - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.ma_prilohy || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, ma_prilohy: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="with">S přílohami</option>
-                      <option value="without">Bez příloh</option>
-                    </select>
+
+                  {/* Přílohy */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
+                        onChange={(value) => {
+                          if (value === 'spisovka') {
+                            setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' }));
+                            setActiveFilterStatus('from_spisovka');
+                            setColumnFilters({...columnFilters, ma_prilohy: ''});
+                          } else {
+                            setFilters(prev => ({ ...prev, filter_status: '' }));
+                            setActiveFilterStatus(null);
+                            setColumnFilters({...columnFilters, ma_prilohy: value});
+                          }
+                          setCurrentPage(1);
+                        }}
+                        options={[
+                          { value: '', label: 'Vše' },
+                          { value: 'without', label: 'Bez příloh' },
+                          { value: 'with', label: 'S přílohami' },
+                          { value: 'spisovka', label: 'Ze spisovky' }
+                        ]}
+                        field="ma_prilohy"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Akce - tlačítko pro vymazání filtrů */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center' }}>
-                      <ActionButton 
+
+                  {/* Akce */}
+                  <TableHeader className="filter-cell">
+                    <div className="action-filter-wrapper">
+                      <button
+                        className="clear-all-button"
                         onClick={() => setColumnFilters({})}
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
                         title="Vymazat všechny filtry"
                       >
                         <FontAwesomeIcon icon={faEraser} />
-                      </ActionButton>
+                      </button>
                     </div>
                   </TableHeader>
                 </tr>
@@ -2569,7 +4336,7 @@ const Invoices25List = () => {
                 {/* Error State v tabulce */}
                 {error && (
                   <tr>
-                    <td colSpan="12" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="16" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={error.includes('ve vývoji') || error.includes('404') ? faExclamationTriangle : faTimesCircle} />
                       </EmptyStateIcon>
@@ -2597,7 +4364,7 @@ const Invoices25List = () => {
                 {/* Empty State v tabulce */}
                 {!error && invoices.length === 0 && !loading && (
                   <tr>
-                    <td colSpan="12" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="16" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </EmptyStateIcon>
@@ -2607,154 +4374,578 @@ const Invoices25List = () => {
                 )}
                 
                 {/* Data rows */}
-                {!error && sortedInvoices.map(invoice => (
-                  <TableRow key={invoice.id}>
+                {!error && sortedInvoices.map((invoice, idx) => (
+                  <TableRow 
+                    key={invoice.id}
+                    data-storno={invoice.stav === 'STORNO' ? 'true' : 'false'}
+                    data-inactive={!invoice.aktivni ? 'true' : 'false'}
+                    style={{
+                      backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent'
+                    }}
+                  >
+                    {/* Kontrola řádku faktury - PRVNÍ SLOUPEC */}
                     <TableCell className="center">
-                      {invoice.datum_doruceni ? (
-                        <span style={{ color: '#059669', fontWeight: 600 }}>
-                          <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
-                          {formatDateOnly(invoice.datum_doruceni)}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>—</span>
-                      )}
+                      {(() => {
+                        // ✅ OPTIMALIZACE: check_status a kontrola přichází přímo z BE v invoice objektu
+                        const checkStatus = invoice.check_status || 'unchecked';
+                        const kontrolaData = invoice.rozsirujici_data?.kontrola_radku;
+                        const isChecked = kontrolaData?.kontrolovano || false;
+                        
+                        // ✅ TŘÍFÁZOVÝ SYSTÉM:
+                        // - unchecked: ⚪ Nezkontrolováno
+                        // - checked_ok: ✅ Zkontrolováno, beze změn (zelená)
+                        // - checked_modified: ⚠️ Zkontrolováno, ale upraveno (oranžová)
+                        
+                        let accentColor = '#10b981';  // Default zelená
+                        let tooltipText = '⚪ Nezkontrolováno';
+                        
+                        if (isChecked) {
+                          if (checkStatus === 'checked_modified') {
+                            accentColor = '#f59e0b';  // Oranžová
+                            tooltipText = `⚠️ Zkontrolováno, ale následně upraveno\n\nKontroloval: ${kontrolaData?.kontroloval_cele_jmeno || kontrolaData?.kontroloval_username}\nDatum kontroly: ${kontrolaData?.dt_kontroly}\n\n⚠️ Faktura byla po kontrole upravena!\nPro potvrzení zkontrolujte znovu.`;
+                          } else {
+                            accentColor = '#10b981';  // Zelená
+                            tooltipText = `✅ Zkontrolováno - v pořádku\n\nKontroloval: ${kontrolaData?.kontroloval_cele_jmeno || kontrolaData?.kontroloval_username}\nDatum kontroly: ${kontrolaData?.dt_kontroly}`;
+                          }
+                        }
+                        
+                        return (
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={!canControlInvoices}
+                            onChange={async (e) => {
+                              e.stopPropagation();
+                              const newState = e.target.checked;
+                              
+                              // 🎯 OPTIMISTIC UPDATE: Okamžitě aktualizovat lokální stav bez refreshe
+                              const optimisticUpdate = (prevInvoices) => {
+                                return prevInvoices.map(inv => {
+                                  if (inv.id === invoice.id) {
+                                    return {
+                                      ...inv,
+                                      rozsirujici_data: {
+                                        ...inv.rozsirujici_data,
+                                        kontrola_radku: newState ? {
+                                          kontrolovano: true,
+                                          kontroloval_user_id: user_id,
+                                          kontroloval_username: username,
+                                          kontroloval_cele_jmeno: user?.fullName || username,
+                                          dt_kontroly: new Date().toISOString()
+                                        } : {
+                                          kontrolovano: false,
+                                          kontroloval_user_id: null,
+                                          kontroloval_username: null,
+                                          kontroloval_cele_jmeno: null,
+                                          dt_kontroly: null
+                                        }
+                                      },
+                                      check_status: newState ? 'checked_ok' : 'unchecked'
+                                    };
+                                  }
+                                  return inv;
+                                });
+                              };
+                              
+                              // Okamžitě aktualizovat UI
+                              setInvoices(optimisticUpdate);
+                              
+                              // 📊 Update statistiky
+                              setStats(prevStats => ({
+                                ...prevStats,
+                                kontrolovano: prevStats.kontrolovano + (newState ? 1 : -1)
+                              }));
+                              
+                              try {
+                                // Provést API volání na pozadí
+                                await toggleInvoiceCheck(
+                                  invoice.id, 
+                                  newState, 
+                                  token, 
+                                  username
+                                );
+                                
+                                showToast(
+                                  newState 
+                                    ? '✅ Faktura označena jako zkontrolovaná' 
+                                    : '⚪ Kontrola zrušena',
+                                  'success'
+                                );
+                                
+                              } catch (err) {
+                                console.error('Chyba při změně stavu kontroly:', err);
+                                // Rollback při chybě
+                                setInvoices(prevInvoices => prevInvoices.map(inv => {
+                                  if (inv.id === invoice.id) {
+                                    return invoice; // Vrátit původní stav
+                                  }
+                                  return inv;
+                                }));
+                                setStats(prevStats => ({
+                                  ...prevStats,
+                                  kontrolovano: prevStats.kontrolovano - (newState ? 1 : -1)
+                                }));
+                                showToast(err.message || 'Chyba při změně stavu kontroly', 'error');
+                              }
+                            }}
+                            style={{
+                              cursor: canControlInvoices ? 'pointer' : 'not-allowed',
+                              width: '18px',
+                              height: '18px',
+                              accentColor: accentColor,
+                              opacity: canControlInvoices ? 1 : 0.5
+                            }}
+                            title={tooltipText}
+                          />
+                        );
+                      })()}
                     </TableCell>
-                    <TableCell className="center">{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</TableCell>
+                    
                     <TableCell className="center">
-                      <span style={{ 
-                        display: 'inline-block',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        backgroundColor: invoice.fa_typ === 'ZALOHOVA' ? '#dbeafe' : 
-                                       invoice.fa_typ === 'OPRAVNA' ? '#fef3c7' : 
-                                       invoice.fa_typ === 'PROFORMA' ? '#e0e7ff' : 
-                                       invoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : '#f1f5f9',
-                        color: invoice.fa_typ === 'ZALOHOVA' ? '#1e40af' : 
-                               invoice.fa_typ === 'OPRAVNA' ? '#92400e' : 
-                               invoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
-                               invoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
-                      }}>
-                        {invoice.fa_typ === 'BEZNA' ? 'BĚŽNÁ' : 
-                         invoice.fa_typ === 'ZALOHOVA' ? 'ZÁLOHOVÁ' : 
-                         invoice.fa_typ === 'OPRAVNA' ? 'OPRAVNÁ' : 
-                         invoice.fa_typ === 'PROFORMA' ? 'PROFORMA' : 
-                         invoice.fa_typ === 'DOBROPIS' ? 'DOBROPIS' : 
-                         invoice.fa_typ || '—'}
+                      <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.dt_aktualizace ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span>{formatDateOnly(invoice.dt_aktualizace)}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+                              {new Date(invoice.dt_aktualizace).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        ) : '—'}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <strong>{invoice.cislo_faktury}</strong>
-                    </TableCell>
-                    <TableCell>
-                      {invoice.cislo_smlouvy ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <div>
-                            <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
-                            {invoice.cislo_smlouvy}
-                          </div>
-                        </div>
-                      ) : invoice.cislo_objednavky ? (
-                        <div>
-                          <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#94a3b8' }} />
-                          {invoice.cislo_objednavky}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="right">
-                      <strong>{formatCurrency(invoice.castka)}</strong>
-                    </TableCell>
-                    <TableCell className="center">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</TableCell>
                     <TableCell className="center">
-                      <StatusBadge $status={invoice.status}>
-                        <FontAwesomeIcon icon={getStatusIcon(invoice.status)} />
-                        {getStatusLabel(invoice.status)}
-                      </StatusBadge>
+                      <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        <strong>{invoice.cislo_faktury}</strong>
+                        {invoice.rozsirujici_data?.rocni_poplatek && (
+                          <TooltipWrapper
+                            content={
+                              <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
+                                  💰 Faktura přiřazena k ročnímu poplatku
+                                </strong>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                  <strong>Název:</strong> {invoice.rozsirujici_data.rocni_poplatek.nazev}
+                                </div>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                  <strong>Rok:</strong> {invoice.rozsirujici_data.rocni_poplatek.rok}
+                                </div>
+                                {invoice.cislo_smlouvy && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Smlouva:</strong> {invoice.cislo_smlouvy}
+                                  </div>
+                                )}
+                                {invoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Přiřadil:</strong> {invoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                                  </div>
+                                )}
+                                {invoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                                  <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
+                                    Datum přiřazení: {new Date(invoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                  </div>
+                                )}
+                              </div>
+                            }
+                            position="top"
+                            showDelay={200}
+                          >
+                            <InfoIconBadge style={{ marginLeft: '6px' }}>
+                              <FontAwesomeIcon icon={faCoins} />
+                            </InfoIconBadge>
+                          </TooltipWrapper>
+                        )}
+                      </span>
                     </TableCell>
-                    <TableCell>
-                      {invoice.vytvoril_uzivatel_zkracene ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                          {invoice.vytvoril_uzivatel_zkracene}
+                    <TableCell className="center">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        <span style={{ 
+                          display: 'inline-block',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          backgroundColor: invoice.fa_typ === 'ZALOHOVA' ? '#dbeafe' : 
+                                         invoice.fa_typ === 'OPRAVNA' ? '#fef3c7' : 
+                                         invoice.fa_typ === 'PROFORMA' ? '#e0e7ff' : 
+                                         invoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : '#f1f5f9',
+                          color: invoice.fa_typ === 'ZALOHOVA' ? '#1e40af' : 
+                                 invoice.fa_typ === 'OPRAVNA' ? '#92400e' : 
+                                 invoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
+                                 invoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
+                        }}>
+                          {getInvoiceTypeName(invoice)}
                         </span>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>—</span>
-                      )}
+                      </span>
+                    </TableCell>
+                    <TableCell style={{ whiteSpace: 'nowrap' }}>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.cislo_smlouvy || invoice.cislo_objednavky ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                            {/* První řádek - číslo smlouvy/objednávky s ikonami */}
+                            {invoice.cislo_smlouvy ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#3b82f6' }}>
+                                  <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem' }} />
+                                  {invoice.cislo_smlouvy}
+                                </span>
+                                {/* Ikona pro faktury ke smlouvě */}
+                                <FontAwesomeIcon 
+                                  icon={faEdit}
+                                  style={{ 
+                                    color: '#64748b',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    transition: 'opacity 0.2s, color 0.2s',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewContractInvoices(invoice);
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                  title="Editovat přidruženou fakturu ke smlouvě"
+                                />
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {/* Číslo objednávky - KLIKATELNÉ pro editaci */}
+                                <span
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    color: invoice.objednavka_je_dokoncena ? '#059669' : (invoice.objednavka_je_zkontrolovana ? '#ea580c' : '#3b82f6'),
+                                    transition: 'opacity 0.2s'
+                                  }}
+                                  onClick={() => handleEditOrder(invoice)}
+                                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                  title="Klikněte pro editaci objednávky"
+                                >
+                                  <FontAwesomeIcon 
+                                    icon={faFileInvoice} 
+                                    style={{ 
+                                      marginRight: '0.5rem', 
+                                      color: invoice.objednavka_je_dokoncena ? '#059669' : (invoice.objednavka_je_zkontrolovana ? '#ea580c' : '#3b82f6')
+                                    }} 
+                                  />
+                                  {invoice.cislo_objednavky}
+                                </span>
+                                {/* Ikona pro faktury k objednávce */}
+                                <FontAwesomeIcon 
+                                  icon={faEdit}
+                                  style={{ 
+                                    color: '#64748b',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    transition: 'opacity 0.2s, color 0.2s',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddInvoiceToEntity(invoice);
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                  title="Editovat přidruženou fakturu k objednávce"
+                                />
+                              </div>
+                            )}
+                            
+                            {/* Druhý řádek - dodavatel název | IČO */}
+                            {(invoice.dodavatel_nazev || invoice.dodavatel_ico) ? (
+                              <div style={{ 
+                                fontSize: '0.8em', 
+                                color: '#64748b',
+                                marginLeft: '1.5rem'
+                              }}>
+                                {invoice.dodavatel_nazev || 'Název nedostupný'}{invoice.dodavatel_ico ? ` | IČO: ${invoice.dodavatel_ico}` : ''}
+                              </div>
+                            ) : (
+                              <div style={{ 
+                                fontSize: '0.8em', 
+                                color: '#94a3b8',
+                                marginLeft: '1.5rem'
+                              }}>
+                                Dodavatel nespecifikován
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="center" style={{ whiteSpace: 'nowrap' }}>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.datum_doruceni ? (
+                          <span style={{ color: '#059669', fontWeight: 600 }}>
+                            <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
+                            {formatDateOnly(invoice.datum_doruceni)}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="center">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</span>
+                    </TableCell>
+                    <TableCell className="center">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
+                    </TableCell>
+                    <TableCell className="amount-column">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}><strong>{formatCurrency(invoice.castka)}</strong></span>
+                    </TableCell>
+                    <TableCell className="center">
+                      <InvoiceStatusSelect 
+                        currentStatus={invoice.stav || 'ZAEVIDOVANA'}
+                        dueDate={invoice.datum_splatnosti}
+                        onStatusChange={(newStatus) => handleStatusChange(invoice, newStatus)}
+                        disabled={!canManageInvoices && !isAdmin}
+                      />
                     </TableCell>
                     <TableCell>
-                      {invoice.fa_predana_zam_jmeno_cele ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
-                            <strong>{invoice.fa_predana_zam_jmeno_cele}</strong>
-                          </div>
-                          {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
-                            <div style={{ 
-                              color: '#64748b', 
-                              fontSize: '0.75rem', 
-                              display: 'flex',
-                              gap: '0.5rem',
-                              flexWrap: 'wrap',
-                              alignItems: 'center'
-                            }}>
-                              {invoice.fa_datum_predani_zam && (
-                                <div title="Datum předání" style={{ whiteSpace: 'nowrap' }}>
-                                  ↓ {formatDateOnly(invoice.fa_datum_predani_zam)}
-                                </div>
-                              )}
-                              {invoice.fa_datum_vraceni_zam && (
-                                <div title="Datum vrácení" style={{ whiteSpace: 'nowrap' }}>
-                                  ↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}
-                                </div>
-                              )}
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.vytvoril_uzivatel_zkracene ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                              <strong>{invoice.vytvoril_uzivatel_zkracene}</strong>
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>—</span>
-                      )}
+                            {invoice.dt_vytvoreni && (() => {
+                              // Výpočet rozdílu mezi datem vytvoření a splatností
+                              const dtVytvoreni = new Date(invoice.dt_vytvoreni);
+                              const dtSplatnosti = invoice.datum_splatnosti ? new Date(invoice.datum_splatnosti) : null;
+                              
+                              let isWarning = false;
+                              if (dtSplatnosti) {
+                                const diffMs = dtSplatnosti - dtVytvoreni;
+                                const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                                // Pokud je vytvoření max 2 dny před splatností nebo po splatnosti
+                                isWarning = diffDays <= 2;
+                              }
+                              
+                              return (
+                                <div style={{ 
+                                  color: isWarning ? '#991b1b' : '#64748b', 
+                                  fontSize: '0.75rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  background: isWarning ? '#fee2e2' : 'transparent',
+                                  padding: isWarning ? '0.15rem 0.35rem' : '0',
+                                  borderRadius: isWarning ? '3px' : '0',
+                                  fontWeight: isWarning ? '700' : 'normal'
+                                }}>
+                                  <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '0.7rem' }} />
+                                  {formatDateOnly(invoice.dt_vytvoreni)}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      {invoice.potvrdil_vecnou_spravnost_zkracene ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                          {invoice.potvrdil_vecnou_spravnost_zkracene}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="center">
-                      {invoice.vecna_spravnost_potvrzeno ? (
-                        <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#16a34a', fontSize: '1.1rem' }} title="Věcná kontrola provedena" />
-                      ) : (
-                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná kontrola neprovedena" />
-                      )}
-                    </TableCell>
-                    <TableCell className="center">
-                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
-                        <FontAwesomeIcon icon={faPaperclip} />
-                        <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.fa_predana_zam_jmeno_cele ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                              <strong>{invoice.fa_predana_zam_jmeno_cele}</strong>
+                            </div>
+                            {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
+                              <div style={{ 
+                                color: '#64748b', 
+                                fontSize: '0.75rem', 
+                                display: 'flex',
+                                gap: '0.5rem',
+                                flexWrap: 'wrap',
+                                alignItems: 'center'
+                              }}>
+                                {invoice.fa_datum_predani_zam && (
+                                  <div title="Datum předání" style={{ whiteSpace: 'nowrap' }}>
+                                    ↓ {formatDateOnly(invoice.fa_datum_predani_zam)}
+                                  </div>
+                                )}
+                                {invoice.fa_datum_vraceni_zam && (
+                                  <div title="Datum vrácení" style={{ whiteSpace: 'nowrap' }}>
+                                    ↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#cbd5e1' }}>—</span>
+                        )}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.potvrdil_vecnou_spravnost_zkracene ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                              <strong>{invoice.potvrdil_vecnou_spravnost_zkracene}</strong>
+                            </div>
+                            {invoice.dt_potvrzeni_vecne_spravnosti && (
+                              <div style={{ color: '#64748b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <div style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '14px',
+                                  height: '14px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#94a3b8',
+                                  fontSize: '0.55rem'
+                                }}>
+                                  <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
+                                </div>
+                                <span title="Datum potvrzení věcné správnosti" style={{ whiteSpace: 'nowrap' }}>
+                                  {formatDateOnly(invoice.dt_potvrzeni_vecne_spravnosti)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#cbd5e1' }}>—</span>
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="center">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        {invoice.vecna_spravnost_potvrzeno ? (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: '#16a34a',
+                            fontSize: '0.6rem'
+                        }} title="Věcná správnost provedena">
+                          <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
+                        </div>
+                      ) : (
+                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '0.9rem' }} title="Věcná správnost neprovedena" />
+                      )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="center">
+                      <div 
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', cursor: invoice.pocet_priloh > 0 ? 'pointer' : 'default' }}
+                        onClick={(e) => {
+                          if (invoice.pocet_priloh > 0 && invoice.prilohy && invoice.prilohy.length > 0) {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const spaceBelow = window.innerHeight - rect.bottom;
+                            const tooltipHeight = Math.min(invoice.prilohy.length * 70 + 100, 400);
+                            // Vypočítat reálnou šířku tooltip podle obsahu a šířky okna
+                            const maxFilenameLength = Math.max(...invoice.prilohy.map(p => (p.originalni_nazev_souboru || p.original_filename || p.nazev_souboru || p.filename || 'Příloha').length));
+                            const maxPossibleWidth = Math.min(400, window.innerWidth - 40); // 20px margin z každé strany
+                            const estimatedWidth = Math.max(280, Math.min(maxPossibleWidth, maxFilenameLength * 8 + 120)); // 8px per char + padding + icon space
+                            
+                            // Horizontální pozice - centrovat pod element, ale respektovat okraje okna
+                            let leftPos = rect.left + (rect.width / 2) - (estimatedWidth / 2);
+                            const rightEdge = leftPos + estimatedWidth;
+                            
+                            // Pokud tooltip přetéká vlevo, zarovnat k levému okraji (+20px padding)
+                            if (leftPos < 20) {
+                              leftPos = 20;
+                            }
+                            // Pokud tooltip přetéká vpravo, zarovnat k pravému okraji (-20px padding)  
+                            if (rightEdge > window.innerWidth - 20) {
+                              leftPos = window.innerWidth - estimatedWidth - 20;
+                            }
+                            
+                            setAttachmentsTooltip({
+                              attachments: invoice.prilohy,
+                              invoiceId: invoice.id,
+                              position: {
+                                top: spaceBelow > tooltipHeight ? rect.bottom + 5 : rect.top - tooltipHeight - 5,
+                                left: leftPos
+                              }
+                            });
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          // Zavřít tooltip po 500ms, pokud není hover nad tooltipem
+                          setTimeout(() => {
+                            if (!document.querySelector('[data-tooltip-hover]')) {
+                              setAttachmentsTooltip(null);
+                            }
+                          }, 500);
+                        }}
+                      >
+                        <div 
+                          style={{ 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '0.25rem', 
+                            color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1',
+                            transition: 'color 0.2s'
+                          }} 
+                          title="Počet příloh"
+                        >
+                          <FontAwesomeIcon icon={faPaperclip} />
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
+                        </div>
+                        {invoice.from_spisovka && (
+                          <FontAwesomeIcon icon={faFileAlt} style={{ color: '#059669', fontSize: '0.95rem', marginLeft: '0.15rem' }} title="Příloha vložena ze Spisovky" />
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="center">
                       <ActionMenu>
-                        <TooltipWrapper text={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
-                          <ActionMenuButton
-                            className={invoice.zaplacena ? "paid" : "unpaid"}
-                            onClick={() => handleTogglePaymentStatus(invoice)}
-                            title={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
-                            style={{
-                              color: invoice.zaplacena ? '#16a34a' : '#dc2626',
-                              background: 'transparent'
-                            }}
+                        {/* Ikona "Zaplaceno" - jen pro INVOICE_MANAGE nebo ADMIN - TEMPORARILY HIDDEN */}
+                        {false && (canManageInvoices || isAdmin) && (
+                          <TooltipWrapper text={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
+                            <ActionMenuButton
+                              className={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "paid" : "unpaid"}
+                              onClick={() => handleTogglePaymentStatus(invoice)}
+                              title={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
+                              style={{
+                                color: (invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? '#16a34a' : '#dc2626',
+                                background: 'transparent'
+                              }}
+                            >
+                              <FontAwesomeIcon icon={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? faCheckCircle : faMoneyBillWave} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
+                        
+                        {/* Ikona věcné kontroly - jen pro uživatele s INVOICE_VIEW + INVOICE_MATERIAL_CORRECTNESS */}
+                        {canConfirmVecnaKontrola && !canManageInvoices && !isAdmin && (
+                          <TooltipWrapper 
+                            text={
+                              invoice.vecna_spravnost_potvrzeno 
+                                ? `Věcná správnost potvrzena - kliknutím můžete změnit rozhodnutí` 
+                                : "Potvrdit věcnou správnost faktury"
+                            } 
+                            preferredPosition="left"
                           >
-                            <FontAwesomeIcon icon={invoice.zaplacena ? faCheckCircle : faMoneyBillWave} />
-                          </ActionMenuButton>
-                        </TooltipWrapper>
+                            <ActionMenuButton 
+                              className="edit"
+                              onClick={() => handleOpenVecnaKontrola(invoice)}
+                              title={invoice.vecna_spravnost_potvrzeno ? "Změnit rozhodnutí o věcné správnosti" : "Potvrdit věcnou správnost"}
+                              style={{
+                                color: '#64748b',
+                                background: 'transparent',
+                                fontSize: '0.75rem'
+                              }}
+                            >
+                              <FontAwesomeIcon icon={faCheckCircle} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
+                        
                         <TooltipWrapper text="Zobrazit detail" preferredPosition="left">
                           <ActionMenuButton 
                             className="view"
@@ -2775,6 +4966,38 @@ const Invoices25List = () => {
                             </ActionMenuButton>
                           </TooltipWrapper>
                         )}
+                        {canManageInvoices && (() => {
+                          // 🔒 KONTROLA: Zákaz odpojení pokud objednávka nebo faktura je ve stavu DOKONCENA
+                          const isInvoiceCompleted = invoice.stav === 'DOKONCENA';
+                          const isOrderCompleted = invoice.objednavka_je_dokoncena === true || invoice.objednavka_je_dokoncena === 1;
+                          
+                          const isLinked = !!(invoice.objednavka_id || invoice.smlouva_id);
+                          const canUnlink = isLinked && !isInvoiceCompleted && !isOrderCompleted;
+                          
+                          let tooltipText = "Faktura není napojená na objednávku ani smlouvu";
+                          if (isLinked) {
+                            if (isInvoiceCompleted) {
+                              tooltipText = "Nelze odpojit - faktura je ve stavu DOKONČENA";
+                            } else if (isOrderCompleted) {
+                              tooltipText = "Nelze odpojit - objednávka je ve stavu DOKONČENA";
+                            } else {
+                              tooltipText = "Odpojit od objednávky/smlouvy";
+                            }
+                          }
+                          
+                          return (
+                            <TooltipWrapper text={tooltipText} preferredPosition="left">
+                              <ActionMenuButton 
+                                className="unlink"
+                                onClick={() => handleUnlinkInvoice(invoice)}
+                                disabled={!canUnlink}
+                                title={canUnlink ? "Odpojit" : "Nelze odpojit"}
+                              >
+                                <FontAwesomeIcon icon={faUnlink} />
+                              </ActionMenuButton>
+                            </TooltipWrapper>
+                          );
+                        })()}
                         {(canManageInvoices || isAdmin) && (
                           <TooltipWrapper text="Smazat" preferredPosition="left">
                             <ActionMenuButton 
@@ -2851,10 +5074,11 @@ const Invoices25List = () => {
                 </PaginationControls>
               </PaginationContainer>
             )}
-          </TableWrapper>
+          </TableContainer>
+        </TableScrollWrapper>
       </Container>
       
-      {/* Delete Confirmation Dialog */}
+      {/* Delete/Restore Confirmation Dialog */}
       {deleteDialog.isOpen && (
         <ConfirmDialog
           isOpen={deleteDialog.isOpen}
@@ -2862,12 +5086,44 @@ const Invoices25List = () => {
             setDeleteDialog({ isOpen: false, invoice: null });
             setDeleteType('soft');
           }}
-          onConfirm={() => confirmDeleteInvoice(deleteType === 'hard')}
-          title="Odstranit fakturu"
-          icon={faTrash}
-          variant="danger"
-          confirmText={isAdmin ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat (soft)") : "Smazat (soft)"}
+          onConfirm={() => {
+            // 🔄 Pokud je faktura neaktivní a uživatel je admin
+            if (!deleteDialog.invoice?.aktivni && isAdmin) {
+              // Rozlišit mezi restore a hard delete
+              if (deleteType === 'restore') {
+                confirmRestoreInvoice();
+              } else if (deleteType === 'hard') {
+                confirmDeleteInvoice(true); // ✅ Hard delete (trvale smazat z DB)
+              }
+            } else {
+              // Jinak normální smazání aktivní faktury
+              confirmDeleteInvoice(deleteType === 'hard');
+            }
+          }}
+          title={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? "Obnovit fakturu" : "Smazat fakturu úplně") 
+              : "Odstranit fakturu"
+          }
+          icon={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? faCheckCircle : faTrash) 
+              : faTrash
+          }
+          variant={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? 'success' : 'danger') 
+              : (deleteType === 'hard' ? 'danger' : 'warning')
+          }
+          confirmText={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? "✅ Obnovit fakturu" : "⚠️ Smazat úplně") 
+              : isAdmin 
+                ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat") 
+                : "Smazat"
+          }
           cancelText="Zrušit"
+          key={deleteType + (deleteDialog.invoice?.aktivni ? '-active' : '-inactive')}
         >
           <div style={{
             display: 'grid',
@@ -2875,16 +5131,129 @@ const Invoices25List = () => {
             gap: '1.5rem',
             padding: '1rem 0'
           }}>
-            {/* LEVÝ SLOUPEC - Volba typu smazání */}
+            {/* LEVÝ SLOUPEC - Volba typu smazání nebo obnova */}
             <div>
-              <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
-                Opravdu chcete smazat fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
-              </p>
-
-              {isAdmin ? (
+              {!deleteDialog.invoice?.aktivni && isAdmin ? (
+                /* NEAKTIVNÍ FAKTURA - Možnost obnovení nebo hard delete */
                 <>
-                  {/* Výběr typu mazání pro adminy */}
+                  <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                    Co chcete udělat s neaktivní fakturou <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
+                  </p>
                   <div style={{
+                    background: '#f8fafc',
+                    border: '2px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '1rem'
+                  }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                      🔧 Vyberte akci:
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {/* OBNOVA */}
+                      <label 
+                        onClick={() => setDeleteType('restore')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                          opacity: invoiceTypesLoading ? 0.7 : 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'restore' ? '#10b981' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'restore' ? '#f0fdf4' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="deleteType"
+                          value="restore"
+                          checked={deleteType === 'restore'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setDeleteType('restore');
+                          }}
+                          disabled={invoiceTypesLoading}
+                          style={{ marginTop: '0.25rem', cursor: invoiceTypesLoading ? 'wait' : 'pointer' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ 
+                            fontWeight: 600, 
+                            marginBottom: '0.25rem', 
+                            color: deleteType === 'restore' ? '#166534' : '#475569' 
+                          }}>
+                            🔄 Obnovit fakturu
+                          </div>
+                          <div style={{ 
+                            fontSize: '0.85rem', 
+                            color: deleteType === 'restore' ? '#166534' : '#64748b',
+                            lineHeight: '1.4'
+                          }}>
+                            Faktura bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
+                          </div>
+                        </div>
+                      </label>
+
+                      {/* HARD DELETE */}
+                      <label 
+                        onClick={() => setDeleteType('hard')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                          opacity: invoiceTypesLoading ? 0.7 : 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'hard' ? '#ef4444' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="deleteType"
+                          value="hard"
+                          checked={deleteType === 'hard'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setDeleteType('hard');
+                          }}
+                          disabled={invoiceTypesLoading}
+                          style={{ marginTop: '0.25rem', cursor: invoiceTypesLoading ? 'wait' : 'pointer' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ 
+                            fontWeight: 600, 
+                            marginBottom: '0.25rem', 
+                            color: deleteType === 'hard' ? '#dc2626' : '#475569' 
+                          }}>
+                            ⚠️ Smazat úplně (HARD DELETE)
+                          </div>
+                          <div style={{ 
+                            fontSize: '0.85rem', 
+                            color: deleteType === 'hard' ? '#dc2626' : '#64748b',
+                            lineHeight: '1.4'
+                          }}>
+                            Faktura bude <strong>fyzicky smazána z databáze</strong>. Tuto akci nelze vrátit zpět!
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* AKTIVNÍ FAKTURA - Možnosti smazání */
+                <>
+                  <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                    Opravdu chcete smazat fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
+                  </p>
+
+                  {isAdmin ? (
+                    <>
+                      {/* Výběr typu mazání pro adminy */}
+                      <div style={{
                     background: '#f8fafc',
                     border: '2px solid #cbd5e1',
                     borderRadius: '8px',
@@ -2894,26 +5263,31 @@ const Invoices25List = () => {
                       🔧 Vyberte typ smazání:
                     </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '0.75rem',
-                        cursor: 'pointer',
-                        padding: '0.75rem',
-                        border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
-                        borderRadius: '6px',
-                        background: deleteType === 'soft' ? '#eff6ff' : 'white',
-                        transition: 'all 0.2s'
-                      }}>
+                      <label 
+                        onClick={() => setDeleteType('soft')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'soft' ? '#eff6ff' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
                         <input
                           type="radio"
                           name="deleteType"
                           value="soft"
                           checked={deleteType === 'soft'}
                           onChange={(e) => setDeleteType(e.target.value)}
-                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer' }}
+                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1, pointerEvents: 'none' }}
                         />
-                        <div>
+                        <div style={{ pointerEvents: 'none' }}>
                           <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>
                             Měkké smazání (SOFT DELETE)
                           </div>
@@ -2923,26 +5297,31 @@ const Invoices25List = () => {
                         </div>
                       </label>
 
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '0.75rem',
-                        cursor: 'pointer',
-                        padding: '0.75rem',
-                        border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
-                        borderRadius: '6px',
-                        background: deleteType === 'hard' ? '#fef2f2' : 'white',
-                        transition: 'all 0.2s'
-                      }}>
+                      <label 
+                        onClick={() => setDeleteType('hard')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
                         <input
                           type="radio"
                           name="deleteType"
                           value="hard"
                           checked={deleteType === 'hard'}
                           onChange={(e) => setDeleteType(e.target.value)}
-                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer' }}
+                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1, pointerEvents: 'none' }}
                         />
-                        <div>
+                        <div style={{ pointerEvents: 'none' }}>
                           <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
                             ⚠️ Úplné smazání (HARD DELETE)
                           </div>
@@ -2969,6 +5348,8 @@ const Invoices25List = () => {
                     Administrátor ji může později obnovit.
                   </p>
                 </div>
+              )}
+                </>
               )}
             </div>
 
@@ -3043,6 +5424,81 @@ const Invoices25List = () => {
               </div>
             </div>
           </div>
+        </ConfirmDialog>
+      )}
+      
+      {/* 🔒 Modal pro zamčenou objednávku - informační dialog */}
+      {lockedOrderInfo && (
+        <ConfirmDialog
+          isOpen={showLockedOrderDialog}
+          onClose={handleLockedOrderCancel}
+          onConfirm={handleLockedOrderCancel}
+          title="Objednávka není dostupná"
+          icon={faLock}
+          variant="warning"
+          confirmText="Zavřít"
+          showCancel={false}
+        >
+          <InfoText>
+            {lockedOrderInfo.errorMessage ? (
+              // Zobraz chybovou zprávu pokud je k dispozici
+              <>
+                <strong>Objednávka není dostupná:</strong>
+                <br />
+                {lockedOrderInfo.errorMessage}
+              </>
+            ) : (
+              // Standardní zpráva o zamčení
+              <>Objednávka je aktuálně editována uživatelem:</>
+            )}
+          </InfoText>
+          
+          {!lockedOrderInfo.errorMessage && (
+            <>
+              <UserInfo>
+                <strong>{lockedOrderInfo.lockedByUserName}</strong>
+              </UserInfo>
+
+              {/* Kontaktní údaje */}
+              {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
+                <ContactInfo>
+              {lockedOrderInfo.lockedByUserEmail && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  <ContactLabel>Email:</ContactLabel>
+                  <a href={`mailto:${lockedOrderInfo.lockedByUserEmail}`}>
+                    {lockedOrderInfo.lockedByUserEmail}
+                  </a>
+                </ContactItem>
+              )}
+              {lockedOrderInfo.lockedByUserTelefon && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faPhone} />
+                  <ContactLabel>Telefon:</ContactLabel>
+                  <a href={`tel:${lockedOrderInfo.lockedByUserTelefon}`}>
+                    {lockedOrderInfo.lockedByUserTelefon}
+                  </a>
+                </ContactItem>
+              )}
+            </ContactInfo>
+          )}
+
+          {/* Čas zamčení */}
+          {lockedOrderInfo.lockAgeMinutes !== null && lockedOrderInfo.lockAgeMinutes !== undefined && (
+            <LockTimeInfo>
+              <FontAwesomeIcon icon={faClock} />
+              Zamčeno před {lockedOrderInfo.lockAgeMinutes} {lockedOrderInfo.lockAgeMinutes === 1 ? 'minutou' : lockedOrderInfo.lockAgeMinutes < 5 ? 'minutami' : 'minutami'}
+            </LockTimeInfo>
+          )}
+            </>
+          )}
+
+          {!lockedOrderInfo.errorMessage && (
+            <InfoText>
+              Fakturu/objednávku nelze upravovat, dokud ji má otevřenou jiný uživatel.
+              Prosím, kontaktujte uživatele výše a požádejte ho o uložení a zavření objednávky.
+            </InfoText>
+          )}
         </ConfirmDialog>
       )}
       
@@ -3126,6 +5582,123 @@ const Invoices25List = () => {
         </ConfirmDialog>
       )}
       
+      {/* Workflow Status Change Dialog - změna ze stavu ZAPLACENO */}
+      {statusChangeDialog.isOpen && statusChangeDialog.invoice && (
+        <ConfirmDialog
+          isOpen={statusChangeDialog.isOpen}
+          onClose={() => setStatusChangeDialog({ isOpen: false, invoice: null, newStatus: null })}
+          onConfirm={() => {
+            performStatusChange(statusChangeDialog.invoice, statusChangeDialog.newStatus);
+            setStatusChangeDialog({ isOpen: false, invoice: null, newStatus: null });
+          }}
+          title="⚠️ Změna stavu zaplacené faktury"
+          confirmText="Ano, změnit stav"
+          cancelText="Zrušit"
+          variant="warning"
+        >
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{
+              background: '#fef3c7',
+              border: '2px solid #fcd34d',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} style={{ marginRight: '0.5rem' }} />
+                Měníte stav ZAPLACENÉ faktury
+              </h4>
+              <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
+                Faktura je aktuálně ve stavu <strong>ZAPLACENO</strong>. Opravdu chcete změnit stav na{' '}
+                <strong>
+                  {statusChangeDialog.newStatus === 'ZAEVIDOVANA' ? 'Zaevidovaná' :
+                   statusChangeDialog.newStatus === 'VECNA_SPRAVNOST' ? 'Věcná správnost' :
+                   statusChangeDialog.newStatus === 'V_RESENI' ? 'V řešení' :
+                   statusChangeDialog.newStatus === 'PREDANA_PO' ? 'Předaná PO' :
+                   statusChangeDialog.newStatus === 'K_ZAPLACENI' ? 'K zaplacení' :
+                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno+' : statusChangeDialog.newStatus}
+                </strong>?
+              </p>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '2px solid #cbd5e1',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569' }}>
+                🧾 Detail faktury:
+              </h4>
+              <div style={{ margin: 0, color: '#475569' }}>
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'white',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+                    {statusChangeDialog.invoice?.cislo_faktury}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                    <strong>Částka:</strong> {formatCurrency(statusChangeDialog.invoice?.castka)}
+                  </div>
+                  {statusChangeDialog.invoice?.cislo_objednavky && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                      <strong>Objednávka:</strong> {statusChangeDialog.invoice.cislo_objednavky}
+                    </div>
+                  )}
+                  {statusChangeDialog.invoice?.datum_splatnosti && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                      <strong>Splatnost:</strong> {new Date(statusChangeDialog.invoice.datum_splatnosti).toLocaleDateString('cs-CZ')}
+                    </div>
+                  )}
+                </div>
+                
+                <div style={{
+                  padding: '0.5rem',
+                  background: '#d1fae5',
+                  border: '1px solid #10b981',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  color: '#065f46',
+                  fontWeight: '600'
+                }}>
+                  Aktuální stav: ✅ ZAPLACENO
+                </div>
+              </div>
+            </div>
+          </div>
+        </ConfirmDialog>
+      )}
+      
+      {/* Confirm Dialog - Unlink faktura od objednávky/smlouvy */}
+      {confirmDialog.isOpen && (
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          onClose={() => {
+            if (confirmDialog.onCancel) {
+              confirmDialog.onCancel();
+            } else {
+              setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+            }
+          }}
+          onConfirm={() => {
+            if (confirmDialog.onConfirm) {
+              confirmDialog.onConfirm();
+            }
+          }}
+          title={confirmDialog.title}
+          confirmText="Ano, odpojit"
+          cancelText="Zrušit"
+          variant="warning"
+        >
+          <div style={{ whiteSpace: 'pre-line' }}>
+            {confirmDialog.message}
+          </div>
+        </ConfirmDialog>
+      )}
+      
       {/* Slide Panel - Detail faktury */}
       <SlideInDetailPanel
         isOpen={slidePanelOpen}
@@ -3150,7 +5723,7 @@ const Invoices25List = () => {
                   Základní informace
                 </SectionTitle>
                 <InfoGrid>
-                  <InfoRowFullWidth>
+                  <InfoRow>
                     <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
                       <FontAwesomeIcon icon={faFileInvoice} />
                     </InfoIcon>
@@ -3167,22 +5740,44 @@ const Invoices25List = () => {
                           {slidePanelInvoice.fa_cislo_vema || slidePanelInvoice.cislo_faktury}
                           <FontAwesomeIcon icon={faEdit} style={{ fontSize: '0.85rem' }} />
                         </ClickableValue>
-                      </InfoValue>
-                    </InfoContent>
-                  </InfoRowFullWidth>
-
-                  <InfoRow>
-                    <InfoIcon>
-                      <FontAwesomeIcon icon={faCheckCircle} />
-                    </InfoIcon>
-                    <InfoContent>
-                      <InfoLabel>Stav platby</InfoLabel>
-                      <InfoValue>
-                        <StatusBadge $status={getInvoiceStatus(slidePanelInvoice)}>
-                          <FontAwesomeIcon icon={getStatusIcon(getInvoiceStatus(slidePanelInvoice))} />
-                          {' '}
-                          {getStatusLabel(getInvoiceStatus(slidePanelInvoice))}
-                        </StatusBadge>
+                        {slidePanelInvoice.rozsirujici_data?.rocni_poplatek && (
+                          <TooltipWrapper
+                            content={
+                              <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
+                                  💰 Faktura přiřazena k ročnímu poplatku
+                                </strong>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                  <strong>Název:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
+                                </div>
+                                <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                  <strong>Rok:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
+                                </div>
+                                {slidePanelInvoice.cislo_smlouvy && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Smlouva:</strong> {slidePanelInvoice.cislo_smlouvy}
+                                  </div>
+                                )}
+                                {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Přiřadil:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                                  </div>
+                                )}
+                                {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                                  <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
+                                    Datum přiřazení: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                  </div>
+                                )}
+                              </div>
+                            }
+                            position="top"
+                            showDelay={200}
+                          >
+                            <InfoIconBadge>
+                              <FontAwesomeIcon icon={faCoins} />
+                            </InfoIconBadge>
+                          </TooltipWrapper>
+                        )}
                       </InfoValue>
                     </InfoContent>
                   </InfoRow>
@@ -3211,13 +5806,62 @@ const Invoices25List = () => {
                               slidePanelInvoice.fa_typ === 'BEZNA' ? '#0369a1' : '#475569'
                             }
                           >
-                            {slidePanelInvoice.fa_typ}
+                            {getInvoiceTypeName(slidePanelInvoice)}
                           </Badge>
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
+                </InfoGrid>
 
+                <InfoGrid>
+                  <InfoRowFullWidth>
+                    <InfoIcon style={{ background: slidePanelInvoice.cislo_smlouvy ? '#fef3c7' : (slidePanelInvoice.cislo_objednavky ? '#dcfce7' : '#f1f5f9'), color: slidePanelInvoice.cislo_smlouvy ? '#f59e0b' : (slidePanelInvoice.cislo_objednavky ? '#059669' : '#94a3b8') }}>
+                      <FontAwesomeIcon icon={slidePanelInvoice.cislo_smlouvy ? faFileContract : (slidePanelInvoice.cislo_objednavky ? faFileInvoice : faExclamationTriangle)} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>{slidePanelInvoice.cislo_smlouvy ? 'Číslo smlouvy' : (slidePanelInvoice.cislo_objednavky ? 'Číslo objednávky' : 'Přiřazení')}</InfoLabel>
+                      <InfoValue style={{ fontWeight: '600' }}>
+                        {slidePanelInvoice.cislo_smlouvy ? (
+                          slidePanelInvoice.cislo_smlouvy
+                        ) : slidePanelInvoice.cislo_objednavky ? (
+                          slidePanelInvoice.cislo_objednavky
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Faktura není přiřazena ke smlouvě ani objednávce</span>
+                        )}
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRowFullWidth>
+                </InfoGrid>
+
+                <InfoGrid>
+                  <InfoRowFullWidth>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faCheckCircle} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Stav faktury</InfoLabel>
+                      <InfoValue>
+                        <StatusBadge style={{ 
+                          background: getWorkflowStatusColor(slidePanelInvoice.stav) + '20',
+                          color: getWorkflowStatusColor(slidePanelInvoice.stav),
+                          border: `1px solid ${getWorkflowStatusColor(slidePanelInvoice.stav)}40`
+                        }}>
+                          <FontAwesomeIcon icon={getWorkflowStatusIcon(slidePanelInvoice.stav)} />
+                          {' '}
+                          {getWorkflowStatusLabel(slidePanelInvoice.stav)}
+                          {getInvoiceStatus(slidePanelInvoice) === 'overdue' && (
+                            <span style={{ marginLeft: '0.5rem', color: '#dc2626', fontWeight: '700' }}>
+                              • Po splatnosti {getDaysOverdue(slidePanelInvoice)} dní
+                            </span>
+                          )}
+                        </StatusBadge>
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRowFullWidth>
+                </InfoGrid>
+
+                <InfoGrid>
                   {slidePanelInvoice.fa_cislo_faktury_dodavatele && (
                     <InfoRow>
                       <InfoIcon>
@@ -3316,11 +5960,15 @@ const Invoices25List = () => {
                           <ClickableValue
                             onClick={() => {
                               if (slidePanelInvoice.objednavka_id) {
+                                console.log('📋 Invoices25List → OrderForm25:', {
+                                  orderId: slidePanelInvoice.objednavka_id,
+                                  returnTo: '/invoices25-list',
+                                  navigateTo: `/order-form-25?edit=${slidePanelInvoice.objednavka_id}`
+                                });
                                 setSlidePanelOpen(false);
-                                navigate('/orders25', { 
+                                navigate(`/order-form-25?edit=${slidePanelInvoice.objednavka_id}`, { 
                                   state: { 
-                                    editOrderId: slidePanelInvoice.objednavka_id,
-                                    returnTo: '/invoices25'
+                                    returnTo: '/invoices25-list'
                                   } 
                                 });
                               }
@@ -3563,6 +6211,44 @@ const Invoices25List = () => {
                         <InfoLabel>Variabilní symbol</InfoLabel>
                         <InfoValue style={{ fontFamily: 'monospace', fontSize: '1.05rem', fontWeight: '600' }}>
                           {slidePanelInvoice.fa_vs}
+                          {slidePanelInvoice.rozsirujici_data?.rocni_poplatek && (
+                            <TooltipWrapper
+                              content={
+                                <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                  <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '8px' }}>
+                                    💰 Faktura přiřazena k ročnímu poplatku
+                                  </strong>
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Název:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
+                                  </div>
+                                  <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                    <strong>Rok:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
+                                  </div>
+                                  {slidePanelInvoice.cislo_smlouvy && (
+                                    <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                      <strong>Smlouva:</strong> {slidePanelInvoice.cislo_smlouvy}
+                                    </div>
+                                  )}
+                                  {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                                    <div style={{ color: '#e5e7eb', marginBottom: '4px' }}>
+                                      <strong>Přiřadil:</strong> {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                                    </div>
+                                  )}
+                                  {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                                    <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: '6px' }}>
+                                      Datum přiřazení: {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                                    </div>
+                                  )}
+                                </div>
+                              }
+                              position="top"
+                              showDelay={200}
+                            >
+                              <InfoIconBadge>
+                                <FontAwesomeIcon icon={faCoins} />
+                              </InfoIconBadge>
+                            </TooltipWrapper>
+                          )}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
@@ -3654,6 +6340,168 @@ const Invoices25List = () => {
                 </InfoGrid>
               </DetailSection>
 
+              {/* Roční poplatky - samostatný blok */}
+              {slidePanelInvoice.rozsirujici_data?.rocni_poplatek && (
+                <DetailSection>
+                  <SectionTitle style={{ color: '#f59e0b' }}>
+                    <FontAwesomeIcon icon={faCoins} style={{ marginRight: '0.5rem' }} />
+                    Roční poplatek
+                  </SectionTitle>
+                  <InfoGrid>
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faFileContract} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Název</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.rozsirujici_data.rocni_poplatek.nazev}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Rok</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.rozsirujici_data.rocni_poplatek.rok}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+
+                    {slidePanelInvoice.cislo_smlouvy && (
+                      <InfoRow>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faFileContract} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Smlouva</InfoLabel>
+                          <InfoValue>
+                            {slidePanelInvoice.cislo_smlouvy}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno && (
+                      <InfoRow>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faUser} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Přiřadil</InfoLabel>
+                          <InfoValue>
+                            {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_uzivatelem_jmeno}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne && (
+                      <InfoRow>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faClock} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Datum přiřazení</InfoLabel>
+                          <InfoValue>
+                            {new Date(slidePanelInvoice.rozsirujici_data.rocni_poplatek.prirazeno_dne).toLocaleString('cs-CZ')}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+                  </InfoGrid>
+                </DetailSection>
+              )}
+
+              {/* Evidence faktury */}
+              <DetailSection>
+                <SectionTitle>
+                  <FontAwesomeIcon icon={faUser} style={{ marginRight: '0.5rem' }} />
+                  Evidence faktury
+                </SectionTitle>
+                <InfoGrid>
+                  {(slidePanelInvoice.vytvoril_uzivatel || slidePanelInvoice.vytvoril_uzivatel_zkracene) && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#e0e7ff', color: '#6366f1' }}>
+                        <FontAwesomeIcon icon={faUser} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Fakturu evidoval(a)</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.vytvoril_uzivatel || slidePanelInvoice.vytvoril_uzivatel_zkracene}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.dt_vytvoreni && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum zaevidování</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {new Date(slidePanelInvoice.dt_vytvoreni).toLocaleString('cs-CZ', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_predana_zam_jmeno_cele && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faUser} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Předána zaměstnanci</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.fa_predana_zam_jmeno_cele}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_predani_zam && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum předání zaměstnanci</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          ↓ {formatDateOnly(slidePanelInvoice.fa_datum_predani_zam)}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_vraceni_zam && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#fee2e2', color: '#dc2626' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum vrácení zaměstnancem</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600', color: '#dc2626' }}>
+                          ↑ {formatDateOnly(slidePanelInvoice.fa_datum_vraceni_zam)}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+                </InfoGrid>
+              </DetailSection>
+
               {/* Data */}
               <DetailSection>
                 <SectionTitle>
@@ -3661,7 +6509,7 @@ const Invoices25List = () => {
                   Důležitá data
                 </SectionTitle>
                 <InfoGrid>
-                  {slidePanelInvoice.fa_datum_vystaveni && (
+                  {slidePanelInvoice.datum_vystaveni && (
                     <InfoRow>
                       <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -3669,17 +6517,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum vystavení</InfoLabel>
                         <InfoValue style={{ fontWeight: '600' }}>
-                          {new Date(slidePanelInvoice.fa_datum_vystaveni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_vystaveni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_zdanitelneho_plneni && (
+                  {slidePanelInvoice.datum_zdanitelneho_plneni && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -3687,17 +6531,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum zdanitelného plnění</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_zdanitelneho_plneni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_zdanitelneho_plneni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
                   
-                  {slidePanelInvoice.fa_datum_splatnosti && (
+                  {slidePanelInvoice.datum_splatnosti && (
                     <InfoRow>
                       <InfoIcon style={{ 
                         background: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#fee2e2' : '#fef3c7',
@@ -3711,11 +6551,7 @@ const Invoices25List = () => {
                           fontWeight: '700',
                           color: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#dc2626' : '#1e293b'
                         }}>
-                          {new Date(slidePanelInvoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_splatnosti)}
                           {getInvoiceStatus(slidePanelInvoice) === 'overdue' && (
                             <Badge $color="#fee2e2" $textColor="#991b1b" style={{ marginLeft: '0.5rem' }}>
                               ⚠️ Po splatnosti
@@ -3726,7 +6562,7 @@ const Invoices25List = () => {
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_prijeti && (
+                  {slidePanelInvoice.datum_prijeti && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -3734,17 +6570,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum přijetí</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_prijeti).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_prijeti)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_doruceni && (
+                  {slidePanelInvoice.datum_doruceni && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -3752,17 +6584,27 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum doručení</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_doruceni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_doruceni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_uhrazeni && (
+                  {slidePanelInvoice.datum_uhrady && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#dcfce7', color: '#059669' }}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum úhrady</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600', color: '#059669' }}>
+                          {formatDateOnly(slidePanelInvoice.datum_uhrady)}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.datum_uhrazeni && (
                     <InfoRow>
                       <InfoIcon style={{ background: '#d1fae5', color: '#10b981' }}>
                         <FontAwesomeIcon icon={faCheckCircle} />
@@ -3770,18 +6612,14 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum uhrazení</InfoLabel>
                         <InfoValue style={{ fontWeight: '700', color: '#10b981' }}>
-                          {new Date(slidePanelInvoice.fa_datum_uhrazeni).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_uhrazeni)}
                           {' ✅'}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_platby && (
+                  {slidePanelInvoice.datum_platby && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -3789,17 +6627,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum platby</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_platby).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_platby)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.fa_datum_zuctovani && (
+                  {slidePanelInvoice.datum_zuctovani && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -3807,11 +6641,7 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum zúčtování</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_zuctovani).toLocaleDateString('cs-CZ', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
+                          {formatDateOnly(slidePanelInvoice.datum_zuctovani)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
@@ -3848,8 +6678,9 @@ const Invoices25List = () => {
                   </SectionTitle>
                   <AttachmentsGrid>
                     {slidePanelAttachments.map((attachment, index) => {
-                      const fileName = attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
-                      const fileSize = attachment.velikost_souboru || attachment.file_size;
+                      // ✅ Backend vrací "original_filename" z invoices25/list
+                      const fileName = attachment.original_filename || attachment.originalni_nazev_souboru || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+                      const fileSize = attachment.velikost_b || attachment.velikost_souboru_b || attachment.velikost_souboru || attachment.file_size;
                       const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
                       
                       // Ikona a barva podle typu souboru
@@ -3885,12 +6716,97 @@ const Invoices25List = () => {
                       return (
                         <AttachmentItem
                           key={attachment.id || index}
-                          onClick={() => {
-                            if (attachment.url || attachment.file_path) {
-                              window.open(attachment.url || attachment.file_path, '_blank');
+                          onClick={async () => {
+                            if (!attachment.id) return;
+                            
+                            try {
+                              // Import download funkce
+                              const { downloadInvoiceAttachment25 } = await import('../services/api25invoices');
+                              
+                              // Stáhnout soubor jako blob
+                              const blobData = await downloadInvoiceAttachment25({
+                                token,
+                                username,
+                                faktura_id: attachment.faktura_id || slidePanelInvoice.id,
+                                priloha_id: attachment.id,
+                                objednavka_id: attachment.objednavka_id
+                              });
+                              
+                              const ext = fileName.toLowerCase().split('.').pop();
+
+                              // Určit MIME type podle přípony
+                              let mimeType = 'application/octet-stream';
+                              if (ext === 'pdf') {
+                                mimeType = 'application/pdf';
+                              } else if (['jpg', 'jpeg'].includes(ext)) {
+                                mimeType = 'image/jpeg';
+                              } else if (ext === 'png') {
+                                mimeType = 'image/png';
+                              } else if (ext === 'gif') {
+                                mimeType = 'image/gif';
+                              } else if (ext === 'bmp') {
+                                mimeType = 'image/bmp';
+                              } else if (ext === 'webp') {
+                                mimeType = 'image/webp';
+                              } else if (ext === 'svg') {
+                                mimeType = 'image/svg+xml';
+                              }
+
+                              // Vytvořit nový Blob se správným MIME typem
+                              const blob = new Blob([blobData], { type: mimeType });
+                              
+                              // Vytvořit URL pro blob
+                              const blobUrl = window.URL.createObjectURL(blob);
+                              
+                              // Check if file type is supported for preview
+                              const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+                              const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
+                              
+                              if (previewableTypes.includes(ext)) {
+                                // Otevřít náhled pro podporované soubory
+                                setViewerAttachment({
+                                  ...attachment,
+                                  original_filename: fileName,
+                                  blobUrl: blobUrl,
+                                  mimeType: mimeType
+                                });
+                              } else if (downloadableTypes.includes(ext)) {
+                                
+                                const downloadLink = document.createElement('a');
+                                downloadLink.href = blobUrl;
+                                downloadLink.download = fileName;
+                                document.body.appendChild(downloadLink);
+                                downloadLink.click();
+                                document.body.removeChild(downloadLink);
+                                
+                                // Cleanup blob URL
+                                setTimeout(() => {
+                                  window.URL.revokeObjectURL(blobUrl);
+                                }, 1000);
+                                
+                                showToast(`Stahuje se soubor: ${fileName}`, { type: 'info' });
+                              } else {
+                                
+                                const downloadLink = document.createElement('a');
+                                downloadLink.href = blobUrl;
+                                downloadLink.download = fileName;
+                                document.body.appendChild(downloadLink);
+                                downloadLink.click();
+                                document.body.removeChild(downloadLink);
+                                
+                                setTimeout(() => {
+                                  window.URL.revokeObjectURL(blobUrl);
+                                }, 1000);
+                                
+                                showToast(`Stahuje se soubor: ${fileName}`, { type: 'info' });
+                              }
+                            } catch (err) {
+                              console.error('Chyba při otevírání přílohy:', err);
+                              showToast('Nepodařilo se načíst přílohu', { type: 'error' });
                             }
                           }}
-                          title="Klikněte pro stažení"
+                          title="Klikněte pro náhled"
+                          style={{ cursor: 'pointer' }}
                         >
                           <AttachmentIcon $color={bgColor} $iconColor={iconColor}>
                             <FontAwesomeIcon icon={icon} />
@@ -4119,6 +7035,929 @@ const Invoices25List = () => {
           </DetailViewWrapper>
         )}
       </SlideInDetailPanel>
+      
+      {/* 🎯 Floating Header Panel - zobrazí se při rolování dolů - renderuje se přes Portal */}
+      {ReactDOM.createPortal(
+        <FloatingHeaderPanel $visible={showFloatingHeader}>
+          <FloatingTableWrapper>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              {/* Definice šířek sloupců */}
+              {columnWidths.length > 0 && (
+                <colgroup>
+                  {columnWidths.map((width, index) => (
+                    <col key={index} style={{ width: `${width}px` }} />
+                  ))}
+                </colgroup>
+              )}
+              <TableHead>
+                {/* Hlavní řádek se jmény sloupců */}
+                <tr>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'dt_aktualizace' ? 'active' : ''}`}
+                    onClick={() => handleSort('dt_aktualizace')}
+                  >
+                    Aktualizováno
+                    {sortField === 'dt_aktualizace' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_faktury')}
+                  >
+                    Faktura VS
+                    {sortField === 'cislo_faktury' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
+                    onClick={() => handleSort('fa_typ')}
+                  >
+                    Typ
+                    {sortField === 'fa_typ' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_objednavky')}
+                    style={{ textAlign: 'center' }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <span>Obj/SML/Dodavatel</span>
+                    </div>
+                    {sortField === 'cislo_objednavky' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'datum_doruceni' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_doruceni')}
+                  >
+                    Doručení
+                    {sortField === 'datum_doruceni' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'datum_vystaveni' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_vystaveni')}
+                  >
+                    Vystavení
+                    {sortField === 'datum_vystaveni' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_splatnosti')}
+                  >
+                    Splatnost
+                    {sortField === 'datum_splatnosti' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
+                    onClick={() => handleSort('castka')}
+                  >
+                    Částka
+                    {sortField === 'castka' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`status-column sortable ${sortField === 'status' ? 'active' : ''}`}
+                    onClick={() => handleSort('status')}
+                  >
+                    Stav
+                    {sortField === 'status' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`narrow-column sortable ${sortField === 'vytvoril_uzivatel' ? 'active' : ''}`}
+                    onClick={() => handleSort('vytvoril_uzivatel')}
+                  >
+                    Zaevidoval
+                    {sortField === 'vytvoril_uzivatel' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'fa_predana_zam_jmeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('fa_predana_zam_jmeno')}
+                    style={{ minWidth: '120px' }}
+                  >
+                    Předáno
+                    {sortField === 'fa_predana_zam_jmeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`narrow-column sortable ${sortField === 'potvrdil_vecnou_spravnost_jmeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('potvrdil_vecnou_spravnost_jmeno')}
+                  >
+                    Věcnou provedl
+                    {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'vecna_spravnost_potvrzeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('vecna_spravnost_potvrzeno')}
+                    title="Věcná kontrola"
+                  >
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
+                    {sortField === 'vecna_spravnost_potvrzeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'pocet_priloh' ? 'active' : ''}`}
+                    onClick={() => handleSort('pocet_priloh')}
+                  >
+                    <FontAwesomeIcon icon={faPaperclip} style={{ color: '#64748b' }} />
+                    {sortField === 'pocet_priloh' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader title="Kontrola řádku faktury">
+                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
+                  </TableHeader>
+                  <TableHeader>
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
+                  </TableHeader>
+                </tr>
+                {/* FILTROVACÍ ŘÁDEK - IDENTICKÁ STRUKTURA JAKO V HLAVNÍ TABULCE */}
+                <tr className="filter-row">
+                  {/* Aktualizováno */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="dt_aktualizace"
+                        value={columnFilters.dt_aktualizace || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, dt_aktualizace: value})}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Číslo faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
+                        placeholder="Číslo faktury..."
+                        value={columnFilters.cislo_faktury || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
+                      />
+                      {columnFilters.cislo_faktury && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Typ faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.fa_typ || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, fa_typ: value})}
+                        options={invoiceTypeOptions}
+                        field="floating_fa_typ"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny typy"
+                        disabled={invoiceTypesLoading}
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Objednávka/Smlouva */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
+                        placeholder="Obj./Smlouva..."
+                        value={columnFilters.cislo_objednavky || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
+                        title="Hledá v číslech objednávek i smluv"
+                      />
+                      {columnFilters.cislo_objednavky && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Doručení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_doruceni"
+                        value={columnFilters.datum_doruceni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
+                        placeholder="Doručení"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Vystavení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_vystaveni"
+                        value={columnFilters.datum_vystaveni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
+                        placeholder="Vystavení"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Splatnost */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_splatnosti"
+                        value={columnFilters.datum_splatnosti || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
+                        placeholder="Splatnost"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Částka */}
+                  <TableHeader className="filter-cell amount-column">
+                    <div className="operator-filter-wrapper">
+                      <OperatorInput
+                        value={columnFilters.castka || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, castka: value})}
+                        placeholder="Částka"
+                        clearButton={true}
+                        onClear={() => {
+                          setColumnFilters({...columnFilters, castka: ''});
+                        }}
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Stav */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.stav || ''}
+                        onChange={(value) => {
+                          setColumnFilters({...columnFilters, stav: value});
+                        }}
+                        options={stavOptions}
+                        field="floating_stav"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny stavy"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Zaevidoval */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
+                        placeholder="Jméno..."
+                        value={columnFilters.vytvoril_uzivatel || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, vytvoril_uzivatel: e.target.value})}
+                      />
+                      {columnFilters.vytvoril_uzivatel && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Předáno zaměstnanci */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
+                        placeholder="Jméno..."
+                        value={columnFilters.predano_zamestnanec || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
+                      />
+                      {columnFilters.predano_zamestnanec && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Věcnou provedl */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
+                        placeholder="Jméno..."
+                        value={columnFilters.vecnou_provedl || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, vecnou_provedl: e.target.value})}
+                      />
+                      {columnFilters.vecnou_provedl && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Věcná kontrola */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.vecna_kontrola || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, vecna_kontrola: value})}
+                        options={vecnaKontrolaOptions}
+                        field="floating_vecna_kontrola"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Přílohy */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
+                        onChange={(value) => {
+                          if (value === 'spisovka') {
+                            setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' }));
+                            setActiveFilterStatus('from_spisovka');
+                            setColumnFilters({...columnFilters, ma_prilohy: ''});
+                          } else {
+                            setFilters(prev => ({ ...prev, filter_status: '' }));
+                            setActiveFilterStatus(null);
+                            setColumnFilters({...columnFilters, ma_prilohy: value});
+                          }
+                          setCurrentPage(1);
+                        }}
+                        options={[
+                          { value: '', label: 'Vše' },
+                          { value: 'without', label: 'Bez příloh' },
+                          { value: 'with', label: 'S přílohami' },
+                          { value: 'spisovka', label: 'Ze spisovky' }
+                        ]}
+                        field="ma_prilohy_floating"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Kontrola řádku - prázdná */}
+                  <TableHeader className="filter-cell">
+                    {/* Prázdná buňka pro checkbox kontroly */}
+                  </TableHeader>
+
+                  {/* Akce */}
+                  <TableHeader className="filter-cell">
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <ActionButton 
+                        onClick={() => setColumnFilters({})}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                        title="Vymazat všechny filtry"
+                      >
+                        <FontAwesomeIcon icon={faEraser} />
+                      </ActionButton>
+                    </div>
+                  </TableHeader>
+                </tr>
+              </TableHead>
+            </table>
+          </FloatingTableWrapper>
+        </FloatingHeaderPanel>,
+        document.body
+      )}
+      
+      {/* Attachments Tooltip */}
+      {attachmentsTooltip && (
+        <div
+          onMouseEnter={(e) => e.currentTarget.setAttribute('data-tooltip-hover', 'true')}
+          onMouseLeave={(e) => {
+            e.currentTarget.removeAttribute('data-tooltip-hover');
+            setAttachmentsTooltip(null);
+          }}
+        >
+          <InvoiceAttachmentsTooltip
+            attachments={attachmentsTooltip.attachments}
+            position={attachmentsTooltip.position}
+            onClose={() => setAttachmentsTooltip(null)}
+            onView={(attachmentWithBlob) => {
+              setViewerAttachment(attachmentWithBlob);
+              setAttachmentsTooltip(null);
+            }}
+            token={token}
+            username={username}
+          />
+        </div>
+      )}
+      
+      {/* Attachment Viewer */}
+      {viewerAttachment && (
+        <AttachmentViewer
+          attachment={viewerAttachment}
+          onClose={() => setViewerAttachment(null)}
+        />
+      )}
+      
+      {/* 📋 Sidebar s objednávkami připravenými k fakturaci */}
+      <SlideInDetailPanel
+        isOpen={showOrdersSidebar}
+        title="Objednávky připravené k fakturaci"
+        onClose={handleCloseOrdersSidebar}
+        width="700px"
+      >
+          <div style={{ padding: '1.5rem' }}>
+            {loadingOrdersReady ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <FontAwesomeIcon icon={faSyncAlt} spin style={{ fontSize: '2rem', marginBottom: '1rem' }} />
+                <p>Načítám objednávky...</p>
+              </div>
+            ) : ordersReadyForInvoice.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '2rem', marginBottom: '1rem', color: '#10b981' }} />
+                <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>Nejsou žádné objednávky připravené k fakturaci</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Všechny dokončené objednávky již mají přiřazenou fakturu.</p>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                  <p style={{ margin: 0, color: '#0c4a6e', fontSize: '0.95rem' }}>
+                    <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem' }} />
+                    Nalezeno <strong>{ordersReadyForInvoice.filter(order => {
+                      if (!debouncedSidebarSearch.trim()) return true;
+                      const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                      return (
+                        normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                        normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                      );
+                    }).length}</strong> {ordersReadyForInvoice.filter(order => {
+                      if (!debouncedSidebarSearch.trim()) return true;
+                      const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                      return (
+                        normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                        normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                      );
+                    }).length === 1 ? 'objednávka' : ordersReadyForInvoice.filter(order => {
+                      if (!debouncedSidebarSearch.trim()) return true;
+                      const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                      return (
+                        normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                        normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                      );
+                    }).length <= 4 ? 'objednávky' : 'objednávek'} bez faktury
+                  </p>
+                </div>
+                
+                {/* 🔍 Search box pro sidebar */}
+                <div style={{ marginBottom: '1rem', position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Hledat v objednávkách (číslo obj., název, dodavatel, IČO...)"
+                    value={sidebarSearch}
+                    onChange={(e) => setSidebarSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 2rem 0.6rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      fontSize: '0.9rem',
+                      background: 'white',
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                  {sidebarSearch && (
+                    <button
+                      onClick={() => setSidebarSearch('')}
+                      style={{
+                        position: 'absolute',
+                        right: '0.5rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        padding: '0.25rem',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseOver={(e) => e.target.style.color = '#6b7280'}
+                      onMouseOut={(e) => e.target.style.color = '#9ca3af'}
+                      title="Vymazat hledání"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {ordersReadyForInvoice.filter(order => {
+                    if (!debouncedSidebarSearch.trim()) return true;
+                    const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                    return (
+                      normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                      normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                      normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                      normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                      normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                      normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                    );
+                  }).map(order => (
+                    <div
+                      key={order.id}
+                      onClick={() => handleSelectOrderForInvoice(order)}
+                      style={{
+                        padding: '1rem',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        background: '#fff'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = '#3b82f6';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
+                        e.currentTarget.style.transform = 'translateX(4px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                        <div style={{ fontWeight: 600, fontSize: '1.05rem', color: '#1e293b' }}>
+                          {order.cislo_objednavky}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                          {formatDateOnly(order.dt_vytvoreni)}
+                        </div>
+                      </div>
+                      
+                      <div style={{ fontSize: '0.95rem', color: '#475569', marginBottom: '0.75rem', fontWeight: 500 }}>
+                        {order.predmet}
+                      </div>
+                      
+                      {/* Účastníci */}
+                      {(order.objednatel || order.garant || order.prikazce || order.schvalovatel) && (
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.75rem', padding: '0.5rem', background: '#f8fafc', borderRadius: '4px' }}>
+                          {order.objednatel && (
+                            <div style={{ marginBottom: '0.25rem' }}>
+                              <strong>Objednatel:</strong> {order.objednatel.cele_jmeno || `${order.objednatel.jmeno} ${order.objednatel.prijmeni}`}
+                            </div>
+                          )}
+                          {order.garant && (
+                            <div style={{ marginBottom: '0.25rem' }}>
+                              <strong>Garant:</strong> {order.garant.cele_jmeno || `${order.garant.jmeno} ${order.garant.prijmeni}`}
+                            </div>
+                          )}
+                          {order.prikazce && (
+                            <div style={{ marginBottom: '0.25rem' }}>
+                              <strong>Příkazce:</strong> {order.prikazce.cele_jmeno || `${order.prikazce.jmeno} ${order.prikazce.prijmeni}`}
+                            </div>
+                          )}
+                          {order.schvalovatel && (
+                            <div>
+                              <strong>Schvalovatel:</strong> {order.schvalovatel.cele_jmeno || `${order.schvalovatel.jmeno} ${order.schvalovatel.prijmeni}`}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Dodavatel s IČO */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        {order.dodavatel_nazev && (
+                          <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                            <FontAwesomeIcon icon={faBuilding} style={{ marginRight: '0.4rem', width: '14px' }} />
+                            {order.dodavatel_nazev}
+                            {order.dodavatel_ico && (
+                              <span style={{ marginLeft: '0.5rem', color: '#94a3b8' }}>
+                                | IČO: {order.dodavatel_ico}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Ikona s počtem příloh */}
+                        {order.pocet_priloh > 0 && (
+                          <div
+                            style={{ cursor: 'pointer', padding: '0.25rem' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Zobrazit tooltip s přílohami při kliknutí
+                              if (order.prilohy && order.prilohy.length > 0) {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const tooltipWidth = 350;
+                                const tooltipHeight = 300;
+                                
+                                // Vypočítat optimální pozici pro tooltip
+                                let top = rect.bottom + 5;
+                                let left = rect.left - tooltipWidth + 50;
+                                
+                                // Kontrola, zda tooltip nepřesahuje dolní okraj okna
+                                const spaceBelow = window.innerHeight - rect.bottom;
+                                if (spaceBelow < tooltipHeight + 20) {
+                                  // Zobrazit nad ikonou
+                                  top = rect.top - tooltipHeight - 5;
+                                }
+                                
+                                // Kontrola, zda tooltip nepřesahuje levý okraj okna
+                                if (left < 10) {
+                                  left = 10;
+                                }
+                                
+                                // Kontrola, zda tooltip nepřesahuje pravý okraj okna
+                                if (left + tooltipWidth > window.innerWidth - 10) {
+                                  left = window.innerWidth - tooltipWidth - 10;
+                                }
+                                
+                                setOrderAttachmentsTooltip({
+                                  attachments: order.prilohy,
+                                  orderId: order.id,
+                                  position: {
+                                    top: Math.max(10, top),
+                                    left: Math.max(10, left)
+                                  }
+                                });
+                              }
+                            }}
+                          >
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#64748b' }}>
+                              <FontAwesomeIcon icon={faPaperclip} />
+                              <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{order.pocet_priloh}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Financování */}
+                      {order.financovani && (() => {
+                        let fin = order.financovani;
+                        
+                        // Pokud je to string, zkusit ho parsovat jako JSON
+                        if (typeof fin === 'string') {
+                          try {
+                            fin = JSON.parse(fin);
+                          } catch (e) {
+                            return (
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                                <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px', color: '#6366f1' }} />
+                                <strong>Financování:</strong> {fin}
+                              </div>
+                            );
+                          }
+                        }
+                        
+                        // Pokud to není objekt, vrátit jako text
+                        if (!fin || typeof fin !== 'object') {
+                          return (
+                            <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                              <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px', color: '#6366f1' }} />
+                              <strong>Financování:</strong> —
+                            </div>
+                          );
+                        }
+                        
+                        const typ = fin.typ_nazev || fin.typ;
+                        if (!typ) {
+                          return (
+                            <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                              <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px', color: '#6366f1' }} />
+                              <strong>Financování:</strong> —
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div style={{ 
+                            fontSize: '0.85rem', 
+                            color: '#64748b', 
+                            marginBottom: '0.75rem',
+                            background: '#f8fafc',
+                            padding: '0.5rem',
+                            borderRadius: '6px',
+                            border: '1px solid #e2e8f0'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faMoneyBillWave} style={{ width: '14px', color: '#6366f1' }} />
+                              <strong style={{ color: '#475569' }}>Financování:</strong>
+                              <span style={{ color: '#6366f1', fontWeight: '600' }}>{typ}</span>
+                            </div>
+                            
+                            {/* LP - zobrazit poznámku a názvy LP */}
+                            {(typ === 'LP' || typ.includes('Limitovan')) && (
+                              <>
+                                {fin.lp_nazvy && Array.isArray(fin.lp_nazvy) && fin.lp_nazvy.length > 0 && (
+                                  <div style={{ marginLeft: '1.3rem', marginBottom: '0.25rem' }}>
+                                    <strong style={{ fontSize: '0.8rem', color: '#64748b' }}>Položky:</strong>
+                                    <div style={{ marginTop: '0.15rem' }}>
+                                      {fin.lp_nazvy.map((lp, idx) => {
+                                        const kod = lp.cislo_lp || lp.kod || lp.id;
+                                        const nazev = lp.nazev || '';
+                                        return (
+                                          <div key={idx} style={{ fontSize: '0.8rem', color: '#475569', paddingLeft: '0.5rem' }}>
+                                            • {kod && nazev ? `${kod} - ${nazev}` : (kod || nazev)}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {fin.lp_poznamka && (
+                                  <div style={{ marginLeft: '1.3rem', fontSize: '0.8rem' }}>
+                                    <strong style={{ color: '#64748b' }}>Poznámka:</strong> {fin.lp_poznamka.trim()}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            
+                            {/* SMLOUVA - zobrazit číslo smlouvy */}
+                            {(typ === 'SMLOUVA' || typ.toUpperCase() === 'SMLOUVA') && (
+                              <>
+                                {fin.cislo_smlouvy && (
+                                  <div style={{ marginLeft: '1.3rem', fontSize: '0.8rem' }}>
+                                    <strong style={{ color: '#64748b' }}>Číslo smlouvy:</strong> {fin.cislo_smlouvy}
+                                  </div>
+                                )}
+                                {fin.smlouva_cisla && Array.isArray(fin.smlouva_cisla) && fin.smlouva_cisla.length > 0 && (
+                                  <div style={{ marginLeft: '1.3rem', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                                    <strong style={{ color: '#64748b' }}>Další smlouvy:</strong> {fin.smlouva_cisla.filter(Boolean).join(', ')}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      
+                      {/* Ceny */}
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                        {order.max_cena_s_dph && (
+                          <div style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <strong>Max. cena s DPH:</strong>
+                            <span style={{ color: '#059669', fontWeight: 600 }}>
+                              {parseFloat(order.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                            </span>
+                          </div>
+                        )}
+                        {order.polozky_celkova_cena_s_dph && (
+                          <div style={{ fontSize: '0.85rem', color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <strong>Cena položek s DPH:</strong>
+                            <span style={{ color: '#059669', fontWeight: 600 }}>
+                              {parseFloat(order.polozky_celkova_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </SlideInDetailPanel>
+      
+      {/* Tooltip pro přílohy objednávek - v Portalu pro správný z-index */}
+      {orderAttachmentsTooltip && ReactDOM.createPortal(
+        <OrderAttachmentsTooltip
+          attachments={orderAttachmentsTooltip.attachments}
+          position={orderAttachmentsTooltip.position}
+          onClose={() => setOrderAttachmentsTooltip(null)}
+          token={token}
+          username={username}
+          orderId={orderAttachmentsTooltip.orderId}
+          onView={(attachmentWithBlob) => {
+            setViewerAttachment(attachmentWithBlob);
+            setOrderAttachmentsTooltip(null);
+          }}
+        />,
+        document.body
+      )}
     </>
   );
 };

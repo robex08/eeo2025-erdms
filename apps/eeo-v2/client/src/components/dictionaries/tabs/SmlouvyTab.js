@@ -54,6 +54,7 @@ import { getUsekyList } from '../../../services/apiv2Dictionaries';
 // Context
 import { useContext } from 'react';
 import AuthContext from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
 
 // Common Components
 import { SmartTooltip } from '../../../styles/SmartTooltip';
@@ -768,6 +769,7 @@ const saveShowFiltersToStorage = (show) => {
 
 const SmlouvyTab = () => {
   const { user, token } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
 
   // State
   const [smlouvy, setSmlouvy] = useState([]);
@@ -799,7 +801,8 @@ const SmlouvyTab = () => {
     nazev_smlouvy: '',
     usek_zkr: '',
     druh_smlouvy: '',
-    stav: ''
+    stav: '',
+    pouzit_v_obj_formu: ''
   });
 
   // Pagination
@@ -965,6 +968,9 @@ const SmlouvyTab = () => {
       if (columnFilters.stav && smlouva.stav !== columnFilters.stav) {
         return false;
       }
+      if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
+        return false;
+      }
 
       return true;
     });
@@ -996,6 +1002,16 @@ const SmlouvyTab = () => {
     // ✅ AKTIVNÍ = kde aktivni != 0 (nebo aktivni === true / aktivni === 1)
     const aktivniSmlouvy = filteredSmlouvy.filter(s => s.aktivni == 1 || s.aktivni === true);
     
+    // ✅ PLATNÉ = aktivní a platnost_do >= dnes (nebo platnost_do IS NULL)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const platneSmlouvy = aktivniSmlouvy.filter(s => {
+      if (!s.platnost_do) return true; // Pokud není platnost_do, je neomezená
+      const platnostDo = new Date(s.platnost_do);
+      return platnostDo >= today;
+    });
+    const vyprselychSmluv = aktivniSmlouvy.length - platneSmlouvy.length;
+    
     // ✅ PRAVIDLO: Pokud je show_inactive=false, vyloučit smlouvy kde aktivni==0
     const smlouvyProStatistiku = filters.show_inactive 
       ? filteredSmlouvy      // Zobrazují se i neaktivní → sečíst všechny zobrazené
@@ -1009,8 +1025,11 @@ const SmlouvyTab = () => {
     // ✅ ZBÝVÁ: Počáteční stav - čerpáno
     const celkemZbyva = celkemLimit - celkemCerpano;
     
-    // ℹ️ CELKOVÉ PLNĚNÍ: Informativní součet maximálních plnění (nepoužívá se ve výpočtech)
-    const celkemPlneni = smlouvyProStatistiku.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
+    // ℹ️ CELKOVÉ PLNĚNÍ VŠECH aktivních smluv (včetně vypršených)
+    const celkemPlneniVsech = aktivniSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
+    
+    // ℹ️ PLNĚNÍ JEN PLATNÝCH smluv (bez vypršených)
+    const plneniPlatnychSmluv = platneSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
     
     // ✅ PRŮMĚRNÉ ČERPÁNÍ: Počítáme vůči hodnota_s_dph
     const prumerneCerpani = aktivniSmlouvy.length > 0 
@@ -1024,10 +1043,13 @@ const SmlouvyTab = () => {
     return {
       pocet_celkem: filteredSmlouvy.length,
       pocet_aktivnich: aktivniSmlouvy.length,
+      pocet_platnych: platneSmlouvy.length,
+      pocet_vyprsenych: vyprselychSmluv,
       celkem_cerpano: celkemCerpano,
       celkem_limit: celkemLimit,
       celkem_zbyva: celkemZbyva,
-      celkem_plneni: celkemPlneni,
+      celkem_plneni_vsech: celkemPlneniVsech,
+      plneni_platnich: plneniPlatnychSmluv,
       prumerne_cerpani: prumerneCerpani
     };
   }, [filteredSmlouvy, filters.show_inactive]);
@@ -1094,7 +1116,6 @@ const SmlouvyTab = () => {
               aktivni: isActive ? 0 : 1
             }
           });
-          console.log(`Smlouva byla ${isActive ? 'deaktivována' : 'aktivována'}:`, smlouva.cislo_smlouvy);
           loadData();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (err) {
@@ -1129,7 +1150,6 @@ const SmlouvyTab = () => {
             username: user.username,
             id: smlouva.id
           });
-          console.log('Smlouva byla smazána:', smlouva.cislo_smlouvy);
           loadData();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (err) {
@@ -1165,9 +1185,15 @@ const SmlouvyTab = () => {
             cislo_smlouvy: null,
             usek_id: null
           });
-          console.log('Přepočet dokončen:', result);
-          loadData();
+          
+          const pocet = result?.prepocitano_smluv || 'všechny';
+          
           setConfirmDialog({ ...confirmDialog, isOpen: false });
+          
+          await loadData();
+          
+          // Toast notifikace
+          showToast(`Přepočet čerpání úspěšně dokončen! Zpracováno smluv: ${pocet}`, 'success');
         } catch (err) {
           console.error('Chyba při přepočtu:', err);
           setError('Chyba při přepočtu: ' + err.message);
@@ -1272,13 +1298,11 @@ const SmlouvyTab = () => {
         return a - b;
       }
     }),
-    columnHelper.accessor(
-      row => (parseFloat(row.hodnota_s_dph) || 0) - (parseFloat(row.cerpano_celkem) || 0),
-      {
+    columnHelper.accessor('zbyva', {
         id: 'zbyva',
         header: 'Zbývá s DPH',
         cell: info => {
-          const zbyva = info.getValue();
+          const zbyva = parseFloat(info.getValue()) || 0;
           return (
             <span style={{ 
               color: zbyva >= 0 ? '#10b981' : '#dc2626',
@@ -1290,12 +1314,34 @@ const SmlouvyTab = () => {
         },
         enableSorting: true,
         sortingFn: (rowA, rowB) => {
-          const a = (parseFloat(rowA.original.hodnota_s_dph) || 0) - (parseFloat(rowA.original.cerpano_celkem) || 0);
-          const b = (parseFloat(rowB.original.hodnota_s_dph) || 0) - (parseFloat(rowB.original.cerpano_celkem) || 0);
+          const a = parseFloat(rowA.original.zbyva) || 0;
+          const b = parseFloat(rowB.original.zbyva) || 0;
           return a - b;
         }
       }
     ),
+    columnHelper.accessor('pouzit_v_obj_formu', {
+      header: 'Použití',
+      cell: info => {
+        const value = info.getValue();
+        return (
+          <SmartTooltip content={value === 1 ? 'Použít v objednávkovém formuláři při vytváření objednávek' : 'Pouze v modulu faktur'}>
+            <span style={{ 
+              fontSize: '0.875rem',
+              display: 'inline-block',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '4px',
+              backgroundColor: value === 1 ? '#dbeafe' : '#fef3c7',
+              color: value === 1 ? '#1e40af' : '#92400e',
+              fontWeight: '500'
+            }}>
+              {value === 1 ? '📋 Objednávky' : '🔒 Faktury'}
+            </span>
+          </SmartTooltip>
+        );
+      },
+      enableSorting: true
+    }),
     columnHelper.accessor('stav', {
       header: 'Stav',
       cell: info => (
@@ -1564,11 +1610,16 @@ const SmlouvyTab = () => {
       <StatsBar>
         <StatItem>
           <StatLabel>Smluv celkem</StatLabel>
-          <StatValue>{statistics.pocet_celkem}</StatValue>
+          <StatValue>
+            {statistics.pocet_aktivnich}
+            {statistics.pocet_vyprsenych > 0 && (
+              <span style={{ color: '#dc2626', fontSize: '0.9em', fontWeight: 600 }}> ({statistics.pocet_vyprsenych})</span>
+            )}
+          </StatValue>
         </StatItem>
         <StatItem>
-          <StatLabel>Aktivních</StatLabel>
-          <StatValue $color="#10b981">{statistics.pocet_aktivnich}</StatValue>
+          <StatLabel>Platných smluv</StatLabel>
+          <StatValue $color="#10b981">{statistics.pocet_platnych}</StatValue>
         </StatItem>
         <StatItem>
           <StatLabel>Celkový limit</StatLabel>
@@ -1583,8 +1634,12 @@ const SmlouvyTab = () => {
           <StatValue $color="#10b981">{formatCurrency(statistics.celkem_zbyva)}</StatValue>
         </StatItem>
         <StatItem>
-          <StatLabel>Celkové plnění</StatLabel>
-          <StatValue $color="#6b7280">{formatCurrency(statistics.celkem_plneni)}</StatValue>
+          <StatLabel>Plnění všech smluv</StatLabel>
+          <StatValue $color="#6b7280">{formatCurrency(statistics.celkem_plneni_vsech)}</StatValue>
+        </StatItem>
+        <StatItem>
+          <StatLabel>Plnění platných</StatLabel>
+          <StatValue $color="#059669">{formatCurrency(statistics.plneni_platnich)}</StatValue>
         </StatItem>
         <StatItem>
           <StatLabel>Průměrné čerpání</StatLabel>
@@ -1699,6 +1754,17 @@ const SmlouvyTab = () => {
                 <TableHeaderFilterCell />
                 {/* Zbývá - prázdná buňka */}
                 <TableHeaderFilterCell />
+                {/* Použití */}
+                <TableHeaderFilterCell>
+                  <ColumnFilterSelect
+                    value={columnFilters.pouzit_v_obj_formu}
+                    onChange={(e) => setColumnFilters(prev => ({...prev, pouzit_v_obj_formu: e.target.value}))}
+                  >
+                    <option value="">Vše</option>
+                    <option value="1">📋 Objednávky</option>
+                    <option value="0">🔒 Faktury</option>
+                  </ColumnFilterSelect>
+                </TableHeaderFilterCell>
                 {/* Stav */}
                 <TableHeaderFilterCell>
                   <ColumnFilterSelect

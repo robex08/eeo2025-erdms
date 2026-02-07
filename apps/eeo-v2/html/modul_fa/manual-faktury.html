@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modul faktur - Uživatelský manuál</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .version {
+            font-size: 0.9em;
+            margin-top: 1rem;
+            opacity: 0.8;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+        }
+        
+        h2 {
+            font-size: 1.8em;
+            color: #667eea;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        h3 {
+            font-size: 1.4em;
+            color: #764ba2;
+            margin-bottom: 0.8rem;
+            margin-top: 1.5rem;
+        }
+        
+        h4 {
+            font-size: 1.2em;
+            color: #555;
+            margin-bottom: 0.6rem;
+            margin-top: 1rem;
+        }
+        
+        .icon {
+            font-size: 1.2em;
+        }
+        
+        .screenshot {
+            margin: 2rem 0;
+            text-align: center;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+        
+        .screenshot img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .screenshot-caption {
+            padding: 1rem;
+            font-style: italic;
+            color: #666;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .info-box {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border-left: 5px solid #667eea;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .warning-box {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-left: 5px solid #ff9800;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .success-box {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+            border-left: 5px solid #4caf50;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .tip-box {
+            background: linear-gradient(135deg, #f0f4c3 0%, #dcedc8 100%);
+            border-left: 5px solid #8bc34a;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .steps {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+        
+        .steps li {
+            counter-increment: step-counter;
+            margin-bottom: 1.5rem;
+            padding-left: 3rem;
+            position: relative;
+        }
+        
+        .steps li:before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #667eea;
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 0.5rem 0;
+            padding-left: 2rem;
+            position: relative;
+        }
+        
+        .feature-list li:before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 3px solid #e9ecef;
+        }
+        
+        .nav-button {
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102,126,234,0.4);
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            text-align: center;
+            color: #6c757d;
+        }
+        
+        .toc {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        
+        .toc h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .toc li {
+            padding: 0.3rem 0;
+        }
+        
+        .toc a {
+            color: #667eea;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .toc a:hover {
+            color: #764ba2;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        
+        .status-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            transition: border-color 0.3s ease;
+        }
+        
+        .status-card:hover {
+            border-color: #667eea;
+        }
+        
+        .status-icon {
+            font-size: 2em;
+            margin-bottom: 0.5rem;
+        }
+        
+        .status-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.3rem;
+        }
+        
+        .status-desc {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .workflow-diagram {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            text-align: center;
+        }
+        
+        .workflow-step {
+            display: inline-block;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 0.5rem;
+            min-width: 120px;
+        }
+        
+        .workflow-arrow {
+            display: inline-block;
+            font-size: 1.5em;
+            color: #667eea;
+            margin: 0 0.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 1rem;
+            }
+            
+            h2 {
+                font-size: 1.5em;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .steps li {
+                padding-left: 2.5rem;
+            }
+            
+            .steps li:before {
+                width: 1.5rem;
+                height: 1.5rem;
+                font-size: 0.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <h1>📋 Modul faktur</h1>
+            <div class="subtitle">Uživatelský manuál pro evidenci a správu faktur</div>
+            <div class="version">Verze 1.0 | Prosinec 2025 | ZZS EEO</div>
+        </div>
+        
+        <div class="content">
+            <!-- OBSAH -->
+            <div class="toc">
+                <h3>📚 Obsah manuálu</h3>
+                <ul>
+                    <li><a href="#uvod">🎯 Úvod do modulu faktur</a></li>
+                    <li><a href="#prehled">📊 Přehled faktur</a></li>
+                    <li><a href="#zaevidovani">✏️ Zaevidování nové faktury</a></li>
+                    <li><a href="#pripojeni-smluv">📄 Připojení smluv a objednávek</a></li>
+                    <li><a href="#stavy-faktury">🔄 Stavy faktury</a></li>
+                    <li><a href="#vecna-spravnost">✅ Věcná správnost</a></li>
+                    <li><a href="#prace-se-seznamem">📋 Práce se seznamem faktur</a></li>
+                    <li><a href="#napojeni-podatelna">📬 Napojení na podatelnu</a></li>
+                    <li><a href="#tips-tricks">💡 Tipy a triky</a></li>
+                </ul>
+            </div>
+
+            <!-- ÚVOD -->
+            <div class="section" id="uvod">
+                <h2><span class="icon">🎯</span>Úvod do modulu faktur</h2>
+                <p>
+                    <strong>Modul faktur</strong> je centrální nástroj pro evidenci, správu a zpracování všech přijatých faktur 
+                    v systému EEO. Umožňuje kompletní lifecycle management faktur od jejich zaevidování až po potvrzení 
+                    věcné správnosti a propojení s objednávkami a smlouvami.
+                </p>
+
+                <div class="info-box">
+                    <h4>💡 Klíčové funkcionalnosti</h4>
+                    <ul class="feature-list">
+                        <li><strong>Evidence faktur</strong> - Rychlé zaevidování nové faktury s možností nahrání příloh</li>
+                        <li><strong>Propojení s objednávkami</strong> - Automatické párování s existujícími objednávkami</li>
+                        <li><strong>Smlouvy</strong> - Vazba na registr smluv a rámcové smlouvy</li>
+                        <li><strong>Věcná správnost</strong> - Workflow schvalování a potvrzování správnosti</li>
+                        <li><strong>Sledování stavů</strong> - Přehledný systém stavů od doručení po zaplacení</li>
+                        <li><strong>Reporting</strong> - Pokročilé filtry a export dat</li>
+                    </ul>
+                </div>
+
+                <div class="screenshot">
+                    <img src="screenshoty/úvodní strana Přehledu Faktur.png" alt="Úvodní stránka přehledu faktur">
+                    <div class="screenshot-caption">Úvodní stránka modulu faktur s přehledem všech funkcí</div>
+                </div>
+            </div>
+
+            <!-- PŘEHLED FAKTUR -->
+            <div class="section" id="prehled">
+                <h2><span class="icon">📊</span>Přehled faktur</h2>
+                <p>
+                    Hlavní obrazovka modulu poskytuje kompletní přehled všech faktur v systému. 
+                    Tabulka je vybavena pokročilými filtry, vyhledáváním a možnostmi exportu dat.
+                </p>
+
+                <h3>📋 Sloupce v tabulce</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sloupec</th>
+                            <th>Popis</th>
+                            <th>Možnosti</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>📅 Datum doručení</strong></td>
+                            <td>Kdy byla faktura doručena do organizace</td>
+                            <td>Klik pro detail faktury</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔢 Číslo faktury</strong></td>
+                            <td>Evidenční číslo faktury z VEMA systému</td>
+                            <td>Vyhledávání, filtrování</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🏢 Dodavatel</strong></td>
+                            <td>Název dodavatele a IČO</td>
+                            <td>Filtrování podle dodavatele</td>
+                        </tr>
+                        <tr>
+                            <td><strong>💰 Částka</strong></td>
+                            <td>Celková částka faktury včetně DPH</td>
+                            <td>Řazení podle částky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔗 Propojení</strong></td>
+                            <td>Vazba na objednávku nebo smlouvu</td>
+                            <td>Přímý odkaz na související dokument</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🚦 Stav</strong></td>
+                            <td>Aktuální stav zpracování faktury</td>
+                            <td>Barevné rozlišení stavů</td>
+                        </tr>
+                        <tr>
+                            <td><strong>⚙️ Akce</strong></td>
+                            <td>Dostupné operace pro danou fakturu</td>
+                            <td>Editace, mazání, export</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="tip-box">
+                    <strong>💡 Tip pro efektivní práci:</strong> 
+                    Používejte kombinaci filtrů pro rychlé nalezení konkrétních faktur. 
+                    Nejčastěji používané filtry jsou podle dodavatele, období a stavu.
+                </div>
+            </div>
+
+            <!-- ZAEVIDOVÁNÍ NOVÉ FAKTURY -->
+            <div class="section" id="zaevidovani">
+                <h2><span class="icon">✏️</span>Zaevidování nové faktury</h2>
+                <p>
+                    Proces zaevidování nové faktury je navržen tak, aby byl rychlý a intuitivní. 
+                    Systém automaticky napovídá dostupná data a kontroluje správnost vyplněných údajů.
+                </p>
+
+                <div class="screenshot">
+                    <img src="screenshoty/Zaevidovaní nové faktury.png" alt="Formulář pro zaevidování nové faktury">
+                    <div class="screenshot-caption">Formulář pro zaevidování nové faktury s automatickým doplňováním</div>
+                </div>
+
+                <h3>🚀 Postup zaevidování faktury</h3>
+                <ol class="steps">
+                    <li>
+                        <strong>Klikněte na tlačítko "➕ Nová faktura"</strong><br>
+                        Tlačítko se nachází v horní části obrazovky přehledu faktur
+                    </li>
+                    <li>
+                        <strong>Vyplňte základní údaje faktury</strong><br>
+                        Povinné pole: Číslo faktury z VEMA, Dodavatel, Částka, Datum doručení
+                    </li>
+                    <li>
+                        <strong>Nahrajte přílohu faktury (PDF)</strong><br>
+                        Drag & drop nebo klik na oblast pro nahrání. Podporované formáty: PDF, JPG, PNG
+                    </li>
+                    <li>
+                        <strong>Propojte s objednávkou nebo smlouvou</strong><br>
+                        Systém automaticky navrhne možné vazby na základě dodavatele a částky
+                    </li>
+                    <li>
+                        <strong>Zkontrolujte a uložte</strong><br>
+                        Před uložením zkontrolujte všechny údaje. Po uložení se faktura objeví v přehledu
+                    </li>
+                </ol>
+
+                <div class="screenshot">
+                    <img src="screenshoty/Zaevidování Fa podle náhledu.png" alt="Zaevidování faktury podle náhledu">
+                    <div class="screenshot-caption">Zaevidování faktury s využitím náhledu přiložených dokumentů</div>
+                </div>
+
+                <div class="warning-box">
+                    <h4>⚠️ Důležité upozornění</h4>
+                    <p>Při zaevidování faktury vždy zkontrolujte:</p>
+                    <ul>
+                        <li>✓ Správnost čísla faktury a variabilního symbolu</li>
+                        <li>✓ Přesnost částky a měny</li>
+                        <li>✓ Datum doručení faktury</li>
+                        <li>✓ Kvalitu nahraného PDF nebo skenů</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- PŘIPOJENÍ SMLUV A OBJEDNÁVEK -->
+            <div class="section" id="pripojeni-smluv">
+                <h2><span class="icon">📄</span>Připojení smluv a objednávek</h2>
+                <p>
+                    Každá faktura by měla být propojena s příslušnou objednávkou nebo smlouvou. 
+                    Toto propojení umožňuje sledovat čerpání rozpočtů, kontrolovat smluvní limity a zajistit správné účetní zachycení.
+                </p>
+
+                <h3>🔗 Typy propojení</h3>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <div class="status-icon">📝</div>
+                        <div class="status-title">Objednávka</div>
+                        <div class="status-desc">Faktura za konkrétní objednávku</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-icon">📋</div>
+                        <div class="status-title">Rámcová smlouva</div>
+                        <div class="status-desc">Faktura v rámci dlouhodobé smlouvy</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-icon">📄</div>
+                        <div class="status-title">Samostatná faktura</div>
+                        <div class="status-desc">Faktura bez předchozí objednávky</div>
+                    </div>
+                </div>
+
+                <h3>🎯 Automatické párovanie</h3>
+                <p>Systém automaticky navrhuje možná propojení na základě:</p>
+                <ul class="feature-list">
+                    <li><strong>Dodavatel</strong> - Shoda názvu nebo IČO dodavatele</li>
+                    <li><strong>Částka</strong> - Přibližná shoda s částkou objednávky</li>
+                    <li><strong>Předmět</strong> - Textová podobnost v popisu</li>
+                    <li><strong>Časové období</strong> - Faktury v rozumné době po objednávce</li>
+                    <li><strong>Středisko</strong> - Stejné organizační středisko</li>
+                </ul>
+
+                <div class="success-box">
+                    <h4>✅ Výhody propojení</h4>
+                    <ul>
+                        <li><strong>Automatická kontrola limitů</strong> - Systém upozorní na překročení rozpočtu</li>
+                        <li><strong>Sledování čerpání</strong> - Přehled o tom, kolik z objednávky už bylo vyfakturováno</li>
+                        <li><strong>Účetní klasifikace</strong> - Automatické přenesení účetních kódů</li>
+                        <li><strong>Reportování</strong> - Možnost generovat přehledy podle projektů</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- STAVY FAKTURY -->
+            <div class="section" id="stavy-faktury">
+                <h2><span class="icon">🔄</span>Stavy faktury</h2>
+                <p>
+                    Každá faktura v systému prochází definovaným životním cyklem. 
+                    Sledování stavu umožňuje rychlé určení, kde se faktura právě nachází v procesu schvalování a zpracování.
+                </p>
+
+                <div class="screenshot">
+                    <img src="screenshoty/stavy faktury (1).png" alt="Přehled stavů faktury">
+                    <div class="screenshot-caption">Přehled všech možných stavů faktury a jejich význam</div>
+                </div>
+
+                <h3>🚦 Základní stavy faktur</h3>
+                <div class="workflow-diagram">
+                    <div class="workflow-step" style="background: #ffecb3;">
+                        📥 <strong>Doručena</strong><br>
+                        Faktura byla doručena
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #e1f5fe;">
+                        📋 <strong>Zaevidována</strong><br>
+                        Údaje zadány do systému
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #f3e5f5;">
+                        🔗 <strong>Propojená</strong><br>
+                        Navázána na objednávku
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #e8f5e8;">
+                        ✅ <strong>Schválená</strong><br>
+                        Věcná správnost OK
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #c8e6c9;">
+                        💰 <strong>Zaplacená</strong><br>
+                        Uhrazena dodavateli
+                    </div>
+                </div>
+
+                <h3>📊 Detailní popis stavů</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Stav</th>
+                            <th>Popis</th>
+                            <th>Možné akce</th>
+                            <th>Zodpovědná osoba</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>📥 Doručena</strong></td>
+                            <td>Faktura byla doručena do organizace</td>
+                            <td>Zaevidování do systému</td>
+                            <td>Podatelna / Asistentka</td>
+                        </tr>
+                        <tr>
+                            <td><strong>📋 Zaevidována</strong></td>
+                            <td>Základní údaje byly zadány do systému</td>
+                            <td>Propojení s objednávkou, úprava údajů</td>
+                            <td>Ekonomické oddělení</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔗 Propojená</strong></td>
+                            <td>Faktura je navázána na objednávku nebo smlouvu</td>
+                            <td>Kontrola věcné správnosti</td>
+                            <td>Vedoucí úseku</td>
+                        </tr>
+                        <tr>
+                            <td><strong>⚠️ Problematická</strong></td>
+                            <td>Zjištěny nesrovnalosti nebo chyby</td>
+                            <td>Řešení s dodavatelem, oprava údajů</td>
+                            <td>Podle typu problému</td>
+                        </tr>
+                        <tr>
+                            <td><strong>✅ Schválená</strong></td>
+                            <td>Věcná správnost byla potvrzena</td>
+                            <td>Předání k platbě</td>
+                            <td>Vedoucí úseku</td>
+                        </tr>
+                        <tr>
+                            <td><strong>💰 K platbě</strong></td>
+                            <td>Faktura je připravena k úhradě</td>
+                            <td>Provedení platby</td>
+                            <td>Ekonomické oddělení</td>
+                        </tr>
+                        <tr>
+                            <td><strong>✔️ Zaplacená</strong></td>
+                            <td>Faktura byla uhrazena dodavateli</td>
+                            <td>Archivace</td>
+                            <td>-</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- VĚCNÁ SPRÁVNOST -->
+            <div class="section" id="vecna-spravnost">
+                <h2><span class="icon">✅</span>Věcná správnost</h2>
+                <p>
+                    Potvrzení věcné správnosti je klíčovým krokem, který zajišťuje, že fakturované služby nebo zboží 
+                    byly skutečně dodány v odpovídající kvalitě a rozsahu.
+                </p>
+
+                <div class="screenshot">
+                    <img src="screenshoty/věcná správnost ve Fa.png" alt="Formulář věcné správnosti">
+                    <div class="screenshot-caption">Formulář pro potvrzení věcné správnosti faktury</div>
+                </div>
+
+                <h3>📝 Proces věcné správnosti</h3>
+                <ol class="steps">
+                    <li>
+                        <strong>Otevření faktury k posouzení</strong><br>
+                        Vedoucí úseku nebo pověřená osoba otevře fakturu ke kontrole
+                    </li>
+                    <li>
+                        <strong>Kontrola dodaného plnění</strong><br>
+                        Ověření, že služby nebo zboží byly skutečně dodány podle objednávky
+                    </li>
+                    <li>
+                        <strong>Kontrola faktury</strong><br>
+                        Ověření správnosti fakturovaných položek, částek a sazeb DPH
+                    </li>
+                    <li>
+                        <strong>Vyplnění formuláře věcné správnosti</strong><br>
+                        Zadání poznámek, datum kontroly a výsledek posouzení
+                    </li>
+                    <li>
+                        <strong>Potvrzení nebo zamítnutí</strong><br>
+                        Finální rozhodnutí o věcné správnosti faktury
+                    </li>
+                </ol>
+
+                <h3>🔍 Kontrolní body</h3>
+                <div class="info-box">
+                    <h4>Při posuzování věcné správnosti kontrolujte:</h4>
+                    <ul class="feature-list">
+                        <li><strong>Kvalita plnění</strong> - Odpovídá dodané zboží/služba požadavkům?</li>
+                        <li><strong>Kompletnost</strong> - Bylo dodáno vše podle objednávky?</li>
+                        <li><strong>Termíny</strong> - Byla dodržena sjednaná lhůta dodání?</li>
+                        <li><strong>Dokumentace</strong> - Jsou k dispozici všechny potřebné dokumenty?</li>
+                        <li><strong>Cena</strong> - Odpovídá fakturovaná částka sjednané ceně?</li>
+                        <li><strong>DPH</strong> - Je správně aplikována sazba DPH?</li>
+                    </ul>
+                </div>
+
+                <div class="warning-box">
+                    <h4>⚠️ Při zjištění nesrovnalostí</h4>
+                    <p>Pokud zjistíte nesrovnalosti při kontrole věcné správnosti:</p>
+                    <ol>
+                        <li>Zdokumentujte zjištěné problémy do poznámek</li>
+                        <li>Označte fakturu jako "Problematickou"</li>
+                        <li>Kontaktujte dodavatele pro vyřešení</li>
+                        <li>Nepodepisujte věcnou správnost dokud není vše v pořádku</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- PRÁCE SE SEZNAMEM FAKTUR -->
+            <div class="section" id="prace-se-seznamem">
+                <h2><span class="icon">📋</span>Práce se seznamem faktur v tabulce</h2>
+                <p>
+                    Seznam faktur poskytuje výkonné nástroje pro filtrování, vyhledávání a hromadné operace. 
+                    Naučte se efektivně využívat všechny dostupné funkce pro rychlou orientaci v datech.
+                </p>
+
+                <h3>🔍 Pokročilé filtrování</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Typ filtru</th>
+                            <th>Popis</th>
+                            <th>Příklad použití</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>📅 Datum</strong></td>
+                            <td>Filtrování podle období doručení</td>
+                            <td>Faktury za poslední měsíc</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🏢 Dodavatel</strong></td>
+                            <td>Výběr faktur od konkrétního dodavatele</td>
+                            <td>Všechny faktury od "ABC s.r.o."</td>
+                        </tr>
+                        <tr>
+                            <td><strong>💰 Částka</strong></td>
+                            <td>Rozsah částek (od - do)</td>
+                            <td>Faktury nad 100 000 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🚦 Stav</strong></td>
+                            <td>Aktuální stav zpracování</td>
+                            <td>Pouze neschválené faktury</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🏛️ Středisko</strong></td>
+                            <td>Organizační středisko</td>
+                            <td>Faktury technického úseku</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔗 Propojení</strong></td>
+                            <td>Typ vazby na objednávky/smlouvy</td>
+                            <td>Nepropojené faktury</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>⚡ Rychlé akce</h3>
+                <div class="tip-box">
+                    <strong>💡 Klávesové zkratky pro efektivní práci:</strong>
+                    <ul>
+                        <li><strong>Ctrl + F</strong> - Rychlé vyhledávání v tabulce</li>
+                        <li><strong>Ctrl + A</strong> - Označit všechny faktury (s aktivním filtrem)</li>
+                        <li><strong>Delete</strong> - Smazat označené faktury (po potvrzení)</li>
+                        <li><strong>Enter</strong> - Otevřít detail vybrané faktury</li>
+                        <li><strong>Escape</strong> - Zrušit výběr nebo zavřít dialog</li>
+                    </ul>
+                </div>
+
+                <h3>📊 Hromadné operace</h3>
+                <p>Označte více faktur zaškrtnutím checkbox a použijte hromadné akce:</p>
+                <ul class="feature-list">
+                    <li><strong>Export do Excel</strong> - Vyexportovat označené faktury</li>
+                    <li><strong>Změna stavu</strong> - Hromadně změnit stav vybraných faktur</li>
+                    <li><strong>Přiřazení štítků</strong> - Označit faktury štítky pro lepší organizaci</li>
+                    <li><strong>Tisk</strong> - Vytisknout přehled vybraných faktur</li>
+                    <li><strong>Archivace</strong> - Přesunout do archivu (zaplacené faktury)</li>
+                </ul>
+
+                <div class="success-box">
+                    <h4>🎯 Tipy pro efektivní práci se seznamem</h4>
+                    <ul>
+                        <li>Používejte uložené filtry pro často používané kombinace</li>
+                        <li>Nastavte si vlastní sloupce podle vašich potřeb</li>
+                        <li>Využívajte řazení podle více sloupců současně (Shift + klik)</li>
+                        <li>Pravidelně archivujte staré zaplacené faktury</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- NAPOJENÍ NA PODATELNU -->
+            <div class="section" id="napojeni-podatelna">
+                <h2><span class="icon">📬</span>Napojení na podatelnu</h2>
+                <p>
+                    Modul faktur je propojen s podatelnou organizace, což umožňuje automatizovaný tok dokumentů 
+                    a eliminuje zdvojování evidence.
+                </p>
+
+                <div class="screenshot">
+                    <img src="screenshoty/Napojení na podatelnu.png" alt="Integrace s podatelnou">
+                    <div class="screenshot-caption">Napojení modulu faktur na systém podatelny</div>
+                </div>
+
+                <h3>🔄 Workflow s podatelnou</h3>
+                <div class="workflow-diagram">
+                    <div class="workflow-step" style="background: #ffecb3;">
+                        📮 <strong>Podatelna</strong><br>
+                        Příjem faktury
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #e1f5fe;">
+                        📊 <strong>Skenovanie</strong><br>
+                        Digitalizace dokumentu
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #f3e5f5;">
+                        🤖 <strong>Auto-import</strong><br>
+                        Import do systému
+                    </div>
+                    <div class="workflow-arrow">→</div>
+                    <div class="workflow-step" style="background: #e8f5e8;">
+                        📋 <strong>Evidence</strong><br>
+                        Zpracování v modulu
+                    </div>
+                </div>
+
+                <h3>⚡ Výhody automatizace</h3>
+                <ul class="feature-list">
+                    <li><strong>Rychlejší zpracování</strong> - Elimace ručního přepisování údajů</li>
+                    <li><strong>Menší chybovost</strong> - Automatické rozpoznávání textú OCR</li>
+                    <li><strong>Audit trail</strong> - Kompletní sledování pohybu dokumentu</li>
+                    <li><strong>Duplikáty</strong> - Automatická detekce duplicitních faktur</li>
+                    <li><strong>Metadata</strong> - Automatické extrahování klíčových údajů</li>
+                </ul>
+
+                <div class="info-box">
+                    <h4>📋 Co systém automaticky rozpozná</h4>
+                    <ul>
+                        <li>✓ Číslo faktury a variabilní symbol</li>
+                        <li>✓ Název a IČO dodavatele</li>
+                        <li>✓ Celkovou částku včetně DPH</li>
+                        <li>✓ Datum vystavení a splatnosti</li>
+                        <li>✓ Bankovní účet pro platbu</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- TIPY A TRIKY -->
+            <div class="section" id="tips-tricks">
+                <h2><span class="icon">💡</span>Tipy a triky</h2>
+                <p>
+                    Kolekce užitečných tipů a postupů, které vám pomůžou pracovat s modulem faktur 
+                    ještě efektivněji a s menším rizikem chyb.
+                </p>
+
+                <h3>🚀 Zkratky pro rychlejší práci</h3>
+                <div class="tip-box">
+                    <strong>Nejužitečnější zkratky:</strong>
+                    <ul>
+                        <li><strong>Ctrl + N</strong> - Nová faktura</li>
+                        <li><strong>Ctrl + S</strong> - Uložit změny</li>
+                        <li><strong>Ctrl + P</strong> - Tisk aktuální faktury</li>
+                        <li><strong>F5</strong> - Obnovit seznam faktur</li>
+                        <li><strong>Ctrl + E</strong> - Export aktuálního filtru</li>
+                    </ul>
+                </div>
+
+                <h3>🔍 Pokročilé vyhledávání</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Operátor</th>
+                            <th>Příklad</th>
+                            <th>Výsledek</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>*</strong></td>
+                            <td>ABC*</td>
+                            <td>Všichni dodavatelé začínající "ABC"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>?</strong></td>
+                            <td>2025/0?1</td>
+                            <td>Faktury 2025/001, 2025/011, 2025/021...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>></strong></td>
+                            <td>>100000</td>
+                            <td>Faktury nad 100 000 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong><</strong></td>
+                            <td><50000</td>
+                            <td>Faktury pod 50 000 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>""</strong></td>
+                            <td>"IT služby"</td>
+                            <td>Přesná fráze v poznámce nebo popisu</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>⚠️ Časté chyby a jak se jim vyhnout</h3>
+                <div class="warning-box">
+                    <h4>Nejčastější problémy:</h4>
+                    <ul>
+                        <li><strong>Duplicitní evidence</strong> - Vždy zkontrolujte, zda faktura již není v systému</li>
+                        <li><strong>Špatné propojení</strong> - Ověřte si dodavatele a částku před propojením s objednávkou</li>
+                        <li><strong>Chybné DPH</strong> - Dbejte na správnou sazbu DPH podle typu služby/zboží</li>
+                        <li><strong>Špatné středisko</strong> - Používejte správné účetní kódy podle typu nákupu</li>
+                    </ul>
+                </div>
+
+                <h3>📈 Optimalizace výkonu</h3>
+                <ul class="feature-list">
+                    <li><strong>Používejte filtry</strong> - Nezatěžujte systém načítáním všech faktur najednou</li>
+                    <li><strong>Archivujte staré faktury</strong> - Pravidelně přesouvejte zaplacené faktury do archivu</li>
+                    <li><strong>Optimalizujte přílohy</strong> - Komprimujte velké PDF soubory před nahráním</li>
+                    <li><strong>Indexy</strong> - Využívajte vyhledávání podle indexovaných polí (číslo, dodavatel)</li>
+                </ul>
+
+                <h3>🎯 Nejlepší praktiky</h3>
+                <div class="success-box">
+                    <h4>Doporučené postupy:</h4>
+                    <ol>
+                        <li><strong>Pravidelná kontrola</strong> - Denně kontrolujte nové faktury</li>
+                        <li><strong>Batch zpracování</strong> - Zpracovávejte faktury ve větších dávkách</li>
+                        <li><strong>Standardizace</strong> - Používejte jednotné konvence pro pojmenování</li>
+                        <li><strong>Backup</strong> - Pravidelně zálohujte důležitá data</li>
+                        <li><strong>Školení</strong> - Zajistěte školení všech uživatelů systému</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- NAVIGACE -->
+            <div class="navigation">
+                <a href="#uvod" class="nav-button">🔝 Zpět na začátek</a>
+                <a href="mailto:podpora@zzs.cz" class="nav-button">📧 Podpora</a>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p><strong>Verze manuálu:</strong> 1.0 | <strong>Datum vydání:</strong> 30. prosince 2025 | <strong>Platnost pro verzi aplikace:</strong> EEO 3.x</p>
+            <p style="margin-top: 10px;">© 2025 EEO System - Elektronická evidence objednávek | ZZS České republiky</p>
+        </div>
+    </div>
+
+    <script>
+        // Smooth scrolling pro odkazy
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Zvýraznění aktivní sekce při scrollování
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('.section');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 100;
+                if (window.pageYOffset >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Lazy loading obrázků pro lepší výkon
+        if ('IntersectionObserver' in window) {
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        img.src = img.dataset.src || img.src;
+                        img.classList.remove('lazy');
+                        observer.unobserve(img);
+                    }
+                });
+            });
+
+            document.querySelectorAll('img').forEach(img => {
+                imageObserver.observe(img);
+            });
+        }
+    </script>
+</body>
+</html>

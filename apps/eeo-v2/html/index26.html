@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Přechod na nový EEO systém | ZZS SčK</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #1f2937;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            padding: 60px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: moveBackground 20s linear infinite;
+        }
+        
+        @keyframes moveBackground {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header h1 {
+            color: #ffffff;
+            font-size: 42px;
+            font-weight: 800;
+            margin-bottom: 15px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header .emoji {
+            font-size: 60px;
+            display: block;
+            margin-bottom: 20px;
+            animation: bounce 2s ease-in-out infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .header p {
+            color: #e0f2fe;
+            font-size: 20px;
+            font-weight: 500;
+        }
+        
+        .content {
+            padding: 50px 40px;
+        }
+        
+        .info-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 3px solid #f59e0b;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+        }
+        
+        .info-box h2 {
+            color: #92400e;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .info-box .icon {
+            font-size: 32px;
+        }
+        
+        .timeline {
+            display: grid;
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .timeline-item {
+            background: #f9fafb;
+            border-left: 6px solid #3b82f6;
+            border-radius: 8px;
+            padding: 25px;
+            transition: all 0.3s ease;
+        }
+        
+        .timeline-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+        
+        .timeline-item.critical {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+        
+        .timeline-item.success {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+        
+        .timeline-item h3 {
+            color: #1f2937;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .timeline-item .date {
+            display: inline-block;
+            background: #3b82f6;
+            color: #ffffff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        
+        .timeline-item.critical .date {
+            background: #ef4444;
+        }
+        
+        .timeline-item.success .date {
+            background: #10b981;
+        }
+        
+        .timeline-item p {
+            color: #4b5563;
+            font-size: 16px;
+            line-height: 1.7;
+        }
+        
+        .url-box {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 30px 0;
+        }
+        
+        .url-box h4 {
+            color: #1e40af;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .url-box a {
+            display: inline-block;
+            color: #2563eb;
+            font-size: 20px;
+            font-weight: 700;
+            text-decoration: none;
+            word-break: break-all;
+            transition: color 0.3s ease;
+        }
+        
+        .url-box a:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
+        }
+        
+        .url-box.old {
+            background: #fee;
+            border-color: #ef4444;
+        }
+        
+        .url-box.old h4 {
+            color: #991b1b;
+        }
+        
+        .url-box.old a {
+            color: #dc2626;
+        }
+        
+        .url-box.old a:hover {
+            color: #b91c1c;
+        }
+        
+        .features {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+        }
+        
+        .features h3 {
+            color: #065f46;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .features ul {
+            list-style: none;
+        }
+        
+        .features li {
+            color: #047857;
+            font-size: 16px;
+            line-height: 1.8;
+            margin-bottom: 12px;
+            padding-left: 35px;
+            position: relative;
+        }
+        
+        .features li::before {
+            content: '✅';
+            position: absolute;
+            left: 0;
+            font-size: 20px;
+        }
+        
+        .cta-box {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin: 40px 0;
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+        }
+        
+        .cta-box h3 {
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: #ffffff;
+            color: #059669;
+            padding: 16px 40px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+            background: #f0fdf4;
+        }
+        
+        .contact-section {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+        }
+        
+        .contact-section h3 {
+            color: #1f2937;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .contact-grid {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .contact-grid-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .contact-grid-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .contact-card {
+            background: #ffffff;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .contact-card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+        
+        .contact-card h4 {
+            color: #1f2937;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .contact-card .role {
+            color: #6b7280;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .contact-info a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+        
+        .contact-info a:hover {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+        
+        .newyear-section {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin: 40px 0;
+            border: 3px solid #f59e0b;
+        }
+        
+        .newyear-section .sparkles {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 15px;
+            animation: sparkle 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes sparkle {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(5deg); }
+        }
+        
+        .newyear-section h3 {
+            color: #92400e;
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 15px;
+        }
+        
+        .newyear-section p {
+            color: #78350f;
+            font-size: 18px;
+            line-height: 1.7;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .footer {
+            background: #1f2937;
+            padding: 30px 40px;
+            text-align: center;
+            color: #9ca3af;
+        }
+        
+        .footer p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        
+        .footer .logo {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                border-radius: 0;
+            }
+            
+            .header {
+                padding: 40px 20px;
+            }
+            
+            .header h1 {
+                font-size: 28px;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+            
+            .timeline-item h3 {
+                font-size: 18px;
+            }
+            
+            .url-box a {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content" style="display: flex; align-items: center; gap: 20px; justify-content: center;">
+                <img src="logo_zzs_main.png" alt="ZZS Logo" style="width: 80px; height: 80px;">
+                <div>
+                    <h1>Přechod na nový EEO systém</h1>
+                    <p>Moderní, rychlejší a intuitivnější platforma pro správu objednávek</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="info-box">
+                <h2>
+                    <span class="icon">⚠️</span>
+                    Důležité oznámení o změně
+                </h2>
+                <p style="font-size: 17px; line-height: 1.8; color: #78350f;">
+                    S účinností od <strong>5. ledna 2026</strong> přecházíme na kompletně nový systém EEO v2. 
+                    Stávající verze bude ukončena <strong>31. prosince 2025</strong>. Dokončení objednávek 
+                    v původní verzi bude probíhat ve spolupráci s oddělením účetnictví a rozpočtu.
+                </p>
+            </div>
+            
+            <h2 style="font-size: 28px; margin-bottom: 25px; color: #1f2937; font-weight: 800;">
+                📅 Časová osa přechodu
+            </h2>
+            
+            <div class="timeline">
+                <div class="timeline-item critical">
+                    <span class="date">31. prosince 2025</span>
+                    <h3>
+                        <span>🛑</span>
+                        Ukončení provozu staré verze
+                    </h3>
+                    <p>
+                        Stávající systém EEO na adrese <strong>https://eeo.zachranka.cz</strong> 
+                        bude definitivně ukončen. Od tohoto data již pro většinu uživatelů nebude možné 
+                        se přihlásit ani pracovat se starým systémem.
+                    </p>
+                    <p style="margin-top: 12px; font-weight: 600;">
+                        ⚠️ Na této adrese zůstane pouze informační stránka o přechodu
+                    </p>
+                </div>
+                
+                <div class="timeline-item success">
+                    <span class="date">5. ledna 2026</span>
+                    <h3>
+                        <span>✨</span>
+                        Spuštění nové verze EEO v2
+                    </h3>
+                    <p>
+                        Nový systém EEO v2 bude plně zprovozněn a připraven k používání. 
+                        Všichni uživatelé budou moci začít pracovat v nové platformě 
+                        s kompletně migrovanými daty a novými funkcionalitami.
+                    </p>
+                </div>
+            </div>
+            
+            <div class="cta-box">
+                <h3>✅ Přihlášení do nové verze EEO v2 (od 5.1.2026)</h3>
+                <p style="color: #ffffff; font-size: 17px; margin-bottom: 10px; opacity: 0.95;">
+                    <strong>Vaše heslo zůstává stejné.</strong>
+                </p>
+                <p style="color: #ffffff; font-size: 17px; margin-bottom: 25px; opacity: 0.95;">
+                    <strong>Uživatelské jméno:</strong> bude ve formátu <strong>u0xxxx</strong>, 
+                    kde <strong>xxxx</strong> je Vaše osobní číslo. Stačí pouze použít novou adresu - 
+                    <strong>https://erdms.zachranka.cz/eeo-v2</strong>
+                </p>
+                <a href="https://erdms.zachranka.cz/eeo-v2" class="cta-button">
+                    🔵 Přejít do nového EEO v2
+                </a>
+            </div>
+            
+            <div class="features">
+                <h3>
+                    <span>🎯</span>
+                    Co přináší nová verze?
+                </h3>
+                <ul>
+                    <li><strong>Moderní uživatelské rozhraní</strong> – intuitivní ovládání a přehledné zobrazení</li>
+                    <li><strong>Vyšší výkon a rychlost</strong> – optimalizovaná databáze a rychlejší načítání</li>
+                    <li><strong>Rozšíření funkcionalit</strong> – modul objednávek, modul faktur, pokladní kniha, generování dokumentů, správa přehledu čerpání smluv a limitovaných příslibů</li>
+                    <li><strong>Workflow</strong> – nastavení procesu schvalování objednávek a kontrola faktur, a to vše v souladu s finanční kontrolou</li>
+                    <li><strong>Notifikace</strong> – systémové i e-mailové notifikace v rámci workflow</li>
+                    <li><strong>Mobilní varianta aplikace</strong> – v roce 2026 bude postupně nabízena i mobilní verze systému</li>
+                    <li><strong>Role a oprávnění</strong> – jasně stanovené přístupy a oprávnění</li>
+                    <li><strong>Rozšířená bezpečnost</strong> – moderní autentizace a oprávnění uživatelů</li>
+                    <li><strong>Integrace se spisovnou</strong> – přímé napojení na podatelnu</li>
+                    <li><strong>Reporting a statistiky</strong> – systém nabízí možnost sledování nákladů v rámci úseků, středisek, smluv, limitovaných příslibů, ale i jednotlivců</li>
+                </ul>
+            </div>
+            
+            <div class="contact-section">
+                <h3>
+                    <span>📞</span>
+                    Kontakty a podpora
+                </h3>
+                <div class="contact-grid">
+                    <div class="contact-card">
+                        <h4>IT hotline – nonstop</h4>
+                        <div class="role">Technická podpora 24/7</div>
+                        <div class="contact-info">
+                            <a href="tel:731137100">📞 731 137 100</a>
+                            <a href="mailto:helpdesk@zachranka.cz">📧 helpdesk@zachranka.cz</a>
+                        </div>
+                    </div>
+                    
+                    <div class="contact-grid-row">
+                        <div class="contact-card">
+                            <h4>Robert Holovský</h4>
+                            <div class="role">IT a programátor</div>
+                            <div class="contact-info">
+                                <a href="tel:731137077">📞 731 137 077</a>
+                                <a href="mailto:robert.holovsky@zachranka.cz">📧 robert.holovsky@zachranka.cz</a>
+                            </div>
+                        </div>
+                        
+                        <div class="contact-card">
+                            <h4>Tereza Bezoušková</h4>
+                            <div class="role">Ekonomie</div>
+                            <div class="contact-info">
+                                <a href="tel:734673568">📞 734 673 568</a>
+                                <a href="mailto:tereza.bezouskova@zachranka.cz">📧 tereza.bezouskova@zachranka.cz</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="newyear-section">
+                <span class="sparkles">✨🎉✨</span>
+                <h3>Šťastný a úspěšný nový rok 2026!</h3>
+                <p>
+                    Děkujeme za Vaši spolupráci v roce 2025 a těšíme se na další rozvoj 
+                    našeho systému spolu s Vámi. Přejeme Vám hodně zdraví, osobní 
+                    i profesní úspěchy a mnoho pozitivních okamžiků v nastávajícím roce!
+                </p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <div class="logo">🚑</div>
+            <p><strong>Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</strong></p>
+            <p>EN a IT oddělení – EEO systém správy objednávek</p>
+            <p style="margin-top: 15px; opacity: 0.7;">© 2026 ZZS SčK</p>
+        </div>
+    </div>
+</body>
+</html>

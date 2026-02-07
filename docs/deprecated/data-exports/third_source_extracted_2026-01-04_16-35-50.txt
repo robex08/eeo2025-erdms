@@ -1,0 +1,29 @@
+Prijmeni	Jmeno	Titul	Mobil
+Rusý	Pavel	MUDr.	
+Nováková	Monika	Bc.	
+Tlustý	Pavel	Bc.	
+Sedláček	Jan	MUDr.	
+Dvořák	Vít	Mgr.	
+Kachlířová	Štěpánka	Bc.	
+Čižmírik	Ján	"Mgr. Bc. MPH"	
+Pávková	Kateřina	Mgr.	
+Poláčková	Lucie	Mgr.	
+Balousová	Tereza	"Ing. MBA"	
+Bezoušková	Tereza	"Ing. MBA"	
+Steklá	Michaela	Ing.	
+Fajka	Jindřich	Ing.	
+Grossmannová	Renata	Ing.	
+Černohorský	Jan	Ing.	
+Jonášová	Hana	Bc.	
+Beranová	Klára	MUDr.	
+Rechová	Alena	MUDr.	
+Klik	Leoš	MUDr.	
+Dizon	"Jose Mauricio"	MUDr.	
+Machovský	Jaroslav	MUDr.	
+Pěnička	Petr	MUDr.	
+Maloch	Marek	MUDr.	
+Poslíšil	Jiří	MUDr.	
+Bednářová	Markéta	MUDr.	
+Začalová	Barbora	MUDr.	
+Kolář	Ivo	MUDr.	
+Sosnová	Eva	MUDr.	

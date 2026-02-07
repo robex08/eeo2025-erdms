@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Invoice xmlns="http://isdoc.cz/namespace/2013" version="6.0.1">
+  <DocumentType>1</DocumentType>
+  <ID>250102499</ID>
+  <UUID>FACE9544-99C3-4E06-819A-FD897AA04F5B</UUID>
+  <IssuingSystem>Ekonomický a informační systém POHODA</IssuingSystem>
+  <IssueDate>2025-12-19</IssueDate>
+  <TaxPointDate>2025-12-18</TaxPointDate>
+  <VATApplicable>true</VATApplicable>
+  <ElectronicPossibilityAgreementReference/>
+  <Note>Za odtažení vozu VW Transportér, RZ: 4SF0520 z místa nakládky - Benešov do místa složení - Kuří Vám účtujeme:</Note>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <CurrRate>1</CurrRate>
+  <RefCurrRate>1</RefCurrRate>
+  <AccountingSupplierParty>
+    <Party>
+      <PartyIdentification>
+        <ID>28489969</ID>
+      </PartyIdentification>
+      <PartyName>
+        <Name>AUTO PRAŽÁK Assistance s.r.o.</Name>
+      </PartyName>
+      <PostalAddress>
+        <StreetName>Jeníkov</StreetName>
+        <BuildingNumber>10</BuildingNumber>
+        <CityName>Čechtice</CityName>
+        <PostalZone>257 65</PostalZone>
+        <Country>
+          <IdentificationCode/>
+          <Name/>
+        </Country>
+      </PostalAddress>
+      <PartyTaxScheme>
+        <CompanyID>CZ28489969</CompanyID>
+        <TaxScheme>VAT</TaxScheme>
+      </PartyTaxScheme>
+      <RegisterIdentification>
+        <Preformatted>Obchodní firma je zapsána v obchodním rejstříku vedeném Městkým soudem v Praze v oddílu C, vložka 145380</Preformatted>
+      </RegisterIdentification>
+      <Contact>
+        <Name>Pražáková Magdalena</Name>
+        <ElectronicMail>info@autoprazak.cz</ElectronicMail>
+      </Contact>
+    </Party>
+  </AccountingSupplierParty>
+  <AccountingCustomerParty>
+    <Party>
+      <PartyIdentification>
+        <ID>75030926</ID>
+      </PartyIdentification>
+      <PartyName>
+        <Name>Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</Name>
+      </PartyName>
+      <PostalAddress>
+        <StreetName>Vančurova 1544</StreetName>
+        <BuildingNumber/>
+        <CityName>Kladno</CityName>
+        <PostalZone>272 01</PostalZone>
+        <Country>
+          <IdentificationCode/>
+          <Name/>
+        </Country>
+      </PostalAddress>
+      <PartyTaxScheme>
+        <CompanyID>CZ75030926</CompanyID>
+        <TaxScheme>VAT</TaxScheme>
+      </PartyTaxScheme>
+      <Contact>
+        <Telephone>312256601 - Miroslav Šalda</Telephone>
+        <ElectronicMail>vedoucidopravy@zachranka.cz;thp.autodilna@zachranka.cz;podatelna@zachranka.cz;faktury@zachranka.cz</ElectronicMail>
+      </Contact>
+    </Party>
+  </AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine>
+      <ID>44639482-BBAA-4427-B410-C20F74FF5B40</ID>
+      <InvoicedQuantity unitCode="km">88</InvoicedQuantity>
+      <LineExtensionAmount>2464</LineExtensionAmount>
+      <LineExtensionAmountTaxInclusive>2981.44</LineExtensionAmountTaxInclusive>
+      <LineExtensionTaxAmount>517.44</LineExtensionTaxAmount>
+      <UnitPrice>28</UnitPrice>
+      <UnitPriceTaxInclusive>33.88</UnitPriceTaxInclusive>
+      <ClassifiedTaxCategory>
+        <Percent>21</Percent>
+        <VATCalculationMethod>0</VATCalculationMethod>
+        <VATApplicable>true</VATApplicable>
+      </ClassifiedTaxCategory>
+      <Item>
+        <Description>Odtahová služba</Description>
+        <SellersItemIdentification>
+          <ID>01</ID>
+        </SellersItemIdentification>
+      </Item>
+    </InvoiceLine>
+    <InvoiceLine>
+      <ID>3537BA7F-F1BF-4805-97C1-2840F5E29185</ID>
+      <InvoicedQuantity unitCode="ks">1</InvoicedQuantity>
+      <LineExtensionAmount>500</LineExtensionAmount>
+      <LineExtensionAmountTaxInclusive>605</LineExtensionAmountTaxInclusive>
+      <LineExtensionTaxAmount>105</LineExtensionTaxAmount>
+      <UnitPrice>500</UnitPrice>
+      <UnitPriceTaxInclusive>605</UnitPriceTaxInclusive>
+      <ClassifiedTaxCategory>
+        <Percent>21</Percent>
+        <VATCalculationMethod>0</VATCalculationMethod>
+        <VATApplicable>true</VATApplicable>
+      </ClassifiedTaxCategory>
+      <Item>
+        <Description>Nakládání a skládání vozu, manipulace</Description>
+        <SellersItemIdentification>
+          <ID>02</ID>
+        </SellersItemIdentification>
+      </Item>
+    </InvoiceLine>
+  </InvoiceLines>
+  <TaxTotal>
+    <TaxSubTotal>
+      <TaxableAmount>2964</TaxableAmount>
+      <TaxAmount>622.44</TaxAmount>
+      <TaxInclusiveAmount>3586.44</TaxInclusiveAmount>
+      <AlreadyClaimedTaxableAmount>0</AlreadyClaimedTaxableAmount>
+      <AlreadyClaimedTaxAmount>0</AlreadyClaimedTaxAmount>
+      <AlreadyClaimedTaxInclusiveAmount>0</AlreadyClaimedTaxInclusiveAmount>
+      <DifferenceTaxableAmount>2964</DifferenceTaxableAmount>
+      <DifferenceTaxAmount>622.44</DifferenceTaxAmount>
+      <DifferenceTaxInclusiveAmount>3586.44</DifferenceTaxInclusiveAmount>
+      <TaxCategory>
+        <Percent>21</Percent>
+        <VATApplicable>true</VATApplicable>
+        <LocalReverseChargeFlag>false</LocalReverseChargeFlag>
+      </TaxCategory>
+    </TaxSubTotal>
+    <TaxAmount>622.44</TaxAmount>
+  </TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount>2964</TaxExclusiveAmount>
+    <TaxInclusiveAmount>3586.44</TaxInclusiveAmount>
+    <AlreadyClaimedTaxExclusiveAmount>0</AlreadyClaimedTaxExclusiveAmount>
+    <AlreadyClaimedTaxInclusiveAmount>0</AlreadyClaimedTaxInclusiveAmount>
+    <DifferenceTaxExclusiveAmount>2964</DifferenceTaxExclusiveAmount>
+    <DifferenceTaxInclusiveAmount>3586.44</DifferenceTaxInclusiveAmount>
+    <PayableRoundingAmount>0</PayableRoundingAmount>
+    <PaidDepositsAmount>0</PaidDepositsAmount>
+    <PayableAmount>3586.44</PayableAmount>
+  </LegalMonetaryTotal>
+  <PaymentMeans>
+    <Payment>
+      <PaidAmount>3586.44</PaidAmount>
+      <PaymentMeansCode>42</PaymentMeansCode>
+      <Details>
+        <PaymentDueDate>2026-01-18</PaymentDueDate>
+        <ID>533098389</ID>
+        <BankCode>0800</BankCode>
+        <Name>Česká spořitelna</Name>
+        <IBAN>CZ2508000000000533098389</IBAN>
+        <BIC>GIBACZPX</BIC>
+        <VariableSymbol>250102499</VariableSymbol>
+        <ConstantSymbol>0308</ConstantSymbol>
+      </Details>
+    </Payment>
+  </PaymentMeans>
+</Invoice>

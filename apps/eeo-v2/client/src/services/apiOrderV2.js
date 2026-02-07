@@ -20,7 +20,7 @@ import axios from 'axios';
 
 // Axios instance pro Order V2 API
 const apiOrderV2 = axios.create({
-  baseURL: process.env.REACT_APP_API2_BASE_URL,
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -29,7 +29,10 @@ apiOrderV2.interceptors.response.use(
   (response) => response,
   (error) => {
     // Authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 🔥 DŮLEŽITÉ: 403 Forbidden NENÍ auth error - je to permission error
+    // 401 Unauthorized = token vypršel nebo není validní → ODHLÁSIT
+    // 403 Forbidden = uživatel nemá právo k resource → NEODHLAŠOVAT!
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -391,25 +394,18 @@ function validateAPIResponse(response, operation) {
  * console.log(order.max_cena_s_dph); // "25000.00"
  * console.log(order._enriched.objednatel); // User data
  */
-export async function getOrderV2(orderId, token, username, enriched = true) {
+export async function getOrderV2(orderId, token, username, enriched = true, archivovano = 0) {
   try {
     // Use /enriched endpoint for user data, items, invoices
     const endpoint = enriched
       ? `/order-v2/${orderId}/enriched`
       : `/order-v2/${orderId}`;
 
-    // 🔍 DEBUG: Celý URL endpoint
-    // const fullUrl = `${process.env.REACT_APP_API2_BASE_URL}${endpoint}`;
-    // console.log('🔍 VOLÁM ENDPOINT:', fullUrl);
-    // console.log('🔍 PAYLOAD:', { token: '***', username, archivovano: 0, enriched });
-
     const response = await apiOrderV2.post(endpoint, {
       token,
       username,
-      archivovano: 0
+      archivovano: archivovano // ✅ Použití parametru místo hardcoded 0
     });
-
-    // 🔍🔍🔍 DEBUG: RAW RESPONSE Z BACKENDU - KOMPLETNÍ DATA 🔍🔍🔍
 
     const result = validateAPIResponse(response, 'getOrderV2');
 
@@ -623,7 +619,16 @@ export async function updateOrderV2(orderId, orderData, token, username) {
       if (errorData.error_code === 'VALIDATION_ERROR') {
 
         const validationMsg = errorData.validation_errors?.join('\n• ') || 'Neznámá validační chyba';
-        throw new Error(`Validační chyba:\n• ${validationMsg}`);
+        const err = new Error(`Validační chyba:\n• ${validationMsg}`);
+        
+        // ✅ Připojit pole errors pro strukturované zobrazení v toast
+        if (errorData.errors && Array.isArray(errorData.errors)) {
+          err.validationErrors = errorData.errors;
+        } else if (errorData.validation_errors && Array.isArray(errorData.validation_errors)) {
+          err.validationErrors = errorData.validation_errors;
+        }
+        
+        throw err;
       }
 
       // TRANSFORM_ERROR
@@ -657,6 +662,7 @@ export async function updateOrderV2(orderId, orderData, token, username) {
  * @param {number} orderId - ID objednávky
  * @param {string} token - Auth token
  * @param {string} username - Username
+ * @param {boolean} [hardDelete=false] - Pokud true, provede hard delete (nenávratné)
  * @returns {Promise<Object>} Result
  */
 export async function deleteOrderV2(orderId, token, username, hardDelete = false) {
@@ -669,6 +675,43 @@ export async function deleteOrderV2(orderId, token, username, hardDelete = false
     });
 
     const result = validateAPIResponse(response, 'deleteOrderV2');
+
+    return result;
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * RESTORE Order (obnovit neaktivní objednávku)
+ * 
+ * ⚠️ Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
+ * 
+ * @param {number} orderId - ID objednávky k obnovení
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Result
+ * 
+ * @example
+ * await restoreOrderV2(123, token, username);
+ */
+export async function restoreOrderV2(orderId, token, username) {
+  if (!token || !username) {
+    throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
+  }
+
+  if (!orderId) {
+    throw new Error('Chybí ID objednávky.');
+  }
+
+  try {
+    const response = await apiOrderV2.post(`/order-v2/${orderId}/restore`, {
+      token,
+      username
+    });
+
+    const result = validateAPIResponse(response, 'restoreOrderV2');
 
     return result;
 
@@ -696,7 +739,6 @@ export async function deleteOrderV2(orderId, token, username, hardDelete = false
  */
 export async function listOrdersV2(filters = {}, token, username, returnFullResponse = false, enriched = true) {
   try {
-    // 🚀 VŽDY používej enriched endpoint pro kompletní data
     const endpoint = '/order-v2/list-enriched';
 
     const requestPayload = {
@@ -708,9 +750,11 @@ export async function listOrdersV2(filters = {}, token, username, returnFullResp
     const response = await apiOrderV2.post(endpoint, requestPayload);
 
     const result = validateAPIResponse(response, 'listOrdersV2');
-    const orders = result.data || [];
+    
+    // Ensure data is always an array
+    const orders = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
 
-    // If returnFullResponse is true, return the entire response (for debugging/testing)
+    // Return full response if requested (for debugging/testing)
     if (returnFullResponse) {
       return result;
     }
@@ -1283,6 +1327,7 @@ export default {
   createOrderV2,
   updateOrderV2,
   deleteOrderV2,
+  restoreOrderV2,
   listOrdersV2,
   getNextOrderNumberV2,
   checkOrderNumberV2,
@@ -1341,7 +1386,8 @@ export async function getOrderTimestampV2(orderId, token, username) {
   } catch (err) {
 
     // Rozpoznat auth error
-    if (err.response?.status === 401 || err.response?.status === 403) {
+    // 🔥 DŮLEŽITÉ: 403 Forbidden není důvod k odhlášení
+    if (err.response?.status === 401) {
       throw new Error('Unauthorized - please login again');
     }
 
@@ -1463,12 +1509,15 @@ export async function downloadOrderAttachment(orderId, attachmentId, username, t
   } catch (err) {
     // Blob error response - parsuj JSON a extrahuj message
     if (err.response?.data instanceof Blob) {
-      const text = await err.response.data.text();
       try {
+        const text = await err.response.data.text();
         const data = JSON.parse(text);
-        throw new Error(data.message || data.error || data.err || text);
-      } catch (e) {
-        throw new Error(text || 'Nepodařilo se stáhnout přílohu');
+        // ✅ Extrahuj pouze message pole - JSON.parse už automaticky dekóduje Unicode
+        const errorMessage = data.message || data.error || data.err || 'Nepodařilo se stáhnout přílohu';
+        throw new Error(errorMessage);
+      } catch (parseError) {
+        // Fallback pokud selže parsing
+        throw new Error('Nepodařilo se stáhnout přílohu');
       }
     }
     throw new Error(normalizeError(err));
@@ -1865,5 +1914,203 @@ export async function getLPOptionsForItems(lpIds = [], rok = null, username, tok
   } catch (err) {
     const errorMsg = normalizeError(err);
     throw new Error(errorMsg);
+  }
+}
+
+// ============================================================================
+// 📚 DICTIONARY/REFERENCE DATA
+// ============================================================================
+
+/**
+ * Get attachment types (typy příloh)
+ */
+export async function getTypyPrilohV2({ token, username, aktivni = 1 }) {
+  try {
+    const response = await apiOrderV2.get('/order-v2/typy-priloh', {
+      params: { 
+        aktivni,
+        token,
+        username
+      }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data || [];
+    }
+    throw new Error('Invalid response from typy-priloh endpoint');
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
+/**
+ * Get invoice types (typy faktur)
+ */
+export async function getTypyFakturV2({ token, username, aktivni = 1 }) {
+  try {
+    const response = await apiOrderV2.get('/order-v2/typy-faktur', {
+      params: { 
+        aktivni,
+        token,
+        username
+      }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data || [];
+    }
+    throw new Error('Invalid response from typy-faktur endpoint');
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
+// ============================================================================
+// 🔧 UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Generate unique GUID for attachments
+ */
+export function generateAttachmentGUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Generate system filename
+ */
+export function generateSystemFilename(guid = null) {
+  const timestamp = Date.now();
+  const useGuid = guid || generateAttachmentGUID();
+  return `${timestamp}_${useGuid}`;
+}
+
+/**
+ * Create attachment metadata from file
+ */
+export function createAttachmentMetadata(file) {
+  const guid = generateAttachmentGUID();
+  const systemFilename = generateSystemFilename(guid);
+  
+  return {
+    guid,
+    name: file.name,
+    original_filename: file.name,
+    systemovy_nazev: systemFilename,
+    size: file.size,
+    typ_prilohy: null,
+    description: '',
+    uploaded_at: new Date().toISOString(),
+    uploaded_by: null
+  };
+}
+
+/**
+ * Check if file type is allowed
+ */
+export function isAllowedFileType(filename) {
+  const allowedExtensions = [
+    // Dokumenty
+    'pdf', 'doc', 'docx', 'rtf', 'odt',
+    // Tabulky
+    'xls', 'xlsx', 'ods', 'csv',
+    // Prezentace
+    'ppt', 'pptx', 'odp',
+    // Text
+    'txt', 'md',
+    // Obrázky
+    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
+    // Archivy
+    'zip', 'rar', '7z', 'tar', 'gz',
+    // Emailové zprávy
+    'eml', 'msg',
+    // Data
+    'xml', 'json'
+  ];
+  
+  const extension = filename.split('.').pop()?.toLowerCase();
+  return extension && allowedExtensions.includes(extension);
+}
+
+/**
+ * Check if file size is within limit
+ */
+export function isAllowedFileSize(fileSize, maxSizeMB = 10) {
+  const maxBytes = maxSizeMB * 1024 * 1024;
+  return fileSize <= maxBytes;
+}
+
+/**
+ * Format file size for display
+ */
+export function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+/**
+ * 🔒 LOCK objednávky pro editaci
+ * @param {Object} params - Parametry
+ * @param {number} params.orderId - ID objednávky
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {boolean} params.force - Vynutit zámek (admin může odemknout a převzít)
+ * @returns {Promise<Object>} Response data
+ */
+export async function lockOrderV2({ orderId, token, username, force = false }) {
+  try {
+    const response = await apiOrderV2.post(
+      `/order-v2/${orderId}/lock`,
+      { 
+        token,
+        username,
+        force 
+      }
+    );
+
+    return response.data;
+  } catch (err) {
+    console.error('❌ Chyba při zamykání objednávky:', err);
+    
+    // Při 423 (Locked) zachovat lock_info v error objektu
+    if (err.response && err.response.status === 423 && err.response.data) {
+      const error = new Error(err.response.data.message || 'Objednávka je zamčená');
+      error.response = err.response; // Zachovat celou response pro přístup k lock_info
+      throw error;
+    }
+    
+    throw new Error(normalizeError(err));
+  }
+}
+
+/**
+ * 🔓 UNLOCK objednávky
+ * @param {Object} params - Parametry
+ * @param {number} params.orderId - ID objednávky
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @returns {Promise<Object>} Response data
+ */
+export async function unlockOrderV2({ orderId, token, username }) {
+  try {
+    const response = await apiOrderV2.post(
+      `/order-v2/${orderId}/unlock`,
+      { 
+        token,
+        username 
+      }
+    );
+
+    return response.data;
+  } catch (err) {
+    console.error('❌ Chyba při odemykání objednávky:', err);
+    throw new Error(normalizeError(err));
   }
 }

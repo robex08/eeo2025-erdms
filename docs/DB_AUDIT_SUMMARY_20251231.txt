@@ -1,0 +1,68 @@
+=============================================================================
+  DATABASE AUDIT SUMMARY - eeo2025 & eeo2025-dev
+  Datum: 31.12.2025 01:24 CET
+=============================================================================
+
+📊 VELIKOST DATABÁZÍ:
+---------------------
+  eeo2025 (PRODUCTION):  18.57 MB  (89 tabulek)
+  eeo2025-dev (DEV):     32.00 MB  (89 tabulek)  ⚠️ +72% větší!
+
+🔴 KRITICKÁ ZJIŠTĚNÍ:
+---------------------
+  ❌ 193 276 Kč nezaplacených faktur (7 ks)
+     - 3x ZAEVIDOVANA (92k)
+     - 2x VECNA_SPRAVNOST (11k)
+     - 1x V_RESENI (5k)
+     - 1x PREDANA_PO (85k)
+  
+🟡 VAROVÁNÍ:
+-----------
+  ⚠️ 12 duplicitních emailů u uživatelů
+     - robert.holovsky@zachranka.cz (4x)
+     - tereza.bezouskova@zachranka.cz (3x)
+     - + další...
+  
+  ⚠️ 65 neaktivních uživatelů (63% všech)
+  ⚠️ 29 uživatelů bez emailu (28%)
+  ⚠️ 8 legacy backup tabulek k vyčištění
+
+✅ POZITIVA:
+-----------
+  ✔ Žádné orphaned záznamy
+  ✔ Žádné duplicitní ID
+  ✔ Integrita dat výborná
+  ✔ Všichni uživatelé mají hesla
+  ✔ PHP upload limit opraven (2MB → 50MB)
+
+📦 HLAVNÍ DATA:
+--------------
+  Objednávky:    7 ks       (118 400 Kč)
+  Položky:       4 ks       (105 000 Kč)
+  Faktury:       7 ks       (193 277 Kč) ❌ nezaplaceno
+  Uživatelé:   103 ks       (38 aktivních, 65 neaktivních)
+  Smlouvy:     N/A          (vyžaduje doaudit)
+
+🎯 AKČNÍ PLÁN:
+-------------
+  PRIORITA 1 (OKAMŽITĚ):
+    1. ✅ PHP limity opraveny
+    2. ❌ Zkontrolovat nezaplacené faktury (193k)
+    3. ⚠️ Vyřešit duplicitní emaily
+
+  PRIORITA 2 (TENTO TÝDEN):
+    4. Doplnit emaily u 29 uživatelů
+    5. Deaktivovat 65 neaktivních účtů
+    6. Zjistit proč je DEV větší než PROD
+
+  PRIORITA 3 (TENTO MĚSÍC):
+    7. Vyčistit legacy tabulky
+    8. Optimalizovat DB indexy
+    9. Dokončit audit smluv
+
+📄 DETAILNÍ ZPRÁVA:
+-------------------
+  Kompletní audit report:
+  /var/www/erdms-dev/_docs/DATABASE_AUDIT_REPORT_COMPLETE_20251231.md
+
+=============================================================================

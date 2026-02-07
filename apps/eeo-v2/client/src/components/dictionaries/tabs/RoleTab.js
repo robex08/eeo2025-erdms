@@ -2110,7 +2110,6 @@ const RoleTab = () => {
     
     try {
       if (dialogMode === 'create') {
-        console.log('🟢 Volám createRole s daty:', { token: '***', username, ...formData });
         await apiv2Dictionaries.createRole({
           token,
           username,
@@ -2118,7 +2117,6 @@ const RoleTab = () => {
         });
         showToast?.('Role byla úspěšně vytvořena', { type: 'success' });
       } else {
-        console.log('🟠 Volám updateRole s daty:', { token: '***', username, id: editingItem.id, ...formData });
         await apiv2Dictionaries.updateRole({
           token,
           username,

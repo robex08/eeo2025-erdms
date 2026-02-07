@@ -1,0 +1,30 @@
+Verze formatu;1.10
+LKQ.CZ:BENESOV - faktura c.;1446001686
+Datum vystaveni;14.1.2026
+Datum splatnosti;13.2.2026
+Forma uhrady;prevodem
+Mena;Kč
+Zakaznik;Zdravotnická zachranná služba Středočeského kraje,
+Adresa sidla;Vančurova 1544, 272 01 Kladno
+Adresa pro doruceni;Máchova 400, 256 01 Benešov
+ICO;75030926        
+DIC;                
+Dodavatel;LKQ CZ BENESOV
+ICO;24787426
+DIC;CZ24787426
+Adresa;Erbenova 134, 256 01 Benešov
+Vystavil(a);kmul02
+Cislo;Kod;Nazev;Mnozstvi;MOC bez DPH/ks;VOC bez DPH/ks;Sleva (%);DPH (%);Cena/ks;Celkem s DPH;Merne mnozstvi;Merna velicina;poznámka zákazníka
+1;HE 6PU013122-101;Snímač polohy vačkové hřídele HELLA;1;1649.00;1649.00;0.00;21;1203.77;1456.56;1.00;ks;
+2;VAG 7C0121407;vyrovnávací nádobka ORIGINÁL;1;1104.00;1104.00;0.00;21;1048.80;1269.05;0.00;;
+3;VAG 7E0199848;uložení motoru ORIGINÁL;2;1266.00;1266.00;0.00;21;1202.70;2910.53;1.00;ks;
+4;VAG 7E0199849B;uložení motoru ORIGINÁL;1;3060.00;3060.00;0.00;21;2907.00;3517.47;1.00;ks;
+5;BO 0445110646;Vstřikovač (common rail) BOSCH-nový díl;4;10049.00;10049.00;0.00;21;5828.42;28209.55;1.00;ks;
+6;LM 26937 01;Uložení ramene nápravy LEMFÖRDER;2;549.00;549.00;0.00;21;351.36;850.29;1.00;ks;
+7;VAG 7E0805685A;ochranný kryt pod motor - manuál/automat ORIGINÁL;1;5519.00;5519.00;0.00;21;5519.00;6677.99;1.00;ks;
+8;VAG 7E0809961F;L přední plastové nadkolí ORIGINÁL;1;1583.00;1583.00;0.00;21;1583.00;1915.43;1.00;ks;
+9;VAG 7E0809962F;P př. plastový podběh ORIGINÁL;1;1583.00;1583.00;0.00;21;1583.00;1915.43;1.00;ks;
+Sazba DPH (%);Bez DPH;DPH;Cena s DPH
+21;40266.37;8455.93;48722.30
+Celkem;40266.37;8455.93;48722.30
+

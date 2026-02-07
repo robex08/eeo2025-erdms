@@ -1,0 +1,198 @@
+=== REPORT PÁROVÁNÍ UŽIVATELŮ ===
+Datum: 2026-01-04 16:30:03
+
+=== NALEZENÉ SHODY (52) ===
+EEO_ID	EEO_Jméno	EEO_Telefon	|	Ext_Jméno	Ext_Telefon
+37	Veronika Aulická		|	Veronika Aulická	312256622
+47	Tereza Balousová	123123123	|	Tereza Balousová	777551386
+66	Markéta Bednářová		|	Markéta Bednářová	705879143
+102	Tereza Bezoušková	737851735	|	Tereza Bezoušková	734673568
+86	Tereza Brodecká	777934462	|	Tereza Brodecká	312256613
+69	Hana Broučková	312256623	|	Hana Broučková	705828709
+29	Tomáš Čech		|	Tomáš Čech	731137065
+101	Jan Černohorský	731137	|	Jan Černohorský	705764147
+57	Ján Čižmárik	725567579	|	Ján Čižmárik	725567579
+63	Vít Dvořák	705891519	|	Vít Dvořák	705891519
+104	Jindřich Fajka	736131215	|	Jindřich Fajka	736131215
+92	Renata Grossmannová		|	Renáta Grossmannová 	705588432
+28	Jiří Hájek	731137152	|	Jiří Hájek	731137152
+24	Jakub Holeňa		|	Jakub Holeňa	731137068
+100	Robert Holovský	731137077	|	Robert Holovský	731137077
+27	Jitka Indrová	731124487	|	Jitka Indrová	731124487
+13	Dana Jirsová	607675334	|	Dana Jirsová	607675334
+52	Hana Jonášová	731137164	|	Hana Jonášová 	731137164
+43	Štěpánka Kachlířová		|	Štěpánka Kachlířová	731137062
+54	Petr Kolínský		|	Petr Kolínský	737213892
+44	Nikola Konopásková	+420123456789	|	Nikola Konopásková	735191710
+78	Zdena Kosprtová	123123123	|	Zdena Kosprtová	705762547
+74	Marie křížová		|	Marie Křížová	312256614
+53	Štěpánka Kubíčková	731137168	|	Štěpánka Kubíčková	731137168
+34	Peter Matej		|	Peter Matej	731137156
+75	Alice Menšíková	603815389	|	Alice Menšíková	603815389
+8	Patrik Merhaut		|	Patrik Merhaut	731137165
+22	Miroslava Němcová		|	Miroslava Němcová	737506897
+3	Michaela Nováková		|	Michaela Nováková	605203819
+65	Monika Nováková	605398242	|	Monika Nováková	605398242
+95	Jan Ondrák	731137137	|	Jan Ondrák	731137137
+68	Kateřina Pávková		|	Kateřina Pávková	734673490
+25	Ivana Plíšková	731137076	|	Ivana Plíšková	731137076
+76	Lucie Poláčková	605203815	|	Lucie Poláčková	605203815
+87	Michaela Procházková		|	Michaela Procházková	705764146
+64	Pavel Rusý	722952400	|	Pavel Rusý	722952400
+62	Jan Sedláček	603812244	|	Jan Sedláček	603812244
+58	Patricia Sedláčková		|	Patricia Sedláčková	605398228
+70	Martina Slezáčková	123123123	|	Martina Slezáčková	734673617
+79	Michaela Steklá	705782469	|	Michaela Steklá	705782469
+60	Pavlína Stinková		|	Pavlína Stinková	734673561
+36	Lenka Škarvadová	604206234	|	Lenka Škarvadová	317727817
+19	Soňa Štursová		|	Soňa Štursová	731137125
+106	Klára Šulgánová	776640155	|	Klára Šulgánová	703847766
+23	Iva Švehlová	731137105	|	Iva Švehlová	731137105
+33	Pavel Tlustý		|	Pavel Tlustý	731137167
+40	Marie Tůmová		|	Marie Tůmová	731137052
+98	Radka Vacinová	705591291	|	Radka Vacinová	705591291
+83	Kateřina Veselá	123123123	|	Kateřina Veselá	703847765
+90	Vojtěch Voštinka	111111111	|	Vojtěch Voštinka	705588431
+82	Karolína Wlachová	705764145	|	Karolína Wlachová	705764145
+71	Jaroslava Zahrádková Vavrochová	+420111111111	|	Jaroslava Zahrádková Vavrochová	705762547
+
+=== AKTUALIZACE TELEFONŮ (32) ===
+ID	Jméno	Starý_telefon	Nový_telefon
+37	Veronika Aulická		312256622
+47	Tereza Balousová	123123123	777551386
+66	Markéta Bednářová		705879143
+102	Tereza Bezoušková	737851735	734673568
+86	Tereza Brodecká	777934462	312256613
+69	Hana Broučková	312256623	705828709
+29	Tomáš Čech		731137065
+101	Jan Černohorský	731137	705764147
+92	Renata Grossmannová		705588432
+24	Jakub Holeňa		731137068
+43	Štěpánka Kachlířová		731137062
+54	Petr Kolínský		737213892
+44	Nikola Konopásková	+420123456789	735191710
+78	Zdena Kosprtová	123123123	705762547
+74	Marie křížová		312256614
+34	Peter Matej		731137156
+8	Patrik Merhaut		731137165
+22	Miroslava Němcová		737506897
+3	Michaela Nováková		605203819
+68	Kateřina Pávková		734673490
+87	Michaela Procházková		705764146
+58	Patricia Sedláčková		605398228
+70	Martina Slezáčková	123123123	734673617
+60	Pavlína Stinková		734673561
+36	Lenka Škarvadová	604206234	317727817
+19	Soňa Štursová		731137125
+106	Klára Šulgánová	776640155	703847766
+33	Pavel Tlustý		731137167
+40	Marie Tůmová		731137052
+83	Kateřina Veselá	123123123	703847765
+90	Vojtěch Voštinka	111111111	705588431
+71	Jaroslava Zahrádková Vavrochová	+420111111111	705762547
+
+=== JEN V EEO (45) ===
+1	RH ADMIN	731137100
+96	Robert ADMIN	731137100
+105	Tereza Bezoušková (THP)	737851735
+17	Anna Blažková Kozlíková	
+50	Anna Brožová	
+45	Hana Brožová	
+88	Ivana Bubnová	
+84	Hana Černá	
+80	Andrea Čiháková	
+94	Veronika Doksanská	
+41	Lucie Dudáková	
+31	Eva Durasová	
+35	Zuzana Ekrtová	
+6	Zuzana Frolíková	
+108	system global	
+20	Marie Hanibalová Šimáková	123123123
+56	Jiří Havel	
+18	Robert Holovský (THP Tester)	777007763
+42	Robert Holovský (vyřazení)	777007763
+7	Roman Chochola	
+103	Hana Jonášová (THP)	731137164
+107	Monika Jurová	731137100
+15	Šárka Kehlová	
+14	Jiří Knor	
+59	Zuzana Kubáňová	
+38	Hana Kubešková	
+67	Denisa Kvapilová	731137010
+11	Petr Mach	
+48	Michal Matoušek	
+99	Radek Mojžíš	731191854
+55	Jitka Pellichová	
+110	Kladno Primář	731137077
+2	Leoš Procházka	
+89	Luboš Příhoda	
+73	Pavlína Püchnerová	
+49	Jan Roth	
+21	Olga Roučková	
+16	Olina Roučková	
+77	Hana Sochůrková	723623637
+61	Jaroslav Štěpán	
+32	Jakub Vachek	
+97	Michal Witosz	
+12	Pavel Zahradníček	
+39	Barbora Zemanová	
+10	Věra Zemanová	
+
+=== JEN V EXTERNÍM ZDROJI (57) ===
+Filip Himmel		731137015
+Petr Maruška		731137106
+Michael Štěpař		73113003
+Linda Škornová	Ing.	705590909
+José Dizon	MUDr.	725712380
+Leoš Klik	MUDr.	731137113
+Ivo Kolář	MUDr.	731137019
+Jaroslav Machovský 	MUDr.	731137151
+Marek Maloch	MUDr.	731137096
+Petr Pěnička	MUDr.	604382234
+Jiří Pospíšil	MUDr.	731137123
+Alena Rechová	MUDr.	605203818
+Viktor Rybáček	MUDr.	731137111
+Barbora Začalová	MUDr.	737268795
+Karel Sybera		
+Jan Pleva		731137166
+Milan Mikula		604778867
+Marie Hanibalová-Šimáková		731137145
+Kateřina Labuťová		608133667
+Václav Barták		736131267
+Martin Jankovec		731137122
+Rudolf Kotek	Bc.	605203800
+Tomáš Kunc		705762503
+Tomáš Richter		731137162
+Jiří Novotný		605203817
+Milan Pavlič		737213891
+Jiří Pucholt		731137114
+Josef Staněk		731137148
+Tomáš Stronček		731137018
+Barbora Šimůnková	Ing.	777871155
+Jaroslav Bartoněk	Mgr.	737205961
+Jitka Chocholová	Bc.	731137112
+Ondřej Mach		731137144
+Martina Sodomová 		731137041
+Radka Stejskalová	Mgr.	731137063
+Adam Svoboda	Bc.	731137131
+Iveta Nováková	Mgr.	731137002
+Jiří Tymeš	Bc.	731137154
+Miroslav Věříš		731137133
+Alena Kršková	Ing.	705879144
+Eva Horáková		705764148
+Tomáš Karas 		731137084
+Eva Sosnová	MUDr.	604779297
+Jiří Staš	Bc.	604779335
+Michael Witosz		604778276
+Leona Lungerová		731137089
+Martina Stolovská		605398234
+David Kloták		604494730
+Markéta Matoušová	Bc.	605398218
+Zoltán Kiláczko		312256627
+Zdena Ciplová		312256629
+Denisa Kvapilová Filipová	Bc.	731137010
+Jana Kraftová		605398220
+Marek Hylebrant	Bc.	737239962
+Miroslav Wolf	Bc.	731137146
+Martina Nešporová		327512420
+Štefan Šulgán		731137008

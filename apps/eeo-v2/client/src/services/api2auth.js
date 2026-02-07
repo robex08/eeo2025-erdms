@@ -3,37 +3,108 @@ import axios from 'axios';
 import MD5 from 'crypto-js/md5';
 
 // Axios instance for API2
-const api2 = axios.create({
-  baseURL: process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/',
+export const api2 = axios.create({
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 'Content-Type': 'application/json' }
 });
 
-// Response interceptor to handle token expiration
+// 🔧 Separátní axios instance BEZ interceptoru pro token refresh operace
+// Musí být bez interceptoru aby se zabránilo circular dependency
+export const api2NoInterceptor = axios.create({
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
+  headers: { 'Content-Type': 'application/json' }
+});
+
+// 🕐 Grace period pro page reload - neodhlašovat okamžitě po načtení stránky
+let pageLoadTimestamp = Date.now();
+const PAGE_LOAD_GRACE_PERIOD = 10000; // 10 sekund
+
+try {
+  if (typeof window !== 'undefined') {
+    // Reset timestamp při každém page reload
+    window.addEventListener('DOMContentLoaded', () => {
+      pageLoadTimestamp = Date.now();
+    });
+  }
+} catch (e) {}
+
+// ✅ Response interceptor - logout při 401 (s ochranou během token refreshu A page reload)
 api2.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Don't show auth error toast for login endpoint - let the login form handle it
-      const isLoginRequest = error.config?.url?.includes('user/login');
+  async (error) => {
+    const originalRequest = error.config;
 
-      if (!isLoginRequest && typeof window !== 'undefined') {
+    // Pokud je to 401, MOŽNÁ uživatel musí být odhlášen
+    // ALE: Ochrana během token refreshu A během page reload (prvních 10s)
+    if (error.response?.status === 401 && !originalRequest?._logout_triggered) {
+      originalRequest._logout_triggered = true;
+      
+      // 🔐 OCHRANA 1: Pokud probíhá token refresh, počkat a zkusit znovu
+      try {
+        const isRefreshing = sessionStorage.getItem('token_refreshing') === 'true';
+        if (isRefreshing) {
+          // Počkat 600ms a zkusit request znovu s novým tokenem
+          await new Promise(resolve => setTimeout(resolve, 600));
+          
+          // Zkusit znovu načíst token a zopakovat request
+          try {
+            const { loadAuthData } = await import('../utils/authStorage.js');
+            const newToken = await loadAuthData.token();
+            if (newToken && originalRequest.data) {
+              // Aktualizovat token v requestu
+              const requestData = typeof originalRequest.data === 'string' 
+                ? JSON.parse(originalRequest.data) 
+                : originalRequest.data;
+              requestData.token = newToken;
+              originalRequest.data = JSON.stringify(requestData);
+              
+              // Zopakovat request
+              return api2.request(originalRequest);
+            }
+          } catch (retryError) {
+            console.warn('⚠️ Retry po token refreshu selhal:', retryError);
+          }
+        }
+      } catch (checkError) {
+        console.warn('⚠️ Chyba při kontrole token refresh stavu:', checkError);
+      }
+      
+      // 🔐 OCHRANA 2: Grace period po page load - NEODHLAŠUJ během prvních 10s
+      const timeSincePageLoad = Date.now() - pageLoadTimestamp;
+      if (timeSincePageLoad < PAGE_LOAD_GRACE_PERIOD) {
+        // Jsme v prvních 10s po page load - 401 může být false positive
+        // (race condition, server se ještě neprobudil, apod.)
+        // NEODHLAŠUJ - vrať chybu a nech AuthContext.checkToken to vyřešit s cached daty
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔐 401 během page load grace period - NEODHLA��UJI (cached data použita)');
+        }
+        return Promise.reject(error);
+      }
+      
+      // 🔐 OCHRANA 3: Zkontroluj lokálně token expiraci před odhlášením
+      try {
+        const { loadAuthData } = await import('../utils/authStorage.js');
+        const storedToken = await loadAuthData.token();
+        const storedUser = await loadAuthData.user();
+        
+        // Pokud máme v localStorage validní token + user, NEodhlašuj okamžitě
+        // (401 může být dočasná chyba serveru, network glitch, apod.)
+        if (storedToken && storedUser) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔐 401 ale mám validní cached auth data - NEODHLA��UJI');
+          }
+          // Vrať chybu ale NEtriggeruj logout - AuthContext.checkToken použije cached data
+          return Promise.reject(error);
+        }
+      } catch (storageError) {
+        console.warn('⚠️ Chyba při kontrole cached auth dat:', storageError);
+      }
+      
+      // Pokud jsme se dostali sem, 401 je pravděpodobně skutečný auth error
+      // Trigger authError event pro logout
+      if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
-    }
-
-    // Check for HTML response (login page instead of JSON)
-    const responseText = error.response?.data || '';
-    if (typeof responseText === 'string' && responseText.includes('<!doctype')) {
-      // Don't show auth error toast for login endpoint - let the login form handle it
-      const isLoginRequest = error.config?.url?.includes('user/login');
-
-      if (!isLoginRequest && typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.' }
         });
         window.dispatchEvent(event);
       }
@@ -42,6 +113,14 @@ api2.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// ⚠️ DEPRECATED: Starý response interceptor odstraněn
+// Nyní používáme setupAxiosInterceptors z axiosInterceptors.js
+// Který automaticky:
+// - Kontroluje expiraci tokenu před každým requestem
+// - Obnovuje token pokud je blízko expiraci
+// - Retry failed requests po refresh tokenu
+// - Graceful handling 401/403 s prodlevou před odhlášením
 
 // Simple in-memory cache for orders list (per username+params)
 // Each entry: { ts: <Date.now()>, data: [...] }
@@ -178,6 +257,18 @@ export async function loginApi2(username, password) {
     const response = await api2.post('user/login', payload, { timeout: 10000 });
     return response.data;
   } catch (err) {
+    // Kontrola na vynucenou změnu hesla
+    if (err.response && err.response.status === 403 && err.response.data?.force_password_change) {
+      // Přehoď error objekt, aby obsahoval potřebné informace pro frontend
+      const forceChangeError = new Error('FORCE_PASSWORD_CHANGE');
+      forceChangeError.forcePasswordChange = true;
+      forceChangeError.userId = err.response.data.userId;
+      forceChangeError.username = err.response.data.username;
+      forceChangeError.tempToken = err.response.data.token; // Dočasný token pro změnu hesla
+      forceChangeError.message = err.response.data.err || 'Musíte si změnit heslo';
+      throw forceChangeError;
+    }
+    
     const allowMd5 = String(process.env.REACT_APP_ALLOW_MD5_FALLBACK).toLowerCase() === 'true';
     if (allowMd5) {
       try {
@@ -186,6 +277,16 @@ export async function loginApi2(username, password) {
         const response = await api2.post('user/login', md5Payload, { timeout: 10000 });
         return response.data;
       } catch (err2) {
+        // Kontrola na vynucenou změnu hesla i pro MD5 fallback
+        if (err2.response && err2.response.status === 403 && err2.response.data?.force_password_change) {
+          const forceChangeError = new Error('FORCE_PASSWORD_CHANGE');
+          forceChangeError.forcePasswordChange = true;
+          forceChangeError.userId = err2.response.data.userId;
+          forceChangeError.username = err2.response.data.username;
+          forceChangeError.tempToken = err2.response.data.token;
+          forceChangeError.message = err2.response.data.err || 'Musíte si změnit heslo';
+          throw forceChangeError;
+        }
         throw err2;
       }
     }
@@ -334,6 +435,7 @@ export async function getUserDetailApi2(username, token, user_id) {
     titul_za: first('titul_za', 'post_title', 'postTitle') ?? null,
     telefon: first('telefon', 'phone', 'telefon_cislo') || '',
     aktivni: first('aktivni', 'active', 'is_active') ?? 1,
+    vynucena_zmena_hesla: first('vynucena_zmena_hesla', 'force_password_change', 'forcePasswordChange') ?? 0,
     dt_vytvoreni: first('dt_vytvoreni', 'created_at', 'createdAt') || '',
     dt_aktualizace: first('dt_aktualizace', 'updated_at', 'updatedAt') || '',
     nazev_pozice: poziceNazev,
@@ -472,7 +574,7 @@ export async function fetchOrderAttachmentsOld({ token, username, id }) {
 }
 
 /** Fetch all users from new API2 */
-export async function fetchAllUsers({ token, username, _cacheBust }) {
+export async function fetchAllUsers({ token, username, _cacheBust, show_inactive }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
   }
@@ -483,6 +585,16 @@ export async function fetchAllUsers({ token, username, _cacheBust }) {
     payload._t = _cacheBust;
   }
 
+  // Filter by active/inactive users (defaults to active only if not specified)
+  // show_inactive: true = vrátit všechny (aktivní i neaktivní) - NEposíláme filtr
+  // show_inactive: false = vrátit pouze aktivní - posíláme aktivni: 1
+  // show_inactive: undefined = default pouze aktivní - posíláme aktivni: 1
+  if (show_inactive === true) {
+    // Nepřidáváme filtr aktivni - backend vrátí všechny uživatele
+  } else {
+    payload.aktivni = 1; // Default: pouze aktivní uživatelé
+  }
+
   const response = await api2.post('users/list', payload);
   if (response.status !== 200) {
     throw new Error('Neočekávaný kód odpovědi při načítání seznamu uživatelů');
@@ -490,14 +602,18 @@ export async function fetchAllUsers({ token, username, _cacheBust }) {
   const data = response.data;
 
   // Normalize possible response shapes into an array of users
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.data)) return data.data;
-  if (data && Array.isArray(data.users)) return data.users;
-  if (data && data.result && Array.isArray(data.result.users)) return data.result.users;
-  const foundArr = Object.values(data || {}).find(v => Array.isArray(v));
-  if (foundArr) return foundArr;
-  // Fallback: wrap single object
-  return [data];
+  let users = [];
+  if (Array.isArray(data)) users = data;
+  else if (data && Array.isArray(data.data)) users = data.data;
+  else if (data && Array.isArray(data.users)) users = data.users;
+  else if (data && data.result && Array.isArray(data.result.users)) users = data.result.users;
+  else {
+    const foundArr = Object.values(data || {}).find(v => Array.isArray(v));
+    if (foundArr) users = foundArr;
+    else users = [data]; // Fallback: wrap single object
+  }
+
+  return users;
 }
 
 /**
@@ -734,15 +850,20 @@ export async function fetchApprovers({ token, username }) {
  */
 export async function changePasswordApi2({ token, username, oldPassword, newPassword }) {
   if (!token || !username) throw new Error('Chybí přístupový token nebo uživatelské jméno.');
-  if (!oldPassword || !newPassword) throw new Error('Chybí staré nebo nové heslo.');
+  if (!newPassword) throw new Error('Chybí nové heslo.');
+  // oldPassword je volitelné - při vynucené změně není potřeba
   try {
     // API expects camelCase field names: oldPassword, newPassword
-    const payload = { token, username, oldPassword, newPassword };
+    const payload = { token, username, oldPassword: oldPassword || '', newPassword };
     const response = await api2.post('user/change-password', payload, { timeout: 10000 });
     if (response.status !== 200) throw new Error('Neočekávaný stavový kód při změně hesla');
     const data = response.data || {};
     if (data.status === 'ok' && data.data && data.data.changed === true) {
-      return { changed: true };
+      // Vrátit i nový token, pokud ho backend poslal
+      return { 
+        changed: true,
+        token: data.data.token || null
+      };
     }
     // If server responded but not ok
     const msg = data.message || 'Změna hesla se nezdařila.';
@@ -1259,6 +1380,40 @@ export async function deleteSupplierByIco({ token, username, ico }) {
 }
 
 /**
+ * Toggle employee visibility in phonebook
+ * Endpoint: POST users/toggle-visibility
+ * Requires: PHONEBOOK_MANAGE permission
+ */
+export async function toggleEmployeeVisibility({ token, username, user_id, viditelny_v_tel_seznamu }) {
+  if (!token || !username) {
+    throw new Error('Token and username are required');
+  }
+  
+  if (!user_id) {
+    throw new Error('user_id is required');
+  }
+  
+  const visibility_value = viditelny_v_tel_seznamu;
+  if (visibility_value !== 0 && visibility_value !== 1) {
+    throw new Error('viditelny_v_tel_seznamu must be 0 or 1');
+  }
+  
+  try {
+    const payload = { token, username, user_id, viditelny_v_tel_seznamu: visibility_value };
+    const response = await api2.post('users/toggle-visibility', payload, { timeout: 10000 });
+    
+    if (response.status !== 200) {
+      throw new Error('Neočekávaný kód odpovědi ze serveru');
+    }
+    
+    return response.data;
+  } catch (err) {
+    console.error('❌ [API toggleEmployeeVisibility] CHYBA:', err);
+    throw new Error(err.response?.data?.message || err.message || 'Chyba při změně viditelnosti');
+  }
+}
+
+/**
  * Fetch employees list via API2 endpoint 'users/list'
  * Returns normalized employee contact data
  */
@@ -1308,8 +1463,12 @@ export async function fetchEmployees({ token, username }) {
         usek_zkr: emp.usek_zkr || '',
         usek_nazev: emp.usek_nazev || '',
         dt_posledni_aktivita: emp.dt_posledni_aktivita || '',
+        aktivita_metadata: emp.aktivita_metadata || null,
         // Normalize aktivni to number: 1 for active, 0 for inactive
         aktivni: emp.aktivni === 1 || emp.aktivni === '1' || emp.aktivni === true ? 1 : 0,
+        // Add phonebook visibility status
+        viditelny_v_tel_seznamu: emp.viditelny_v_tel_seznamu === 1 || emp.viditelny_v_tel_seznamu === '1' || emp.viditelny_v_tel_seznamu === true ? 1 : 0,
+        // visible_in_phonebook: DEPRECATED - používej viditelny_v_tel_seznamu
         // Full name for display and search
         full_name: [
           emp.titul_pred,
@@ -2265,7 +2424,7 @@ export function isAllowedFileExtension(filename) {
  * @param {number} [maxSizeMB=5] - Maximální povolená velikost v MB
  * @returns {boolean} True pokud je velikost v pořádku
  */
-export function isAllowedFileSize(sizeBytes, maxSizeMB = 5) {
+export function isAllowedFileSize(sizeBytes, maxSizeMB = 50) {
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
   return sizeBytes <= maxSizeBytes;
 }
@@ -2681,9 +2840,9 @@ export async function fetchLimitovanePrisliby({ token, username }) {
       // Data v response.data.data
       return response.data.data;
     } else if (response.data && Array.isArray(response.data)) {
-
       return response.data;
     } else {
+      console.warn('🚨 [fetchLimitovanePrisliby] Neočekávaná struktura dat:', response.data);
       return [];
     }
 
@@ -2691,7 +2850,6 @@ export async function fetchLimitovanePrisliby({ token, username }) {
     // 🔧 FIX: Pokud nemá uživatel oprávnění (403), vrátíme prázdné pole místo chyby
     // LP kódy se tak načtou pouze pro uživatele s oprávněním, ostatní dostanou prázdný seznam
     if (error.response?.status === 403) {
-      console.log('ℹ️ Uživatel nemá oprávnění k LP kódům - vráceno prázdné pole');
       return [];
     }
 
@@ -2717,7 +2875,7 @@ export async function fetchLPDetail({ token, username, cislo_lp }) {
   }
 
   try {
-    const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+    const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
     const endpoint = `${API_BASE_URL}limitovane-prisliby/stav`;
     
     const payload = {
@@ -2739,14 +2897,12 @@ export async function fetchLPDetail({ token, username, cislo_lp }) {
       console.error('💰 LP API Error:', { status: response.status, statusText: response.statusText, body: errorText });
       
       if (response.status === 403) {
-        console.log('ℹ️ Uživatel nemá oprávnění k detailu LP');
         return null;
       }
       if (response.status === 401) {
         throw new Error('Chyba autentizace při načítání detailu LP');
       }
       if (response.status === 404) {
-        console.log(`ℹ️ LP ${cislo_lp} nebylo nalezeno nebo nemá definovaný stav`);
         return null;
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
@@ -2827,6 +2983,7 @@ export async function createUser({
   pozice_id,
   organizace_id,
   aktivni,
+  vynucena_zmena_hesla,
   roles,
   direct_rights,
   token,
@@ -2847,6 +3004,7 @@ export async function createUser({
       pozice_id,
       organizace_id,
       aktivni,
+      vynucena_zmena_hesla,
       roles,
       direct_rights,
       token,
@@ -2883,6 +3041,7 @@ export async function updateUser({
   pozice_id,
   organizace_id,
   aktivni,
+  vynucena_zmena_hesla,
   password,
   roles,
   direct_rights,
@@ -2915,6 +3074,7 @@ export async function updateUser({
     if (pozice_id !== undefined) payload.pozice_id = pozice_id;
     if (organizace_id !== undefined) payload.organizace_id = organizace_id;
     if (aktivni !== undefined) payload.aktivni = aktivni;
+    if (vynucena_zmena_hesla !== undefined) payload.vynucena_zmena_hesla = vynucena_zmena_hesla;
     if (password) payload.password = password;
     if (roles !== undefined) payload.roles = roles;
     if (direct_rights !== undefined) payload.direct_rights = direct_rights;
@@ -2962,11 +3122,12 @@ export async function deactivateUser({ id, token, username }) {
  * Partial update uživatele (změna hesla, aktivní stav, apod.)
  * POST /users/partial_update
  */
-export async function partialUpdateUser({ id, token, username, password, aktivni }) {
+export async function partialUpdateUser({ id, token, username, password, aktivni, vynucena_zmena_hesla }) {
   try {
     const payload = { id, token, username };
     if (password !== undefined) payload.password = password;
     if (aktivni !== undefined) payload.aktivni = aktivni;
+    if (vynucena_zmena_hesla !== undefined) payload.vynucena_zmena_hesla = vynucena_zmena_hesla;
 
     const response = await api2.post('users/partial-update', payload);
 
@@ -3105,6 +3266,23 @@ export async function fetchActiveUsers({ token, username }) {
 }
 
 /**
+ * Načtení aktivních uživatelů s rozšířenými statistikami
+ * Vrací: objednavky (count), faktury (count), pokladna_zustatek
+ */
+export async function fetchActiveUsersWithStats({ token, username }) {
+  try {
+    const response = await api2.post('user/active-with-stats', {
+      username,
+      token
+    });
+    return response.data.status === 'ok' ? response.data.data : [];
+  } catch (error) {
+    console.error('[fetchActiveUsersWithStats] Error:', error);
+    return [];
+  }
+}
+
+/**
  * Update aktivity uživatele
  * Volá se při jakékoli akci uživatele (uložení, přihlášení, odhlášení)
  * 
@@ -3112,10 +3290,12 @@ export async function fetchActiveUsers({ token, username }) {
  * - Pokud je token blízko vypršení (zbývá < 2h), backend automaticky vygeneruje new_token
  * - new_token je vrácen v response a frontend ho automaticky uloží
  * - Uživatel NENÍ odhlášen, pokračuje transparentně v práci
+ * 
+ * ⚠️ POUŽÍVÁ api2NoInterceptor aby se zabránilo circular dependency při token refresh
  */
 export async function updateUserActivity({ token, username }) {
   try {
-    const response = await api2.post('user/update-activity', {
+    const response = await api2NoInterceptor.post('user/update-activity', {
       username,
       token
     });

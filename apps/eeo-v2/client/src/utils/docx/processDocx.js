@@ -96,12 +96,6 @@ async function processDocxWithFields({ file, fieldValues = {}, keepEmptyFields =
 
           // Debug výpis pouze pro první 3 pole nebo významné problémy
           if (replacedCount + skippedCount < 3 || !val) {
-            console.log(`🔍 Zpracovávám pole: "${fieldName}", hodnota: "${val || 'PRÁZDNÉ'}", dostupné varianty:`, {
-              original: !!fieldValues[fieldName],
-              uppercase: !!fieldValues[fieldName.toUpperCase()],
-              lowercase: !!fieldValues[fieldName.toLowerCase()],
-              hledaneVarianty: [fieldName, fieldName.toUpperCase(), fieldName.toLowerCase()]
-            });
           }
 
           // Rozhodnutí: nahradit nebo ponechat?
@@ -109,7 +103,6 @@ async function processDocxWithFields({ file, fieldValues = {}, keepEmptyFields =
             if (keepEmptyFields) {
               // Zachovat pole beze změny
               if (replacedCount + skippedCount < 3) {
-                console.log(`  ⏭️ Ponechávám prázdné pole: ${fieldName}`);
               }
               skippedCount++;
               i = endIdx + 1;
@@ -131,7 +124,6 @@ async function processDocxWithFields({ file, fieldValues = {}, keepEmptyFields =
           }
 
           if (replacedCount < 3 || val === "") {
-            console.log(`  ✓ Nahrazeno pole: ${fieldName} = "${val || '(prázdné)'}"`);
           }
           replacedCount++;
 
@@ -157,13 +149,6 @@ async function processDocxWithFields({ file, fieldValues = {}, keepEmptyFields =
     loadedZip.file("word/document.xml", documentXml);
     const newDocx = await loadedZip.generateAsync({ type: "blob" });
 
-    console.log(`✅ DOCX zpracován - FINÁLNÍ STATISTIKY:`, {
-      nahrazeno: replacedCount,
-      ponechano: skippedCount,
-      celkemPoli: Object.keys(fieldValues).length,
-      dostupnaData: Object.keys(fieldValues).slice(0, 10),
-      uspesnost: `${replacedCount}/${replacedCount + skippedCount} polí`
-    });
 
     return {
       xml: documentXml,

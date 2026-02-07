@@ -5,6 +5,7 @@ import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { User, Lock, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import MD5 from 'crypto-js/md5';
+import ForcePasswordChangeDialog from '../components/ForcePasswordChangeDialog';
 
 // Modern animations
 const slideInUp = keyframes`
@@ -164,6 +165,10 @@ const Input = styled.input`
   }
 `;
 
+const PasswordInput = styled(Input)`
+  padding-right: 2.5rem; /* Extra prostor pro toggle ikonu */
+`;
+
 const Button = styled.button`
   width: 100%;
   padding: 0.94rem; /* změnšeno z 1.25rem */
@@ -224,7 +229,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login, error } = useContext(AuthContext);
+  const { login, error, needsPasswordChange } = useContext(AuthContext);
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -272,7 +277,7 @@ const Login = () => {
                 <InputIcon>
                   <Lock size={20} />
                 </InputIcon>
-                <Input
+                <PasswordInput
                   type={showPassword ? "text" : "password"}
                   placeholder="Zadejte heslo"
                   value={password}
@@ -280,7 +285,6 @@ const Login = () => {
                   autoComplete="current-password"
                   required
                   disabled={loading}
-                  style={{ paddingRight: '2.5rem' }}
                 />
                 <PasswordToggle
                   type="button"
@@ -316,6 +320,7 @@ const Login = () => {
           </form>
         </CardBody>
       </Container>
+      {needsPasswordChange && <ForcePasswordChangeDialog />}
     </Wrapper>
   );
 };

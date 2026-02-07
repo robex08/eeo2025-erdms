@@ -355,10 +355,17 @@ const DeleteAssignmentDialog = ({
     setSuccessMessage('');
 
     try {
-      const result = await cashbookAPI.deleteAssignment(assignment.id);
+      // 🆕 DETEKCE: Pokud objekt má 'cislo_pokladny', je to pokladna, ne přiřazení
+      const isCashbox = Boolean(assignment.cislo_pokladny);
+      const result = isCashbox 
+        ? await cashbookAPI.deleteCashbox(assignment.id)
+        : await cashbookAPI.deleteAssignment(assignment.id);
 
       if (result.status === 'ok') {
-        setSuccessMessage('✓ Přiřazení bylo úspěšně smazáno');
+        setSuccessMessage(isCashbox 
+          ? '✓ Pokladna byla úspěšně smazána'
+          : '✓ Přiřazení bylo úspěšně smazáno'
+        );
         setIsClosing(true);
 
         // Zobrazit success stav 1.5 sekundy, pak zavřít
@@ -367,11 +374,11 @@ const DeleteAssignmentDialog = ({
           onClose();
         }, 1500);
       } else {
-        setErrorMessage(result.message || 'Nepodařilo se smazat přiřazení');
+        setErrorMessage(result.message || (isCashbox ? 'Nepodařilo se smazat pokladnu' : 'Nepodařilo se smazat přiřazení'));
       }
     } catch (error) {
-      console.error('❌ Chyba při mazání přiřazení:', error);
-      setErrorMessage(error.message || 'Nepodařilo se smazat přiřazení');
+      console.error('❌ Chyba při mazání:', error);
+      setErrorMessage(error.message || 'Operace selhala');
     } finally {
       if (!isClosing) {
         setLoading(false);
@@ -381,9 +388,12 @@ const DeleteAssignmentDialog = ({
 
   if (!isOpen || !assignment) return null;
 
-  const fullName = [assignment.uzivatel_jmeno, assignment.uzivatel_prijmeni]
-    .filter(Boolean)
-    .join(' ');
+  // 🆕 DETEKCE: Pokud objekt má 'cislo_pokladny', je to pokladna, ne přiřazení
+  const isCashbox = Boolean(assignment.cislo_pokladny);
+  
+  const fullName = isCashbox 
+    ? null
+    : [assignment.uzivatel_jmeno, assignment.uzivatel_prijmeni].filter(Boolean).join(' ');
 
   return ReactDOM.createPortal(
     <ModalOverlay onClick={!loading ? onClose : undefined}>
@@ -391,7 +401,9 @@ const DeleteAssignmentDialog = ({
         <ModalHeader>
           <ModalHeaderContent>
             <HeaderLeft>
-              <ModalTitle>Smazat přiřazení pokladny?</ModalTitle>
+              <ModalTitle>
+                {isCashbox ? 'Smazat pokladnu?' : 'Smazat přiřazení pokladny?'}
+              </ModalTitle>
               <ModalSubtitle>
                 Tato akce je nevratná
               </ModalSubtitle>
@@ -422,31 +434,55 @@ const DeleteAssignmentDialog = ({
               <WarningBox>
                 <div className="warning-header">
                   <AlertCircle size={20} />
-                  Opravdu chcete smazat toto přiřazení?
+                  {isCashbox 
+                    ? 'Opravdu chcete smazat tuto pokladnu?'
+                    : 'Opravdu chcete smazat toto přiřazení?'
+                  }
                 </div>
                 <div className="warning-text">
-                  Uživatel ztratí přístup k pokladně a nebude moci vytvářet nové doklady.
-                  Existující doklady zůstanou zachovány.
+                  {isCashbox 
+                    ? 'Pokladna bude deaktivována (nastavena jako neaktivní). Nelze smazat pokladnu, která má přiřazené uživatele nebo existující knihy.'
+                    : 'Uživatel ztratí přístup k pokladně a nebude moci vytvářet nové doklady. Existující doklady zůstanou zachovány.'
+                  }
                 </div>
               </WarningBox>
 
               <InfoBox>
-                <div className="info-row">
-                  <span className="info-label">Uživatel:</span>
-                  <span className="info-value">{fullName}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Pokladna:</span>
-                  <span className="info-value">{assignment.cislo_pokladny}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">VPD:</span>
-                  <span className="info-value">{assignment.vpd_cislo || '–'}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">PPD:</span>
-                  <span className="info-value">{assignment.ppd_cislo || '–'}</span>
-                </div>
+                {isCashbox ? (
+                  <>
+                    <div className="info-row">
+                      <span className="info-label">Číslo pokladny:</span>
+                      <span className="info-value">{assignment.cislo_pokladny}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">Název:</span>
+                      <span className="info-value">{assignment.nazev || '–'}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">Pracoviště:</span>
+                      <span className="info-value">{assignment.nazev_pracoviste || '–'}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="info-row">
+                      <span className="info-label">Uživatel:</span>
+                      <span className="info-value">{fullName}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">Pokladna:</span>
+                      <span className="info-value">{assignment.cislo_pokladny}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">VPD:</span>
+                      <span className="info-value">{assignment.vpd_cislo || '–'}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">PPD:</span>
+                      <span className="info-value">{assignment.ppd_cislo || '–'}</span>
+                    </div>
+                  </>
+                )}
               </InfoBox>
             </>
           )}

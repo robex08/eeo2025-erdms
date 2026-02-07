@@ -8,6 +8,9 @@ import FinancialControlPDF from './FinancialControlPDF';
 import { AuthContext } from '../context/AuthContext';
 import { getOrganizaceDetail } from '../services/apiv2Dictionaries';
 import { getStrediska25 } from '../services/api25orders';
+import { getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
+import { getUserDetail } from '../services/apiEntityDetail';
+
 
 // Styled components
 const ModalOverlay = styled.div`
@@ -196,16 +199,12 @@ const FinancialControlModal = ({ order, onClose, generatedBy }) => {
         try {
           const strediskaList = await getStrediska25({ token, username, aktivni: null }); // null = všechna střediska
           
-          // Vytvoříme mapu: kod_stavu -> nazev_stavu
-          // API vrací hierarchickou strukturu s 'value' (=kod_stavu) a 'label' (=nazev_stavu)
+          // Vytvoříme mapu: value -> label (celý kód střediska)
+          // API vrací hierarchickou strukturu s 'value' a 'label' 
+          // JEDNODUŠE: value = "102_RLP_RAKOVNIK", label = "RLP Rakovník"
           strediskaData = strediskaList.reduce((acc, stredisko) => {
-            // Použij value a label z hierarchické struktury
-            if (stredisko.value) {
-              acc[stredisko.value] = stredisko.label || stredisko.value;
-            }
-            // Fallback: pokud existuje raw objekt, použij i ten
-            if (stredisko.raw?.kod_stavu) {
-              acc[stredisko.raw.kod_stavu] = stredisko.raw.nazev_stavu || stredisko.raw.kod_stavu;
+            if (stredisko.value && stredisko.label) {
+              acc[stredisko.value] = stredisko.label;
             }
             return acc;
           }, {});
@@ -214,10 +213,50 @@ const FinancialControlModal = ({ order, onClose, generatedBy }) => {
           console.error('Nepodařilo se načíst střediska:', error);
         }
         
+
+        // �🔥 NAČTENÍ LP ČERPÁNÍ PRO FAKTURY (stejně jako v FinancialControlConfirmationModal)
+        const enrichedFaktury = [];
+        if (order.faktury && Array.isArray(order.faktury)) {
+          for (const faktura of order.faktury) {
+            const enrichedFaktura = { ...faktura };
+            
+            // Načíst uživatele pro věcnou kontrolu
+            if (faktura.potvrdil_vecnou_spravnost_id) {
+              try {
+                const userData = await getUserDetail(faktura.potvrdil_vecnou_spravnost_id);
+                enrichedFaktura.potvrdil_vecnou_spravnost = userData;
+              } catch (err) {
+                console.warn('Nepodařilo se načíst uživatele:', err);
+              }
+            }
+            
+            // 🔥 OPRAVA: Načíst LP čerpání pro fakturu
+            if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+              try {
+                const lpResponse = await getFakturaLPCerpani(faktura.id, token, username);
+                // API vrací {status: 'ok', data: {faktura_id, lp_cerpani: [...], suma, fa_castka}}
+                enrichedFaktura.lp_cerpani = lpResponse?.data?.lp_cerpani || [];
+              } catch (err) {
+                console.warn(`Nepodařilo se načíst LP čerpání pro fakturu ${faktura.id}:`, err);
+                enrichedFaktura.lp_cerpani = [];
+              }
+            }
+            
+            enrichedFaktury.push(enrichedFaktura);
+          }
+        }
+        
+        // Mapování dat pro PDF s enrichovanými fakturami  
+        const orderForPDF = {
+          ...order,
+          polozky: order.polozky_objednavky || order.polozky || [],
+          faktury: enrichedFaktury
+        };
+        
         // Vytvoření PDF dokumentu
         const blob = await pdf(
           <FinancialControlPDF
-            order={order}
+            order={orderForPDF}
             generatedBy={generatedBy}
             organizace={orgData}
             strediskaMap={strediskaData}
@@ -249,10 +288,48 @@ const FinancialControlModal = ({ order, onClose, generatedBy }) => {
   // Stažení PDF
   const handleDownload = async () => {
     try {
+      // Znovu načíst enrichovaná data pro download (order se mohl změnit)
+
+      const enrichedFaktury = [];
+      if (order.faktury && Array.isArray(order.faktury)) {
+        for (const faktura of order.faktury) {
+          const enrichedFaktura = { ...faktura };
+          
+          if (faktura.potvrdil_vecnou_spravnost_id) {
+            try {
+              const userData = await getUserDetail(faktura.potvrdil_vecnou_spravnost_id);
+              enrichedFaktura.potvrdil_vecnou_spravnost = userData;
+            } catch (err) {
+              console.warn('Nepodařilo se načíst uživatele:', err);
+            }
+          }
+          
+          if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+            try {
+              const lpResponse = await getFakturaLPCerpani(faktura.id, token, username);
+              enrichedFaktura.lp_cerpani = lpResponse?.data?.lp_cerpani || [];
+            } catch (err) {
+              console.warn(`Nepodařilo se načíst LP čerpání pro fakturu ${faktura.id}:`, err);
+              enrichedFaktura.lp_cerpani = [];
+            }
+          }
+          
+          enrichedFaktury.push(enrichedFaktura);
+        }
+      }
+      
+      const orderForPDF = {
+        ...order,
+        polozky: order.polozky_objednavky || order.polozky || [],
+        faktury: enrichedFaktury
+      };
+      
       const blob = await pdf(
         <FinancialControlPDF
-          order={order}
+          order={orderForPDF}
           generatedBy={generatedBy}
+          organizace={organizace}
+          strediskaMap={strediskaMap}
         />
       ).toBlob();
 

@@ -5,17 +5,18 @@
  * Včetně svinovacích sekcí a stejného pořadí jako OrderForm25
  */
 
-import React, { useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useImperativeHandle, forwardRef, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser, faBuilding, faFileAlt, faMoneyBillWave, faCalendar,
-  faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronUp,
+  faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronDown,
   faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle, faEdit,
-  faPaperclip, faFile, faDownload
+  faPaperclip, faFile, faDownload, faUnlink, faTrash
 } from '@fortawesome/free-solid-svg-icons';
 import { formatDateOnly } from '../utils/format';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2';
+import { getTypyPriloh25 } from '../services/api25orders';
 
 // ===================================================================
 // STYLED COMPONENTS - Zkopírované z OrderForm25
@@ -371,7 +372,36 @@ const EditInvoiceButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, token, username }, ref) => {
+const UnlinkInvoiceButton = styled.button`
+  padding: 0.5rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  min-width: 36px;
+  height: 36px;
+  justify-content: center;
+  
+  &:hover {
+    background: #dc2626;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, onUnlinkInvoice, canEditInvoice = true, editingInvoiceId, isReadOnlyMode = false, token, username }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -386,6 +416,54 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
     dokonceni: false,
     prilohy: false
   });
+
+  // 🔄 Dynamické načtení typů příloh z DB
+  const [attachmentTypes, setAttachmentTypes] = useState([]);
+  
+  useEffect(() => {
+    const loadAttachmentTypes = async () => {
+      if (!token || !username) return;
+      
+      try {
+        const types = await getTypyPriloh25({ token, username, aktivni: 1 });
+        setAttachmentTypes(types);
+      } catch (error) {
+        console.error('Chyba při načítání typů příloh:', error);
+      }
+    };
+    
+    loadAttachmentTypes();
+  }, [token, username]);
+
+  // 🎭 Helper: Získání badge podle typu přílohy z DB
+  const getTypeBadge = (typ) => {
+    // Najít název z načtených typů
+    const typeInfo = attachmentTypes.find(t => t.kod === typ || t.value === typ);
+    const label = typeInfo ? (typeInfo.nazev || typeInfo.label) : typ;
+    
+    // Barevné schéma podle kategorie
+    const colorSchemes = {
+      'FAKTURA': { bg: '#dbeafe', color: '#1e40af' },
+      'ISDOC': { bg: '#e0e7ff', color: '#4338ca' },
+      'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8' },
+      'SMLOUVA': { bg: '#fef3c7', color: '#92400e' },
+      'OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46' },
+      'POTVRZENA_OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46' },
+      'PODKLADY': { bg: '#e0e7ff', color: '#4338ca' },
+      'CENOVA_NABIDKA': { bg: '#fef3c7', color: '#92400e' },
+      'DODACI_LIST': { bg: '#dbeafe', color: '#1e40af' },
+      'PROFORMA': { bg: '#e0e7ff', color: '#4338ca' },
+      'IMPORT': { bg: '#fce7f3', color: '#9f1239' },
+    };
+    
+    const colors = colorSchemes[typ] || { bg: '#f1f5f9', color: '#475569' };
+    
+    return (
+      <Badge $bg={colors.bg} $color={colors.color}>
+        {label}
+      </Badge>
+    );
+  };
 
   const toggleSection = (section) => {
     setCollapsed(prev => {
@@ -485,7 +563,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Informace o objednateli
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.objednatel}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.objednatel} $theme="grey">
@@ -578,14 +656,14 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
       </Section>
 
       {/* SEKCE 2: SCHVÁLENÍ NÁKUPU PO */}
-      <Section>
+      <Section data-section="schvaleni">
         <SectionHeader $theme="grey" $isActive={!collapsed.schvaleni} onClick={() => toggleSection('schvaleni')}>
           <SectionTitle $theme="grey">
             <FontAwesomeIcon icon={faClipboardCheck} />
             Schválení nákupu PO
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.schvaleni}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.schvaleni} $theme="grey">
@@ -769,6 +847,22 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 </KeyValuePair>
               )}
 
+              {/* LP Poznámka - dynamické pole */}
+              {(() => {
+                const typKod = orderData.financovani?.typ_kod || orderData.financovani?.typ || orderData.zpusob_financovani;
+                const isLP = typKod === 'LP' || typKod?.toUpperCase?.() === 'LP';
+                
+                if (isLP && (orderData.financovani?.lp_poznamka || orderData.lp_poznamka)) {
+                  return (
+                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                      <KeyLabel>Poznámka k LP</KeyLabel>
+                      <ValueText>{orderData.financovani?.lp_poznamka || orderData.lp_poznamka}</ValueText>
+                    </KeyValuePair>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Smlouva - dynamické pole */}
               {(() => {
                 const typKod = orderData.financovani?.typ_kod || orderData.financovani?.typ || orderData.zpusob_financovani;
@@ -857,7 +951,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Dodavatel
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.dodavatel}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.dodavatel} $theme="orange">
@@ -918,14 +1012,14 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
 
       {/* SEKCE 5: DETAILY OBJEDNÁVKY */}
       {orderData.polozky && orderData.polozky.length > 0 && (
-        <Section>
+        <Section data-section="detaily">
           <SectionHeader $theme="orange" $isActive={!collapsed.detaily} onClick={() => toggleSection('detaily')}>
             <SectionTitle $theme="orange">
               <FontAwesomeIcon icon={faBox} />
               Detaily objednávky ({orderData.polozky_count || orderData.polozky.length} {orderData.polozky.length === 1 ? 'položka' : 'položek'})
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.detaily}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.detaily} $theme="orange">
@@ -1065,7 +1159,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Dodání
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.dodani}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.dodani} $theme="orange">
@@ -1099,6 +1193,35 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     </ValueText>
                   </KeyValuePair>
                   
+                  {orderData.dodavatel_zpusob_potvrzeni && (() => {
+                    try {
+                      const zpusob = typeof orderData.dodavatel_zpusob_potvrzeni === 'string' 
+                        ? JSON.parse(orderData.dodavatel_zpusob_potvrzeni) 
+                        : orderData.dodavatel_zpusob_potvrzeni;
+                      
+                      if (zpusob && zpusob.zpusoby && Array.isArray(zpusob.zpusoby) && zpusob.zpusoby.length > 0) {
+                        const zpusobyMap = {
+                          'email': 'E-mail',
+                          'telefon': 'Telefonát',
+                          'podepsana_objednavka': 'Podepsaná objednávka',
+                          'eshop': 'e-Shop'
+                        };
+                        
+                        const zpusobyTexty = zpusob.zpusoby.map(z => zpusobyMap[z] || z);
+                        
+                        return (
+                          <KeyValuePair>
+                            <KeyLabel>Způsob potvrzení</KeyLabel>
+                            <ValueText>{zpusobyTexty.join(', ')}</ValueText>
+                          </KeyValuePair>
+                        );
+                      }
+                    } catch (e) {
+                      console.warn('Chyba při parsování dodavatel_zpusob_potvrzeni:', e);
+                    }
+                    return null;
+                  })()}
+                  
                   <KeyValuePair>
                     <KeyLabel>Potvrdil dodavatel</KeyLabel>
                     <ValueText>
@@ -1129,7 +1252,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Rozhodnutí o zveřejnění v registru smluv
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.registr}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.registr} $theme="blue">
@@ -1215,25 +1338,35 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Fakturace k objednávce ({orderData.faktury.length})
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.fakturace}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
-          <SectionContent $collapsed={collapsed.fakturace} $theme="blue">
+          <SectionContent $collapsed={collapsed.fakturace} $theme="blue" style={{
+            maxHeight: '600px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            paddingRight: '0.5rem'
+          }}>
             {orderData.faktury.map((faktura, index) => {
               const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
+              const isBeingEdited = editingInvoiceId && (faktura.id === editingInvoiceId || faktura.id === Number(editingInvoiceId));
               return (
               <div key={faktura.id || index} style={{
-                border: '2px solid #3b82f6',
+                border: isBeingEdited ? '3px solid #f59e0b' : '2px solid #3b82f6',
                 borderRadius: '12px',
                 padding: '0',
                 marginBottom: index < orderData.faktury.length - 1 ? '1.5rem' : 0,
-                background: isVecnaPotvrzena ? '#f0fdf4' : '#ffffff',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                overflow: 'hidden'
+                background: isBeingEdited ? '#fffbeb' : (isVecnaPotvrzena ? '#f0fdf4' : '#ffffff'),
+                boxShadow: isBeingEdited ? '0 4px 16px rgba(245, 158, 11, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden',
+                position: 'relative',
+                transition: 'all 0.2s ease'
               }}>
                 {/* Záhlaví faktury - výrazné */}
                 <div style={{
-                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  background: isBeingEdited 
+                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' 
+                    : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                   color: 'white',
                   padding: '1rem 1.25rem',
                   fontWeight: '700',
@@ -1242,12 +1375,12 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: '1rem',
-                  borderBottom: '3px solid #1e40af',
+                  borderBottom: isBeingEdited ? '3px solid #b45309' : '3px solid #1e40af',
                   letterSpacing: '0.5px',
                   textTransform: 'uppercase'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <FontAwesomeIcon icon={faMoneyBillWave} style={{ fontSize: '1.2rem' }} />
+                    <FontAwesomeIcon icon={isBeingEdited ? faEdit : faMoneyBillWave} style={{ fontSize: '1.2rem' }} />
                     Faktura #{index + 1}
                     {faktura.fa_cislo_vema && (
                       <span style={{ 
@@ -1263,29 +1396,74 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       </span>
                     )}
                   </div>
-                  {onEditInvoice && canEditInvoice && (
-                    <EditInvoiceButton 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditInvoice(faktura);
-                      }}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.25)',
-                        color: 'white',
-                        border: '1px solid rgba(255, 255, 255, 0.4)',
-                        padding: '0.5rem 1rem',
-                        fontWeight: '600'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.35)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                      }}
-                    >
+                  {/* Swap: buď tlačítko Upravit NEBO badge Editace */}
+                  {isBeingEdited ? (
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.25)',
+                      color: 'white',
+                      border: '1px solid rgba(255, 255, 255, 0.4)',
+                      padding: '0.5rem 1rem',
+                      fontWeight: '600',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      letterSpacing: '0.05em'
+                    }}>
                       <FontAwesomeIcon icon={faEdit} />
-                      Upravit
-                    </EditInvoiceButton>
+                      {isReadOnlyMode ? 'PRÁVĚ KONTROLUJETE' : 'PRÁVĚ EDITUJETE'}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {onEditInvoice && canEditInvoice && (
+                        <EditInvoiceButton 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditInvoice(faktura);
+                          }}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.25)',
+                            color: 'white',
+                            border: '1px solid rgba(255, 255, 255, 0.4)',
+                            padding: '0.5rem 1rem',
+                            fontWeight: '600'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.35)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faEdit} />
+                          Upravit
+                        </EditInvoiceButton>
+                      )}
+                      
+                      {onUnlinkInvoice && canEditInvoice && !isBeingEdited && (
+                        <UnlinkInvoiceButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUnlinkInvoice(faktura);
+                          }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.3)',
+                            color: 'white',
+                            border: '1px solid rgba(239, 68, 68, 0.5)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.5)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+                          }}
+                          title="Odpojit fakturu od objednávky"
+                        >
+                          <FontAwesomeIcon icon={faUnlink} />
+                        </UnlinkInvoiceButton>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1423,24 +1601,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                           const sizes = ['B', 'KB', 'MB', 'GB'];
                           const i = Math.floor(Math.log(bytes) / Math.log(k));
                           return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-                        };
-
-                        const getTypeBadge = (typ) => {
-                          const typeMap = {
-                            'FAKTURA': { bg: '#dbeafe', color: '#1e40af', label: 'Faktura' },
-                            'ISDOC': { bg: '#e0e7ff', color: '#4338ca', label: 'ISDOC' },
-                            'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8', label: 'Příloha' },
-                            'SMLOUVA': { bg: '#fef3c7', color: '#92400e', label: 'Smlouva' },
-                            'IMPORT': { bg: '#fce7f3', color: '#9f1239', label: 'Import' },
-                            'JINE': { bg: '#f1f5f9', color: '#475569', label: 'Jiné' },
-                            'JINA': { bg: '#f1f5f9', color: '#475569', label: 'Jiná' }
-                          };
-                          const config = typeMap[typ] || typeMap['JINA'];
-                          return (
-                            <Badge $bg={config.bg} $color={config.color}>
-                              {config.label}
-                            </Badge>
-                          );
                         };
 
                         const handleDownload = async () => {
@@ -1634,7 +1794,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Poznámky
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.poznamky}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.poznamky} $theme="orange">
@@ -1654,7 +1814,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Dokončení objednávky
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.dokonceni}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.dokonceni} $theme="green">
@@ -1835,23 +1995,126 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 </div>
               )}
 
-              {/* 6. Věcná správnost */}
+              {/* 6. Věcná správnost objednávky (agregovaná) */}
               {orderData.dt_potvrzeni_vecne_spravnosti && (
                 <div style={{ 
                   display: 'flex', 
                   alignItems: 'flex-start', 
                   gap: '0.75rem',
-                  marginBottom: '0.75rem'
+                  marginBottom: '0.75rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '1px solid #e5e7eb'
                 }}>
                   <span style={{ color: '#16a34a', fontSize: '1.1rem', lineHeight: '1.4' }}>✅</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.25rem' }}>
-                      Potvrzení věcné správnosti
+                      Potvrzení věcné správnosti (objednávka)
                     </div>
                     <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                       {formatDateOnly(orderData.dt_potvrzeni_vecne_spravnosti)}
                       {(() => {
                         const enriched = orderData._enriched?.potvrdil_vecnou_spravnost;
+                        if (enriched) {
+                          const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
+                          const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
+                          return ` • ${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
+                        }
+                        return '';
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 6b. Individuální věcná správnost u faktur */}
+              {orderData.faktury && orderData.faktury.some(f => f.dt_potvrzeni_vecne_spravnosti) && (
+                <div style={{ 
+                  marginBottom: '0.75rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '1px solid #e5e7eb'
+                }}>
+                  <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+                    Věcná správnost jednotlivých faktur:
+                  </div>
+                  {orderData.faktury
+                    .filter(f => f.dt_potvrzeni_vecne_spravnosti)
+                    .map((faktura, idx) => {
+                      const isBeingEdited = editingInvoiceId && (faktura.id === editingInvoiceId || faktura.id === Number(editingInvoiceId));
+                      return (
+                        <div key={faktura.id || idx} style={{ 
+                          display: 'flex', 
+                          alignItems: 'flex-start', 
+                          gap: '0.75rem',
+                          marginBottom: idx < orderData.faktury.filter(f => f.dt_potvrzeni_vecne_spravnosti).length - 1 ? '0.5rem' : 0,
+                          paddingLeft: '1rem',
+                          padding: isBeingEdited ? '0.5rem 0.75rem 0.5rem 1rem' : '0 0 0 1rem',
+                          background: isBeingEdited ? '#fffbeb' : 'transparent',
+                          borderRadius: '6px',
+                          border: isBeingEdited ? '2px solid #f59e0b' : 'none',
+                          transition: 'all 0.2s ease'
+                        }}>
+                          <span style={{ color: '#16a34a', fontSize: '1rem', lineHeight: '1.4' }}>✓</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.875rem', color: isBeingEdited ? '#78350f' : '#6b7280' }}>
+                              <span style={{ 
+                                fontWeight: isBeingEdited ? '700' : '500', 
+                                color: isBeingEdited ? '#92400e' : '#4b5563' 
+                              }}>
+                                {faktura.fa_cislo_vema || `Faktura #${orderData.faktury.indexOf(faktura) + 1}`}
+                                {isBeingEdited && ' ← PRÁVĚ EDITUJETE'}
+                              </span>
+                              {' • '}
+                              {formatDateOnly(faktura.dt_potvrzeni_vecne_spravnosti)}
+                              {(() => {
+                                // Použít data z SQL JOINu (priorita) nebo enriched jako fallback
+                                let jmeno, prijmeni, titul_pred, titul_za;
+                                
+                                if (faktura.potvrdil_vecnou_spravnost_jmeno) {
+                                  // Data z SQL JOINu
+                                  jmeno = faktura.potvrdil_vecnou_spravnost_jmeno;
+                                  prijmeni = faktura.potvrdil_vecnou_spravnost_prijmeni;
+                                  titul_pred = faktura.potvrdil_vecnou_spravnost_titul_pred;
+                                  titul_za = faktura.potvrdil_vecnou_spravnost_titul_za;
+                                } else if (faktura._enriched?.potvrdil_vecnou_spravnost) {
+                                  // Enriched data jako fallback
+                                  const enriched = faktura._enriched.potvrdil_vecnou_spravnost;
+                                  jmeno = enriched.jmeno;
+                                  prijmeni = enriched.prijmeni;
+                                  titul_pred = enriched.titul_pred;
+                                  titul_za = enriched.titul_za;
+                                }
+                                
+                                if (jmeno && prijmeni) {
+                                  const titul_pred_str = titul_pred ? `${titul_pred} ` : '';
+                                  const titul_za_str = titul_za ? `, ${titul_za}` : '';
+                                  return ` • ${titul_pred_str}${jmeno} ${prijmeni}${titul_za_str}`;
+                                }
+                                return '';
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* 7. Dokončení objednávky */}
+              {orderData.dt_dokonceni && (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'flex-start', 
+                  gap: '0.75rem'
+                }}>
+                  <span style={{ color: '#16a34a', fontSize: '1.1rem', lineHeight: '1.4' }}>✅</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.25rem' }}>
+                      Dokončení objednávky
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {formatDateOnly(orderData.dt_dokonceni)}
+                      {(() => {
+                        const enriched = orderData._enriched?.dokoncil;
                         if (enriched) {
                           const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
                           const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
@@ -1907,7 +2170,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Přílohy ({orderData.prilohy_count})
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.prilohy}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.prilohy} $theme="red">
@@ -1920,25 +2183,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     const sizes = ['B', 'KB', 'MB', 'GB'];
                     const i = Math.floor(Math.log(bytes) / Math.log(k));
                     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-                  };
-
-                  const getTypeBadge = (typ) => {
-                    const typeMap = {
-                      'FAKTURA': { bg: '#dbeafe', color: '#1e40af', label: 'Faktura' },
-                      'ISDOC': { bg: '#e0e7ff', color: '#4338ca', label: 'ISDOC' },
-                      'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8', label: 'Příloha' },
-                      'SMLOUVA': { bg: '#fef3c7', color: '#92400e', label: 'Smlouva' },
-                      'OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46', label: 'Objednávka' },
-                      'IMPORT': { bg: '#fce7f3', color: '#9f1239', label: 'Import' },
-                      'JINE': { bg: '#f1f5f9', color: '#475569', label: 'Jiné' },
-                      'JINA': { bg: '#f1f5f9', color: '#475569', label: 'Jiná' }
-                    };
-                    const config = typeMap[typ] || typeMap['JINA'];
-                    return (
-                      <Badge $bg={config.bg} $color={config.color}>
-                        {config.label}
-                      </Badge>
-                    );
                   };
 
                   const handleDownload = async () => {

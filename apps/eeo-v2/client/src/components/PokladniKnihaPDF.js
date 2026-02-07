@@ -10,7 +10,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     backgroundColor: '#FFFFFF',
     padding: 30,
-    paddingBottom: 60, // Více místa pro patičku
+    paddingBottom: 120, // Ochranná zóna pro patičku + podpis (60 + 60)
     fontFamily: 'Roboto',
     fontSize: 9,
   },
@@ -286,6 +286,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Menší text pro rozdělené LP kódy (detailItems)
+  colLpCodeSmall: {
+    width: '7%',
+    textAlign: 'left',
+    fontSize: 6,
+    lineHeight: 1.3,
+  },
+
   colNote: {
     width: '15%',
     textAlign: 'left',
@@ -321,6 +329,31 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
     paddingTop: 10,
+  },
+
+  // Podpisové pole (pouze na poslední stránce)
+  signatureSection: {
+    position: 'absolute',
+    bottom: 60, // Nad patičkou (patička je na bottom: 20)
+    left: 30,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+
+  signatureLine: {
+    width: 200,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1f2937',
+    borderBottomStyle: 'solid',
+    marginBottom: 4,
+  },
+
+  signatureLabel: {
+    fontSize: 9,
+    fontWeight: 400,
+    color: '#6b7280',
+    textAlign: 'center',
+    width: 200,
   },
 });
 
@@ -505,8 +538,8 @@ const PokladniKnihaPDF = ({
 
         {/* Tabulka */}
         <View style={styles.table}>
-          {/* Hlavička tabulky */}
-          <View style={styles.tableHeaderRow}>
+          {/* Hlavička tabulky - opakuje se na každé stránce */}
+          <View style={styles.tableHeaderRow} fixed>
             <Text style={[styles.tableHeaderCell, styles.colNumber]}>#</Text>
             <Text style={[styles.tableHeaderCell, styles.colDate]}>Datum</Text>
             <Text style={[styles.tableHeaderCell, styles.colDocNumber]}>Doklad č.</Text>
@@ -523,6 +556,8 @@ const PokladniKnihaPDF = ({
           {entries.map((entry, index) => (
             <View
               key={entry.id || index}
+              wrap={false}
+              break={false}
               style={[
                 styles.tableRow,
                 index % 2 === 1 && styles.tableCellAlternate
@@ -552,8 +587,18 @@ const PokladniKnihaPDF = ({
               <Text style={[styles.tableCell, styles.colBalance]}>
                 {formatCurrency(entry.balance)}
               </Text>
-              <Text style={[styles.tableCell, styles.colLpCode]}>
-                {entry.lpCode || ''}
+              <Text style={[
+                styles.tableCell, 
+                entry.detailItems && entry.detailItems.length > 0 
+                  ? styles.colLpCodeSmall 
+                  : styles.colLpCode
+              ]}>
+                {entry.detailItems && entry.detailItems.length > 0 
+                  ? entry.detailItems.map((item, idx) => 
+                      `${item.lp_kod}: ${formatCurrency(item.castka)}`
+                    ).join('\n')
+                  : (entry.lpCode || '')
+                }
               </Text>
               <Text style={[styles.tableCell, styles.colNote]}>
                 {entry.note || ''}
@@ -561,6 +606,19 @@ const PokladniKnihaPDF = ({
             </View>
           ))}
         </View>
+
+        {/* Podpisové pole (pouze na poslední stránce) */}
+        <View 
+          style={styles.signatureSection}
+          render={({ pageNumber, totalPages }) => 
+            pageNumber === totalPages ? (
+              <>
+                <View style={styles.signatureLine} />
+                <Text style={styles.signatureLabel}>podpis</Text>
+              </>
+            ) : null
+          }
+        />
 
         {/* Patička */}
         <View style={styles.footer} fixed>

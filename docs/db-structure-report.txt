@@ -1,0 +1,285 @@
+tabulka
+TBL_NASTAVENI_GLOBALNI (25a_nastaveni_globalni)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+klic	varchar(100)	NO	UNI	NULL	
+hodnota	text	YES		NULL	
+popis	varchar(255)	YES		NULL	
+vytvoreno	datetime	NO		NULL	
+aktualizovano	datetime	YES		NULL	
+tabulka
+TBL_UZIVATEL_NASTAVENI (25_uzivatel_nastaveni)
+Field	Type	Null	Key	Default	Extra
+id	int(10)	NO	PRI	NULL	auto_increment
+uzivatel_id	int(10)	NO	UNI	NULL	
+nastaveni_data	text	NO		NULL	
+nastaveni_verze	varchar(10)	YES		1.0	
+vytvoreno	datetime	YES		NULL	
+upraveno	timestamp	NO		current_timestamp()	on update current_timestamp()
+tabulka
+TBL_POKLADNY (25a_pokladny)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+cislo_pokladny	int(11)	NO	UNI	NULL	
+nazev	varchar(255)	YES		NULL	
+kod_pracoviste	varchar(50)	YES	MUL	NULL	
+nazev_pracoviste	varchar(255)	YES		NULL	
+ciselna_rada_vpd	varchar(10)	NO		NULL	
+vpd_od_cislo	int(11)	YES		1	
+ciselna_rada_ppd	varchar(10)	NO		NULL	
+ppd_od_cislo	int(11)	YES		1	
+aktivni	tinyint(1)	YES	MUL	1	
+poznamka	text	YES		NULL	
+vytvoreno	datetime	NO		NULL	
+aktualizovano	datetime	YES		NULL	
+vytvoril	int(10) unsigned	YES		NULL	
+aktualizoval	int(10) unsigned	YES		NULL	
+tabulka
+TBL_POKLADNY_UZIVATELE (25a_pokladny_uzivatele)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+pokladna_id	int(11)	NO	MUL	NULL	
+uzivatel_id	int(10) unsigned	NO	MUL	NULL	
+je_hlavni	tinyint(1)	YES	MUL	0	
+platne_od	date	NO	MUL	NULL	
+platne_do	date	YES		NULL	
+poznamka	text	YES		NULL	
+vytvoreno	datetime	NO		NULL	
+vytvoril	int(10) unsigned	YES		NULL	
+tabulka
+TBL_POKLADNI_KNIHY (25a_pokladni_knihy)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+prirazeni_id	int(11)	NO	MUL	NULL	
+pokladna_id	int(11)	NO	MUL	NULL	
+uzivatel_id	int(10) unsigned	NO	MUL	NULL	
+rok	smallint(4)	NO	MUL	NULL	
+mesic	tinyint(2)	NO		NULL	
+cislo_pokladny	int(11)	NO		NULL	
+kod_pracoviste	varchar(50)	YES		NULL	
+nazev_pracoviste	varchar(255)	YES		NULL	
+ciselna_rada_vpd	varchar(10)	YES		NULL	
+ciselna_rada_ppd	varchar(10)	YES		NULL	
+prevod_z_predchoziho	decimal(10,2)	YES		0.00	
+pocatecni_stav	decimal(10,2)	YES		0.00	
+koncovy_stav	decimal(10,2)	YES		0.00	
+celkove_prijmy	decimal(10,2)	YES		0.00	
+celkove_vydaje	decimal(10,2)	YES		0.00	
+pocet_zaznamu	int(11)	YES		0	
+stav_knihy	enum('aktivni','uzavrena_uzivatelem','zamknuta_spravcem')	YES	MUL	aktivni	
+uzavrena_uzivatelem_kdy	datetime	YES		NULL	
+zamknuta_spravcem_kdy	datetime	YES		NULL	
+zamknuta_spravcem_kym	int(10) unsigned	YES	MUL	NULL	
+poznamky	text	YES		NULL	
+vytvoreno	datetime	NO		NULL	
+aktualizovano	datetime	YES		NULL	
+vytvoril	int(10) unsigned	YES		NULL	
+aktualizoval	int(10) unsigned	YES		NULL	
+tabulka
+TBL_POKLADNI_POLOZKY (25a_pokladni_polozky)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+pokladni_kniha_id	int(11)	NO	MUL	NULL	
+datum_zapisu	date	NO	MUL	NULL	
+cislo_dokladu	varchar(20)	NO		NULL	
+cislo_poradi_v_roce	int(11)	NO		NULL	
+typ_dokladu	enum('prijem','vydaj')	NO	MUL	NULL	
+obsah_zapisu	varchar(500)	NO		NULL	
+komu_od_koho	varchar(255)	YES		NULL	
+castka_celkem	decimal(10,2)	YES		NULL	
+ma_detail	tinyint(1)	YES		0	
+castka_prijem	decimal(10,2)	YES		NULL	
+castka_vydaj	decimal(10,2)	YES		NULL	
+zustatek_po_operaci	decimal(10,2)	NO		NULL	
+lp_kod	varchar(50)	YES		NULL	
+lp_popis	varchar(255)	YES		NULL	
+poznamka	text	YES		NULL	
+poradi_radku	int(11)	NO	MUL	0	
+smazano	tinyint(1)	YES	MUL	0	
+smazano_kdy	datetime	YES		NULL	
+smazano_kym	int(10) unsigned	YES	MUL	NULL	
+vytvoreno	datetime	NO		NULL	
+aktualizovano	datetime	YES		NULL	
+vytvoril	int(10) unsigned	YES	MUL	NULL	
+aktualizoval	int(10) unsigned	YES		NULL	
+tabulka
+TBL_POKLADNI_POLOZKY_DETAIL (25a_pokladni_polozky_detail)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+polozka_id	int(11)	NO	MUL	NULL	
+poradi	int(11)	NO	MUL	1	
+popis	varchar(500)	NO		NULL	
+castka	decimal(10,2)	NO		NULL	
+lp_kod	varchar(50)	NO	MUL	NULL	
+lp_popis	varchar(255)	YES		NULL	
+poznamka	text	YES		NULL	
+vytvoreno	datetime	NO		current_timestamp()	
+aktualizovano	datetime	YES		NULL	on update current_timestamp()
+tabulka
+TBL_POKLADNI_AUDIT (25a_pokladni_audit)
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+typ_entity	enum('kniha','polozka')	NO	MUL	NULL	
+entita_id	int(11)	NO		NULL	
+akce	enum('vytvoreni','uprava','smazani','obnoveni','uzavreni','otevreni','zamknuti','odemknuti')	NO	MUL	NULL	
+uzivatel_id	int(10) unsigned	NO	MUL	NULL	
+stare_hodnoty	text	YES		NULL	
+nove_hodnoty	text	YES		NULL	
+ip_adresa	varchar(45)	YES		NULL	
+user_agent	varchar(255)	YES		NULL	
+vytvoreno	datetime	NO	MUL	NULL	
+tabulka
+TBL_OBJEDNAVKY (25a_objednavky)
+Field	Type	Null	Key	Default	Extra
+id	int(10) unsigned	NO	PRI	NULL	auto_increment
+cislo_objednavky	varchar(50)	YES		NULL	
+dt_objednavky	datetime	YES		NULL	
+predmet	varchar(255)	NO		NULL	
+strediska_kod	text	NO		NULL	
+max_cena_s_dph	decimal(15,2)	YES		NULL	
+financovani	text	YES		NULL	
+druh_objednavky_kod	varchar(255)	YES		NULL	
+stav_workflow_kod	varchar(256)	NO		NULL	
+mimoradna_udalost	tinyint(1)	NO		0	
+stav_objednavky	varchar(64)	NO		NULL	
+uzivatel_id	int(10) unsigned	NO	MUL	NULL	
+uzivatel_akt_id	int(10) unsigned	YES	MUL	NULL	
+garant_uzivatel_id	int(10) unsigned	YES	MUL	NULL	
+objednatel_id	int(10) unsigned	YES	MUL	NULL	
+schvalovatel_id	int(11)	YES	MUL	NULL	
+dt_schvaleni	datetime	YES		NULL	
+schvaleni_komentar	varchar(255)	YES		NULL	
+prikazce_id	int(11)	YES	MUL	NULL	
+dodavatel_id	int(10)	YES		NULL	
+dodavatel_nazev	varchar(255)	YES		NULL	
+dodavatel_adresa	varchar(255)	YES		NULL	
+dodavatel_ico	varchar(20)	YES		NULL	
+dodavatel_dic	varchar(20)	YES		NULL	
+dodavatel_zastoupeny	varchar(255)	YES		NULL	
+dodavatel_kontakt_jmeno	varchar(255)	YES		NULL	
+dodavatel_kontakt_email	varchar(255)	YES		NULL	
+dodavatel_kontakt_telefon	varchar(50)	YES		NULL	
+dt_predpokladany_termin_dodani	date	YES		NULL	
+misto_dodani	varchar(255)	YES		NULL	
+zaruka	varchar(100)	YES		NULL	
+dt_odeslani	datetime	YES		NULL	
+odesilatel_id	int(10) unsigned	YES	MUL	NULL	
+odeslani_storno_duvod	text	YES		NULL	
+dodavatel_zpusob_potvrzeni	varchar(128)	YES		NULL	
+dt_akceptace	datetime	YES		NULL	
+dodavatel_potvrdil_id	int(10) unsigned	YES	MUL	NULL	
+zverejnit	tinytext	YES		NULL	
+zverejnil_id	int(10) unsigned	YES	MUL	NULL	
+dt_zverejneni	datetime	YES		NULL	
+registr_iddt	varchar(100)	YES		NULL	
+poznamka	text	YES		NULL	
+fakturant_id	int(10) unsigned	YES	MUL	NULL	
+dt_faktura_pridana	datetime	YES	MUL	NULL	
+dokoncil_id	int(10) unsigned	YES	MUL	NULL	
+dt_dokonceni	datetime	YES	MUL	NULL	
+dokonceni_poznamka	text	YES		NULL	
+potvrzeni_dokonceni_objednavky	tinyint(1)	NO		0	
+potvrdil_vecnou_spravnost_id	int(10) unsigned	YES	MUL	NULL	
+dt_potvrzeni_vecne_spravnosti	datetime	YES		NULL	
+vecna_spravnost_umisteni_majetku	text	YES		NULL	
+vecna_spravnost_poznamka	text	YES		NULL	
+potvrzeni_vecne_spravnosti	tinyint(1)	NO		0	
+dt_vytvoreni	datetime	NO		NULL	
+dt_aktualizace	datetime	YES		NULL	
+dt_zamek	datetime	YES		NULL	
+zamek_uzivatel_id	int(11)	YES		NULL	
+aktivni	tinyint(4)	NO		1	
+tabulka
+TBL_OBJEDNAVKY_POLOZKY (25a_objednavky_polozky)
+Field	Type	Null	Key	Default	Extra
+id	int(10) unsigned	NO	PRI	NULL	auto_increment
+lp_id	int(11)	YES	MUL	NULL	
+objednavka_id	int(10) unsigned	NO	MUL	NULL	
+popis	text	NO		NULL	
+cena_bez_dph	decimal(15,2)	YES		NULL	
+sazba_dph	int(11)	YES		NULL	
+cena_s_dph	decimal(15,2)	YES		NULL	
+dt_vytvoreni	timestamp	NO		current_timestamp()	
+dt_aktualizace	timestamp	YES		NULL	
+usek_kod	varchar(20)	YES	MUL	NULL	
+budova_kod	varchar(20)	YES		NULL	
+mistnost_kod	varchar(20)	YES		NULL	
+poznamka	text	YES		NULL	
+tabulka
+TBL_OBJEDNAVKY_PRILOHY (25a_objednavky_prilohy)
+Field	Type	Null	Key	Default	Extra
+id	int(10) unsigned	NO	PRI	NULL	auto_increment
+objednavka_id	int(10) unsigned	NO	MUL	NULL	
+guid	varchar(50)	YES		NULL	
+typ_prilohy	varchar(50)	YES		NULL	
+originalni_nazev_souboru	varchar(255)	NO		NULL	
+systemova_cesta	varchar(255)	NO		NULL	
+velikost_souboru_b	int(10)	YES		NULL	
+nahrano_uzivatel_id	int(10) unsigned	YES	MUL	NULL	
+dt_vytvoreni	timestamp	NO		current_timestamp()	
+dt_aktualizace	timestamp	YES		NULL	
+tabulka
+TBL_FAKTURY (25a_objednavky_faktury)
+Field	Type	Null	Key	Default	Extra
+id	int(10)	NO	PRI	NULL	auto_increment
+objednavka_id	int(10)	YES	MUL	NULL	
+smlouva_id	int(10) unsigned	YES	MUL	NULL	
+fa_dorucena	tinyint(1)	YES		0	
+fa_zaplacena	tinyint(1)	NO	MUL	0	
+fa_datum_zaplaceni	datetime	YES	MUL	NULL	
+fa_datum_vystaveni	date	YES	MUL	NULL	
+fa_datum_splatnosti	date	YES	MUL	NULL	
+fa_datum_doruceni	date	YES	MUL	NULL	
+fa_castka	decimal(15,2)	NO		NULL	
+fa_cislo_vema	varchar(100)	NO	MUL	NULL	
+fa_typ	varchar(32)	YES	MUL	BEZNA	
+potvrdil_vecnou_spravnost_id	int(11)	YES	MUL	NULL	
+dt_potvrzeni_vecne_spravnosti	datetime	YES	MUL	NULL	
+vecna_spravnost_umisteni_majetku	text	YES		NULL	
+vecna_spravnost_poznamka	text	YES		NULL	
+vecna_spravnost_potvrzeno	tinyint(1)	YES	MUL	0	
+fa_strediska_kod	text	YES		NULL	
+fa_poznamka	text	YES		NULL	
+rozsirujici_data	text	YES		NULL	
+fa_predana_zam_id	int(10) unsigned	YES	MUL	NULL	
+fa_datum_predani_zam	date	YES	MUL	NULL	
+fa_datum_vraceni_zam	date	YES	MUL	NULL	
+vytvoril_uzivatel_id	int(10)	NO	MUL	NULL	
+dt_vytvoreni	datetime	NO		NULL	
+dt_aktualizace	datetime	YES		NULL	
+aktivni	tinyint(1)	YES	MUL	1	
+tabulka
+TBL_FAKTURY_PRILOHY (25a_faktury_prilohy)
+Field	Type	Null	Key	Default	Extra
+id	int(10) unsigned	NO	PRI	NULL	auto_increment
+faktura_id	int(10)	NO	MUL	NULL	
+objednavka_id	int(10) unsigned	YES	MUL	NULL	
+guid	varchar(50)	YES	MUL	NULL	
+typ_prilohy	varchar(50)	YES		NULL	
+originalni_nazev_souboru	varchar(255)	NO		NULL	
+systemova_cesta	varchar(255)	NO		NULL	
+velikost_souboru_b	int(10) unsigned	YES		NULL	
+je_isdoc	tinyint(1)	NO	MUL	0	
+isdoc_parsed	tinyint(1)	NO		0	
+isdoc_data_json	text	YES		NULL	
+nahrano_uzivatel_id	int(10) unsigned	YES	MUL	NULL	
+dt_vytvoreni	timestamp	NO	MUL	current_timestamp()	
+dt_aktualizace	datetime	YES		NULL	
+tabulka
+TBL_HIERARCHIE_PROFILY (25_hierarchie_profily)
+Field	Type	Null	Key	Default	Extra
+id	int(10) unsigned	NO	PRI	NULL	auto_increment
+nazev	varchar(100)	NO	UNI	NULL	
+popis	text	YES		NULL	
+aktivni	tinyint(1)	NO	MUL	0	
+vytvoril_user_id	int(10) unsigned	YES	MUL	NULL	
+dt_vytvoreno	datetime	NO		current_timestamp()	
+dt_upraveno	datetime	YES		NULL	on update current_timestamp()
+structure_json	longtext	YES		NULL	
+tabulka
+TBL_UZIVATELE_HIERARCHIE (25_uzivatele_hierarchie)
+--------------
+DESCRIBE 25_uzivatele_hierarchie
+--------------
+
+ERROR 1146 (42S02) at line 53: Table 'eeo2025.25_uzivatele_hierarchie' doesn't exist

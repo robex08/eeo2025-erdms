@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useContext, useCallback, useRef, lazy, Suspense } from 'react';
-import { createPortal } from 'react-dom';
+import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
@@ -7,10 +7,14 @@ import { DebugContext } from '../context/DebugContext';
 import { ToastContext } from '../context/ToastContext';
 import { loadSettingsFromLocalStorage } from '../services/userSettingsApi';
 import ConfirmDialog from '../components/ConfirmDialog';
+import InvoiceListPopup from '../components/InvoiceListPopup';
 import ModernHelper from '../components/ModernHelper';
+import DatePicker from '../components/DatePicker';
+import OperatorInput from '../components/OperatorInput';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { createDownloadLink25, lockOrder25, unlockOrder25, getDruhyObjednavky25, getStrediska25 } from '../services/api25orders';
-import { getOrderV2, listOrdersV2, deleteOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání a přílohy
+import { getOrderV2, updateOrderV2, listOrdersV2, deleteOrderV2, restoreOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání, obnovu a přílohy
+import { getInvoicesByOrder25 } from '../services/api25invoices';
 import { fetchAllUsers, fetchApprovers, fetchCiselniky, fetchLimitovanePrisliby } from '../services/api2auth';
 import { getDocxSablonyList } from '../services/apiv2Dictionaries';
 import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
@@ -29,6 +33,12 @@ import {
   filterByAmountRange,
   filterByRegistrStatus
 } from '../utils/orderFiltersAdvanced';
+import { 
+  filterOrders as filterOrdersShared,
+  calculateOrderStats, 
+  getOrderSystemStatus,
+  getOrderTotalPriceWithDPH 
+} from '../utils/orderStatsUtils';
 import ordersCacheService from '../services/ordersCacheService';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -38,12 +48,12 @@ import {
   faBolt, faCalendarAlt, faUser, faBuilding, faMoneyBillWave,
   faCheckCircle, faTimesCircle, faHourglassHalf, faExclamationTriangle,
   faFilePen, faShield, faTruck, faXmark, faClock, faCircleNotch,
-  faEraser, faList, faPalette, faMinus, faInfoCircle,
+  faEraser, faList, faPalette, faMinus, faInfoCircle, faThumbsUp,
   faUsers, faPaperclip,
   faRocket, faBell, faArchive, faDatabase, faBoltLightning, faFileAlt,
   faFaceFrown, faLock, faEnvelope, faPhone, faFileContract,
   faReceipt, faListCheck,
-  faChevronLeft, faChevronRight, faBullseye
+  faChevronLeft, faChevronRight, faBullseye, faEyeSlash
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { Calendar } from 'lucide-react';
@@ -68,10 +78,10 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 
-// 🚀 PERFORMANCE: Lazy load DocxGeneratorModal (pouze když je potřeba)
+//  PERFORMANCE: Lazy load DocxGeneratorModal (pouze když je potřeba)
 const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal').then(m => ({ default: m.DocxGeneratorModal })));
 
-// 🚀 PERFORMANCE: Lazy load FinancialControlModal
+//  PERFORMANCE: Lazy load FinancialControlModal
 const FinancialControlModal = lazy(() => import('../components/FinancialControlModal'));
 
 // =============================================================================
@@ -132,12 +142,48 @@ const Container = styled.div`
   isolation: isolate;
 `;
 
-const PageHeader = styled.div`
+// 🔧 ADMIN: Checkbox pro zobrazení neaktivních objednávek
+const AdminCheckboxWrapper = styled.label`
   display: flex;
-  justify-content: flex-end;
   align-items: center;
-  margin-bottom: 2rem;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #fef3c7;
+  border: 2px solid #fbbf24;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #92400e;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: #fde68a;
+    border-color: #f59e0b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+  }
+  
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #f59e0b;
+  }
+  
+  svg {
+    color: #d97706;
+    font-size: 1rem;
+  }
 `;
+
+  const PageHeader = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 2rem;
+  `;
 
 const PageTitle = styled.h1`
   margin: 0;
@@ -164,6 +210,7 @@ const ActionButton = styled.button`
   align-items: center;
   gap: 0.35rem;
   padding: 0.35rem 0.6rem;
+  height: 38px;
   border: 2px solid #3b82f6;
   border-radius: 6px;
   background: ${props => props.$primary ? '#3b82f6' : 'white'};
@@ -213,11 +260,18 @@ const getLighterColor = (color, opacity = 0.9) => {
 
 // Funkce pro mapování uživatelského stavu na systémový kód
 const mapUserStatusToSystemCode = (userStatus) => {
+  // Kontrola na začátek textu pro různé varianty
+  if (userStatus && typeof userStatus === 'string') {
+    if (userStatus.startsWith('Zamítnut')) return 'ZAMITNUTA';
+    if (userStatus.startsWith('Schválen')) return 'SCHVALENA';
+    if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
+    if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
+    if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+  }
+  
   const mapping = {
-    'Ke schválení': 'KE_SCHVALENI',
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI, ne KE_SCHVALENI
     'Nová': 'NOVA',
-    'Schválená': 'SCHVALENA',
-    'Zamítnutá': 'ZAMITNUTA',
     'Rozpracovaná': 'ROZPRACOVANA',
     'Odeslaná dodavateli': 'ODESLANA',
     'Potvrzená dodavatelem': 'POTVRZENA',
@@ -225,11 +279,9 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
-    'Dokončená': 'DOKONCENA',
-    'Zrušená': 'ZRUSENA',
     'Smazaná': 'SMAZANA',
-    'Archivováno': 'ARCHIVOVANO',
     'Koncept': 'NOVA' // Koncepty se mapují jako nové objednávky
   };
   return mapping[userStatus] || userStatus;
@@ -323,7 +375,7 @@ const getStatusEmoji = (status) => {
     case 'odeslana':
       return '📤';
     case 'potvrzena':
-      return '✔️';
+      return '✔';
     case 'uverejnena':
     case 'registr_zverejnena':
     case 'registrzverejnena':
@@ -332,14 +384,14 @@ const getStatusEmoji = (status) => {
       return '🎯';
     case 'ceka_potvrzeni':
     case 'cekapotvrzeni':
-      return '⏸️';
+      return '⏸';
     case 'ceka_se':
     case 'cekase':
-      return '⏸️';
+      return '⏸';
     case 'zrusena':
       return '🚫';
     case 'smazana':
-      return '🗑️';
+      return '🗑';
     case 'ceka_kontrola':
     case 'cekakontrola':
       return '🔍';
@@ -709,9 +761,19 @@ const YearFilterTitle = styled.h2`
   gap: 0.75rem;
 `;
 
-// 🚀 CACHE: Status indicator komponenty
+//  CACHE: Status indicator komponenty
 const CacheStatusIconWrapper = styled(TooltipWrapper)`
-  z-index: 999999;
+  /* Wrapper má správný position: relative z TooltipWrapper */
+  
+  /* OPRAVA: Tooltip má být úplně skrytý, ne jen průhledný */
+  .tooltip {
+    display: none;
+  }
+  
+  &:hover .tooltip {
+    display: flex;
+    opacity: 1;
+  }
 `;
 
 // 💡 Hint text komponenta (jako LockWarning u pokladny)
@@ -1276,12 +1338,13 @@ const ClearButton = styled.button`
 const FilterInput = styled.input`
   width: 100%;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '0.75rem 2.5rem 0.75rem 2.5rem' : '0.75rem'};
+  padding: ${props => props.hasIcon ? '0.5rem 2.5rem 0.5rem 2.5rem' : '0.5rem'};
   border: 2px solid #e5e7eb;
   border-radius: 8px;
   font-size: 0.875rem;
   transition: all 0.2s ease;
   background: white;
+  height: 42px;
 
   /* Pro number inputy - zarovnání doprava a odstranění šipek */
   ${props => props.type === 'number' && `
@@ -1510,12 +1573,16 @@ const ColumnClearButton = styled.button`
 
 const ColumnFilterInput = styled.input`
   width: 100%;
+  max-width: ${props => props.type === 'number' ? '120px' : '100%'};
   padding: 0.5rem 2rem 0.5rem 2rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
   font-size: 0.75rem;
   background: #f9fafb;
   transition: all 0.2s ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 
   &:focus {
     outline: none;
@@ -1741,6 +1808,40 @@ const TableContainer = styled.div`
   -ms-overflow-style: none;
 `;
 
+// Floating Header Panel - zobrazí se při scrollování
+const FloatingHeaderPanel = styled.div`
+  position: fixed;
+  top: calc(var(--app-header-height, 96px) + 48px);
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  border-top: 2px solid #cbd5e1;
+  border-bottom: 3px solid #3b82f6;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transform: translateY(${props => props.$visible ? '0' : '-10px'});
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+`;
+
+const FloatingTableWrapper = styled.div`
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  
+  /* Synchronizace scroll pozice s hlavní tabulkou */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+`;
+
 // Scroll šipka - levá - FIXED position (pohybuje se s vertikálním scrollem)
 const ScrollArrowLeft = styled.button`
   position: fixed;
@@ -1816,17 +1917,23 @@ const TableHead = styled.thead`
 
 const TableRow = styled.tr`
   /* Základní pozadí řádku podle priority:
-     1. KONCEPTY V EDITACI - nejvyšší priorita - oranžové zvýraznění
-     2. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
-     3. STRIPING - jednoduché střídání bílé/šedé (pokud highlighting vypnuto)
+     1. NEAKTIVNÍ OBJEDNÁVKY - nejvyšší priorita - šedé, přeškrtnuté
+     2. KONCEPTY V EDITACI - druhá nejvyšší priorita - oranžové zvýraznění
+     3. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
+     4. STRIPING - jednoduché střídání bílé/šedé (pokud highlighting vypnuto)
   */
   background: ${props => {
-    // 1. KONCEPTY V EDITACI - NEJVYŠŠÍ PRIORITA - vždy viditelné
+    // 1. NEAKTIVNÍ OBJEDNÁVKY - jen šedé pozadí, přeškrtnutí se dělá v CSS níže
+    if (props.$isInactive) {
+      return '#f8f9fa';
+    }
+
+    // 2. KONCEPTY V EDITACI - DRUHÁ NEJVYŠŠÍ PRIORITA - vždy viditelné
     if (props.$isDraft || props.$hasLocalChanges) {
       return 'linear-gradient(135deg, #ea580c 0%, #f97316 30%, #ea580c 70%, #dc2626 100%)';
     }
 
-    // 2. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
+    // 3. ZVÝRAZŇOVÁNÍ PODLE STAVU - pokud je zapnuto
     if (props.$showHighlighting && props.$order) {
       const bgColor = getRowBackgroundColor(props.$order);
       if (bgColor && bgColor !== 'transparent') {
@@ -1834,9 +1941,47 @@ const TableRow = styled.tr`
       }
     }
 
-    // 2. DEFAULT - čistě bílé pozadí
+    // 4. DEFAULT - čistě bílé pozadí
     return 'white';
   }};
+
+  /* Speciální efekty pro NEAKTIVNÍ OBJEDNÁVKY - přeškrtnuté jako u faktur */
+  ${props => props.$isInactive ? `
+    opacity: 0.6;
+    position: relative;
+    text-decoration: line-through;
+    background: #f8f9fa !important;
+
+    /* Šedé písmo pro neaktivní */
+    color: #6c757d !important;
+
+    /* Všechny vnořené elementy */
+    & * {
+      color: #6c757d !important;
+      text-decoration: line-through;
+    }
+
+    & div, & span, & sup, & sub, & small, & strong {
+      color: #6c757d !important;
+    }
+
+    /* Ikony a SVG */
+    & .fa, & svg, & [class*="fa-"] {
+      color: #6c757d !important;
+    }
+
+    /* Disabled tlačítka */
+    & button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Hover efekt */
+    &:hover {
+      opacity: 0.75;
+      background: #e9ecef !important;
+    }
+  ` : ''}
 
   /* Speciální efekty pro KONCEPTY V EDITACI - jen světlejší pozadí */
   ${props => (props.$isDraft || props.$hasLocalChanges) ? `
@@ -1905,7 +2050,7 @@ const TableRow = styled.tr`
       if (props.$order?.stav_objednavky) {
         // Mapování uživatelsky přívětivých stavů na systémové kódy
         const mapping = {
-          'Ke schválení': 'KE_SCHVALENI',
+          'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
           'Nová': 'NOVA',
           'Schválená': 'SCHVALENA',
           'Zamítnutá': 'ZAMITNUTA',
@@ -1956,12 +2101,34 @@ const TableRow = styled.tr`
     return '';
   }}
 
+  /* 🔧 NEAKTIVNÍ (SMAZANÉ) OBJEDNÁVKY - admin view */
+  ${props => props.$inactive ? `
+    background: #fef2f2 !important;
+    opacity: 0.75;
+    
+    &:hover {
+      background: #fee2e2 !important;
+    }
+    
+    /* Dvojité přeškrtnutí textu */
+    .inactive-content {
+      text-decoration: line-through double;
+      text-decoration-color: #dc2626;
+      opacity: 0.7;
+    }
+  ` : ''}
+
   /* BLINK EFEKT při uložení - má nejvyšší prioritu */
   ${props => props.$isHighlighted ? highlightPulse + `
     animation: highlightPulse 3s ease-out;
     animation-iteration-count: 1;
     z-index: 100 !important;
     position: relative;
+    
+    /* Po dokončení animace zůstane výrazný tmavě zelený border */
+    border: 3px solid #059669 !important;
+    border-left: 6px solid #047857 !important;
+    box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2) !important;
   ` : ''}
 
   /* Jemný hover efekt pro všechny řádky (kromě konceptů které mají vlastní) */
@@ -2081,7 +2248,7 @@ const ExpandedContent = styled.div`
 const ExpandedGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
 
   /* První řádek: 4 karty (Základní, Finanční, Odpovědné, Workflow) */
   /* Každá karta zabere 1 sloupec = 25% šířky */
@@ -2105,8 +2272,8 @@ const ExpandedGrid = styled.div`
 // Třísloupcový layout: Dodavatel | Položky+Faktury | Přílohy
 const ThreeColumnLayout = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr; /* 33/33/33 layout */
-  gap: 1rem;
+  grid-template-columns: minmax(200px, 0.8fr) 1.1fr 1.1fr; /* Dodavatel užší, položky+faktury a přílohy širší */
+  gap: 0.75rem;
   grid-column: 1 / -1; /* Zabere celou šířku gridu */
 
   @media (max-width: 1400px) {
@@ -2133,7 +2300,7 @@ const SupplierColumn = styled.div`
 const MiddleColumn = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
 `;
 
 const AttachmentsColumn = styled.div`
@@ -2345,9 +2512,10 @@ const AttachmentItem = styled.div`
   background: white;
   border-radius: 4px;
   font-size: 0.85em;
+  transition: background 0.15s ease;
 
   &:hover {
-    background: #f8fafc;
+    background: #e0f2fe !important;
   }
 `;
 
@@ -2547,9 +2715,9 @@ const ActionMenuButton = styled.button`
   padding: 0.375rem;
   border: none;
   background: transparent;
-  cursor: pointer;
+  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
   border-radius: 4px;
-  color: #64748b;
+  color: ${props => props.$disabled ? '#94a3b8' : '#64748b'};
   font-size: 0.8rem;
   transition: all 0.2s ease;
   display: flex;
@@ -2557,6 +2725,8 @@ const ActionMenuButton = styled.button`
   justify-content: center;
   min-width: 28px;
   min-height: 28px;
+  opacity: ${props => props.$disabled ? '0.4' : '1'};
+  position: relative;
 
   /* Prevence blikání ikon */
   svg {
@@ -2569,44 +2739,42 @@ const ActionMenuButton = styled.button`
     color: #1e293b;
   }
 
-  &.edit:hover:not(:disabled):not([disabled]) {
-    color: #3b82f6;
-    background: #eff6ff;
+  &.edit:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#3b82f6'};
+    background: ${props => props.$disabled ? 'transparent' : '#eff6ff'};
   }
 
-  &.export-document:hover:not(:disabled):not([disabled]) {
-    color: #059669;
-    background: #ecfdf5;
+  &.export-document:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#059669'};
+    background: ${props => props.$disabled ? 'transparent' : '#ecfdf5'};
   }
 
-  &.delete:hover:not(:disabled):not([disabled]) {
-    color: #dc2626;
-    background: #fef2f2;
+  &.delete:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#dc2626'};
+    background: ${props => props.$disabled ? 'transparent' : '#fef2f2'};
   }
 
-  &.create-invoice:hover:not(:disabled):not([disabled]) {
-    color: #0891b2;
-    background: #ecfeff;
+  &.create-invoice:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#0891b2'};
+    background: ${props => props.$disabled ? 'transparent' : '#ecfeff'};
   }
 
-  &.financial-control:hover:not(:disabled):not([disabled]) {
-    color: #7c3aed;
-    background: #f5f3ff;
+  &.financial-control:hover {
+    color: ${props => props.$disabled ? '#94a3b8' : '#7c3aed'};
+    background: ${props => props.$disabled ? 'transparent' : '#f5f3ff'};
   }
+`;
 
-  /* Disabled stav */
-  &:disabled,
-  &[disabled] {
-    opacity: 0.7;
-    cursor: not-allowed !important;
-    color: #94a3b8;
-    pointer-events: auto;
-    
-    &:hover {
-      background: transparent;
-      color: #94a3b8;
-    }
-  }
+// Badge pro počet faktur na ikoně
+const InvoiceCountBadge = styled.span`
+  position: absolute;
+  top: -2px;
+  right: 0px;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 `;
 
 // Debug Panel Styles
@@ -3413,39 +3581,392 @@ const ForceUnlockWarningActions = styled.div`
 
 const ForceUnlockWarningButton = styled.button`
   padding: 0.75rem 1.5rem;
-  border: 2px solid;
-  border-radius: 10px;
-  font-weight: 700;
+  border-radius: 8px;
+  border: none;
   font-size: 0.9375rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   ${props => props.$primary ? `
-    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    background: linear-gradient(135deg, #ef4444, #dc2626);
     color: white;
-    border-color: transparent;
     box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 
     &:hover {
-      background: linear-gradient(135deg, #b91c1c, #991b1b);
-      box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
       transform: translateY(-2px);
-    }
-
-    &:active {
-      transform: translateY(0);
+      box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
     }
   ` : `
-    background: white;
-    color: #6b7280;
-    border-color: #d1d5db;
+    background: #f3f4f6;
+    color: #374151;
 
     &:hover {
-      background: #f9fafb;
-      border-color: #9ca3af;
-      color: #374151;
+      background: #e5e7eb;
     }
   `}
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+// 🎯 Schvalovací dialog (pro příkazce)
+const ApprovalDialogOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+`;
+
+const ApprovalDialog = styled.div`
+  background: white;
+  border-radius: 12px;
+  max-width: 1200px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.3s ease;
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+`;
+
+const ApprovalDialogHeader = styled.div`
+  background: linear-gradient(135deg, #10b981, #059669);
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 2px solid #047857;
+`;
+
+const ApprovalDialogIcon = styled.div`
+  font-size: 1.5rem;
+  filter: drop-shadow(0 2px 8px rgba(4, 120, 87, 0.5));
+`;
+
+const ApprovalDialogTitle = styled.h3`
+  margin: 0;
+  color: white;
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  flex: 1;
+`;
+
+const ApprovalDialogContent = styled.div`
+  padding: 1.25rem;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+`;
+
+// 🆕 Two-column layout
+const ApprovalTwoColumnLayout = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.5rem;
+  
+  @media (max-width: 968px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ApprovalLeftColumn = styled.div`
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+`;
+
+const ApprovalRightColumn = styled.div`
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  height: fit-content;
+`;
+
+// 🆕 Kompaktní seznam (místo tabulky)
+const ApprovalCompactList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+`;
+
+const ApprovalCompactItem = styled.div`
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const ApprovalCompactLabel = styled.div`
+  font-size: 0.8125rem;
+  color: #64748b;
+  font-weight: 600;
+`;
+
+const ApprovalCompactValue = styled.div`
+  font-size: 0.875rem;
+  color: #0f172a;
+  line-height: 1.4;
+  word-break: break-word;
+`;
+
+// 🆕 Sekce nadpisy
+const ApprovalSection = styled.div`
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  
+  &:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+`;
+
+const ApprovalSectionTitle = styled.div`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+`;
+
+// 🆕 LP Item - kompaktní zobrazení v pravém sloupci
+const ApprovalLPItem = styled.div`
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const ApprovalLPHeader = styled.div`
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+`;
+
+const ApprovalLPRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.375rem 0;
+  font-size: 0.8125rem;
+  color: #64748b;
+  
+  strong {
+    color: #0f172a;
+    font-size: 0.875rem;
+  }
+  
+  ${props => props.$highlight && `
+    background: #f8fafc;
+    padding: 0.5rem;
+    margin: 0.25rem -0.5rem;
+    border-radius: 4px;
+  `}
+`;
+
+const ApprovalDialogTopGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  grid-column: 1 / -1;
+  margin-bottom: 1rem;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ApprovalDialogSection = styled.div`
+  margin-bottom: ${props => props.$fullWidth ? '1rem' : '0'};
+  grid-column: ${props => props.$fullWidth ? '1 / -1' : 'auto'};
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const ApprovalDialogLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 0.375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const ApprovalDialogValue = styled.div`
+  font-size: 0.9375rem;
+  color: #0f172a;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  line-height: 1.4;
+`;
+
+const ApprovalDialogNote = styled.div`
+  font-size: 0.8125rem;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  background: #f1f5f9;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 4px;
+`;
+
+const ApprovalDialogTextarea = styled.textarea`
+  width: 100%;
+  min-height: 80px;
+  padding: 0.625rem;
+  border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e2e8f0'};
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.$hasError ? '#dc2626' : '#10b981'};
+  }
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
+const ApprovalDialogError = styled.div`
+  color: #ef4444;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-top: 0.375rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+
+  &:before {
+    content: '⚠️';
+    font-size: 0.875rem;
+  }
+`;
+
+const ApprovalDialogActions = styled.div`
+  display: flex;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
+  justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+`;
+
+const ApprovalDialogButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  ${props => {
+    if (props.$approve) {
+      return `
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        box-shadow: 0 3px 8px rgba(16, 185, 129, 0.25);
+
+        &:hover {
+          background: linear-gradient(135deg, #059669, #047857);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+        }
+      `;
+    } else if (props.$reject) {
+      return `
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+        box-shadow: 0 3px 8px rgba(239, 68, 68, 0.25);
+
+        &:hover {
+          background: linear-gradient(135deg, #dc2626, #b91c1c);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+        }
+      `;
+    } else if (props.$postpone) {
+      return `
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+        box-shadow: 0 3px 8px rgba(245, 158, 11, 0.25);
+
+        &:hover {
+          background: linear-gradient(135deg, #d97706, #b45309);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+        }
+      `;
+    } else {
+      return `
+        background: #f3f4f6;
+        color: #374151;
+
+        &:hover {
+          background: #e5e7eb;
+        }
+      `;
+    }
+  }}
+
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 // =============================================================================
@@ -3476,9 +3997,10 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
   // 🔍 Focus na vyhledávací pole při otevření
   React.useEffect(() => {
     if (isOpen && searchInputRef.current) {
-      setTimeout(() => {
+      // ✅ OPTIMALIZACE: requestAnimationFrame místo setTimeout
+      requestAnimationFrame(() => {
         searchInputRef.current?.focus();
-      }, 100);
+      });
     }
   }, [isOpen]);
 
@@ -3748,406 +4270,21 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
 };
 
 // =============================================================================
-// DATEPICKER KOMPONENTA
-// =============================================================================
-
-const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [openUpwards, setOpenUpwards] = useState(false);
-  const wrapperRef = useRef(null);
-
-  const selectedDate = value ? new Date(value) : null;
-
-  useEffect(() => {
-    if (value) {
-      const date = new Date(value);
-      if (!isNaN(date.getTime())) {
-        setCurrentMonth(date);
-      }
-    }
-  }, [value]);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && wrapperRef.current) {
-      const checkPosition = () => {
-        if (!wrapperRef.current) return;
-        const buttonRect = wrapperRef.current.getBoundingClientRect();
-        const calendarHeight = 380;
-        const footerHeight = 54;
-        const buffer = 20;
-        const spaceBelow = window.innerHeight - buttonRect.bottom - footerHeight - buffer;
-        const spaceAbove = buttonRect.top - buffer;
-        const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
-        setOpenUpwards(shouldOpenUpward);
-      };
-      checkPosition();
-    }
-  }, [isOpen]);
-
-  const formatDisplayDate = (date) => {
-    if (!date) return '';
-    try {
-      const d = new Date(date);
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch {
-      return '';
-    }
-  };
-
-  const formatInputDate = (date) => {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const getCalendarDays = () => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-    const days = [];
-    for (let i = startDay - 1; i >= 0; i--) {
-      const date = new Date(year, month, -i);
-      days.push({ date, isOtherMonth: true });
-    }
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      const date = new Date(year, month, i);
-      days.push({ date, isOtherMonth: false });
-    }
-    const remainingDays = 42 - days.length;
-    for (let i = 1; i <= remainingDays; i++) {
-      const date = new Date(year, month + 1, i);
-      days.push({ date, isOtherMonth: true });
-    }
-    return days;
-  };
-
-  const handleDateSelect = (date) => {
-    onChange(formatInputDate(date));
-    setIsOpen(false);
-  };
-
-  const handleToday = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    handleDateSelect(new Date());
-  };
-
-  const handleClear = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    onChange('');
-    setIsOpen(false);
-  };
-
-  const prevMonth = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  const nextMonth = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  const today = new Date();
-  const calendarDays = getCalendarDays();
-  const displayText = value ? formatDisplayDate(value) : placeholder;
-
-  return (
-    <DatePickerWrapper ref={wrapperRef}>
-      <InputWithIcon hasIcon>
-        <Calendar size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
-        <DateInputButton
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          hasValue={!!value}
-        >
-          {displayText}
-        </DateInputButton>
-        {value && (
-          <DateClearButton type="button" onClick={handleClear} title="Smazat datum">✕</DateClearButton>
-        )}
-        <DateTodayButton type="button" onClick={handleToday} title="Nastavit dnešní datum">📅</DateTodayButton>
-      </InputWithIcon>
-      {isOpen && (
-        <DateCalendarPopup openUpwards={openUpwards}>
-          <CalendarHeader>
-            <CalendarNav onClick={prevMonth}>◀</CalendarNav>
-            <CalendarTitle>
-              <span>{currentMonth.toLocaleDateString('cs-CZ', { month: 'long' })}</span>
-              <span>{currentMonth.getFullYear()}</span>
-            </CalendarTitle>
-            <CalendarNav onClick={nextMonth}>▶</CalendarNav>
-          </CalendarHeader>
-          <CalendarGrid>
-            {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'].map((day) => (
-              <CalendarDay key={day}>{day}</CalendarDay>
-            ))}
-            {calendarDays.map((day, index) => {
-              const isToday = day.date.toDateString() === today.toDateString();
-              const isSelected = selectedDate && day.date.toDateString() === selectedDate.toDateString();
-              return (
-                <CalendarDate
-                  key={index}
-                  onClick={() => handleDateSelect(day.date)}
-                  isToday={isToday}
-                  isSelected={isSelected}
-                  isOtherMonth={day.isOtherMonth}
-                >
-                  {day.date.getDate()}
-                </CalendarDate>
-              );
-            })}
-          </CalendarGrid>
-          <CalendarFooter>
-            <CalendarButton className="today" onClick={handleToday}>Dnes</CalendarButton>
-            <CalendarButton className="clear" onClick={handleClear}>Smazat</CalendarButton>
-          </CalendarFooter>
-        </DateCalendarPopup>
-      )}
-    </DatePickerWrapper>
-  );
-};
-
-const DatePickerWrapper = styled.div`
-  position: relative;
-  width: 100%;
-`;
-
-const InputWithIcon = styled.div`
-  position: relative;
-  width: 100%;
-`;
-
-const DateInputButton = styled.button`
-  width: 100%;
-  display: block;
-  padding: 0.75rem;
-  padding-left: 2.75rem;
-  padding-right: ${props => props.hasValue ? '4.5rem' : '3rem'};
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  background: white;
-  color: ${props => props.hasValue ? '#1f2937' : '#9ca3af'};
-  font-size: 0.875rem;
-  font-weight: ${props => props.hasValue ? '600' : '400'};
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-height: 42px;
-  &:hover {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-`;
-
-const DateClearButton = styled.button`
-  position: absolute;
-  right: 36px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: bold;
-  transition: all 0.2s ease;
-  z-index: 1;
-  &:hover {
-    background: #dc2626;
-    transform: translateY(-50%) scale(1.1);
-  }
-`;
-
-const DateTodayButton = styled.button`
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: bold;
-  transition: all 0.2s ease;
-  z-index: 1;
-  &:hover {
-    background: #f3f4f6;
-    transform: translateY(-50%) scale(1.1);
-  }
-`;
-
-const DateCalendarPopup = styled.div`
-  position: absolute;
-  ${props => props.openUpwards ? `bottom: calc(100% + 4px); top: auto;` : `top: calc(100% + 4px); bottom: auto;`}
-  left: 0;
-  right: 0;
-  z-index: 10001;
-  background: white;
-  border: 2px solid #3b82f6;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  padding: 0.5rem;
-`;
-
-const CalendarHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid #e5e7eb;
-`;
-
-const CalendarNav = styled.button`
-  background: #f3f4f6;
-  border: none;
-  border-radius: 4px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #374151;
-  font-weight: 600;
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-  &:hover {
-    background: #3b82f6;
-    color: white;
-    transform: scale(1.1);
-  }
-`;
-
-const CalendarTitle = styled.div`
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #111827;
-  display: flex;
-  gap: 0.35rem;
-`;
-
-const CalendarGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-`;
-
-const CalendarDay = styled.div`
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #6b7280;
-  padding: 0.15rem;
-`;
-
-const CalendarDate = styled.button`
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  border: none;
-  border-radius: 4px;
-  background: ${props => props.isSelected ? '#3b82f6' : 'transparent'};
-  color: ${props => props.isSelected ? 'white' : props.isOtherMonth ? '#9ca3af' : '#374151'};
-  font-weight: ${props => props.isSelected ? '600' : '400'};
-  cursor: pointer;
-  transition: all 0.2s ease;
-  &:hover {
-    background: ${props => props.isSelected ? '#2563eb' : '#f3f4f6'};
-    transform: scale(1.1);
-    color: ${props => props.isSelected ? 'white' : '#111827'};
-  }
-`;
-
-const CalendarFooter = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 2px solid #e5e7eb;
-`;
-
-const CalendarButton = styled.button`
-  flex: 1;
-  padding: 0.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  &.today {
-    background: #dbeafe;
-    color: #1e40af;
-    &:hover {
-      background: #bfdbfe;
-    }
-  }
-  &.clear {
-    background: #fee2e2;
-    color: #991b1b;
-    &:hover {
-      background: #fecaca;
-    }
-  }
-`;
-
-// =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
 const Orders25List = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, token, username, hasPermission, hasAdminRole, user_id, userDetail } = useContext(AuthContext);
+  const { user, token, username, hasPermission, hasAdminRole, user_id, userDetail, userPermissions, expandedPermissions } = useContext(AuthContext);
   const { setProgress } = useContext(ProgressContext) || {};
   const { setDebugInfo } = useContext(DebugContext) || {};
   const { showToast } = useContext(ToastContext) || {};
+  
+  // HIERARCHIE: Načíst konfiguraci hierarchie
+  const [hierarchyConfig, setHierarchyConfig] = useState(null);
 
-  // � CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
+  // CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
   // Konverze na number pro všechna porovnání
   const currentUserId = useMemo(() => parseInt(user_id, 10), [user_id]);
 
@@ -4173,7 +4310,7 @@ const Orders25List = () => {
   };
   const bgTasksContext = useBackgroundTasks();
 
-  // 🚀 CACHE FIX: Stabilizuj permissions pro dependencies (useMemo místo přímého volání hasPermission)
+  //  CACHE FIX: Stabilizuj permissions pro dependencies (useMemo místo přímého volání hasPermission)
   // Toto zabrání zbytečnému rerendering při každém F5
   const permissions = useMemo(() => {
     if (!hasPermission) return { canViewAll: false, hasOnlyOwn: false };
@@ -4194,7 +4331,7 @@ const Orders25List = () => {
     return { canViewAll, hasOnlyOwn };
   }, [hasPermission]);
 
-  // 🔧 OPTIMALIZACE: Ref pro aktuální hodnotu permissions
+  //  OPTIMALIZACE: Ref pro aktuální hodnotu permissions
   // Použití v loadData useCallback pro odstranění circular dependency
   const permissionsRef = useRef(permissions);
 
@@ -4203,13 +4340,59 @@ const Orders25List = () => {
     permissionsRef.current = permissions;
   }, [permissions]);
 
+  // 🏢 HIERARCHIE: Načíst konfiguraci při mount a změně tokenu/username
+  useEffect(() => {
+    const loadHierarchy = async () => {
+      if (!token || !username) {
+        setHierarchyConfig(null);
+        return;
+      }
+      
+      try {
+        const { getHierarchyConfig } = await import('../services/hierarchyService');
+        const config = await getHierarchyConfig(token, username);
+        setHierarchyConfig(config);
+      } catch (error) {
+        console.error('❌ [Orders25List] Chyba při načítání hierarchie:', error);
+        setHierarchyConfig({
+          status: 'error',
+          enabled: false,
+          profileId: null,
+          profileName: null,
+          error: error.message
+        });
+      }
+    };
+    
+    loadHierarchy();
+  }, [token, username]);
+
   // State
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [users, setUsers] = useState({});
 
-  // 🔥 CRITICAL PERFORMANCE: Ref pro users - předchází re-renderingu columns useMemo
+  // � Dynamické načtení typů příloh z DB
+  const [attachmentTypes, setAttachmentTypes] = useState([]);
+  
+  useEffect(() => {
+    const loadAttachmentTypes = async () => {
+      if (!token || !username) return;
+      
+      try {
+        const { getTypyPriloh25 } = await import('../services/api25orders');
+        const types = await getTypyPriloh25({ token, username, aktivni: 1 });
+        setAttachmentTypes(types);
+      } catch (error) {
+        console.error('Chyba při načítání typů příloh:', error);
+      }
+    };
+    
+    loadAttachmentTypes();
+  }, [token, username]);
+
+  // �🔥 CRITICAL PERFORMANCE: Ref pro users - předchází re-renderingu columns useMemo
   // Když se users objekt změní (loadData), columns by se přepočítávaly → celá tabulka re-render!
   const usersRef = useRef(users);
 
@@ -4226,8 +4409,15 @@ const Orders25List = () => {
   const [showRightShadow, setShowRightShadow] = useState(false);
   const [isTableHovered, setIsTableHovered] = useState(false); // Hover nad CELOU tabulkou (wrapper)
   const [isArrowHovered, setIsArrowHovered] = useState(false); // Hover nad šipkou (aby nezmizelá když na ni najedeš)
-  const tableContainerRef = useRef(null);
   const tableWrapperRef = useRef(null); // Pro wrapper s shadow efekty
+
+  // 🎈 State a refs pro floating header
+  const [showFloatingHeader, setShowFloatingHeader] = useState(false);
+  const [columnWidths, setColumnWidths] = useState([]);
+  const tableRef = useRef(null); // Pro Intersection Observer (ukazuje na TableContainer)
+
+  // Tento effect musí být až PO definici table instance, proto ho přesuneme níže
+  // Placeholder pro floating header observer - bude definován až po table instance
 
   // Callback ref pro TableScrollWrapper - detekuje hover nad CELOU tabulkou
   const setTableWrapperRef = useCallback((node) => {
@@ -4253,60 +4443,72 @@ const Orders25List = () => {
     }
   }, []);
 
-  // Callback ref pro TableContainer s automatickou detekcí scrollování
-  const setTableContainerRef = useCallback((node) => {
-    tableContainerRef.current = node;
+  // 🎈 Měření šířek sloupců pro floating header
+  useEffect(() => {
+    const measureColumnWidths = () => {
+      if (!tableRef.current) {
+        return;
+      }
 
-    if (node) {
-      // Funkce pro update šipek a shadowů
-      // 🔥 PERFORMANCE: Reading layout properties causes forced reflow
-      const updateScrollIndicators = () => {
-        const scrollLeft = node.scrollLeft;
-        const maxScroll = node.scrollWidth - node.clientWidth;
+      // Najdeme všechny th elementy v prvním řádku hlavičky
+      const headerCells = tableRef.current.querySelectorAll('thead tr:first-child th');
+      const widths = Array.from(headerCells).map(cell => cell.offsetWidth);
+      setColumnWidths(widths);
+    };
 
-        // Šipky - zobrazit když není na kraji (tolerance 5px)
-        const leftVisible = scrollLeft > 5;
-        const rightVisible = scrollLeft < maxScroll - 5;
-
-        setShowLeftArrow(leftVisible);
-        setShowRightArrow(rightVisible);
-
-        // Shadow efekty - plynulejší (tolerance 1px)
-        setShowLeftShadow(scrollLeft > 1);
-        setShowRightShadow(scrollLeft < maxScroll - 1);
-      };
-
-      // Iniciální update po krátkém timeoutu (aby se tabulka stihla vyrenderovat)
-      setTimeout(updateScrollIndicators, 100);
-
-      // 🔥 PERFORMANCE: Throttle scroll handler using requestAnimationFrame
-      // Prevents excessive reflow calculations (Chrome violation: Forced reflow 44-47ms)
-      let rafId = null;
-      const handleScroll = () => {
-        if (rafId) return; // Already scheduled
-        rafId = requestAnimationFrame(() => {
-          updateScrollIndicators();
-          rafId = null;
-        });
-      };
-
-      node.addEventListener('scroll', handleScroll, { passive: true });
-      window.addEventListener('resize', updateScrollIndicators);
-
-      // Cleanup
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId); // Cancel pending animation frame
-        node.removeEventListener('scroll', handleScroll);
-        window.removeEventListener('resize', updateScrollIndicators);
-      };
+    // Pokud nejsou data nebo je loading, čekáme
+    if (loading || !orders || orders.length === 0) {
+      return;
     }
-  }, []);
 
-  // 🎬 STATE pro inicializaci - splash screen zmizí až po dokončení VŠEHO
+    // Malé zpoždění pro jistotu, že DOM je vykreslený
+    const timer = setTimeout(() => {
+      measureColumnWidths();
+    }, 250);
+
+    // Změř znovu po změně velikosti okna
+    window.addEventListener('resize', measureColumnWidths);
+
+    return () => {
+      window.removeEventListener('resize', measureColumnWidths);
+      clearTimeout(timer);
+    };
+  }, [loading, orders]); // Závislosti: spustí se znovu když se změní loading nebo data
+
+  // 🎈 Synchronizace horizontálního scrollu mezi hlavní tabulkou a floating headerem
+  useEffect(() => {
+    if (!showFloatingHeader) return;
+    
+    const mainWrapper = tableWrapperRef.current;
+    const floatingWrapper = document.querySelector('[data-floating-header-wrapper]');
+    
+    if (!mainWrapper || !floatingWrapper) return;
+    
+    const syncScroll = (e) => {
+      if (e.target === mainWrapper) {
+        floatingWrapper.scrollLeft = mainWrapper.scrollLeft;
+      } else if (e.target === floatingWrapper) {
+        mainWrapper.scrollLeft = floatingWrapper.scrollLeft;
+      }
+    };
+    
+    mainWrapper.addEventListener('scroll', syncScroll);
+    floatingWrapper.addEventListener('scroll', syncScroll);
+    
+    // Inicializuj scroll pozici
+    floatingWrapper.scrollLeft = mainWrapper.scrollLeft;
+    
+    return () => {
+      mainWrapper.removeEventListener('scroll', syncScroll);
+      floatingWrapper.removeEventListener('scroll', syncScroll);
+    };
+  }, [showFloatingHeader]);
+
+  //  STATE pro inicializaci - splash screen zmizí až po dokončení VŠEHO
   const [initializationComplete, setInitializationComplete] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true); // Pro fade efekt
 
-  // 🚀 CACHE: State pro tracking cache info
+  //  CACHE: State pro tracking cache info
   const [lastLoadSource, setLastLoadSource] = useState(null); // 'cache' | 'database' | null
   const [lastLoadTime, setLastLoadTime] = useState(null);
   const [lastLoadDuration, setLastLoadDuration] = useState(null); // Jak dlouho trvalo načtení (ms)
@@ -4333,14 +4535,21 @@ const Orders25List = () => {
   const [currentDraftData, setCurrentDraftData] = useState(null); // Data draftu pro zobrazení v modalu
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState('soft'); // 🔧 Typ mazání: 'soft', 'hard', 'restore'
   const [showArchivedWarningModal, setShowArchivedWarningModal] = useState(false);
   const [showArchivedWithDraftWarningModal, setShowArchivedWithDraftWarningModal] = useState(false); // Kombinovaný modal
+
+  // 🎯 State pro schvalovací dialog (příkazce)
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [orderToApprove, setOrderToApprove] = useState(null);
+  const [approvalComment, setApprovalComment] = useState('');
+  const [approvalCommentError, setApprovalCommentError] = useState(''); // Validační error pro poznámku
 
   // 🔒 Nový state pro dialog zamčené objednávky
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null); // Info o zamčení: { lockedByUserName, canForceUnlock, orderId }
 
-  // ⚠️ State pro Force Unlock Warning Dialog
+  // ⚠ State pro Force Unlock Warning Dialog
   const [showForceUnlockWarning, setShowForceUnlockWarning] = useState(false);
   const [forceUnlockWarningData, setForceUnlockWarningData] = useState(null); // { orderNumber, lockedBy, lockedByEmail, lockedByPhone, lockedAt }
 
@@ -4389,6 +4598,7 @@ const Orders25List = () => {
     // Načti stav z localStorage s user izolací, výchozí je false (skryto)
     return getUserStorage('orders25List_showDebug', false);
   });
+
   // User settings - načíst z localStorage (bez transformace - používáme české klíče přímo)
   const userSettings = useMemo(() => {
     if (!currentUserId) return null;
@@ -4413,6 +4623,17 @@ const Orders25List = () => {
   const [activeStatusFilter, setActiveStatusFilter] = useState(() => {
     return getUserStorage('orders25List_activeStatusFilter', null);
   }); // Pro dashboard klikací filtry
+  
+  // Filtr pro schvalování objednávek - pole aktivních filtrů
+  const [approvalFilter, setApprovalFilter] = useState(() => {
+    const saved = getUserStorage('orders25List_approvalFilter', null);
+    // Migrace starého formátu na nový
+    if (saved === 'all' || saved === null) return [];
+    if (saved === 'pending') return ['pending'];
+    if (saved === 'approved') return ['approved'];
+    return Array.isArray(saved) ? saved : [];
+  });
+  
   const [rawData, setRawData] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
@@ -4496,6 +4717,21 @@ const Orders25List = () => {
   const [filterWithInvoices, setFilterWithInvoices] = useState(false);
   const [filterWithAttachments, setFilterWithAttachments] = useState(false);
 
+  // Popup pro seznam faktur
+  const [invoicePopupVisible, setInvoicePopupVisible] = useState(false);
+  const [invoicePopupOrder, setInvoicePopupOrder] = useState(null);
+  const [invoicePopupInvoices, setInvoicePopupInvoices] = useState([]);
+  const [invoicePopupLoading, setInvoicePopupLoading] = useState(false);
+
+  // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních objednávek (aktivni = 0)
+  // Checkbox viditelný pouze pro ADMIN role
+  const [showOnlyInactive, setShowOnlyInactive] = useState(false); // NEVER persisted to localStorage
+  
+  // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
+  const isAdmin = useMemo(() => {
+    return hasAdminRole && hasAdminRole();
+  }, [hasAdminRole]);
+
   // Výběr objednávek pro hromadné akce (React Table format: { '0': true, '2': true })
   const [rowSelection, setRowSelection] = useState(() => {
     // Načti z localStorage s user izolací
@@ -4512,6 +4748,21 @@ const Orders25List = () => {
 
   // Column-specific filters (textové filtry z hlavičky tabulky) - load from localStorage
   const [columnFilters, setColumnFilters] = useState(() => {
+    // 🐛 FIX: Neklade filtry pokud není user_id (currentUserId by byl NaN)
+    // Filtry se načtou až v useEffect když je currentUserId validní
+    if (!user_id || isNaN(parseInt(user_id, 10))) {
+      return {
+        dt_objednavky: '',
+        cislo_objednavky: '',
+        predmet: '',
+        objednatel: '',
+        stav_objednavky: '',
+        max_cena_s_dph: '',
+        garant: '',
+        prikazce: '',
+        schvalovatel: ''
+      };
+    }
     return getUserStorage('orders25List_columnFilters', {
       dt_objednavky: '',
       cislo_objednavky: '',
@@ -4525,13 +4776,84 @@ const Orders25List = () => {
     });
   });
 
+  // � FIX: Načti filtry z localStorage když se currentUserId stane validní
+  // Problém: currentUserId může být NaN při prvním renderu pokud user_id není ready
+  // Řešení: Načti filtry až když je currentUserId validní číslo
+  useEffect(() => {
+    if (!isNaN(currentUserId) && currentUserId > 0) {
+      const savedFilters = getUserStorage('orders25List_columnFilters', null);
+      if (savedFilters) {
+        setColumnFilters(savedFilters);
+      }
+      // 🐛 FIX: Načti také multiselect filtry
+      const savedMultiselectFilters = getUserStorage('orders25List_multiselectFilters', null);
+      if (savedMultiselectFilters) {
+        setMultiselectFilters(savedMultiselectFilters);
+      }
+    }
+  }, [currentUserId]); // Spustí se když se currentUserId změní z NaN na validní číslo
+
+  // �🚀 PERFORMANCE: Debounced column filters pro rychlejší psaní
+  // Lokální state pro okamžitou změnu inputu (UX), debounce pro aplikaci filtru (performance)
+  const [localColumnFilters, setLocalColumnFilters] = useState(columnFilters);
+  const columnFilterTimeoutRef = useRef(null);
+
+  // Synchronizuj local state když se změní column filters z jiného zdroje (např. clear all)
+  useEffect(() => {
+    setLocalColumnFilters(columnFilters);
+  }, [columnFilters]);
+
+  // Debounced setter pro column filters
+  const setColumnFiltersDebounced = useCallback((newFilters) => {
+    // Okamžitě updatni lokální state (input se updatuje bez zpoždění)
+    setLocalColumnFilters(newFilters);
+
+    // Clear předchozí timeout
+    if (columnFilterTimeoutRef.current) {
+      clearTimeout(columnFilterTimeoutRef.current);
+    }
+
+    // Aplikuj filtr po 300ms debounce
+    columnFilterTimeoutRef.current = setTimeout(() => {
+      setColumnFilters(newFilters);
+      setUserStorage('orders25List_columnFilters', newFilters);
+    }, 300);
+  }, []);
+
   // Multiselect filters (ID filtry z rozšířeného filtrovacího panelu)
-  const [multiselectFilters, setMultiselectFilters] = useState({
-    objednatel: '',
-    garant: '',
-    prikazce: '',
-    schvalovatel: ''
+  const [multiselectFilters, setMultiselectFilters] = useState(() => {
+    // 🐛 FIX: Načti multiselect filtry z localStorage (per-user)
+    if (!user_id || isNaN(parseInt(user_id, 10))) {
+      return {
+        objednatel: '',
+        garant: '',
+        prikazce: '',
+        schvalovatel: ''
+      };
+    }
+    return getUserStorage('orders25List_multiselectFilters', {
+      objednatel: '',
+      garant: '',
+      prikazce: '',
+      schvalovatel: ''
+    });
   });
+
+  // 🐛 FIX: Ulož multiselect filtry do localStorage když se změní
+  useEffect(() => {
+    if (!isNaN(currentUserId) && currentUserId > 0) {
+      setUserStorage('orders25List_multiselectFilters', multiselectFilters);
+    }
+  }, [multiselectFilters, currentUserId]);
+
+  // 🧹 CLEANUP: Clear debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (columnFilterTimeoutRef.current) {
+        clearTimeout(columnFilterTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Row highlighting by status (zvýrazňování podle stavu)
   const [showRowHighlighting, setShowRowHighlighting] = useState(() => {
@@ -4604,7 +4926,8 @@ const Orders25List = () => {
     return getUserStorage('orders25List_showArchived', false);
   });
 
-  // "JEN MOJE" filter - pouze pro SUPERADMIN a ADMINISTRATOR
+  // "JEN MOJE" filter - dostupný pro všechny uživatele
+  // Filtruje objednávky kde je přihlášený uživatel: objednatel, uživatel, garant, příkazce, schvalovatel, fakturant, zveřejnil, dokončil, potvrdil věcnou správnost
   const [showOnlyMyOrders, setShowOnlyMyOrders] = useState(() => {
     return getUserStorage('orders25List_showOnlyMyOrders', false);
   });
@@ -4729,7 +5052,7 @@ const Orders25List = () => {
 
   const statusOptions = useMemo(() => {
     return [...orderStatesList].map(status => {
-      // 🔧 POUŽIJ ČESKÝ NÁZEV jako ID pro filtrování (ne kod_stavu)
+      //  POUŽIJ ČESKÝ NÁZEV jako ID pro filtrování (ne kod_stavu)
       // Protože order.stav_objednavky obsahuje české názvy
       const statusName = status.nazev_stavu || status.nazev || status.kod_stavu || status.id;
       return {
@@ -4800,10 +5123,10 @@ const Orders25List = () => {
   // 📍 EXPANDED ROWS: State pro rozbalené řádky (ukládáme row index, ne ID)
   const [expanded, setExpanded] = useState({});
 
-  // �️ DEBOUNCE: Ref pro timeout column filtrů (3 sekundy delay)
+  // DEBOUNCE: Ref pro timeout column filtrů (3 sekundy delay)
   const columnFiltersTimeoutRef = useRef(null);
 
-  // 🚀 DEBOUNCED: Funkce pro uložení column filtrů s 3s debounce
+  // DEBOUNCED: Funkce pro uložení column filtrů s 3s debounce
   const saveColumnFiltersDebounced = useCallback((filters) => {
     if (!user_id) return;
 
@@ -4818,7 +5141,7 @@ const Orders25List = () => {
     }, 3000); // 3 sekundy debounce
   }, [user_id, setUserStorage]);
 
-  // �🔧 OPTIMALIZACE: Batch update všech filtrů do localStorage najednou
+  // OPTIMALIZACE: Batch update všech filtrů do localStorage najednou
   // Nahrazuje 14 samostatných useEffects → 1 useEffect
   // Výhody: rychlejší při změně user_id, méně re-renderů, lepší čitelnost
   useEffect(() => {
@@ -4881,12 +5204,12 @@ const Orders25List = () => {
     // POZNÁMKA: columnFilters se zpracovávají separátně s debounce
   ]);
 
-  // �️ DEBOUNCED useEffect: Column filters s 3s debounce - brání zahlcování localStorage při rychlém psaní
+  // DEBOUNCED useEffect: Column filters s 3s debounce - brání zahlcování localStorage při rychlém psaní
   useEffect(() => {
     saveColumnFiltersDebounced(columnFilters);
   }, [columnFilters, saveColumnFiltersDebounced]);
 
-  // 🧹 CLEANUP: Vyčisti timeout při unmount
+  // CLEANUP: Vyčisti timeout při unmount
   useEffect(() => {
     return () => {
       if (columnFiltersTimeoutRef.current) {
@@ -4895,7 +5218,7 @@ const Orders25List = () => {
     };
   }, []);
 
-  // �📍 SCROLL STATE: Ref pro tracking zda už byla pozice obnovena
+  // SCROLL STATE: Ref pro tracking zda už byla pozice obnovena
   const scrollStateRestored = React.useRef(false);
   const isFirstRender = React.useRef(true); // ← Track first render
 
@@ -4947,7 +5270,7 @@ const Orders25List = () => {
 
     // Pokud jsou data prázdná, označ všechny kroky jako hotové
     if (orders.length === 0) {
-      initStepsCompleted.current.dataLoaded = true; // 🔧 FIX: Musí být nastaven i dataLoaded!
+      initStepsCompleted.current.dataLoaded = true; //  FIX: Musí být nastaven i dataLoaded!
       initStepsCompleted.current.paginationRestored = true;
       initStepsCompleted.current.expandedRestored = true;
       initStepsCompleted.current.scrollRestored = true;
@@ -5122,9 +5445,8 @@ const Orders25List = () => {
       if (!orderId || !token || !username) return;
 
       try {
-        // Načti aktualizovanou objednávku z DB
-        const { getOrder25 } = require('../services/apiOrderV2');
-        const response = await getOrder25({ token, username, orderId });
+        // ✅ V2 API: Načti aktualizovanou objednávku z DB
+        const response = await getOrderV2(orderId, token, username, true);
         
         if (response && response.data) {
           const updatedOrder = response.data;
@@ -5207,8 +5529,6 @@ const Orders25List = () => {
       case 'pageSize':
         return option.label || String(option.value || option);
       // OrderForm25 field typy
-      case 'zpusob_financovani':
-        return option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
       case 'lp_kod':
         return `${option.kod || option.id || option} - ${option.nazev || option.label || 'Bez názvu'}`;
       case 'druh_objednavky_kod':
@@ -5266,7 +5586,7 @@ const Orders25List = () => {
       return nameA.localeCompare(nameB);
     };
 
-    // ℹ️ POZNÁMKA: objednatelList a garantList se již nepoužívají
+    // ℹ POZNÁMKA: objednatelList a garantList se již nepoužívají
     // Filtry GARANT a OBJEDNATEL používají přímo sortedActiveUsers (reaguje na showArchived)
     const objednatelArray = Array.from(uniqueObjednatele).sort(sortByName);
     const garantArray = Array.from(uniqueGaranti).sort(sortByName);
@@ -5288,19 +5608,27 @@ const Orders25List = () => {
   }, [orders, users]); // prepareDropdownLists vynecháno - stabilní díky useCallback s [users]
 
   // Load data
-  const loadData = useCallback(async (forceRefresh = false) => {
+  const loadData = useCallback(async (forceRefresh = false, silent = false, overrideShowOnlyInactive = null) => {
     if (!token || !user?.username) return;
 
-    // 🚀 CACHE: Start měření doby načítání
+    //  CACHE: Start měření doby načítání
     const loadStartTime = performance.now();
 
     try {
-      setLoading(true);
-      setError(null);
-      setProgress?.(5);
+      // ⚠️ Vynuluj highlight jen při NORMÁLNÍM načítání (ne silent)
+      // Silent reload = po schválení - border musí zůstat
+      if (!silent) {
+        setHighlightOrderId(null);
+      }
+      
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+        setProgress?.(5);
+      }
 
       // Load orders podle oprávnění - použij orders25/by-user pro filtrování na BE
-      setProgress?.(20);
+      if (!silent) setProgress?.(20);
 
       let ordersData;
 
@@ -5312,11 +5640,17 @@ const Orders25List = () => {
       const canViewAllOrders = currentPermissions.canViewAll;
       const hasOnlyOwnPermissions = currentPermissions.hasOnlyOwn;
 
-      // �🚀 MIGRACE: Fetch funkce pro V2 API
+      // 🔧 Použij override hodnotu pokud je poskytnutá, jinak state
+      const effectiveShowOnlyInactive = overrideShowOnlyInactive !== null ? overrideShowOnlyInactive : showOnlyInactive;
+
+      // MIGRACE: Fetch funkce pro V2 API
       const fetchFunction = async () => {
         const filters = {
           ...dateRange,
-          ...(showArchived && { archivovano: 1 })
+          ...(showArchived && { archivovano: 1 }),
+          // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních objednávek (aktivni = 0)
+          // Pouze pokud je uživatel ADMIN a checkbox je zaškrtnutý
+          ...(isAdmin && effectiveShowOnlyInactive && { show_only_inactive: 1 })
         };
 
         setApiTestData(prev => ({
@@ -5325,7 +5659,7 @@ const Orders25List = () => {
           requestTimestamp: new Date().toISOString()
         }));
 
-        // 🚀 V2 API: VŽDY používej enriched endpoint pro kompletní data
+        //  V2 API: VŽDY používej enriched endpoint pro kompletní data
         // returnFullResponse=true pro získání meta dat z backendu
         const apiResult = await listOrdersV2(filters, token, username, true, true);
 
@@ -5346,7 +5680,7 @@ const Orders25List = () => {
         return apiResult?.data || [];
       };
 
-      // 🚀 CACHE: Použij getOrders pro inteligentní cache (memory + localStorage + TTL)
+      //  CACHE: Použij getOrders pro inteligentní cache (memory + localStorage + TTL)
       // forceRefresh se používá JEN při manuálním kliknutí na tlačítko "Obnovit"
 
       const cacheResult = forceRefresh
@@ -5356,7 +5690,8 @@ const Orders25List = () => {
             {
               ...dateRange,
               viewAll: canViewAllOrders,
-              showArchived: showArchived
+              showArchived: showArchived,
+              showOnlyInactive: effectiveShowOnlyInactive // 🔧 Klíč cache musí zahrnovat i tento filtr
             }
           )
         : await ordersCacheService.getOrders(
@@ -5365,11 +5700,12 @@ const Orders25List = () => {
             {
               ...dateRange,
               viewAll: canViewAllOrders,
-              showArchived: showArchived
+              showArchived: showArchived,
+              showOnlyInactive: effectiveShowOnlyInactive // 🔧 Klíč cache musí zahrnovat i tento filtr
             }
           );
 
-      // 🚀 CACHE: Rozbal data a info o zdroji
+      //  CACHE: Rozbal data a info o zdroji
       ordersData = cacheResult.data;
 
       // 🚫 FILTR: Odstraň systémové šablony (ID <= 1)
@@ -5381,23 +5717,23 @@ const Orders25List = () => {
         });
       }
 
-      // 🚀 Změř dobu načítání
+      //  Změř dobu načítání
       const loadEndTime = performance.now();
       const loadDuration = Math.round(loadEndTime - loadStartTime);
 
-      // 🚀 Nastav zdroj podle skutečného zdroje z cache
+      //  Nastav zdroj podle skutečného zdroje z cache
       setLastLoadSource(cacheResult.source); // 'memory', 'database', nebo 'database_forced'
       setLastLoadTime(new Date());
       setLastLoadDuration(loadDuration);
 
-      setProgress?.(60);
+      if (!silent) setProgress?.(60);
 
       // Load users for names
       try {
-        const usersData = await fetchAllUsers({ token, username });
+        const usersData = await fetchAllUsers({ token, username, show_inactive: true });
         const usersMap = {};
 
-        // 🔧 Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
         usersMap['0'] = {
           id: '0',
           jmeno: 'SYSTEM',
@@ -5435,14 +5771,14 @@ const Orders25List = () => {
 
         setUsers(usersMap);
 
+        if (!silent) setProgress?.(70);
+
         // NYNÍ můžeme zpracovat koncepty s dostupnými users daty
         const localDrafts = [];
         try {
-          // 🔧 FIX: Použij draftManager místo přímého localStorage
+          //  FIX: Použij draftManager místo přímého localStorage
           draftManager.setCurrentUser(user_id);
           const draftData = await draftManager.loadDraft();
-
-          // Draft loading debug removed for performance
 
           if (draftData) {
             const isConceptValid = isValidConcept(draftData);
@@ -5481,8 +5817,17 @@ const Orders25List = () => {
                 prikazce_id: formData.prikazce_id || '',
                 uzivatel_id: objednatelId || user_id,
                 strediska_kod: formData.strediska_kod || [],
-                dt_vytvoreni: draftData.timestamp || new Date().toISOString(),
-                temp_datum_objednavky: draftData.firstAutoSaveDate ? draftData.firstAutoSaveDate.split('T')[0] : (formData.temp_datum_objednavky || new Date().toISOString().split('T')[0]),
+                // 🔥 FIX: Použít lokální český čas místo UTC
+                dt_vytvoreni: draftData.timestamp || (() => {
+                  const now = new Date();
+                  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                  const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                })(),
+                temp_datum_objednavky: draftData.firstAutoSaveDate ? draftData.firstAutoSaveDate.split('T')[0] : (formData.temp_datum_objednavky || (() => {
+                  const now = new Date();
+                  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                })()),
                 vytvoril_uzivatel: username,
                 isDraft: true,
                 je_koncept: true,
@@ -5493,9 +5838,10 @@ const Orders25List = () => {
 
               localDrafts.push(conceptOrder);
             }
+          } else {
           }
         } catch (err) {
-          // 🔧 FIX: Lepší error handling pro draft loading
+          console.error('❌ [Orders25List] Chyba při načítání draftu:', err);
         }
 
         // Přidej koncepty na začátek seznamu
@@ -5528,7 +5874,7 @@ const Orders25List = () => {
           };
         });
 
-        // 🔧 Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
         allUsersForFilters.unshift({
           id: '0',
           jmeno: 'SYSTEM',
@@ -5570,7 +5916,7 @@ const Orders25List = () => {
           return { ...approver, displayName };
         });
 
-        // 🔧 Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
         approversWithDisplayName.unshift({
           id: '0',
           user_id: '0',
@@ -5586,7 +5932,7 @@ const Orders25List = () => {
         });
 
         setApproversList(approversWithDisplayName);
-        setProgress?.(75);
+        if (!silent) setProgress?.(75);
       } catch (err) {
         // Error loading approvers
       }
@@ -5601,7 +5947,7 @@ const Orders25List = () => {
           return nameA.localeCompare(nameB, 'cs');
         });
         setOrderStatesList(sortedStates);
-        setProgress?.(80);
+        if (!silent) setProgress?.(80);
       } catch (err) {
         // Error loading state codes
       }
@@ -5655,8 +6001,13 @@ const Orders25List = () => {
         setStrediskaList([]);
       }
 
-      // Koncepty již byly zpracovány výše po načtení users
-      let finalOrders = ordersData || [];
+      // 🎯 SPOLEČNÉ FILTROVÁNÍ: Použij stejnou funkci jako mobile
+      // Filtrování: id > 1, !isLocalConcept, archivované (pokud showArchived=false), příkazce (pokud !canViewAll)
+      let finalOrders = filterOrdersShared(ordersData || [], {
+        showArchived: showArchived,  // Desktop používá showArchived přímo
+        userId: canViewAllOrders ? null : user_id,  // Filtruj podle userId pouze pokud není admin
+        isAdmin: canViewAllOrders   // canViewAll = isAdmin
+      });
 
       // Označit existující DB řádky, které mají rozpracované změny - DRAFT MANAGER
       draftManager.setCurrentUser(user_id);
@@ -5692,7 +6043,7 @@ const Orders25List = () => {
         }
       }
 
-      // 🔧 NORMALIZACE: Pro archivované objednávky bez příkazce/schvalovatele nastav SYSTEM (ID 0)
+      //  NORMALIZACE: Pro archivované objednávky bez příkazce/schvalovatele nastav SYSTEM (ID 0)
       finalOrders = finalOrders.map(order => {
         // Aplikuj pouze na archivované objednávky (importované staré objednávky)
         if (order.stav_objednavky === 'ARCHIVOVANO') {
@@ -5712,6 +6063,8 @@ const Orders25List = () => {
         }
         return order;
       });
+
+      // 📊 DEBUG: Debug logy byly odstraněny pro lepší výkon v produkci
 
       setOrders(finalOrders);
 
@@ -5794,7 +6147,7 @@ const Orders25List = () => {
           }
         });
 
-        // 🔧 OPRAVA: Ukládat přímo do localStorage bez user_id suffixu
+        //  OPRAVA: Ukládat přímo do localStorage bez user_id suffixu
         // CalendarPanel čte z 'calendar_order_counts', ne z getUserKey()
         localStorage.setItem('calendar_order_counts', JSON.stringify(counts));
         localStorage.setItem('calendar_order_counts_updated', Date.now());
@@ -5803,7 +6156,7 @@ const Orders25List = () => {
         // Tiše ignorovat chyby při generování kalendáře
       }
 
-      setProgress?.(100);
+      if (!silent) setProgress?.(100);
 
       // ❌ ODSTRANĚNO: Broadcast po každém načtení dat
       // Toto způsobovalo nekonečnou smyčku mezi záložkami
@@ -5823,22 +6176,35 @@ const Orders25List = () => {
       initStepsCompleted.current.expandedRestored = true;
       initStepsCompleted.current.scrollRestored = true;
     } finally {
-      setLoading(false);
-      setInitializing(false);
-      setTimeout(() => setProgress?.(0), 500);
+      if (!silent) {
+        setLoading(false);
+        setInitializing(false);
+        setTimeout(() => setProgress?.(0), 500);
+      } else {
+        // I při silent reloadu vynuluj progress bar (pokud nějaký zůstal)
+        setTimeout(() => setProgress?.(0), 100);
+      }
     }
-  }, [token, user?.username, user_id, selectedYear, selectedMonth, showArchived]);
-  // � OPTIMALIZACE: Odstraněno 'permissions' z dependencies - použit permissionsRef.current místo toho
+  }, [token, user?.username, user_id, selectedYear, selectedMonth, showArchived, showOnlyInactive, isAdmin]);
+  // OPTIMALIZACE: Odstraněno 'permissions' z dependencies - použit permissionsRef.current místo toho
   // Toto odstraní circular dependency a zabrání zbytečným reload při změně permissions objektu
   // permissions změny jsou zachyceny přes ref který je vždy aktuální
 
   // Load data on mount - s kontrolou forceReload z navigation state
+  // ✅ OPRAVA: Počkat na inicializaci permissions před prvním loadem
+  // Problém: Běžní uživatelé (jen OWN permissions) viděli prázdný seznam po přihlášení,
+  // protože loadData se volal dřív než se načetla oprávnění/hierarchie
   useEffect(() => {
+    // Počkat, až jsou permissions inicializované (hasPermission funkce je k dispozici)
+    if (!hasPermission || !token || !user?.username) {
+      return;
+    }
+    
     const shouldForceReload = location.state?.forceReload === true;
     loadData(shouldForceReload);
-  }, [loadData, location.state?.forceReload]);
+  }, [loadData, location.state?.forceReload, hasPermission, token, user?.username]);
 
-  // 📡 Listen for ORDER_SAVED broadcasts from other tabs/windows
+  // Listen for ORDER_SAVED broadcasts from other tabs/windows
   // 🔥 PERFORMANCE: Debounce loadData to prevent message handler violations
   // 🔒 LOOP PREVENTION: Ignoruj vlastní broadcasty
   useEffect(() => {
@@ -5855,13 +6221,15 @@ const Orders25List = () => {
       lastMessageTimestamp = now;
 
       if (message.type === BROADCAST_TYPES.ORDER_SAVED || message.type === BROADCAST_TYPES.DRAFT_DELETED) {
-        // Debounce loadData - prevent excessive reloads from multiple messages
-        // Chrome violation: 'message' handler took 50-200ms due to heavy loadData()
+        //  PERFORMANCE: Debounce loadData - prevent excessive reloads from multiple messages
+        // Chrome violation fixed: Increased debounce to 1000ms to prevent handler violations
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          loadData();
+          // ✅ FIX: Zachovat aktuální showOnlyInactive při BT reload
+          // ⚠️ SECURITY: Pokud není admin, vždy použít false (checkbox není viditelný)
+          loadData(true, false, isAdmin ? showOnlyInactive : false);
           debounceTimer = null;
-        }, 500); // 500ms debounce (zvýšeno z 300ms pro větší stabilitu)
+        }, 1000); // 1000ms debounce (zvýšeno pro performance)
       }
     });
 
@@ -5869,18 +6237,16 @@ const Orders25List = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       cleanup();
     };
-  }, [loadData]);
+  }, [loadData, showOnlyInactive, isAdmin]);
 
-  // �🔧 Registrace callback pro getCurrentFilters - používá background task před API voláním
+  // Registrace callback pro getCurrentFilters - používá background task před API voláním
   useEffect(() => {
     if (!bgTasksContext?.registerGetCurrentFiltersCallback) {
       return;
     }
 
-    /**
-     * Vrací aktuální filtry (ROK, OBDOBÍ, ARCHIV) pro background refresh
-     * Stejná logika jako loadData() - zajištění konzistence mezi F5 a background refresh
-     */
+    // Vrací aktuální filtry (ROK, OBDOBÍ, ARCHIV) pro background refresh
+    // Stejná logika jako loadData() - zajištění konzistence mezi F5 a background refresh
     const getFiltersCallback = () => {
       // Pomocná funkce pro výpočet datum_od a datum_do (kopie z loadData)
       const getDateRange = () => {
@@ -5917,6 +6283,11 @@ const Orders25List = () => {
         filters.archivovano = 1;
       }
 
+      // 🔧 ADMIN FEATURE: Jen neaktivní objednávky (aktivni = 0)
+      if (isAdmin && showOnlyInactive) {
+        filters.show_only_inactive = 1;
+      }
+
       return filters;
     };
 
@@ -5925,7 +6296,7 @@ const Orders25List = () => {
     return () => {
       bgTasksContext.registerGetCurrentFiltersCallback?.(null);
     };
-  }, [bgTasksContext, selectedYear, selectedMonth, showArchived]);
+  }, [bgTasksContext, selectedYear, selectedMonth, showArchived, isAdmin, showOnlyInactive]);
 
   // Registrace callback pro background refresh objednávek
   // ✅ Background refresh FUNGUJE pro všechny uživatele
@@ -5935,7 +6306,7 @@ const Orders25List = () => {
     if (!bgTasksContext) return;
 
     const refreshCallback = (ordersData) => {
-      // 🔧 OPTIMALIZACE: Validace dat před nastavením
+      //  OPTIMALIZACE: Validace dat před nastavením
       // Ochrana proti přepsání existujících dat nevalidními daty
 
       // Kontrola 1: Data musí být pole
@@ -5953,17 +6324,17 @@ const Orders25List = () => {
         return;
       }
 
-      // � FILTR: Odstraň systémové šablony (ID <= 1)
+      // FILTR: Odstraň systémové šablony (ID <= 1)
       // Systémové objednávky s ID=0 a ID=1 se nesmí zobrazovat v seznamu objednávek
       const filteredOrders = ordersData.filter(o => {
         const orderId = parseInt(o.id);
         return !isNaN(orderId) && orderId > 1;
       });
 
-      // ✅ Backend již filtroval podle ROK, OBDOBÍ, ARCHIV - data jsou ready to use!
-      // ⚠️ Frontend filtraci NUŽ JUŽ NEPOTŘEBUJEME - backend posílá již filtrovaná data
+      // Backend již filtroval podle ROK, OBDOBÍ, ARCHIV - data jsou ready to use!
+      // Frontend filtraci NUŽ JUŽ NEPOTŘEBUJEME - backend posílá již filtrovaná data
 
-      // 🔄 Nastavit žlutou ikonu a čas posledního background refreshe
+      // Nastavit žlutou ikonu a čas posledního background refreshe
       setIsBackgroundRefreshActive(true);
       setLastRefreshTime(new Date());
 
@@ -5976,12 +6347,6 @@ const Orders25List = () => {
         allFields: filteredOrders.length > 0 ? Object.keys(filteredOrders[0]) : [],
         firstOrder: filteredOrders[0] || null,
         rawData: filteredOrders
-      });
-
-      // Zobraz toast o aktualizaci
-      showToast?.(`Seznam objednávek aktualizován (${filteredOrders.length} obj)`, {
-        type: 'info',
-        duration: 3000
       });
     };
 
@@ -6006,7 +6371,7 @@ const Orders25List = () => {
       // Hledej ORDER_UNLOCK_FORCED notifikace
       const forceUnlockNotifications = notifications.filter(n =>
         n.type === 'order_unlock_forced' &&
-        n.is_read === false
+        n.precteno === false
       );
 
       if (forceUnlockNotifications.length > 0) {
@@ -6162,10 +6527,47 @@ const Orders25List = () => {
       systemStatus = 'DRAFT';
     }
 
-    // ��� SPECIÁLNÍ LOGIKA PRO UVEŘEJNĚNÍ V REGISTRU SMLUV
-    // Kontroluj data o publikaci - má přednost před obecným stavem
-    if (order.registr_smluv) {
-      if (order.registr_smluv.ma_byt_zverejnena && !order.registr_smluv.registr_iddt) {
+    // SPECIALNI LOGIKA PRO UVEREJNENI V REGISTRU SMLUV
+    // Kontroluj data o publikaci - ma prednost pred obecnym stavem
+    if (order.registr_smluv || order.stav_workflow_kod) {
+      const registr = order.registr_smluv;
+      
+      // Pokud ma dt_zverejneni A registr_iddt, je jiz zverejneno
+      if (registr?.dt_zverejneni && registr?.registr_iddt) {
+        return 'UVEREJNENA';
+      }
+      
+      // Ziskej workflow status pro kontrolu UVEREJNIT
+      let workflowStatus = null;
+      if (order.stav_workflow_kod) {
+        try {
+          let workflowStates = [];
+          if (Array.isArray(order.stav_workflow_kod)) {
+            workflowStates = order.stav_workflow_kod;
+          } else if (typeof order.stav_workflow_kod === 'string') {
+            workflowStates = JSON.parse(order.stav_workflow_kod);
+            if (!Array.isArray(workflowStates)) {
+              workflowStates = [];
+            }
+          }
+          if (workflowStates.length > 0) {
+            const lastState = workflowStates[workflowStates.length - 1];
+            workflowStatus = typeof lastState === 'object' ? lastState.kod_stavu : lastState;
+          }
+        } catch (e) {
+          // Pokud parsing selže, ignoruj
+        }
+      }
+      
+      // Pokud má být zveřejněna (3 podmínky jako checkbox):
+      // 1. workflow status je UVEREJNIT
+      // 2. registr.zverejnit === 'ANO'
+      // 3. registr.ma_byt_zverejnena === true/1
+      const maZverejnit = workflowStatus === 'UVEREJNIT' || 
+                          registr?.zverejnit === 'ANO' || 
+                          registr?.ma_byt_zverejnena;
+      
+      if (maZverejnit && !registr?.registr_iddt) {
         return 'K_UVEREJNENI_DO_REGISTRU';
       }
     }
@@ -6173,11 +6575,11 @@ const Orders25List = () => {
     return systemStatus;
   }, []); // No dependencies - pure function
 
-  // � Helper funkce pro získání aktuálního workflow stavu objednávky
+  // Helper funkce pro ziskani aktualniho workflow stavu objednavky
   const getOrderWorkflowStatus = useCallback((order) => {
     if (!order) return null;
 
-    // Zkus získat poslední stav z stav_workflow_kod
+    // Zkus ziskat posledni stav z stav_workflow_kod
     if (order.stav_workflow_kod) {
       try {
         let workflowStates = [];
@@ -6213,61 +6615,50 @@ const Orders25List = () => {
     return null;
   }, []);
 
-  // �💰 Helper funkce pro získání celkové ceny s DPH Z POLOŽEK OBJEDNÁVKY
-  // Počítá POUZE ze součtu položek (cena_s_dph), NIKDY z max_cena_s_dph
+  // Helper funkce pro ziskani celkove ceny s DPH Z POLOZEK OBJEDNAVKY
+  // Pocita POUZE ze souctu polozek (cena_s_dph), NIKDY z max_cena_s_dph
   const getOrderTotalPriceWithDPH = useCallback((order) => {
-    // 1. Zkus vrácené pole z BE (polozky_celkova_cena_s_dph je již součet)
+    // 1. PRIORITA: Faktury (pokud existuji) - skutecne utracene penize
+    if (order.faktury_celkova_castka_s_dph != null && order.faktury_celkova_castka_s_dph !== '') {
+      const value = parseFloat(order.faktury_celkova_castka_s_dph);
+      if (!isNaN(value) && value > 0) return value;
+    }
+    
+    // 2. PRIORITA: Polozky - objednane ale jeste nefakturovane
     if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
       const value = parseFloat(order.polozky_celkova_cena_s_dph);
-      if (!isNaN(value)) return value;
+      if (!isNaN(value) && value > 0) return value;
     }
 
-    // 2. Spočítej z položek (Order V2 API vrací polozky přímo v order objektu)
+    // 🔄 Spočítej z pole položek jako fallback (Order V2 API vrací polozky přímo v order objektu)
     if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
       const total = order.polozky.reduce((sum, item) => {
         const cena = parseFloat(item.cena_s_dph || 0);
         return sum + (isNaN(cena) ? 0 : cena);
       }, 0);
-      return total;
+      if (total > 0) return total;
     }
 
-    // 3. Pokud nejsou položky, vrať 0 (NE max_cena_s_dph!)
-    // max_cena_s_dph je limit, ne skutečná cena
+    // 3. PRIORITA: Max cena ke schválení - schválený limit, se kterým musíme počítat
+    if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
+      const value = parseFloat(order.max_cena_s_dph);
+      if (!isNaN(value) && value > 0) return value;
+    }
+
+    // Pokud objednávka nemá žádnou částku, vrať 0
     return 0;
   }, [orders]);
 
-  // Stats calculation
-  const stats = useMemo(() => {
-    // OPRAVA: Počítej stats z orders, ale aplikuj showArchived filtr
-    // Aby dlaždice odpovídaly tomu, co se zobrazuje v tabulce
-    const dataToCount = showArchived
-      ? orders
-      : orders.filter(order => {
-          const status = getOrderSystemStatus(order);
-          return status !== 'ARCHIVOVANO';
-        });
-
-    const total = dataToCount.length;
-    const byStatus = dataToCount.reduce((acc, order) => {
-      const systemStatus = getOrderSystemStatus(order);
-      const displayStatus = getOrderDisplayStatus(order);
-      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
-
-      // Debug: loguj stav pro první pár objednávek
-      if (acc._debug < 5) {
-
-        acc._debug = (acc._debug || 0) + 1;
-      }
-
-      return acc;
-    }, {});
-
+  // 📊 GLOBAL Stats calculation - ALWAYS from orders (before user filters)
+  // Used ONLY for total amount display
+  const globalStats = useMemo(() => {
+    const dataToCount = orders;
+    
     const totalAmount = dataToCount.reduce((sum, order) => {
       const amount = getOrderTotalPriceWithDPH(order);
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
 
-    // Počítání cen dokončených a nedokončených
     const completedAmount = dataToCount.reduce((sum, order) => {
       const status = getOrderSystemStatus(order);
       const isCompleted = ['DOKONCENA', 'VYRIZENA', 'COMPLETED'].includes(status);
@@ -6289,6 +6680,25 @@ const Orders25List = () => {
       return sum;
     }, 0);
 
+    return {
+      totalAmount,
+      completedAmount,
+      incompleteAmount
+    };
+  }, [orders, getOrderSystemStatus, getOrderTotalPriceWithDPH]);
+
+  // 📊 Stats calculation - from base orders for tiles
+  const stats = useMemo(() => {
+    // ✅ Count from orders (before filters) for initial dashboard state
+    const dataToCount = orders;
+    
+    const total = dataToCount.length;
+    const byStatus = dataToCount.reduce((acc, order) => {
+      const systemStatus = getOrderSystemStatus(order);
+      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
+      return acc;
+    }, {});
+
     // 📄 Počítání objednávek s fakturami (min. 1 faktura)
     const withInvoices = dataToCount.reduce((count, order) => {
       const faktury = order.faktury || [];
@@ -6303,17 +6713,15 @@ const Orders25List = () => {
       return prilohyCount > 0 ? count + 1 : count;
     }, 0);
 
-    // ⚠️ Počítání mimořádných událostí
+    // ⚠ Počítání mimořádných událostí
     const mimoradneUdalosti = dataToCount.reduce((count, order) => {
       return order.mimoradna_udalost ? count + 1 : count;
     }, 0);
 
-    // Debug: ukáž celý byStatus objekt
-
     return {
       total,
       nova: byStatus.NOVA || 0,
-      ke_schvaleni: byStatus.KE_SCHVALENI || 0,
+      ke_schvaleni: byStatus.ODESLANA_KE_SCHVALENI || 0,
       schvalena: byStatus.SCHVALENA || 0,
       zamitnuta: byStatus.ZAMITNUTA || 0,
       ceka_se: byStatus.CEKA_SE || 0,
@@ -6321,6 +6729,7 @@ const Orders25List = () => {
       odeslana: byStatus.ODESLANA || 0,
       potvrzena: byStatus.POTVRZENA || 0,
       uverejnena: byStatus.UVEREJNENA || 0,
+      fakturace: byStatus.FAKTURACE || 0,
       vecna_spravnost: byStatus.VECNA_SPRAVNOST || 0,
       dokoncena: byStatus.DOKONCENA || 0,
       vyrizena: byStatus.VYRIZENA || 0,
@@ -6334,14 +6743,14 @@ const Orders25List = () => {
       approved: byStatus.APPROVED || 0,
       completed: byStatus.COMPLETED || 0,
       cancelled: byStatus.CANCELLED || 0,
-      totalAmount,
-      completedAmount,
-      incompleteAmount,
+      totalAmount: globalStats.totalAmount,
+      completedAmount: globalStats.completedAmount,
+      incompleteAmount: globalStats.incompleteAmount,
       withInvoices,
       withAttachments,
       mimoradneUdalosti
     };
-  }, [orders, showArchived, getOrderSystemStatus, getOrderDisplayStatus, getOrderTotalPriceWithDPH]);
+  }, [orders, globalStats, getOrderSystemStatus]);
 
   // Pomocná funkce pro získání data objednávky (skutečné nebo dočasné pro koncepty)
   // Získání full datetime pro objednávku
@@ -6371,15 +6780,17 @@ const Orders25List = () => {
   const highlightText = useCallback((text, searchTerm) => {
     if (!text || !searchTerm || typeof text !== 'string') return text;
 
-    const normalizedText = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const normalizedSearch = searchTerm.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // Normalizace - odstranění diakritiky pro porovnání
+    const normalizedText = removeDiacritics(text.toLowerCase());
+    const normalizedSearch = removeDiacritics(searchTerm.toLowerCase());
 
     const index = normalizedText.indexOf(normalizedSearch);
     if (index === -1) return text;
 
+    // Zvýraznění textu s diakritikou
     const beforeMatch = text.substring(0, index);
-    const match = text.substring(index, index + searchTerm.length);
-    const afterMatch = text.substring(index + searchTerm.length);
+    const match = text.substring(index, index + normalizedSearch.length);
+    const afterMatch = text.substring(index + normalizedSearch.length);
 
     return (
       <>
@@ -6392,6 +6803,17 @@ const Orders25List = () => {
     );
   }, []);
 
+  // 🎨 Helper pro zvýraznění textu podle globálního nebo sloupcového filtru
+  const highlightTextWithFilters = useCallback((text, columnKey) => {
+    if (!text || typeof text !== 'string') return text;
+    
+    // Priorita: sloupcový filtr (localColumnFilters pro okamžitý feedback) > globální filtr
+    const columnFilterValue = localColumnFilters[columnKey];
+    const searchTerm = columnFilterValue || globalFilter;
+    
+    return searchTerm ? highlightText(text, searchTerm) : text;
+  }, [localColumnFilters, globalFilter, highlightText]);
+
   // 🔥 CRITICAL PERFORMANCE: Forward declaration for action click handler
   // Defined here (before columns) to avoid "Cannot access before initialization" error
   // Actual handlers (handleEdit, handleView, etc.) are defined later
@@ -6401,6 +6823,13 @@ const Orders25List = () => {
   const handleActionClick = useCallback((e) => {
     const button = e.target.closest('button[data-action]');
     if (!button) return;
+    
+    // 🔧 KRITICKÉ: Kontrola disabled stavu pomocí data-disabled atributu
+    if (button.dataset.disabled === 'true') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
 
     const action = button.dataset.action;
     const orderIndex = parseInt(button.dataset.orderIndex, 10); // Local index in current page
@@ -6408,17 +6837,13 @@ const Orders25List = () => {
     
     // Use LOCAL index to get order from filteredDataRef (current page data)
     const order = filteredDataRef.current[orderIndex];
-    
-    console.log('🎯 Action:', action, 'Local Index:', orderIndex, 'Order ID:', orderId, 'Order:', order);
 
     if (!order) {
-      console.error('❌ Order not found at local index', orderIndex, 'Total items:', filteredDataRef.current?.length);
       return;
     }
 
     // Use refs to call handlers (populated after they're defined)
     const handlers = handlersRef.current;
-    console.log('🎯 Handlers:', handlers);
     switch (action) {
       case 'edit':
         handlers.handleEdit?.(order);
@@ -6436,7 +6861,6 @@ const Orders25List = () => {
         handlers.handleCreateInvoice?.(order);
         break;
       case 'delete':
-        console.log('🎯 Calling handleDelete');
         handlers.handleDelete?.(order);
         break;
     }
@@ -6497,13 +6921,30 @@ const Orders25List = () => {
     return nazev || `Středisko (kód ${kod})`;
   }, [strediskaList]);
 
+  // 🎯 HELPER: Wrapper pro sortingFn - VŽDY dává konceptům prioritu
+  // Zajišťuje, že koncepty (isDraft nebo je_koncept) jsou VŽDY první v tabulce,
+  // bez ohledu na řazení ostatních sloupců
+  const withDraftPriority = useCallback((sortingFn) => {
+    return (rowA, rowB, columnId) => {
+      const aIsDraft = rowA.original.isDraft || rowA.original.je_koncept || false;
+      const bIsDraft = rowB.original.isDraft || rowB.original.je_koncept || false;
+      
+      // Pokud jedna je draft a druhá ne, draft je vždy první
+      if (aIsDraft && !bIsDraft) return -1;
+      if (!aIsDraft && bIsDraft) return 1;
+      
+      // Obě jsou drafty nebo obě nejsou - použij původní sorting
+      return sortingFn(rowA, rowB, columnId);
+    };
+  }, []);
+
   // Column definitions
   const columns = useMemo(() => [
     {
       id: 'select',
       header: '',
       cell: ({ row }) => (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ display: 'none' }}>
           <input
             type="checkbox"
             checked={row.getIsSelected()}
@@ -6512,9 +6953,10 @@ const Orders25List = () => {
           />
         </div>
       ),
-      size: 50,
+      size: 0,
       meta: {
-        align: 'center'
+        align: 'center',
+        hidden: true
       }
     },
     {
@@ -6552,15 +6994,140 @@ const Orders25List = () => {
           </ExpandButton>
         </div>
       ),
-      size: 50,
+      size: 35,
       meta: {
         align: 'center'
       }
     },
+    // 🎯 Sloupec SCHVÁLIT - ikona pro rychlé schválení (pouze pro ADMINI a ORDER_APPROVE)
+    ...(hasAdminRole() || hasPermission('ORDER_APPROVE') ? [{
+      id: 'approve',
+      header: () => (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+          <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
+        </div>
+      ),
+      cell: ({ row }) => {
+        const order = row.original;
+        
+        // Kontrola oprávnění
+        const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+        const isAdmin = hasAdminRole();
+        const hasApprovePermission = hasPermission('ORDER_APPROVE');
+        const canUserApprove = isPrikazce || isAdmin || hasApprovePermission;
+        
+        if (!canUserApprove) return null;
+        
+        // Kontrola workflow stavu
+        let workflowStates = [];
+        try {
+          if (Array.isArray(order.stav_workflow_kod)) {
+            workflowStates = order.stav_workflow_kod;
+          } else if (typeof order.stav_workflow_kod === 'string') {
+            workflowStates = JSON.parse(order.stav_workflow_kod);
+          }
+        } catch (e) {
+          workflowStates = [];
+        }
+        
+        const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+        const lastState = workflowStates.length > 0 
+          ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+              ? workflowStates[workflowStates.length - 1] 
+              : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+            ).toUpperCase()
+          : '';
+        
+        const isAllowedState = allowedStates.includes(lastState);
+        
+        if (!isAllowedState) return null;
+        
+        // Určení ikony podle stavu
+        const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+        const approvedStates = ['SCHVALENA', 'ZAMITNUTA'];
+        const isPending = pendingStates.includes(lastState);
+        const isApproved = approvedStates.includes(lastState);
+        
+        // Použití barev z STATUS_COLORS (jako v dashboardu) + křížek pro zamítnutou
+        let icon, iconColor, hoverBgColor, hoverBorderColor, hoverIconColor;
+        
+        if (isPending) {
+          // Ke schválení - červená + hodiny
+          icon = faHourglassHalf;
+          iconColor = '#dc2626'; // červená
+          hoverBgColor = '#fecaca';
+          hoverBorderColor = '#dc2626';
+          hoverIconColor = '#991b1b';
+        } else if (lastState === 'SCHVALENA') {
+          // Schválená - oranžová + fajfka
+          icon = faCheckCircle;
+          iconColor = '#ea580c'; // oranžová
+          hoverBgColor = '#fed7aa';
+          hoverBorderColor = '#ea580c';
+          hoverIconColor = '#c2410c';
+        } else {
+          // Zamítnutá - šedá + křížek
+          icon = faTimesCircle;
+          iconColor = '#6b7280'; // šedá
+          hoverBgColor = '#e5e7eb';
+          hoverBorderColor = '#6b7280';
+          hoverIconColor = '#4b5563';
+        }
+        
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const orderDetail = await getOrderV2(order.id, token, username, true, 0);
+                  setOrderToApprove(orderDetail);
+                  setApprovalComment(orderDetail.schvaleni_komentar || '');
+                  setShowApprovalDialog(true);
+                } catch (error) {
+                  console.error('Chyba při načítání detailu objednávky:', error);
+                  showToast('Chyba při načítání objednávky', { type: 'error' });
+                }
+              }}
+              style={{
+                background: 'transparent',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                color: iconColor,
+                cursor: 'pointer',
+                padding: '0.35rem 0.5rem',
+                fontSize: '1.1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = hoverBgColor;
+                e.currentTarget.style.borderColor = hoverBorderColor;
+                e.currentTarget.style.color = hoverIconColor;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = '#d1d5db';
+                e.currentTarget.style.color = iconColor;
+              }}
+              title={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"}
+            >
+              <FontAwesomeIcon icon={icon} />
+            </button>
+          </div>
+        );
+      },
+      size: 45,
+      meta: {
+        align: 'center'
+      }
+    }] : []),
     {
       accessorKey: 'dt_objednavky',
       header: 'Datum objednávky',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const dateA = getOrderDateTime(rowA.original);
         const dateB = getOrderDateTime(rowB.original);
 
@@ -6573,45 +7140,73 @@ const Orders25List = () => {
         const timeA = new Date(dateA).getTime();
         const timeB = new Date(dateB).getTime();
         return timeA - timeB;
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
-        const orderDateTime = getOrderDateTime(row.original);
+        const order = row.original;
+        const orderDateTime = getOrderDateTime(order);
         if (!orderDateTime) return false;
 
-        const date = new Date(orderDateTime);
-        const dateStr = formatDateOnly(date);
-        const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-        const fullText = `${dateStr} ${timeStr}`;
+        // Datum poslední změny (bez času)
+        const lastModified = order.dt_aktualizace || order.dt_objednavky || orderDateTime;
+        const lastModifiedStr = formatDateOnly(new Date(lastModified));
+
+        // Datum a čas vytvoření
+        const created = order.dt_vytvoreni || orderDateTime;
+        const createdDate = new Date(created);
+        const createdDateStr = formatDateOnly(createdDate);
+        const createdTimeStr = createdDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+
+        // Převést filterValue (yyyy-mm-dd) na dd.mm.yyyy pro porovnání
+        let searchText = filterValue;
+        if (filterValue.includes('-') && filterValue.length === 10) {
+          // Formát yyyy-mm-dd z DatePickeru
+          const date = new Date(filterValue);
+          if (!isNaN(date.getTime())) {
+            searchText = formatDateOnly(date);
+          }
+        }
+
+        // Spojit všechny tři hodnoty pro prohledávání
+        const fullText = `${lastModifiedStr} ${createdDateStr} ${createdTimeStr}`;
 
         // Case-insensitive a bez diakritiky
         const normalizedText = removeDiacritics(fullText.toLowerCase());
-        const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+        const normalizedFilter = removeDiacritics(searchText.toLowerCase());
 
         return normalizedText.includes(normalizedFilter);
       },
       cell: ({ row }) => {
-        const orderDateTime = getOrderDateTime(row.original);
+        const order = row.original;
+        const orderDateTime = getOrderDateTime(order);
         if (!orderDateTime) return <div style={{ textAlign: 'center' }}>---</div>;
 
-        const date = new Date(orderDateTime);
-        const dateStr = formatDateOnly(date);
-        const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        // Datum poslední změny objednávky (bez času)
+        const lastModified = order.dt_aktualizace || order.dt_objednavky || orderDateTime;
+        const lastModifiedDate = new Date(lastModified);
+        const lastModifiedStr = formatDateOnly(lastModifiedDate);
+
+        // Datum a čas vytvoření objednávky
+        const created = order.dt_vytvoreni || orderDateTime;
+        const createdDate = new Date(created);
+        const createdDateStr = formatDateOnly(createdDate);
+        const createdTimeStr = createdDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
         return (
-          <div style={{ textAlign: 'center', lineHeight: '1.2' }}>
-            <div>{dateStr}</div>
-            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{timeStr}</div>
+          <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
+            <div>{lastModifiedStr}</div>
+            <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{createdDateStr}</div>
+            <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{createdTimeStr}</div>
           </div>
         );
       },
-      size: 120
+      size: 90
     },
     {
       accessorKey: 'cislo_objednavky',
       header: 'Evidenční číslo',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const numA = rowA.original.cislo_objednavky || '';
         const numB = rowB.original.cislo_objednavky || '';
 
@@ -6622,107 +7217,410 @@ const Orders25List = () => {
 
         // České třídění čísel objednávek
         return numA.localeCompare(numB, 'cs', { numeric: true, sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
         const cislo = row.original.cislo_objednavky || '';
+        const predmet = row.original.predmet || '';
 
-        // Case-insensitive a bez diakritiky
-        const normalizedText = removeDiacritics(cislo.toLowerCase());
+        // Filtruj podle čísla i předmětu (OR podmínka)
+        const normalizedCislo = removeDiacritics(cislo.toLowerCase());
+        const normalizedPredmet = removeDiacritics(predmet.toLowerCase());
         const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
 
-        return normalizedText.includes(normalizedFilter);
+        return normalizedCislo.includes(normalizedFilter) || normalizedPredmet.includes(normalizedFilter);
       },
       cell: ({ row }) => (
         <div style={{
-          fontWeight: 600,
-          color: '#1e293b',
-          fontFamily: 'monospace',
           textAlign: 'left',
-          whiteSpace: 'nowrap',
+          whiteSpace: 'normal',
           overflow: 'visible',
           position: 'relative'
         }}>
-          {row.original.mimoradna_udalost && (
-            <SmartTooltip content="Mimořádná objednávka (krize/havárie)">
+          {/* První řádek - Ev. číslo */}
+          <div style={{
+            fontWeight: 600,
+            color: '#1e293b',
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap'
+          }}>
+            {row.original.mimoradna_udalost && (
+              <SmartTooltip content="Mimořádná objednávka (krize/havárie)">
+                <span style={{
+                  color: '#dc2626',
+                  fontWeight: 'bold',
+                  marginRight: '4px',
+                  fontSize: '1.1em'
+                }}>
+                  <FontAwesomeIcon icon={faBoltLightning} />
+                </span>
+              </SmartTooltip>
+            )}
+            {row.original.stav_objednavky === 'ARCHIVOVANO' && (
               <span style={{
                 color: '#dc2626',
                 fontWeight: 'bold',
                 marginRight: '4px',
                 fontSize: '1.1em'
               }}>
-                <FontAwesomeIcon icon={faBoltLightning} />
+                ⚠
               </span>
-            </SmartTooltip>
-          )}
-          {row.original.stav_objednavky === 'ARCHIVOVANO' && (
-            <span style={{
-              color: '#dc2626',
-              fontWeight: 'bold',
-              marginRight: '4px',
-              fontSize: '1.1em'
+            )}
+            {highlightTextWithFilters(row.original.cislo_objednavky || '---', 'cislo_objednavky')}
+            {row.original.id && !row.original.isDraft && !row.original.je_koncept && (
+              <sup style={{
+                fontSize: '0.6rem',
+                color: '#9ca3af',
+                fontWeight: 'normal',
+                marginLeft: '2px'
+              }}>
+                #{row.original.id}
+              </sup>
+            )}
+          </div>
+          {/* Druhý řádek - Předmět */}
+          {row.original.predmet && (
+            <div style={{
+              fontSize: '1em',
+              fontWeight: 600,
+              color: '#1e293b',
+              marginTop: '4px',
+              lineHeight: '1.3',
+              maxWidth: '300px',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              textOverflow: 'ellipsis',
+              wordBreak: 'break-word'
             }}>
-              ⚠
-            </span>
-          )}
-          {globalFilter
-            ? highlightText(row.original.cislo_objednavky || '---', globalFilter)
-            : (row.original.cislo_objednavky || '---')
-          }
-          {row.original.id && !row.original.isDraft && !row.original.je_koncept && (
-            <sup style={{
-              fontSize: '0.6rem',
-              color: '#9ca3af',
-              fontWeight: 'normal',
-              marginLeft: '2px'
-            }}>
-              #{row.original.id}
-            </sup>
+              {highlightTextWithFilters(row.original.predmet, 'predmet')}
+            </div>
           )}
         </div>
       ),
-      size: 100
+      size: 140
     },
     {
-      accessorKey: 'predmet',
-      header: 'Předmět',
-      sortingFn: (rowA, rowB) => {
-        const predmetA = rowA.original.predmet || '';
-        const predmetB = rowB.original.predmet || '';
+      accessorKey: 'zpusob_financovani',
+      header: 'Financování',
+      sortingFn: withDraftPriority((rowA, rowB) => {
+        // Funkce pro získání způsobu financování - STEJNÁ LOGIKA JAKO V PODŘÁDKU
+        const getFinancovaniText = (order) => {
+          // Priorita: order.financovani.typ_nazev nebo order.financovani.typ
+          if (order.financovani && typeof order.financovani === 'object') {
+            return order.financovani.typ_nazev || order.financovani.typ || '';
+          }
+          return '';
+        };
 
-        // Prázdné hodnoty na konec
-        if (!predmetA && !predmetB) return 0;
-        if (!predmetA) return 1;
-        if (!predmetB) return -1;
+        const nameA = getFinancovaniText(rowA.original);
+        const nameB = getFinancovaniText(rowB.original);
 
-        // České třídění
-        return predmetA.localeCompare(predmetB, 'cs', { sensitivity: 'base' });
-      },
+        // České třídění (prázdné na konec)
+        if (!nameA && !nameB) return 0;
+        if (!nameA) return 1;
+        if (!nameB) return -1;
+
+        return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
-        const predmet = row.original.predmet || '';
+        const order = row.original;
+        let financovaniText = '';
+        let detailText = '';
 
-        // Case-insensitive a bez diakritiky
-        const normalizedText = removeDiacritics(predmet.toLowerCase());
-        const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
-
-        return normalizedText.includes(normalizedFilter);
-      },
-      cell: ({ row }) => (
-        <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {globalFilter
-            ? highlightText(row.original.predmet || '---', globalFilter)
-            : (row.original.predmet || '---')
+        // STEJNÁ LOGIKA JAKO V PODŘÁDKU
+        if (order.financovani && typeof order.financovani === 'object') {
+          financovaniText = order.financovani.typ_nazev || order.financovani.typ || '';
+          
+          // Získat detail podle typu financování
+          const typ = order.financovani.typ || '';
+          
+          // LP - zobrazit jen LP kódy (bez popisů)
+          if (typ === 'LP') {
+            // Priorita 1: lp_nazvy array (enriched data) - ale použij jen kódy
+            if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+              const lpKody = order.financovani.lp_nazvy
+                .map(lp => lp.cislo_lp || lp.kod || '')
+                .filter(Boolean);
+              
+              if (lpKody.length > 0) {
+                detailText = lpKody.join(', ');
+              }
+            }
+            // Fallback: lp_kody array
+            else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
+              detailText = order.financovani.lp_kody.join(', ');
+            }
           }
-        </div>
-      )
+          // Smlouva - zobrazit číslo smlouvy
+          else if (typ === 'SMLOUVA') {
+            detailText = order.financovani.cislo_smlouvy || '';
+          }
+          // Individuální schválení - zobrazit číslo individuálního schválení
+          else if (typ === 'INDIVIDUALNI_SCHVALENI') {
+            detailText = order.financovani.individualni_schvaleni || '';
+          }
+        }
+
+        // Pokud je prázdný, hledej "---"
+        if (!financovaniText) {
+          const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+          return normalizedFilter === '---' || normalizedFilter === '';
+        }
+
+        // Case-insensitive a bez diakritiky - hledej v typu financování i v detailu
+        const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+        const normalizedFinancovani = removeDiacritics(String(financovaniText).toLowerCase());
+        const normalizedDetail = detailText ? removeDiacritics(String(detailText).toLowerCase()) : '';
+
+        // Hledej v hlavním textu NEBO v detailu (LP kódy, smlouva, atd.)
+        return normalizedFinancovani.includes(normalizedFilter) || normalizedDetail.includes(normalizedFilter);
+      },
+      cell: ({ row }) => {
+        const order = row.original;
+        let financovaniText = '---';
+        let detailText = '';
+
+        // STEJNÁ LOGIKA JAKO V PODŘÁDKU: order.financovani.typ_nazev nebo order.financovani.typ
+        if (order.financovani && typeof order.financovani === 'object') {
+          financovaniText = order.financovani.typ_nazev || order.financovani.typ || '---';
+          
+          // Získat detail podle typu financování
+          const typ = order.financovani.typ || '';
+          
+          // LP - zobrazit jen LP kódy (bez popisů)
+          if (typ === 'LP') {
+            // Priorita 1: lp_nazvy array (enriched data) - ale použij jen kódy
+            if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+              const lpKody = order.financovani.lp_nazvy
+                .map(lp => lp.cislo_lp || lp.kod || '')
+                .filter(Boolean);
+              
+              if (lpKody.length > 0) {
+                detailText = lpKody.join(', ');
+              }
+            }
+            // Fallback: lp_kody array
+            else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
+              detailText = order.financovani.lp_kody.join(', ');
+            }
+          }
+          // Smlouva - zobrazit číslo smlouvy
+          else if (typ === 'SMLOUVA') {
+            detailText = order.financovani.cislo_smlouvy || '';
+          }
+          // Individuální schválení - zobrazit číslo individuálního schválení
+          else if (typ === 'INDIVIDUALNI_SCHVALENI') {
+            detailText = order.financovani.individualni_schvaleni || '';
+          }
+        }
+
+        // Zkrátit víceoslovné názvy: "Limitovaný příslib" -> "Limitovaný p."
+        let displayText = financovaniText;
+        if (financovaniText !== '---') {
+          const words = financovaniText.trim().split(/\s+/);
+          if (words.length > 1) {
+            // První slovo celé + první písmeno dalších slov s tečkou
+            displayText = words[0] + ' ' + words.slice(1).map(w => w.charAt(0) + '.').join(' ');
+          }
+        }
+
+        // Priorita zvýraznění: column filter > global filter
+        const highlightFilter = columnFilters.zpusob_financovani || globalFilter;
+
+        return (
+          <div style={{
+            textAlign: 'left',
+            whiteSpace: 'nowrap',
+            lineHeight: '1.3'
+          }}
+          title={financovaniText !== '---' ? financovaniText : ''}
+          >
+            <div style={{
+              fontWeight: 600,
+              color: '#7c3aed'
+            }}>
+              {highlightFilter
+                ? highlightText(displayText, highlightFilter)
+                : displayText
+              }
+            </div>
+            {detailText && (
+              <div style={{
+                fontSize: '0.8em',
+                color: '#6b7280',
+                marginTop: '2px',
+                fontWeight: 500
+              }}>
+                {highlightFilter
+                  ? highlightText(detailText, highlightFilter)
+                  : detailText
+                }
+              </div>
+            )}
+            
+            {/* Roční plán čerpání - jen pro smlouvy se stropovou cenou */}
+            {order.financovani?.typ === 'SMLOUVA' && order._enriched?.smlouva_info && (() => {
+              const smlouvaInfo = order._enriched.smlouva_info;
+              const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
+              const cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+              const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((cerpanoPozadovano / hodnotaSmlouvy) * 100) : 0;
+              
+              if (hodnotaSmlouvy > 0) {
+                const currentMonth = new Date().getMonth();
+                const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                
+                return (
+                  <div style={{
+                    display: 'flex',
+                    width: '100%',
+                    minHeight: '14px',
+                    gap: '1px',
+                    background: '#f1f5f9',
+                    borderRadius: '2px',
+                    padding: '1px',
+                    marginTop: '3px'
+                  }}>
+                    {Array.from({ length: 12 }).map((_, monthIndex) => {
+                      const isCurrentMonth = monthIndex === currentMonth;
+                      const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                      
+                      let bgColor;
+                      if (isCurrentMonth) {
+                        bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                      } else if (monthIndex < currentMonth) {
+                        bgColor = '#94a3b8';
+                      } else {
+                        bgColor = '#e2e8f0';
+                      }
+                      
+                      const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                      
+                      return (
+                        <div
+                          key={monthIndex}
+                          style={{
+                            flex: 1,
+                            background: bgColor,
+                            borderRadius: '1px',
+                            position: 'relative',
+                            border: isCurrentMonth ? '1px solid #0f172a' : 'none',
+                            minHeight: '12px',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'center',
+                            paddingBottom: '1px'
+                          }}
+                          title={`${percentCerpani}% / ${planedPercent}%`}
+                        >
+                          <div style={{ 
+                            fontSize: '0.45rem', 
+                            fontWeight: 700,
+                            color: textColor,
+                            lineHeight: 1
+                          }}>
+                            {planedPercent}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
+            {/* Roční plán čerpání - pro LP (může jich být více na jedné objednávce) */}
+            {order.financovani?.typ === 'LP' && order._enriched?.lp_info && Array.isArray(order._enriched.lp_info) && order._enriched.lp_info.length > 0 && (
+              <>
+                {order._enriched.lp_info.map((lp, lpIndex) => {
+                  const hodnotaLP = parseFloat(lp.total_limit) || 0;
+                  const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                  const percentCerpani = hodnotaLP > 0 ? Math.round((cerpanoPredpoklad / hodnotaLP) * 100) : 0;
+                  
+                  if (hodnotaLP > 0) {
+                    const currentMonth = new Date().getMonth();
+                    const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                    const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                    
+                    return (
+                      <div 
+                        key={lpIndex}
+                        style={{
+                          display: 'flex',
+                          width: '100%',
+                          minHeight: '14px',
+                          gap: '1px',
+                          background: '#f1f5f9',
+                          borderRadius: '2px',
+                          padding: '1px',
+                          marginTop: '3px'
+                        }}
+                      >
+                        {Array.from({ length: 12 }).map((_, monthIndex) => {
+                          const isCurrentMonth = monthIndex === currentMonth;
+                          const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                          
+                          let bgColor;
+                          if (isCurrentMonth) {
+                            bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                          } else if (monthIndex < currentMonth) {
+                            bgColor = '#94a3b8';
+                          } else {
+                            bgColor = '#e2e8f0';
+                          }
+                          
+                          const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                          
+                          return (
+                            <div
+                              key={monthIndex}
+                              style={{
+                                flex: 1,
+                                background: bgColor,
+                                borderRadius: '1px',
+                                position: 'relative',
+                                border: isCurrentMonth ? '1px solid #0f172a' : 'none',
+                                minHeight: '12px',
+                                display: 'flex',
+                                alignItems: 'flex-end',
+                                justifyContent: 'center',
+                                paddingBottom: '1px'
+                              }}
+                              title={`${lp.kod}: ${percentCerpani}% / ${planedPercent}%`}
+                            >
+                              <div style={{ 
+                                fontSize: '0.45rem', 
+                                fontWeight: 700,
+                                color: textColor,
+                                lineHeight: 1
+                              }}>
+                                {planedPercent}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </>
+            )}
+          </div>
+        );
+      },
+      size: 100
     },
     {
       accessorKey: 'objednatel_garant',
       header: 'Objednatel / Garant',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         // Třídění primárně podle objednatele
         const getObjednatelName = (order) => {
           if (order.objednatel_uzivatel) {
@@ -6760,7 +7658,7 @@ const Orders25List = () => {
         if (nameB === '---') return -1;
 
         return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -6819,7 +7717,7 @@ const Orders25List = () => {
 
         return normalizedObjednatel.includes(normalizedFilter) || normalizedGarant.includes(normalizedFilter);
       },
-      cell: ({ row }) => {
+      cell: ({ row, table }) => {
         const order = row.original;
         let objednatelName = '---';
         let garantName = '---';
@@ -6868,19 +7766,27 @@ const Orders25List = () => {
           garantName = getUserDisplayName(order.garant_uzivatel_id);
         }
 
+        // Získej aktuální filtr pro tento sloupec
+        const columnFilter = columnFilters['objednatel_garant'] || '';
+        const searchTerm = columnFilter || globalFilter;
+
         return (
           <div style={{ lineHeight: '1.3' }} title={`Objednatel: ${objednatelName}\nGarant: ${garantName}`}>
-            <div style={{ fontWeight: 500 }}>{objednatelName}</div>
-            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>{garantName}</div>
+            <div style={{ fontWeight: 500 }}>
+              {searchTerm ? highlightText(objednatelName, searchTerm) : objednatelName}
+            </div>
+            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+              {searchTerm ? highlightText(garantName, searchTerm) : garantName}
+            </div>
           </div>
         );
       },
-      size: 180
+      size: 130
     },
     {
       accessorKey: 'prikazce_schvalovatel',
       header: 'Příkazce / Schvalovatel',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const getPrikazceName = (order) => {
           if (order.prikazce_uzivatel) {
             return getUserDisplayName(null, order.prikazce_uzivatel);
@@ -6914,7 +7820,7 @@ const Orders25List = () => {
         if (nameB === '---') return -1;
 
         return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -6965,7 +7871,7 @@ const Orders25List = () => {
 
         return normalizedPrikazce.includes(normalizedFilter) || normalizedSchvalovatel.includes(normalizedFilter);
       },
-      cell: ({ row }) => {
+      cell: ({ row, table }) => {
         const order = row.original;
         let prikazceName = '---';
         let schvalovatelName = '---';
@@ -7006,19 +7912,27 @@ const Orders25List = () => {
           schvalovatelName = getUserDisplayName(order.schvalovatel_id);
         }
 
+        // Získej aktuální filtr pro tento sloupec
+        const columnFilter = columnFilters['prikazce_schvalovatel'] || '';
+        const searchTerm = columnFilter || globalFilter;
+
         return (
           <div style={{ lineHeight: '1.3' }} title={`Příkazce: ${prikazceName}\nSchvalovatel: ${schvalovatelName}`}>
-            <div style={{ fontWeight: 500 }}>{prikazceName}</div>
-            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>{schvalovatelName}</div>
+            <div style={{ fontWeight: 500 }}>
+              {searchTerm ? highlightText(prikazceName, searchTerm) : prikazceName}
+            </div>
+            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+              {searchTerm ? highlightText(schvalovatelName, searchTerm) : schvalovatelName}
+            </div>
           </div>
         );
       },
-      size: 180
+      size: 130
     },
     {
       accessorKey: 'dodavatel_nazev',
       header: 'Dodavatel',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const nameA = rowA.original.dodavatel_nazev || '---';
         const nameB = rowB.original.dodavatel_nazev || '---';
 
@@ -7028,7 +7942,7 @@ const Orders25List = () => {
         if (nameB === '---') return -1;
 
         return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7068,38 +7982,38 @@ const Orders25List = () => {
         const adresaText = order.dodavatel_adresa || '';
 
         return (
-          <div style={{ lineHeight: '1.4', whiteSpace: 'nowrap' }}>
+          <div style={{ lineHeight: '1.4' }}>
             {/* Řádek 1: Název dodavatele */}
-            <div style={{ fontWeight: 500 }}>
-              {order.dodavatel_nazev}
+            <div style={{ fontWeight: 500, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+              {highlightTextWithFilters(order.dodavatel_nazev, 'dodavatel_nazev')}
             </div>
             {/* Řádek 2: Adresa (menší písmo) */}
             {adresaText && (
-              <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
-                {adresaText}
+              <div style={{ fontSize: '0.85em', color: '#6b7280', wordBreak: 'break-word' }}>
+                {highlightTextWithFilters(adresaText, 'dodavatel_nazev')}
               </div>
             )}
             {/* Řádek 3: IČO (menší písmo) */}
             {order.dodavatel_ico && (
               <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
-                IČO: {order.dodavatel_ico}
+                IČO: {highlightTextWithFilters(order.dodavatel_ico, 'dodavatel_nazev')}
               </div>
             )}
             {/* Řádek 4: Email | Telefon */}
             {kontaktText && (
-              <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
-                {kontaktText}
+              <div style={{ fontSize: '0.85em', color: '#6b7280', wordBreak: 'break-all' }}>
+                {highlightTextWithFilters(kontaktText, 'dodavatel_nazev')}
               </div>
             )}
           </div>
         );
       },
-      size: 220
+      size: 160
     },
     {
       accessorKey: 'stav_objednavky',
       header: 'Stav',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const getStatusText = (order) => {
           const displayStatus = getOrderDisplayStatus(order);
 
@@ -7131,7 +8045,7 @@ const Orders25List = () => {
         if (!statusB) return -1;
 
         return statusA.localeCompare(statusB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7223,12 +8137,13 @@ const Orders25List = () => {
             </StatusBadge>
           </div>
         );
-      }
+      },
+      size: 120
     },
     {
       accessorKey: 'stav_registru',
       header: 'Stav registru',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const getRegistrStav = (order) => {
           const registr = order.registr_smluv;
           const workflowStatus = getOrderWorkflowStatus(order);
@@ -7257,7 +8172,7 @@ const Orders25List = () => {
         if (!stavB) return 1;
 
         return stavA.localeCompare(stavB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7362,76 +8277,12 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 150
-    },
-    {
-      accessorKey: 'cena_s_dph',
-      header: 'Cena s DPH',
-      sortingFn: (rowA, rowB) => {
-        const priceA = getOrderTotalPriceWithDPH(rowA.original);
-        const priceB = getOrderTotalPriceWithDPH(rowB.original);
-
-        // Numerické třídění (0 nebo NaN na konec)
-        const validA = !isNaN(priceA) && priceA > 0 ? priceA : -Infinity;
-        const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
-
-        return validA - validB;
-      },
-      filterFn: (row, columnId, filterValue) => {
-        if (!filterValue) return true;
-
-        const price = getOrderTotalPriceWithDPH(row.original);
-        const filterTrimmed = filterValue.trim();
-
-        // Podpora pro porovnávací operátory: =10000, <10000, >10000
-        if (filterTrimmed.match(/^[=<>]/)) {
-          const operator = filterTrimmed[0];
-          const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
-          const compareValue = parseFloat(valueStr);
-
-          // Platné číslo pro porovnání (včetně 0)
-          if (!isNaN(compareValue) && !isNaN(price)) {
-            if (operator === '=') return Math.abs(price - compareValue) < 0.01; // Rovnost s tolerancí
-            if (operator === '<') return price < compareValue;
-            if (operator === '>') return price > compareValue;
-          }
-          return false;
-        }
-
-        // Běžné vyhledávání v textu
-        if (!isNaN(price)) {
-          if (price > 0) {
-            // Formátuj cenu jako string pro vyhledávání
-            const priceText = price.toLocaleString('cs-CZ');
-
-            // Case-insensitive (čísla bez diakritiky)
-            const normalizedText = priceText.toLowerCase();
-            const normalizedFilter = filterValue.toLowerCase();
-
-            return normalizedText.includes(normalizedFilter);
-          } else {
-            // Cena je 0 - hledej "0" nebo "---"
-            return filterValue === '0' || filterValue === '---' || filterValue === '';
-          }
-        }
-
-        // Pokud nemá cenu, hledej "---"
-        return filterValue === '---' || filterValue === '';
-      },
-      cell: ({ row }) => {
-        // 💰 Použij helper funkci pro přesný výpočet ceny s DPH
-        const price = getOrderTotalPriceWithDPH(row.original);
-        return (
-          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
-          </div>
-        );
-      }
+      size: 120
     },
     {
       accessorKey: 'max_cena_s_dph',
       header: 'Max. cena s DPH',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const priceA = parseFloat(rowA.original.max_cena_s_dph || 0);
         const priceB = parseFloat(rowB.original.max_cena_s_dph || 0);
 
@@ -7440,7 +8291,7 @@ const Orders25List = () => {
         const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
 
         return validA - validB;
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7450,6 +8301,7 @@ const Orders25List = () => {
         // Podpora pro porovnávací operátory: =10000, <10000, >10000
         if (filterTrimmed.match(/^[=<>]/)) {
           const operator = filterTrimmed[0];
+          // Odstranit mezery, čárky a další non-numeric znaky kromě tečky
           const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
           const compareValue = parseFloat(valueStr);
 
@@ -7483,13 +8335,170 @@ const Orders25List = () => {
         return filterValue === '---' || filterValue === '';
       },
       cell: ({ row }) => {
-        const price = parseFloat(row.original.max_cena_s_dph || 0);
+        const maxPrice = parseFloat(row.original.max_cena_s_dph || 0);
+        const fakturaPrice = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
+        
+        // Pokud faktura překračuje max cenu, zobraz červeně
+        const isOverLimit = fakturaPrice > 0 && maxPrice > 0 && fakturaPrice > maxPrice;
+        
         return (
-          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+          <div style={{ 
+            textAlign: 'right', 
+            fontWeight: 600, 
+            fontFamily: 'monospace', 
+            whiteSpace: 'nowrap',
+            color: isOverLimit ? '#dc2626' : 'inherit'
+          }}>
+            {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
-      }
+      },
+      minSize: 85,
+      size: 100,
+      maxSize: 130,
+      enableResizing: true
+    },
+    {
+      accessorKey: 'cena_s_dph',
+      header: 'Cena s DPH',
+      sortingFn: withDraftPriority((rowA, rowB) => {
+        const priceA = getOrderTotalPriceWithDPH(rowA.original);
+        const priceB = getOrderTotalPriceWithDPH(rowB.original);
+
+        // Numerické třídění (0 nebo NaN na konec)
+        const validA = !isNaN(priceA) && priceA > 0 ? priceA : -Infinity;
+        const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
+
+        return validA - validB;
+      }),
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue) return true;
+
+        const price = getOrderTotalPriceWithDPH(row.original);
+        const filterTrimmed = filterValue.trim();
+
+        // Podpora pro porovnávací operátory: =10000, <10000, >10000
+        if (filterTrimmed.match(/^[=<>]/)) {
+          const operator = filterTrimmed[0];
+          // Odstranit mezery, čárky a další non-numeric znaky kromě tečky
+          const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
+          const compareValue = parseFloat(valueStr);
+
+          // Platné číslo pro porovnání (včetně 0)
+          if (!isNaN(compareValue) && !isNaN(price)) {
+            if (operator === '=') return Math.abs(price - compareValue) < 0.01; // Rovnost s tolerancí
+            if (operator === '<') return price < compareValue;
+            if (operator === '>') return price > compareValue;
+          }
+          return false;
+        }
+
+        // Běžné vyhledávání v textu
+        if (!isNaN(price)) {
+          if (price > 0) {
+            // Formátuj cenu jako string pro vyhledávání
+            const priceText = price.toLocaleString('cs-CZ');
+
+            // Case-insensitive (čísla bez diakritiky)
+            const normalizedText = priceText.toLowerCase();
+            const normalizedFilter = filterValue.toLowerCase();
+
+            return normalizedText.includes(normalizedFilter);
+          } else {
+            // Cena je 0 - hledej "0" nebo "---"
+            return filterValue === '0' || filterValue === '---' || filterValue === '';
+          }
+        }
+
+        // Pokud nemá cenu, hledej "---"
+        return filterValue === '---' || filterValue === '';
+      },
+      cell: ({ row }) => {
+        //  Zobraz pouze cenu z položek objednávky (ne max_cena_s_dph!)
+        let price = 0;
+        
+        // 1. PRIORITA: Položky - vypočítaná cena z položek
+        if (row.original.polozky_celkova_cena_s_dph != null && row.original.polozky_celkova_cena_s_dph !== '') {
+          const value = parseFloat(row.original.polozky_celkova_cena_s_dph);
+          if (!isNaN(value) && value > 0) price = value;
+        } else if (row.original.polozky && Array.isArray(row.original.polozky) && row.original.polozky.length > 0) {
+          // Spočítej z položek jako fallback
+          price = row.original.polozky.reduce((sum, item) => {
+            const cena = parseFloat(item.cena_s_dph || 0);
+            return sum + (isNaN(cena) ? 0 : cena);
+          }, 0);
+        }
+        
+        return (
+          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
+          </div>
+        );
+      },
+      minSize: 85,
+      size: 100,
+      maxSize: 130,
+      enableResizing: true
+    },
+    {
+      accessorKey: 'faktury_celkova_castka_s_dph',
+      header: 'Cena FA s DPH',
+      sortingFn: withDraftPriority((rowA, rowB) => {
+        const priceA = parseFloat(rowA.original.faktury_celkova_castka_s_dph || 0);
+        const priceB = parseFloat(rowB.original.faktury_celkova_castka_s_dph || 0);
+
+        // Numerické třídění (0 nebo NaN na konec)
+        const validA = !isNaN(priceA) && priceA > 0 ? priceA : -Infinity;
+        const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
+
+        return validA - validB;
+      }),
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue) return true;
+
+        const price = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
+        const filterTrimmed = filterValue.trim();
+
+        // Podpora pro porovnávací operátory: =10000, <10000, >10000
+        if (filterTrimmed.match(/^[=<>]/)) {
+          const operator = filterTrimmed[0];
+          const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
+          const compareValue = parseFloat(valueStr);
+
+          if (!isNaN(compareValue) && !isNaN(price)) {
+            if (operator === '=') return Math.abs(price - compareValue) < 0.01;
+            if (operator === '<') return price < compareValue;
+            if (operator === '>') return price > compareValue;
+          }
+          return false;
+        }
+
+        // Běžné vyhledávání v textu
+        if (!isNaN(price)) {
+          if (price > 0) {
+            const priceText = price.toLocaleString('cs-CZ');
+            const normalizedText = priceText.toLowerCase();
+            const normalizedFilter = filterValue.toLowerCase();
+            return normalizedText.includes(normalizedFilter);
+          } else {
+            return filterValue === '0' || filterValue === '---' || filterValue === '';
+          }
+        }
+
+        return filterValue === '---' || filterValue === '';
+      },
+      cell: ({ row }) => {
+        const price = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
+        return (
+          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#059669' }}>
+            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
+          </div>
+        );
+      },
+      minSize: 85,
+      size: 100,
+      maxSize: 130,
+      enableResizing: true
     },
     {
       id: 'actions',
@@ -7514,93 +8523,121 @@ const Orders25List = () => {
         // 🔥 PERFORMANCE: Use refs to avoid columns re-render when pagination changes
         const orderIndex = row.index; // LOCAL index in current page
         const orderId = row.original.id; // Actual order ID from database
+        // 🔧 Backend VŽDY posílá aktivni jako integer 0 nebo 1 (nikdy string nebo boolean)
+        const isInactive = row.original.aktivni === 0;
         return (
           <ActionMenu onClick={handleActionClick}>
-            {/* 1️⃣ EDIT */}
+            {/* 1⃣ EDIT */}
             <ActionMenuButton
               className="edit"
               data-action="edit"
               data-order-index={orderIndex}
               data-order-id={orderId}
+              data-disabled={isInactive || !canEdit(row.original) ? 'true' : undefined}
+              $disabled={isInactive || !canEdit(row.original)}
               title={
-                row.original.isDraft
+                isInactive
+                  ? "Neaktivní objednávka - nelze editovat"
+                  : row.original.isDraft
                   ? "Vrátit se ke konceptu objednávky"
                   : row.original.hasLocalDraftChanges
                     ? "Pokračovat v editaci"
                     : "Editovat"
               }
-              disabled={!canEdit(row.original)}
             >
               <FontAwesomeIcon icon={faEdit} />
             </ActionMenuButton>
-            {/* 2️⃣ EVIDOVAT FAKTURU */}
+            {/* 2⃣ EVIDOVAT FAKTURU */}
             <ActionMenuButton
               className="create-invoice"
               data-action="create-invoice"
               data-order-index={orderIndex}
               data-order-id={orderId}
-              title={row.original.hasLocalDraftChanges 
-                ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro evidování faktury' 
-                : (!canCreateInvoice(row.original) 
-                  ? 'Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
-                  : 'Evidovat fakturu k této objednávce')}
-              disabled={row.original.hasLocalDraftChanges || !canCreateInvoice(row.original)}
+              data-disabled={isInactive || row.original.hasLocalDraftChanges || !canCreateInvoice(row.original) ? 'true' : undefined}
+              $disabled={isInactive || row.original.hasLocalDraftChanges || !canCreateInvoice(row.original)}
+              title={
+                isInactive
+                  ? "Neaktivní objednávka - nelze evidovat fakturu"
+                  : row.original.hasLocalDraftChanges 
+                  ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro evidování faktury' 
+                  : (!canCreateInvoice(row.original) 
+                    ? 'Evidování faktury je dostupné pouze ve stavech: Fakturace, Věcná správnost, Zkontrolována (ne v Dokončená)' 
+                    : 'Evidovat fakturu k této objednávce')
+              }
             >
               <FontAwesomeIcon icon={faFileInvoice} />
+              {/* Badge s počtem faktur */}
+              {row.original.faktury_count > 0 && (
+                <InvoiceCountBadge>
+                  {row.original.faktury_count}
+                </InvoiceCountBadge>
+              )}
             </ActionMenuButton>
-            {/* 3️⃣ GENEROVAT DOCX */}
+            {/* 3⃣ GENEROVAT DOCX */}
             <ActionMenuButton
               className="export-document"
               data-action="export"
               data-order-index={orderIndex}
               data-order-id={orderId}
-              title={row.original.hasLocalDraftChanges 
-                ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro generování DOCX' 
-                : (!canExportDocument(row.original) 
-                  ? 'Generování DOCX je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
-                  : 'Generovat DOCX')}
-              disabled={row.original.hasLocalDraftChanges || !canExportDocument(row.original)}
+              data-disabled={isInactive || row.original.hasLocalDraftChanges || !canExportDocument(row.original) ? 'true' : undefined}
+              $disabled={isInactive || row.original.hasLocalDraftChanges || !canExportDocument(row.original)}
+              title={
+                isInactive
+                  ? "Neaktivní objednávka - nelze generovat DOCX"
+                  : row.original.hasLocalDraftChanges 
+                  ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro generování DOCX' 
+                  : (!canExportDocument(row.original) 
+                    ? 'Generování DOCX je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
+                    : 'Generovat DOCX')
+              }
             >
               <FontAwesomeIcon icon={faFileWord} />
             </ActionMenuButton>
-            {/* 4️⃣ FINANČNÍ KONTROLA */}
+            {/* 4⃣ FINANČNÍ KONTROLA */}
             <ActionMenuButton
               className="financial-control"
               data-action="financial-control"
               data-order-index={orderIndex}
               data-order-id={orderId}
-              title={getOrderSystemStatus(row.original) !== 'DOKONCENA' 
-                ? 'Finanční kontrola je dostupná pouze pro objednávky ve stavu DOKONČENA'
-                : 'Generovat finanční kontrolu (PDF/tisk)'
+              data-disabled={isInactive || getOrderSystemStatus(row.original) !== 'DOKONCENA' ? 'true' : undefined}
+              $disabled={isInactive || getOrderSystemStatus(row.original) !== 'DOKONCENA'}
+              title={
+                isInactive
+                  ? "Neaktivní objednávka - nelze generovat finanční kontrolu"
+                  : getOrderSystemStatus(row.original) !== 'DOKONCENA' 
+                  ? 'Finanční kontrola je dostupná pouze pro objednávky ve stavu DOKONČENA'
+                  : 'Generovat finanční kontrolu (PDF/tisk)'
               }
-              disabled={getOrderSystemStatus(row.original) !== 'DOKONCENA'}
             >
               <FontAwesomeIcon icon={faListCheck} />
             </ActionMenuButton>
-            {/* 5️⃣ SMAZAT */}
-            <ActionMenuButton
-              className="delete"
-              data-action="delete"
-              data-order-index={orderIndex}
-              data-order-id={orderId}
-              title="Smazat"
-              disabled={!canDelete(row.original)}
-            >
-              <FontAwesomeIcon icon={faTrash} />
-            </ActionMenuButton>
+            {/* 5⃣ SMAZAT/OBNOVIT - VŽDY AKTIVNÍ (i pro neaktivní objednávky) */}
+            {canDelete(row.original) && (
+              <ActionMenuButton
+                className="delete"
+                data-action="delete"
+                data-order-index={orderIndex}
+                data-order-id={orderId}
+                $disabled={false}
+                title={isInactive && isAdmin ? "Obnovit nebo úplně smazat neaktivní objednávku" : "Smazat objednávku"}
+              >
+                <FontAwesomeIcon icon={faTrash} />
+              </ActionMenuButton>
+            )}
           </ActionMenu>
         );
       },
-      size: 120,
-      minSize: 120,
-      maxSize: 140
+      size: 100,
+      minSize: 100,
+      maxSize: 120
     }
-  ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName]);
+  ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName, hasPermission, columnFilters]);
   // 🔥 CRITICAL: Removed currentPageIndex, pageSize from deps
   // orderIndex is calculated inside cell renderer, doesn't need to be in deps
   // handleActionClick has stable reference (no deps) - won't cause re-render
   // Removed 'users' dependency - uses usersRef.current via getUserDisplayName instead
   // This prevents entire table re-render when users object changes (loadData)
+  // Added hasPermission to deps for conditional rendering of delete icon
 
   // 🔍 FUNKCE PRO ZVÝRAZNĚNÍ VYHLEDÁVANÉHO TEXTU V PODŘÁDCÍCH
   const highlightSearchText = useCallback((text, searchTerm) => {
@@ -7665,53 +8702,123 @@ const Orders25List = () => {
   // ✨ REFACTORED: Filter function - rozděleno do modulárních funkcí
   const filteredData = useMemo(() => {
     const filtered = orders.filter(order => {
-      // 1. "Jen moje" filtr
-      if (!filterMyOrders(order, showOnlyMyOrders, userDetail, currentUserId)) return false;
+      
+      // 1. "Jen moje" filtr  
+      if (!filterMyOrders(order, showOnlyMyOrders, userDetail, currentUserId)) {
+        return false;
+      }
 
       // 2a. Sloupcové filtry z hlavičky tabulky (textové)
-      if (!applyColumnFilters(order, columnFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) return false;
+      if (!applyColumnFilters(order, columnFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) {
+        return false;
+      }
 
       // 2b. Multiselect filtry z rozšířeného panelu (ID)
-      if (!applyColumnFilters(order, multiselectFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) return false;
+      if (!applyColumnFilters(order, multiselectFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) {
+        return false;
+      }
 
       // 3. Globální vyhledávání
-      if (!filterByGlobalSearch(order, globalFilter, getUserDisplayName, getOrderDisplayStatus)) return false;
+      if (!filterByGlobalSearch(order, globalFilter, getUserDisplayName, getOrderDisplayStatus)) {
+        return false;
+      }
 
       // 4. Filtr podle statusu (pole stavů)
-      if (!filterByStatusArray(order, statusFilter, getOrderSystemStatus)) return false;
+      if (!filterByStatusArray(order, statusFilter, getOrderSystemStatus)) {
+        return false;
+      }
 
-      // 5. Filtr archivovaných
-      if (!filterByArchived(order, showArchived, getOrderSystemStatus)) return false;
+      // 4.5. Filtr podle schvalování
+      if (approvalFilter.length > 0) {
+        let workflowStates = [];
+        try {
+          if (Array.isArray(order.stav_workflow_kod)) {
+            workflowStates = order.stav_workflow_kod;
+          } else if (typeof order.stav_workflow_kod === 'string') {
+            workflowStates = JSON.parse(order.stav_workflow_kod);
+          }
+        } catch (e) {
+          workflowStates = [];
+        }
+        
+        const lastState = workflowStates.length > 0 
+          ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+              ? workflowStates[workflowStates.length - 1] 
+              : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+            ).toUpperCase()
+          : '';
+        
+        const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+        const approvedStates = ['SCHVALENA', 'ZAMITNUTA'];
+        
+        const isPending = pendingStates.includes(lastState);
+        const isApproved = approvedStates.includes(lastState);
+        
+        const showPending = approvalFilter.includes('pending');
+        const showApproved = approvalFilter.includes('approved');
+        
+        // Pokud má filtr pending a objednávka není pending, skip
+        if (showPending && !isPending && !(showApproved && isApproved)) {
+          return false;
+        }
+        
+        // Pokud má filtr approved a objednávka není approved, skip
+        if (showApproved && !isApproved && !(showPending && isPending)) {
+          return false;
+        }
+        
+        // Pokud objednávka není ani pending ani approved, skip
+        if (!isPending && !isApproved) {
+          return false;
+        }
+      }
+
+      // 5. ❌ ODSTRANĚNO: Filtr archivovaných - už jsou vyfiltrované společnou funkcí filterOrders()!
+      // if (!filterByArchived(order, showArchived, getOrderSystemStatus)) return false;
 
       // 6. Filtr podle uživatele
-      if (!filterByUser(order, userFilter)) return false;
+      if (!filterByUser(order, userFilter)) {
+        return false;
+      }
 
       // 7. Filtr podle datového rozmezí
-      if (!filterByDateRange(order, dateFromFilter, dateToFilter, getOrderDate)) return false;
+      if (!filterByDateRange(order, dateFromFilter, dateToFilter, getOrderDate)) {
+        return false;
+      }
 
       // 8. Filtr podle částky
-      if (!filterByAmountRange(order, amountFromFilter, amountToFilter)) return false;
+      if (!filterByAmountRange(order, amountFromFilter, amountToFilter)) {
+        return false;
+      }
 
       // 9. Filtr podle registru smluv
-      if (!filterByRegistrStatus(order, filterMaBytZverejneno, filterByloZverejneno, getOrderWorkflowStatus)) return false;
+      if (!filterByRegistrStatus(order, filterMaBytZverejneno, filterByloZverejneno, getOrderWorkflowStatus)) {
+        return false;
+      }
 
       // 10. Filtr podle mimořádných objednávek
       if (filterMimoradneObjednavky) {
-        if (!order.mimoradna_udalost) return false;
+        if (!order.mimoradna_udalost) {
+          return false;
+        }
       }
 
       // 11. Filtr podle faktur (min. 1 faktura)
       if (filterWithInvoices) {
         const faktury = order.faktury || [];
         const fakturyCount = order.faktury_count || faktury.length || 0;
-        if (fakturyCount === 0) return false;
+        if (fakturyCount === 0) {
+          return false;
+        }
       }
 
       // 12. Filtr podle příloh (min. 1 příloha)
       if (filterWithAttachments) {
         const prilohy = order.prilohy || [];
         const prilohyCount = order.prilohy_count || prilohy.length || 0;
-        if (prilohyCount === 0) return false;
+        if (prilohyCount === 0) {
+          return false;
+        }
       }
 
       return true;
@@ -7738,6 +8845,7 @@ const Orders25List = () => {
     multiselectFilters,
     globalFilter,
     statusFilter,
+    approvalFilter,
     userFilter,
     dateFromFilter,
     dateToFilter,
@@ -7759,6 +8867,114 @@ const Orders25List = () => {
     getOrderWorkflowStatus
   ]);
 
+  // 📊 FILTERED Stats - recalculate stats from filteredData when filters are active
+  const filteredStats = useMemo(() => {
+    // Check if any filter is active (except showArchived which is handled in orders)
+    const hasActiveFilters = 
+      globalFilter ||
+      statusFilter.length > 0 ||
+      userFilter.length > 0 ||
+      dateFromFilter ||
+      dateToFilter ||
+      amountFromFilter ||
+      amountToFilter ||
+      filterMaBytZverejneno ||
+      filterByloZverejneno ||
+      filterMimoradneObjednavky ||
+      filterWithInvoices ||
+      filterWithAttachments ||
+      showOnlyMyOrders ||
+      Object.keys(columnFilters).length > 0 ||
+      Object.keys(multiselectFilters).length > 0;
+
+    // If no filters active, use base stats
+    if (!hasActiveFilters) {
+      return stats;
+    }
+
+    // Otherwise, recalculate from filteredData
+    const dataToCount = filteredData;
+    const total = dataToCount.length;
+    
+    const byStatus = dataToCount.reduce((acc, order) => {
+      const systemStatus = getOrderSystemStatus(order);
+      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
+      return acc;
+    }, {});
+
+    // 📄 Počítání objednávek s fakturami (min. 1 faktura)
+    const withInvoices = dataToCount.reduce((count, order) => {
+      const faktury = order.faktury || [];
+      const fakturyCount = order.faktury_count || faktury.length || 0;
+      return fakturyCount > 0 ? count + 1 : count;
+    }, 0);
+
+    // 📎 Počítání objednávek s přílohami (min. 1 příloha)
+    const withAttachments = dataToCount.reduce((count, order) => {
+      const prilohy = order.prilohy || [];
+      const prilohyCount = order.prilohy_count || prilohy.length || 0;
+      return prilohyCount > 0 ? count + 1 : count;
+    }, 0);
+
+    // ⚠ Počítání mimořádných událostí
+    const mimoradneUdalosti = dataToCount.reduce((count, order) => {
+      return order.mimoradna_udalost ? count + 1 : count;
+    }, 0);
+
+    return {
+      total,
+      nova: byStatus.NOVA || 0,
+      ke_schvaleni: byStatus.ODESLANA_KE_SCHVALENI || 0,
+      schvalena: byStatus.SCHVALENA || 0,
+      zamitnuta: byStatus.ZAMITNUTA || 0,
+      ceka_se: byStatus.CEKA_SE || 0,
+      rozpracovana: byStatus.ROZPRACOVANA || 0,
+      odeslana: byStatus.ODESLANA || 0,
+      potvrzena: byStatus.POTVRZENA || 0,
+      uverejnena: byStatus.UVEREJNENA || 0,
+      fakturace: byStatus.FAKTURACE || 0,
+      vecna_spravnost: byStatus.VECNA_SPRAVNOST || 0,
+      dokoncena: byStatus.DOKONCENA || 0,
+      vyrizena: byStatus.VYRIZENA || 0,
+      zrusena: byStatus.ZRUSENA || 0,
+      stornova: byStatus.STORNOVA || 0,
+      smazana: byStatus.SMAZANA || 0,
+      archivovano: byStatus.ARCHIVOVANO || 0,
+      k_uverejneni_do_registru: byStatus.K_UVEREJNENI_DO_REGISTRU || 0,
+      ceka_potvrzeni: byStatus.CEKA_POTVRZENI || 0,
+      draft: byStatus.DRAFT || 0,
+      approved: byStatus.APPROVED || 0,
+      completed: byStatus.COMPLETED || 0,
+      cancelled: byStatus.CANCELLED || 0,
+      totalAmount: globalStats.totalAmount, // Keep global total
+      completedAmount: globalStats.completedAmount, // Keep global
+      incompleteAmount: globalStats.incompleteAmount, // Keep global
+      withInvoices,
+      withAttachments,
+      mimoradneUdalosti
+    };
+  }, [
+    filteredData,
+    stats,
+    globalStats,
+    getOrderSystemStatus,
+    globalFilter,
+    statusFilter,
+    userFilter,
+    dateFromFilter,
+    dateToFilter,
+    amountFromFilter,
+    amountToFilter,
+    filterMaBytZverejneno,
+    filterByloZverejneno,
+    filterMimoradneObjednavky,
+    filterWithInvoices,
+    filterWithAttachments,
+    showOnlyMyOrders,
+    columnFilters,
+    multiselectFilters
+  ]);
+
   // 🧪 DEBUG: Ulož filtered data pro test panel
   useEffect(() => {
     setApiTestData(prev => ({
@@ -7771,11 +8987,11 @@ const Orders25List = () => {
         showArchived,
         selectedYear,
         selectedMonth,
-        canViewAllOrders: permissions?.canViewAll,
+        canViewAllOrders: permissionsRef.current?.canViewAll,
         currentUserId
       }
     }));
-  }, [filteredData, showArchived, selectedYear, selectedMonth, permissions, currentUserId]);
+  }, [filteredData, showArchived, selectedYear, selectedMonth, currentUserId, getOrderSystemStatus]);
 
   // 📍 SCROLL STATE: Obnov rozbalené objednávky AŽ když je filteredData ready
   useEffect(() => {
@@ -7823,7 +9039,7 @@ const Orders25List = () => {
   }, [filteredData]); // Spustí se když je filteredData připravené
 
   // 🎬 INITIALIZATION: Kontroluj dokončení všech kroků a skryj splash screen
-  // 🔧 REVERT: Vrácen původní polling přístup (funguje spolehlivě)
+  //  REVERT: Vrácen původní polling přístup (funguje spolehlivě)
   // Event-driven přístup by vyžadoval přepis všech míst kde se nastavuje initStepsCompleted.current
   useEffect(() => {
     const steps = initStepsCompleted.current;
@@ -7907,11 +9123,11 @@ const Orders25List = () => {
     onRowSelectionChange: setRowSelection,
   });
 
-  // 🔧 OPTIMALIZACE: Odstraněn redundantní useEffect pro table.setPageSize/Index
+  //  OPTIMALIZACE: Odstraněn redundantní useEffect pro table.setPageSize/Index
   // React Table automaticky reaguje na změny v state.pagination prop
   // Manuální nastavování způsobovalo potenciální race conditions
 
-  // 🔧 OPTIMALIZACE: sorting useEffect byl přesunut do batch localStorage updatu výše
+  //  OPTIMALIZACE: sorting useEffect byl přesunut do batch localStorage updatu výše
 
   // Reset to first page if current page is out of bounds - sleduj jen data length
   const pageCount = Math.max(1, Math.ceil(filteredData.length / pageSize));
@@ -7923,6 +9139,58 @@ const Orders25List = () => {
       // React Table automaticky reaguje na změnu state.pagination.pageIndex
     }
   }, [pageCount, currentPageIndex, pageSize]); // ✅ Bez 'table' a 'filteredData'
+
+  // 🎯 Floating header intersection observer - aktivuje se když jsou data načtená a tabulka vykreslená
+  useEffect(() => {
+    // Dokud se načítají data nebo nejsou žádná data, observer neběží
+    if (loading || filteredData.length === 0) {
+      setShowFloatingHeader(false);
+      return;
+    }
+    
+    // Ověř že tabulka je vykreslená v DOM
+    if (!tableRef.current) {
+      setShowFloatingHeader(false);
+      return;
+    }
+    
+    const thead = tableRef.current.querySelector('thead');
+    if (!thead) {
+      setShowFloatingHeader(false);
+      return;
+    }
+    
+    const appHeaderHeight = 96;
+    const menuBarHeight = 48;
+    const totalHeaderHeight = appHeaderHeight + menuBarHeight;
+    
+    let previousShowState = false;
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const theadBottom = entry.boundingClientRect.bottom;
+        const shouldShow = theadBottom < totalHeaderHeight;
+        
+        // Track floating header state globally for DatePicker scroll handlers
+        window.__floatingHeaderVisible = shouldShow;
+        
+        // Close dropdowns only when floating header visibility actually changes
+        if (shouldShow !== previousShowState) {
+          window.dispatchEvent(new Event('closeAllDatePickers'));
+          previousShowState = shouldShow;
+        }
+        
+        setShowFloatingHeader(shouldShow);
+      },
+      { threshold: 0 }
+    );
+    
+    observer.observe(thead);
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, [loading, filteredData.length, tableRef.current]); // Přidán tableRef.current do dependencies
 
   // Pagination navigation helpers - přímé funkce bez memoizace (table se mění každý render)
   const goToFirstPage = () => {
@@ -7963,12 +9231,42 @@ const Orders25List = () => {
 
     // Uživatelé s ORDER_*_ALL oprávněními mohou editovat všechny objednávky
     if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE')) {
-      // hasPermission('ORDER_OLD') - ORDER_OLD je pouze pro starý systém (Orders.js)
       return true;
     }
 
+    // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS
+    // ORDER_EDIT_SUBORDINATE = plná editace objednávek kolegů z úseku
+    if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      return true;
+    }
+
+    // 🏢 ORDER_READ_SUBORDINATE = POUZE čtení, ŽÁDNÁ editace
+    // KRITICKÉ: Pokud má READ_SUBORDINATE a NENÍ v roli → FALSE (read-only)
+    if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      // Zkontrolovat, zda je v roli na této konkrétní objednávce
+      const isInOrderRole = (
+        order.objednatel_id === currentUserId ||
+        order.uzivatel_id === currentUserId ||
+        order.garant_uzivatel_id === currentUserId ||
+        order.schvalovatel_id === currentUserId ||
+        order.prikazce_id === currentUserId ||
+        order.uzivatel_akt_id === currentUserId ||
+        order.odesilatel_id === currentUserId ||
+        order.dodavatel_potvrdil_id === currentUserId ||
+        order.zverejnil_id === currentUserId ||
+        order.fakturant_id === currentUserId ||
+        order.dokoncil_id === currentUserId ||
+        order.potvrdil_vecnou_spravnost_id === currentUserId
+      );
+      
+      // Pokud NENÍ v roli → FALSE (nesmí editovat, i když má ORDER_EDIT_OWN)
+      if (!isInOrderRole) {
+        return false;
+      }
+      // Pokud JE v roli → pokračuj normální kontrolou (ORDER_EDIT_OWN apod.)
+    }
+
     // Uživatelé s ORDER_*_OWN oprávněními (včetně ORDER_2025) mohou editovat pouze své objednávky
-    // 🔥 FIX: Použij currentUserId (number) místo user_id (string)
     if (hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_2025')) {
       return order.objednatel_id === currentUserId ||
              order.uzivatel_id === currentUserId ||
@@ -7990,15 +9288,45 @@ const Orders25List = () => {
       return hasPermission('ORDER_MANAGE') || hasPermission('ORDER_DELETE_ALL');
     }
 
-    // Uživatelé s ORDER_*_ALL oprávněními mohou mazat všechny objednávky
+    // Uživatelé s ORDER_DELETE_ALL nebo ORDER_MANAGE mohou mazat všechny objednávky
     if (hasPermission('ORDER_DELETE_ALL') || hasPermission('ORDER_MANAGE')) {
-      // hasPermission('ORDER_OLD') - ORDER_OLD je pouze pro starý systém (Orders.js)
       return true;
     }
 
-    // Uživatelé s ORDER_*_OWN oprávněními (včetně ORDER_2025) mohou mazat pouze své objednávky
-    // 🔥 FIX: Použij currentUserId (number) místo user_id (string)
-    if (hasPermission('ORDER_DELETE_OWN') || hasPermission('ORDER_2025')) {
+    // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS
+    // ORDER_EDIT_SUBORDINATE = může mazat objednávky kolegů z úseku
+    if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      return true;
+    }
+
+    // 🏢 ORDER_READ_SUBORDINATE = NESMÍ mazat (read-only)
+    // KRITICKÉ: Pokud má READ_SUBORDINATE a NENÍ v roli → FALSE
+    if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      // Zkontrolovat, zda je v roli na této konkrétní objednávce
+      const isInOrderRole = (
+        order.objednatel_id === currentUserId ||
+        order.uzivatel_id === currentUserId ||
+        order.garant_uzivatel_id === currentUserId ||
+        order.schvalovatel_id === currentUserId ||
+        order.prikazce_id === currentUserId ||
+        order.uzivatel_akt_id === currentUserId ||
+        order.odesilatel_id === currentUserId ||
+        order.dodavatel_potvrdil_id === currentUserId ||
+        order.zverejnil_id === currentUserId ||
+        order.fakturant_id === currentUserId ||
+        order.dokoncil_id === currentUserId ||
+        order.potvrdil_vecnou_spravnost_id === currentUserId
+      );
+      
+      // Pokud NENÍ v roli → FALSE (nesmí mazat, i když má ORDER_DELETE_OWN)
+      if (!isInOrderRole) {
+        return false;
+      }
+      // Pokud JE v roli → pokračuj normální kontrolou
+    }
+
+    // Uživatelé s ORDER_DELETE_OWN mohou mazat pouze své objednávky
+    if (hasPermission('ORDER_DELETE_OWN')) {
       return order.objednatel_id === currentUserId ||
              order.uzivatel_id === currentUserId ||
              order.garant_uzivatel_id === currentUserId ||
@@ -8013,7 +9341,7 @@ const Orders25List = () => {
     if (!order) return false;
 
     // ✅ POVOLENÉ STAVY: Od ROZPRACOVANA až do DOKONCENA
-    // ⚠️ SCHVALENA NENÍ POVOLENA - musí následovat ROZPRACOVANA nebo vyšší fáze!
+    // ⚠ SCHVALENA NENÍ POVOLENA - musí následovat ROZPRACOVANA nebo vyšší fáze!
     // Podle WorkflowManager mappingu:
     // - FÁZE 3: ROZPRACOVANA (START - začalo se pracovat)
     // - FÁZE 4: POTVRZENA, ODESLANA
@@ -8042,7 +9370,7 @@ const Orders25List = () => {
     try {
       // Priorita 1: stav_workflow_kod (pole stavů - KONTROLUJ OBSAH, ne jen poslední!)
       if (order.stav_workflow_kod) {
-        // 🔧 FIX: Může být UŽ ARRAY nebo STRING
+        //  FIX: Může být UŽ ARRAY nebo STRING
         if (Array.isArray(order.stav_workflow_kod)) {
           workflowStates = order.stav_workflow_kod;
         } else if (typeof order.stav_workflow_kod === 'string') {
@@ -8094,30 +9422,29 @@ const Orders25List = () => {
 
   /**
    * ✅ Kontrola zda lze evidovat fakturu k objednávce
-   * Od stavu ROZPRACOVANA výše
+   * Od stavu ROZPRACOVANA výše + kontrola práv (pouze ADMINI, Invoice_manage, Invoice_add)
    */
   const canCreateInvoice = (order) => {
     if (!order) return false;
 
-    // ✅ POVOLENÉ STAVY: Od ROZPRACOVANA až do DOKONCENA
-    // FÁZE 3-8 dle WorkflowManager
+    // 🔒 KROK 1: Kontrola práv - POUZE pro správce faktur
+    if (!hasPermission) return false;
+    
+    const hasInvoicePermission = hasPermission('ADMINI') || 
+                                  hasPermission('INVOICE_MANAGE') || 
+                                  hasPermission('INVOICE_ADD');
+    
+    if (!hasInvoicePermission) return false;
+
+    // ✅ KROK 2: POVOLENÉ STAVY: POUZE Fakturace, Věcná kontrola, Zkontrolováno
     const allowedStates = [
-      'ROZPRACOVANA',     // ✅ FÁZE 3 - začalo se vyplňovat
-      'ODESLANA',         // ✅ FÁZE 4 - objednávka byla odeslána
-      'ODESLANO',         // ✅ FÁZE 4 - alternativní označení
-      'POTVRZENA',        // ✅ FÁZE 4 - dodavatel potvrdil
-      'UVEREJNIT',        // ✅ FÁZE 5 - čeká na zveřejnění
-      'NEUVEREJNIT',      // ✅ FÁZE 6 - nezveřejněno v registru, ale platná obj.
-      'UVEREJNENA',       // ✅ FÁZE 6 - zveřejněno v registru
       'FAKTURACE',        // ✅ FÁZE 6 - probíhá fakturace
       'VECNA_SPRAVNOST',  // ✅ FÁZE 7 - kontrola věcné správnosti
-      'ZKONTROLOVANA',    // ✅ FÁZE 8 - zkontrolována
-      'DOKONCENA',        // ✅ FÁZE 8 - dokončeno
-      'CEKA_SE'           // ✅ Speciální stav - čeká se na dodavatele
+      'ZKONTROLOVANA'     // ✅ FÁZE 8 - zkontrolována
     ];
 
-    // ❌ NEPLATNÉ STAVY (stornované/zamítnuté)
-    const invalidStates = ['STORNOVANA', 'ZAMITNUTA'];
+    // ❌ NEPLATNÉ STAVY (stornované/zamítnuté/dokončené)
+    const invalidStates = ['STORNOVANA', 'ZAMITNUTA', 'DOKONCENA'];
 
     let workflowStates = [];
     try {
@@ -8170,7 +9497,7 @@ const Orders25List = () => {
 
     // Pokud nejsou načtené šablony z API, vrať prázdné pole
     if (!docxTemplates || docxTemplates.length === 0) {
-      console.warn('⚠️ [DOCX] Šablony nejsou načtené pro order:', order.cislo_objednavky);
+      console.warn('⚠ [DOCX] Šablony nejsou načtené pro order:', order.cislo_objednavky);
       return [];
     }
 
@@ -8186,8 +9513,11 @@ const Orders25List = () => {
   // Handlers
   const handleExportDocument = async (order) => {
     try {
-      // ✅ Předej enriched data přímo do dialogu (už jsou v order objektu!)
-      setDocxModalOrder(order);
+      // 🔄 KRITICKÁ OPRAVA: Načti detail objednávky s enriched daty (účastníci workflow - garant, příkazce, schvalovatel, atd.)
+      const enrichedOrder = await getOrderV2(order.id, token, username, true, 0);
+      
+      // ✅ Předej enriched data do dialogu (teď už máme garanta, příkazce, schvalovatele s cele_jmeno)
+      setDocxModalOrder(enrichedOrder);
       setDocxModalOpen(true);
 
     } catch (error) {
@@ -8196,6 +9526,12 @@ const Orders25List = () => {
     }
   };
   const handleEdit = async (order) => {
+    // 🔒 KONTROLA OPRÁVNĚNÍ - PRVNÍ VĚC!
+    if (!canEdit(order)) {
+      showToast('Nemáte oprávnění editovat tuto objednávku', { type: 'warning' });
+      return;
+    }
+
     // 🎯 KONCEPT vs EDITACE - KRITICKÉ ROZLIŠENÍ!
     //
     // KONCEPT (isDraft === true):
@@ -8263,7 +9599,8 @@ const Orders25List = () => {
       // });
 
       // ✅ JEDNODUCHÁ kontrola podle nové BE sémantiky
-      if (dbOrder.lock_info?.locked === true) {
+      // ⚠️ Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired (>15 min)
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
         // ❌ Zamčená JINÝM uživatelem - ZOBRAZ dialog a BLOKUJ editaci
         const lockInfo = dbOrder.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
@@ -8288,9 +9625,6 @@ const Orders25List = () => {
         return; // ZASTAVIT - čekáme na rozhodnutí uživatele
       } else {
         // ✅ locked === false znamená můžu editovat (volná NEBO moje zamčená)
-        if (dbOrder.lock_info?.is_owned_by_me === true) {
-        } else if (dbOrder.lock_info?.lock_status === 'unlocked' || dbOrder.lock_info?.lock_status === 'expired') {
-        }
       }
     } catch (error) {
       showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
@@ -8592,7 +9926,7 @@ const Orders25List = () => {
           // Správné nastavení UI prvků podle workflow stavu
           stav_schvaleni: stavSchvaleni, // Odvozeno ze workflow
           stav_odeslano: isOdeslana,     // Checkbox "Odesláno"
-          stav_stornovano: isZrusena,    // Checkbox "Stornováno"
+          // 🛑 ODSTRANĚNO: stav_stornovano - pole neexistuje v DB, používá se hasWorkflowState(stav_workflow_kod, 'ZRUSENA')
           // EXPLICITNĚ přepsat údaje objednatele z API (aby nepřepsaly starší data z dbOrder)
           ...(objednatelData && {
             objednatel_id: objednatelData.objednatel_id,
@@ -8671,8 +10005,26 @@ const Orders25List = () => {
         return;
       }
 
+      // 🔥 KRITICKÉ: Obohacení order objektu o LP názvy (stejně jako v OrderForm25)
+      let enrichedOrder = { ...order };
+      
+      // Načíst LP názvy VŽDY (ne jen pro LP financování)
+      try {
+        const lpNazvy = await fetchLimitovanePrisliby({ token, username });
+        enrichedOrder = {
+          ...order,
+          lp_nazvy: lpNazvy,
+          financovani: {
+            ...order.financovani,
+            lp_nazvy: lpNazvy
+          }
+        };
+      } catch (error) {
+        console.error('❌ [Orders25List] Chyba při načítání LP názvy:', error);
+      }
+
       // Otevři modal s PDF náhledem
-      setFinancialControlOrder(order);
+      setFinancialControlOrder(enrichedOrder);
       setFinancialControlModalOpen(true);
     } catch (error) {
       console.error('❌ [Orders25List] Chyba při otevírání finanční kontroly:', error);
@@ -8682,7 +10034,7 @@ const Orders25List = () => {
 
   // 📏 Handler pro scroll šipky - scrolluj o šířku viewportu
   const handleScrollLeft = () => {
-    const tableContainer = tableContainerRef.current;
+    const tableContainer = tableRef.current;
     if (!tableContainer) return;
 
     // Scrolluj o 80% šířky containeru doleva
@@ -8694,7 +10046,7 @@ const Orders25List = () => {
   };
 
   const handleScrollRight = () => {
-    const tableContainer = tableContainerRef.current;
+    const tableContainer = tableRef.current;
     if (!tableContainer) return;
 
     // Scrolluj o 80% šířky containeru doprava
@@ -8746,15 +10098,15 @@ const Orders25List = () => {
     draftManager.setCurrentUser(user_id);
     draftManager.deleteDraft();
 
-    // 🔧 KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
-    localStorage.removeItem('activeOrderEditId');
+    //  KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
+    localStorage.removeItem(`activeOrderEditId_${user_id}`);
 
     // Zavři modal a vyčisti state
     setShowEditConfirmModal(false);
     setOrderToEdit(null);
     setCurrentDraftData(null);
 
-    // 🔧 FIX: Pokud je otevřený formulář, force reload přes window.location
+    //  FIX: Pokud je otevřený formulář, force reload přes window.location
     const isOnOrderForm = window.location.pathname === '/order-form-25';
     
     if (isOnOrderForm) {
@@ -8926,11 +10278,196 @@ const Orders25List = () => {
     handleExportDocument(order);
   }, [handleExportDocument]);
 
-  const handleGenerateFinancialControl = useCallback((order) => {
-    // Otevření modalu s náhledem PDF finanční kontroly
-    setFinancialControlOrder(order);
-    setFinancialControlModalOpen(true);
-  }, []);
+  const handleGenerateFinancialControl = useCallback(async (order) => {
+    try {
+      // 🔄 KRITICKÁ OPRAVA: Načti detail objednávky s enriched daty (LP názvy, faktury, atd.)
+      const enrichedOrder = await getOrderV2(order.id, token, username, true, 0);
+
+      
+      // Otevření modalu s náhledem PDF finanční kontroly
+      setFinancialControlOrder(enrichedOrder);
+      setFinancialControlModalOpen(true);
+    } catch (error) {
+      console.error('Chyba při načítání detailu objednávky pro finanční kontrolu:', error);
+      showToast('Nepodařilo se načíst detail objednávky', { type: 'error' });
+    }
+  }, [token, username, showToast]);
+
+  // 🎯 Handler pro schválení objednávky z kontextového menu (příkazce)
+  const handleApproveFromContextMenu = useCallback(async (order) => {
+    try {
+      // Načti detail objednávky s enriched daty (LP budget, smlouva, střediska)
+      const orderDetail = await getOrderV2(order.id, token, username, true, 0);
+      setOrderToApprove(orderDetail);
+      // Načti existující komentář ke schválení z DB (pokud existuje)
+      setApprovalComment(orderDetail.schvaleni_komentar || '');
+      setShowApprovalDialog(true);
+    } catch (error) {
+      console.error('Chyba při načítání detailu objednávky:', error);
+      showToast('Nepodařilo se načíst detail objednávky', { type: 'error' });
+    }
+  }, [token, username, showToast]);
+
+  // 🎯 Handler pro zpracování schválení objednávky
+  const handleApprovalAction = useCallback(async (action) => {
+    if (!orderToApprove) return;
+
+    // ⚠️ VALIDACE: Pro Odložit a Zamítnout je poznámka POVINNÁ
+    if ((action === 'reject' || action === 'postpone') && !approvalComment.trim()) {
+      setApprovalCommentError('Poznámka je povinná pro zamítnutí nebo odložení');
+      return;
+    }
+
+    // Vymaž validaci pokud je vše OK
+    setApprovalCommentError('');
+
+    try {
+      // Načti současný workflow stav
+      let workflowStates = [];
+      try {
+        if (Array.isArray(orderToApprove.stav_workflow_kod)) {
+          workflowStates = [...orderToApprove.stav_workflow_kod];
+        } else if (typeof orderToApprove.stav_workflow_kod === 'string') {
+          workflowStates = JSON.parse(orderToApprove.stav_workflow_kod);
+        }
+      } catch (e) {
+        workflowStates = [];
+      }
+
+      // Připrav nový workflow stav podle akce
+      let newWorkflowStates = workflowStates.filter(s => 
+        !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA'].includes(s)
+      );
+
+      let orderUpdate = {
+        schvaleni_komentar: approvalComment || '', // ✅ Ukládá se vždy - i prázdný pro schválení
+        mimoradna_udalost: orderToApprove.mimoradna_udalost // ✅ ZACHOVAT status Mimořádná událost
+      };
+
+      const timestamp = new Date().toISOString();
+
+      switch (action) {
+        case 'approve':
+          // Schválit - přidej SCHVALENA
+          newWorkflowStates.push('SCHVALENA');
+          orderUpdate.stav_objednavky = 'Schválená';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = currentUserId;
+          break;
+
+        case 'reject':
+          // Zamítnout - přidej ZAMITNUTA
+          newWorkflowStates.push('ZAMITNUTA');
+          orderUpdate.stav_objednavky = 'Zamítnutá';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = currentUserId;
+          break;
+
+        case 'postpone':
+          // Odložit - přidej CEKA_SE (také zaznamenat kdo a kdy)
+          newWorkflowStates.push('CEKA_SE');
+          orderUpdate.stav_objednavky = 'Čeká se';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = currentUserId;
+          break;
+
+        default:
+          return;
+      }
+
+      orderUpdate.stav_workflow_kod = JSON.stringify(newWorkflowStates);
+
+      // 🚀 OPTIMISTICKÝ UPDATE - okamžitě zobraz změnu před DB reloadem
+      setOrders(prev => prev.map(o => {
+        if (o.id === orderToApprove.id) {
+          return {
+            ...o,
+            stav_workflow_kod: newWorkflowStates,
+            stav_objednavky: orderUpdate.stav_objednavky,
+            schvaleni_komentar: orderUpdate.schvaleni_komentar,
+            dt_schvaleni: orderUpdate.dt_schvaleni,
+            schvalil_uzivatel_id: orderUpdate.schvalil_uzivatel_id
+          };
+        }
+        return o;
+      }));
+
+      // Zavři dialog
+      setShowApprovalDialog(false);
+      setOrderToApprove(null);
+      setApprovalComment('');
+      setApprovalCommentError('');
+
+      // Zobraz úspěšnou zprávu
+      const currentUser = users[currentUserId];
+      const userName = currentUser ? `${currentUser.jmeno} ${currentUser.prijmeni}` : 'Váš účet';
+      
+      const actionMessages = {
+        approve: `✅ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla úspěšně schválena\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}\n👤 Schválil: ${userName}`,
+        reject: `❌ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla zamítnuta\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}\n👤 Zamítl: ${userName}`,
+        postpone: `⏸️ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla odložena\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}\n👤 Odložil: ${userName}`
+      };
+      showToast(actionMessages[action], { type: 'success' });
+
+      // Zvýrazni objednávku
+      setHighlightOrderId(orderToApprove.id);
+
+      // 🔥 API CALL na pozadí (nedočkáme se ho)
+      updateOrderV2(orderToApprove.id, orderUpdate, token, username).catch(apiError => {
+        console.error('API update failed:', apiError);
+        showToast('Změna byla zobrazena, ale mohlo dojít k chybě na serveru. Obnovte stránku.', { type: 'warning' });
+      });
+
+      // 🔔 TRIGGER NOTIFICATION na pozadí
+      try {
+        const eventTypeMap = {
+          approve: 'ORDER_APPROVED',
+          reject: 'ORDER_REJECTED', 
+          postpone: 'ORDER_PENDING_APPROVAL'
+        };
+        
+        const eventType = eventTypeMap[action];
+        if (eventType) {
+          const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+          fetch(`${baseURL}notifications/trigger`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token,
+              username,
+              event_type: eventType,
+              object_id: orderToApprove.id,
+              trigger_user_id: currentUserId,
+              debug: false
+            })
+          }).catch(err => console.error('Notification error:', err));
+        }
+      } catch (notifError) {
+        console.error('❌ Failed to trigger notification:', notifError);
+      }
+
+      // ⚡ RYCHLÝ REFRESH - pouze té konkrétní objednávky z DB (na pozadí)
+      setTimeout(async () => {
+        try {
+          const result = await getOrderV2(orderToApprove.id, token, username, true, 0);
+          
+          if (result?.data) {
+            setOrders(prev => prev.map(o => 
+              o.id === orderToApprove.id ? { ...o, ...result.data } : o
+            ));
+            ordersCacheService.invalidate(user_id);
+          }
+        } catch (refreshError) {
+          console.error('Background refresh failed:', refreshError);
+          // Není kritické - optimistický update už proběhl
+        }
+      }, 500); // Po 500ms obnov tu konkrétní objednávku z DB
+
+    } catch (error) {
+      console.error('Chyba při zpracování schválení:', error);
+      showToast('Chyba při zpracování schválení objednávky', { type: 'error' });
+    }
+  }, [orderToApprove, approvalComment, currentUserId, token, username, showToast, loadData, user_id]);
 
   const handleDocxModalClose = useCallback(() => {
     setDocxModalOpen(false);
@@ -8938,25 +10475,111 @@ const Orders25List = () => {
   }, []);
 
   const handleDelete = useCallback((order) => {
-    console.log('🗑️ handleDelete called with order:', order);
-    console.log('🗑️ canDelete:', canDelete(order));
     if (!canDelete(order)) {
       showToast('Nemáte oprávnění smazat tuto objednávku', { type: 'warning' });
       return;
     }
+    
+    // 🔧 Nastavit výchozí delete type podle stavu objednávky
+    if (order.aktivni === 0 && isAdmin) {
+      // Neaktivní objednávka + admin = možnost restore nebo hard delete
+      setDeleteType('restore'); // Výchozí: obnovit
+    } else {
+      // Aktivní objednávka = soft delete
+      setDeleteType('soft');
+    }
+    
     setOrderToDelete(order);
     setShowDeleteConfirmModal(true);
-  }, [canDelete, showToast]);
+  }, [canDelete, showToast, isAdmin]);
   
   // Handler: Evidovat fakturu
-  const handleCreateInvoice = useCallback((order) => {
-    // ✅ Kontrola zda je objednávka ve správném stavu
+  const handleCreateInvoice = useCallback(async (order) => {
+    // ✅ Kontrola zda je objednávka ve správném stavu a má práva
     if (!canCreateInvoice(order)) {
-      showToast('Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ', { type: 'warning' });
+      // Rozlišit důvod zamítnutí
+      const hasInvoicePermission = hasPermission && (hasPermission('ADMINI') || 
+                                     hasPermission('INVOICE_MANAGE') || 
+                                     hasPermission('INVOICE_ADD'));
+      
+      if (!hasInvoicePermission) {
+        showToast('Nemáte oprávnění pro evidování faktur', { type: 'error' });
+      } else {
+        showToast('Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ', { type: 'warning' });
+      }
       return;
     }
-    navigate(`/invoice-evidence/${order.id}`);
-  }, [navigate, showToast]);
+    
+    // 🎯 Získat číslo objednávky pro prefill v našeptávači
+    const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
+    
+    // 🔍 Pokud má objednávka faktury, zobraz popup se seznamem
+    const invoiceCount = order.faktury_count || 0;
+    
+    if (invoiceCount > 0) {
+      // Otevři popup a načti faktury
+      setInvoicePopupOrder(order);
+      setInvoicePopupVisible(true);
+      setInvoicePopupLoading(true);
+      setInvoicePopupInvoices([]);
+      
+      try {
+        const invoices = await getInvoicesByOrder25({
+          token,
+          username,
+          objednavka_id: order.id
+        });
+        setInvoicePopupInvoices(invoices || []);
+      } catch (error) {
+        console.error('Chyba při načítání faktur:', error);
+        showToast('Nepodařilo se načíst faktury objednávky', { type: 'error' });
+        setInvoicePopupInvoices([]);
+      } finally {
+        setInvoicePopupLoading(false);
+      }
+    } else {
+      // Navigace do modulu faktur s číslem objednávky v searchTerm
+      navigate('/invoice-evidence', { 
+        state: { 
+          prefillSearchTerm: orderNumber,
+          orderIdForLoad: order.id
+        } 
+      });
+    }
+  }, [token, username, navigate, showToast, hasPermission]);
+
+  // Handlers pro popup se seznamem faktur
+  const handleCloseInvoicePopup = useCallback(() => {
+    setInvoicePopupVisible(false);
+    setInvoicePopupOrder(null);
+    setInvoicePopupInvoices([]);
+  }, []);
+
+  const handleEditInvoiceFromPopup = useCallback((invoice) => {
+    // Zavři popup a naviguj do modulu faktur s předvyplněnou fakturou k editaci
+    setInvoicePopupVisible(false);
+    navigate('/invoice-evidence', { 
+      state: { 
+        editInvoiceId: invoice.id,  // ✅ Správný parametr pro editaci faktury
+        orderIdForLoad: invoicePopupOrder?.id
+      } 
+    });
+  }, [navigate, invoicePopupOrder]);
+
+  const handleAddInvoiceFromPopup = useCallback(() => {
+    // Zavři popup a naviguj do modulu faktur pro vytvoření nové faktury
+    const orderNumber = invoicePopupOrder?.cislo_objednavky || 
+                       invoicePopupOrder?.evidencni_cislo || 
+                       `#${invoicePopupOrder?.id}`;
+    
+    setInvoicePopupVisible(false);
+    navigate('/invoice-evidence', { 
+      state: { 
+        prefillSearchTerm: orderNumber,
+        orderIdForLoad: invoicePopupOrder?.id
+      } 
+    });
+  }, [navigate, invoicePopupOrder]);
 
   // 🔥 PERFORMANCE: Populate handlers ref for handleActionClick
   // Direct assignment (not useEffect) - happens on every render
@@ -8974,6 +10597,29 @@ const Orders25List = () => {
     if (!orderToDelete) return;
 
     try {
+      // 🔄 RESTORE - obnova neaktivní objednávky (pouze admin)
+      if (deleteType === 'restore') {
+        if (!isAdmin) {
+          showToast && showToast('Nemáte oprávnění k obnově objednávek.', { type: 'error' });
+          return;
+        }
+
+        try {
+          await restoreOrderV2(orderToDelete.id, token, username);
+          showToast && showToast(`Objednávka "${orderToDelete.cislo_objednavky}" byla obnovena.`, { type: 'success' });
+          
+          // Reload data to show restored order
+          loadData();
+        } catch (error) {
+          const errorMsg = translateErrorMessageShort(error.message);
+          showToast && showToast(`Chyba při obnově: ${errorMsg}`, { type: 'error' });
+        }
+        
+        setShowDeleteConfirmModal(false);
+        setOrderToDelete(null);
+        return;
+      }
+
       // ✅ V2 API: deleteOrderV2 s parametrem soft/hard
 
       // ✅ Okamžitě odebrat ze seznamu (optimistická aktualizace)
@@ -8981,7 +10627,7 @@ const Orders25List = () => {
 
       if (deleteType === 'hard') {
         // ✅ V2 API: Úplné smazání včetně položek a příloh (na pozadí)
-        deleteOrderV2(orderToDelete.id, token, username)
+        deleteOrderV2(orderToDelete.id, token, username, true)
           .then(() => {
             showToast && showToast('Objednávka byla úplně smazána včetně všech příloh.', { type: 'success' });
           })
@@ -9101,7 +10747,7 @@ const Orders25List = () => {
   };
 
   const handleRefresh = async () => {
-    // 🚀 FORCE REFRESH: Vymaž cache a načti z DB
+    //  FORCE REFRESH: Vymaž cache a načti z DB
     if (!token || !user?.username) return;
 
     // Reset background refresh stavu (uživatel kliknul manuálně)
@@ -9178,6 +10824,20 @@ const Orders25List = () => {
     setSelectedMonth(newMonth);
     setUserStorage('orders25List_selectedMonth', newMonth);
     setIsMonthDropdownOpen(false);
+    
+    // 🔥 KRITICKÉ: Vyčisti manuální datum filtry při změně měsíce
+    // Když uživatel vybere "Aktuální měsíc", "Poslední měsíc", atd.,
+    // nesmí se použít starší manuální datum filtry (dateFromFilter, dateToFilter)
+    // Backend vrátí správná data podle roku/měsíce
+    setDateFromFilter('');
+    setDateToFilter('');
+    
+    // Vymaž také z localStorage aby se neobnovily při F5
+    const sid = user_id || 'anon';
+    try {
+      localStorage.removeItem(`orders25_dateFrom_${sid}`);
+      localStorage.removeItem(`orders25_dateTo_${sid}`);
+    } catch (_) {}
   };
 
   // Handle show archived checkbox change
@@ -9217,71 +10877,75 @@ const Orders25List = () => {
     const currentDay = today.getDate();
     const year = selectedYear !== 'all' ? parseInt(selectedYear) : currentYear;
 
+    // 🔥 FIX: Funkce pro formátování data v ČESKÉ časové zóně (ne UTC!)
+    const formatDateLocal = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     switch (selectedMonth) {
       case 'all':
         // Žádný měsíční filtr
         if (selectedYear !== 'all') {
-          // Konkrétní rok - celý rok
+          // Konkrétní rok - celý rok - používáme 'rok' parametr pro backend
           return {
-            datum_od: `${year}-01-01`,
-            datum_do: `${year}-12-31`
+            rok: year
           };
         }
         // Všechny roky - žádný datumový filtr
         return {};
 
       case 'current-month':
-        // Aktuální měsíc: od 1. do dnes (1.12 - 6.12)
+        // Aktuální měsíc: od 1. do dnes (např. 1.1.2026 - 5.1.2026)
+        // ✅ Backend vrátí JEN aktuální měsíc (leden 2026), NE předchozí měsíce
         return {
-          datum_od: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          rok: currentYear,
+          mesic: String(currentMonth + 1)
         };
 
       case 'last-month': {
-        // Poslední měsíc: celý předchozí měsíc + aktuální dny (1.11 - 6.12)
-        const prevMonth = currentMonth - 1;
-        const prevMonthYear = prevMonth < 0 ? currentYear - 1 : currentYear;
-        const prevMonthNum = prevMonth < 0 ? 11 : prevMonth;
+        // Poslední měsíc: 30 dní od dnešního data zpět (např. 6.12.2025 - 5.1.2026)
+        const lastMonthFrom = new Date(today);
+        lastMonthFrom.setDate(lastMonthFrom.getDate() - 30);
         
         return {
-          datum_od: `${prevMonthYear}-${String(prevMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          datum_od: formatDateLocal(lastMonthFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
       case 'last-quarter': {
-        // Poslední kvartál: 3 předchozí měsíce + aktuální měsíc do dnes
-        const startMonth = currentMonth - 3;
-        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
-        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
+        // Poslední kvartál: 3 měsíce od dnešního data zpět (např. 5.10.2025 - 5.1.2026)
+        const lastQuarterFrom = new Date(today);
+        lastQuarterFrom.setMonth(lastQuarterFrom.getMonth() - 3);
         
         return {
-          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          datum_od: formatDateLocal(lastQuarterFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
       case 'last-half': {
-        // Posledních 6 měsíců
-        const startMonth = currentMonth - 6;
-        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
-        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
+        // Posledních 6 měsíců: 6 měsíců od dnešního data zpět (např. 5.7.2025 - 5.1.2026)
+        const lastHalfFrom = new Date(today);
+        lastHalfFrom.setMonth(lastHalfFrom.getMonth() - 6);
         
         return {
-          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          datum_od: formatDateLocal(lastHalfFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
       case 'last-year': {
-        // Poslední rok: 12 předchozích měsíců + aktuální měsíc do dnes
-        const startMonth = currentMonth - 12;
-        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
-        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
+        // Poslední rok: 12 měsíců od dnešního data zpět (např. 5.1.2025 - 5.1.2026)
+        const lastYearFrom = new Date(today);
+        lastYearFrom.setMonth(lastYearFrom.getMonth() - 12);
         
         return {
-          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          datum_od: formatDateLocal(lastYearFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
@@ -9297,11 +10961,10 @@ const Orders25List = () => {
           const startMonth = parseInt(monthMatch[1]);
           const endMonth = monthMatch[2] ? parseInt(monthMatch[2]) : startMonth;
 
-          const lastDay = new Date(year, endMonth, 0).getDate();
-          
+          // Backend akceptuje 'rok' a 'mesic' (např. "10" nebo "10-12")
           return {
-            datum_od: `${year}-${String(startMonth).padStart(2, '0')}-01`,
-            datum_do: `${year}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+            rok: year,
+            mesic: endMonth === startMonth ? `${startMonth}` : `${startMonth}-${endMonth}`
           };
         }
         
@@ -9360,23 +11023,83 @@ const Orders25List = () => {
     return [...numericYears, 'all']; // "Všechny roky" na konci
   };
 
-  const handleExport = () => {
-    // Načti nastavení sloupců z profilu uživatele
-    const csvColumns = userSettings?.export_csv_sloupce || {};
+  const handleExport = async () => {
+    try {
+      setLoading(true);
+      
+      // Načti aktuální nastavení sloupců z databáze
+      const { fetchUserSettings } = await import('../services/userSettingsApi');
+      const userSettingsFromDB = await fetchUserSettings({ 
+        token, 
+        username, 
+        userId: currentUserId 
+      });
+      
+      const csvColumns = userSettingsFromDB?.export_csv_sloupce || {};
+      
+      // Načti nastavení multiline/list oddělovače z profilu
+      const listDelimiterMap = {
+        'pipe': '|',
+        'comma': ',',
+        'semicolon': ';',
+        'custom': userSettingsFromDB?.exportCsvListCustomDelimiter || '|'
+      };
+      const listSeparator = listDelimiterMap[userSettingsFromDB?.exportCsvListDelimiter || 'pipe'] || '|';
+      
+      // Připrav aktuální filtry pro backend (jen filtrovaná data)
+      const currentFilters = {
+        columnFilters,
+        multiselectFilters,
+        globalFilter,
+        statusFilter,
+        userFilter,
+        dateFromFilter,
+        dateToFilter,
+        amountFromFilter,
+        amountToFilter,
+        filterMaBytZverejneno,
+        filterByloZverejneno,
+        filterMimoradneObjednavky,
+        filterWithInvoices,
+        filterWithAttachments,
+        showOnlyMyOrders,
+        selectedYear,
+        selectedMonth,
+        showArchived
+      };
+      
+      // Připrav payload s nastavením pro backend
+      const exportPayload = {
+        token,
+        username,
+        filters: currentFilters,
+        export_settings: {
+          csv_columns: csvColumns,
+          list_delimiter: listSeparator
+        }
+      };
+      
+      // TODO: Volání na backend endpoint pro export s nastavením
+      // const exportResponse = await api25orders.post('orders25/export', exportPayload);
+      // Pro nyní zachovám stávající logiku s načtenými nastavením z DB
+      
+      const csvColumnsFromDB = csvColumns;
     
-    // Načti nastavení multiline/list oddělovače z profilu
-    const listDelimiterMap = {
-      'pipe': '|',
-      'comma': ',',
-      'semicolon': ';',
-      'custom': userSettings?.exportCsvListCustomDelimiter || '|'
+    //  Helper: Bezpečné získání hodnoty s fallbackem
+    const safeGet = (value, fallback = '') => {
+      if (value === null || value === undefined) return fallback;
+      if (typeof value === 'object') {
+        // Objekt konvertovat na JSON string (nebezpečné pro React rendering)
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
     };
-    const listSeparator = listDelimiterMap[userSettings?.exportCsvListDelimiter || 'pipe'] || '|';
     
-    // 🔧 Helper: Bezpečné získání hodnoty s fallbackem
-    const safeGet = (value, fallback = '') => value !== null && value !== undefined ? value : fallback;
-    
-    // 🔧 Helper: Formátování jména uživatele z enriched dat
+    //  Helper: Formátování jména uživatele z enriched dat
     const formatUserName = (user) => {
       if (!user) return '';
       const titul_pred = user.titul_pred ? user.titul_pred + ' ' : '';
@@ -9402,12 +11125,16 @@ const Orders25List = () => {
       let zpusobFinancovani = '';
       let finData = null;
 
-      if (order.financovani_parsed && typeof order.financovani_parsed === 'object') {
+      // OPRAVA: order.financovani už je objekt (ne JSON string!)
+      if (order.financovani && typeof order.financovani === 'object') {
+        finData = order.financovani;
+      } else if (order.financovani_parsed && typeof order.financovani_parsed === 'object') {
         finData = order.financovani_parsed;
       } else if (order.financovani && typeof order.financovani === 'string') {
         try {
           finData = JSON.parse(order.financovani);
         } catch {
+          // Pokud není JSON, je to jen string hodnota
           zpusobFinancovani = order.financovani;
         }
       } else if (order.zpusob_financovani) {
@@ -9424,165 +11151,316 @@ const Orders25List = () => {
 
       // Pokud máme parsovaná data, extrahujeme nazev_stavu nebo mapujeme kod_stavu
       if (finData && typeof finData === 'object') {
-        zpusobFinancovani = finData.nazev_stavu ||
-                           (finData.kod_stavu ? financovaniKodyMap[finData.kod_stavu] : null) ||
-                           finData.nazev || finData.label || '';
+        const financovaniValue = finData.nazev_stavu ||
+                               (finData.kod_stavu ? financovaniKodyMap[finData.kod_stavu] : null) ||
+                               finData.nazev || finData.label || '';
+        zpusobFinancovani = String(financovaniValue || ''); // Zajisti, že je to vždy string
       }
+      
+      // Zajisti, že zpusobFinancovani je vždy string
+      zpusobFinancovani = String(zpusobFinancovani || '');
 
       // 🎯 DYNAMICKÉ SLOUPCE PODLE NASTAVENÍ V PROFILU
-      
+
       // Základní identifikace
-      if (csvColumns.id) row['ID'] = safeGet(order.id);
-      if (csvColumns.cislo_objednavky) row['Číslo objednávky'] = safeGet(order.cislo_objednavky);
+      if (csvColumnsFromDB.id) row['ID'] = safeGet(order.id);
+      if (csvColumnsFromDB.cislo_objednavky) row['Číslo objednávky'] = safeGet(order.cislo_objednavky);
       
       // Předmět a popis
-      if (csvColumns.predmet) row['Předmět'] = safeGet(order.predmet);
-      if (csvColumns.poznamka) row['Poznámka'] = safeGet(order.poznamka);
+      if (csvColumnsFromDB.predmet) row['Předmět'] = safeGet(order.predmet);
+      if (csvColumnsFromDB.poznamka) row['Poznámka'] = safeGet(order.poznamka);
       
       // Stavy
-      if (csvColumns.stav_objednavky) {
+      if (csvColumnsFromDB.stav_objednavky) {
         // Použij přímo stav_objednavky z order (obsahuje český název)
         row['Stav objednávky'] = safeGet(order.stav_objednavky) || getOrderDisplayStatus(order);
       }
-      if (csvColumns.stav_workflow) {
+      if (csvColumnsFromDB.stav_workflow) {
         row['Workflow stavy'] = enriched.stav_workflow 
           ? (Array.isArray(enriched.stav_workflow) 
               ? enriched.stav_workflow.map(s => s.nazev_stavu || s.nazev || '').filter(Boolean).join(listSeparator)
               : (enriched.stav_workflow.nazev_stavu || enriched.stav_workflow.nazev || ''))
           : '';
       }
-      if (csvColumns.stav_komentar) row['Komentář ke stavu'] = safeGet(order.stav_komentar);
+      if (csvColumnsFromDB.stav_komentar) row['Komentář ke stavu'] = safeGet(order.stav_komentar);
       
       // Datumy - použití formatDateOnly pro konzistentní formátování
-      if (csvColumns.dt_objednavky) row['Datum objednávky'] = getOrderDate(order) ? formatDateOnly(getOrderDate(order)) : '';
-      if (csvColumns.dt_vytvoreni) row['Datum vytvoření'] = order.dt_vytvoreni ? formatDateOnly(order.dt_vytvoreni) : '';
-      if (csvColumns.dt_schvaleni) row['Datum schválení'] = order.dt_schvaleni ? formatDateOnly(order.dt_schvaleni) : '';
-      if (csvColumns.dt_odeslani) row['Datum odeslání'] = order.dt_odeslani ? formatDateOnly(order.dt_odeslani) : '';
-      if (csvColumns.dt_akceptace) row['Datum akceptace'] = order.dt_akceptace ? formatDateOnly(order.dt_akceptace) : '';
-      if (csvColumns.dt_zverejneni) row['Datum zveřejnění'] = order.dt_zverejneni ? formatDateOnly(order.dt_zverejneni) : '';
-      if (csvColumns.dt_predpokladany_termin_dodani) row['Předpokl. termín dodání'] = order.predpokladany_termin_dodani ? formatDateOnly(order.predpokladany_termin_dodani) : '';
-      if (csvColumns.dt_aktualizace) row['Datum aktualizace'] = order.dt_aktualizace ? formatDateOnly(order.dt_aktualizace) : '';
+      if (csvColumnsFromDB.dt_objednavky) row['Datum objednávky'] = getOrderDate(order) ? formatDateOnly(getOrderDate(order)) : '';
+      if (csvColumnsFromDB.dt_vytvoreni) row['Datum vytvoření'] = order.dt_vytvoreni ? formatDateOnly(order.dt_vytvoreni) : '';
+      if (csvColumnsFromDB.dt_schvaleni) row['Datum schválení'] = order.dt_schvaleni ? formatDateOnly(order.dt_schvaleni) : '';
+      if (csvColumnsFromDB.dt_odeslani) row['Datum odeslání'] = order.dt_odeslani ? formatDateOnly(order.dt_odeslani) : '';
+      if (csvColumnsFromDB.dt_akceptace) row['Datum akceptace'] = order.dt_akceptace ? formatDateOnly(order.dt_akceptace) : '';
+      if (csvColumnsFromDB.dt_zverejneni) row['Datum zveřejnění'] = order.dt_zverejneni ? formatDateOnly(order.dt_zverejneni) : '';
+      if (csvColumnsFromDB.dt_predpokladany_termin_dodani) row['Předpokl. termín dodání'] = order.predpokladany_termin_dodani ? formatDateOnly(order.predpokladany_termin_dodani) : '';
+      if (csvColumnsFromDB.dt_aktualizace) row['Datum aktualizace'] = order.dt_aktualizace ? formatDateOnly(order.dt_aktualizace) : '';
       
       // Finanční údaje - ošetření NaN hodnot
-      if (csvColumns.max_cena_s_dph) row['Max. cena s DPH'] = parseFloat(order.max_cena_s_dph) || 0;
-      if (csvColumns.celkova_cena_bez_dph) row['Celková cena bez DPH'] = parseFloat(order.celkova_cena_bez_dph) || 0;
-      if (csvColumns.celkova_cena_s_dph) row['Celková cena s DPH'] = getOrderTotalPriceWithDPH(order);
-      if (csvColumns.financovani_typ) row['Typ financování'] = safeGet(finData?.typ);
-      if (csvColumns.financovani_typ_nazev) row['Název typu financování'] = zpusobFinancovani;
-      if (csvColumns.financovani_lp_kody) {
-        row['LP kódy'] = finData?.lp_kody 
-          ? (Array.isArray(finData.lp_kody) ? finData.lp_kody.join(listSeparator) : String(finData.lp_kody)) 
+      if (csvColumnsFromDB.max_cena_s_dph) row['Max. cena s DPH'] = parseFloat(order.max_cena_s_dph) || 0;
+
+      
+      // LP kódy a názvy z financovani JSON
+      if (csvColumnsFromDB.financovani_lp_kody) {
+        // Skutečné názvy polí: lp_kody (ne lp_kod!) nebo doplnujici_data.lp_kod
+        const lpKody = finData?.lp_kody || finData?.doplnujici_data?.lp_kod;
+        
+        row['LP kódy'] = lpKody 
+          ? (Array.isArray(lpKody) ? lpKody.join(listSeparator) : String(lpKody)) 
           : '';
       }
-      if (csvColumns.financovani_lp_nazvy) {
-        row['LP názvy'] = finData?.lp_nazvy && Array.isArray(finData.lp_nazvy)
-          ? finData.lp_nazvy.map(lp => lp.nazev || '').filter(Boolean).join(listSeparator)
+      if (csvColumnsFromDB.financovani_lp_nazvy) {
+        // Extrahuj lp_nazvy z financovani objektu
+        const lpNazvy = finData?.lp_nazvy;
+        
+        if (lpNazvy && Array.isArray(lpNazvy)) {
+          // lp_nazvy je array objektů s názvem
+          const nazvy = lpNazvy.map(nazev => 
+            typeof nazev === 'object' && nazev.nazev ? nazev.nazev : String(nazev)
+          );
+          row['LP názvy'] = nazvy.join(listSeparator);
+        } else {
+          row['LP názvy'] = '';
+        }
+      }
+      if (csvColumnsFromDB.financovani_lp_cisla) {
+        // lp_kody obsahují přímo čísla LP
+        const lpKody = finData?.lp_kody || finData?.doplnujici_data?.lp_kod;
+        row['LP čísla'] = lpKody 
+          ? (Array.isArray(lpKody) ? lpKody.join(listSeparator) : String(lpKody)) 
           : '';
       }
-      if (csvColumns.financovani_lp_cisla) {
-        row['LP čísla'] = finData?.lp_nazvy && Array.isArray(finData.lp_nazvy)
-          ? finData.lp_nazvy.map(lp => lp.cislo_lp || '').filter(Boolean).join(listSeparator)
-          : '';
+      if (csvColumnsFromDB.financovani_typ) {
+        // Skutečné pole: typ (ne .typ!) nebo kod_stavu
+        const typValue = finData?.typ || finData?.kod_stavu;
+        row['Typ financování'] = String(typValue || '');
+      }
+      if (csvColumnsFromDB.financovani_typ_nazev) {
+        // Přímý název typu z financovani objektu
+        const nazevValue = finData?.typ_nazev || finData?.nazev_stavu || 
+                          (finData?.kod_stavu ? financovaniKodyMap[finData.kod_stavu] : null);
+        row['Název typu financování'] = String(nazevValue || zpusobFinancovani || '');
       }
       
-      // Lidé - použití enriched dat s formátovacím helperem
-      if (csvColumns.objednatel) {
+      // Pojišťovací údaje - z root objektu i z financovani JSON
+      if (csvColumnsFromDB.pojistna_udalost_cislo) {
+        row['Číslo pojistné události'] = safeGet(order.pojistna_udalost_cislo) || safeGet(finData?.pojistna_udalost_cislo) || '';
+      }
+      if (csvColumnsFromDB.pojistna_udalost_poznamka) {
+        row['Poznámka k pojišťovacím údajům'] = safeGet(order.pojistna_udalost_poznamka) || safeGet(finData?.pojistna_udalost_poznamka) || '';
+      }
+      
+      // Smlouvy a individuální schválení
+      if (csvColumnsFromDB.cislo_smlouvy) {
+        row['Číslo smlouvy'] = safeGet(order.cislo_smlouvy) || safeGet(finData?.cislo_smlouvy) || '';
+      }
+      if (csvColumnsFromDB.individualni_schvaleni) {
+        const individualniSchvaleni = order.individualni_schvaleni || finData?.individualni_schvaleni;
+        row['Individuální schválení'] = (individualniSchvaleni === 1 || individualniSchvaleni === '1' || individualniSchvaleni === true) ? 'Ano' : 'Ne';
+      }
+      if (csvColumnsFromDB.individualni_poznamka) {
+        row['Poznámka k individuálnímu schválení'] = safeGet(order.individualni_poznamka) || safeGet(finData?.individualni_poznamka) || '';
+      }
+      if (csvColumnsFromDB.financovani_raw) {
+        const rawValue = order.financovani;
+        row['Financování (raw JSON)'] = typeof rawValue === 'object' ? JSON.stringify(rawValue) : String(rawValue || '');
+      }
+      
+      // Odpovědné osoby - použití enriched dat s formátovacím helperem
+      if (csvColumnsFromDB.uzivatel) {
         row['Objednatel'] = enriched.uzivatel
           ? formatUserName(enriched.uzivatel)
           : getUserDisplayName(order.uzivatel_id);
       }
-      if (csvColumns.objednatel_email) row['Objednatel email'] = safeGet(enriched.uzivatel?.email);
-      if (csvColumns.objednatel_telefon) row['Objednatel telefon'] = safeGet(enriched.uzivatel?.telefon);
-      if (csvColumns.garant) row['Garant'] = enriched.garant_uzivatel ? formatUserName(enriched.garant_uzivatel) : '';
-      if (csvColumns.garant_email) row['Garant email'] = safeGet(enriched.garant_uzivatel?.email);
-      if (csvColumns.garant_telefon) row['Garant telefon'] = safeGet(enriched.garant_uzivatel?.telefon);
-      if (csvColumns.prikazce) row['Příkazce'] = enriched.prikazce_po ? formatUserName(enriched.prikazce_po) : '';
-      if (csvColumns.schvalovatel) row['Schvalovatel'] = enriched.schvalovatel ? formatUserName(enriched.schvalovatel) : '';
-      if (csvColumns.vytvoril_uzivatel) row['Vytvořil'] = enriched.vytvoril_uzivatel ? formatUserName(enriched.vytvoril_uzivatel) : '';
+      if (csvColumnsFromDB.uzivatel_email) row['Objednatel email'] = safeGet(enriched.uzivatel?.email);
+      if (csvColumnsFromDB.uzivatel_telefon) row['Objednatel telefon'] = safeGet(enriched.uzivatel?.telefon);
+      if (csvColumnsFromDB.garant_uzivatel) row['Garant'] = enriched.garant_uzivatel ? formatUserName(enriched.garant_uzivatel) : '';
+      if (csvColumnsFromDB.garant_uzivatel_email) row['Garant email'] = safeGet(enriched.garant_uzivatel?.email);
+      if (csvColumnsFromDB.garant_uzivatel_telefon) row['Garant telefon'] = safeGet(enriched.garant_uzivatel?.telefon);
+      if (csvColumnsFromDB.schvalovatel) row['Schvalovatel'] = enriched.schvalovatel ? formatUserName(enriched.schvalovatel) : '';
+      if (csvColumnsFromDB.schvalovatel_email) row['Schvalovatel email'] = safeGet(enriched.schvalovatel?.email);
+      if (csvColumnsFromDB.schvalovatel_telefon) row['Schvalovatel telefon'] = safeGet(enriched.schvalovatel?.telefon);
+      if (csvColumnsFromDB.prikazce) row['Příkazce'] = enriched.prikazce_po ? formatUserName(enriched.prikazce_po) : '';
+      if (csvColumnsFromDB.prikazce_email) row['Příkazce email'] = safeGet(enriched.prikazce_po?.email);
+      if (csvColumnsFromDB.prikazce_telefon) row['Příkazce telefon'] = safeGet(enriched.prikazce_po?.telefon);
+      if (csvColumnsFromDB.vytvoril_uzivatel) row['Vytvořil'] = enriched.vytvoril_uzivatel ? formatUserName(enriched.vytvoril_uzivatel) : '';
+      if (csvColumnsFromDB.odesilatel) row['Odesílatel'] = enriched.odesilatel ? formatUserName(enriched.odesilatel) : '';
+      if (csvColumnsFromDB.dokoncil) row['Dokončil'] = enriched.dokoncil ? formatUserName(enriched.dokoncil) : '';
+      if (csvColumnsFromDB.fakturant) row['Fakturant'] = enriched.fakturant ? formatUserName(enriched.fakturant) : '';
+      if (csvColumnsFromDB.zverejnil_uzivatel) row['Zveřejnil'] = enriched.zverejnil_uzivatel ? formatUserName(enriched.zverejnil_uzivatel) : '';
       
       // Dodavatel
-      if (csvColumns.dodavatel_nazev) row['Dodavatel'] = safeGet(order.dodavatel_nazev);
-      if (csvColumns.dodavatel_ico) row['Dodavatel IČO'] = safeGet(order.dodavatel_ico);
-      if (csvColumns.dodavatel_dic) row['Dodavatel DIČ'] = safeGet(order.dodavatel_dic);
-      if (csvColumns.dodavatel_adresa) row['Dodavatel adresa'] = safeGet(order.dodavatel_adresa);
-      if (csvColumns.dodavatel_zastoupeny) row['Dodavatel zastoupený'] = safeGet(order.dodavatel_zastoupeny);
-      if (csvColumns.dodavatel_kontakt_jmeno) row['Dodavatel kontakt jméno'] = safeGet(order.dodavatel_kontakt_jmeno);
-      if (csvColumns.dodavatel_kontakt_email) row['Dodavatel kontakt email'] = safeGet(order.dodavatel_kontakt_email);
-      if (csvColumns.dodavatel_kontakt_telefon) row['Dodavatel kontakt telefon'] = safeGet(order.dodavatel_kontakt_telefon);
+      if (csvColumnsFromDB.dodavatel_nazev) row['Dodavatel'] = safeGet(order.dodavatel_nazev);
+      if (csvColumnsFromDB.dodavatel_ico) row['Dodavatel IČO'] = safeGet(order.dodavatel_ico);
+      if (csvColumnsFromDB.dodavatel_dic) row['Dodavatel DIČ'] = safeGet(order.dodavatel_dic);
+      if (csvColumnsFromDB.dodavatel_adresa) row['Dodavatel adresa'] = safeGet(order.dodavatel_adresa);
+      if (csvColumnsFromDB.dodavatel_zastoupeny) row['Dodavatel zastoupený'] = safeGet(order.dodavatel_zastoupeny);
+      if (csvColumnsFromDB.dodavatel_kontakt_jmeno) row['Dodavatel kontakt jméno'] = safeGet(order.dodavatel_kontakt_jmeno);
+      if (csvColumnsFromDB.dodavatel_kontakt_email) row['Dodavatel kontakt email'] = safeGet(order.dodavatel_kontakt_email);
+      if (csvColumnsFromDB.dodavatel_kontakt_telefon) row['Dodavatel kontakt telefon'] = safeGet(order.dodavatel_kontakt_telefon);
       
       // Střediska - ošetření různých zdrojů dat (exportuje NÁZVY, ne kódy)
-      if (csvColumns.strediska) {
-        row['Střediska'] = enriched.strediska && Array.isArray(enriched.strediska) && enriched.strediska.length > 0
-          ? enriched.strediska.map(s => s.nazev || s.kod || '').filter(Boolean).join(listSeparator)
-          : (Array.isArray(order.strediska_kod) ? order.strediska_kod.map(kod => getStrediskoNazev(kod) || kod).filter(Boolean).join(listSeparator) : safeGet(order.strediska_kod));
+      if (csvColumnsFromDB.strediska_kod) {
+        row['Střediska (kódy)'] = safeGet(order.strediska_kod);
       }
-      if (csvColumns.strediska_nazvy) {
-        row['Střediska názvy'] = enriched.strediska && Array.isArray(enriched.strediska) && enriched.strediska.length > 0
+      if (csvColumnsFromDB.strediska_nazvy) {
+        row['Střediska (názvy)'] = enriched.strediska && Array.isArray(enriched.strediska) && enriched.strediska.length > 0
           ? enriched.strediska.map(s => s.nazev || s.kod || '').filter(Boolean).join(listSeparator)
           : (Array.isArray(order.strediska_kod) ? order.strediska_kod.map(kod => getStrediskoNazev(kod) || kod).filter(Boolean).join(listSeparator) : '');
       }
-      if (csvColumns.druh_objednavky_kod) row['Druh objednávky'] = safeGet(enriched.druh_objednavky?.nazev || order.druh_objednavky);
-      if (csvColumns.stav_workflow_kod) row['Stav workflow kód'] = safeGet(order.stav_workflow_kod);
+      if (csvColumnsFromDB.druh_objednavky_kod) row['Druh objednávky'] = safeGet(enriched.druh_objednavky?.nazev || order.druh_objednavky_kod);
+      if (csvColumnsFromDB.stav_workflow_kod) row['Stav workflow kód'] = safeGet(order.stav_workflow_kod);
+      if (csvColumnsFromDB.mimoradna_udalost) row['Mimořádná událost'] = (order.mimoradna_udalost === 1 || order.mimoradna_udalost === true) ? 'Ano' : 'Ne';
       
       // Položky - bezpečné zpracování arrays
-      if (csvColumns.pocet_polozek) row['Počet položek'] = (order.polozky && Array.isArray(order.polozky)) ? order.polozky.length : 0;
-      if (csvColumns.polozky_celkova_cena_s_dph) row['Položky celková cena s DPH'] = getOrderTotalPriceWithDPH(order);
-      if (csvColumns.polozky_popis) {
+      if (csvColumnsFromDB.pocet_polozek) row['Počet položek'] = (order.polozky && Array.isArray(order.polozky)) ? order.polozky.length : 0;
+      if (csvColumnsFromDB.polozky_celkova_cena_s_dph) row['Položky celková cena s DPH'] = getOrderTotalPriceWithDPH(order);
+      if (csvColumnsFromDB.polozky_popis) {
         row['Položky popis'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => safeGet(p.popis)).filter(Boolean).join(listSeparator)
           : '';
       }
-      if (csvColumns.polozky_cena_bez_dph) {
+      if (csvColumnsFromDB.polozky_cena_bez_dph) {
         row['Položky cena bez DPH'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => parseFloat(p.cena_bez_dph) || 0).join(listSeparator)
           : '';
       }
-      if (csvColumns.polozky_sazba_dph) {
+      if (csvColumnsFromDB.polozky_sazba_dph) {
         row['Položky sazba DPH'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => (p.sazba_dph || 0) + '%').join(listSeparator)
           : '';
       }
-      if (csvColumns.polozky_cena_s_dph) {
+      if (csvColumnsFromDB.polozky_cena_s_dph) {
         row['Položky cena s DPH'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => parseFloat(p.cena_s_dph) || 0).join(listSeparator)
           : '';
       }
+      if (csvColumnsFromDB.polozky_usek_kod) {
+        row['Položky úsek kód'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.usek_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_budova_kod) {
+        row['Položky budova kód'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.budova_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_mistnost_kod) {
+        row['Položky místnost kód'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.mistnost_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_poznamka) {
+        row['Položky poznámka'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.poznamka)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_poznamka_umisteni) {
+        row['Položky poznámka umístění'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.poznamka_umisteni)).filter(Boolean).join(listSeparator)
+          : '';
+      }
       
       // Přílohy
-      if (csvColumns.prilohy_count) {
+      if (csvColumnsFromDB.prilohy_count) {
         row['Počet příloh'] = (order.prilohy && Array.isArray(order.prilohy)) ? order.prilohy.length : 0;
       }
-      if (csvColumns.prilohy_nazvy) {
+      if (csvColumnsFromDB.prilohy_guid) {
+        row['Přílohy GUID'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.guid)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_typ) {
+        row['Přílohy typ'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.typ_prilohy)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_nazvy) {
         row['Přílohy názvy'] = (order.prilohy && Array.isArray(order.prilohy))
-          ? order.prilohy.map(p => safeGet(p.nazev || p.originalni_nazev)).filter(Boolean).join(listSeparator)
+          ? order.prilohy.map(p => safeGet(p.nazev || p.originalni_nazev || p.originalni_nazev_souboru)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_velikosti) {
+        row['Přílohy velikosti'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.velikost_souboru_b) || 0).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_nahrano_uzivatel) {
+        row['Přílohy nahráno uživatel'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.nahrano_uzivatel_celne_jmeno)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_dt_vytvoreni) {
+        row['Přílohy datum vytvoření'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.dt_vytvoreni)).filter(Boolean).join(listSeparator)
           : '';
       }
       
       // Faktury - bezpečné zpracování
-      if (csvColumns.faktury_count) {
+      if (csvColumnsFromDB.faktury_count) {
         row['Počet faktur'] = (order.faktury && Array.isArray(order.faktury)) ? order.faktury.length : 0;
       }
-      if (csvColumns.faktury_celkova_castka_s_dph) {
+      if (csvColumnsFromDB.faktury_celkova_castka) {
         const totalInvoices = (order.faktury && Array.isArray(order.faktury))
           ? order.faktury.reduce((sum, f) => sum + (parseFloat(f.fa_castka) || 0), 0)
           : 0;
         row['Faktury celková částka'] = totalInvoices;
       }
-      if (csvColumns.faktury_cisla_vema) {
+      if (csvColumnsFromDB.faktury_cisla_vema) {
         row['Faktury čísla VEMA'] = (order.faktury && Array.isArray(order.faktury))
           ? order.faktury.map(f => safeGet(f.fa_cislo_vema)).filter(Boolean).join(listSeparator)
           : '';
       }
+      if (csvColumnsFromDB.faktury_stav) {
+        row['Faktury stav'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.stav)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_datum_vystaveni) {
+        row['Faktury datum vystavení'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_datum_vystaveni)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_datum_splatnosti) {
+        row['Faktury datum splatnosti'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_datum_splatnosti)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_datum_doruceni) {
+        row['Faktury datum doručení'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_datum_doruceni)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_strediska_kod) {
+        row['Faktury střediska'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => Array.isArray(f.fa_strediska_kod) ? f.fa_strediska_kod.join(',') : safeGet(f.fa_strediska_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_poznamka) {
+        row['Faktury poznámka'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_poznamka)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_dorucena) {
+        row['Faktury doručena'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => (f.fa_dorucena === 1 || f.fa_dorucena === '1' || f.fa_dorucena === true) ? 'Ano' : 'Ne').join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_zaplacena) {
+        row['Faktury zaplacena'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => (f.fa_zaplacena === 1 || f.fa_zaplacena === '1' || f.fa_zaplacena === true) ? 'Ano' : 'Ne').join(listSeparator)
+          : '';
+      }
       
-      // Ostatní - boolean převod na Ano/Ne
-      if (csvColumns.stav_odeslano) row['Stav odeslání'] = (order.stav_odeslano === 1 || order.stav_odeslano === '1' || order.stav_odeslano === true) ? 'Ano' : 'Ne';
-      if (csvColumns.potvrzeno_dodavatelem) row['Potvrzeno dodavatelem'] = (order.potvrzeno_dodavatelem === 1 || order.potvrzeno_dodavatelem === true) ? 'Ano' : 'Ne';
-      if (csvColumns.zpusob_potvrzeni) row['Způsob potvrzení'] = safeGet(order.zpusob_potvrzeni);
-      if (csvColumns.zpusob_platby) row['Způsob platby'] = safeGet(order.zpusob_platby);
-      if (csvColumns.zverejnit_registr_smluv) row['Zveřejnit v registru'] = (order.zverejnit_registr_smluv === 1 || order.zverejnit_registr_smluv === true) ? 'Ano' : 'Ne';
-      if (csvColumns.registr_iddt) row['Registr IDDT'] = safeGet(order.registr_iddt);
-      if (csvColumns.zaruka) row['Záruka'] = safeGet(order.zaruka);
-      if (csvColumns.misto_dodani) row['Místo dodání'] = safeGet(order.misto_dodani);
+      // Registr smluv a ostatní
+      if (csvColumnsFromDB.zverejnit) row['Zveřejnit v registru'] = safeGet(order.zverejnit);
+      if (csvColumnsFromDB.registr_iddt) row['Registr IDDT'] = safeGet(order.registr_iddt);
+      if (csvColumnsFromDB.zaruka) row['Záruka'] = safeGet(order.zaruka);
+      if (csvColumnsFromDB.misto_dodani) row['Místo dodání'] = safeGet(order.misto_dodani);
+      if (csvColumnsFromDB.schvaleni_komentar) row['Schválení komentář'] = safeGet(order.schvaleni_komentar);
+      if (csvColumnsFromDB.dokonceni_poznamka) row['Dokončení poznámka'] = safeGet(order.dokonceni_poznamka);
+      if (csvColumnsFromDB.potvrzeni_dokonceni_objednavky) row['Potvrzení dokončení objednávky'] = (order.potvrzeni_dokonceni_objednavky === 1 || order.potvrzeni_dokonceni_objednavky === true) ? 'Ano' : 'Ne';
+      if (csvColumnsFromDB.potvrzeni_vecne_spravnosti) row['Potvrzení věcné správnosti'] = (order.potvrzeni_vecne_spravnosti === 1 || order.potvrzeni_vecne_spravnosti === true) ? 'Ano' : 'Ne';
+      if (csvColumnsFromDB.vecna_spravnost_poznamka) row['Věcná správnost poznámka'] = safeGet(order.vecna_spravnost_poznamka);
+      if (csvColumnsFromDB.dt_dokonceni) row['Datum dokončení'] = order.dt_dokonceni ? formatDateOnly(order.dt_dokonceni) : '';
 
       return row;
     });
@@ -9592,37 +11470,27 @@ const Orders25List = () => {
       'semicolon': ';',
       'tab': '\t',
       'pipe': '|',
-      'custom': userSettings?.exportCsvCustomDelimiter || ';'
+      'custom': userSettingsFromDB?.exportCsvCustomDelimiter || ';'
     };
     
-    const separator = delimiterMap[userSettings?.exportCsvDelimiter || 'semicolon'] || ';';
-    
-    // 🐛 DEBUG: Zkontroluj první 3 řádky exportu
-    console.log('🔍 CSV Export DEBUG:');
-    console.log('Celkem řádků:', exportData.length);
-    console.log('Separator:', separator === '\t' ? 'TAB' : separator);
-    console.log('První 3 řádky:', exportData.slice(0, 3).map((row, idx) => ({
-      index: idx,
-      id: row['ID'],
-      cislo: row['Číslo objednávky'],
-      predmet: row['Předmět'],
-      stav: row['Stav objednávky'],
-      cena: row['Celková cena s DPH']
-    })));
+    const separator = delimiterMap[userSettingsFromDB?.exportCsvDelimiter || 'semicolon'] || ';';
     
     // Připrav data pro náhled a zobraz modal
     const columnCount = Object.keys(exportData[0] || {}).length;
-    const separatorName = userSettings?.exportCsvDelimiter === 'tab' ? 'Tabulátor' : 
-                          userSettings?.exportCsvDelimiter === 'pipe' ? 'Svislítko (|)' :
-                          userSettings?.exportCsvDelimiter === 'custom' ? `Vlastní (${userSettings?.exportCsvCustomDelimiter || ';'})` :
+    const separatorName = userSettingsFromDB?.exportCsvDelimiter === 'tab' ? 'Tabulátor' : 
+                          userSettingsFromDB?.exportCsvDelimiter === 'pipe' ? 'Svislítko (|)' :
+                          userSettingsFromDB?.exportCsvDelimiter === 'custom' ? `Vlastní (${userSettingsFromDB?.exportCsvCustomDelimiter || ';'})` :
                           'Středník (;)';
     
     // Multiline/list oddělovač z nastavení (už načteno výše v handleExport)
     const multilineSeparator = listSeparator;
-    const multilineSeparatorName = userSettings?.exportCsvListDelimiter === 'comma' ? 'Čárka (,)' :
-                                    userSettings?.exportCsvListDelimiter === 'semicolon' ? 'Středník (;)' :
-                                    userSettings?.exportCsvListDelimiter === 'custom' ? `Vlastní (${userSettings?.exportCsvListCustomDelimiter || '|'})` :
+    const multilineSeparatorName = userSettingsFromDB?.exportCsvListDelimiter === 'comma' ? 'Čárka (,)' :
+                                    userSettingsFromDB?.exportCsvListDelimiter === 'semicolon' ? 'Středník (;)' :
+                                    userSettingsFromDB?.exportCsvListDelimiter === 'custom' ? `Vlastní (${userSettingsFromDB?.exportCsvListCustomDelimiter || '|'})` :
                                     'Svislítko (|)';
+    
+    // Spočítej jen aktivní sloupce pro preview
+    const activeColumnCount = Object.values(csvColumnsFromDB).filter(Boolean).length;
     
     setExportPreviewData({
       data: exportData,
@@ -9630,10 +11498,18 @@ const Orders25List = () => {
       separatorName,
       multilineSeparator,
       multilineSeparatorName,
-      columnCount,
-      rowCount: exportData.length
+      columnCount: activeColumnCount,
+      rowCount: exportData.length,
+      csvColumnsFromDB // Přidej nastavení pro preview modal
     });
     setShowExportPreview(true);
+    
+    } catch (error) {
+      console.error('Chyba při exportu:', error);
+      showToast('Chyba při načítání nastavení exportu: ' + (error.message || error), 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Funkce pro finální export (volána z preview modalu)
@@ -9680,42 +11556,47 @@ const Orders25List = () => {
   };
 
   const clearFilters = () => {
-    // Vymaž všechny filtry ve stavu (pole = prázdné pole)
+    // 🔧 Vymaž column filtry (volá clearColumnFilters logiku)
+    clearColumnFilters();
+    
+    // 🔧 Dodatečné filtry, které clearColumnFilters() neresetuje
     setGlobalFilter('');
-    setStatusFilter([]);
     setUserFilter('');
-    setSelectedObjednatel([]);
-    setSelectedGarant([]);
-    setSelectedSchvalovatel([]);
     setDateFromFilter('');
     setDateToFilter('');
     setAmountFromFilter('');
     setAmountToFilter('');
-    setActiveStatusFilter(null); // Zruš také aktivní filter z dlaždic
-    setColumnFilters({
-      dt_objednavky: '',
-      cislo_objednavky: '',
-      predmet: '',
-      objednatel: '',
-      stav_objednavky: '',
-      max_cena_s_dph: '',
-      garant: '',
-      schvalovatel: ''
-    });
+    setActiveStatusFilter(null); // Zruš také aktivní filter z dlaždic (dashboard karty)
+    
+    // ⚠️ ROK a MĚSÍC se NERESETUJE - jsou uložené v profilu uživatele
+    // setSelectedYear() - NEMĚNÍME
+    // setSelectedMonth() - NEMĚNÍME
+    
+    // 🔧 Reset dalších filtrů
+    setFilterMaBytZverejneno(false);
+    setFilterByloZverejneno(false);
+    setFilterMimoradneObjednavky(false);
+    setFilterWithInvoices(false);
+    setFilterWithAttachments(false);
+    setShowArchived(false);
+    setShowOnlyMyOrders(false);
 
-    // Vymaž všechny filtry z localStorage
-    const sid = user_id || 'anon';
-    localStorage.removeItem('orders25List_globalFilter');
-    localStorage.removeItem('orders25List_statusFilter');
-    localStorage.removeItem('orders25List_userFilter');
-    localStorage.removeItem('orders25List_selectedObjednatel');
-    localStorage.removeItem('orders25List_selectedGarant');
-    localStorage.removeItem('orders25List_selectedSchvalovatel');
-    localStorage.removeItem(`orders25_dateFrom_${sid}`);
-    localStorage.removeItem(`orders25_dateTo_${sid}`);
-    localStorage.removeItem('orders25List_amountFrom');
-    localStorage.removeItem('orders25List_amountTo');
-    localStorage.removeItem('orders25List_activeStatusFilter');
+    // Vymaž všechny filtry z localStorage (používáme getUserKey pro user-specific klíče)
+    localStorage.removeItem(getUserKey('orders25List_globalFilter'));
+    localStorage.removeItem(getUserKey('orders25List_userFilter'));
+    localStorage.removeItem(getUserKey('orders25_dateFrom'));
+    localStorage.removeItem(getUserKey('orders25_dateTo'));
+    localStorage.removeItem(getUserKey('orders25List_amountFrom'));
+    localStorage.removeItem(getUserKey('orders25List_amountTo'));
+    localStorage.removeItem(getUserKey('orders25List_activeStatusFilter'));
+    // ⚠️ ROK a MĚSÍC se z localStorage NEMAŽOU - jsou pevně nastavené
+    // localStorage.removeItem(getUserKey('orders25List_selectedYear')); - NEMAZEME
+    // localStorage.removeItem(getUserKey('orders25List_selectedMonth')); - NEMAZEME
+    localStorage.removeItem(getUserKey('orders25List_filterMaBytZverejneno')); // 🔧 Vymaž filtr zveřejnění
+    localStorage.removeItem(getUserKey('orders25List_filterByloZverejneno')); // 🔧 Vymaž filtr zveřejnění
+    localStorage.removeItem(getUserKey('orders25List_filterMimoradneObjednavky')); // 🔧 Vymaž filtr mimořádných objednávek
+    localStorage.removeItem(getUserKey('orders25List_showArchived')); // 🔧 Vymaž filtr archivovaných
+    localStorage.removeItem(getUserKey('orders25List_showOnlyMyOrders')); // 🔧 Vymaž filtr "jen moje"
   };
 
   // Handlery pro jednoduché filtrování přes globalFilter
@@ -9818,7 +11699,7 @@ const Orders25List = () => {
 
   const clearColumnFilters = () => {
     // Vymaž vyhledávací pole v hlavičce tabulky
-    setColumnFilters({
+    const emptyFilters = {
       dt_objednavky: '',
       cislo_objednavky: '',
       predmet: '',
@@ -9828,7 +11709,26 @@ const Orders25List = () => {
       garant: '',
       prikazce: '',
       schvalovatel: ''
-    });
+    };
+    
+    // Clear debounce timeout
+    if (columnFilterTimeoutRef.current) {
+      clearTimeout(columnFilterTimeoutRef.current);
+    }
+    
+    setColumnFilters(emptyFilters);
+    setLocalColumnFilters(emptyFilters);
+    setUserStorage('orders25List_columnFilters', emptyFilters);
+
+    // 🐛 FIX: Vymaž také multiselect filtry
+    const emptyMultiselectFilters = {
+      objednatel: '',
+      garant: '',
+      prikazce: '',
+      schvalovatel: ''
+    };
+    setMultiselectFilters(emptyMultiselectFilters);
+    setUserStorage('orders25List_multiselectFilters', emptyMultiselectFilters);
 
     // Reset selectů v rozšířeném filtru - prázdná pole místo prázdných stringů
     setSelectedObjednatel([]);
@@ -9837,12 +11737,16 @@ const Orders25List = () => {
     setSelectedSchvalovatel([]);
     setStatusFilter([]);
 
+    // 🐛 FIX: Resetuj také approvalFilter (Ke schválení/Vyřízené)
+    setApprovalFilter([]);
+
     // Vymaž také z localStorage
     setUserStorage('orders25List_selectedObjednatel', []);
     setUserStorage('orders25List_selectedGarant', []);
     setUserStorage('orders25List_selectedPrikazce', []);
     setUserStorage('orders25List_selectedSchvalovatel', []);
     setUserStorage('orders25List_statusFilter', []);
+    setUserStorage('orders25List_approvalFilter', []);
   };
 
   // Funkce pro vymazání jednotlivých filtrů
@@ -9934,16 +11838,19 @@ const Orders25List = () => {
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
     } else {
-      // 🔧 MAPUJ DASHBOARD KÓDY NA ČESKÉ NÁZVY (ne systémové kódy!)
+      //  MAPUJ DASHBOARD KÓDY NA ČESKÉ NÁZVY (ne systémové kódy!)
       const statusToCzechName = {
         'ke_schvaleni': 'Ke schválení',
         'schvalena': 'Schválená',
         'rozpracovana': 'Rozpracovaná',
         'odeslana': 'Odeslaná dodavateli',
         'potvrzena': 'Potvrzená dodavatelem',
-        'k_uverejneni_do_registru': 'Má být zveřejněna',
-        'uverejnena': 'Uveřejněná',
+        'k_uverejneni_do_registru': 'Ke zveřejnění', //  FIX: Změněno z "Má být zveřejněna"
+        'uverejnena': 'Zveřejněno', //  FIX: Opraveno na "Zveřejněno" (tak jak je v DB)
+        'fakturace': 'Fakturace',
         'vecna_spravnost': 'Věcná správnost',
         'dokoncena': 'Dokončená',
         'nova': 'Nová',
@@ -9958,6 +11865,8 @@ const Orders25List = () => {
       // Zruš všechny ostatní filtry
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       
       // Aktivuj pouze tento stav
       setActiveStatusFilter(status);
@@ -9975,12 +11884,16 @@ const Orders25List = () => {
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
     } else {
       // Zruš všechny ostatní filtry a aktivuj faktury
       setActiveStatusFilter(null);
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       setFilterWithInvoices(true);
     }
   };
@@ -9993,28 +11906,39 @@ const Orders25List = () => {
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
     } else {
       // Zruš všechny ostatní filtry a aktivuj přílohy
       setActiveStatusFilter(null);
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       setFilterWithAttachments(true);
     }
   };
 
   const handleToggleMimoradneFilter = () => {
-    const newFilterMimoradne = !filterMimoradneObjednavky;
-    setFilterMimoradneObjednavky(newFilterMimoradne);
-    setUserStorage('orders25List_filterMimoradneObjednavky', newFilterMimoradne);
-    
-    if (newFilterMimoradne) {
-      // Zruš ostatní filtry pokud aktivujeme mimořádné
+    if (filterMimoradneObjednavky) {
+      // Opakovaný klik - zruš všechny filtry
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       setActiveStatusFilter(null);
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
+    } else {
+      // Zruš všechny ostatní filtry a aktivuj mimořádné
+      setActiveStatusFilter(null);
+      setStatusFilter([]);
+      setUserStorage('orders25List_statusFilter', []);
+      setFilterWithInvoices(false);
+      setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(true);
+      setUserStorage('orders25List_filterMimoradneObjednavky', true);
     }
   };
 
@@ -10111,18 +12035,16 @@ const Orders25List = () => {
     try {
       let blob;
       
-      // ✅ Rozlišení podle typu přílohy - faktury vs objednávky
-      if (attachment.typ_prilohy && attachment.typ_prilohy.startsWith('FAKTURA')) {
-        // Příloha faktury - použij invoice attachment endpoint
-        // Potřebuji faktura_id - může být v attachment.faktura_id
-        const fakturaId = attachment.faktura_id || attachment.invoice_id;
-        if (!fakturaId) {
-          showToast?.('Nelze stáhnout přílohu faktury - chybí ID faktury', { type: 'error' });
-          return;
-        }
+      // ✅ Rozlišení podle tabulky (ne podle typ_prilohy):
+      // - Má faktura_id → příloha z tabulky 25a_faktury_prilohy → příloha FAKTURY
+      // - Nemá faktura_id → příloha z tabulky 25a_objednavky_prilohy → příloha OBJEDNÁVKY
+      const fakturaId = attachment.faktura_id || attachment.invoice_id;
+      
+      if (fakturaId) {
+        // Příloha faktury (z tabulky faktury_prilohy)
         blob = await downloadInvoiceAttachment(fakturaId, attachment.id, username, token);
       } else {
-        // Příloha objednávky
+        // Příloha objednávky (z tabulky objednavky_prilohy)
         blob = await downloadOrderAttachment(orderId, attachment.id, username, token);
       }
 
@@ -10203,10 +12125,21 @@ const Orders25List = () => {
 
     return (
       <ExpandedContent $order={order} $showRowHighlighting={showRowHighlighting}>
+        {(() => {
+          // Helper: Získání názvu typu přílohy z DB
+          const getAttachmentTypeLabel = (typ) => {
+            const typeInfo = attachmentTypes.find(t => t.kod === typ || t.value === typ);
+            return typeInfo ? (typeInfo.nazev || typeInfo.label) : typ;
+          };
+          
+          window._getAttachmentTypeLabel = getAttachmentTypeLabel;
+          return null;
+        })()}
+        
         <ExpandedGrid>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 1️⃣ ZÁKLADNÍ ÚDAJE OBJEDNÁVKY */}
+          {/* 1⃣ ZÁKLADNÍ ÚDAJE OBJEDNÁVKY */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -10278,6 +12211,17 @@ const Orders25List = () => {
                 </span>
               </InfoValue>
             </InfoRow>
+
+            {(order.schvaleni_komentar || order.odeslani_storno_duvod) && (
+              <InfoRow>
+                <InfoLabel>Stav komentář:</InfoLabel>
+                <InfoValue style={{ color: '#64748b' }}>
+                  {[order.schvaleni_komentar, order.odeslani_storno_duvod]
+                    .filter(Boolean)
+                    .join(', ')}
+                </InfoValue>
+              </InfoRow>
+            )}
 
             {/* Oddělovací linka pod stavem */}
             <div style={{
@@ -10443,7 +12387,7 @@ const Orders25List = () => {
           </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 2️⃣ FINANČNÍ ÚDAJE - KOMPLETNÍ S V2 API */}
+          {/* 2⃣ FINANČNÍ ÚDAJE - KOMPLETNÍ S V2 API */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -10549,6 +12493,7 @@ const Orders25List = () => {
                     const labelMap = {
                       'cislo': 'Číslo',
                       'poznamka': 'Poznámka',
+                      'lp_poznamka': 'Poznámka k LP',
                       'cislo_smlouvy': 'Číslo smlouvy',
                       'smlouva_cislo': 'Číslo smlouvy',
                       'poznamka_smlouvy': 'Poznámka smlouvy',
@@ -10605,7 +12550,7 @@ const Orders25List = () => {
             <InfoRow>
               <InfoLabel>Druh objednávky:</InfoLabel>
               <InfoValue style={{ fontWeight: 500, fontSize: '0.9em' }}>
-                {(() => {
+                {highlightSearchText((() => {
                   // Podpora různých formátů dat z backendu
                   // 1. Enriched: order.druh_objednavky = {kod, nazev}
                   if (order.druh_objednavky?.nazev) {
@@ -10624,7 +12569,7 @@ const Orders25List = () => {
                     return getDruhObjednavkyNazev(order.druh_objednavky);
                   }
                   return '---';
-                })()}
+                })(), globalFilter)}
               </InfoValue>
             </InfoRow>
 
@@ -10682,7 +12627,7 @@ const Orders25List = () => {
           </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 3️⃣ ODPOVĚDNÉ OSOBY */}
+          {/* 3⃣ ODPOVĚDNÉ OSOBY */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -10869,29 +12814,69 @@ const Orders25List = () => {
               </>
             )}
 
-            {/* Fakturant */}
-            {order.fakturant && (
-              <>
-                <InfoRow>
-                  <InfoLabel>Fakturant:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 500, color: '#7c3aed' }}>
-                    {order.fakturant.cele_jmeno || '---'}
-                  </InfoValue>
-                </InfoRow>
-                {order.fakturant.email && (
-                  <div style={{
-                    textAlign: 'right',
-                    fontSize: '0.85em',
-                    color: '#6b7280',
-                    marginTop: '-0.3rem',
-                    marginBottom: '0.5rem',
-                    wordBreak: 'break-all'
-                  }}>
-                    {order.fakturant.email}
-                  </div>
-                )}
-              </>
-            )}
+            {/* Fakturant(i) - unikátní seznam */}
+            {(() => {
+              // Získat všechny unikátní fakturanty z faktur
+              const uniqueFakturanti = [];
+              const seenIds = new Set();
+              
+              // Přidat primárního fakturanta (pokud existuje)
+              if (order.fakturant?.id && !seenIds.has(order.fakturant.id)) {
+                seenIds.add(order.fakturant.id);
+                uniqueFakturanti.push({
+                  ...order.fakturant,
+                  isPrimary: true
+                });
+              }
+              
+              // Přidat všechny další fakturanty z jednotlivých faktur
+              if (order.faktury && order.faktury.length > 0) {
+                order.faktury.forEach(faktura => {
+                  const creator = faktura.vytvoril_uzivatel || faktura.vytvoril;
+                  if (creator?.id && !seenIds.has(creator.id)) {
+                    seenIds.add(creator.id);
+                    uniqueFakturanti.push({
+                      ...creator,
+                      isPrimary: false
+                    });
+                  }
+                });
+              }
+              
+              // Pokud jsou fakturanti, zobrazit je
+              if (uniqueFakturanti.length === 0) return null;
+              
+              return (
+                <>
+                  <InfoRow>
+                    <InfoLabel>
+                      {uniqueFakturanti.length === 1 ? 'Fakturant:' : 'Fakturanti:'}
+                    </InfoLabel>
+                    <InfoValue style={{ fontWeight: 500, color: '#7c3aed' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                        {uniqueFakturanti.map((fakturant, idx) => (
+                          <div key={fakturant.id || idx} style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: fakturant.isPrimary ? 600 : 500 }}>
+                              {fakturant.cele_jmeno || '---'}
+                            </div>
+                            {fakturant.email && (
+                              <div style={{
+                                fontSize: '0.85em',
+                                color: '#6b7280',
+                                marginTop: '2px',
+                                wordBreak: 'break-all'
+                              }}>
+                                {fakturant.email}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </InfoValue>
+                  </InfoRow>
+                </>
+              );
+            })()}
 
             {/* Potvrdil věcnou správnost */}
             {order.potvrdil_vecnou_spravnost && (
@@ -10943,7 +12928,7 @@ const Orders25List = () => {
           </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 4️⃣ WORKFLOW KROKY */}
+          {/* 4⃣ WORKFLOW KROKY */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -10951,8 +12936,8 @@ const Orders25List = () => {
               Workflow kroky
             </InfoCardTitle>
 
-            {/* Vytvořil */}
-            {order.uzivatel && (
+            {/* Vytvořil/Objednatel */}
+            {(order.objednatel || order.uzivatel) && (
               <div style={{
                 marginBottom: '0.75rem',
                 paddingBottom: '0.75rem',
@@ -10965,19 +12950,19 @@ const Orders25List = () => {
                   marginBottom: '2px'
                 }}>
                   <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#3b82f6' }}>
-                    1. Vytvořil
+                    1. {order.objednatel ? 'Objednatel' : 'Vytvořil'}
                   </div>
                   <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
-                    {order.uzivatel.cele_jmeno}
+                    {order.objednatel?.cele_jmeno || order.uzivatel?.cele_jmeno}
                   </div>
                 </div>
-                {order.uzivatel.datum && (
+                {(order.objednatel?.datum || order.uzivatel?.datum) && (
                   <div style={{
                     fontSize: '0.75em',
                     color: '#64748b',
                     textAlign: 'right'
                   }}>
-                    {prettyDate(order.uzivatel.datum)}
+                    {prettyDate(order.objednatel?.datum || order.uzivatel?.datum)}
                   </div>
                 )}
               </div>
@@ -11041,7 +13026,7 @@ const Orders25List = () => {
                     color: '#64748b',
                     textAlign: 'right'
                   }}>
-                    {prettyDate(order.odesilatel.datum)}
+                    {formatDateOnly(order.odesilatel.datum)}
                   </div>
                 )}
               </div>
@@ -11111,14 +13096,154 @@ const Orders25List = () => {
               </div>
             )}
 
-            {/* Přidal fakturu */}
-            {order.fakturant && order.faktury && order.faktury.length > 0 && (() => {
-              // Najdeme poslední přidanou fakturu (s nejnovějším dt_vytvoreni)
-              const fakturaSejtimem = order.faktury
-                .filter(f => f.dt_vytvoreni)
-                .sort((a, b) => new Date(b.dt_vytvoreni) - new Date(a.dt_vytvoreni))[0];
+            {/* Přidal fakturu / faktury */}
+            {order.faktury && order.faktury.length > 0 && (
+              <div style={{
+                marginBottom: '0.75rem',
+                paddingBottom: '0.75rem',
+                borderBottom: '1px dashed #e2e8f0'
+              }}>
+                <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#ea580c', marginBottom: '0.5rem' }}>
+                  {(() => {
+                    // Zkontrolovat stav workflow objednávky
+                    let workflowStates = [];
+                    try {
+                      if (order.stav_workflow_kod) {
+                        if (typeof order.stav_workflow_kod === 'string') {
+                          workflowStates = JSON.parse(order.stav_workflow_kod);
+                        } else if (Array.isArray(order.stav_workflow_kod)) {
+                          workflowStates = order.stav_workflow_kod;
+                        }
+                      }
+                    } catch (e) {
+                      workflowStates = [];
+                    }
+                    
+                    // Pokud obsahuje ZKONTROLOVANA nebo DOKONCENA, zobrazit plný nadpis
+                    if (workflowStates.includes('ZKONTROLOVANA') || workflowStates.includes('DOKONCENA')) {
+                      return '6.-7. Přidání faktur, ověření věcné správnosti';
+                    }
+                    // Jinak jen "Přidání faktur"
+                    return '6. Přidání faktur';
+                  })()}
+                </div>
+                
+                {/* Seznam všech faktur */}
+                {order.faktury
+                  .filter(f => f.dt_vytvoreni) // Pouze faktury s datem vytvoření
+                  .sort((a, b) => new Date(a.dt_vytvoreni) - new Date(b.dt_vytvoreni)) // Seřadit od nejstarší
+                  .map((faktura, index) => (
+                    <div 
+                      key={faktura.id || index}
+                      style={{
+                        marginBottom: index < order.faktury.length - 1 ? '0.5rem' : '0',
+                        paddingLeft: '0.5rem',
+                        borderLeft: '2px solid #ea580c',
+                        paddingTop: '0.25rem',
+                        paddingBottom: '0.25rem'
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1px'
+                      }}>
+                        <div style={{ fontSize: '0.85em', color: '#374151', fontWeight: 500 }}>
+                          FA#{faktura.fa_cislo_vema || 'N/A'}
+                        </div>
+                        <div style={{ fontSize: '0.85em', fontWeight: 500 }}>
+                          {faktura.vytvoril_uzivatel?.cele_jmeno || 
+                           faktura.vytvoril?.cele_jmeno || 
+                           order.fakturant?.cele_jmeno || 
+                           'Neznámý'}
+                        </div>
+                      </div>
+                      <div style={{
+                        fontSize: '0.75em',
+                        color: '#64748b',
+                        textAlign: 'right'
+                      }}>
+                        {prettyDate(faktura.dt_vytvoreni)}
+                      </div>
+                      
+                      {/* Věcná správnost faktury */}
+                      {faktura.dt_potvrzeni_vecne_spravnosti && (
+                        <div style={{
+                          marginTop: '0.35rem',
+                          paddingTop: '0.35rem',
+                          borderTop: '1px dashed #cbd5e1'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1px'
+                          }}>
+                            <div style={{
+                              fontSize: '0.75em',
+                              color: '#0891b2',
+                              fontWeight: 500,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}>
+                              <span>✓</span>
+                              <span>Věcná správnost</span>
+                            </div>
+                            <div style={{ fontSize: '0.85em', fontWeight: 500 }}>
+                              {(() => {
+                                // Sestavit celé jméno s tituly
+                                if (!faktura.potvrdil_vecnou_spravnost_prijmeni) return 'N/A';
+                                const parts = [];
+                                if (faktura.potvrdil_vecnou_spravnost_titul_pred) {
+                                  parts.push(faktura.potvrdil_vecnou_spravnost_titul_pred);
+                                }
+                                if (faktura.potvrdil_vecnou_spravnost_jmeno) {
+                                  parts.push(faktura.potvrdil_vecnou_spravnost_jmeno);
+                                }
+                                parts.push(faktura.potvrdil_vecnou_spravnost_prijmeni);
+                                let fullName = parts.join(' ');
+                                if (faktura.potvrdil_vecnou_spravnost_titul_za) {
+                                  fullName += ', ' + faktura.potvrdil_vecnou_spravnost_titul_za;
+                                }
+                                return fullName;
+                              })()}
+                            </div>
+                          </div>
+                          <div style={{
+                            fontSize: '0.75em',
+                            color: '#64748b',
+                            textAlign: 'right'
+                          }}>
+                            {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {/* Potvrdil věcnou správnost - zobrazit pouze pokud NENÍ ve stavu ZKONTROLOVANA nebo DOKONCENA */}
+            {order.potvrdil_vecnou_spravnost && (() => {
+              let workflowStates = [];
+              try {
+                if (order.stav_workflow_kod) {
+                  if (typeof order.stav_workflow_kod === 'string') {
+                    workflowStates = JSON.parse(order.stav_workflow_kod);
+                  } else if (Array.isArray(order.stav_workflow_kod)) {
+                    workflowStates = order.stav_workflow_kod;
+                  }
+                }
+              } catch (e) {
+                workflowStates = [];
+              }
               
-              if (!fakturaSejtimem) return null;
+              // Nezobrazovat samostatný blok, pokud je už zkontrolováno nebo dokončeno
+              if (workflowStates.includes('ZKONTROLOVANA') || workflowStates.includes('DOKONCENA')) {
+                return null;
+              }
               
               return (
                 <div style={{
@@ -11132,55 +13257,25 @@ const Orders25List = () => {
                     alignItems: 'center',
                     marginBottom: '2px'
                   }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#ea580c' }}>
-                      6. Přidal fakturu
+                    <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#0891b2' }}>
+                      7. Potvrdil věcnou správnost
                     </div>
                     <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
-                      {order.fakturant.cele_jmeno}
+                      {order.potvrdil_vecnou_spravnost.cele_jmeno}
                     </div>
                   </div>
-                  <div style={{
-                    fontSize: '0.75em',
-                    color: '#64748b',
-                    textAlign: 'right'
-                  }}>
-                    {prettyDate(fakturaSejtimem.dt_vytvoreni)}
-                  </div>
+                  {order.potvrdil_vecnou_spravnost.datum && (
+                    <div style={{
+                      fontSize: '0.75em',
+                      color: '#64748b',
+                      textAlign: 'right'
+                    }}>
+                      {prettyDate(order.potvrdil_vecnou_spravnost.datum)}
+                    </div>
+                  )}
                 </div>
               );
             })()}
-
-            {/* Potvrdil věcnou správnost */}
-            {order.potvrdil_vecnou_spravnost && (
-              <div style={{
-                marginBottom: '0.75rem',
-                paddingBottom: '0.75rem',
-                borderBottom: '1px dashed #e2e8f0'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '2px'
-                }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#0891b2' }}>
-                    7. Potvrdil věcnou správnost
-                  </div>
-                  <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
-                    {order.potvrdil_vecnou_spravnost.cele_jmeno}
-                  </div>
-                </div>
-                {order.potvrdil_vecnou_spravnost.datum && (
-                  <div style={{
-                    fontSize: '0.75em',
-                    color: '#64748b',
-                    textAlign: 'right'
-                  }}>
-                    {prettyDate(order.potvrdil_vecnou_spravnost.datum)}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Dokončil */}
             {order.dokoncil && (
@@ -11264,7 +13359,7 @@ const Orders25List = () => {
 
                 <InfoRow>
                   <InfoLabel>Název:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 600 }}>
+                  <InfoValue style={{ fontWeight: 600, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                     {highlightSearchText(order.dodavatel_nazev || '---', globalFilter)}
                   </InfoValue>
                 </InfoRow>
@@ -11332,7 +13427,7 @@ const Orders25List = () => {
             {/* ═══════════════════════════════════════════════════════════════════ */}
             <MiddleColumn>
               {/* ═══════════════════════════════════════════════════════════════════ */}
-              {/* 6️⃣ POLOŽKY OBJEDNÁVKY - KOMPLETNÍ S DPH */}
+              {/* 6⃣ POLOŽKY OBJEDNÁVKY - KOMPLETNÍ S DPH */}
               {/* ═══════════════════════════════════════════════════════════════════ */}
               <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
                 <InfoCardTitle>
@@ -11343,21 +13438,36 @@ const Orders25List = () => {
               {hasPolozky ? (
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                {polozky.slice(0, 10).map((polozka, index) => (
+                {polozky.slice(0, 10).map((polozka, index) => {
+                  return (
                   <ListItemCard key={index}>
                     <ListItemHeader>
                       <ListItemTitle>
-                        {highlightSearchText(polozka.popis || polozka.nazev || `Položka ${index + 1}`, globalFilter)}
-                        {polozka.id && (
-                          <sup style={{
-                            fontSize: '0.6em',
-                            color: '#94a3b8',
-                            fontWeight: 400,
-                            marginLeft: '4px'
-                          }}>
-                            #{polozka.id}
-                          </sup>
-                        )}
+                        <div>
+                          {highlightSearchText(polozka.popis || polozka.nazev || `Položka ${index + 1}`, globalFilter)}
+                          {polozka.id && (
+                            <sup style={{
+                              fontSize: '0.6em',
+                              color: '#94a3b8',
+                              fontWeight: 400,
+                              marginLeft: '4px'
+                            }}>
+                              #{polozka.id}
+                            </sup>
+                          )}
+                          {polozka.lp_id && (
+                            <div style={{
+                              fontSize: '0.8em',
+                              color: polozka.lp_kod ? '#8b5cf6' : '#dc2626',
+                              fontWeight: 500,
+                              marginTop: '6px',
+                              paddingLeft: '8px',
+                              borderLeft: `3px solid ${polozka.lp_kod ? '#8b5cf6' : '#dc2626'}`
+                            }}>
+                              {polozka.lp_kod || `LP#${polozka.lp_id}`}{polozka.lp_nazev && polozka.lp_nazev !== 'LP nenalezeno' ? ` - ${polozka.lp_nazev}` : polozka.lp_nazev === 'LP nenalezeno' ? ' - ⚠️ LP nenalezeno' : ''}
+                            </div>
+                          )}
+                        </div>
                       </ListItemTitle>
 
                       {/* Cena s DPH - hlavní hodnota */}
@@ -11374,7 +13484,31 @@ const Orders25List = () => {
                     </ListItemHeader>
 
                     {/* Tagy pod názvem - úsek, budova, místnost, poznámka umístění */}
-                    {(polozka.mistnost_kod || polozka.budova_kod || polozka.usek_kod || polozka.poznamka_umisteni) && (
+                    {(() => {
+                      // Parsování poznámky k místu z poznamka_umisteni objektu nebo JSON pole poznamka
+                      let poznamkaKMistu = null;
+                      
+                      // 1. Priorita: poznamka_umisteni.poznamka_lokalizace (backend enriched formát)
+                      if (polozka.poznamka_umisteni && typeof polozka.poznamka_umisteni === 'object') {
+                        poznamkaKMistu = polozka.poznamka_umisteni.poznamka_lokalizace || null;
+                      }
+                      // 2. Fallback: parsovat z JSON pole poznamka
+                      else if (polozka.poznamka) {
+                        try {
+                          const parsed = JSON.parse(polozka.poznamka);
+                          poznamkaKMistu = parsed.poznamka_lokalizace || null;
+                        } catch {
+                          // Pokud parsování selže, použij jako plain text
+                          poznamkaKMistu = polozka.poznamka;
+                        }
+                      }
+                      
+                      // Zobraz pouze pokud existuje alespoň jeden lokalizační údaj
+                      if (!polozka.mistnost_kod && !polozka.budova_kod && !polozka.usek_kod && !poznamkaKMistu && !polozka.poznamka_umisteni) {
+                        return null;
+                      }
+                      
+                      return (
                       <div style={{
                         display: 'flex',
                         flexWrap: 'wrap',
@@ -11426,23 +13560,9 @@ const Orders25List = () => {
                             Místnost: {highlightSearchText(polozka.mistnost_kod, globalFilter)}
                           </span>
                         )}
-
-                        {polozka.poznamka_umisteni && (
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            fontSize: '0.75em',
-                            fontStyle: 'italic',
-                            backgroundColor: '#fef3c7',
-                            color: '#92400e',
-                            borderRadius: '4px',
-                            border: '1px solid #fde68a'
-                          }}>
-                            {highlightSearchText(polozka.poznamka_umisteni, globalFilter)}
-                          </span>
-                        )}
                       </div>
-                    )}
+                      );
+                    })()}
 
                     <ListItemMeta>
                       {/* Počet */}
@@ -11469,15 +13589,52 @@ const Orders25List = () => {
                         </ListItemMetaItem>
                       )}
 
-                      {/* Cena bez DPH celkem */}
-                      {polozka.cena_bez_dph && (
-                        <ListItemMetaItem>
-                          <span style={{ fontWeight: 500 }}>Bez DPH:</span>
-                          <span style={{ color: '#64748b' }}>
-                            {parseFloat(polozka.cena_bez_dph).toLocaleString('cs-CZ')}&nbsp;Kč
-                          </span>
-                        </ListItemMetaItem>
-                      )}
+                      {/* Poznámka k místu NEBO Cena bez DPH celkem */}
+                      {(() => {
+                        // Parsování poznámky k místu
+                        let poznamkaKMistu = null;
+                        
+                        // 1. Priorita: poznamka_umisteni.poznamka_lokalizace (backend enriched formát)
+                        if (polozka.poznamka_umisteni && typeof polozka.poznamka_umisteni === 'object') {
+                          poznamkaKMistu = polozka.poznamka_umisteni.poznamka_lokalizace || null;
+                        }
+                        // 2. Fallback: parsovat z JSON pole poznamka
+                        else if (polozka.poznamka) {
+                          try {
+                            const parsed = JSON.parse(polozka.poznamka);
+                            poznamkaKMistu = parsed.poznamka_lokalizace || null;
+                          } catch {
+                            // Pokud parsování selže, použij jako plain text
+                            poznamkaKMistu = polozka.poznamka;
+                          }
+                        }
+                        
+                        // Pokud existuje poznámka, zobraz ji MÍSTO ceny bez DPH
+                        if (poznamkaKMistu && poznamkaKMistu.trim()) {
+                          return (
+                            <ListItemMetaItem>
+                              <span style={{ fontWeight: 500 }}>Poznámka k místu:</span>
+                              <span style={{ color: '#92400e' }}>
+                                {poznamkaKMistu}
+                              </span>
+                            </ListItemMetaItem>
+                          );
+                        }
+                        
+                        // Jinak zobraz cenu bez DPH (původní chování)
+                        if (polozka.cena_bez_dph) {
+                          return (
+                            <ListItemMetaItem>
+                              <span style={{ fontWeight: 500 }}>Bez DPH:</span>
+                              <span style={{ color: '#64748b' }}>
+                                {parseFloat(polozka.cena_bez_dph).toLocaleString('cs-CZ')}&nbsp;Kč
+                              </span>
+                            </ListItemMetaItem>
+                          );
+                        }
+                        
+                        return null;
+                      })()}
 
                       {/* DPH procento */}
                       {polozka.dph_procento && (
@@ -11498,7 +13655,8 @@ const Orders25List = () => {
                       )}
                     </ListItemMeta>
                   </ListItemCard>
-                ))}
+                );
+                })}
 
                 {polozky.length > 10 && (
                   <div style={{
@@ -11548,7 +13706,7 @@ const Orders25List = () => {
             </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 7️⃣ FAKTURY - KOMPLETNÍ S DPH A PŘÍLOHAMI */}
+          {/* 7⃣ FAKTURY - KOMPLETNÍ S DPH A PŘÍLOHAMI */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -11561,42 +13719,62 @@ const Orders25List = () => {
                 {faktury.map((faktura, index) => {
                   return (
                     <ListItemCard key={index}>
-                      {/* Nadpis: Faktura 1 - číslo */}
-                      <div style={{
-                        fontSize: '1.1em',
-                        fontWeight: 700,
-                        color: '#059669',
-                        marginBottom: '8px'
-                      }}>
-                        Faktura {index + 1} - {highlightSearchText(faktura.fa_cislo_vema || faktura.cislo_faktury || `${index + 1}`, globalFilter)}
-                      </div>
+                      {/* Nadpis: VS a částka vedle sebe */}
+                      <ListItemHeader>
+                        <ListItemTitle>
+                          <div style={{
+                            fontSize: '1.05em',
+                            fontWeight: 700,
+                            color: '#059669'
+                          }}>
+                            {highlightSearchText(faktura.fa_cislo_vema || faktura.cislo_faktury || `Faktura ${index + 1}`, globalFilter)}
+                          </div>
+                        </ListItemTitle>
+                        
+                        {/* Částka faktury - vpravo */}
+                        {faktura.fa_castka && parseFloat(faktura.fa_castka) > 0 && (
+                          <div style={{
+                            fontWeight: 700,
+                            fontSize: '1.1em',
+                            color: '#059669',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {parseFloat(faktura.fa_castka).toLocaleString('cs-CZ')}&nbsp;Kč
+                          </div>
+                        )}
+                      </ListItemHeader>
 
                       <ListItemHeader style={{ marginTop: '8px' }}>
                         <ListItemTitle style={{ fontSize: '0.9em', color: '#64748b' }}>
-                          Číslo faktury: {highlightSearchText(faktura.fa_cislo_vema || faktura.cislo_faktury || `Faktura ${index + 1}`, globalFilter)}
+                          {/* Evidoval: Jméno uživatele */}
+                          {(faktura.vytvoril_uzivatel?.cele_jmeno || faktura.vytvoril_uzivatel_detail?.cele_jmeno) && (
+                            <span style={{ fontWeight: 500 }}>
+                              Evidoval: {highlightSearchText(
+                                faktura.vytvoril_uzivatel?.cele_jmeno || faktura.vytvoril_uzivatel_detail?.cele_jmeno,
+                                globalFilter
+                              )}
+                            </span>
+                          )}
                         </ListItemTitle>
 
                         {/* Stav faktury */}
                         {faktura.stav && (
                           <ListItemBadge
                             $success={faktura.stav === 'ZAPLACENA'}
-                            $warning={faktura.stav === 'NEZAPLACENA'}
+                            $warning={faktura.stav === 'NEZAPLACENA' || faktura.stav === 'VECNA_SPRAVNOST'}
                           >
                             {faktura.stav === 'ZAPLACENA' && <FontAwesomeIcon icon={faCheckCircle} />}
                             {faktura.stav === 'NEZAPLACENA' && <FontAwesomeIcon icon={faHourglassHalf} />}
-                            {faktura.stav}
+                            {faktura.stav === 'VECNA_SPRAVNOST' && <FontAwesomeIcon icon={faHourglassHalf} />}
+                            {faktura.stav === 'ZAPLACENA' ? 'Zaplacena' : 
+                             faktura.stav === 'NEZAPLACENA' ? 'Nezaplacena' :
+                             faktura.stav === 'VECNA_SPRAVNOST' ? 'Věcná správnost' :
+                             faktura.stav}
                           </ListItemBadge>
                         )}
                       </ListItemHeader>
 
                       <ListItemMeta>
-                        {/* Číslo faktury VEMA */}
-                        {faktura.fa_cislo_vema && (
-                          <ListItemMetaItem>
-                            <span style={{ fontWeight: 500 }}>Číslo faktury: {highlightSearchText(faktura.fa_cislo_vema, globalFilter)}</span>
-                          </ListItemMetaItem>
-                        )}
-
                         {/* Datum vystavení */}
                         {(faktura.fa_datum_vystaveni || faktura.dt_vystaveni) && (
                           <ListItemMetaItem>
@@ -11683,6 +13861,126 @@ const Orders25List = () => {
                           {highlightSearchText(faktura.fa_poznamka, globalFilter)}
                         </div>
                       )}
+
+                      {/* Informace o věcné správnosti - zobrazit pouze pokud je potvrzena */}
+                      {faktura.stav === 'VECNA_SPRAVNOST' && faktura.vecna_spravnost_potvrzeno === 1 && (
+                        <div style={{
+                          marginTop: '8px',
+                          padding: '10px 12px',
+                          backgroundColor: '#f0fdf4',
+                          border: '1px solid #86efac',
+                          borderRadius: '4px',
+                          fontSize: '0.85em'
+                        }}>
+                          {/* Hlavní nadpis s LP čerpáním */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '8px'
+                          }}>
+                            <div style={{ 
+                              fontWeight: 700, 
+                              color: '#059669',
+                              fontSize: '0.95em'
+                            }}>
+                              ✓ Věcná správnost potvrzena
+                            </div>
+                            
+                            {/* Čerpání z LP - nadpis vpravo */}
+                            {faktura.lp_cerpani && Array.isArray(faktura.lp_cerpani) && faktura.lp_cerpani.length > 0 && (
+                              <div style={{ fontWeight: 600, color: '#064e3b', fontSize: '0.9em' }}>
+                                Čerpání z LP:
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Grid layout: Umístění + Poznámka vlevo | LP čerpání vpravo */}
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '2fr 1fr',
+                            gap: '12px',
+                            alignItems: 'start'
+                          }}>
+                            {/* Levý sloupec: Umístění a Poznámka */}
+                            <div>
+                              {/* Umístění majetku */}
+                              {faktura.vecna_spravnost_umisteni_majetku && (
+                                <div style={{ marginBottom: '6px', color: '#064e3b' }}>
+                                  <span style={{ fontWeight: 600 }}>Umístění:</span>{' '}
+                                  {highlightSearchText(faktura.vecna_spravnost_umisteni_majetku, globalFilter)}
+                                </div>
+                              )}
+                              
+                              {/* Poznámka k věcné správnosti */}
+                              {faktura.vecna_spravnost_poznamka && (
+                                <div style={{ color: '#064e3b' }}>
+                                  <span style={{ fontWeight: 600 }}>Poznámka:</span>{' '}
+                                  {highlightSearchText(faktura.vecna_spravnost_poznamka, globalFilter)}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Pravý sloupec: LP čerpání - pouze částky a kódy */}
+                            {faktura.lp_cerpani && Array.isArray(faktura.lp_cerpani) && faktura.lp_cerpani.length > 0 && (
+                              <div style={{ 
+                                paddingLeft: '12px',
+                                borderLeft: '2px solid #86efac',
+                                textAlign: 'right'
+                              }}>
+                                {faktura.lp_cerpani.map((lp, idx) => {
+                                  // 🔥 FIX: Najít název LP podle lp_id z order.financovani.lp_nazvy
+                                  let lpText = lp.lp_cislo || lp.lp_kod || `LP ID: ${lp.lp_id}`;
+                                  
+                                  // Pokud máme LP názvy v order.financovani.lp_nazvy, použij je
+                                  if (order?.financovani?.lp_nazvy && Array.isArray(order.financovani.lp_nazvy)) {
+                                    const lpData = order.financovani.lp_nazvy.find(item => item.id === lp.lp_id);
+                                    if (lpData) {
+                                      const kod = lpData.cislo_lp || lpData.kod || lp.lp_cislo || lp.lp_kod;
+                                      const nazev = lpData.nazev || '';
+                                      lpText = nazev ? `${kod} - ${nazev}` : kod;
+                                    }
+                                  }
+                                  
+                                  return (
+                                    <div key={idx} style={{ marginBottom: '6px' }}>
+                                      <div style={{ 
+                                        fontWeight: 600,
+                                        color: '#065f46',
+                                        fontSize: '0.95em'
+                                      }}>
+                                        {lpText}
+                                      </div>
+                                      <div style={{ 
+                                        fontWeight: 700,
+                                        color: '#059669',
+                                        fontSize: '1em'
+                                      }}>
+                                        {parseFloat(lp.castka).toLocaleString('cs-CZ')}&nbsp;Kč
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Kdo potvrdil */}
+                          {faktura.potvrdil_vecnou_spravnost_jmeno && faktura.potvrdil_vecnou_spravnost_prijmeni && (
+                            <div style={{ 
+                              marginTop: '6px', 
+                              fontSize: '0.9em',
+                              color: '#6b7280',
+                              fontStyle: 'italic'
+                            }}>
+                              Potvrdil: {faktura.potvrdil_vecnou_spravnost_jmeno} {faktura.potvrdil_vecnou_spravnost_prijmeni}
+                              {faktura.dt_potvrzeni_vecne_spravnosti && (
+                                <span> ({prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)})</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </ListItemCard>
                   );
                 })}
@@ -11709,7 +14007,7 @@ const Orders25List = () => {
             {/* ═══════════════════════════════════════════════════════════════════ */}
             <AttachmentsColumn>
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 8️⃣ VŠECHNY PŘÍLOHY - KATEGORIZOVANÉ */}
+          {/* 8⃣ VŠECHNY PŘÍLOHY - KATEGORIZOVANÉ */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
             <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
               <InfoCardTitle>
@@ -11739,30 +14037,47 @@ const Orders25List = () => {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {prilohy.slice(0, 10).map((priloha, index) => (
-                        <AttachmentItem key={index}>
+                        <AttachmentItem 
+                          key={index}
+                          onClick={() => handleDownloadAttachment(priloha, order.id)}
+                          style={{ cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%233b82f6%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer" }}
+                          title={`Stáhnout: ${priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`}`}
+                        >
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <AttachmentName style={{ fontWeight: 500 }}>
-                              {highlightSearchText(priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`, globalFilter)}
-                            </AttachmentName>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <AttachmentName style={{ fontWeight: 500 }}>
+                                {highlightSearchText(priloha.nazev_souboru || priloha.nazev || `Příloha ${index + 1}`, globalFilter)}
+                                {priloha.velikost && (
+                                  <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: '4px' }}>
+                                    ({Math.round(priloha.velikost / 1024)} KB)
+                                  </span>
+                                )}
+                              </AttachmentName>
+                              {priloha.typ_prilohy && (
+                                <span style={{ 
+                                  display: 'inline-block',
+                                  padding: '0.2rem 0.6rem',
+                                  borderRadius: '12px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 600,
+                                  background: '#dbeafe',
+                                  color: '#1e40af'
+                                }}>
+                                  {window._getAttachmentTypeLabel(priloha.typ_prilohy).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
                             <div style={{ fontSize: '0.8em', color: '#94a3b8' }}>
                               {priloha.dt_nahrano && formatDateOnly(priloha.dt_nahrano)}
                               {priloha.popis && <> • {highlightSearchText(priloha.popis, globalFilter)}</>}
                             </div>
                           </div>
-                          {priloha.velikost && (
-                            <AttachmentSize>
-                              ({Math.round(priloha.velikost / 1024)} KB)
-                            </AttachmentSize>
-                          )}
                           <FontAwesomeIcon
                             icon={faDownload}
                             style={{
                               color: '#3b82f6',
-                              cursor: 'pointer',
                               marginLeft: '8px'
                             }}
-                            title="Stáhnout přílohu"
-                            onClick={() => handleDownloadAttachment(priloha, order.id)}
                           />
                         </AttachmentItem>
                       ))}
@@ -11798,7 +14113,12 @@ const Orders25List = () => {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {dodatecneDokumenty.map((dokument, index) => (
-                        <AttachmentItem key={index}>
+                        <AttachmentItem 
+                          key={index}
+                          onClick={() => handleDownloadAttachment(dokument, order.id)}
+                          style={{ cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%237c3aed%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer" }}
+                          title={`Stáhnout: ${dokument.nazev_souboru || dokument.nazev || `Dokument ${index + 1}`}`}
+                        >
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <AttachmentName style={{ fontWeight: 500 }}>
                               {highlightSearchText(dokument.nazev_souboru || dokument.nazev || `Dokument ${index + 1}`, globalFilter)}
@@ -11817,11 +14137,8 @@ const Orders25List = () => {
                             icon={faDownload}
                             style={{
                               color: '#7c3aed',
-                              cursor: 'pointer',
                               marginLeft: '8px'
                             }}
-                            title="Stáhnout dokument"
-                            onClick={() => handleDownloadAttachment(dokument, order.id)}
                           />
                         </AttachmentItem>
                       ))}
@@ -11843,48 +14160,88 @@ const Orders25List = () => {
                       Přílohy faktur ({faktury.reduce((sum, f) => sum + ((f.prilohy && f.prilohy.length) || 0), 0)})
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {faktury.map((faktura, fIndex) => {
                         const fakturaPrilohy = faktura.prilohy || [];
                         if (!fakturaPrilohy.length) return null;
 
-                        return fakturaPrilohy.map((priloha, pIndex) => {
-                          // ✅ Přidej faktura_id do přílohy pro správný download
-                          const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
-                          
-                          return (
-                            <AttachmentItem key={`${fIndex}-${pIndex}`}>
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <AttachmentName style={{ fontWeight: 500 }}>
-                                {highlightSearchText(priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument', globalFilter)}
-                                <span style={{ color: '#047857', fontWeight: 600, marginLeft: '6px' }}>
-                                  [{faktura.cislo_faktury || `Faktura ${fIndex + 1}`}]
-                                </span>
-                              </AttachmentName>
-                              {priloha.popis && (
-                                <div style={{ fontSize: '0.8em', color: '#94a3b8' }}>
-                                  {highlightSearchText(priloha.popis, globalFilter)}
-                                </div>
-                              )}
+                        return (
+                          <div key={fIndex} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {/* Nadpis faktury */}
+                            <div style={{
+                              fontWeight: 600,
+                              fontSize: '0.85em',
+                              color: '#047857',
+                              marginBottom: '2px',
+                              paddingLeft: '4px'
+                            }}>
+                              Faktura {faktura.cislo_faktury || faktura.fa_cislo_vema || `#${fIndex + 1}`}
                             </div>
-                            {priloha.velikost_souboru_b && (
-                              <AttachmentSize>
-                                ({Math.round(priloha.velikost_souboru_b / 1024)} KB)
-                              </AttachmentSize>
-                            )}
-                            <FontAwesomeIcon
-                              icon={faDownload}
-                              style={{
-                                color: '#059669',
-                                cursor: 'pointer',
-                                marginLeft: '8px'
-                              }}
-                              title="Stáhnout přílohu"
-                              onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
-                            />
-                            </AttachmentItem>
-                          );
-                        });
+
+                            {/* Přílohy faktury - s levým borderem */}
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                              paddingLeft: '12px',
+                              borderLeft: '3px solid #10b981'
+                            }}>
+                            {fakturaPrilohy.map((priloha, pIndex) => {
+                              // ✅ Přidej faktura_id do přílohy pro správný download
+                              const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
+                              
+                              return (
+                                <AttachmentItem 
+                                  key={pIndex}
+                                  onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
+                                  style={{ 
+                                    cursor: "url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22 viewBox=%220 0 28 28%22><path d=%22M2,2 L2,18 L8,12 L12,12 L2,2 Z%22 fill=%22%23000000%22 stroke=%22%23ffffff%22 stroke-width=%221%22/><g transform=%22translate(14,14)%22><circle cx=%227%22 cy=%227%22 r=%227%22 fill=%22%23059669%22/><path d=%22M7,4 L7,10 M7,10 L5,8 M7,10 L9,8%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/><line x1=%224%22 y1=%2210.5%22 x2=%2210%22 y2=%2210.5%22 stroke=%22%23ffffff%22 stroke-width=%222%22 stroke-linecap=%22round%22/></g></svg>') 2 2, pointer"
+                                  }}
+                                  title={`Stáhnout: ${priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument'}`}
+                                >
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <AttachmentName style={{ fontWeight: 500 }}>
+                                      {highlightSearchText(priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument', globalFilter)}
+                                      {priloha.velikost_souboru_b && (
+                                        <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: '4px' }}>
+                                          ({Math.round(priloha.velikost_souboru_b / 1024)} KB)
+                                        </span>
+                                      )}
+                                    </AttachmentName>
+                                    {priloha.typ_prilohy && (
+                                      <span style={{ 
+                                        display: 'inline-block',
+                                        padding: '0.2rem 0.6rem',
+                                        borderRadius: '12px',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 600,
+                                        background: '#d1fae5',
+                                        color: '#065f46'
+                                      }}>
+                                        {window._getAttachmentTypeLabel(priloha.typ_prilohy).toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {priloha.popis && (
+                                    <div style={{ fontSize: '0.8em', color: '#94a3b8' }}>
+                                      {highlightSearchText(priloha.popis, globalFilter)}
+                                    </div>
+                                  )}
+                                </div>
+                                <FontAwesomeIcon
+                                  icon={faDownload}
+                                  style={{
+                                    color: '#059669',
+                                    marginLeft: '8px'
+                                  }}
+                                />
+                                </AttachmentItem>
+                              );
+                            })}
+                            </div>
+                          </div>
+                        );
                       })}
                     </div>
                   </div>
@@ -11961,13 +14318,13 @@ const Orders25List = () => {
       </Container>
     );
   }
-
+  
   // CustomSelect wrapper - používá globální komponentu
   const CustomSelectLocal = (props) => (
     <CustomSelect
       {...props}
       selectStates={selectStates}
-      setSelectStates={setSelectStates}
+      setSelectStates={setSearchStates}
       searchStates={searchStates}
       setSearchStates={setSearchStates}
       touchedSelectFields={touchedSelectFields}
@@ -11981,6 +14338,31 @@ const Orders25List = () => {
 
   return (
     <>
+      {/* ⚠️ Kontrola oprávnění - pokud uživatel nemá žádná práva na objednávky */}
+      {!permissions.canViewAll && !permissions.hasOnlyOwn && (
+        <Container>
+          <div style={{
+            padding: '3rem 2rem',
+            textAlign: 'center',
+            background: '#fff3cd',
+            borderRadius: '8px',
+            border: '2px solid #ffc107',
+            margin: '2rem auto',
+            maxWidth: '600px'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+            <h2 style={{ color: '#856404', marginBottom: '1rem' }}>Nemáte oprávnění</h2>
+            <p style={{ color: '#856404', fontSize: '1.1rem', lineHeight: '1.6' }}>
+              Pro zobrazení seznamu objednávek nemáte dostatečná oprávnění.<br />
+              Kontaktujte administrátora systému.
+            </p>
+          </div>
+        </Container>
+      )}
+
+      {/* ✅ Zobrazit obsah pouze pokud má uživatel nějaká práva */}
+      {(permissions.canViewAll || permissions.hasOnlyOwn) && (
+        <>
       {/* Loading overlay s blur efektem - MIMO Container pro správné zobrazení */}
       <LoadingOverlay $visible={loading}>
         <LoadingSpinner $visible={loading} />
@@ -11994,6 +14376,7 @@ const Orders25List = () => {
 
       <Container>
       <PageContent $blurred={loading}>
+      
       {/* Year Filter - prominent position above header */}
       <YearFilterPanel>
         <YearFilterLeft>
@@ -12092,55 +14475,57 @@ const Orders25List = () => {
             )}
           </MonthDropdownContainer>
 
-          {/* Checkbox pro zobrazení archivovaných objednávek */}
-          <div style={{
-            position: 'relative',
-            minWidth: '180px',
-            marginLeft: '1rem'
-          }}>
-            <MonthDropdownButton
-              as="label"
-              htmlFor="showArchived"
-              style={{
-                padding: '0.75rem 1rem',
-                cursor: 'pointer',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '0.75rem'
-              }}
-            >
-              <input
-                type="checkbox"
-                id="showArchived"
-                checked={showArchived}
-                onChange={handleShowArchivedChange}
+          {/* Checkbox pro zobrazení archivovaných objednávek - POUZE PRO UŽIVATELE S PRÁVEM */}
+          {hasPermission && hasPermission('ORDER_SHOW_ARCHIVE') && (
+            <div style={{
+              position: 'relative',
+              minWidth: '180px',
+              marginLeft: '1rem'
+            }}>
+              <MonthDropdownButton
+                as="label"
+                htmlFor="showArchived"
                 style={{
-                  width: '20px',
-                  height: '20px',
+                  padding: '0.75rem 1rem',
                   cursor: 'pointer',
-                  accentColor: 'rgba(255, 255, 255, 0.9)',
-                  margin: 0,
-                  flexShrink: 0
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '0.75rem'
                 }}
-              />
-              <span style={{
-                flex: 1,
-                fontWeight: 600,
-                fontSize: '1rem',
-                textAlign: 'center'
-              }}>
-                ARCHIV
-              </span>
-              <FontAwesomeIcon
-                icon={faArchive}
-                style={{
-                  fontSize: '1.1rem',
-                  flexShrink: 0
-                }}
-              />
-            </MonthDropdownButton>
-          </div>
+              >
+                <input
+                  type="checkbox"
+                  id="showArchived"
+                  checked={showArchived}
+                  onChange={handleShowArchivedChange}
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    cursor: 'pointer',
+                    accentColor: 'rgba(255, 255, 255, 0.9)',
+                    margin: 0,
+                    flexShrink: 0
+                  }}
+                />
+                <span style={{
+                  flex: 1,
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  textAlign: 'center'
+                }}>
+                  ARCHIV
+                </span>
+                <FontAwesomeIcon
+                  icon={faArchive}
+                  style={{
+                    fontSize: '1.1rem',
+                    flexShrink: 0
+                  }}
+                />
+              </MonthDropdownButton>
+            </div>
+          )}
 
           {/* Tlačítko Obnovit */}
           <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -12165,27 +14550,32 @@ const Orders25List = () => {
         </YearFilterLeft>
         <YearFilterTitle>
           {lastLoadSource && (
-            <CacheStatusIconWrapper>
+            <SmartTooltip 
+              text={
+                <>
+                  {(lastLoadSource === 'memory' || lastLoadSource === 'cache')
+                    ? '⚡ Načteno z cache (paměti) - rychlé zobrazení bez dotazu na databázi'
+                    : '💾 Načteno z databáze - aktuální data přímo ze serveru'
+                  }
+                  {lastLoadTime && (
+                    <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8 }}>
+                      📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
+                      {lastLoadDuration !== null && (
+                        <span style={{ marginLeft: '0.5rem' }}>
+                          ⏱ {lastLoadDuration}ms
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
+              }
+              icon="none"
+              preferredPosition="bottom"
+            >
               <CacheStatusIcon fromCache={lastLoadSource === 'memory' || lastLoadSource === 'cache'}>
                 <FontAwesomeIcon icon={lastLoadSource === 'memory' || lastLoadSource === 'cache' ? faBoltLightning : faDatabase} />
               </CacheStatusIcon>
-              <div className="tooltip" data-icon="none">
-                {(lastLoadSource === 'memory' || lastLoadSource === 'cache')
-                  ? '⚡ Načteno z cache (paměti) - rychlé zobrazení bez dotazu na databázi'
-                  : '💾 Načteno z databáze - aktuální data přímo ze serveru'
-                }
-                {lastLoadTime && (
-                  <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8 }}>
-                    📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
-                    {lastLoadDuration !== null && (
-                      <span style={{ marginLeft: '0.5rem' }}>
-                        ⏱️ {lastLoadDuration}ms
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CacheStatusIconWrapper>
+            </SmartTooltip>
           )}
           <span>
             Přehled objednávek
@@ -12294,7 +14684,7 @@ Dostupná pole: ${rawData.allFields.join(', ')}`}</DebugValue>
             )}
 
             <DebugSection>
-              <DebugLabel>🗂️ Všechna data (JSON):</DebugLabel>
+              <DebugLabel>🗂 Všechna data (JSON):</DebugLabel>
               <DebugValue>{JSON.stringify(rawData.rawData, null, 2)}</DebugValue>
             </DebugSection>
           </DebugContent>
@@ -12324,7 +14714,7 @@ Dostupná pole: ${rawData.allFields.join(', ')}`}</DebugValue>
               <>
                 {/* Filter State */}
                 <DebugSection>
-                  <DebugLabel>🎛️ Stav filtrů:</DebugLabel>
+                  <DebugLabel>🎛 Stav filtrů:</DebugLabel>
                   <DebugValue>{JSON.stringify({
                     showArchived: apiTestData.filterState?.showArchived,
                     selectedYear: apiTestData.filterState?.selectedYear,
@@ -12384,7 +14774,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
             {/* Full API Response */}
             <DebugSection>
-              <DebugLabel>🗂️ Kompletní API Response (JSON):</DebugLabel>
+              <DebugLabel>🗂 Kompletní API Response (JSON):</DebugLabel>
               <DebugValue style={{ maxHeight: '400px', overflow: 'auto' }}>
                 {JSON.stringify(apiTestData.apiResponse, null, 2)}
               </DebugValue>
@@ -12396,7 +14786,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
       )}
 
       {/* 🎨 Modal Styles Design Panel - Návrhy stylů modálních dialogů */}
-      {showModalStylesPanel && createPortal(
+      {showModalStylesPanel && ReactDOM.createPortal(
         <div style={{
           position: 'fixed',
           top: 0,
@@ -13154,10 +15544,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                 <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
                   <div>
                     <LargeStatValue>
-                      {Math.round(stats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
+                      {Math.round(filteredStats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                     </LargeStatValue>
                     <LargeStatLabel>
-                      Celková cena s DPH za období ({stats.total})
+                      Celková cena s DPH za období ({filteredStats.total})
                     </LargeStatLabel>
                     {(() => {
                       const hasActiveFilters =
@@ -13268,7 +15658,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('nova')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.nova}</StatValue>
+                      <StatValue>{filteredStats.nova}</StatValue>
                       <StatIcon>{getStatusEmoji('nova')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Nová / Koncept</StatLabel>
@@ -13283,8 +15673,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ke_schvaleni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ke_schvaleni}</StatValue>
-                      <StatIcon>{getStatusEmoji('ke_schvaleni')}</StatIcon>
+                      <StatValue>{filteredStats.ke_schvaleni}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Ke schválení</StatLabel>
                   </StatCard>
@@ -13298,8 +15690,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('schvalena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.schvalena}</StatValue>
-                      <StatIcon>{getStatusEmoji('schvalena')}</StatIcon>
+                      <StatValue>{filteredStats.schvalena}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Schválená</StatLabel>
                   </StatCard>
@@ -13313,8 +15707,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zamitnuta')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zamitnuta}</StatValue>
-                      <StatIcon>{getStatusEmoji('zamitnuta')}</StatIcon>
+                      <StatValue>{filteredStats.zamitnuta}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
+                        <FontAwesomeIcon icon={faTimesCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Zamítnutá</StatLabel>
                   </StatCard>
@@ -13328,7 +15724,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('rozpracovana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.rozpracovana}</StatValue>
+                      <StatValue>{filteredStats.rozpracovana}</StatValue>
                       <StatIcon>{getStatusEmoji('rozpracovana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Rozpracovaná</StatLabel>
@@ -13343,7 +15739,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('odeslana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.odeslana}</StatValue>
+                      <StatValue>{filteredStats.odeslana}</StatValue>
                       <StatIcon>{getStatusEmoji('odeslana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Odeslaná dodavateli</StatLabel>
@@ -13358,7 +15754,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('potvrzena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.potvrzena}</StatValue>
+                      <StatValue>{filteredStats.potvrzena}</StatValue>
                       <StatIcon>{getStatusEmoji('potvrzena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Potvrzená dodavatelem</StatLabel>
@@ -13373,10 +15769,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('k_uverejneni_do_registru')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
+                      <StatValue>{filteredStats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon>{getStatusEmoji('k_uverejneni_do_registru')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Má být zveřejněna</StatLabel>
+                    <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
 
@@ -13388,10 +15784,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('uverejnena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.uverejnena}</StatValue>
+                      <StatValue>{filteredStats.uverejnena}</StatValue>
                       <StatIcon>{getStatusEmoji('uverejnena')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Uveřejněná</StatLabel>
+                    <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
 
@@ -13403,7 +15799,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_potvrzeni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_potvrzeni}</StatValue>
+                      <StatValue>{filteredStats.ceka_potvrzeni}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_potvrzeni')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká na potvrzení</StatLabel>
@@ -13418,10 +15814,25 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_se')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_se}</StatValue>
+                      <StatValue>{filteredStats.ceka_se}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_se')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká se</StatLabel>
+                  </StatCard>
+                )}
+
+                {isTileVisible('fakturace') && (
+                  <StatCard
+                    $color={STATUS_COLORS.FAKTURACE.dark}
+                    $clickable={true}
+                    $isActive={activeStatusFilter === 'fakturace'}
+                    onClick={() => handleStatusFilterClick('fakturace')}
+                  >
+                    <StatHeader>
+                      <StatValue>{filteredStats.fakturace}</StatValue>
+                      <StatIcon>{getStatusEmoji('fakturace')}</StatIcon>
+                    </StatHeader>
+                    <StatLabel>Fakturace</StatLabel>
                   </StatCard>
                 )}
 
@@ -13433,7 +15844,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('vecna_spravnost')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.vecna_spravnost}</StatValue>
+                      <StatValue>{filteredStats.vecna_spravnost}</StatValue>
                       <StatIcon>{getStatusEmoji('vecna_spravnost')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Věcná správnost</StatLabel>
@@ -13448,7 +15859,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('dokoncena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.dokoncena}</StatValue>
+                      <StatValue>{filteredStats.dokoncena}</StatValue>
                       <StatIcon>{getStatusEmoji('dokoncena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Dokončená</StatLabel>
@@ -13463,7 +15874,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zrusena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zrusena}</StatValue>
+                      <StatValue>{filteredStats.zrusena}</StatValue>
                       <StatIcon>{getStatusEmoji('zrusena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Zrušená</StatLabel>
@@ -13478,7 +15889,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('smazana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.smazana}</StatValue>
+                      <StatValue>{filteredStats.smazana}</StatValue>
                       <StatIcon>{getStatusEmoji('smazana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Smazaná</StatLabel>
@@ -13493,7 +15904,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('archivovano')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.archivovano}</StatValue>
+                      <StatValue>{filteredStats.archivovano}</StatValue>
                       <StatIcon>{getStatusEmoji('archivovano')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Archivováno / Import</StatLabel>
@@ -13508,7 +15919,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleInvoicesFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withInvoices}</StatValue>
+                      <StatValue>{filteredStats.withInvoices}</StatValue>
                       <StatIcon>📄</StatIcon>
                     </StatHeader>
                     <StatLabel>S fakturou</StatLabel>
@@ -13523,7 +15934,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleAttachmentsFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withAttachments}</StatValue>
+                      <StatValue>{filteredStats.withAttachments}</StatValue>
                       <StatIcon>📎</StatIcon>
                     </StatHeader>
                     <StatLabel>S přílohami</StatLabel>
@@ -13538,7 +15949,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleMimoradneFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatValue>{filteredStats.mimoradneUdalosti}</StatValue>
                       <StatIcon $color="#dc2626">
                         <FontAwesomeIcon icon={faBoltLightning} />
                       </StatIcon>
@@ -13547,15 +15958,15 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
-                {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR */}
-                {isTileVisible('moje_objednavky') && userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
+                {/* Moje objednávky dlaždice - pro všechny uživatele */}
+                {isTileVisible('moje_objednavky') && (() => {
                   const currentUserIdNum = parseInt(user_id, 10);
 
                   const myOrdersCount = filteredData.filter(order => {
-                    const isObjednatel = order.uzivatel_id === currentUserIdNum;
-                    const isGarant = order.garant_uzivatel_id === currentUserIdNum;
-                    const isSchvalovatel = order.schvalovatel_id === currentUserIdNum;
-                    const isPrikazce = order.prikazce_id === currentUserIdNum;
+                    const isObjednatel = parseInt(order.uzivatel_id, 10) === currentUserIdNum;
+                    const isGarant = parseInt(order.garant_uzivatel_id, 10) === currentUserIdNum;
+                    const isSchvalovatel = parseInt(order.schvalovatel_id, 10) === currentUserIdNum;
+                    const isPrikazce = parseInt(order.prikazce_id, 10) === currentUserIdNum;
 
                     return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
                   }).length;
@@ -13701,7 +16112,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
               <>
                 <StatCard $color={STATUS_COLORS.TOTAL.dark}>
                   <div style={{ width: '100%' }}>
-                    <StatValue style={{ textAlign: 'left' }}>{Math.round(stats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč</StatValue>
+                    <StatValue style={{ textAlign: 'left' }}>{Math.round(filteredStats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč</StatValue>
                     <StatLabel style={{ textAlign: 'left' }}>Celková cena s DPH za období ({stats.total})</StatLabel>
                     {(() => {
                       const hasActiveFilters =
@@ -13716,7 +16127,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
                       if (hasActiveFilters && filteredData.length < orders.length) {
                         const filteredAmount = filteredData.reduce((sum, order) => {
-                          const amount = parseFloat(order.polozky_celkova_cena_s_dph || 0);
+                          const amount = getOrderTotalPriceWithDPH(order);
                           return sum + (isNaN(amount) ? 0 : amount);
                         }, 0);
 
@@ -13763,7 +16174,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <StatLabel>Počet objednávek</StatLabel>
                 </StatCard>
 
-                {stats.ke_schvaleni > 0 && (
+                {filteredStats.ke_schvaleni > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.KE_SCHVALENI.dark}
                     $clickable={true}
@@ -13771,7 +16182,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ke_schvaleni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ke_schvaleni}</StatValue>
+                      <StatValue>{filteredStats.ke_schvaleni}</StatValue>
                       <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('ke_schvaleni')} />
                       </StatIcon>
@@ -13779,7 +16190,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Ke schválení</StatLabel>
                   </StatCard>
                 )}
-                {stats.schvalena > 0 && (
+                {filteredStats.schvalena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.SCHVALENA.dark}
                     $clickable={true}
@@ -13787,7 +16198,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('schvalena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.schvalena}</StatValue>
+                      <StatValue>{filteredStats.schvalena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('schvalena')} />
                       </StatIcon>
@@ -13795,7 +16206,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Schválená</StatLabel>
                   </StatCard>
                 )}
-                {stats.rozpracovana > 0 && (
+                {filteredStats.rozpracovana > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.ROZPRACOVANA.dark}
                     $clickable={true}
@@ -13803,7 +16214,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('rozpracovana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.rozpracovana}</StatValue>
+                      <StatValue>{filteredStats.rozpracovana}</StatValue>
                       <StatIcon $color={STATUS_COLORS.ROZPRACOVANA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('rozpracovana')} />
                       </StatIcon>
@@ -13811,7 +16222,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Rozpracovaná</StatLabel>
                   </StatCard>
                 )}
-                {stats.odeslana > 0 && (
+                {filteredStats.odeslana > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.ODESLANA.dark}
                     $clickable={true}
@@ -13819,7 +16230,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('odeslana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.odeslana}</StatValue>
+                      <StatValue>{filteredStats.odeslana}</StatValue>
                       <StatIcon $color={STATUS_COLORS.ODESLANA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('odeslana')} />
                       </StatIcon>
@@ -13827,7 +16238,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Odeslaná dodavateli</StatLabel>
                   </StatCard>
                 )}
-                {stats.potvrzena > 0 && (
+                {filteredStats.potvrzena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.POTVRZENA.dark}
                     $clickable={true}
@@ -13835,7 +16246,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('potvrzena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.potvrzena}</StatValue>
+                      <StatValue>{filteredStats.potvrzena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.POTVRZENA.dark}>
                       <FontAwesomeIcon icon={getStatusIcon('potvrzena')} />
                     </StatIcon>
@@ -13843,7 +16254,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <StatLabel>Potvrzená dodavatelem</StatLabel>
                 </StatCard>
                 )}
-                {stats.k_uverejneni_do_registru > 0 && (
+                {filteredStats.k_uverejneni_do_registru > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.K_UVEREJNENI_DO_REGISTRU.dark}
                     $clickable={true}
@@ -13851,15 +16262,15 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('k_uverejneni_do_registru')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
+                      <StatValue>{filteredStats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon $color={STATUS_COLORS.K_UVEREJNENI_DO_REGISTRU.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('k_uverejneni_do_registru')} />
                       </StatIcon>
                     </StatHeader>
-                    <StatLabel>Má být zveřejněna</StatLabel>
+                    <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
-                {stats.uverejnena > 0 && (
+                {filteredStats.uverejnena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.UVEREJNENA.dark}
                     $clickable={true}
@@ -13867,15 +16278,15 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('uverejnena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.uverejnena}</StatValue>
+                      <StatValue>{filteredStats.uverejnena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.UVEREJNENA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('uverejnena')} />
                       </StatIcon>
                     </StatHeader>
-                    <StatLabel>Uveřejněná</StatLabel>
+                    <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
-                {stats.vecna_spravnost > 0 && (
+                {filteredStats.vecna_spravnost > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.VECNA_SPRAVNOST.dark}
                     $clickable={true}
@@ -13883,7 +16294,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('vecna_spravnost')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.vecna_spravnost}</StatValue>
+                      <StatValue>{filteredStats.vecna_spravnost}</StatValue>
                       <StatIcon $color={STATUS_COLORS.VECNA_SPRAVNOST.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('vecna_spravnost')} />
                       </StatIcon>
@@ -13891,7 +16302,23 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Věcná správnost</StatLabel>
                   </StatCard>
                 )}
-                {stats.dokoncena > 0 && (
+                {filteredStats.fakturace > 0 && (
+                  <StatCard
+                    $color={STATUS_COLORS.FAKTURACE.dark}
+                    $clickable={true}
+                    $isActive={activeStatusFilter === 'fakturace'}
+                    onClick={() => handleStatusFilterClick('fakturace')}
+                  >
+                    <StatHeader>
+                      <StatValue>{filteredStats.fakturace}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.FAKTURACE.dark}>
+                        <FontAwesomeIcon icon={getStatusIcon('fakturace')} />
+                      </StatIcon>
+                    </StatHeader>
+                    <StatLabel>Fakturace</StatLabel>
+                  </StatCard>
+                )}
+                {filteredStats.dokoncena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.DOKONCENA.dark}
                     $clickable={true}
@@ -13899,7 +16326,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('dokoncena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.dokoncena}</StatValue>
+                      <StatValue>{filteredStats.dokoncena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.DOKONCENA.dark}>
                         🎯
                       </StatIcon>
@@ -13907,7 +16334,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Dokončená</StatLabel>
                   </StatCard>
                 )}
-                {stats.withInvoices > 0 && (
+                {filteredStats.withInvoices > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.WITH_INVOICES.dark}
                     $clickable={true}
@@ -13915,7 +16342,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleInvoicesFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withInvoices}</StatValue>
+                      <StatValue>{filteredStats.withInvoices}</StatValue>
                       <StatIcon $color={STATUS_COLORS.WITH_INVOICES.dark}>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </StatIcon>
@@ -13923,7 +16350,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>S fakturou</StatLabel>
                   </StatCard>
                 )}
-                {stats.withAttachments > 0 && (
+                {filteredStats.withAttachments > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.WITH_ATTACHMENTS.dark}
                     $clickable={true}
@@ -13931,7 +16358,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleAttachmentsFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withAttachments}</StatValue>
+                      <StatValue>{filteredStats.withAttachments}</StatValue>
                       <StatIcon $color={STATUS_COLORS.WITH_ATTACHMENTS.dark}>
                         <FontAwesomeIcon icon={faPaperclip} />
                       </StatIcon>
@@ -13948,7 +16375,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleMimoradneFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatValue>{filteredStats.mimoradneUdalosti}</StatValue>
                       <StatIcon $color="#dc2626">
                         <FontAwesomeIcon icon={faBoltLightning} />
                       </StatIcon>
@@ -13957,8 +16384,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
-                {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR (kompaktní režim) */}
-                {userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
+                {/* Moje objednávky dlaždice - pro všechny uživatele (kompaktní režim) */}
+                {(() => {
                   // Spočítej kolik objednávek patří danému uživateli ZE FILTROVANÝCH DAT
                   // Order V2 API enriched používá tyto názvy polí:
                   // - uzivatel_id: ID objednatele (vytvořil objednávku)
@@ -13970,10 +16397,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   const currentUserIdNum = parseInt(user_id, 10);
 
                   const myOrdersCount = filteredData.filter(order => {
-                    const isObjednatel = order.uzivatel_id === currentUserIdNum;
-                    const isGarant = order.garant_uzivatel_id === currentUserIdNum;
-                    const isSchvalovatel = order.schvalovatel_id === currentUserIdNum;
-                    const isPrikazce = order.prikazce_id === currentUserIdNum;
+                    const isObjednatel = parseInt(order.uzivatel_id, 10) === currentUserIdNum;
+                    const isGarant = parseInt(order.garant_uzivatel_id, 10) === currentUserIdNum;
+                    const isSchvalovatel = parseInt(order.schvalovatel_id, 10) === currentUserIdNum;
+                    const isPrikazce = parseInt(order.prikazce_id, 10) === currentUserIdNum;
 
                     return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
                   }).length;
@@ -14002,7 +16429,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                 <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
                   <div>
                     <LargeStatValue>
-                      {Math.round(stats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
+                      {Math.round(filteredStats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                     </LargeStatValue>
                     <LargeStatLabel>
                       Celková cena s DPH za období ({stats.total})
@@ -14114,7 +16541,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('nova')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.nova}</StatValue>
+                      <StatValue>{filteredStats.nova}</StatValue>
                       <StatIcon>{getStatusEmoji('nova')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Nová / Koncept</StatLabel>
@@ -14129,8 +16556,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ke_schvaleni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ke_schvaleni}</StatValue>
-                      <StatIcon>{getStatusEmoji('ke_schvaleni')}</StatIcon>
+                      <StatValue>{filteredStats.ke_schvaleni}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Ke schválení</StatLabel>
                   </StatCard>
@@ -14144,8 +16573,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('schvalena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.schvalena}</StatValue>
-                      <StatIcon>{getStatusEmoji('schvalena')}</StatIcon>
+                      <StatValue>{filteredStats.schvalena}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Schválená</StatLabel>
                   </StatCard>
@@ -14159,8 +16590,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zamitnuta')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zamitnuta}</StatValue>
-                      <StatIcon>{getStatusEmoji('zamitnuta')}</StatIcon>
+                      <StatValue>{filteredStats.zamitnuta}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
+                        <FontAwesomeIcon icon={faTimesCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Zamítnutá</StatLabel>
                   </StatCard>
@@ -14174,7 +16607,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('rozpracovana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.rozpracovana}</StatValue>
+                      <StatValue>{filteredStats.rozpracovana}</StatValue>
                       <StatIcon>{getStatusEmoji('rozpracovana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Rozpracovaná</StatLabel>
@@ -14189,7 +16622,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('odeslana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.odeslana}</StatValue>
+                      <StatValue>{filteredStats.odeslana}</StatValue>
                       <StatIcon>{getStatusEmoji('odeslana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Odeslaná dodavateli</StatLabel>
@@ -14204,7 +16637,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('potvrzena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.potvrzena}</StatValue>
+                      <StatValue>{filteredStats.potvrzena}</StatValue>
                       <StatIcon>{getStatusEmoji('potvrzena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Potvrzená dodavatelem</StatLabel>
@@ -14219,10 +16652,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('k_uverejneni_do_registru')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
+                      <StatValue>{filteredStats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon>{getStatusEmoji('k_uverejneni_do_registru')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Má být zveřejněna</StatLabel>
+                    <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
 
@@ -14234,10 +16667,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('uverejnena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.uverejnena}</StatValue>
+                      <StatValue>{filteredStats.uverejnena}</StatValue>
                       <StatIcon>{getStatusEmoji('uverejnena')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Uveřejněná</StatLabel>
+                    <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
 
@@ -14249,7 +16682,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_potvrzeni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_potvrzeni}</StatValue>
+                      <StatValue>{filteredStats.ceka_potvrzeni}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_potvrzeni')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká na potvrzení</StatLabel>
@@ -14264,10 +16697,25 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_se')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_se}</StatValue>
+                      <StatValue>{filteredStats.ceka_se}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_se')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká se</StatLabel>
+                  </StatCard>
+                )}
+
+                {isTileVisible('fakturace') && (
+                  <StatCard
+                    $color={STATUS_COLORS.FAKTURACE.dark}
+                    $clickable={true}
+                    $isActive={activeStatusFilter === 'fakturace'}
+                    onClick={() => handleStatusFilterClick('fakturace')}
+                  >
+                    <StatHeader>
+                      <StatValue>{filteredStats.fakturace}</StatValue>
+                      <StatIcon>{getStatusEmoji('fakturace')}</StatIcon>
+                    </StatHeader>
+                    <StatLabel>Fakturace</StatLabel>
                   </StatCard>
                 )}
 
@@ -14279,7 +16727,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('vecna_spravnost')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.vecna_spravnost}</StatValue>
+                      <StatValue>{filteredStats.vecna_spravnost}</StatValue>
                       <StatIcon>{getStatusEmoji('vecna_spravnost')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Věcná správnost</StatLabel>
@@ -14294,7 +16742,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('dokoncena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.dokoncena}</StatValue>
+                      <StatValue>{filteredStats.dokoncena}</StatValue>
                       <StatIcon>{getStatusEmoji('dokoncena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Dokončená</StatLabel>
@@ -14309,7 +16757,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zrusena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zrusena}</StatValue>
+                      <StatValue>{filteredStats.zrusena}</StatValue>
                       <StatIcon>{getStatusEmoji('zrusena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Zrušená</StatLabel>
@@ -14324,7 +16772,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('smazana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.smazana}</StatValue>
+                      <StatValue>{filteredStats.smazana}</StatValue>
                       <StatIcon>{getStatusEmoji('smazana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Smazaná</StatLabel>
@@ -14339,7 +16787,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('archivovano')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.archivovano}</StatValue>
+                      <StatValue>{filteredStats.archivovano}</StatValue>
                       <StatIcon>{getStatusEmoji('archivovano')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Archivováno / Import</StatLabel>
@@ -14354,7 +16802,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleInvoicesFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withInvoices}</StatValue>
+                      <StatValue>{filteredStats.withInvoices}</StatValue>
                       <StatIcon>📄</StatIcon>
                     </StatHeader>
                     <StatLabel>S fakturou</StatLabel>
@@ -14369,7 +16817,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleAttachmentsFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withAttachments}</StatValue>
+                      <StatValue>{filteredStats.withAttachments}</StatValue>
                       <StatIcon>📎</StatIcon>
                     </StatHeader>
                     <StatLabel>S přílohami</StatLabel>
@@ -14384,7 +16832,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleMimoradneFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatValue>{filteredStats.mimoradneUdalosti}</StatValue>
                       <StatIcon $color="#dc2626">
                         <FontAwesomeIcon icon={faBoltLightning} />
                       </StatIcon>
@@ -14393,8 +16841,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
-                {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR */}
-                {isTileVisible('moje_objednavky') && userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
+                {/* Moje objednávky dlaždice - pro všechny uživatele */}
+                {isTileVisible('moje_objednavky') && (() => {
                   // Spočítej kolik objednávek patří danému uživateli ZE FILTROVANÝCH DAT
                   // Order V2 API enriched používá tyto názvy polí:
                   // - uzivatel_id: ID objednatele (vytvořil objednávku)
@@ -14406,10 +16854,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   const currentUserIdNum = parseInt(user_id, 10);
 
                   const myOrdersCount = filteredData.filter(order => {
-                    const isObjednatel = order.uzivatel_id === currentUserIdNum;
-                    const isGarant = order.garant_uzivatel_id === currentUserIdNum;
-                    const isSchvalovatel = order.schvalovatel_id === currentUserIdNum;
-                    const isPrikazce = order.prikazce_id === currentUserIdNum;
+                    const isObjednatel = parseInt(order.uzivatel_id, 10) === currentUserIdNum;
+                    const isGarant = parseInt(order.garant_uzivatel_id, 10) === currentUserIdNum;
+                    const isSchvalovatel = parseInt(order.schvalovatel_id, 10) === currentUserIdNum;
+                    const isPrikazce = parseInt(order.prikazce_id, 10) === currentUserIdNum;
 
                     return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
                   }).length;
@@ -14560,13 +17008,37 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
       {/* Filters */}
       {showFiltersPanel && (
-      <FiltersPanel>
-        <FiltersHeader>
+        <FiltersPanel>
+          <FiltersHeader>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <FontAwesomeIcon icon={faFilter} style={{ color: '#3b82f6' }} />
             Filtry a vyhledávání
           </h3>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {/* 🔧 ADMIN: Checkbox pro zobrazení POUZE neaktivních objednávek */}
+            {isAdmin && (
+              <AdminCheckboxWrapper title="Zobrazit pouze neaktivní (smazané) objednávky - viditelné pouze pro administrátory">
+                <input
+                  type="checkbox"
+                  checked={showOnlyInactive}
+                  onChange={async (e) => {
+                    const newValue = e.target.checked;
+                    setRowSelection({});
+                    
+                    // 🔧 KRITICKÉ: Okamžitě vymazat cache a nastavit novou hodnotu
+                    ordersCacheService.invalidate(null);
+                    setShowOnlyInactive(newValue);
+                    
+                    // 🔧 KRITICKÉ: Předat novou hodnotu přímo do loadData pomocí override parametru
+                    // Jinak by loadData použil starou hodnotu ze state (closure)
+                    await loadData(true, false, newValue);
+                  }}
+                />
+                <FontAwesomeIcon icon={faEyeSlash} />
+                <span>Pouze neaktivní</span>
+              </AdminCheckboxWrapper>
+            )}
+
             <SmartTooltip text="Vymazat všechny filtry a zobrazit všechny objednávky" icon="warning" preferredPosition="bottom">
               <ActionButton onClick={clearFilters} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
                 <FontAwesomeIcon icon={faEraser} />
@@ -14851,6 +17323,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
               <DateRangeInputs>
                 <DateInputWrapper>
                   <DatePicker
+                    fieldName="dateFromFilter"
                     value={dateFromFilter || ''}
                     onChange={(value) => setDateFromFilter(value || '')}
                     placeholder="Datum od"
@@ -14859,6 +17332,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                 <DateSeparator>—</DateSeparator>
                 <DateInputWrapper>
                   <DatePicker
+                    fieldName="dateToFilter"
                     value={dateToFilter || ''}
                     onChange={(value) => setDateToFilter(value || '')}
                     placeholder="Datum do"
@@ -15012,7 +17486,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
           </FiltersGrid>
         )}
-      </FiltersPanel>
+        </FiltersPanel>
       )}
 
       {/* Table */}
@@ -15021,9 +17495,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
         $showLeftShadow={showLeftShadow}
         $showRightShadow={showRightShadow}
       >
-        <TableContainer ref={setTableContainerRef}>
-          <Table>
-          <TableHead>
+          <TableContainer ref={tableRef}>
+            <Table>
+              <TableHead>
             {/* Header row with column names */}
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
@@ -15061,12 +17535,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   borderTop: '1px solid #e5e7eb'
                 }}>
                   {header.id === 'select' ? (
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      height: '32px'
-                    }}>
+                    <div style={{ display: 'none' }}>
                       <input
                         type="checkbox"
                         checked={table.getIsAllRowsSelected()}
@@ -15092,6 +17561,55 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                         <FontAwesomeIcon icon={table.getIsSomeRowsExpanded() ? faMinus : faPlus} />
                       </FilterActionButton>
                     </div>
+                  ) : header.id === 'approve' ? (
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: '3px',
+                      height: '32px'
+                    }}>
+                      <FilterActionButton
+                        onClick={() => {
+                          const newFilter = approvalFilter.includes('pending')
+                            ? approvalFilter.filter(f => f !== 'pending')
+                            : [...approvalFilter, 'pending'];
+                          setApprovalFilter(newFilter);
+                          setUserStorage('orders25List_approvalFilter', newFilter);
+                        }}
+                        title={approvalFilter.includes('pending') 
+                          ? "Zrušit filtr: Ke schválení" 
+                          : "Filtrovat: Ke schválení"
+                        }
+                        className={approvalFilter.includes('pending') ? 'active' : ''}
+                        style={{
+                          color: approvalFilter.includes('pending') ? '#92400e' : undefined,
+                          background: approvalFilter.includes('pending') ? '#fef3c7' : undefined
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </FilterActionButton>
+                      <FilterActionButton
+                        onClick={() => {
+                          const newFilter = approvalFilter.includes('approved')
+                            ? approvalFilter.filter(f => f !== 'approved')
+                            : [...approvalFilter, 'approved'];
+                          setApprovalFilter(newFilter);
+                          setUserStorage('orders25List_approvalFilter', newFilter);
+                        }}
+                        title={approvalFilter.includes('approved')
+                          ? "Zrušit filtr: Vyřízené" 
+                          : "Filtrovat: Vyřízené"
+                        }
+                        className={approvalFilter.includes('approved') ? 'active' : ''}
+                        style={{
+                          color: approvalFilter.includes('approved') ? '#166534' : undefined,
+                          background: approvalFilter.includes('approved') ? '#dcfce7' : undefined
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </FilterActionButton>
+                    </div>
                   ) : header.id === 'actions' ? (
                     <div style={{
                       display: 'flex',
@@ -15100,8 +17618,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       gap: '3px',
                       height: '32px'
                     }}>
-                      {/* Hromadné akce - zobrazí se jen když jsou vybrané objednávky */}
-                      {(() => {
+                      {/* Hromadné akce - DOČASNĚ SKRYTO (nedokončená funkcionalita) */}
+                      {false && (() => {
                         const selectedCount = table.getSelectedRowModel().rows.length;
                         if (selectedCount > 0) {
                           const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original);
@@ -15192,25 +17710,64 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                         <FontAwesomeIcon icon={faPalette} />
                       </FilterActionButton>
                     </div>
+                  ) : header.column.columnDef.accessorKey === 'dt_objednavky' ? (
+                    <div style={{ position: 'relative' }}>
+                      <DatePicker
+                        fieldName="dt_objednavky_filter"
+                        value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                        onChange={(value) => {
+                          const newFilters = { ...columnFilters };
+                          // Uložit datum ve formátu yyyy-mm-dd (jak ho vrací DatePicker)
+                          newFilters[header.column.columnDef.accessorKey] = value;
+                          setColumnFilters(newFilters);
+                        }}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
+                  ) : header.column.columnDef.accessorKey === 'max_cena_s_dph' || 
+                     header.column.columnDef.accessorKey === 'cena_s_dph' || 
+                     header.column.columnDef.accessorKey === 'faktury_celkova_castka_s_dph' ? (
+                    <div style={{ position: 'relative' }}>
+                      <OperatorInput
+                        value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
+                        onChange={(value) => {
+                          const newFilters = { ...localColumnFilters };
+                          newFilters[header.column.columnDef.accessorKey] = value;
+                          setColumnFiltersDebounced(newFilters);
+                        }}
+                        placeholder={
+                          header.column.columnDef.accessorKey === 'max_cena_s_dph' ? 'Max. cena s DPH' :
+                          header.column.columnDef.accessorKey === 'cena_s_dph' ? 'Cena s DPH' :
+                          'Cena FA s DPH'
+                        }
+                        clearButton={true}
+                        onClear={() => {
+                          const newFilters = { ...localColumnFilters };
+                          newFilters[header.column.columnDef.accessorKey] = '';
+                          setColumnFiltersDebounced(newFilters);
+                        }}
+                      />
+                    </div>
                   ) : (
                     <ColumnFilterWrapper>
                       <FontAwesomeIcon icon={faSearch} />
                       <ColumnFilterInput
                         type="text"
                         placeholder={`Hledat ${header.column.columnDef.header}...`}
-                        value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                        value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
                         onChange={(e) => {
-                          const newFilters = { ...columnFilters };
+                          const newFilters = { ...localColumnFilters };
                           newFilters[header.column.columnDef.accessorKey] = e.target.value;
-                          setColumnFilters(newFilters);
+                          setColumnFiltersDebounced(newFilters);
                         }}
                       />
-                      {columnFilters[header.column.columnDef.accessorKey] && (
+                      {localColumnFilters[header.column.columnDef.accessorKey] && (
                         <ColumnClearButton
                           onClick={() => {
-                            const newFilters = { ...columnFilters };
+                            const newFilters = { ...localColumnFilters };
                             delete newFilters[header.column.columnDef.accessorKey];
-                            setColumnFilters(newFilters);
+                            setColumnFiltersDebounced(newFilters);
                           }}
                           title="Vymazat"
                         >
@@ -15256,13 +17813,19 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   $hasLocalChanges={row.original.hasLocalDraftChanges || false}
                   $showHighlighting={showRowHighlighting}
                   $isHighlighted={highlightOrderId && (row.original.id === highlightOrderId || row.original.cislo_objednavky === highlightOrderId)}
+                  $isInactive={row.original.aktivni === 0}
                   onContextMenu={handleTableContextMenu}
-                  onDoubleClick={() => handleEdit(row.original)}
+                  onDoubleClick={() => {
+                    if (canEdit(row.original)) {
+                      handleEdit(row.original);
+                    }
+                  }}
                   data-order-id={row.original.cislo_objednavky || row.original.id}
                   data-order-index={index + (currentPageIndex * pageSize)}
+                  data-inactive={row.original.aktivni === 0 ? 'true' : undefined}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className={row.original.aktivni === 0 ? 'inactive-content' : ''}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -15271,6 +17834,11 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <TableRow
                     $order={row.original}
                     $showHighlighting={showRowHighlighting}
+                    $isInactive={row.original.aktivni === 0}
+                    onContextMenu={handleTableContextMenu}
+                    data-order-id={row.original.cislo_objednavky || row.original.id}
+                    data-order-index={index + (currentPageIndex * pageSize)}
+                    data-inactive={row.original.aktivni === 0 ? 'true' : undefined}
                   >
                     <TableCell colSpan={columns.length} style={{ padding: 0, borderBottom: '1px solid #000' }}>
                       {renderExpandedContent(row.original)}
@@ -15311,7 +17879,6 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
-              <option value={250}>250</option>
             </PageSizeSelect>
 
             <PageButton
@@ -15349,7 +17916,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
     </TableScrollWrapper>
 
     {/* Floating Scroll Šipky - React Portal (FIXED position, mimo DOM tabulky) */}
-    {createPortal(
+    {ReactDOM.createPortal(
       <>
         <ScrollArrowLeft
           $visible={showLeftArrow}
@@ -15429,10 +17996,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 🆔 Draft ID: ${formData.id || 'žádné ID (nový koncept)'}
 📋 Předmět: ${formData.predmet || 'N/A'}
 🆕 Is New Concept: ${isNewConcept ? 'ANO - úplně nová objednávka' : 'NE'}
-✏️ Has DB Changes: ${hasDbChanges ? 'ANO - editace existující DB obj.' : 'NE'}
+✏ Has DB Changes: ${hasDbChanges ? 'ANO - editace existující DB obj.' : 'NE'}
 🎯 Saved Order ID: ${currentDraftData.savedOrderId || 'žádné'}
 
-➡️ Přepínáme na:
+➡ Přepínáme na:
 ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.predmet || 'ID ' + orderToEdit.id}` : '   NOVOU objednávku (prázdný formulář)'}`}
               </pre>
             </details>
@@ -15506,7 +18073,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         </p>
 
         <p style={{ background: '#fef3c7', padding: '0.75rem', borderRadius: '6px', border: '1px solid #f59e0b', margin: '0.75rem 0' }}>
-          <strong>⚠️ UPOZORNĚNÍ:</strong> Tato objednávka byla importována z původního systému EEO a má stav <strong>ARCHIVOVÁNO</strong>.
+          <strong>⚠ UPOZORNĚNÍ:</strong> Tato objednávka byla importována z původního systému EEO a má stav <strong>ARCHIVOVÁNO</strong>.
         </p>
 
         <p>
@@ -15544,14 +18111,14 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
 
         {/* VAROVÁNÍ 1: Archivovaná objednávka */}
         <div style={{ background: '#fef3c7', padding: '0.75rem', borderRadius: '6px', border: '1px solid #f59e0b', margin: '0.75rem 0' }}>
-          <strong>⚠️ VAROVÁNÍ - ARCHIVOVÁNO:</strong><br />
+          <strong>⚠ VAROVÁNÍ - ARCHIVOVÁNO:</strong><br />
           Tato objednávka byla importována z původního systému EEO a má stav <strong>ARCHIVOVÁNO</strong>.
           Editace může být přepsána při opakovaném importu dat.
         </div>
 
         {/* VAROVÁNÍ 2: Ztráta rozpracované objednávky */}
         <div style={{ background: '#fee2e2', padding: '0.75rem', borderRadius: '6px', border: '1px solid #ef4444', margin: '0.75rem 0' }}>
-          <strong>🗑️ ZTRÁTA KONCEPTU:</strong><br />
+          <strong>🗑 ZTRÁTA KONCEPTU:</strong><br />
           Máte rozpracovanou objednávku, která bude při pokračování <strong>ZTRACENA</strong> a nelze ji obnovit!
         </div>
 
@@ -15574,50 +18141,183 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         isOpen={showDeleteConfirmModal}
         onClose={handleDeleteCancel}
         onConfirm={() => {
-          if (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) {
-            handleDeleteConfirm('hard'); // Administrátor - smazat úplně
+          // 🔄 Rozlišení mezi restore, hard delete a soft delete podle deleteType
+          if (deleteType === 'restore') {
+            handleDeleteConfirm('restore');
+          } else if (deleteType === 'hard') {
+            handleDeleteConfirm('hard');
           } else {
-            handleDeleteConfirm('soft'); // Běžný uživatel - označit neaktivní
+            handleDeleteConfirm('soft');
           }
         }}
-        title="Smazání objednávky"
-        icon={faTrash}
-        variant="danger"
-        confirmText={(hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) ? 'Smazat úplně' : 'Označit neaktivní'}
+        title={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? "Obnovení objednávky" : "Úplné smazání objednávky")
+            : "Smazání objednávky"
+        }
+        icon={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? faCheckCircle : faTrash)
+            : faTrash
+        }
+        variant={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? "success" : "danger")
+            : "danger"
+        }
+        confirmText={
+          orderToDelete && !orderToDelete.aktivni && isAdmin 
+            ? (deleteType === 'restore' ? '✅ Obnovit objednávku' : '⚠️ Smazat úplně')
+            : hasPermission('ADMINI') 
+              ? 'Smazat úplně' 
+              : 'Označit neaktivní'
+        }
         cancelText="Zrušit"
+        key={deleteType + (orderToDelete?.aktivni ? '-active' : '-inactive')}
       >
-        <p>
-          Chystáte se smazat objednávku <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>.
-        </p>
+        {orderToDelete && !orderToDelete.aktivni && isAdmin ? (
+          /* NEAKTIVNÍ OBJEDNÁVKA - Možnost obnovení nebo hard delete */
+          <>
+            <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+              Co chcete udělat s neaktivní objednávkou <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>?
+            </p>
+            <div style={{
+              background: '#f8fafc',
+              border: '2px solid #cbd5e1',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                🔧 Vyberte akci:
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* OBNOVA */}
+                <label 
+                  onClick={() => setDeleteType('restore')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'restore' ? '#10b981' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'restore' ? '#f0fdf4' : 'white',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="deleteType"
+                    value="restore"
+                    checked={deleteType === 'restore'}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setDeleteType('restore');
+                    }}
+                    style={{ marginTop: '0.25rem', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      marginBottom: '0.25rem', 
+                      color: deleteType === 'restore' ? '#166534' : '#475569' 
+                    }}>
+                      🔄 Obnovit objednávku
+                    </div>
+                    <div style={{ 
+                      fontSize: '0.85rem', 
+                      color: deleteType === 'restore' ? '#166534' : '#64748b',
+                      lineHeight: '1.4'
+                    }}>
+                      Objednávka bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
+                    </div>
+                  </div>
+                </label>
 
-        {(hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) ? (
-          <div>
-            <p><strong>Máte administrátorská práva. Vyberte způsob smazání:</strong></p>
-            <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '6px', margin: '1rem 0' }}>
-              <p><strong>Označit jako neaktivní:</strong> Objednávka zůstane v databázi, ale nebude se zobrazovat v seznamech.</p>
-              <p><strong>Smazat úplně:</strong> Objednávka bude natrvalo smazána včetně všech položek a příloh. Tuto akci nelze vrátit zpět!</p>
+                {/* HARD DELETE */}
+                <label 
+                  onClick={() => setDeleteType('hard')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'hard' ? '#ef4444' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="deleteType"
+                    value="hard"
+                    checked={deleteType === 'hard'}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setDeleteType('hard');
+                    }}
+                    style={{ marginTop: '0.25rem', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      marginBottom: '0.25rem', 
+                      color: deleteType === 'hard' ? '#dc2626' : '#475569' 
+                    }}>
+                      ⚠️ Smazat úplně (HARD DELETE)
+                    </div>
+                    <div style={{ 
+                      fontSize: '0.85rem', 
+                      color: deleteType === 'hard' ? '#dc2626' : '#64748b',
+                      lineHeight: '1.4'
+                    }}>
+                      Objednávka bude <strong>fyzicky smazána z databáze</strong> včetně všech položek a příloh. Tuto akci nelze vrátit zpět!
+                    </div>
+                  </div>
+                </label>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-              <button
-                onClick={() => handleDeleteConfirm('soft')}
-                style={{
-                  padding: '0.875rem 1.75rem',
-                  border: '2px solid #d1d5db',
-                  borderRadius: '10px',
-                  fontWeight: '700',
-                  background: 'white',
-                  color: '#6b7280',
-                  cursor: 'pointer',
-                  fontSize: '0.9375rem',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                Označit neaktivní
-              </button>
-            </div>
-          </div>
+          </>
         ) : (
-          <p>Objednávka bude označena jako neaktivní. Zůstane v databázi, ale nebude se zobrazovat v seznamech.</p>
+          /* AKTIVNÍ OBJEDNÁVKA - Možnosti smazání */
+          <>
+            <p>
+              Chystáte se smazat objednávku <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>.
+            </p>
+
+            {hasPermission('ADMINI') ? (
+              <div>
+                <p><strong>Máte administrátorská práva. Vyberte způsob smazání:</strong></p>
+                <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '6px', margin: '1rem 0' }}>
+                  <p><strong>Označit jako neaktivní:</strong> Objednávka zůstane v databázi, ale nebude se zobrazovat v seznamech.</p>
+                  <p><strong>Smazat úplně:</strong> Objednávka bude natrvalo smazána včetně všech položek a příloh. Tuto akci nelze vrátit zpět!</p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                  <button
+                    onClick={() => handleDeleteConfirm('soft')}
+                    style={{
+                      padding: '0.875rem 1.75rem',
+                      border: '2px solid #d1d5db',
+                      borderRadius: '10px',
+                      fontWeight: '700',
+                      background: 'white',
+                      color: '#6b7280',
+                      cursor: 'pointer',
+                      fontSize: '0.9375rem',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    Označit neaktivní
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p>Objednávka bude označena jako neaktivní. Zůstane v databázi, ale nebude se zobrazovat v seznamech.</p>
+            )}
+          </>
         )}
       </ConfirmDialog>
 
@@ -15637,7 +18337,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           {lockedOrderInfo.canForceUnlock ? (
             <>
               <WarningText>
-                ⚠️ Objednávka je aktuálně editována uživatelem:
+                ⚠ Objednávka je aktuálně editována uživatelem:
               </WarningText>
               <UserInfo>
                 <strong>{lockedOrderInfo.lockedByUserName}</strong>
@@ -15679,7 +18379,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 Jako <strong>{lockedOrderInfo.userRoleName}</strong> můžete objednávku násilně odemknout a převzít.
               </InfoText>
               <WarningText>
-                ⚠️ Původní uživatel bude informován o převzetí objednávky a ztratí neuložené změny.
+                ⚠ Původní uživatel bude informován o převzetí objednávky a ztratí neuložené změny.
               </WarningText>
             </>
           ) : (
@@ -15731,12 +18431,12 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         </ConfirmDialog>
       )}
 
-      {/* ⚠️ FORCE UNLOCK WARNING DIALOG */}
-      {showForceUnlockWarning && forceUnlockWarningData && createPortal(
+      {/* ⚠ FORCE UNLOCK WARNING DIALOG */}
+      {showForceUnlockWarning && forceUnlockWarningData && ReactDOM.createPortal(
         <ForceUnlockWarningOverlay onClick={(e) => e.target === e.currentTarget && handleForceUnlockWarningClose()}>
           <ForceUnlockWarningDialog onClick={(e) => e.stopPropagation()}>
             <ForceUnlockWarningHeader>
-              <ForceUnlockWarningIcon>⚠️</ForceUnlockWarningIcon>
+              <ForceUnlockWarningIcon>⚠</ForceUnlockWarningIcon>
               <ForceUnlockWarningTitle>NÁSILNÉ PŘEVZETÍ OBJEDNÁVKY</ForceUnlockWarningTitle>
             </ForceUnlockWarningHeader>
 
@@ -15818,6 +18518,498 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         document.body
       )}
 
+      {/* 🎯 Schvalovací dialog (pro příkazce) */}
+      {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
+        <ApprovalDialogOverlay>
+          <ApprovalDialog>
+            <ApprovalDialogHeader>
+              <ApprovalDialogIcon>✅</ApprovalDialogIcon>
+              <ApprovalDialogTitle>
+                Schválení objednávky
+                <span style={{ 
+                  marginLeft: '1rem', 
+                  fontSize: '0.9em', 
+                  fontWeight: 700,
+                  color: '#fbbf24',
+                  background: '#065f46',
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '6px',
+                  border: '2px solid #047857',
+                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                }}>
+                  {orderToApprove.stav_objednavky || '---'}
+                </span>
+                {orderToApprove.mimoradna_udalost == 1 && (
+                  <span style={{ 
+                    marginLeft: '0.5rem',
+                    fontSize: '1.1em',
+                    display: 'inline-block',
+                    verticalAlign: 'middle',
+                    color: '#dc2626',
+                    fontWeight: 'bold'
+                  }} title="Mimořádná událost">
+                    <FontAwesomeIcon icon={faBoltLightning} />
+                  </span>
+                )}
+              </ApprovalDialogTitle>
+            </ApprovalDialogHeader>
+
+            <ApprovalDialogContent>
+              {/* 2-Column Layout: Levý sloupec = základní info, pravý = financování */}
+              <ApprovalTwoColumnLayout>
+                {/* LEVÝ SLOUPEC - Základní informace */}
+                <ApprovalLeftColumn>
+                  <ApprovalCompactList>
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Číslo:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        <strong>{orderToApprove.cislo_objednavky || orderToApprove.evidencni_cislo || `#${orderToApprove.id}`}</strong>
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Předmět:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>{orderToApprove.predmet || orderToApprove.nazev_objednavky || '---'}</ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Objednatel:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        {(() => {
+                          if (orderToApprove.objednatel_uzivatel) {
+                            const u = orderToApprove.objednatel_uzivatel;
+                            return u.cele_jmeno || `${u.jmeno || ''} ${u.prijmeni || ''}`.trim() || u.username || '---';
+                          } else if (orderToApprove.objednatel_id) {
+                            return getUserDisplayName(orderToApprove.objednatel_id);
+                          }
+                          return '---';
+                        })()}
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Garant:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        {(() => {
+                          if (orderToApprove.garant_uzivatel) {
+                            const u = orderToApprove.garant_uzivatel;
+                            return u.cele_jmeno || `${u.jmeno || ''} ${u.prijmeni || ''}`.trim() || u.username || '---';
+                          } else if (orderToApprove.garant_uzivatel_id) {
+                            return getUserDisplayName(orderToApprove.garant_uzivatel_id);
+                          }
+                          return '---';
+                        })()}
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+
+                    {orderToApprove.strediska_kod && Array.isArray(orderToApprove.strediska_kod) && orderToApprove.strediska_kod.length > 0 && (
+                      <ApprovalCompactItem>
+                        <ApprovalCompactLabel>Střediska:</ApprovalCompactLabel>
+                        <ApprovalCompactValue>
+                          {orderToApprove._enriched?.strediska && Array.isArray(orderToApprove._enriched.strediska) && orderToApprove._enriched.strediska.length > 0
+                            ? orderToApprove._enriched.strediska.map(s => s.nazev || s.kod).join(', ')
+                            : orderToApprove.strediska_kod.join(', ')}
+                        </ApprovalCompactValue>
+                      </ApprovalCompactItem>
+                    )}
+
+                    <ApprovalCompactItem>
+                      <ApprovalCompactLabel>Max. cena:</ApprovalCompactLabel>
+                      <ApprovalCompactValue>
+                        <strong style={{ color: '#0f172a', fontSize: '1.05rem' }}>
+                          {orderToApprove.max_cena_s_dph 
+                            ? `${parseFloat(orderToApprove.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč`
+                            : '---'}
+                        </strong>
+                      </ApprovalCompactValue>
+                    </ApprovalCompactItem>
+                  </ApprovalCompactList>
+
+                  {/* Poznámka ke schválení - v levém sloupci */}
+                  <ApprovalSection style={{ marginTop: '1rem' }}>
+                    <ApprovalSectionTitle>📝 Poznámka ke schválení (nepovinná)</ApprovalSectionTitle>
+                    <ApprovalDialogTextarea
+                      $hasError={!!approvalCommentError}
+                      value={approvalComment}
+                      onChange={(e) => {
+                        setApprovalComment(e.target.value);
+                        if (approvalCommentError) {
+                          setApprovalCommentError('');
+                        }
+                      }}
+                      placeholder="Nepovinná poznámka ke schválení (povinná pro Odložit/Zamítnout)..."
+                    />
+                    {approvalCommentError && (
+                      <ApprovalDialogError>{approvalCommentError}</ApprovalDialogError>
+                    )}
+                  </ApprovalSection>
+                </ApprovalLeftColumn>
+
+                {/* PRAVÝ SLOUPEC - Financování (LP/Smlouvy) */}
+                <ApprovalRightColumn>
+                  {/* LP */}
+                  {orderToApprove.financovani?.lp_kody && Array.isArray(orderToApprove.financovani.lp_kody) && orderToApprove.financovani.lp_kody.length > 0 && (
+                    <>
+                      <ApprovalSectionTitle>💰 Limitované přísliby</ApprovalSectionTitle>
+                      {(() => {
+                        const lpInfo = orderToApprove._enriched?.lp_info || [];
+                        
+                        if (lpInfo.length > 0) {
+                          return lpInfo.map((lp, idx) => {
+                            // Výpočet procenta čerpání (plánovaného)
+                            const hodnotaLP = parseFloat(lp.total_limit) || 0;
+                            const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                            const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
+                            const percentCerpani = hodnotaLP > 0 ? Math.round((cerpanoPredpoklad / hodnotaLP) * 100) : 0;
+                            const hasLimit = hodnotaLP > 0;
+                            
+                            return (
+                              <ApprovalLPItem key={idx}>
+                                <ApprovalLPHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{lp.kod} — {lp.nazev}</span>
+                                  {hasLimit && (
+                                    <div style={{
+                                      background: percentCerpani <= 100 ? '#dcfce7' : '#fee2e2',
+                                      color: percentCerpani <= 100 ? '#166534' : '#991b1b',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                      border: `1px solid ${percentCerpani <= 100 ? '#86efac' : '#fca5a5'}`,
+                                      minWidth: '50px',
+                                      textAlign: 'center'
+                                    }}>
+                                      {percentCerpani}%
+                                    </div>
+                                  )}
+                                </ApprovalLPHeader>
+                                <ApprovalLPRow>
+                                  <span>Celkový limit:</span>
+                                  <strong>{lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow>
+                                  <span>Čerpáno (předpokl.):</span>
+                                  <strong>{cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow $highlight>
+                                  <span>Zbývá (předpokl.):</span>
+                                  <strong style={{ color: lp.remaining_budget && parseFloat(lp.remaining_budget) < 0 ? '#dc2626' : '#059669' }}>
+                                    {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                  </strong>
+                                </ApprovalLPRow>
+                                <ApprovalLPRow>
+                                  <span>Čerpáno (skutečně):</span>
+                                  <strong>{cerpanoSkutecne.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                </ApprovalLPRow>
+                                
+                                {/* Roční plán čerpání - progress bar */}
+                                {hodnotaLP > 0 && (() => {
+                                  const currentMonth = new Date().getMonth(); // 0-11
+                                  const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                  const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                  const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                                  
+                                  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+                                  
+                                  return (
+                                    <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
+                                          {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
+                                        </span>
+                                      </div>
+                                      <div style={{
+                                        display: 'flex',
+                                        width: '100%',
+                                        minHeight: '36px',
+                                        gap: '2px',
+                                        background: '#f1f5f9',
+                                        borderRadius: '4px',
+                                        padding: '3px',
+                                        position: 'relative'
+                                      }}>
+                                        {Array.from({ length: 12 }).map((_, monthIndex) => {
+                                          const isCurrentMonth = monthIndex === currentMonth;
+                                          const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                                          
+                                          let bgColor;
+                                          if (isCurrentMonth) {
+                                            bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
+                                          } else if (monthIndex < currentMonth) {
+                                            bgColor = '#94a3b8';
+                                          } else {
+                                            bgColor = '#e2e8f0';
+                                          }
+                                          
+                                          const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                                          
+                                          return (
+                                            <div
+                                              key={monthIndex}
+                                              style={{
+                                                flex: 1,
+                                                background: bgColor,
+                                                borderRadius: '3px',
+                                                position: 'relative',
+                                                border: isCurrentMonth ? '2px solid #0f172a' : 'none',
+                                                minHeight: '30px',
+                                                paddingLeft: '1px',
+                                                paddingRight: '1px'
+                                              }}
+                                              title={`${percentCerpani}% / ${planedPercent}%`}
+                                            >
+                                              <div style={{
+                                                position: 'absolute',
+                                                top: '2px',
+                                                right: '3px',
+                                                fontSize: '0.5rem',
+                                                fontWeight: 500,
+                                                opacity: 0.6,
+                                                color: textColor,
+                                                zIndex: 10
+                                              }}>
+                                                {romanNumerals[monthIndex]}
+                                              </div>
+                                              
+                                              <div style={{ 
+                                                position: 'absolute',
+                                                bottom: '0px',
+                                                left: '0',
+                                                right: '0',
+                                                textAlign: 'center',
+                                                fontSize: '0.65rem', 
+                                                fontWeight: 700,
+                                                color: textColor
+                                              }}>
+                                                {planedPercent}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </ApprovalLPRow>
+                                  );
+                                })()}
+                              </ApprovalLPItem>
+                            );
+                          });
+                        } else {
+                          return <div style={{ color: '#64748b', fontSize: '0.875rem' }}>{orderToApprove.financovani.lp_kody.join(', ')}</div>;
+                        }
+                      })()}
+                      {orderToApprove.financovani?.lp_poznamka && (
+                        <div style={{ marginTop: '0.5rem', color: '#64748b', fontSize: '0.875rem' }}>
+                          <strong>Poznámka:</strong> {orderToApprove.financovani.lp_poznamka}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Smlouva */}
+                  {(orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy) && (
+                    <>
+                      <ApprovalSectionTitle style={{ marginTop: orderToApprove.financovani?.lp_kody ? '1rem' : '0' }}>📄 Smlouva</ApprovalSectionTitle>
+                      {(() => {
+                        const smlouvaInfo = orderToApprove._enriched?.smlouva_info;
+                        const cisloSmlouvy = orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy;
+                        
+                        if (smlouvaInfo && smlouvaInfo.hodnota) {
+                          // Výpočet procent čerpání (pokud je stropová cena)
+                          const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
+                          const cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+                          const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((cerpanoPozadovano / hodnotaSmlouvy) * 100) : 0;
+                          const hasStropovaCena = hodnotaSmlouvy > 0;
+                          
+                          return (
+                            <ApprovalLPItem>
+                              <ApprovalLPHeader>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{cisloSmlouvy}</span>
+                                  {/* Vizuální indikátor čerpání - jen pokud má smlouva stropovou cenu */}
+                                  {hasStropovaCena && (
+                                    <div style={{
+                                      background: percentCerpani <= 100 ? '#dcfce7' : '#fee2e2',
+                                      color: percentCerpani <= 100 ? '#166534' : '#991b1b',
+                                      padding: '0.25rem 0.6rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                      border: `1px solid ${percentCerpani <= 100 ? '#86efac' : '#fca5a5'}`,
+                                      minWidth: '50px',
+                                      textAlign: 'center'
+                                    }}>
+                                      {percentCerpani}%
+                                    </div>
+                                  )}
+                                </div>
+                              </ApprovalLPHeader>
+                              <ApprovalLPRow>
+                                <span>Hodnota smlouvy:</span>
+                                <strong>{parseFloat(smlouvaInfo.hodnota).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                              </ApprovalLPRow>
+                              <ApprovalLPRow>
+                                <span>Čerpáno (požad.):</span>
+                                <strong>{smlouvaInfo.cerpano_pozadovano ? parseFloat(smlouvaInfo.cerpano_pozadovano).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                              </ApprovalLPRow>
+                              <ApprovalLPRow $highlight>
+                                <span>Zbývá (požad.):</span>
+                                <strong style={{ color: smlouvaInfo.zbyva_pozadovano && parseFloat(smlouvaInfo.zbyva_pozadovano) < 0 ? '#dc2626' : '#059669' }}>
+                                  {smlouvaInfo.zbyva_pozadovano ? parseFloat(smlouvaInfo.zbyva_pozadovano).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                </strong>
+                              </ApprovalLPRow>
+                              <ApprovalLPRow>
+                                <span>Čerpáno (skut.):</span>
+                                <strong>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                              </ApprovalLPRow>
+                              
+                              {/* Roční plán čerpání - progress bar */}
+                              {hodnotaSmlouvy > 0 && (() => {
+                                const currentMonth = new Date().getMonth(); // 0-11
+                                const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                // Výpočet s desetinami, pak zaokrouhlení dolů
+                                const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
+                                
+                                // Římské číslice pro měsíce
+                                const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+                                
+                                return (
+                                  <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
+                                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
+                                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
+                                        {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
+                                      </span>
+                                    </div>
+                                    <div style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minHeight: '36px',
+                                      gap: '2px',
+                                      background: '#f1f5f9',
+                                      borderRadius: '4px',
+                                      padding: '3px',
+                                      position: 'relative'
+                                    }}>
+                                      {Array.from({ length: 12 }).map((_, monthIndex) => {
+                                        const isCurrentMonth = monthIndex === currentMonth;
+                                        // Výpočet s desetinami, pak zaokrouhlení dolů
+                                        const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
+                                        
+                                        // Barva čtverečku
+                                        let bgColor;
+                                        if (isCurrentMonth) {
+                                          bgColor = isUnderPlan ? '#22c55e' : '#ef4444'; // Zelená/Červená pro aktuální měsíc
+                                        } else if (monthIndex < currentMonth) {
+                                          bgColor = '#94a3b8'; // Tmavší pro minulé měsíce
+                                        } else {
+                                          bgColor = '#e2e8f0'; // Světlá pro budoucí měsíce
+                                        }
+                                        
+                                        const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
+                                        
+                                        return (
+                                          <div
+                                            key={monthIndex}
+                                            style={{
+                                              flex: 1,
+                                              background: bgColor,
+                                              borderRadius: '3px',
+                                              position: 'relative',
+                                              border: isCurrentMonth ? '2px solid #0f172a' : 'none',
+                                              minHeight: '30px',
+                                              paddingLeft: '1px',
+                                              paddingRight: '1px'
+                                            }}
+                                            title={`${percentCerpani}% / ${planedPercent}%`}
+                                          >
+                                            {/* Římská číslice vpravo nahoře - malá */}
+                                            <div style={{
+                                              position: 'absolute',
+                                              top: '2px',
+                                              right: '3px',
+                                              fontSize: '0.5rem',
+                                              fontWeight: 500,
+                                              opacity: 0.6,
+                                              color: textColor,
+                                              zIndex: 10
+                                            }}>
+                                              {romanNumerals[monthIndex]}
+                                            </div>
+                                            
+                                            {/* Procento dole - stejná velikost všude */}
+                                            <div style={{ 
+                                              position: 'absolute',
+                                              bottom: '0px',
+                                              left: '0',
+                                              right: '0',
+                                              textAlign: 'center',
+                                              fontSize: '0.65rem', 
+                                              fontWeight: 700,
+                                              color: textColor
+                                            }}>
+                                              {planedPercent}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </ApprovalLPRow>
+                                );
+                              })()}
+                            </ApprovalLPItem>
+                          );
+                        } else {
+                          return (
+                            <div style={{ color: '#64748b', fontSize: '0.875rem' }}>
+                              Číslo: <strong>{cisloSmlouvy}</strong>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </>
+                  )}
+                </ApprovalRightColumn>
+              </ApprovalTwoColumnLayout>
+
+              <ApprovalDialogActions>
+                <ApprovalDialogButton onClick={() => {
+                  setShowApprovalDialog(false);
+                  setOrderToApprove(null);
+                  setApprovalComment('');
+                  setApprovalCommentError('');
+                }}>
+                  Storno
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $postpone
+                  onClick={() => handleApprovalAction('postpone')}
+                >
+                  ⏰ Odložit
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $reject
+                  onClick={() => handleApprovalAction('reject')}
+                >
+                  ❌ Zamítnout
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $approve
+                  onClick={() => handleApprovalAction('approve')}
+                >
+                  ✅ Schválit
+                </ApprovalDialogButton>
+              </ApprovalDialogActions>
+            </ApprovalDialogContent>
+          </ApprovalDialog>
+        </ApprovalDialogOverlay>,
+        document.body
+      )}
+
       {/* Kontextové menu */}
       {contextMenu && (
         <OrderContextMenu
@@ -15832,11 +19024,52 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           onDelete={handleContextMenuDelete}
           onGenerateDocx={handleGenerateDocx}
           onGenerateFinancialControl={handleGenerateFinancialControl}
+          onApprove={handleApproveFromContextMenu}
           canDelete={
             hasPermission('ORDER_MANAGE') ||
             hasPermission('ORDER_DELETE_ALL') ||
             hasPermission('ORDER_2025') ||
             (hasPermission('ORDER_DELETE_OWN') && contextMenu.order.uzivatel_id === currentUserId)
+          }
+          canApprove={
+            (() => {
+              if (!contextMenu.order) return false;
+              
+              // DEBUG - logování oprávnění
+              const isPrikazce = String(contextMenu.order.prikazce_id) === String(currentUserId);
+              const isAdminRole = hasAdminRole();
+              
+              // 1. Zkontroluj oprávnění: Příkazce NEBO ADMINI (Superadmin/Administrator)
+              const hasPermissionToApprove = isPrikazce || isAdminRole;
+              
+              if (!hasPermissionToApprove) {
+                return false;
+              }
+              
+              // 2. Zkontroluj workflow stav
+              let workflowStates = [];
+              try {
+                if (Array.isArray(contextMenu.order.stav_workflow_kod)) {
+                  workflowStates = contextMenu.order.stav_workflow_kod;
+                } else if (typeof contextMenu.order.stav_workflow_kod === 'string') {
+                  workflowStates = JSON.parse(contextMenu.order.stav_workflow_kod);
+                }
+              } catch (e) {
+                workflowStates = [];
+              }
+              
+              const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+              const lastState = workflowStates.length > 0 
+                ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+                    ? workflowStates[workflowStates.length - 1] 
+                    : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+                  ).toUpperCase()
+                : '';
+              
+              const isAllowedState = allowedStates.includes(lastState);
+              
+              return isAllowedState;
+            })()
           }
         />
       )}
@@ -15870,7 +19103,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
       )}
 
       {/* Hromadné generování DOCX - Dialog */}
-      {showBulkDocxDialog && createPortal(
+      {showBulkDocxDialog && ReactDOM.createPortal(
         <BulkDocxOverlay>
           <BulkDocxDialog onClick={(e) => e.stopPropagation()}>
             <BulkDocxHeader>
@@ -16083,9 +19316,6 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                     }
 
                     // TODO: Implementovat hromadné generování
-                    console.log('Generuji DOCX pro objednávky:', bulkDocxOrders);
-                    console.log('S podepisovateli:', bulkDocxSigners);
-                    console.log('S šablonami:', bulkDocxTemplates);
                     alert('TODO: Implementovat hromadné generování DOCX');
                     setShowBulkDocxDialog(false);
                   }}
@@ -16139,7 +19369,13 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                   const updateData = {
                     stav_objednavky: 'Schválená',
                     stav_workflow_kod: JSON.stringify(newWorkflow),
-                    datum_schvaleni: new Date().toISOString()
+                    // 🔥 FIX: Použít lokální český čas místo UTC
+                    datum_schvaleni: (() => {
+                      const now = new Date();
+                      const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                      const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                      return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                    })()
                   };
 
                   const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api.eeo/orders-v2.php`, {
@@ -16176,7 +19412,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               }
 
               if (failed > 0) {
-                showToast(`⚠️ Selhalo: ${failed} objednávek`, 'error');
+                showToast(`⚠ Selhalo: ${failed} objednávek`, 'error');
               }
 
               setShowBulkApprovalDialog(false);
@@ -16259,7 +19495,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               }
 
               if (failed > 0) {
-                showToast(`⚠️ Selhalo: ${failed} objednávek`, 'error');
+                showToast(`⚠ Selhalo: ${failed} objednávek`, 'error');
               }
 
               setShowBulkDeleteDialog(false);
@@ -16275,7 +19511,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           variant="danger"
           confirmText={
             (hasPermission('ADMIN') || hasPermission('ORDER_DELETE_ALL'))
-              ? (bulkDeleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat (soft)")
+              ? (bulkDeleteType === 'hard' ? "⚠ Smazat úplně" : "Smazat (soft)")
               : "Smazat (soft)"
           }
           cancelText="Zrušit"
@@ -16302,7 +19538,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                     padding: '1rem'
                   }}>
                     <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
-                      🔧 Vyberte typ smazání:
+                       Vyberte typ smazání:
                     </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       <label style={{
@@ -16355,7 +19591,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                         />
                         <div>
                           <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
-                            ⚠️ Úplné smazání (HARD DELETE)
+                            ⚠ Úplné smazání (HARD DELETE)
                           </div>
                           <div style={{ fontSize: '0.875rem', color: '#991b1b' }}>
                             <strong>NEVRATNÉ!</strong> Smaže vše včetně položek, příloh a historie.
@@ -16373,7 +19609,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                   padding: '1rem'
                 }}>
                   <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
-                    ℹ️ Měkké smazání (SOFT DELETE)
+                    ℹ Měkké smazání (SOFT DELETE)
                   </h4>
                   <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
                     Objednávky budou pouze <strong>označeny jako neaktivní</strong>.
@@ -16492,7 +19728,35 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
               <ExportPreviewTable>
                 <ExportPreviewTableHeader>
-                  {Object.keys(exportPreviewData.data[0] || {}).map((column, idx) => {
+                  {Object.keys(exportPreviewData.data[0] || {})
+                    .filter(column => {
+                      // Zobraz jen sloupce, které má uživatel aktivní v nastavení
+                      // Převeď český název sloupce zpět na databázový klíč
+                      const dbKey = Object.entries({
+                        'ID': 'id',
+                        'Číslo objednávky': 'cislo_objednavky',
+                        'Předmět': 'predmet',
+                        'Poznámka': 'poznamka',
+                        'Stav objednávky': 'stav_objednavky',
+                        'Datum objednávky': 'dt_objednavky',
+                        'Datum schválení': 'dt_schvaleni',
+                        'Datum dokončení': 'dt_dokonceni',
+                        'Celková cena s DPH': 'celkova_cena_s_dph',
+                        'Dodavatel': 'dodavatel_nazev',
+                        'Objednatel': 'objednatel',
+                        'Garant': 'garant',
+                        'Střediska': 'strediska',
+                        'LP kódy': 'financovani_lp_kody',
+                        'LP názvy': 'financovani_lp_nazvy',
+                        'LP čísla': 'financovani_lp_cisla',
+                        'Typ financování': 'financovani_typ',
+                        'Název typu financování': 'financovani_typ_nazev',
+                        'Financování (raw JSON)': 'financovani_raw'
+                      }).find(([czech, db]) => czech === column)?.[1];
+                      
+                      return dbKey ? (exportPreviewData.csvColumnsFromDB[dbKey] || false) : true;
+                    })
+                    .map((column, idx) => {
                     // Vypočítej maximální šířku sloupce (hlavička + všechny hodnoty)
                     const headerLength = column.length;
                     const maxValueLength = Math.max(
@@ -16513,7 +19777,34 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 </ExportPreviewTableHeader>
                 {exportPreviewData.data.slice(0, 5).map((row, rowIdx) => (
                   <ExportPreviewTableRow key={rowIdx}>
-                    {Object.entries(row).map(([column, value], cellIdx) => {
+                    {Object.entries(row)
+                      .filter(([column]) => {
+                        // Stejný filtr jako pro hlavičky
+                        const dbKey = Object.entries({
+                          'ID': 'id',
+                          'Číslo objednávky': 'cislo_objednavky',
+                          'Předmět': 'predmet',
+                          'Poznámka': 'poznamka',
+                          'Stav objednávky': 'stav_objednavky',
+                          'Datum objednávky': 'dt_objednavky',
+                          'Datum schválení': 'dt_schvaleni',
+                          'Datum dokončení': 'dt_dokonceni',
+                          'Celková cena s DPH': 'celkova_cena_s_dph',
+                          'Dodavatel': 'dodavatel_nazev',
+                          'Objednatel': 'objednatel',
+                          'Garant': 'garant',
+                          'Střediska': 'strediska',
+                          'LP kódy': 'financovani_lp_kody',
+                          'LP názvy': 'financovani_lp_nazvy',
+                          'LP čísla': 'financovani_lp_cisla',
+                          'Typ financování': 'financovani_typ',
+                          'Název typu financování': 'financovani_typ_nazev',
+                          'Financování (raw JSON)': 'financovani_raw'
+                        }).find(([czech, db]) => czech === column)?.[1];
+                        
+                        return dbKey ? (exportPreviewData.csvColumnsFromDB[dbKey] || false) : true;
+                      })
+                      .map(([column, value], cellIdx) => {
                       // Stejný výpočet šířky jako u hlavičky
                       const headerLength = column.length;
                       const maxValueLength = Math.max(
@@ -16562,8 +19853,310 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         </ExportPreviewOverlay>
       )}
 
+      {/* Floating Header Panel - React Portal */}
+      {showFloatingHeader && ReactDOM.createPortal(
+        <FloatingHeaderPanel $visible={showFloatingHeader}>
+          <FloatingTableWrapper data-floating-header-wrapper>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              {/* Definice šířek sloupců podle naměřených hodnot */}
+              {columnWidths.length > 0 && (
+                <colgroup>
+                  {columnWidths.map((width, index) => (
+                    <col key={index} style={{ width: `${width}px` }} />
+                  ))}
+                </colgroup>
+              )}
+              <TableHead>
+                {/* Hlavní řádek se jmény sloupců - renderuj stejný header jako v hlavní tabulce */}
+                {table.getHeaderGroups().map(headerGroup => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map(header => (
+                      <TableHeader
+                        key={header.id}
+                        onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+                        style={{
+                          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          width: header.getSize()
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.column.getCanSort() && header.column.getIsSorted() && (
+                            <FontAwesomeIcon
+                              icon={header.column.getIsSorted() === 'desc' ? faChevronDown : faChevronUp}
+                              style={{ fontSize: '0.75rem', opacity: 0.7 }}
+                            />
+                          )}
+                        </div>
+                      </TableHeader>
+                    ))}
+                  </tr>
+                ))}
+                {/* Druhý řádek s filtry ve sloupcích - PŘESNÁ KOPIE Z ORIGINÁLNÍ HLAVIČKY */}
+                <tr>
+                  {table.getHeaderGroups()[0]?.headers.map(header => (
+                    <TableHeader key={`filter-floating-${header.id}`} style={{
+                      padding: '0.5rem',
+                      backgroundColor: '#f8f9fa',
+                      borderTop: '1px solid #e5e7eb'
+                    }}>
+                      {header.id === 'select' ? (
+                        <div style={{ display: 'none' }}>
+                          <input
+                            type="checkbox"
+                            checked={table.getIsAllRowsSelected()}
+                            ref={(el) => {
+                              if (el) el.indeterminate = table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected();
+                            }}
+                            onChange={table.getToggleAllRowsSelectedHandler()}
+                            style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                            title={table.getIsAllRowsSelected() ? 'Zrušit výběr všech' : 'Vybrat vše'}
+                          />
+                        </div>
+                      ) : header.id === 'expander' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          height: '32px'
+                        }}>
+                          <FilterActionButton
+                            onClick={toggleAllRows}
+                            title={table.getIsSomeRowsExpanded() ? "Sbalit všechny řádky" : "Rozbalit všechny řádky"}
+                          >
+                            <FontAwesomeIcon icon={table.getIsSomeRowsExpanded() ? faMinus : faPlus} />
+                          </FilterActionButton>
+                        </div>
+                      ) : header.id === 'approve' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '3px',
+                          height: '32px'
+                        }}>
+                          <FilterActionButton
+                            onClick={() => {
+                              const newFilter = approvalFilter.includes('pending')
+                                ? approvalFilter.filter(f => f !== 'pending')
+                                : [...approvalFilter, 'pending'];
+                              setApprovalFilter(newFilter);
+                              setUserStorage('orders25List_approvalFilter', newFilter);
+                            }}
+                            title={approvalFilter.includes('pending') 
+                              ? "Zrušit filtr: Ke schválení" 
+                              : "Filtrovat: Ke schválení"
+                            }
+                            className={approvalFilter.includes('pending') ? 'active' : ''}
+                            style={{
+                              color: approvalFilter.includes('pending') ? '#92400e' : undefined,
+                              background: approvalFilter.includes('pending') ? '#fef3c7' : undefined
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faHourglassHalf} />
+                          </FilterActionButton>
+                          <FilterActionButton
+                            onClick={() => {
+                              const newFilter = approvalFilter.includes('approved')
+                                ? approvalFilter.filter(f => f !== 'approved')
+                                : [...approvalFilter, 'approved'];
+                              setApprovalFilter(newFilter);
+                              setUserStorage('orders25List_approvalFilter', newFilter);
+                            }}
+                            title={approvalFilter.includes('approved')
+                              ? "Zrušit filtr: Vyřízené" 
+                              : "Filtrovat: Vyřízené"
+                            }
+                            className={approvalFilter.includes('approved') ? 'active' : ''}
+                            style={{
+                              color: approvalFilter.includes('approved') ? '#166534' : undefined,
+                              background: approvalFilter.includes('approved') ? '#dcfce7' : undefined
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faCheckCircle} />
+                          </FilterActionButton>
+                        </div>
+                      ) : header.id === 'actions' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '3px',
+                          height: '32px'
+                        }}>
+                          {/* Hromadné akce - DOČASNĚ SKRYTO */}
+                          {false && (() => {
+                            const selectedCount = table.getSelectedRowModel().rows.length;
+                            if (selectedCount > 0) {
+                              const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original);
+                              const approvalCount = selectedOrders.filter(o => o.stav_objednavky === 'Ke schválení').length;
+                              const docxCount = selectedOrders.filter(o => canExportDocument(o)).length;
+
+                              return (
+                                <>
+                                  {approvalCount > 0 && (hasPermission('ADMIN') || hasPermission('ORDER_APPROVE')) && (
+                                    <FilterActionButton
+                                      onClick={() => {
+                                        const eligibleOrders = selectedOrders.filter(o => o.stav_objednavky === 'Ke schválení');
+                                        setBulkApprovalOrders(eligibleOrders);
+                                        setShowBulkApprovalDialog(true);
+                                      }}
+                                      title={`Schválit ${approvalCount} vybraných objednávek`}
+                                      style={{ color: '#059669' }}
+                                    >
+                                      <FontAwesomeIcon icon={faCheckCircle} />
+                                      <ActionBadge>{approvalCount}</ActionBadge>
+                                    </FilterActionButton>
+                                  )}
+                                  {docxCount > 0 && (
+                                    <FilterActionButton
+                                      onClick={() => {
+                                        const eligibleOrders = selectedOrders.filter(o => canExportDocument(o));
+                                        setBulkDocxOrders(eligibleOrders);
+                                        const initialSigners = {};
+                                        const initialTemplates = {};
+                                        eligibleOrders.forEach(order => {
+                                          initialSigners[order.id] = order.schvalovatel_id || order.schvalovatel || null;
+                                          const templates = getTemplateOptions(order);
+                                          if (templates.length > 0) {
+                                            initialTemplates[order.id] = templates[0].value;
+                                          }
+                                        });
+                                        setBulkDocxSigners(initialSigners);
+                                        setBulkDocxTemplates(initialTemplates);
+                                        setShowBulkDocxDialog(true);
+                                      }}
+                                      title={`Generovat DOCX pro ${docxCount} vybraných objednávek`}
+                                      style={{ color: '#0891b2' }}
+                                    >
+                                      <FontAwesomeIcon icon={faFileWord} />
+                                      <ActionBadge>{docxCount}</ActionBadge>
+                                    </FilterActionButton>
+                                  )}
+                                  <FilterActionButton
+                                    onClick={() => {
+                                      setBulkDeleteOrders(selectedOrders);
+                                      setShowBulkDeleteDialog(true);
+                                    }}
+                                    title={`Smazat ${selectedCount} vybraných objednávek`}
+                                    style={{ color: '#dc2626' }}
+                                  >
+                                    <FontAwesomeIcon icon={faTrash} />
+                                    <ActionBadge>{selectedCount}</ActionBadge>
+                                  </FilterActionButton>
+                                </>
+                              );
+                            }
+                            return null;
+                          })()}
+                          <FilterActionButton
+                            onClick={clearColumnFilters}
+                            title="Vymazat filtry sloupců"
+                          >
+                            <FontAwesomeIcon icon={faEraser} />
+                          </FilterActionButton>
+                          <FilterActionButton
+                            onClick={toggleRowHighlighting}
+                            title={showRowHighlighting ? "Vypnout zvýrazňování řádků" : "Zapnout zvýrazňování řádků"}
+                            className={showRowHighlighting ? 'active' : ''}
+                          >
+                            <FontAwesomeIcon icon={faPalette} />
+                          </FilterActionButton>
+                        </div>
+                      ) : header.column.columnDef.accessorKey === 'dt_objednavky' ? (
+                        <div style={{ position: 'relative' }}>
+                          <DatePicker
+                            fieldName="dt_objednavky_filter_floating"
+                            value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                            onChange={(value) => {
+                              const newFilters = { ...columnFilters };
+                              // Uložit datum ve formátu yyyy-mm-dd (jak ho vrací DatePicker)
+                              newFilters[header.column.columnDef.accessorKey] = value;
+                              setColumnFilters(newFilters);
+                            }}
+                            placeholder="Datum"
+                            variant="compact"
+                          />
+                        </div>
+                      ) : header.column.columnDef.accessorKey === 'max_cena_s_dph' || 
+                         header.column.columnDef.accessorKey === 'cena_s_dph' || 
+                         header.column.columnDef.accessorKey === 'faktury_celkova_castka_s_dph' ? (
+                        <div style={{ position: 'relative' }}>
+                          <OperatorInput
+                            value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
+                            onChange={(value) => {
+                              const newFilters = { ...localColumnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = value;
+                              setColumnFiltersDebounced(newFilters);
+                            }}
+                            placeholder={
+                              header.column.columnDef.accessorKey === 'max_cena_s_dph' ? 'Max. cena s DPH' :
+                              header.column.columnDef.accessorKey === 'cena_s_dph' ? 'Cena s DPH' :
+                              'Cena FA s DPH'
+                            }
+                            clearButton={true}
+                            onClear={() => {
+                              const newFilters = { ...localColumnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = '';
+                              setColumnFiltersDebounced(newFilters);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <ColumnFilterWrapper>
+                          <FontAwesomeIcon icon={faSearch} />
+                          <ColumnFilterInput
+                            type="text"
+                            placeholder={`Hledat ${header.column.columnDef.header}...`}
+                            value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
+                            onChange={(e) => {
+                              const newFilters = { ...localColumnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = e.target.value;
+                              setColumnFiltersDebounced(newFilters);
+                            }}
+                          />
+                          {localColumnFilters[header.column.columnDef.accessorKey] && (
+                            <ColumnClearButton
+                              onClick={() => {
+                                const newFilters = { ...localColumnFilters };
+                                delete newFilters[header.column.columnDef.accessorKey];
+                                setColumnFiltersDebounced(newFilters);
+                              }}
+                              title="Vymazat"
+                            >
+                              <FontAwesomeIcon icon={faTimes} />
+                            </ColumnClearButton>
+                          )}
+                        </ColumnFilterWrapper>
+                      )}
+                    </TableHeader>
+                  ))}
+                </tr>
+              </TableHead>
+            </table>
+          </FloatingTableWrapper>
+        </FloatingHeaderPanel>,
+        document.body
+      )}
+
       {/* Moderní Sponka helper - kontextová nápověda pro seznam objednávek */}
       {hasPermission('HELPER_VIEW') && <ModernHelper pageContext="orders" />}
+      
+      {/* Popup se seznamem faktur */}
+      {invoicePopupVisible && (
+        <InvoiceListPopup
+          invoices={invoicePopupInvoices}
+          order={invoicePopupOrder}
+          loading={invoicePopupLoading}
+          onClose={handleCloseInvoicePopup}
+          onEditInvoice={handleEditInvoiceFromPopup}
+          onAddInvoice={handleAddInvoiceFromPopup}
+        />
+      )}
+      
+      {/* ✅ Konec podmíněného zobrazení pro uživatele s oprávněními */}
+      </>
+      )}
     </>
   );
 };

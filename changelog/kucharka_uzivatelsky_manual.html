@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KUCHAŘKA - Uživatelský manuál ERDMS v1.90d</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            line-height: 1.8;
+            color: #1a202c;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            color: white;
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        .header .subtitle {
+            font-size: 1.3rem;
+            opacity: 0.9;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .version {
+            font-size: 0.95rem;
+            opacity: 0.8;
+            margin-top: 1rem;
+        }
+
+        .content {
+            padding: 3rem 2rem;
+        }
+
+        .toc {
+            background: #f7fafc;
+            padding: 2rem;
+            border-radius: 1rem;
+            border-left: 5px solid #667eea;
+            margin-bottom: 3rem;
+        }
+
+        .toc h2 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        .toc ul {
+            list-style: none;
+            columns: 2;
+        }
+
+        .toc li {
+            padding: 0.5rem 0;
+        }
+
+        .toc a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .toc a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid #edf2f7;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section h2 {
+            color: #667eea;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-icon {
+            font-size: 2.5rem;
+        }
+
+        .subsection {
+            margin: 2rem 0;
+            padding-left: 2rem;
+            border-left: 3px solid #cbd5e0;
+        }
+
+        .subsection h3 {
+            color: #2d3748;
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+        }
+
+        .subsection p {
+            color: #4a5568;
+            margin-bottom: 1rem;
+            line-height: 1.9;
+        }
+
+        .step-list {
+            list-style: none;
+            counter-reset: step;
+        }
+
+        .step-list li {
+            counter-increment: step;
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+            background: #f7fafc;
+            border-radius: 0.5rem;
+            border-left: 4px solid #667eea;
+        }
+
+        .step-list li::before {
+            content: counter(step);
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 2rem;
+            font-weight: bold;
+            margin-right: 1rem;
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+
+        .tip-box {
+            background: #c6f6d5;
+            border-left: 4px solid #22863a;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .tip-box strong {
+            color: #22863a;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .warning-box {
+            background: #fed7d7;
+            border-left: 4px solid #c53030;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .warning-box strong {
+            color: #c53030;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-box {
+            background: #bee3f8;
+            border-left: 4px solid #2c5aa0;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .info-box strong {
+            color: #2c5aa0;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.1);
+            transform: translateY(-4px);
+        }
+
+        .feature-card h4 {
+            color: #667eea;
+            font-size: 1.2rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feature-card p {
+            color: #4a5568;
+            font-size: 0.95rem;
+        }
+
+        .keyboard-shortcut {
+            display: inline-block;
+            background: #2d3748;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            margin: 0 0.25rem;
+        }
+
+        .button-style {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            margin: 0.25rem;
+            font-size: 0.9rem;
+        }
+
+        .footer {
+            background: #f7fafc;
+            padding: 2rem;
+            text-align: center;
+            color: #718096;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .footer p {
+            margin: 0.5rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+
+        table th {
+            background: #667eea;
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        table td {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        table tr:hover {
+            background: #f7fafc;
+        }
+
+        code {
+            background: #edf2f7;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            color: #c53030;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 KUCHAŘKA</h1>
+            <div class="subtitle">Praktický uživatelský manuál</div>
+            <div class="subtitle">ERDMS - Systém správy a workflow objednávek</div>
+            <div class="version">Verze 1.90d | Prosinec 2025</div>
+        </div>
+
+        <div class="content">
+            <div class="toc">
+                <h2>📖 Obsah</h2>
+                <ul>
+                    <li><a href="#faktury">Práce s fakturami</a></li>
+                    <li><a href="#workflow">7-stavový workflow</a></li>
+                    <li><a href="#pokladna">Pokladní kniha</a></li>
+                    <li><a href="#kalkulacka">Finanční kalkulačka</a></li>
+                    <li><a href="#vyhledavani">Vyhledávání a filtry</a></li>
+                    <li><a href="#rychle-klavesky">Rychlé klávesové zkratky</a></li>
+                    <li><a href="#tipy">Tipy a triky</a></li>
+                </ul>
+            </div>
+
+            <!-- FAKTURY -->
+            <div class="section" id="faktury">
+                <h2><span class="section-icon">📄</span> Práce s fakturami</h2>
+
+                <div class="subsection">
+                    <h3>Jak vytvořit novou fakturu?</h3>
+                    <p>Fakturu můžete vytvořit dvěma způsoby:</p>
+                    <ol class="step-list">
+                        <li><strong>Ze startu:</strong> Klikněte na tlačítko <span class="button-style">+ Zaevidovat fakturu</span> v plovoucím menu (dole vpravo) nebo v horním menu <span class="button-style">+ Zaevidovat novou fakturu</span></li>
+                        <li><strong>Z objednávky:</strong> Otevřete objednávku a klikněte na <span class="button-style">Zaevidovat fakturu</span> v detailu objednávky</li>
+                        <li><strong>Vyplňte základní údaje:</strong> Číslo faktury, datum vystavení, splatnost, částka</li>
+                        <li><strong>Přidejte přílohy:</strong> Nahrajte PDF faktury nebo další dokumenty</li>
+                        <li><strong>Uložte:</strong> Klikněte <span class="button-style">Uložit fakturu</span></li>
+                    </ol>
+
+                    <div class="tip-box">
+                        <strong>💡 Tip:</strong> Faktury se automaticky propojují s objednávkami podle čísla objednávky. Zajistěte správný formát!
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3>Věcná správnost faktury</h3>
+                    <p>Každá faktura musí projít kontrolou věcné správnosti. Jedná se o ověření správnosti údajů:</p>
+                    <ul style="margin-left: 2rem; list-style: disc;">
+                        <li>Shoda mezi objednávkou a fakturou</li>
+                        <li>Správnost částek a DPH</li>
+                        <li>Splatnost a podmínky platby</li>
+                        <li>Údaje o dodavateli a příjemci</li>
+                    </ul>
+                    <p style="margin-top: 1rem;">Věcná správnost se provádí kliknutím na <span class="button-style">Kontrola věcné správnosti</span> v detailu faktury.</p>
+                </div>
+
+                <div class="subsection">
+                    <h3>Přílohy a dokumenty</h3>
+                    <p>K faktuře můžete přidat více typů příloh:</p>
+                    <table>
+                        <tr>
+                            <th>Typ přílohy</th>
+                            <th>Formát</th>
+                            <th>Popis</th>
+                        </tr>
+                        <tr>
+                            <td>PDF faktura</td>
+                            <td>.pdf</td>
+                            <td>Hlavní dokument - původní faktura od dodavatele</td>
+                        </tr>
+                        <tr>
+                            <td>Dodací list</td>
+                            <td>.pdf, .jpg</td>
+                            <td>Potvrzení doručení zboží/služby</td>
+                        </tr>
+                        <tr>
+                            <td>Čestné prohlášení</td>
+                            <td>.pdf</td>
+                            <td>Podepsaný dokument od dodavatele</td>
+                        </tr>
+                        <tr>
+                            <td>Poznámky</td>
+                            <td>.txt, .docx</td>
+                            <td>Interní poznámky ke faktuře</td>
+                        </tr>
+                    </table>
+
+                    <div class="warning-box">
+                        <strong>⚠️ Pozor:</strong> Maximální velikost souboru je 50 MB. Zkontrolujte, že jste nahráli správný soubor!
+                    </div>
+                </div>
+            </div>
+
+            <!-- WORKFLOW -->
+            <div class="section" id="workflow">
+                <h2><span class="section-icon">🔄</span> 7-stavový workflow faktury</h2>
+
+                <p>Každá faktura prochází několika stavy. Porozumění těmto stavům je klíčové pro správu:</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>📌 ZAEVIDOVÁNA</h4>
+                        <p>Faktura právě byla zadána do systému. Čeká na schválení věcné správnosti.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <h4>✅ VĚCNÁ SPRÁVNOST</h4>
+                        <p>Faktura prošla kontrolou správnosti údajů. Je potvrzena jako správná.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <h4>🔄 V ŘEŠENÍ</h4>
+                        <p>Faktura má nějaký problém, který se aktuálně řeší. Čeká na rozuzlení.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <h4>📤 PŘEDÁNA PO</h4>
+                        <p>Faktura byla předána finančnímu oddělení k dalšímu zpracování a zaúčtování.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <h4>💳 K ZAPLACENÍ</h4>
+                        <p>Faktura čeká na zaplacení. Splatnost se blíží nebo již nastal.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <h4>✔️ ZAPLACENA</h4>
+                        <p>Faktura byla zaplacena. Platba byla přijata na účet organizace.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <h4>❌ STORNO</h4>
+                        <p>Faktura byla zrušena. Zobrazuje se se přeškrtnutým textem.</p>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3>Jak změnit stav faktury?</h3>
+                    <ol class="step-list">
+                        <li>Otevřete fakturu v seznamu nebo detailu</li>
+                        <li>Vpravo od čísla faktury klikněte na dropdown menu se stavem</li>
+                        <li>Vyberte nový stav z nabídnutých možností</li>
+                        <li>Pokud měníte na stav <strong>ZAPLACENA</strong>, musíte potvrdit dialog s potvrzením</li>
+                        <li>Změna se uloží automaticky</li>
+                    </ol>
+
+                    <div class="info-box">
+                        <strong>ℹ️ Info:</strong> Změna stavu faktury je viditelná ostatním uživatelům v reálném čase!
+                    </div>
+                </div>
+            </div>
+
+            <!-- POKLADNA -->
+            <div class="section" id="pokladna">
+                <h2><span class="section-icon">💰</span> Pokladní kniha</h2>
+
+                <div class="subsection">
+                    <h3>Co je pokladní kniha?</h3>
+                    <p>Pokladní kniha je elektronický záznam všech příjmů a výdajů vaší pokladny. Slouží k vedení účetnictví a kontrole stavu hotovosti.</p>
+                </div>
+
+                <div class="subsection">
+                    <h3>Jak se dostanu do pokladní knihy?</h3>
+                    <ol class="step-list">
+                        <li>Klikněte na plovoucí tlačítko s ikonou <strong>kalkulačky</strong> (💰) v pravém dolním rohu</li>
+                        <li>Nebo vyberte v horním menu: <span class="button-style">Pokladna</span> → <span class="button-style">Pokladní kniha</span></li>
+                        <li>Vyberte svou pokladnu z dropdown menu (pokud jich máte více)</li>
+                        <li>Vyberte měsíc a rok, pro který chcete vést knihu</li>
+                    </ol>
+                </div>
+
+                <div class="subsection">
+                    <h3>Přidání příjmu nebo výdaje</h3>
+                    <ol class="step-list">
+                        <li>Klikněte na <span class="button-style">+ Nový záznam</span></li>
+                        <li>Vyplňte datum transakce</li>
+                        <li>Zvolte typ: <strong>Příjem</strong> nebo <strong>Výdaj</strong></li>
+                        <li>Napište popis (co se купilo/prodalo)</li>
+                        <li>Zadejte částku (bez haléřů)</li>
+                        <li>Přiřaďte <strong>Limitovaný příslíbek</strong>, pokud existuje</li>
+                        <li>Klikněte <span class="button-style">Uložit</span></li>
+                    </ol>
+
+                    <div class="tip-box">
+                        <strong>💡 Tip:</strong> Zůstatek se počítá automaticky. Po každém záznamu vidíte aktuální stav pokladny.
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3>Export a tisk</h3>
+                    <p>Pokladní knihu můžete exportovat v různých formátech:</p>
+                    <ul style="margin-left: 2rem; list-style: disc;">
+                        <li><strong>CSV</strong> - tabulkový formát pro Excel</li>
+                        <li><strong>PDF</strong> - tisknutelný dokument</li>
+                        <li><strong>Tisk</strong> - přímý tisk na tiskárnu</li>
+                    </ul>
+                    <p style="margin-top: 1rem;">Všechna tlačítka najdete v dolní liště okna.</p>
+                </div>
+            </div>
+
+            <!-- KALKULACKA -->
+            <div class="section" id="kalkulacka">
+                <h2><span class="section-icon">🧮</span> Finanční kalkulačka</h2>
+
+                <div class="subsection">
+                    <h3>Jak spustit kalkulačku?</h3>
+                    <p>Finanční kalkulačka je dostupná jako plovoucí tlačítko:</p>
+                    <ol class="step-list">
+                        <li>Klikněte na tlačítko se symbolem <strong>√x</strong> (odmocnina) vpravo dole</li>
+                        <li>Kalkulačka se otevře jako plovoucí panel</li>
+                        <li>Můžete ji posouvat po obrazovce a měnit velikost</li>
+                    </ol>
+                </div>
+
+                <div class="subsection">
+                    <h3>Jaké výpočty kalkulačka zvládá?</h3>
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <h4>💰 DPH výpočty</h4>
+                            <p>Automatický výpočet DPH (21%, 15%, 12%, 10%) - ze základu s DPH nebo bez DPH</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <h4>💵 Převod měn</h4>
+                            <p>Rychlý přepočet: CZK ↔ EUR ↔ USD ↔ GBP</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <h4>📊 Procenta</h4>
+                            <p>Výpočet procent, slev, přirážek a marží</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <h4>🔢 Základní operace</h4>
+                            <p>Sčítání, odčítání, násobení, dělení se zachováním historie</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3>Klávesové zkratky v kalkulačce</h3>
+                    <table>
+                        <tr>
+                            <th>Klávesa</th>
+                            <th>Funkce</th>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">0-9</span></td>
+                            <td>Zadání čísel</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">+</span> / <span class="keyboard-shortcut">-</span> / <span class="keyboard-shortcut">*</span> / <span class="keyboard-shortcut">/</span></td>
+                            <td>Matematické operace</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">%</span></td>
+                            <td>Procenta</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Enter</span> nebo <span class="keyboard-shortcut">=</span></td>
+                            <td>Výpočet výsledku</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Backspace</span></td>
+                            <td>Smazat poslední číslici</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">C</span></td>
+                            <td>Vymazat displej</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">M</span></td>
+                            <td>Uložit do paměti (Memory)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">R</span></td>
+                            <td>Vrátit z paměti (Recall)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Escape</span></td>
+                            <td>Zavřít kalkulačku</td>
+                        </tr>
+                    </table>
+
+                    <div class="tip-box">
+                        <strong>💡 Tip:</strong> Kalkulačka si pamatuje historii výpočtů. Můžete se vrátit k předchozím výpočtům a zkopírovat si výsledky.
+                    </div>
+                </div>
+            </div>
+
+            <!-- VYHLEDAVANI -->
+            <div class="section" id="vyhledavani">
+                <h2><span class="section-icon">🔍</span> Vyhledávání a filtry</h2>
+
+                <div class="subsection">
+                    <h3>Univerzální vyhledávání</h3>
+                    <p>V horní liště je pole pro rychlé vyhledávání. Vyhledáváte v:</p>
+                    <ul style="margin-left: 2rem; list-style: disc;">
+                        <li><strong>Faktury:</strong> podle čísla, dodavatele, částky</li>
+                        <li><strong>Objednávky:</strong> podle čísla, popisku, příjemce</li>
+                        <li><strong>Smlouvy:</strong> podle názvu, partnera</li>
+                        <li><strong>Přílohy:</strong> podle názvu souboru</li>
+                    </ul>
+
+                    <p style="margin-top: 1.5rem;">Stisknout <span class="keyboard-shortcut">Ctrl + K</span> nebo klikněte na řadu pro vyhledávání.</p>
+                </div>
+
+                <div class="subsection">
+                    <h3>Filtry v tabulkách</h3>
+                    <p>Každý sloupec v tabulce má vlastní filtr:</p>
+                    <ol class="step-list">
+                        <li>Klikněte na ikonku filtru (trychtýř) v záhlaví sloupce</li>
+                        <li>Vyplňte hledaný text nebo vyberte z nabídky</li>
+                        <li>Klikněte <span class="button-style">OK</span> nebo jednoduše klikněte jinam</li>
+                        <li>Pro vynulování filtru klikněte na <span class="button-style">X</span></li>
+                    </ol>
+
+                    <div class="info-box">
+                        <strong>ℹ️ Info:</strong> Můžete kombinovat více filtrů najednou. Systém bude zobrazovat pouze záznamy odpovídající všem filtrům.
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3>Filtrování podle workflow stavu</h3>
+                    <p>Faktury můžete filtrovat podle jejich aktuálního stavu:</p>
+                    <table>
+                        <tr>
+                            <th>Filtr</th>
+                            <th>Zobrazí</th>
+                        </tr>
+                        <tr>
+                            <td>Zaevidované</td>
+                            <td>Faktury ve stavu ZAEVIDOVANA</td>
+                        </tr>
+                        <tr>
+                            <td>Věcná správnost</td>
+                            <td>Faktury ve stavu VECNA_SPRAVNOST</td>
+                        </tr>
+                        <tr>
+                            <td>V řešení</td>
+                            <td>Faktury s problémy (V_RESENI)</td>
+                        </tr>
+                        <tr>
+                            <td>K zaplacení</td>
+                            <td>Faktury čekající na platbu</td>
+                        </tr>
+                        <tr>
+                            <td>Zaplacené</td>
+                            <td>Již zaplacené faktury</td>
+                        </tr>
+                        <tr>
+                            <td>Storno</td>
+                            <td>Zrušené/neplatné faktury</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- KLAVESKY -->
+            <div class="section" id="rychle-klavesky">
+                <h2><span class="section-icon">⌨️</span> Rychlé klávesové zkratky</h2>
+
+                <div class="subsection">
+                    <h3>Globální zkratky</h3>
+                    <table>
+                        <tr>
+                            <th>Zkratka</th>
+                            <th>Akce</th>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Ctrl + K</span></td>
+                            <td>Otevřít univerzální vyhledávání</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Ctrl + /</span></td>
+                            <td>Zobrazit nápovědu a zkratky</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Escape</span></td>
+                            <td>Zavřít otevřené panely a dialogy</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Ctrl + S</span></td>
+                            <td>Uložit (formuláře)</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="subsection">
+                    <h3>Navigační zkratky</h3>
+                    <table>
+                        <tr>
+                            <th>Zkratka</th>
+                            <th>Akce</th>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">↑</span> / <span class="keyboard-shortcut">↓</span></td>
+                            <td>Pohyb ve výsledcích hledání</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Enter</span></td>
+                            <td>Otevřít vybraný výsledek</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Tab</span></td>
+                            <td>Přesun na další prvek</td>
+                        </tr>
+                        <tr>
+                            <td><span class="keyboard-shortcut">Shift + Tab</span></td>
+                            <td>Přesun na předchozí prvek</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TIPY -->
+            <div class="section" id="tipy">
+                <h2><span class="section-icon">💡</span> Tipy a triky</h2>
+
+                <div class="subsection">
+                    <h3>Zásada "Copy-Paste"</h3>
+                    <p>Pro rychlou práci s podobnými fakturami:</p>
+                    <ol class="step-list">
+                        <li>Otevřete existující fakturu s podobnými údaji</li>
+                        <li>Zkopírujte potřebné číslo nebo částku</li>
+                        <li>Vytvořte novou fakturu a vložte zkopírované údaje</li>
+                        <li>Uprav pouze rozdílné položky</li>
+                    </ol>
+                </div>
+
+                <div class="subsection">
+                    <h3>Offline práce</h3>
+                    <p>Pokud ztratíte internet, formuláře se automaticky ukládají. Jakmile se připojíte zpět, data se synchronizují.</p>
+
+                    <div class="tip-box">
+                        <strong>💡 Tip:</strong> Vždy si držte zálohu důležitých dat. Klikněte na <span class="button-style">Export</span> v seznamu faktur.
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3>Skupinové operace</h3>
+                    <p>V seznamu faktur můžete vybrat více faktur najednou:</p>
+                    <ol class="step-list">
+                        <li>Klikněte na checkbox u první faktury</li>
+                        <li>Podržte <span class="keyboard-shortcut">Shift</span> a klikněte na poslední fakturu v rozmezí</li>
+                        <li>Nebo klikejte na jednotlivé checkboxy s klávesou <span class="keyboard-shortcut">Ctrl</span></li>
+                        <li>Nyní můžete provést hromadnou akci (export, označení stavu apod.)</li>
+                    </ol>
+                </div>
+
+                <div class="subsection">
+                    <h3>Notifikace a upozornění</h3>
+                    <p>Systém vás upozorní na:</p>
+                    <ul style="margin-left: 2rem; list-style: disc;">
+                        <li><strong>🔔 Splatné faktury</strong> - faktury s blížící se splatností</li>
+                        <li><strong>⚠️ Chybějící údaje</strong> - faktury bez věcné správnosti</li>
+                        <li><strong>🔒 Uzamčené dokumenty</strong> - faktury upravovány jiným uživatelem</li>
+                        <li><strong>📩 Nové zprávy</strong> - chat a komentáře ke dokumentům</li>
+                    </ul>
+                </div>
+
+                <div class="warning-box">
+                    <strong>⚠️ Důležité:</strong> Vždy zajistěte bezpečnost svých údajů. Nesdílujte svůj login a pravidelně si měňte heslo!
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>ERDMS Kuchařka - Uživatelský manuál</strong></p>
+            <p>Verze 1.90d | Prosinec 2025</p>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: #a0aec0;">
+                Máte otázku? Kontaktujte IT tým nebo navštivte <strong>Nápovědu (F1)</strong> v aplikaci.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

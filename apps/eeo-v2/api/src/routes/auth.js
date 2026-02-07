@@ -346,4 +346,144 @@ router.get('/me', async (req, res) => {
   }
 });
 
+/**
+ * POST /auth/generate-and-send-password
+ * Vygeneruje nové heslo pro uživatele a odešle mu ho emailem pomocí šablony
+ */
+router.post('/generate-and-send-password', async (req, res) => {
+  const { user_id, template_id } = req.body;
+  const token = req.headers['x-auth-token'];
+  const username = req.headers['x-auth-username'];
+
+  if (!token || !username) {
+    return res.status(401).json({ error: 'Missing authentication' });
+  }
+
+  if (!user_id || !template_id) {
+    return res.status(400).json({ error: 'Missing user_id or template_id' });
+  }
+
+  try {
+    // 1. Ověření oprávnění (musí mít právo měnit uživatele)
+    const [authCheck] = await db.query(
+      `SELECT uz.id 
+       FROM uzivatele uz
+       WHERE uz.username = ? AND uz.token = ? AND uz.aktivni = 1`,
+      [username, token]
+    );
+
+    if (!authCheck || authCheck.length === 0) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // 2. Načtení dat cílového uživatele
+    const [userRows] = await db.query(
+      `SELECT id, username, email, jmeno, prijmeni, titul_pred, titul_za
+       FROM uzivatele
+       WHERE id = ?`,
+      [user_id]
+    );
+
+    if (!userRows || userRows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userRows[0];
+
+    if (!targetUser.email) {
+      return res.status(400).json({ error: 'User has no email address' });
+    }
+
+    // 3. Vygenerování nového hesla (12 znaků, bezpečné)
+    const newPassword = crypto.randomBytes(16).toString('base64').slice(0, 12);
+    
+    // 4. Hashování hesla (bcrypt)
+    const bcrypt = require('bcryptjs');
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // 5. Update hesla v databázi
+    await db.query(
+      `UPDATE uzivatele 
+       SET heslo = ?, vynucena_zmena_hesla = 1
+       WHERE id = ?`,
+      [passwordHash, user_id]
+    );
+
+    // 6. Načtení email šablony
+    const [templateRows] = await db.query(
+      `SELECT id, nazev, email_predmet, email_telo
+       FROM email_sablony
+       WHERE id = ?`,
+      [template_id]
+    );
+
+    if (!templateRows || templateRows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const template = templateRows[0];
+
+    // 7. Nahrazení placeholderů v šabloně
+    let emailSubject = template.email_predmet || 'Nové heslo do systému ERDMS';
+    let emailBody = template.email_telo || '';
+
+    const fullName = [
+      targetUser.titul_pred,
+      targetUser.jmeno,
+      targetUser.prijmeni,
+      targetUser.titul_za
+    ].filter(Boolean).join(' ');
+
+    const replacements = {
+      '{JMENO}': targetUser.jmeno || '',
+      '{PRIJMENI}': targetUser.prijmeni || '',
+      '{CELE_JMENO}': fullName,
+      '{USERNAME}': targetUser.username || '',
+      '{EMAIL}': targetUser.email || '',
+      '{HESLO}': newPassword,
+      '{NOVE_HESLO}': newPassword,
+    };
+
+    Object.keys(replacements).forEach(placeholder => {
+      const value = replacements[placeholder];
+      emailSubject = emailSubject.replace(new RegExp(placeholder, 'g'), value);
+      emailBody = emailBody.replace(new RegExp(placeholder, 'g'), value);
+    });
+
+    // 8. Odeslání emailu (použij Nodemailer nebo existující email service)
+    const nodemailer = require('nodemailer');
+    
+    // Konfigurace SMTP (použij existující konfiguraci z .env)
+    const transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST || 'localhost',
+      port: process.env.SMTP_PORT || 587,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@erdms.cz',
+      to: targetUser.email,
+      subject: emailSubject,
+      html: emailBody,
+    });
+
+    // 9. Log operace
+    console.log(`✓ New password generated and sent to ${targetUser.email} for user ${targetUser.username}`);
+
+    res.json({
+      success: true,
+      message: 'Password generated and sent',
+      email: targetUser.email,
+    });
+
+  } catch (error) {
+    console.error('Generate and send password error:', error);
+    res.status(500).json({ error: 'Failed to generate and send password', details: error.message });
+  }
+});
+
 module.exports = router;

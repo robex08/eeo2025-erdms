@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Sekce schválení příkazcem operace
+  // Sekce schválení schvalovatelem
   approvalSection: {
     marginTop: 25,
     marginBottom: 15,
@@ -475,8 +475,8 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   // (NE order._enriched.*!)
 
   // 🔴 Helper pro označení chybějících dat
-  const MISSING = '⚠️ NEVÍM';
-  const getMissingStyle = (value) => value === MISSING ? { color: '#dc2626', fontWeight: 700 } : {};
+  const MISSING = '---';
+  const getMissingStyle = (value) => value === MISSING ? { color: '#6b7280', fontWeight: 400 } : {};
 
   // Základní údaje
   const objednavkaCislo = order?.cislo_objednavky || MISSING;
@@ -503,14 +503,14 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   // 👤 Uživatelé - všichni ve formátu PŘÍJMENÍ JMÉNO
   const vyrizuje = formatUserName(order?.objednatel || order?.uzivatel);
   const garant = formatUserName(order?.garant_uzivatel || order?.garant);
-  const prikazceOperace = formatUserName(order?.schvalovatel || order?.prikazce);
+  const schvalovatel = formatUserName(order?.schvalovatel || order?.prikazce);
   
   // 📅 Datum vytvoření (dt_vytvoreni) - zobrazí se pod "Vyřizuje"
   const dtVytvoreni = order?.dt_vytvoreni || MISSING;
   
-  // 👤 Uzavřel (dokončil) objednávku
-  const dokoncil = formatUserName(order?.dokoncil);
-  const datumDokonceni = order?.dt_dokonceni || MISSING;
+  // 👤 Uzavřel (dokončil) objednávku - je to aktuální uživatel, který potvrzuje dokončení
+  const dokoncil = generatedBy?.fullName || formatUserName(order?.dokoncil) || MISSING;
+  const datumDokonceni = order?.dt_dokonceni || new Date().toLocaleString('cs-CZ');
 
   // 💰 Ceny - VÝPOČET Z POLOŽEK podle sazeb DPH
   // Projdeme všechny položky a seskupíme podle sazby DPH
@@ -558,10 +558,26 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   const komentar = order?.schvaleni_komentar || '';
   const schvalenoDne = order?.dt_schvaleni || MISSING;
   
-  // Financování - priorita: typ_nazev > nazev_stavu > nazev > typ
-  const financovani = order?.financovani
-    ? (order.financovani.typ_nazev || order.financovani.nazev_stavu || order.financovani.nazev || order.financovani.typ || MISSING)
-    : MISSING;
+  // Financování - Backend posílá enriched data v order.financovani (vnořený objekt)
+  // OPRAVA: Používej order.financovani místo flat struktury
+  const financovani = order?.financovani?.typ_nazev || order?.financovani?.typ || order?.zpusob_financovani || MISSING;
+  
+  // Použít data přímo z order.financovani (backend již obohatil)
+  const financovaniData = {
+    typ: order?.zpusob_financovani || '',
+    lp_kody: order?.lp_kod || [], // ✅ Přímo z order objektu
+    lp_kod: order?.lp_kod || [],  
+    lp_nazvy: order?.lp_nazvy || order?.financovani?.lp_nazvy || [], // ✅ Enriched data z order nebo financovani
+    lp_poznamka: order?.lp_poznamka || '',
+    cislo_smlouvy: order?.cislo_smlouvy || '',
+    smlouva_poznamka: order?.smlouva_poznamka || '',
+    individualni_schvaleni: order?.individualni_schvaleni || '',
+    individualni_poznamka: order?.individualni_poznamka || '',
+    pojistna_udalost_cislo: order?.pojistna_udalost_cislo || '',
+    pojistna_udalost_poznamka: order?.pojistna_udalost_poznamka || ''
+  };
+  
+
   
   // 💰 Maximální cena s DPH (z objednávky)
   const maxCenaSvDph = order?.max_cena_s_dph ? parseFloat(order.max_cena_s_dph) : null;
@@ -592,7 +608,8 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
     if (order?.faktury && Array.isArray(order.faktury) && order.faktury.length > 0) {
       const fa = order.faktury[0];
       if (fa.fa_strediska_kod && Array.isArray(fa.fa_strediska_kod) && fa.fa_strediska_kod.length > 0) {
-        return fa.fa_strediska_kod.join(', ');
+        // Použij mapu pro převod kódů na názvy
+        return fa.fa_strediska_kod.map(kod => strediskaMap[kod] || kod).join(', ');
       }
     }
     return MISSING;
@@ -647,15 +664,42 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
     return MISSING;
   })();
 
-  // 👤 Kontrolu věcné správnosti provedl - z potvrdil_vecnou_spravnost
-  const kontroluVecneSpravnostiProvedl = formatUserName(order?.potvrdil_vecnou_spravnost);
+  // 👤 Kontrolu věcné správnosti provedl - NOVĚ: z přidružených faktur
+  const kontroluVecneSpravnostiProvedl = (() => {
+    if (order?.faktury && Array.isArray(order.faktury) && order.faktury.length > 0) {
+      // Projít faktury a najít unikátní uživatele, kteří provedli věcnou kontrolu
+      const uzivateleVecneKontroly = new Map();
+      
+      order.faktury.forEach(faktura => {
+        if (faktura.potvrdil_vecnou_spravnost) {
+          const userId = faktura.potvrdil_vecnou_spravnost.id || faktura.potvrdil_vecnou_spravnost_id;
+          const userName = formatUserName(faktura.potvrdil_vecnou_spravnost);
+          if (userId && userName !== MISSING) {
+            uzivateleVecneKontroly.set(userId, userName);
+          }
+        }
+      });
+      
+      // Pokud je jen jeden uživatel, vrátit jméno
+      if (uzivateleVecneKontroly.size === 1) {
+        return Array.from(uzivateleVecneKontroly.values())[0];
+      }
+      // Pokud je víc uživatelů, vrátit seznam
+      if (uzivateleVecneKontroly.size > 1) {
+        return Array.from(uzivateleVecneKontroly.values()).join(', ');
+      }
+    }
+    
+    // Fallback na starý způsob z objednávky
+    return formatUserName(order?.potvrdil_vecnou_spravnost) || MISSING;
+  })();
 
   // 📅 Datum potvrzení věcné správnosti
   const datumPotvrzeniVecneSpravnosti = order?.dt_potvrzeni_vecne_spravnosti || MISSING;
 
   return (
     <Document>
-      <Page size="A4" style={styles.page} wrap={false}>
+      <Page size="A4" style={styles.page} wrap={true}>
         {/* Hlavička s logem */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
@@ -731,8 +775,8 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
           )}
 
           <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Příkazce operace:</Text>
-            <Text style={[styles.controlValue, getMissingStyle(prikazceOperace)]}>{prikazceOperace}</Text>
+            <Text style={styles.controlLabel}>Schvalovatel:</Text>
+            <Text style={[styles.controlValue, getMissingStyle(schvalovatel)]}>{schvalovatel}</Text>
           </View>
 
           <View style={styles.controlRow}>
@@ -742,8 +786,80 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
 
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Financování:</Text>
-            <Text style={[styles.controlValue, getMissingStyle(financovani)]}>{financovani}</Text>
+            <Text style={[styles.controlValue, getMissingStyle(financovani)]}>
+              {(() => {
+                // Zobraz typ financování
+                let result = financovani;
+                
+                // Pokud je LP a máme názvy, přidej je
+                if ((financovaniData?.typ === 'LP' || financovaniData?.typ === 'LIMITOVANY_PRISLIB') && 
+                    financovaniData.lp_nazvy && Array.isArray(financovaniData.lp_nazvy) && financovaniData.lp_nazvy.length > 0) {
+                  const lpNazvy = financovaniData.lp_nazvy.map(lp => {
+                    const kod = lp.cislo_lp || lp.kod || lp.id;
+                    const nazev = lp.nazev || '';
+                    return kod && nazev ? `${kod} - ${nazev}` : (kod || nazev);
+                  }).join(', ');
+                  result += ` (${lpNazvy})`;
+                }
+                
+                return result;
+              })()}
+            </Text>
           </View>
+
+          {/* Detaily financování podle typu */}
+          {financovaniData && (
+            <>
+              {(financovaniData.typ === 'LP' || financovaniData.typ === 'LIMITOVANY_PRISLIB') && financovaniData.lp_poznamka && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Poznámka k LP:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.lp_poznamka}</Text>
+                </View>
+              )}
+
+              {/* Číslo smlouvy - POUZE pokud je typ financování SMLOUVA */}
+              {(financovaniData.typ === 'SMLOUVA' || financovaniData.typ === 'SMLOUVA_O_DILO') && financovaniData.cislo_smlouvy && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Číslo smlouvy:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.cislo_smlouvy}</Text>
+                </View>
+              )}
+              {(financovaniData.typ === 'SMLOUVA' || financovaniData.typ === 'SMLOUVA_O_DILO') && financovaniData.smlouva_poznamka && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Poznámka ke smlouvě:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.smlouva_poznamka}</Text>
+                </View>
+              )}
+
+              {/* Individuální schválení - POUZE pokud je typ INDIVIDUALNI_SCHVALENI */}
+              {(financovaniData.typ === 'INDIVIDUALNI_SCHVALENI' || financovaniData.typ === 'INDIVIDUALNI') && financovaniData.individualni_schvaleni && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Individuální schválení:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.individualni_schvaleni}</Text>
+                </View>
+              )}
+              {(financovaniData.typ === 'INDIVIDUALNI_SCHVALENI' || financovaniData.typ === 'INDIVIDUALNI') && financovaniData.individualni_poznamka && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Poznámka k individ. schválení:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.individualni_poznamka}</Text>
+                </View>
+              )}
+
+              {/* Pojistná událost - POUZE pokud je typ POJISTNA_UDALOST */}
+              {(financovaniData.typ === 'POJISTNA_UDALOST' || financovaniData.typ === 'POJISTENI') && financovaniData.pojistna_udalost_cislo && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Číslo pojistné události:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.pojistna_udalost_cislo}</Text>
+                </View>
+              )}
+              {(financovaniData.typ === 'POJISTNA_UDALOST' || financovaniData.typ === 'POJISTENI') && financovaniData.pojistna_udalost_poznamka && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Poznámka k pojistné události:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.pojistna_udalost_poznamka}</Text>
+                </View>
+              )}
+            </>
+          )}
 
           {maxCenaSvDph && (
             <View style={styles.controlRow}>
@@ -772,6 +888,64 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
             <Text style={[styles.controlValue, getMissingStyle(dodavatelDIC)]}>{dodavatelDIC}</Text>
           </View>
 
+          {/* Položky objednávky */}
+          {order?.polozky && Array.isArray(order.polozky) && order.polozky.length > 0 && (
+            <View style={{ marginTop: 12, marginBottom: 12 }}>
+              <Text style={[styles.controlLabel, { fontSize: 11, fontWeight: 700, marginBottom: 8, color: '#059669' }]}>
+                Položky objednávky:
+              </Text>
+              
+              {order.polozky.map((polozka, index) => {
+                // LP zobrazit JEN když je financování typu LP (limitovaný příslib) 
+                const jeFinancovaniLP = order?.zpusob_financovani === 'LP' || order?.zpusob_financovani === 'LIMITOVANY_PRISLIB';
+                
+                return (
+                  <View key={polozka.id || index} style={{
+                    marginBottom: 6,
+                    paddingLeft: 10,
+                    borderLeftWidth: 2,
+                    borderLeftColor: '#d1fae5',
+                    borderLeftStyle: 'solid'
+                  }}>
+                    <View style={styles.controlRow}>
+                      <Text style={[styles.controlLabel, { width: '30%' }]}>Popis:</Text>
+                      <Text style={[styles.controlValue, { width: '70%' }]}>{polozka.popis || polozka.nazev || MISSING}</Text>
+                    </View>
+                    <View style={styles.controlRow}>
+                      <Text style={[styles.controlLabel, { width: '30%' }]}>Cena s DPH:</Text>
+                      <Text style={[styles.controlValue, { width: '70%' }]}>
+                        {polozka.cena_s_dph ? formatCurrency(parseFloat(polozka.cena_s_dph)) : MISSING}
+                      </Text>
+                    </View>
+                    {/* 🔥 LP KÓDY PRO POLOŽKY - VŽDY ZOBRAZIT POKUD EXISTUJÍ */}
+                    {(polozka.lp_id || polozka.polozka_lp_id) && (
+                      <View style={styles.controlRow}>
+                        <Text style={[styles.controlLabel, { width: '30%' }]}>LP:</Text>
+                        <Text style={[styles.controlValue, { width: '70%' }]}>
+                          {(() => {
+                            const lpId = polozka.lp_id || polozka.polozka_lp_id;
+                            
+                            // Najít LP název z enriched dat
+                            if (financovaniData?.lp_nazvy) {
+                              const lp = financovaniData.lp_nazvy.find(item => item.id === parseInt(lpId));
+                              if (lp) {
+                                const kod = lp.cislo_lp || lp.kod || lpId;
+                                const nazev = lp.nazev || '';
+                                return nazev ? `${kod} - ${nazev}` : kod;
+                              }
+                            }
+                            // Fallback: zobraz jen kód/ID
+                            return `LP ${lpId}`;
+                          })()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Odesláno dodavateli:</Text>
             <Text style={styles.controlValue}>{formatDate(odeslanoDodavateli)}</Text>
@@ -786,6 +960,11 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
           {order?.faktury && Array.isArray(order.faktury) && order.faktury.length > 0 ? (
             order.faktury.map((faktura, index) => (
               <View key={faktura.id || index} style={{ marginBottom: index < order.faktury.length - 1 ? 8 : 0 }}>
+                {/* Titulek faktury s variabilním symbolem a pořadovým číslem */}
+                <Text style={[styles.controlLabel, { fontSize: 11, fontWeight: 700, marginBottom: 8, color: '#059669' }]}>
+                  Faktura č. {index + 1} - VS: {faktura.fa_cislo_vema || 'N/A'}
+                </Text>
+
                 {/* Faktura variabilní symbol */}
                 {faktura.fa_cislo_vema && faktura.fa_cislo_vema !== '---' && (
                   <View style={styles.controlRow}>
@@ -820,23 +999,79 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                     <Text style={styles.controlValue}>{formatCurrency(parseFloat(faktura.fa_castka))}</Text>
                   </View>
                 )}
+
+                {/* Financování - jen typ bez detailů */}
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Financování:</Text>
+                  <Text style={[styles.controlValue, getMissingStyle(financovani)]}>{financovani}</Text>
+                </View>
+
+                {/* Věcná kontrola pro tuto fakturu */}
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Kontrolu věcné správnosti provedl:</Text>
+                  <Text style={[styles.controlValue, getMissingStyle(formatUserName(faktura.potvrdil_vecnou_spravnost) || MISSING)]}>
+                    {formatUserName(faktura.potvrdil_vecnou_spravnost) || MISSING}
+                  </Text>
+                </View>
+
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Kontrola dne:</Text>
+                  <Text style={styles.controlValue}>
+                    {faktura.dt_potvrzeni_vecne_spravnosti ? formatDate(faktura.dt_potvrzeni_vecne_spravnosti) : MISSING}
+                  </Text>
+                </View>
+
+                {/* LP rozpis s částkami - POD Kontrolou věcné správnosti */}
+                {(() => {
+                  // 🔥 OPRAVENO: Načíst LP čerpání z faktury (z tabulky 25a_faktury_lp_cerpani)
+                  // NE z položek objednávky! Faktura má vlastní rozdělení LP.
+                  const lpKodyProFakturu = [];
+                  
+                  if (faktura?.lp_cerpani && Array.isArray(faktura.lp_cerpani) && faktura.lp_cerpani.length > 0) {
+                    faktura.lp_cerpani.forEach(lpItem => {
+                      if (lpItem.lp_id && lpItem.castka) {
+                        const lpId = lpItem.lp_id;
+                        const castka = parseFloat(lpItem.castka) || 0;
+                        
+                        // Najít LP kód a název z financovaniData.lp_nazvy
+                        let lpKod = lpItem.lp_cislo || null;
+                        let lpNazev = null;
+                        
+                        if (financovaniData?.lp_nazvy) {
+                          const lpData = financovaniData.lp_nazvy.find(item => item.id === lpId);
+                          if (lpData) {
+                            lpKod = lpData.cislo_lp || lpData.kod || lpKod || `LP ID: ${lpId}`;
+                            lpNazev = lpData.nazev || '';
+                          }
+                        }
+                        
+                        const text = lpNazev 
+                          ? `${lpKod} - ${lpNazev}: ${formatCurrency(castka)}`
+                          : `${lpKod || `LP ID: ${lpId}`}: ${formatCurrency(castka)}`;
+                        lpKodyProFakturu.push(text);
+                      }
+                    });
+                  }
+                  
+                  return lpKodyProFakturu.length > 0 ? (
+                    <View style={styles.controlRow}>
+                      <Text style={styles.controlLabel}>LP rozpis:</Text>
+                      <Text style={styles.controlValue}>
+                        {lpKodyProFakturu.join('\n')}
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
               </View>
             ))
           ) : (
             <Text style={{ fontSize: 9, color: '#6b7280', fontStyle: 'italic' }}>Žádné faktury</Text>
           )}
 
-          {/* Kontrola věcné správnosti - zobrazí se pouze jednou po všech fakturách */}
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Kontrolu věcné správnosti provedl:</Text>
-            <Text style={[styles.controlValue, getMissingStyle(kontroluVecneSpravnostiProvedl)]}>{kontroluVecneSpravnostiProvedl}</Text>
-          </View>
+          {/* Oddělení před uzavřením */}
+          <View style={{ borderBottomWidth: 2, borderBottomColor: '#374151', marginVertical: 10 }} />
 
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Kontrola dne:</Text>
-            <Text style={styles.controlValue}>{formatDate(datumPotvrzeniVecneSpravnosti)}</Text>
-          </View>
-
+          {/* Uzavření objednávky - zobrazí se jednou na konci */}
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Uzavřel:</Text>
             <Text style={[styles.controlValue, getMissingStyle(dokoncil)]}>{dokoncil}</Text>

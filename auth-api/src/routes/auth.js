@@ -262,8 +262,8 @@ router.get('/me', async (req, res) => {
     if (session.auth_source === 'entra_id' && session.entra_access_token) {
       console.log('📊 Fetching Graph API data for user:', session.username);
       try {
-        // Základní profil
-        const graphResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
+        // Základní profil (včetně department, companyName, city)
+        const graphResponse = await fetch('https://graph.microsoft.com/v1.0/me?$select=id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,mobilePhone,businessPhones,companyName,city,accountEnabled', {
           headers: {
             'Authorization': `Bearer ${session.entra_access_token}`,
           },
@@ -281,6 +281,7 @@ router.get('/me', async (req, res) => {
           userData.prijmeni = graphData.surname || '';
           userData.displayName = graphData.displayName || '';
           userData.jobTitle = graphData.jobTitle || '';
+          userData.department = graphData.department || '';
           userData.telefon = graphData.mobilePhone || graphData.businessPhones?.[0] || '';
           userData.officeLocation = graphData.officeLocation || '';
 

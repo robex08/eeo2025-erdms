@@ -7,6 +7,7 @@ import { fetchOrderAttachmentsOld } from '../services/api2auth';
 import { importOldOrders25, importOldOrders25Streaming } from '../services/api25orders'; // Import service (classic + streaming)
 import ImportOldOrdersModal from '../components/ImportOldOrdersModal'; // Import modal component
 import ordersCacheService from '../services/ordersCacheService'; // 🚀 CACHE: Cache service pro staré objednávky
+import { CustomSelect } from '../components/CustomSelect'; // Custom select s multi-výběrem
 import {
   useReactTable,
   getCoreRowModel,
@@ -1101,8 +1102,8 @@ const Orders = () => {
 
   // Retrieve initial states from user-specific localStorage or set defaults
   const [globalFilter, setGlobalFilter] = useState(() => getUserStorage('orders_globalFilter', ''));
-  const [garantFilter, setGarantFilter] = useState(() => getUserStorage('orders_garantFilter', ''));
-  const [druhFilter, setDruhFilter] = useState(() => getUserStorage('orders_druhFilter', ''));
+  const [garantFilter, setGarantFilter] = useState(() => getUserStorage('orders_garantFilter', [])); // ZMĚNA: multiselect - pole
+  const [druhFilter, setDruhFilter] = useState(() => getUserStorage('orders_druhFilter', [])); // ZMĚNA: multiselect - pole
   const [isCollapsed, setIsCollapsed] = useState(() => getUserStorage('orders_isCollapsed', false));
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(() => getUserStorage('orders_isStatsCollapsed', true));
   const [isFilterCollapsed, setIsFilterCollapsed] = useState(() => getUserStorage('orders_isFilterCollapsed', false));
@@ -1127,20 +1128,43 @@ const Orders = () => {
   const togglePokladniDokFilter = () => setPokladniDokFilter((prev) => !prev);
   const toggleZverejnitFilter = () => setZverejnitFilter((prev) => !prev);
 
+  // State management pro CustomSelect (multiselect)
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
+
+  // Helper funkce pro CustomSelect
+  const toggleSelect = useCallback((field) => {
+    setSelectStates(prev => ({ ...prev, [field]: !prev[field] }));
+  }, []);
+
+  const filterOptions = useCallback((options, searchTerm, fieldName) => {
+    if (!searchTerm) return options;
+    const normalized = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return options.filter(option => {
+      const label = option.nazev || option.label || option.name || String(option.id || option);
+      const normalizedLabel = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return normalizedLabel.includes(normalized);
+    });
+  }, []);
+
+  const getOptionLabel = useCallback((option, fieldName) => {
+    return option.nazev || option.label || option.name || String(option.id || option);
+  }, []);
+
   // Get the current year
   const currentYear = new Date().getFullYear();
 
-  // Retrieve initial year filter or set to the current year
-  const [yearFilter, setYearFilter] = useState(() => getUserStorage('orders_yearFilter', currentYear.toString()));
+  // Retrieve initial year filter or set to 2025 (max year for old orders)
+  const [yearFilter, setYearFilter] = useState(() => getUserStorage('orders_yearFilter', '2025'));
 
-  // Month filter - load from localStorage with user isolation or use "last-quarter" (poslední kvartál) jako výchozí
+  // Month filter - load from localStorage with user isolation or use "10-12" (poslední kvartál 2025) jako výchozí
   const [selectedMonth, setSelectedMonth] = useState(() => {
-    return getUserStorage('orders_selectedMonth', 'last-quarter'); // all, last-month, last-quarter, last-half, nebo "1-3" (konkrétní měsíce)
+    return getUserStorage('orders_selectedMonth', '10-12'); // all, last-month, last-quarter, last-half, nebo "1-3" (konkrétní měsíce)
   });
 
   // Show expanded month options
   const [showExpandedMonths, setShowExpandedMonths] = useState(() => {
-    const saved = getUserStorage('orders_selectedMonth', 'last-quarter');
+    const saved = getUserStorage('orders_selectedMonth', '10-12');
     // Pokud je uložená hodnota mimo základní 4, zobraz rozšířené možnosti
     return saved && !['all', 'last-month', 'last-quarter', 'last-half'].includes(saved);
   });
@@ -1306,42 +1330,44 @@ const Orders = () => {
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const monthSelectRef = useRef(null);
 
-  // Generate year options from 2016 to current year (DESC - od nejnovějšího k nejstaršímu)
+  // Generate year options from 2016 to 2025 (DESC - od nejnovějšího k nejstaršímu)
+  // Omezeno max na 2025, protože od 2026 jsou objednávky v novém systému
   const yearOptions = useMemo(() => {
     const years = []; // Začni bez "Všechny roky"
-    for (let year = currentYear; year >= 2016; year--) {
+    const maxYear = 2025; // Maximum pro staré objednávky
+    for (let year = maxYear; year >= 2016; year--) {
       years.push(year.toString());
     }
     years.push('Všechny roky'); // Přidej "Všechny roky" až na konec
     return years;
-  }, [currentYear]);
+  }, []);
 
   // Function to detect if any filters are active
   const hasActiveFilters = useMemo(() => {
     return globalFilter !== '' ||
-           garantFilter !== '' ||
-           druhFilter !== '' ||
-           yearFilter !== currentYear.toString() ||
+           (Array.isArray(garantFilter) && garantFilter.length > 0) ||
+           (Array.isArray(druhFilter) && druhFilter.length > 0) ||
+           yearFilter !== '2025' ||
            fakturaFilter ||
            pokladniDokFilter ||
            zverejnitFilter;
-  }, [globalFilter, garantFilter, druhFilter, yearFilter, currentYear, fakturaFilter, pokladniDokFilter, zverejnitFilter]);
+  }, [globalFilter, garantFilter, druhFilter, yearFilter, fakturaFilter, pokladniDokFilter, zverejnitFilter]);
 
   // Enhanced clear all filters function
   const clearAllFilters = () => {
     setGlobalFilter('');
-    setGarantFilter('');
-    setDruhFilter('');
-    setYearFilter(currentYear.toString()); // Reset to current year
+    setGarantFilter([]);
+    setDruhFilter([]);
+    setYearFilter('2025'); // Reset to 2025 (default for old orders)
     setFakturaFilter(false);
     setPokladniDokFilter(false);
     setZverejnitFilter(false);
 
     // Clear from user-specific localStorage
     setUserStorage('orders_globalFilter', '');
-    setUserStorage('orders_garantFilter', '');
-    setUserStorage('orders_druhFilter', '');
-    setUserStorage('orders_yearFilter', currentYear.toString());
+    setUserStorage('orders_garantFilter', []);
+    setUserStorage('orders_druhFilter', []);
+    setUserStorage('orders_yearFilter', '2025');
 
     // Also clear calendar-related localStorage keys that might affect OrdersListNew
     try {
@@ -1427,7 +1453,7 @@ const Orders = () => {
 
       setGlobalProgress(60);
 
-        setGlobalProgress(70);
+      setGlobalProgress(70);
 
         if (data && Array.isArray(data)) {
 
@@ -1471,13 +1497,18 @@ const Orders = () => {
           }));
 
           setGlobalProgress(80);
+          
+          // Pro velké datasety použij requestAnimationFrame pro hladší rendering
+          if (processedData.length > 100) {
+            await new Promise(resolve => requestAnimationFrame(resolve));
+          }
 
           setOrders(processedData);
 
-          setGlobalProgress(90);
+          setGlobalProgress(95);
 
           // Wait for UI to update
-          await new Promise(resolve => setTimeout(resolve, 600));
+          await new Promise(resolve => setTimeout(resolve, 800));
 
           setLoading(false);
           doneGlobalProgress();
@@ -1685,7 +1716,13 @@ const Orders = () => {
       }
 
       setGlobalProgress(60);
-  // (debug logs removed)
+      
+      // Zobraz počet načtených záznamů
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`📊 Načteno ${data.length} objednávek z období ${yearFrom} - ${yearTo}`);
+      }
+
+      setGlobalProgress(70);
 
       const processedData = Array.isArray(data)
         ? processOrders(data).map((order) => ({
@@ -1729,15 +1766,29 @@ const Orders = () => {
         : [];
 
       setGlobalProgress(80);
+      
+      // Pro velké datasety použij requestAnimationFrame pro hladší rendering
+      if (processedData.length > 100) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      
       setOrders(processedData);
-      setGlobalProgress(90);
+      setGlobalProgress(95);
 
-      // ✅ Počkej chvíli aby se splash stihl zobrazit
-      await new Promise(resolve => setTimeout(resolve, 600));
+      // ✅ Počkej aby se UI stihl vykreslit a uživatel viděl počet načtených záznamů
+      await new Promise(resolve => setTimeout(resolve, 800));
 
       // ✅ TEPRVE TEĎ VYPNU LOADING - data jsou v tabulce!
       setLoading(false);
       doneGlobalProgress();
+      
+      // Zobraz info toast o počtu načtených objednávek
+      if (processedData.length > 0) {
+        showToast(`✅ Načteno ${processedData.length} objednávek (${yearFilter !== 'Všechny roky' ? yearFilter : 'všechny roky'})`, {
+          type: 'success',
+          duration: 3000
+        });
+      }
 
     } catch (err) {
   setError('Nepodařilo se načíst data.');
@@ -1772,13 +1823,15 @@ const Orders = () => {
   };
 
   const handleGarantFilterChange = (value) => {
-    setGarantFilter(value);
-    setUserStorage('orders_garantFilter', value);
+    const newValue = Array.isArray(value) ? value : [];
+    setGarantFilter(newValue);
+    setUserStorage('orders_garantFilter', newValue);
   };
 
   const handleDruhFilterChange = (value) => {
-    setDruhFilter(value);
-    setUserStorage('orders_druhFilter', value);
+    const newValue = Array.isArray(value) ? value : [];
+    setDruhFilter(newValue);
+    setUserStorage('orders_druhFilter', newValue);
   };
 
   const normalizeString = useCallback((str) => {
@@ -1817,12 +1870,13 @@ const Orders = () => {
         )
       );
 
-      const matchesGarantFilter = garantFilter
-        ? normalizeString(row.garant) === normalizeString(garantFilter)
+      // Multiselect filtrování - pokud je pole prázdné, zobrazit vše
+      const matchesGarantFilter = (Array.isArray(garantFilter) && garantFilter.length > 0)
+        ? garantFilter.some(g => normalizeString(row.garant) === normalizeString(g))
         : true;
 
-      const matchesDruhFilter = druhFilter
-        ? normalizeString(row.druh_sml) === normalizeString(druhFilter)
+      const matchesDruhFilter = (Array.isArray(druhFilter) && druhFilter.length > 0)
+        ? druhFilter.some(d => normalizeString(row.druh_sml) === normalizeString(d))
         : true;
 
       const matchesFakturaFilter = fakturaFilter ? row.faktura === 'Ano' : true;
@@ -2063,13 +2117,17 @@ const Orders = () => {
           setLastLoadDuration(loadDuration);
         }
 
-  // (debug logs removed)
+      setGlobalProgress(60);
+      
+      // Zobraz počet načtených záznamů
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`📊 Načteno ${data.length} objednávek z období ${yearFrom} - ${yearTo}`);
+      }
 
-       // console.log('Orders data received:', data); // Log the received data
+      setGlobalProgress(70);
 
-  setGlobalProgress(60);
-        const processedData = Array.isArray(data)
-          ? processOrders(data).map((order) => ({
+      const processedData = Array.isArray(data)
+        ? processOrders(data).map((order) => ({
               ...order,
               prilohy: parseInt(order.prilohy, 10) || 0,
               cislo_lp: order.cislo_lp,
@@ -2110,15 +2168,29 @@ const Orders = () => {
           : [];
 
         setGlobalProgress(80);
+        
+        // Pro velké datasety použij requestAnimationFrame pro hladší rendering
+        if (processedData.length > 100) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+        
         setOrders(processedData);
-        setGlobalProgress(90);
+        setGlobalProgress(95);
 
-        // ✅ Počkej chvíli aby se splash stihl zobrazit
-        await new Promise(resolve => setTimeout(resolve, 600));
+        // ✅ Počkej aby se UI stihl vykreslit a uživatel viděl počet načtených záznamů
+        await new Promise(resolve => setTimeout(resolve, 800));
 
         // ✅ TEPRVE TEĎ VYPNU LOADING - data jsou v tabulce!
         setLoading(false);
         doneGlobalProgress();
+        
+        // Zobraz info toast o počtu načtených objednávek
+        if (processedData.length > 0) {
+          showToast(`✅ Načteno ${processedData.length} objednávek (${yearFilter !== 'Všechny roky' ? `${yearFilter}, ${getMonthLabel(selectedMonth)}` : 'všechny roky'})`, {
+            type: 'success',
+            duration: 3000
+          });
+        }
 
       } catch (err) {
   try { const code = getErrorCodeCZ(err) || ''; if (code === 'chyba_serveru' || code === 'server_error') { setError('Chyba na serveru. Zkuste to prosím později.'); } else { setError(getUserErrorMessage(err) || 'Nepodařilo se načíst data.'); } } catch(e) { setError(getUserErrorMessage(err) || 'Nepodařilo se načíst data.'); }
@@ -2647,8 +2719,12 @@ return (
     {/* Loading overlay with blur and fade effects */}
     <LoadingOverlay $visible={loading}>
       <LoadingSpinner $visible={loading} />
-      <LoadingMessage $visible={loading}>Načítání objednávek</LoadingMessage>
-      <LoadingSubtext $visible={loading}>Zpracovávám data z databáze...</LoadingSubtext>
+      <LoadingMessage $visible={loading}>
+        Načítání objednávek {yearFilter !== 'Všechny roky' ? `(${yearFilter})` : '(všechny roky)'}
+      </LoadingMessage>
+      <LoadingSubtext $visible={loading}>
+        {orders.length > 0 ? `Zpracováno ${orders.length} objednávek...` : 'Zpracovávám data z databáze...'}
+      </LoadingSubtext>
     </LoadingOverlay>
 
     <PageContent $blurred={loading}>
@@ -2799,8 +2875,8 @@ return (
             />
           </HeaderActionButton>
 
-          {/* Import tlačítko - pouze pro uživatele s oprávněním ORDER_MANAGE nebo ORDER_IMPORT */}
-          {hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_IMPORT')) && (
+          {/* Import tlačítko - pouze pro uživatele se VŠEMI třemi oprávněními: ORDER_MANAGE AND ORDER_IMPORT AND ORDER_SHOW_ARCHIV */}
+          {hasPermission && hasPermission('ORDER_MANAGE') && hasPermission('ORDER_IMPORT') && hasPermission('ORDER_SHOW_ARCHIV') && (
             <HeaderActionButton
               onClick={handleMigrateOrders}
               disabled={selectedOrders.size === 0}
@@ -3104,30 +3180,49 @@ return (
         {globalFilter && <button className="clear-filter-button" onClick={() => handleGlobalFilterChange('')} aria-label="Vyčistit">×</button>}
       </div>
       <div className="filter-group">
-        <select
-          value={garantFilter}
-          onChange={(e) => handleGarantFilterChange(e.target.value)}
-          className="filter-select select-with-arrow"
-        >
-          <option value="">Všechny úseky</option>
-          {[...new Set(orders.map((order) => order.garant))].map((garant) => (
-            <option key={garant} value={garant}>
-              {garant}
-            </option>
-          ))}
-        </select>
-        <select
-          value={druhFilter}
-          onChange={(e) => handleDruhFilterChange(e.target.value)}
-          className="filter-select select-with-arrow"
-        >
-          <option value="">Všechny druhy</option>
-          {[...new Set(orders.map((order) => order.druh_sml))].map((druh) => (
-            <option key={druh} value={druh}>
-              {druh}
-            </option>
-          ))}
-        </select>
+        {/* Garant Filter - Custom Multi-Select */}
+        <div style={{ flex: 1 }}>
+          <CustomSelect
+            value={garantFilter}
+            onChange={handleGarantFilterChange}
+            options={[...new Set(orders.map((order) => order.garant))].filter(Boolean).map(garant => ({
+              id: garant,
+              nazev: garant
+            }))}
+            field="garantFilter"
+            placeholder="Všechny úseky"
+            multiple={true}
+            setSelectStates={setSelectStates}
+            setSearchStates={setSearchStates}
+            selectStates={selectStates}
+            searchStates={searchStates}
+            toggleSelect={toggleSelect}
+            filterOptions={filterOptions}
+            getOptionLabel={getOptionLabel}
+          />
+        </div>
+        
+        {/* Druh Filter - Custom Multi-Select */}
+        <div style={{ flex: 1 }}>
+          <CustomSelect
+            value={druhFilter}
+            onChange={handleDruhFilterChange}
+            options={[...new Set(orders.map((order) => order.druh_sml))].filter(Boolean).map(druh => ({
+              id: druh,
+              nazev: druh
+            }))}
+            field="druhFilter"
+            placeholder="Všechny druhy"
+            multiple={true}
+            setSelectStates={setSelectStates}
+            setSearchStates={setSearchStates}
+            selectStates={selectStates}
+            searchStates={searchStates}
+            toggleSelect={toggleSelect}
+            filterOptions={filterOptions}
+            getOptionLabel={getOptionLabel}
+          />
+        </div>
       </div>
     </div>
     <div className="collapse-line" style={{ marginTop: '0.5rem', marginBottom: '2.5rem' }}>

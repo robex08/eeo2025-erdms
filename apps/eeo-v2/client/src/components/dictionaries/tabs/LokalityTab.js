@@ -27,6 +27,7 @@ import {
   updateLokalita,
   deleteLokalita,
 } from '../../../services/apiv2Dictionaries';
+import { createDictionaryPermissionHelper } from '../../../utils/dictionaryPermissions';
 import UniversalDictionaryDialog from '../UniversalDictionaryDialog';
 import DictionaryConfirmDialog from '../DictionaryConfirmDialog';
 
@@ -516,9 +517,12 @@ const EmptyState = styled.div`
 `;
 
 const LokalityTab = () => {
-  const { token, user, userDetail } = useContext(AuthContext);
+  const { token, user, userDetail, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { cache, loadDictionary, invalidateCache } = useContext(DictionaryCacheContext);
+
+  // Oprávnění pro lokality
+  const permissions = createDictionaryPermissionHelper('LOCATIONS', hasPermission, hasAdminRole);
 
   // Helper functions for user-specific localStorage
   const user_id = userDetail?.user_id;
@@ -764,14 +768,18 @@ const LokalityTab = () => {
           <IconButton
             className="edit"
             onClick={() => setEditDialog({ open: true, item: row.original })}
-            title="Upravit"
+            title={permissions.canEdit() ? "Upravit" : "Nemáte oprávnění editovat"}
+            disabled={!permissions.canEdit()}
+            style={{ opacity: permissions.canEdit() ? 1 : 0.4, cursor: permissions.canEdit() ? 'pointer' : 'not-allowed' }}
           >
             <FontAwesomeIcon icon={faEdit} />
           </IconButton>
           <IconButton
             className="delete"
             onClick={() => setDeleteDialog({ open: true, item: row.original })}
-            title="Smazat"
+            title={permissions.canDelete() ? "Smazat" : "Nemáte oprávnění mazat"}
+            disabled={!permissions.canDelete()}
+            style={{ opacity: permissions.canDelete() ? 1 : 0.4, cursor: permissions.canDelete() ? 'pointer' : 'not-allowed' }}
           >
             <FontAwesomeIcon icon={faTrash} />
           </IconButton>
@@ -940,6 +948,8 @@ const LokalityTab = () => {
         <ActionButton
           $primary
           onClick={() => setEditDialog({ open: true, item: null })}
+          disabled={!permissions.canCreate()}
+          title={!permissions.canCreate() ? 'Nemáte oprávnění vytvářet lokality' : 'Přidat novou lokalitu'}
         >
           <FontAwesomeIcon icon={faPlus} />
           Nová lokalita

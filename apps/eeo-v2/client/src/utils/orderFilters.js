@@ -7,47 +7,115 @@ import { removeDiacritics } from './textHelpers';
 import { formatDateOnly } from './format';
 
 /**
- * Filtr "Jen moje objednávky" - pouze pro SUPERADMIN a ADMINISTRATOR
+ * Filtr "Jen moje objednávky" - pro všechny uživatele
  */
 export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserId) => {
-  if (!showOnlyMyOrders || !userDetail?.roles) return true;
 
-  const isSuperAdminOrAdmin = userDetail.roles.some(
-    role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
+  // Pokud filtr není aktivní, zobraz všechny objednávky
+  if (!showOnlyMyOrders) return true;
 
-  if (!isSuperAdminOrAdmin) return true;
+  // Filtruj objednávky kde je uživatel v JAKÉKOLIV roli
+  // 🔥 KRITICKÉ: Konverze všech ID na number pro spolehlivé porovnání
+  const objednatelId = parseInt(order.objednatel_id, 10);
+  const uzivatelId = parseInt(order.uzivatel_id, 10);
+  const garantId = parseInt(order.garant_uzivatel_id, 10);
+  const schvalovatelId = parseInt(order.schvalovatel_id, 10);
+  const prikazceId = parseInt(order.prikazce_id, 10);
+  const fakturantId = parseInt(order.fakturant_id, 10);
+  const potvrdilId = parseInt(order.potvrdil_vecnou_spravnost_id, 10);
+  const dokoncilId = parseInt(order.dokoncil_id, 10);
+  const zverejnilId = parseInt(order.zverejnil_id, 10);
+  
+  const isObjednatel = objednatelId === currentUserId || uzivatelId === currentUserId;
+  const isGarant = garantId === currentUserId;
+  const isSchvalovatel = schvalovatelId === currentUserId;
+  const isPrikazce = prikazceId === currentUserId;
+  const isFakturant = fakturantId === currentUserId;
+  const isPotvrdil = potvrdilId === currentUserId;
+  const isDokoncil = dokoncilId === currentUserId;
+  const isZverejnil = zverejnilId === currentUserId;
 
-  // Filtruj objednávky kde je uživatel jako Objednatel, Garant, Schvalovatel nebo Příkazce
-  const isObjednatel = order.objednatel_id === currentUserId || order.uzivatel_id === currentUserId;
-  const isGarant = order.garant_uzivatel_id === currentUserId;
-  const isSchvalovatel = order.schvalovatel_id === currentUserId;
-  const isPrikazce = order.prikazce_id === currentUserId;
+  const result = isObjednatel || isGarant || isSchvalovatel || isPrikazce || 
+                 isFakturant || isPotvrdil || isDokoncil || isZverejnil;
+  
+  // 🐛 DEBUG: Log výsledek pro první objednávky
+  // if (order.id <= 20) {
+  //   console.log(`🔍 filterMyOrders - Order #${order.id} RESULT:`, {
+  //     result,
+  //     matches: { 
+  //       isObjednatel, isGarant, isSchvalovatel, isPrikazce,
+  //       isFakturant, isPotvrdil, isDokoncil, isZverejnil
+  //     },
+  //     converted_ids: { 
+  //       objednatelId, uzivatelId, garantId, schvalovatelId, prikazceId,
+  //       fakturantId, potvrdilId, dokoncilId, zverejnilId
+  //     }
+  //   });
+  // }
 
-  return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
+  return result;
 };
 
 /**
  * Filtr podle data objednávky
+ * Prohledává:
+ * - Datum poslední změny (dt_aktualizace nebo dt_objednavky)
+ * - Datum vytvoření (dt_vytvoreni)
+ * - Čas vytvoření
  */
 export const filterByOrderDate = (order, filterValue, getOrderDate) => {
   if (!filterValue) return true;
 
-  const orderDateValue = getOrderDate(order);
-  if (!orderDateValue) return false;
+  // Získat datum objednávky (použije se jako fallback)
+  const orderDate = getOrderDate(order);
+  
+  // Datum poslední změny (bez času)
+  const lastModified = order.dt_aktualizace || order.dt_objednavky || (orderDate ? new Date(orderDate).toISOString() : null);
+  const lastModifiedStr = lastModified ? formatDateOnly(new Date(lastModified)) : '';
 
-  const dateStr = formatDateOnly(new Date(orderDateValue));
-  return dateStr.toLowerCase().includes(filterValue.toLowerCase());
+  // Datum a čas vytvoření
+  const created = order.dt_vytvoreni || (orderDate ? new Date(orderDate).toISOString() : null);
+  let createdDateStr = '';
+  let createdTimeStr = '';
+  if (created) {
+    const createdDate = new Date(created);
+    createdDateStr = formatDateOnly(createdDate);
+    createdTimeStr = createdDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Převést filterValue (yyyy-mm-dd) na dd.mm.yyyy pro porovnání, pokud je to datum z DatePickeru
+  let searchText = filterValue;
+  if (filterValue.includes('-') && filterValue.length === 10) {
+    // Formát yyyy-mm-dd z DatePickeru
+    const date = new Date(filterValue);
+    if (!isNaN(date.getTime())) {
+      searchText = formatDateOnly(date);
+    }
+  }
+
+  // Spojit všechny tři hodnoty pro prohledávání
+  const fullText = `${lastModifiedStr} ${createdDateStr} ${createdTimeStr}`;
+
+  // Case-insensitive a bez diakritiky
+  const normalizedText = removeDiacritics(fullText.toLowerCase());
+  const normalizedFilter = removeDiacritics(searchText.toLowerCase());
+
+  return normalizedText.includes(normalizedFilter);
 };
 
 /**
  * Filtr podle čísla objednávky
+ * Hledá ZÁROVEŇ v čísle objednávky i v předmětu (dva řádky ve sloupci "Evidenční číslo")
  */
 export const filterByOrderNumber = (order, filterValue) => {
   if (!filterValue) return true;
 
   const cislo = removeDiacritics(order.cislo_objednavky || '');
-  return cislo.includes(removeDiacritics(filterValue));
+  const predmet = removeDiacritics(order.predmet || '');
+  const normalizedFilter = removeDiacritics(filterValue);
+
+  // Filtruj podle čísla NEBO předmětu (OR podmínka)
+  return cislo.includes(normalizedFilter) || predmet.includes(normalizedFilter);
 };
 
 /**
@@ -171,6 +239,66 @@ export const filterByDodavatel = (order, filterValue) => {
 };
 
 /**
+ * Filtr podle způsobu financování
+ * Používá stejnou logiku jako sloupec a podřádek - order.financovani.typ_nazev nebo order.financovani.typ
+ * Hledá v obou řádcích: typ financování i detail (LP kódy, číslo smlouvy, atd.)
+ */
+export const filterByFinancovani = (order, filterValue) => {
+  if (!filterValue) return true;
+
+  let financovaniText = '';
+  let detailText = '';
+
+  // STEJNÁ LOGIKA JAKO V PODŘÁDKU: order.financovani.typ_nazev nebo order.financovani.typ
+  if (order.financovani && typeof order.financovani === 'object') {
+    financovaniText = order.financovani.typ_nazev || order.financovani.typ || '';
+    
+    // Získat detail podle typu financování
+    const typ = order.financovani.typ || '';
+    
+    // LP - zobrazit jen LP kódy (bez popisů)
+    if (typ === 'LP') {
+      // Priorita 1: lp_nazvy array (enriched data) - ale použij jen kódy
+      if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+        const lpKody = order.financovani.lp_nazvy
+          .map(lp => lp.cislo_lp || lp.kod || '')
+          .filter(Boolean);
+        
+        if (lpKody.length > 0) {
+          detailText = lpKody.join(', ');
+        }
+      }
+      // Fallback: lp_kody array
+      else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
+        detailText = order.financovani.lp_kody.join(', ');
+      }
+    }
+    // Smlouva - zobrazit číslo smlouvy
+    else if (typ === 'SMLOUVA') {
+      detailText = order.financovani.cislo_smlouvy || '';
+    }
+    // Individuální schválení - zobrazit číslo individuálního schválení
+    else if (typ === 'INDIVIDUALNI_SCHVALENI') {
+      detailText = order.financovani.individualni_schvaleni || '';
+    }
+  }
+
+  // Pokud je prázdný, hledej "---"
+  if (!financovaniText) {
+    const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+    return normalizedFilter === '---' || normalizedFilter === '';
+  }
+
+  // Case-insensitive a bez diakritiky - hledej v typu financování i v detailu
+  const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+  const normalizedFinancovani = removeDiacritics(financovaniText.toLowerCase());
+  const normalizedDetail = detailText ? removeDiacritics(detailText.toLowerCase()) : '';
+
+  // Hledej v hlavním textu NEBO v detailu (LP kódy, smlouva, atd.)
+  return normalizedFinancovani.includes(normalizedFilter) || normalizedDetail.includes(normalizedFilter);
+};
+
+/**
  * Pomocná funkce pro porovnání numerické hodnoty s filtrem
  * Podporuje operátory: >10000, <5000, =1234 nebo textové vyhledávání
  * @param {number} value - Hodnota k porovnání
@@ -181,16 +309,25 @@ const compareNumericValue = (value, filterValue) => {
   if (!filterValue) return true;
 
   const trimmed = filterValue.trim();
+  
+  // Pokud je prázdný string, vrať všechno
+  if (!trimmed) return true;
 
-  // Pokus se detekovat operátor na začátku
-  const operatorMatch = trimmed.match(/^(>|<|=)\s*(.+)$/);
+  // Pokus se detekovat operátor na začátku (změna .+ na .* pro zachycení i prázdného stringu)
+  const operatorMatch = trimmed.match(/^(>|<|=)(.*)$/);
 
   if (operatorMatch) {
     const operator = operatorMatch[1];
-    const numStr = operatorMatch[2].replace(/\s/g, '').replace(/,/g, '.');
+    const numStr = (operatorMatch[2] || '').replace(/\s/g, '').replace(/,/g, '.');
+    
+    // ✅ KRITICKÁ OPRAVA: Pokud není číslo po operátoru (prázdný string), vrať všechno
+    // Toto nastává když uživatel změní operátor ale input je prázdný (např. ">" bez čísla)
+    if (!numStr || numStr.trim() === '') return true;
+    
     const filterNum = parseFloat(numStr);
 
-    if (isNaN(filterNum)) return false;
+    // Pokud není validní číslo po operátoru, vrať všechno
+    if (isNaN(filterNum) || filterNum <= 0) return true;
 
     switch (operator) {
       case '>':
@@ -217,6 +354,38 @@ export const filterByMaxPrice = (order, filterValue) => {
   if (!filterValue) return true;
 
   const amount = parseFloat(order.max_cena_s_dph || 0);
+  return compareNumericValue(amount, filterValue);
+};
+
+/**
+ * Filtr podle ceny s DPH (z položek)
+ */
+export const filterByItemsPrice = (order, filterValue) => {
+  if (!filterValue) return true;
+
+  let amount = 0;
+  
+  // Priorita: položky_celkova_cena_s_dph nebo součet položek
+  if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
+    const value = parseFloat(order.polozky_celkova_cena_s_dph);
+    if (!isNaN(value) && value > 0) amount = value;
+  } else if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
+    amount = order.polozky.reduce((sum, item) => {
+      const cena = parseFloat(item.cena_s_dph || 0);
+      return sum + (isNaN(cena) ? 0 : cena);
+    }, 0);
+  }
+  
+  return compareNumericValue(amount, filterValue);
+};
+
+/**
+ * Filtr podle celkové částky faktur
+ */
+export const filterByInvoicesPrice = (order, filterValue) => {
+  if (!filterValue) return true;
+
+  const amount = parseFloat(order.faktury_celkova_castka_s_dph || 0);
   return compareNumericValue(amount, filterValue);
 };
 
@@ -344,11 +513,37 @@ export const applyColumnFilters = (order, columnFilters, getOrderDate, getOrderD
 
   // Filtr podle ceny
   if (!filterByMaxPrice(order, columnFilters.max_cena_s_dph)) return false;
+  
+  // Filtr podle ceny s DPH (položky)
+  if (!filterByItemsPrice(order, columnFilters.cena_s_dph)) return false;
+  
+  // Filtr podle celkové částky faktur
+  if (!filterByInvoicesPrice(order, columnFilters.faktury_celkova_castka_s_dph)) return false;
 
   // Filtr podle dodavatele
   if (!filterByDodavatel(order, columnFilters.dodavatel_nazev)) return false;
 
-  // Filtry podle rolí
+  // Filtr podle způsobu financování
+  if (!filterByFinancovani(order, columnFilters.zpusob_financovani)) return false;
+
+  // 🔧 FIX: Sloučené sloupce - hledačky používají objednatel_garant a prikazce_schvalovatel
+  // Pro objednatel_garant hledej v objednateli i garantovi
+  if (columnFilters.objednatel_garant) {
+    const filterValue = columnFilters.objednatel_garant;
+    const objednatelMatch = filterByObjednatel(order, filterValue, getUserDisplayName);
+    const garantMatch = filterByUserRole(order, filterValue, 'garant', getUserDisplayName);
+    if (!objednatelMatch && !garantMatch) return false;
+  }
+
+  // Pro prikazce_schvalovatel hledej v příkazci i schvalovateli
+  if (columnFilters.prikazce_schvalovatel) {
+    const filterValue = columnFilters.prikazce_schvalovatel;
+    const prikazceMatch = filterByUserRole(order, filterValue, 'prikazce', getUserDisplayName);
+    const schvalovatelMatch = filterByUserRole(order, filterValue, 'schvalovatel', getUserDisplayName);
+    if (!prikazceMatch && !schvalovatelMatch) return false;
+  }
+
+  // Filtry podle rolí (separátní klíče pro rozšířený filtr)
   if (!filterByUserRole(order, columnFilters.garant, 'garant', getUserDisplayName)) return false;
   if (!filterByUserRole(order, columnFilters.prikazce, 'prikazce', getUserDisplayName)) return false;
   if (!filterByUserRole(order, columnFilters.schvalovatel, 'schvalovatel', getUserDisplayName)) return false;

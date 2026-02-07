@@ -3,7 +3,12 @@
  * Zajišťuje, že všechny záložky sdílejí stejný stav a reagují na změny
  */
 
-const CHANNEL_NAME = 'app_sync_channel';
+// 🔧 Detekce DEV prostředí
+const IS_DEV_ENV = window.location.pathname.startsWith('/dev/');
+const ENV_PREFIX = IS_DEV_ENV ? 'dev_' : '';
+
+const CHANNEL_NAME = `${ENV_PREFIX}app_sync_channel`;
+const TAB_SYNC_KEY = `${ENV_PREFIX}tab_sync_message`;
 
 // Singleton instance broadcast channel
 let broadcastChannel = null;
@@ -60,9 +65,9 @@ export const broadcastMessage = (type, payload = {}) => {
     // Fallback: použij localStorage event (starší prohlížeče)
     try {
       const message = { type, payload, timestamp: Date.now() };
-      localStorage.setItem('tab_sync_message', JSON.stringify(message));
+      localStorage.setItem(TAB_SYNC_KEY, JSON.stringify(message));
       // Okamžitě smaž, aby se spustil event
-      localStorage.removeItem('tab_sync_message');
+      localStorage.removeItem(TAB_SYNC_KEY);
     } catch (error) {
     }
     return;

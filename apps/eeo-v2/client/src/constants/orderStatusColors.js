@@ -56,6 +56,10 @@ export const STATUS_COLORS = {
     dark: '#10b981', // zelená - věcná správnost/kontrola
     light: '#d1fae5' // světle zelená - koresponduje
   },
+  FAKTURACE: {
+    dark: '#06b6d4', // tyrkysová - fakturace workflow
+    light: '#cffafe' // světle tyrkysová - koresponduje
+  },
   DOKONCENA: {
     dark: '#16a34a', // ZELENÁ - dokončená (jak požadováno)
     light: '#bbf7d0' // světle zelená - koresponduje

@@ -84,14 +84,14 @@ export const getStatusIcon = (status) => {
  * Pro notifikace související s objednávkami se použije ikona podle stavu.
  * Pro ostatní notifikace jsou definovány specifické ikony.
  *
- * @param {string} notificationType - Typ notifikace (např. 'order_status_nova', 'todo_alarm')
+ * @param {string} notificationType - Typ notifikace (např. 'ORDER_CREATED', 'todo_alarm')
  * @param {string} priority - Priorita notifikace ('low', 'normal', 'high', 'urgent')
  * @returns {object} FontAwesome ikona
  */
 export const getNotificationIcon = (notificationType, priority = 'normal') => {
   // Pokud je to notifikace o změně stavu objednávky, použij ikonu podle stavu
-  if (notificationType?.startsWith('order_status_')) {
-    const status = notificationType.replace('order_status_', '');
+  if (notificationType?.startsWith('ORDER_')) {
+    const status = notificationType.replace('ORDER_', '');
     return getStatusIcon(status);
   }
 
@@ -108,14 +108,6 @@ export const getNotificationIcon = (notificationType, priority = 'normal') => {
     // Force unlock
     case 'order_unlock_forced':
       return faBolt;
-
-    // Obecné notifikace (deprecated, ale ponecháno pro zpětnou kompatibilitu)
-    case 'order_approved':
-      return faCheckCircle;
-    case 'order_rejected':
-      return faBan;
-    case 'order_created':
-      return faPlay;
 
     // Výchozí podle priority
     default:
@@ -145,30 +137,39 @@ export const getPriorityIcon = (priority) => {
 /**
  * Helper funkce: Extrahuje stav objednávky z typu notifikace
  *
- * @param {string} notificationType - Typ notifikace (např. 'order_status_schvalena')
+ * @param {string} notificationType - Typ notifikace (např. 'ORDER_APPROVED')
  * @returns {string|null} Stav objednávky nebo null
  */
 export const extractOrderStatusFromNotificationType = (notificationType) => {
-  if (!notificationType?.startsWith('order_status_')) {
+  if (!notificationType?.startsWith('ORDER_')) {
     return null;
   }
-  return notificationType.replace('order_status_', '');
+  return notificationType.replace('ORDER_', '');
 };
 
 /**
  * 🎨 Mapování typů notifikací na EMOJI ikony
+ * 
+ * ⚠️ DEPRECATED od 17.12.2025 - Místo emoji se nyní používají FontAwesome ikony podle priority
+ * @see NotificationsPage.js -> getPriorityIconComponent()
+ * 
+ * Nové ikony:
+ * - INFO: faInfoCircle (modrý kruh)
+ * - APPROVAL/HIGH: faExclamation (oranžový vykřičník)
+ * - EXCEPTIONAL/URGENT: faBolt (červený blesk)
  *
  * Pro notifikace související s objednávkami se použije emoji podle stavu.
  * Pro ostatní notifikace jsou definovány specifické emoji.
  *
- * @param {string} notificationType - Typ notifikace (např. 'order_status_nova', 'todo_alarm')
+ * @deprecated Používá se pouze pro zpětnou kompatibilitu
+ * @param {string} notificationType - Typ notifikace (např. 'ORDER_CREATED', 'todo_alarm')
  * @param {string} priority - Priorita notifikace ('low', 'normal', 'high', 'urgent')
  * @returns {string} Emoji ikona
  */
 export const getNotificationEmoji = (notificationType, priority = 'normal') => {
   // Pokud je to notifikace o změně stavu objednávky, použij emoji podle stavu
-  if (notificationType?.startsWith('order_status_')) {
-    const status = notificationType.replace('order_status_', '');
+  if (notificationType?.startsWith('ORDER_')) {
+    const status = notificationType.replace('ORDER_', '');
     return getStatusEmoji(status);
   }
 
@@ -185,14 +186,6 @@ export const getNotificationEmoji = (notificationType, priority = 'normal') => {
     // Force unlock
     case 'order_unlock_forced':
       return '⚡';
-
-    // Obecné notifikace (deprecated, ale ponecháno pro zpětnou kompatibilitu)
-    case 'order_approved':
-      return '✅';
-    case 'order_rejected':
-      return '❌';
-    case 'order_created':
-      return '📝';
 
     // Výchozí podle priority
     default:

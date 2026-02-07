@@ -812,14 +812,16 @@ CREATE TABLE 25a_objednavky_prilohy (
 CREATE TABLE 25a_objednavky_faktury (
   id                               INT AUTO_INCREMENT PRIMARY KEY,
   objednavka_id                    INT NOT NULL,
+  smlouva_id                       INT UNSIGNED,  -- Vazba na smlouvu (volitelné)
   fa_dorucena                      TINYINT(1) DEFAULT 0,
   fa_zaplacena                     TINYINT(1) DEFAULT 0,
+  fa_datum_zaplaceni               DATETIME,  -- Kdy byla zaplacena
   fa_datum_vystaveni               DATE,
   fa_datum_splatnosti              DATE,
   fa_datum_doruceni                DATE,
   fa_castka                        DECIMAL(15,2) NOT NULL,
   fa_cislo_vema                    VARCHAR(100) NOT NULL,
-  fa_typ                           VARCHAR(32) DEFAULT 'BEZNA',  -- BEZNA, ZALOHOVA, DOBROPIS
+  fa_typ                           VARCHAR(32) DEFAULT 'BEZNA',  -- BEZNA, ZALOHOVA, VYUCTOVACI, DOBROPIS
   
   -- Věcná správnost
   potvrdil_vecnou_spravnost_id     INT,
@@ -832,13 +834,20 @@ CREATE TABLE 25a_objednavky_faktury (
   fa_poznamka                      TEXT,
   rozsirujici_data                 TEXT,  -- JSON další data
   
+  -- ⭐ Předání faktury zaměstnanci (nové v 12/2025)
+  fa_predana_zam_id                INT UNSIGNED,  -- Komu byla faktura předána
+  fa_datum_predani_zam             DATE,          -- Kdy byla předána
+  fa_datum_vraceni_zam             DATE,          -- Kdy byla vrácena
+  
   vytvoril_uzivatel_id             INT NOT NULL,
   dt_vytvoreni                     DATETIME NOT NULL,
   dt_aktualizace                   DATETIME,
   aktivni                          TINYINT(1) DEFAULT 1,
   
   INDEX idx_objednavka (objednavka_id),
+  INDEX idx_smlouva (smlouva_id),
   INDEX idx_fa_zaplacena (fa_zaplacena),
+  INDEX idx_fa_datum_zaplaceni (fa_datum_zaplaceni),
   INDEX idx_fa_datum_vystaveni (fa_datum_vystaveni),
   INDEX idx_fa_datum_splatnosti (fa_datum_splatnosti),
   INDEX idx_fa_datum_doruceni (fa_datum_doruceni),
@@ -847,10 +856,18 @@ CREATE TABLE 25a_objednavky_faktury (
   INDEX idx_potvrdil (potvrdil_vecnou_spravnost_id),
   INDEX idx_dt_potvrzeni (dt_potvrzeni_vecne_spravnosti),
   INDEX idx_vecna_spravnost (vecna_spravnost_potvrzeno),
+  INDEX idx_fa_predana_zam (fa_predana_zam_id),
+  INDEX idx_fa_datum_predani (fa_datum_predani_zam),
+  INDEX idx_fa_datum_vraceni (fa_datum_vraceni_zam),
   INDEX idx_vytvoril (vytvoril_uzivatel_id),
   INDEX idx_aktivni (aktivni)
 );
 ```
+
+**Uživatelské role u faktur:**
+- `vytvoril_uzivatel_id` - Kdo fakturu vytvořil/přidal do systému
+- `potvrdil_vecnou_spravnost_id` - Kdo potvrdil věcnou správnost
+- `fa_predana_zam_id` - Komu byla faktura předána k vyřízení
 
 ---
 

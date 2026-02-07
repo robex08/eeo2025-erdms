@@ -212,7 +212,7 @@ class EntraService {
     try {
       const response = await this.client
         .api('/users')
-        .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled')
+        .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled,createdDateTime,employeeHireDate')
         .top(limit)
         .orderby('displayName')
         .get();
@@ -385,7 +385,30 @@ class EntraService {
       throw err;
     }
   }
+
+  /**
+   * Získat nadcházející události z kalendáře přihlášeného uživatele
+   * @param {number} limit - Max počet událostí (default 7)
+   * @returns {Array} Seznam událostí
+   */
+  async getMyCalendarEvents(limit = 7) {
+    await this.ensureInitialized();
+    try {
+      const now = new Date().toISOString();
+      const response = await this.client
+        .api('/me/calendar/events')
+        .select('subject,start,end,location,isAllDay,bodyPreview')
+        .filter(`start/dateTime ge '${now}'`)
+        .orderby('start/dateTime')
+        .top(limit)
+        .get();
+      
+      return response.value || [];
+    } catch (err) {
+      console.error('🔴 getMyCalendarEvents ERROR:', err.message);
+      throw err;
+    }
+  }
 }
 
-// Singleton instance
 module.exports = new EntraService();

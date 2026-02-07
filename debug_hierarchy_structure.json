@@ -1,0 +1,71 @@
+{
+  "nodes": [
+    {
+      "id": "template-115-1768158155658",
+      "typ": "template",
+      "data": {
+        "type": "template",
+        "templateId": 115,
+        "name": "Věcná správnost faktury vyžadována",
+        "eventTypes": ["INVOICE_MATERIAL_CHECK_REQUESTED"]
+      }
+    },
+    {
+      "id": "role-9-1768158173303",
+      "typ": "role",
+      "data": {
+        "type": "role",
+        "roleId": 9,
+        "name": "THP/PES",
+        "scopeDefinition": {
+          "fields": ["objednatel_id", "garant_uzivatel_id"],
+          "type": "DYNAMIC_FROM_ENTITY"
+        },
+        "delivery": {"email": true}
+      }
+    },
+    {
+      "id": "role-10-1768158607573", 
+      "typ": "role",
+      "data": {
+        "type": "role",
+        "roleId": 10,
+        "name": "Vrchní",
+        "scopeDefinition": {
+          "fields": ["objednatel_id", "garant_uzivatel_id"],
+          "type": "DYNAMIC_FROM_ENTITY"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "reactflow__edge-template-115-1768158155658-role-9-1768158173303",
+      "source": "template-115-1768158155658",
+      "target": "role-9-1768158173303",
+      "data": {
+        "source_info_recipients": {
+          "enabled": true,
+          "fields": ["fa_predana_zam_id", "uzivatel_id", "garant_uzivatel_id", "objednatel_id"]
+        },
+        "sendEmail": true,
+        "sendInApp": true,
+        "priority": "INFO"
+      }
+    },
+    {
+      "id": "reactflow__edge-template-115-1768158155658-role-10-1768158607573",
+      "source": "template-115-1768158155658", 
+      "target": "role-10-1768158607573",
+      "data": {
+        "source_info_recipients": {
+          "enabled": true,
+          "fields": ["fa_predana_zam_id", "uzivatel_id", "garant_uzivatel_id", "objednatel_id"]
+        },
+        "sendEmail": true,
+        "sendInApp": true,
+        "priority": "INFO"
+      }
+    }
+  ]
+}
