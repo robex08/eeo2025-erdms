@@ -935,15 +935,27 @@ function handle_order_v3_list($input, $config, $queries) {
 function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql = null, $filtered_where_params = array()) {
     $period_range = calculatePeriodRange($period);
     
-    // Upravit WHERE podmínku podle období
+    // Sestavit WHERE podmínky
+    $where_conditions = array();
+    $where_params = array();
+    
+    // 1. Aktivní objednávky (vždy)
+    $where_conditions[] = "o.aktivni = 1";
+    
+    // 2. Period filtr
     if ($period_range !== null) {
-        $date_where = "o.dt_objednavky BETWEEN ? AND ?";
-        $date_params = array($period_range['date_from'], $period_range['date_to']);
-    } else {
-        // Bez omezení - žádná podmínka
-        $date_where = "1=1";
-        $date_params = array();
+        $where_conditions[] = "o.dt_objednavky BETWEEN ? AND ?";
+        $where_params[] = $period_range['date_from'];
+        $where_params[] = $period_range['date_to'];
     }
+    
+    // 3. Dodatečné filtry (pokud jsou předané)
+    if ($filtered_where_sql !== null && trim($filtered_where_sql) !== '') {
+        $where_conditions[] = "($filtered_where_sql)";
+        $where_params = array_merge($where_params, $filtered_where_params);
+    }
+    
+    $where_clause = implode(' AND ', $where_conditions);
     
     // Sestavit stats query
     $sql_stats = "
@@ -1055,10 +1067,11 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 ELSE 0 
             END) as mojeObjednavky
         FROM " . TBL_OBJEDNAVKY . " o
-        WHERE o.aktivni = 1 AND $date_where
+        WHERE $where_clause
     ";
     
-    $stmt_params = array_merge(array($user_id, $user_id, $user_id, $user_id), $date_params);
+    // Parametry: user_id (4x) + date_params + filtered_params
+    $stmt_params = array_merge(array($user_id, $user_id, $user_id, $user_id), $where_params);
     $stmt_stats = $db->prepare($sql_stats);
     $stmt_stats->execute($stmt_params);
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
@@ -1084,11 +1097,11 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 END
             ), 0) as total_amount
         FROM " . TBL_OBJEDNAVKY . " o
-        WHERE o.aktivni = 1 AND $date_where
+        WHERE $where_clause
     ";
     
     $stmt_amount = $db->prepare($sql_total_amount);
-    $stmt_amount->execute($date_params);
+    $stmt_amount->execute($where_params);
     $amount_result = $stmt_amount->fetch(PDO::FETCH_ASSOC);
     
     $stats['total_amount'] = floatval($amount_result['total_amount']);
