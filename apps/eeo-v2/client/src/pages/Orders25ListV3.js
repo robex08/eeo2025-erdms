@@ -650,6 +650,9 @@ function Orders25ListV3() {
     return hasPermission && hasPermission('ADMINI');
   };
 
+  // State pro třídění - výchozí: datum aktualizace sestupně (nejnovější první)
+  const [sorting, setSorting] = useState([{ id: 'dt_objednavky', desc: true }]);
+
   // Custom hook pro Orders V3
   const {
     // Data
@@ -687,6 +690,9 @@ function Orders25ListV3() {
     expandedRows,
     subRowsData,
     handleToggleRow,
+    
+    // Utils
+    getOrderTotalPriceWithDPH,
   } = useOrdersV3({
     token,
     username,
@@ -748,9 +754,6 @@ function Orders25ListV3() {
   // State pro dialogy
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [docxModalOrder, setDocxModalOrder] = useState(null);
-  
-  // State pro třídění - výchozí: datum aktualizace sestupně (nejnovější první)
-  const [sorting, setSorting] = useState([{ id: 'dt_aktualizace', desc: true }]);
   
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
@@ -1189,8 +1192,8 @@ function Orders25ListV3() {
           stats={stats}
           totalAmount={stats.totalAmount || 0}
           filteredTotalAmount={stats.filteredTotalAmount || stats.totalAmount || 0}
-          filteredCount={totalItems}
-          hasActiveFilters={dashboardFilters.filter_status || Object.keys(columnFilters).length > 0}
+          filteredCount={stats.filteredCount || orders.length}
+          hasActiveFilters={!!dashboardFilters.filter_status}
           activeStatus={dashboardFilters.filter_status}
           onStatusClick={handleDashboardFilterChange}
           onHide={() => setShowDashboard(false)}
@@ -1241,6 +1244,7 @@ function Orders25ListV3() {
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
+        getOrderTotalPriceWithDPH={getOrderTotalPriceWithDPH}
       />
 
       {/* Pagination */}

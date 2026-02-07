@@ -119,19 +119,27 @@ const SmallCardsGrid = styled.div`
 `;
 
 const LargeStatCard = styled.div`
-  background: linear-gradient(145deg, #ffffff, #f9fafb);
+  background: ${props => props.$isActive ?
+    `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
+    'linear-gradient(145deg, #ffffff, #f9fafb)'};
   border-radius: 16px;
   padding: 1.75rem;
-  border-left: 6px solid ${props => props.$color || '#3b82f6'};
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+  border-left: ${props => props.$isActive ? '8px' : '6px'} solid ${props => props.$color || '#3b82f6'};
+  box-shadow: ${props => props.$isActive ?
+    `0 4px 16px rgba(0, 0, 0, 0.12), 0 0 0 2px ${props.$color || '#3b82f6'}40` :
+    '0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06)'};
   transition: all 0.3s ease;
   min-width: 380px;
   max-width: 420px;
   flex-shrink: 0;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
   
   &:hover {
-    transform: translateY(-2px);
+    transform: ${props => props.$clickable ? 'translateY(-3px)' : 'translateY(-1px)'};
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08);
+    ${props => props.$clickable && `
+      background: linear-gradient(145deg, ${props.$color || '#3b82f6'}25, ${props.$color || '#3b82f6'}15);
+    `}
   }
 
   @media (max-width: 1200px) {
@@ -167,10 +175,22 @@ const SummaryRow = styled.div`
 `;
 
 const SummaryItem = styled.div`
-  background: ${props => props.$bg || 'rgba(100, 116, 139, 0.08)'};
+  background: ${props => props.$isActive ?
+    `linear-gradient(145deg, ${props.$color || '#64748b'}25, ${props.$color || '#64748b'}15)` :
+    (props.$bg || 'rgba(100, 116, 139, 0.08)')};
   border-radius: 8px;
   padding: 0.75rem;
-  border-left: 3px solid ${props => props.$color || '#64748b'};
+  border-left: ${props => props.$isActive ? '5px' : '3px'} solid ${props => props.$color || '#64748b'};
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  transition: all 0.2s ease;
+  
+  &:hover {
+    ${props => props.$clickable && `
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      background: linear-gradient(145deg, ${props.$color || '#64748b'}30, ${props.$color || '#64748b'}20);
+    `}
+  }
 `;
 
 const SummaryLabel = styled.div`
@@ -350,15 +370,23 @@ const OrdersDashboardV3Full = ({
         </DashboardHeader>
         
         <DashboardGrid>
-          {/* Celková cena - vždy */}
-          <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
+          {/* Celková cena - clickable pro reset filtrů */}
+          <LargeStatCard 
+            $color={STATUS_COLORS.TOTAL.dark} 
+            $clickable={true}
+            $isActive={false}
+            onClick={() => onStatusClick?.(null)}
+          >
             <div style={{ width: '100%' }}>
               <LargeStatValue style={{ fontSize: '1.5rem' }}>
                 {Math.round(totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
               </LargeStatValue>
-              <LargeStatLabel>Celková cena s DPH za období ({stats.total || 0})</LargeStatLabel>
+              <LargeStatLabel>
+                Celková cena s DPH za období ({stats.total || 0})
+              </LargeStatLabel>
               
-              {hasActiveFilters && filteredCount < (stats.total || 0) && (
+              {/* Oranžová sekce pro vybrané - jen když je aktivní dashboard filtr */}
+              {activeStatus && filteredCount < (stats.total || 0) && (
                 <div style={{
                   marginTop: '0.75rem',
                   paddingTop: '0.75rem',
@@ -367,14 +395,14 @@ const OrdersDashboardV3Full = ({
                   <div style={{
                     fontSize: '1.25rem',
                     fontWeight: '700',
-                    color: '#f59e0b',
+                    color: '#d97706',
                   }}>
                     {Math.round(filteredTotalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                   </div>
                   <div style={{
                     fontSize: '0.75rem',
                     fontWeight: '600',
-                    color: '#f59e0b',
+                    color: '#d97706',
                     marginTop: '0.25rem'
                   }}>
                     Celková cena s DPH za vybrané ({filteredCount})
@@ -384,7 +412,50 @@ const OrdersDashboardV3Full = ({
             </div>
           </LargeStatCard>
 
-          <SmallCardsGrid>
+          <SummaryRow>
+            <SummaryItem 
+              $color="#d97706" 
+              $bg="rgba(217, 119, 6, 0.08)"
+              $clickable={true}
+              $isActive={activeStatus === 'rozpracovane_stavy'}
+              onClick={() => onStatusClick?.('rozpracovane_stavy')}
+            >
+              <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
+              <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                {/* Rozpracované částka = celková - dokončená */}
+                {Math.round((totalAmount - (stats.dokoncenaAmount || 0)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+              </SummaryValue>
+              <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
+                {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
+                {(
+                  (stats.total || 0) -
+                  (stats.dokoncena || 0) -
+                  (stats.zrusena || 0) -
+                  (stats.smazana || 0) -
+                  (stats.archivovano || 0)
+                ).toLocaleString('cs-CZ')} obj
+              </SummaryValue>
+            </SummaryItem>
+
+            <SummaryItem 
+              $color="#059669" 
+              $bg="rgba(5, 150, 105, 0.08)"
+              $clickable={true}
+              $isActive={activeStatus === 'dokoncena'}
+              onClick={() => onStatusClick?.('dokoncena')}
+            >
+              <SummaryLabel $color="#065f46">DOKONČENÉ</SummaryLabel>
+              <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                {/* Pokud není dokoncenaAmount, zobrazit 0 nebo proporcional výpočet */}
+                {Math.round(stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+              </SummaryValue>
+              <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
+                {(stats.dokoncena || 0).toLocaleString('cs-CZ')} obj
+              </SummaryValue>
+            </SummaryItem>
+          </SummaryRow>
+
+        <SmallCardsGrid>
           {/* Počet objednávek - vždy */}
           <StatCard $color="#2196f3">
             <StatHeader>
@@ -498,8 +569,13 @@ const OrdersDashboardV3Full = ({
       </DashboardHeader>
       
       <DashboardGrid>
-        {/* Velká karta - celková cena (vždy) */}
-        <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
+        {/* Velká karta - celková cena (clickable pro reset filtrů) */}
+        <LargeStatCard 
+          $color={STATUS_COLORS.TOTAL.dark} 
+          $clickable={true}
+          $isActive={!activeStatus}
+          onClick={() => onStatusClick?.(null)}
+        >
           <div>
             <LargeStatValue>
               {Math.round(totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
@@ -508,7 +584,8 @@ const OrdersDashboardV3Full = ({
               Celková cena s DPH za období ({stats.total || 0})
             </LargeStatLabel>
             
-            {hasActiveFilters && filteredCount < (stats.total || 0) && (
+            {/* Oranžová sekce pro vybrané - jen když je aktivní dashboard filtr */}
+            {activeStatus && filteredCount < (stats.total || 0) && (
               <div style={{
                 marginTop: '0.75rem',
                 paddingTop: '0.75rem',
@@ -517,7 +594,7 @@ const OrdersDashboardV3Full = ({
                 <div style={{
                   fontSize: '1.25rem',
                   fontWeight: '700',
-                  color: '#f59e0b',
+                  color: '#d97706',
                   textAlign: 'center',
                   marginBottom: '0.25rem'
                 }}>
@@ -526,7 +603,7 @@ const OrdersDashboardV3Full = ({
                 <div style={{
                   fontSize: '0.75rem',
                   fontWeight: '600',
-                  color: '#f59e0b',
+                  color: '#d97706',
                   textAlign: 'center',
                   paddingBottom: '0.75rem',
                   borderBottom: '1px solid rgba(100, 116, 139, 0.2)'
@@ -538,26 +615,41 @@ const OrdersDashboardV3Full = ({
           </div>
 
           <SummaryRow>
-            <SummaryItem $color="#d97706" $bg="rgba(217, 119, 6, 0.08)">
+            <SummaryItem 
+              $color="#d97706" 
+              $bg="rgba(217, 119, 6, 0.08)"
+              $clickable={true}
+              $isActive={activeStatus === 'rozpracovane_stavy'}
+              onClick={() => onStatusClick?.('rozpracovane_stavy')}
+            >
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-                {Math.round(stats.rozpracovanaAmount || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {/* Rozpracované částka = celková - dokončená */}
+                {Math.round((totalAmount - (stats.dokoncenaAmount || 0)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
-                {/* Rozpracované = celkem - dokončené - zrušené - smazané */}
+                {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
                 {(
                   (stats.total || 0) -
                   (stats.dokoncena || 0) -
                   (stats.zrusena || 0) -
-                  (stats.smazana || 0)
+                  (stats.smazana || 0) -
+                  (stats.archivovano || 0)
                 ).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
 
-            <SummaryItem $color="#059669" $bg="rgba(5, 150, 105, 0.08)">
+            <SummaryItem 
+              $color="#059669" 
+              $bg="rgba(5, 150, 105, 0.08)"
+              $clickable={true}
+              $isActive={activeStatus === 'dokoncena'}
+              onClick={() => onStatusClick?.('dokoncena')}
+            >
               <SummaryLabel $color="#065f46">DOKONČENÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-                {Math.round(stats.dokoncenaAmount || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {/* Pokud není dokoncenaAmount, zobrazit 0 nebo proporcional výpočet */}
+                {Math.round(stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
                 {(stats.dokoncena || 0).toLocaleString('cs-CZ')} obj
