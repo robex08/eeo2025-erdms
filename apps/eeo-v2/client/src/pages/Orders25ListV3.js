@@ -448,6 +448,7 @@ const getOrderSystemStatus = (order) => {
 const COLUMN_LABELS = {
   expander: '',
   approve: '',
+  kontrola_komentare: 'Kontrola / Komentáře',
   dt_objednavky: 'Datum objednávky',
   cislo_objednavky: 'Evidenční číslo',
   financovani: 'Financování',
@@ -546,6 +547,12 @@ function Orders25ListV3() {
     
     // Utils
     getOrderTotalPriceWithDPH,
+    
+    // 🆕 Kontrola a komentáře
+    handleToggleOrderCheck,
+    handleLoadComments,
+    handleAddComment,
+    handleDeleteComment,
   } = useOrdersV3({
     token,
     username,
@@ -1123,8 +1130,8 @@ function Orders25ListV3() {
           stats={stats || {}}
           filteredStats={filteredStats}
           totalAmount={stats?.totalAmount || 0}
-          filteredTotalAmount={stats?.filteredTotalAmount || stats?.totalAmount || 0}
-          filteredCount={stats?.filteredCount || orders?.length || 0}
+          filteredTotalAmount={stats?.filteredTotalAmount}
+          filteredCount={stats?.filteredCount}
           hasActiveFilters={hasAnyActiveFilters}
           activeStatus={dashboardFilters.filter_status}
           onStatusClick={handleDashboardFilterChange}
@@ -1189,6 +1196,11 @@ function Orders25ListV3() {
         getOrderTotalPriceWithDPH={getOrderTotalPriceWithDPH}
         forceVirtualization={shouldUseVirtualization}
         showPerformanceInfo={process.env.NODE_ENV === 'development'}
+        // 🆕 Kontrola a komentáře
+        onToggleOrderCheck={handleToggleOrderCheck}
+        onLoadComments={handleLoadComments}
+        onAddComment={handleAddComment}
+        onDeleteComment={handleDeleteComment}
       />
 
       {/* Pagination */}
