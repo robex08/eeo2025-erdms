@@ -440,30 +440,22 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
         }
         
-        // ⚠️ KOMBINOVANÝ SLOUPEC: Objednatel / Garant
+        // ⚠️ KOMBINOVANÝ SLOUPEC: Objednatel / Garant (pouze jména, ne emaily)
         if (!empty($filters['objednatel_garant'])) {
             $where_conditions[] = "(
-                LOWER(CONCAT(u1.jmeno, ' ', u1.prijmeni)) LIKE LOWER(?)
-                OR LOWER(u1.email) LIKE LOWER(?)
-                OR LOWER(CONCAT(u2.jmeno, ' ', u2.prijmeni)) LIKE LOWER(?)
-                OR LOWER(u2.email) LIKE LOWER(?)
+                LOWER(CONCAT(u1.prijmeni, ' ', u1.jmeno)) LIKE LOWER(?)
+                OR LOWER(CONCAT(u2.prijmeni, ' ', u2.jmeno)) LIKE LOWER(?)
             )";
-            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
-            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
             $where_params[] = '%' . $filters['objednatel_garant'] . '%';
             $where_params[] = '%' . $filters['objednatel_garant'] . '%';
         }
         
-        // ⚠️ KOMBINOVANÝ SLOUPEC: Příkazce / Schvalovatel
+        // ⚠️ KOMBINOVANÝ SLOUPEC: Příkazce / Schvalovatel (pouze jména, ne emaily)
         if (!empty($filters['prikazce_schvalovatel'])) {
             $where_conditions[] = "(
-                LOWER(CONCAT(u3.jmeno, ' ', u3.prijmeni)) LIKE LOWER(?)
-                OR LOWER(u3.email) LIKE LOWER(?)
-                OR LOWER(CONCAT(u4.jmeno, ' ', u4.prijmeni)) LIKE LOWER(?)
-                OR LOWER(u4.email) LIKE LOWER(?)
+                LOWER(CONCAT(u3.prijmeni, ' ', u3.jmeno)) LIKE LOWER(?)
+                OR LOWER(CONCAT(u4.prijmeni, ' ', u4.jmeno)) LIKE LOWER(?)
             )";
-            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
-            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
             $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
             $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
         }
@@ -716,19 +708,19 @@ function handle_order_v3_list($input, $config, $queries) {
                         o.dodavatel_nazev, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u1.jmeno, ' ', u1.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        CONCAT(u1.prijmeni, ' ', u1.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
                     LOWER(u1.email) LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u2.jmeno, ' ', u2.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        CONCAT(u2.prijmeni, ' ', u2.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
                     LOWER(u2.email) LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u3.jmeno, ' ', u3.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        CONCAT(u3.prijmeni, ' ', u3.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
                     LOWER(u3.email) LIKE LOWER(?) OR
                     LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u4.jmeno, ' ', u4.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
+                        CONCAT(u4.prijmeni, ' ', u4.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
                         LIKE LOWER(?) OR
                     LOWER(u4.email) LIKE LOWER(?) OR
                     -- Další uživatelé přes dodatečné EXISTS (nemůžeme dělat nekonečně JOINů)
@@ -1103,11 +1095,15 @@ function handle_order_v3_list($input, $config, $queries) {
                         'dodavatel_nazev' => 'COALESCE(o.dodavatel_nazev, d.nazev)',
                         'dodavatel_ico' => 'COALESCE(o.dodavatel_ico, d.ico)',
                         
-                        // Osoby
+                        // Osoby - staré názvy (backward compatibility)
                         'objednatel_jmeno' => 'u1.prijmeni',
                         'garant_jmeno' => 'u2.prijmeni',
                         'prikazce_jmeno' => 'u3.prijmeni',
                         'schvalovatel_jmeno' => 'u4.prijmeni',
+                        
+                        // Osoby - kombinované sloupce (třídí podle PRVNÍHO jména)
+                        'objednatel_garant' => 'u1.prijmeni', // ✅ Třídí podle objednatele
+                        'prikazce_schvalovatel' => 'u3.prijmeni', // ✅ Třídí podle příkazce
                         
                         // Ceny
                         'max_cena_s_dph' => 'o.max_cena_s_dph',
@@ -1206,20 +1202,20 @@ function handle_order_v3_list($input, $config, $queries) {
                 
                 -- Objednatel
                 u1.id as objednatel_id,
-                CONCAT(u1.jmeno, ' ', u1.prijmeni) as objednatel_jmeno,
+                CONCAT(u1.prijmeni, ' ', u1.jmeno) as objednatel_jmeno,
                 u1.email as objednatel_email,
                 
                 -- Garant
                 u2.id as garant_id,
-                CONCAT(u2.jmeno, ' ', u2.prijmeni) as garant_jmeno,
+                CONCAT(u2.prijmeni, ' ', u2.jmeno) as garant_jmeno,
                 
                 -- Příkazce
                 u3.id as prikazce_id,
-                CONCAT(u3.jmeno, ' ', u3.prijmeni) as prikazce_jmeno,
+                CONCAT(u3.prijmeni, ' ', u3.jmeno) as prikazce_jmeno,
                 
                 -- Schvalovatel
                 u4.id as schvalovatel_id,
-                CONCAT(u4.jmeno, ' ', u4.prijmeni) as schvalovatel_jmeno,
+                CONCAT(u4.prijmeni, ' ', u4.jmeno) as schvalovatel_jmeno,
                 
                 -- Počet položek
                 (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as pocet_polozek,

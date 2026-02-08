@@ -17,6 +17,40 @@ const { DEBOUNCE_DELAY, STORAGE_PREFIX } = ORDERS_V3_CONFIG;
  * @returns {Object} State a setter funkce
  */
 export function useOrdersV3State(userId) {
+  // ⚠️ MIGRACE: Vyčistit staré kombinované filtry při prvním načtení
+  useEffect(() => {
+    if (!userId) return;
+    
+    const storageKey = `${STORAGE_PREFIX}_columnFilters_${userId}`;
+    const saved = localStorage.getItem(storageKey);
+    
+    if (saved) {
+      try {
+        const filters = JSON.parse(saved);
+        let needsCleanup = false;
+        
+        // Odstranit staré kombinované filtry
+        if (filters.objednatel_jmeno !== undefined || filters.garant_jmeno !== undefined) {
+          delete filters.objednatel_jmeno;
+          delete filters.garant_jmeno;
+          needsCleanup = true;
+        }
+        if (filters.prikazce_jmeno !== undefined || filters.schvalovatel_jmeno !== undefined) {
+          delete filters.prikazce_jmeno;
+          delete filters.schvalovatel_jmeno;
+          needsCleanup = true;
+        }
+        
+        if (needsCleanup) {
+          localStorage.setItem(storageKey, JSON.stringify(filters));
+          console.log('✅ Migrace: Vyčištěny staré kombinované filtry z localStorage');
+        }
+      } catch (err) {
+        console.warn('Chyba při migraci filtrů:', err);
+      }
+    }
+  }, [userId]); // Spustí se pouze jednou při mountu
+  
   // Jediný state objekt místo 7 separátních
   const [preferences, setPreferences] = useState(() => {
     if (!userId) return getDefaultPreferences();
