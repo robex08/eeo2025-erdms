@@ -68,7 +68,7 @@ const TooltipContainer = styled.div`
     max-height: 100vh;
   ` : `
     width: 450px;
-    height: 80vh;
+    height: 66vh;
     max-width: calc(100vw - 40px);
     top: ${props.$top}px;
     left: ${props.$left}px;
@@ -702,7 +702,7 @@ const OrderCommentsTooltip = ({
     const tooltipWidth = Math.min(containerRect.width, window.innerWidth - 40);
     const tooltipHeight = containerRect.height;
     const padding = 20;
-    const maxHeight = window.innerHeight * 0.8; // 80vh
+    const maxHeight = window.innerHeight * 0.66; // 66vh
     const effectiveHeight = Math.min(tooltipHeight, maxHeight);
     
     // Default: vpravo od ikony
