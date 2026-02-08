@@ -1370,15 +1370,16 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
         }}
         style={{
           width: '100%',
-          padding: '0.375rem 1.5rem 0.375rem 0.5rem',
+          padding: '0.35rem 1.5rem 0.35rem 0.5rem',
           border: '1px solid #d1d5db',
           borderRadius: '4px',
-          fontSize: '0.8125rem',
+          fontSize: '0.7rem',
           background: 'white',
           cursor: 'pointer',
           position: 'relative',
           color: currentValue.length > 0 ? '#1f2937' : '#9ca3af',
           fontWeight: currentValue.length > 0 ? '500' : '400',
+          textTransform: 'none', // ✅ Normální velikost písmenek (ne uppercase)
         }}
       >
         {displayText}
@@ -1419,7 +1420,8 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
         >
           {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
             const kod = status.kod_stavu || status.kod || '';
-            const nazev = status.nazev_stavu || status.nazev || kod;
+            // ✅ STEJNÉ jako OrdersFiltersV3Full - MultiSelectLocal řádek 275
+            const nazev = status.label || status.displayName || status.nazev_stavu || status.nazev || 'Bez názvu';
             const isSelected = currentValue.includes(kod);
             
             return (
@@ -1455,7 +1457,8 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
                 />
                 <span style={{ 
                   fontWeight: isSelected ? '500' : '400',
-                  color: isSelected ? '#2563eb' : '#1f2937'
+                  color: isSelected ? '#2563eb' : '#1f2937',
+                  textTransform: 'none' // ✅ Vypnout uppercase z parent CSS
                 }}>
                   {nazev}
                 </span>
@@ -1558,41 +1561,53 @@ const OrdersTableV3 = ({
   
   // ✅ Synchronizace external columnFilters s local state s REVERSE mapováním
   useEffect(() => {
-    // Mapuj backend formát na UI formát
-    const mappedFilters = { ...columnFilters };
+    // Mapuj backend formát na UI formát (POUZE změněné hodnoty, ne celý objekt)
+    const mappedFilters = {};
     
-    // Backend → UI mapování pro všechny column filtry
-    if (mappedFilters.stav !== undefined) {
-      mappedFilters.stav_objednavky = mappedFilters.stav;
-      delete mappedFilters.stav;
+    // Procházej pouze existující filtry z backendu
+    Object.keys(columnFilters).forEach(key => {
+      const value = columnFilters[key];
+      
+      // Mapování backend → UI
+      if (key === 'stav') {
+        mappedFilters.stav_objednavky = value;
+      } else if (key === 'datum_presne') {
+        mappedFilters.dt_objednavky = value;
+      } else if (key === 'datum_od' && !mappedFilters.dt_objednavky) {
+        mappedFilters.dt_objednavky = value;
+      } else {
+        // Ostatní filtry (včetně numeric) - mapování 1:1
+        mappedFilters[key] = value;
+      }
+    });
+    
+    // ⚠️ MIGRACE: Odstranit staré kombinované filtry
+    if (mappedFilters.objednatel_jmeno !== undefined || mappedFilters.garant_jmeno !== undefined) {
+      delete mappedFilters.objednatel_jmeno;
+      delete mappedFilters.garant_jmeno;
     }
-    if (mappedFilters.datum_presne !== undefined) {
-      mappedFilters.dt_objednavky = mappedFilters.datum_presne;
-      delete mappedFilters.datum_presne;
-    }
-    else if (mappedFilters.datum_od !== undefined) {
-      // Pouze pokud není nastaveno datum_presne vůbec
-      mappedFilters.dt_objednavky = mappedFilters.datum_od;
-      delete mappedFilters.datum_od;
-    }
-    if (mappedFilters.objednatel_jmeno !== undefined) {
-      mappedFilters.objednatel_garant = mappedFilters.objednatel_jmeno;
-      // Zachovej objednatel_jmeno pro případné oddělené použití
-    }
-    if (mappedFilters.prikazce_jmeno !== undefined) {
-      mappedFilters.prikazce_schvalovatel = mappedFilters.prikazce_jmeno;
-      // Zachovej prikazce_jmeno pro případné oddělené použití
+    if (mappedFilters.prikazce_jmeno !== undefined || mappedFilters.schvalovatel_jmeno !== undefined) {
+      delete mappedFilters.prikazce_jmeno;
+      delete mappedFilters.schvalovatel_jmeno;
     }
     
-    // Porovnej s aktuálním stavem
-    const currentMapped = { ...localColumnFilters };
-    if (JSON.stringify(mappedFilters) !== JSON.stringify(currentMapped)) {
-      // console.log('🔄 Sync columnFilters → localColumnFilters:', { 
-      //   from: columnFilters, 
-      //   to: mappedFilters 
-      // });
-      setLocalColumnFilters(mappedFilters);
-    }
+    // Merge s aktuálním stavem místo přepsání
+    setLocalColumnFilters(prev => {
+      const merged = { ...prev, ...mappedFilters };
+      
+      // Odstraň prázdné hodnoty z backend (když backend vrátí prázdný filtr)
+      Object.keys(columnFilters).forEach(key => {
+        const uiKey = key === 'stav' ? 'stav_objednavky' : 
+                      key === 'datum_presne' ? 'dt_objednavky' : 
+                      key === 'datum_od' ? 'dt_objednavky' : key;
+        
+        if (columnFilters[key] === '' || columnFilters[key] === null || columnFilters[key] === undefined) {
+          delete merged[uiKey];
+        }
+      });
+      
+      return merged;
+    });
   }, [columnFilters]);
   
   // Ref pro debounce timery
@@ -2319,6 +2334,11 @@ const OrdersTableV3 = ({
             </div>
           );
         },
+        sortingFn: (rowA, rowB) => {
+          const a = rowA.original.dodavatel_nazev || '';
+          const b = rowB.original.dodavatel_nazev || '';
+          return a.localeCompare(b, 'cs');
+        },
         size: 300,
         enableSorting: true,
       },
@@ -2509,7 +2529,32 @@ const OrdersTableV3 = ({
       {
         id: 'actions',
         header: () => (
-          <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%' }}>
+            {hasActiveSorting && (
+              <SmartTooltip text="Zrušit třídění">
+                <FontAwesomeIcon 
+                  icon={faUndo} 
+                  style={{ 
+                    color: '#6b7280', 
+                    fontSize: '12px', 
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSortingChange([]);
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#3b82f6';
+                    e.currentTarget.style.transform = 'scale(1.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#6b7280';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                />
+              </SmartTooltip>
+            )}
             <FontAwesomeIcon icon={faBolt} style={{ color: '#eab308', fontSize: '16px' }} />
           </div>
         ),
@@ -2761,6 +2806,11 @@ const OrdersTableV3 = ({
                                   columnId === 'cena_s_dph' ? 'Cena s DPH' :
                                   'Cena FA s DPH'
                                 }
+                                clearButton={true}
+                                onClear={(e) => {
+                                  e?.stopPropagation();
+                                  handleFilterChange(columnId, '');
+                                }}
                               />
                             </div>
                           );
