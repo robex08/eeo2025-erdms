@@ -7,7 +7,14 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listOrdersV3 } from '../../services/apiOrdersV3';
+import { 
+  listOrdersV3,
+  toggleOrderCheck,
+  getOrdersChecks,
+  loadOrderComments,
+  addOrderComment,
+  deleteOrderComment
+} from '../../services/apiOrdersV3';
 import useOrdersV3State from './useOrdersV3State';
 import useOrdersV3Data from './useOrdersV3Data';
 import ORDERS_V3_CONFIG from '../../constants/ordersV3Config';
@@ -756,6 +763,153 @@ export function useOrdersV3({
   }, [unfilteredStats, currentStats]);
 
   // ============================================================================
+  // KONTROLA OBJEDNÁVEK - Toggle checkbox
+  // ============================================================================
+  
+  /**
+   * Toggle stav kontroly objednávky
+   * @param {number} orderId - ID objednávky
+   * @param {boolean} checked - True = zkontrolováno, False = zrušit
+   */
+  const handleToggleOrderCheck = useCallback(async (orderId, checked) => {
+    if (!token || !username) {
+      console.error('Missing token or username');
+      return;
+    }
+    
+    try {
+      const response = await toggleOrderCheck({
+        token,
+        username,
+        order_id: orderId,
+        checked
+      });
+      
+      if (response.status === 'success') {
+        // Aktualizovat kontrola_metadata v orders cache
+        // clearCache(); // Nebo updateovat konkrétní order v cache
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Chyba při kontrole objednávky');
+      }
+    } catch (error) {
+      console.error('Error toggling order check:', error);
+      throw error;
+    }
+  }, [token, username]);
+
+  // ============================================================================
+  // KOMENTÁŘE - Load, Add, Delete
+  // ============================================================================
+  
+  /**
+   * Načte komentáře k objednávce
+   * @param {number} orderId - ID objednávky
+   * @param {number} limit - Max počet komentářů
+   * @param {number} offset - Offset pro stránkování
+   * @returns {Promise<Object>} {comments: Array, total: number, comments_count: number}
+   */
+  const handleLoadComments = useCallback(async (orderId, limit = 100, offset = 0) => {
+    if (!token || !username) {
+      console.error('Missing token or username');
+      return { comments: [], total: 0, comments_count: 0 };
+    }
+    
+    try {
+      const response = await loadOrderComments({
+        token,
+        username,
+        order_id: orderId,
+        limit,
+        offset
+      });
+      
+      if (response.status === 'success') {
+        return {
+          comments: response.data || [],
+          total: response.total || 0,
+          comments_count: response.comments_count || 0
+        };
+      } else {
+        throw new Error(response.message || 'Chyba při načítání komentářů');
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      return { comments: [], total: 0, comments_count: 0 };
+    }
+  }, [token, username]);
+  
+  /**
+   * Přidá nový komentář k objednávce
+   * @param {number} orderId - ID objednávky
+   * @param {string} text - Text komentáře
+   * @returns {Promise<Object>} {comment: Object, comments_count: number}
+   */
+  const handleAddComment = useCallback(async (orderId, text) => {
+    if (!token || !username) {
+      console.error('Missing token or username');
+      return null;
+    }
+    
+    if (!text || text.trim() === '') {
+      throw new Error('Komentář nemůže být prázdný');
+    }
+    
+    try {
+      const response = await addOrderComment({
+        token,
+        username,
+        order_id: orderId,
+        obsah: text
+      });
+      
+      if (response.status === 'success') {
+        return {
+          comment: response.data,
+          comments_count: response.comments_count || 0
+        };
+      } else {
+        throw new Error(response.message || 'Chyba při přidávání komentáře');
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      throw error;
+    }
+  }, [token, username]);
+  
+  /**
+   * Smazání vlastního komentáře
+   * @param {number} commentId - ID komentáře
+   * @returns {Promise<Object>} {comment_id: number, order_id: number, comments_count: number}
+   */
+  const handleDeleteComment = useCallback(async (commentId) => {
+    if (!token || !username) {
+      console.error('Missing token or username');
+      return null;
+    }
+    
+    try {
+      const response = await deleteOrderComment({
+        token,
+        username,
+        comment_id: commentId
+      });
+      
+      if (response.status === 'success') {
+        return {
+          ...response.data,
+          comments_count: response.comments_count || 0
+        };
+      } else {
+        throw new Error(response.message || 'Chyba při mazání komentáře');
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      throw error;
+    }
+  }, [token, username]);
+
+  // ============================================================================
   // RETURN
   // ============================================================================
   
@@ -801,6 +955,12 @@ export function useOrdersV3({
     loadOrders,
     navigate,
     clearCache, // ✅ Pro vyčištění cache po update operacích
+    
+    // Kontrola a Komentáře
+    handleToggleOrderCheck,
+    handleLoadComments,
+    handleAddComment,
+    handleDeleteComment,
     
     // Utils
     getOrderTotalPriceWithDPH,
