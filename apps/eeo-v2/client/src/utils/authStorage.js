@@ -36,7 +36,7 @@ const LOCAL_KEYS = {
   UI_SETTINGS: 'ui_settings'
 };
 
-// Konstanta pro dobu platnosti tokenu (12 hodin - zkráceno pro bezpečnost)
+// Konstanta pro dobu platnosti tokenu (12 hodin)
 const TOKEN_EXPIRY_HOURS = 12; // 12 hodin
 
 /**

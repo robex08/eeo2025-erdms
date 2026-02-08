@@ -146,7 +146,8 @@ function handleAnnualFeeAttachmentUpload($pdo, $input, $user) {
         $relativeFilePath = !empty($uploadDir) ? $uploadDir . '/' . $storedName : $storedName;
         
         // Absolutní cesta (detekce z ENV nebo fallback)
-        $uploadRootPath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+        require_once __DIR__ . '/environment-utils.php';
+        $uploadRootPath = get_upload_root_path();
         $fullUploadDir = rtrim($uploadRootPath, '/');
         if (!empty($uploadDir)) {
             $fullUploadDir .= '/' . $uploadDir;
@@ -283,7 +284,8 @@ function handleAnnualFeeAttachmentsList($pdo, $input, $user) {
     $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Kontrola existence souborů na disku
-    $uploadRootPath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+    require_once __DIR__ . '/environment-utils.php';
+    $uploadRootPath = get_upload_root_path();
     
     foreach ($attachments as &$att) {
         $fullPath = rtrim($uploadRootPath, '/') . '/' . $att['systemova_cesta'];
@@ -355,7 +357,8 @@ function handleAnnualFeeAttachmentDownload($pdo, $input, $user) {
     }
     
     // Cesta k souboru
-    $uploadRootPath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+    require_once __DIR__ . '/environment-utils.php';
+    $uploadRootPath = get_upload_root_path();
     $fullPath = rtrim($uploadRootPath, '/') . '/' . $attachment['systemova_cesta'];
     
     // POZOR: Žádný error_log před posílání binárních dat! To by mohlo korumpovat soubor.
@@ -447,7 +450,8 @@ function handleAnnualFeeAttachmentDelete($pdo, $input, $user) {
     }
     
     // Cesta k souboru
-    $uploadRootPath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+    require_once __DIR__ . '/environment-utils.php';
+    $uploadRootPath = get_upload_root_path();
     $fullPath = rtrim($uploadRootPath, '/') . '/' . $attachment['systemova_cesta'];
     
     // Smazání souboru z disku

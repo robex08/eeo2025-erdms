@@ -3710,6 +3710,7 @@ const OrdersTableV3 = ({
                     data-order-id={order.id} // 🎯 Pro scroll targeting
                     data-order-index={table.getRowModel().rows.indexOf(row)} // 🆕 Pro context menu
                     onContextMenu={onTableContextMenu} // 🆕 Kontextové menu
+                    onDoubleClick={() => onActionClick?.('edit', order)} // 🎯 Double-click pro editaci
                   >
                     {row.getVisibleCells().map(cell => (
                       <TableCell
@@ -3733,6 +3734,7 @@ const OrdersTableV3 = ({
                       username={username}
                       onActionClick={onActionClick}
                       canEdit={canEdit}
+                      showToast={showToast}
                       // 🎯 Schvalovací props
                       setOrderToApprove={setOrderToApprove}
                       setApprovalComment={setApprovalComment}

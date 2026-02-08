@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -40,6 +40,8 @@ import draftManager from '../services/DraftManager'; // CENTRALIZED DRAFT MANAGE
 import { getToolsVisibility } from '../utils/toolsVisibility';
 import UniversalSearchInput from './UniversalSearch/UniversalSearchInput';
 import { checkMaintenanceMode } from '../services/globalSettingsApi';
+import { getGlobalSettings } from '../services/globalSettingsApi';
+import { getDefaultHomepageSync } from '../utils/homepageHelper';
 
 // Inject small CSS for bell pulse if missing
 if (typeof document !== 'undefined' && !document.getElementById('bell-pulse-styles')) {
@@ -1572,6 +1574,14 @@ const Layout = ({ children }) => {
   
   // State pro maintenance mode indikátor
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  
+  // State pro module visibility settings
+  const [moduleSettings, setModuleSettings] = useState({
+    module_orders_visible: true,
+    module_orders_v3_visible: false,
+    module_invoices_visible: true,
+    module_annual_fees_visible: true
+  });
 
   // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
 
@@ -1776,8 +1786,25 @@ const Layout = ({ children }) => {
       }
     };
     
+    const loadModuleSettings = async () => {
+      if (token && username) {
+        try {
+          const settings = await getGlobalSettings(token, username);
+          setModuleSettings({
+            module_orders_visible: settings.module_orders_visible ?? true,
+            module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
+            module_invoices_visible: settings.module_invoices_visible ?? true,
+            module_annual_fees_visible: settings.module_annual_fees_visible ?? true
+          });
+        } catch (error) {
+          console.warn('Nepodařilo se načíst nastavení modulů:', error);
+        }
+      }
+    };
+    
     loadSystemInfo();
-  }, []); // Run only once on mount
+    loadModuleSettings();
+  }, [token, username]); // Run when token/username available
 
   // Refresh system info after login
   useEffect(() => {
@@ -1795,6 +1822,15 @@ const Layout = ({ children }) => {
           if (info?.database?.display_name) {
             setDatabaseName(info.database.display_name);
           }
+          
+          // Refresh module settings
+          const settings = await getGlobalSettings(token, username);
+          setModuleSettings({
+            module_orders_visible: settings.module_orders_visible ?? true,
+            module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
+            module_invoices_visible: settings.module_invoices_visible ?? true,
+            module_annual_fees_visible: settings.module_annual_fees_visible ?? true
+          });
         } catch (error) {
           console.warn('Nepodařilo se aktualizovat systémové informace:', error);
         }
@@ -2831,8 +2867,9 @@ const Layout = ({ children }) => {
                       if (currentPath && (currentPath.startsWith('/orders-new') || currentPath.startsWith('/order-form-25'))) {
                         setCalendarOpen(false); // Just close calendar, don't navigate
                       } else {
-                        // navigate to orders overview only if not on form
-                        try { navigate('/orders25-list'); } catch(_) {}
+                        // navigate to orders overview (dynamická homepage podle nastavení)
+                        const homepage = getDefaultHomepageSync();
+                        try { navigate(homepage); } catch(_) {}
                       }
                     } catch (_) {}
                   }}
@@ -2864,10 +2901,11 @@ const Layout = ({ children }) => {
                         }));
                       }
 
-                      // Navigate to orders list
+                      // Navigate to orders list (dynamická homepage podle nastavení)
                       const currentPath = location?.pathname || window.location.pathname;
                       if (!currentPath || (!currentPath.startsWith('/orders-new') && !currentPath.startsWith('/order-form-25'))) {
-                        try { navigate('/orders25-list'); } catch(_) {}
+                        const homepage = getDefaultHomepageSync();
+                        try { navigate(homepage); } catch(_) {}
                       } else {
                         setCalendarOpen(false);
                       }
@@ -3057,29 +3095,89 @@ const Layout = ({ children }) => {
                       minWidth: `${prehledDropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/orders25-list" 
-                      onClick={() => setPrehledMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/invoices25-list" 
-                      onClick={() => setPrehledMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faFileInvoice} /> Faktury
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/annual-fees" 
-                      onClick={() => setPrehledMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
-                    </MenuDropdownItem>
+                    {/* Objednávky - zobrazit vždy (nebo když jsou enabled) */}
+                    {moduleSettings.module_orders_visible && (
+                      <MenuDropdownItem 
+                        to="/orders25-list" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} /> Objednávky
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* Objednávky V3 - zobrazit když enabled */}
+                    {moduleSettings.module_orders_v3_visible && (
+                      <MenuDropdownItem 
+                        to="/orders25-list-v3" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3)
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* Faktury - zobrazit když enabled */}
+                    {moduleSettings.module_invoices_visible && (
+                      <MenuDropdownItem 
+                        to="/invoices25-list" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} /> Faktury
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* Roční poplatky - zobrazit když enabled */}
+                    {moduleSettings.module_annual_fees_visible && (
+                      <MenuDropdownItem 
+                        to="/annual-fees" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* --- DISABLED MODULY (jen pro admin/BETA_TESTER) --- */}
+                    {!moduleSettings.module_orders_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+                      <MenuDropdownItem 
+                        to="/orders25-list" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {!moduleSettings.module_orders_v3_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+                      <MenuDropdownItem 
+                        to="/orders25-list-v3" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3) <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {!moduleSettings.module_invoices_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+                      <MenuDropdownItem 
+                        to="/invoices25-list" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#10b981'}} /> Faktury <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {!moduleSettings.module_annual_fees_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+                      <MenuDropdownItem 
+                        to="/annual-fees" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* Staré objednávky - vždy zobrazit */}
                     <MenuDropdownItem 
                       to="/orders" 
                       onClick={() => setPrehledMenuOpen(false)}
                     >
-                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky &lt; 2026
+                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt; 2026)
                     </MenuDropdownItem>
                   </MenuDropdownContent>,
                   document.body
@@ -3088,19 +3186,24 @@ const Layout = ({ children }) => {
             ) : null }
             
             {/* Menu položky pro přehledy - skryto pro ADMINI a uživatele se všemi třemi právy */}
-            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && ((hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && ((hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && moduleSettings.module_invoices_visible && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
             { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt;2026)
+                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt; 2026)
               </MenuLinkLeft>
             ) }
-            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && moduleSettings.module_orders_visible && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
+              </MenuLinkLeft>
+            ) }
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && moduleSettings.module_orders_v3_visible && (
+              <MenuLinkLeft to="/orders25-list-v3" $active={isActive('/orders25-list-v3')}>
+                <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky (V3)
               </MenuLinkLeft>
             ) }
             
@@ -3164,8 +3267,8 @@ const Layout = ({ children }) => {
               </MenuDropdownWrapper>
             ) }
             
-            {/* 🚀 BETA menu - nové/experimentální funkce - pouze pro ADMINI */}
-            { hasAdminRole && hasAdminRole() && (
+            {/* 🚀 BETA menu - nové/experimentální funkce - pro ADMIN a BETA_TESTER */}
+            { ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={betaButtonRef}
@@ -3217,13 +3320,63 @@ const Layout = ({ children }) => {
                       minWidth: `${betaDropdownPosition.width}px`
                     }}
                   >
-                    {hasAdminRole && hasAdminRole() && (
+                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_orders_v3_visible && (
                       <MenuDropdownItem 
                         to="/orders25-list-v3" 
                         onClick={() => setBetaMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3)
                       </MenuDropdownItem>
+                    )}
+                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_orders_visible && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+                      <MenuDropdownItem 
+                        to="/orders25-list" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky - přehled
+                      </MenuDropdownItem>
+                    )}
+                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_invoices_visible && hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')) && (
+                      <MenuDropdownItem 
+                        to="/invoices25-list" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#10b981'}} /> Faktury - přehled
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* Pokud nejsou žádné beta moduly, zobrazit placeholder */}
+                    {moduleSettings.module_orders_v3_visible && 
+                     moduleSettings.module_orders_visible && 
+                     moduleSettings.module_invoices_visible && 
+                     moduleSettings.module_annual_fees_visible && (
+                      <>
+                        <div style={{
+                          padding: '1rem',
+                          textAlign: 'center',
+                          color: '#6b7280',
+                          fontSize: '0.9rem',
+                          fontStyle: 'italic'
+                        }}>
+                          Žádné beta verze k dispozici
+                        </div>
+                        <div style={{
+                          borderTop: '1px solid #e5e7eb',
+                          margin: '0.5rem 0'
+                        }} />
+                        <MenuDropdownItem 
+                          to="/access-denied" 
+                          onClick={() => setBetaMenuOpen(false)}
+                        >
+                          <FontAwesomeIcon icon={faLock} style={{color: '#dc2626'}} /> Test: Přístup zamítnut
+                        </MenuDropdownItem>
+                        <MenuDropdownItem 
+                          to="/not-found-test" 
+                          onClick={() => setBetaMenuOpen(false)}
+                        >
+                          <FontAwesomeIcon icon={faExclamationTriangle} style={{color: '#f59e0b'}} /> Test: Stránka nenalezena
+                        </MenuDropdownItem>
+                      </>
                     )}
                   </MenuDropdownContent>,
                   document.body

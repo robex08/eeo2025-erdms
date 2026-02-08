@@ -531,11 +531,17 @@ export const AuthProvider = ({ children }) => {
             const tokenData = await loadAuthData.token();
             if (!tokenData) {
               // Token není v localStorage -> logout
+              if (process.env.NODE_ENV === 'development') {
+                console.warn('🔐 Token chybí v localStorage při page load → logout');
+              }
               logout('token_missing');
               setLoading(false);
               return;
             }
             // Token je validní lokálně, pokračuj s API validací
+            if (process.env.NODE_ENV === 'development') {
+              console.log('✅ Token nalezen v localStorage → pokračuji s API validací');
+            }
           } catch (tokenCheckError) {
             console.warn('⚠️ Chyba při kontrole lokální expirace tokenu:', tokenCheckError);
           }

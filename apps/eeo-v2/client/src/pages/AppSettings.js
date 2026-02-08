@@ -318,6 +318,47 @@ const StatusBadge = styled.span`
   `}
 `;
 
+const RadioGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+`;
+
+const RadioOption = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid ${props => props.$checked ? props.theme.colors.primary : props.theme.colors.gray300};
+  border-radius: 8px;
+  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
+  background: ${props => props.$checked ? 'rgba(37, 99, 235, 0.05)' : 'white'};
+  opacity: ${props => props.$disabled ? 0.5 : 1};
+  transition: all 0.2s ease;
+  
+  &:hover {
+    ${props => !props.$disabled && `
+      border-color: ${props.theme.colors.primaryAccent};
+      background: rgba(37, 99, 235, 0.03);
+    `}
+  }
+`;
+
+const RadioInput = styled.input`
+  width: 20px;
+  height: 20px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  accent-color: ${({theme}) => theme.colors.primary};
+`;
+
+const RadioLabel = styled.div`
+  flex: 1;
+  font-size: 0.9rem;
+  color: ${({theme}) => theme.colors.gray700};
+  font-weight: ${props => props.$checked ? '600' : '400'};
+`;
+
 // ==================== MAIN COMPONENT ====================
 
 const AppSettings = () => {
@@ -338,7 +379,14 @@ const AppSettings = () => {
     post_login_modal_message_id: '',
     post_login_modal_content: '',
     post_login_modal_valid_from: '',
-    post_login_modal_valid_to: ''
+    post_login_modal_valid_to: '',
+    // Module visibility
+    module_orders_visible: true,
+    module_orders_v3_visible: false,
+    module_invoices_visible: true,
+    module_annual_fees_visible: true,
+    // Default homepage
+    module_default_homepage: 'orders25-list' // 'orders25-list' nebo 'orders25-list-v3'
   });
   
   const [loading, setLoading] = useState(true);
@@ -1087,6 +1135,150 @@ const AppSettings = () => {
                 </div>
               </WarningBox>
             )}
+          </SettingCard>
+          
+          {/* VIDITELNOST MODULŮ */}
+          <SettingCard style={{gridColumn: '1 / -1'}}>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faCodeBranch} />
+              </CardIcon>
+              <div>
+                <CardTitle>Viditelnost modulů</CardTitle>
+                <StatusBadge $active={true}>
+                  Aktivní
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  📋 Objednávky (Order25List)
+                </SettingLabel>
+                <SettingDescription>
+                  Klasický modul objednávek. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_orders_visible}
+                onClick={() => toggleSetting('module_orders_visible')}
+              >
+                <ToggleThumb $active={settings.module_orders_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  🚀 Objednávky V3 (Order25ListV3)
+                </SettingLabel>
+                <SettingDescription>
+                  Nový modul objednávek V3. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA. Pokud zapnuto, uvidí ho všichni uživatelé s právem ORDER_VIEW/EDIT/READ.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_orders_v3_visible}
+                onClick={() => toggleSetting('module_orders_v3_visible')}
+              >
+                <ToggleThumb $active={settings.module_orders_v3_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  💰 Faktury
+                </SettingLabel>
+                <SettingDescription>
+                  Modul faktur. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_invoices_visible}
+                onClick={() => toggleSetting('module_invoices_visible')}
+              >
+                <ToggleThumb $active={settings.module_invoices_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  💵 Roční poplatky
+                </SettingLabel>
+                <SettingDescription>
+                  Modul ročních poplatků. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_annual_fees_visible}
+                onClick={() => toggleSetting('module_annual_fees_visible')}
+              >
+                <ToggleThumb $active={settings.module_annual_fees_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <WarningBox $type="info">
+              <FontAwesomeIcon icon={faInfoCircle} />
+              <div>
+                <strong>Poznámka:</strong> Moduly se vypnutou viditelností zůstanou dostupné v menu BETA pro uživatele s rolí BETA_TESTER.
+                Při zapnuté viditelnosti se modul zobrazí všem uživatelům s příslušnými oprávněními.
+              </div>
+            </WarningBox>
+            
+            {/* 🏠 Výběr výchozí homepage */}
+            <div style={{marginTop: '2rem', paddingTop: '2rem', borderTop: '2px solid #e5e7eb'}}>
+              <SettingLabel style={{marginBottom: '0.5rem', fontSize: '1.1rem'}}>
+                🏠 Výchozí úvodní stránka
+              </SettingLabel>
+              <SettingDescription>
+                Vyberte, která stránka se zobrazí jako výchozí po přihlášení nebo při návštěvě root URL.
+              </SettingDescription>
+              
+              <RadioGroup>
+                <RadioOption 
+                  $checked={settings.module_default_homepage === 'orders25-list'}
+                  $disabled={!settings.module_orders_visible}
+                >
+                  <RadioInput
+                    type="radio"
+                    name="default_homepage"
+                    value="orders25-list"
+                    checked={settings.module_default_homepage === 'orders25-list'}
+                    disabled={!settings.module_orders_visible}
+                    onChange={(e) => setSettings({...settings, module_default_homepage: e.target.value})}
+                  />
+                  <RadioLabel $checked={settings.module_default_homepage === 'orders25-list'}>
+                    📋 Objednávky (Order25List) {!settings.module_orders_visible && '- Modul je vypnutý'}
+                  </RadioLabel>
+                </RadioOption>
+                
+                <RadioOption 
+                  $checked={settings.module_default_homepage === 'orders25-list-v3'}
+                  $disabled={!settings.module_orders_v3_visible}
+                >
+                  <RadioInput
+                    type="radio"
+                    name="default_homepage"
+                    value="orders25-list-v3"
+                    checked={settings.module_default_homepage === 'orders25-list-v3'}
+                    disabled={!settings.module_orders_v3_visible}
+                    onChange={(e) => setSettings({...settings, module_default_homepage: e.target.value})}
+                  />
+                  <RadioLabel $checked={settings.module_default_homepage === 'orders25-list-v3'}>
+                    🚀 Objednávky V3 (Order25ListV3) {!settings.module_orders_v3_visible && '- Modul je vypnutý'}
+                  </RadioLabel>
+                </RadioOption>
+              </RadioGroup>
+              
+              <WarningBox $type="info" style={{marginTop: '1rem'}}>
+                <FontAwesomeIcon icon={faInfoCircle} />
+                <div>
+                  <strong>Tip:</strong> Výchozí stránku lze vybrat pouze z aktivních modulů. Pokud je preferovaný modul vypnutý, automaticky se použije první dostupný modul.
+                </div>
+              </WarningBox>
+            </div>
           </SettingCard>
         </SettingsGrid>
         
