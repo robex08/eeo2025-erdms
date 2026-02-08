@@ -5773,9 +5773,12 @@ switch ($endpoint) {
                     // Pokračuj s prázdným array - není to fatální chyba
                 }
                 
-                // KROK 1: Najít všechny objednávky kde se uživatele týká (objednatel, garant, vytvořil)
+                // KROK 1: Načíst LP objednávky
+                // ⚠️ OPRAVA: Nelze filtrovat podle vytvoril_uzivatel_id (sloupec NEEXISTUje v 25a_objednavky!)
+                // Místo toho načteme VŠECHNY LP objednávky a pak budeme agregovat jen ty, které má daný user
+                // ⚠️ DISTINCT pro zamezení duplikátů
                 $sql_orders = "
-                    SELECT 
+                    SELECT DISTINCT
                         obj.id,
                         obj.cislo_objednavky,
                         obj.max_cena_s_dph,
@@ -5783,29 +5786,28 @@ switch ($endpoint) {
                         obj.stav_workflow_kod,
                         obj.dt_vytvoreni
                     FROM " . TBL_OBJEDNAVKY . " obj
-                    WHERE (
-                        obj.uzivatel_id = :user_id1
-                        OR obj.garant_uzivatel_id = :user_id2
-                    )
-                    AND obj.financovani IS NOT NULL
+                    WHERE obj.financovani IS NOT NULL
                     AND obj.financovani != ''
                     AND obj.financovani LIKE '%\"typ\":\"LP\"%'
                     AND YEAR(obj.dt_vytvoreni) = :rok
                     AND obj.aktivni = 1
+                    AND obj.stav_workflow_kod LIKE '%FAKTURACE%'
                     ORDER BY obj.dt_vytvoreni DESC
                 ";
                 
                 try {
                     $stmt = $db->prepare($sql_orders);
                     $stmt->execute([
-                        'user_id1' => $vytvoril_user_id,
-                        'user_id2' => $vytvoril_user_id,
                         'rok' => $rok
                     ]);
                     $result_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                    // Pokud user nemá objednávky, je to OK - vrátíme prázdné pole
+                    
+                    // 🔍 DEBUG: Log počet načtených objednávek
+                    error_log("LP /moje-cerpani DEBUG: user_id=$vytvoril_user_id, rok=$rok, počet_všech_LP_objednávek=" . count($result_orders));
+                    
+                    // Pokud nejsou objednávky, je to OK - vrátíme prázdné pole
                 } catch (Exception $e) {
-                    error_log("LP orders query error for user $vytvoril_user_id: " . $e->getMessage());
+                    error_log("LP orders query error: " . $e->getMessage());
                     // Pokračuj s prázdným polem - není to fatální chyba
                     $result_orders = array();
                 }
@@ -5814,7 +5816,17 @@ switch ($endpoint) {
                 $lp_cerpani = array(); // cislo_lp => data
                 $objednavky_list = array();
                 
+                // 🔍 DEBUG: Sledovat duplicity
+                $processed_orders = array();
+                
                 foreach ($result_orders as $order) {
+                    // 🚨 OCHRANA PROTI DUPLIKÁTŮM
+                    if (isset($processed_orders[$order['id']])) {
+                        error_log("⚠️ LP /moje-cerpani: DUPLIKÁT objednávky ID=" . $order['id'] . " (cislo=" . $order['cislo_objednavky'] . ")");
+                        continue;
+                    }
+                    $processed_orders[$order['id']] = true;
+                    
                     $financovani = json_decode($order['financovani'], true);
                     
                     if (!$financovani || $financovani['typ'] !== 'LP' || !isset($financovani['lp_kody'])) {
@@ -5829,43 +5841,64 @@ switch ($endpoint) {
                     // Je schválená?
                     $je_schvalena = (strpos($order['stav_workflow_kod'], 'SCHVALENA') !== false);
                     
-                    // Rezervace = max_cena_s_dph / počet LP (pouze schválené)
-                    $rezervace_podil = $je_schvalena ? ((float)$order['max_cena_s_dph'] / $pocet_lp) : 0;
-                    
                     // Načíst faktury pro skutečnost
+                    $suma_faktur = 0;
+                    $suma_polozek = 0;
+                    
                     try {
                         $stmt_inv = $db->prepare("
                             SELECT SUM(fa_castka) as suma_faktur
                             FROM " . TBL_FAKTURY . "
                             WHERE objednavka_id = :order_id
                             AND aktivni = 1
+                            AND stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
                         ");
                         $stmt_inv->execute(['order_id' => $order['id']]);
                         $invoices_row = $stmt_inv->fetch(PDO::FETCH_ASSOC);
                         $suma_faktur = $invoices_row ? (float)$invoices_row['suma_faktur'] : 0;
-                        $skutecne_podil = $suma_faktur / $pocet_lp;
                     } catch (Exception $e) {
                         $suma_faktur = 0;
-                        $skutecne_podil = 0;
                     }
                     
-                    // Načíst položky objednávky pro předpoklad (POUZE pokud není faktura)
-                    $predpoklad_podil = 0;
-                    if ($je_schvalena && $suma_faktur == 0) {
+                    // Načíst položky objednávky jako fallback
+                    if ($suma_faktur == 0) {
                         try {
                             $stmt_items = $db->prepare("
                                 SELECT SUM(cena_s_dph) as suma_polozek
                                 FROM " . TBL_OBJEDNAVKY_POLOZKY . "
                                 WHERE objednavka_id = :order_id
-                                AND aktivni = 1
                             ");
                             $stmt_items->execute(['order_id' => $order['id']]);
                             $items_row = $stmt_items->fetch(PDO::FETCH_ASSOC);
                             $suma_polozek = $items_row ? (float)$items_row['suma_polozek'] : 0;
-                            $predpoklad_podil = $suma_polozek / $pocet_lp;
                         } catch (Exception $e) {
-                            $predpoklad_podil = 0;
+                            $suma_polozek = 0;
                         }
+                    }
+                    
+                    // OPRAVA: Rezervace POUZE pro objednávky bez faktur A bez položek
+                    $rezervace_podil = 0;
+                    if ($je_schvalena && $suma_faktur == 0 && $suma_polozek == 0) {
+                        $rezervace_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
+                    }
+                    
+                    // UI logika: faktury -> položky -> max DPH
+                    $ui_cena = 0;
+                    if ($suma_faktur > 0) {
+                        $ui_cena = $suma_faktur;
+                    } elseif ($suma_polozek > 0) {
+                        $ui_cena = $suma_polozek;
+                    } else {
+                        $ui_cena = (float)$order['max_cena_s_dph'];
+                    }
+                    
+                    $skutecne_podil = $ui_cena / $pocet_lp;
+                    
+                    // Načíst položky objednávky pro předpoklad (POUZE pokud není faktura)
+                    $predpoklad_podil = 0;
+                    if ($je_schvalena && $suma_faktur == 0) {
+                        // Použít už načtené položky místo nového dotazu
+                        $predpoklad_podil = $suma_polozek / $pocet_lp;
                     }
                     
                     // Přidat k objednávkám
@@ -5914,7 +5947,8 @@ switch ($endpoint) {
                                     'moje_predpoklad' => 0,
                                     'moje_skutecne' => 0,
                                     'moje_pokladna' => 0,
-                                    'pocet_objednavek' => 0
+                                    'pocet_objednavek' => 0,
+                                    'objednavky_detail' => array() // Seznam objednávek s částkami
                                 );
                             } else {
                                 // LP nenalezeno (nemělo by nastat)
@@ -5930,7 +5964,8 @@ switch ($endpoint) {
                                     'moje_predpoklad' => 0,
                                     'moje_skutecne' => 0,
                                     'moje_pokladna' => 0,
-                                    'pocet_objednavek' => 0
+                                    'pocet_objednavek' => 0,
+                                    'objednavky_detail' => array() // Seznam objednávek s částkami
                                 );
                             }
                         }
@@ -5939,6 +5974,24 @@ switch ($endpoint) {
                         $lp_cerpani[$cislo_lp]['moje_predpoklad'] += $predpoklad_podil;
                         $lp_cerpani[$cislo_lp]['moje_skutecne'] += $skutecne_podil;
                         $lp_cerpani[$cislo_lp]['pocet_objednavek']++;
+                        
+                        // 💡 PŘIDAT DETAIL OBJEDNÁVKY pro tooltip
+                        $lp_cerpani[$cislo_lp]['objednavky_detail'][] = array(
+                            'objednavka_id' => (int)$order['id'],
+                            'cislo_objednavky' => $order['cislo_objednavky'],
+                            'skutecne_podil' => round($skutecne_podil, 2),
+                            'rezervace_podil' => round($rezervace_podil, 2),
+                            'predpoklad_podil' => round($predpoklad_podil, 2),
+                            'pocet_lp' => $pocet_lp,
+                            'suma_faktur' => $suma_faktur
+                        );
+                        
+                        // 🔍 DEBUG: Log agregace pro LPIT1
+                        if ($cislo_lp === 'LPIT1') {
+                            error_log("🔍 LP LPIT1 agregace: obj_id=" . $order['id'] . ", cislo=" . $order['cislo_objednavky'] . 
+                                ", suma_faktur=$suma_faktur, pocet_lp=$pocet_lp, skutecne_podil=$skutecne_podil, celkem_skutecne=" . 
+                                $lp_cerpani[$cislo_lp]['moje_skutecne']);
+                        }
                     }
                 }
                 
@@ -5974,6 +6027,16 @@ switch ($endpoint) {
                         $data['procento_rezervace'] = 0;
                         $data['procento_predpoklad'] = 0;
                         $data['procento_skutecne'] = 0;
+                    }
+                    
+                    // 🔍 DEBUG: Final hodnoty pro LPIT1
+                    if ($cislo_lp === 'LPIT1') {
+                        error_log("📊 LP LPIT1 FINAL: moje_skutecne=" . $data['moje_skutecne'] . 
+                            ", moje_pokladna=" . $data['moje_pokladna'] . 
+                            ", pocet_objednavek=" . $data['pocet_objednavek'] . 
+                            ", procento_skutecne=" . $data['procento_skutecne'] . "%" .
+                            ", objednavky_detail_count=" . count($data['objednavky_detail'] ?? []));
+                        error_log("🎯 objednavky_detail pro LPIT1: " . json_encode($data['objednavky_detail'] ?? []));
                     }
                     
                     $lp_list[] = $data;

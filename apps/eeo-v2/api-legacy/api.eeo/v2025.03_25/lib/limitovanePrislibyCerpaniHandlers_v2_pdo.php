@@ -83,20 +83,24 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         
         // KROK 2: REZERVACE - max_cena_s_dph pro objednávky ve schvalování (pesimistický odhad)
         // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená, ale ještě nejsou položky)
-        // ✅ POUZE objednávky BEZ faktur (pokud má faktury, započítá se do skutečně)
+        // ✅ POUZE objednávky BEZ faktur A BEZ položek (pokud má, započítá se do předpokladu/skutečně)
         // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
+        // ⚠️ OPRAVA 8.2.2026: Přidán filtr na položky - priority logic (faktury > položky > max_cena)
         $sql_rezervace = "
             SELECT 
                 obj.id,
                 obj.max_cena_s_dph,
                 obj.financovani
             FROM " . TBL_OBJEDNAVKY . " obj
-            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
-            WHERE obj.financovani IS NOT NULL
+            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1
+            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
+            WHERE obj.aktivni = 1
+            AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             AND fakt.id IS NULL
+            AND pol.id IS NULL
         ";
         
         $stmt_rez = $pdo->prepare($sql_rezervace);
@@ -148,8 +152,9 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 SUM(pol.cena_s_dph) as suma_cena
             FROM " . TBL_OBJEDNAVKY . " obj
             INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
-            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
-            WHERE obj.financovani IS NOT NULL
+            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1
+            WHERE obj.aktivni = 1
+            AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.stav_workflow_kod LIKE '%ODESLANA%'
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
@@ -205,8 +210,9 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 obj.financovani,
                 SUM(fakt.fa_castka) as suma_faktur
             FROM " . TBL_OBJEDNAVKY . " obj
-            INNER JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
-            WHERE obj.financovani IS NOT NULL
+            INNER JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1
+            WHERE obj.aktivni = 1
+            AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             GROUP BY obj.id, obj.financovani

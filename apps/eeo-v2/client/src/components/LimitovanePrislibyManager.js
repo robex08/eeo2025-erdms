@@ -512,6 +512,9 @@ const ProgressBar = styled.div`
 `;
 
 const ProgressFill = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
   background: ${props => {
     if (props.$percent >= 100) return 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)';
@@ -520,12 +523,22 @@ const ProgressFill = styled.div`
   }};
   width: ${props => Math.min(props.$percent, 100)}%;
   transition: width 0.3s ease;
+`;
+
+const ProgressText = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
-  font-weight: 600;
-  color: white;
+  font-weight: 700;
+  color: ${props => props.$percent > 50 ? 'white' : '#374151'};
+  text-shadow: ${props => props.$percent > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none'};
+  z-index: 10;
 `;
 
 const StatusBadge = styled.div`
@@ -630,6 +643,87 @@ const UserInfo = styled.div`
   svg {
     color: #9ca3af;
   }
+`;
+
+// 💡 Styled components pro částku s tooltipem
+const AmountWithTooltip = styled.span`
+  position: relative;
+  display: inline-block;
+  cursor: help;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: ${props => props.$hasDetail ? 'rgba(59, 130, 246, 0.1)' : 'transparent'};
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: ${props => props.$hasDetail ? 'rgba(59, 130, 246, 0.2)' : 'transparent'};
+  }
+`;
+
+const AmountTooltip = styled.div`
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 250px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  
+  ${AmountWithTooltip}:hover & {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: white;
+  }
+`;
+
+const AmountTooltipTitle = styled.div`
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+`;
+
+const AmountTooltipItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+  font-size: 0.7rem;
+  
+  &:hover {
+    background: #f9fafb;
+  }
+`;
+
+const AmountTooltipOrderNum = styled.span`
+  color: #6b7280;
+  flex: 1;
+`;
+
+const AmountTooltipAmount = styled.span`
+  color: #059669;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 0.5rem;
 `;
 
 const CollapsibleSection = styled.div`
@@ -741,14 +835,22 @@ const LPProgressBarFill = styled.div`
   width: ${props => Math.min(props.$percent || 0, 100)}%;
   background: ${props => props.$color || '#3b82f6'};
   transition: width 0.5s ease, background 0.3s ease;
+`;
+
+const LPProgressBarText = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding-right: 0.5rem;
+  justify-content: center;
   font-size: 0.75rem;
   font-weight: 700;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  color: ${props => props.$percent > 50 ? 'white' : '#374151'};
+  text-shadow: ${props => props.$percent > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none'};
+  z-index: 10;
 `;
 
 const LPProgressBarOverflow = styled.div`
@@ -1312,6 +1414,9 @@ const LimitovanePrislibyManager = () => {
                 procento_skutecne: parseFloat(mojeLp.procento_skutecne || 0),
                 pocet_objednavek: parseInt(mojeLp.pocet_objednavek || 0),
                 
+                // 💡 Detail objednávek pro tooltip
+                objednavky_detail: mojeLp.objednavky_detail || [],
+                
                 // Metadata
                 usek_nazev: mojeLp.usek_nazev || globalLp?.usek_nazev || '',
                 usek_id: parseInt(mojeLp.usek_id || globalLp?.usek_id || 0),
@@ -1517,10 +1622,9 @@ const LimitovanePrislibyManager = () => {
     // TŘI TYPY:
     celkove_rezervovano: filteredData.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0),
     celkove_predpokladane: filteredData.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0),
-    // DŮLEŽITĚ: skutecne_cerpano JIŽ ZAHRNUJE POKLADNU (faktury + pokladna)
-    // Pokladna je součást skutečného čerpání, ne zvlášť!
-    celkove_skutecne: filteredData.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0),
-    // Pokladna - jen pro informaci, je již zahrnuta v celkove_skutecne
+    // DŮLEŽITĚ: celkove_skutecne = faktury + pokladna
+    celkove_skutecne: filteredData.reduce((sum, lp) => sum + ((lp.skutecne_cerpano || 0) + (lp.cerpano_pokladna || 0)), 0),
+    // Pokladna - jen pro informaci
     celkove_pokladna: filteredData.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0),
     // Zpětná kompatibilita:
     celkove_cerpano: filteredData.reduce((sum, lp) => sum + lp.aktualne_cerpano, 0),
@@ -1548,6 +1652,51 @@ const LimitovanePrislibyManager = () => {
     }).format(amount);
   };
   
+  // 💡 Render částky s tooltipem (pro objednávky detail)
+  const renderAmountWithTooltip = (amount, objednavkyDetail, typ = 'skutecne') => {
+    if (!objednavkyDetail || objednavkyDetail.length === 0) {
+      return formatAmount(amount);
+    }
+    
+    // Filtruj objednávky podle typu (skutecne, predpoklad, rezervace)
+    const relevantOrders = objednavkyDetail.filter(obj => {
+      if (typ === 'skutecne') return obj.skutecne_podil > 0;
+      if (typ === 'predpoklad') return obj.predpoklad_podil > 0;
+      if (typ === 'rezervace') return obj.rezervace_podil > 0;
+      return false;
+    });
+    
+    if (relevantOrders.length === 0) {
+      return formatAmount(amount);
+    }
+    
+    return (
+      <AmountWithTooltip $hasDetail={true}>
+        {formatAmount(amount)}
+        <AmountTooltip>
+          <AmountTooltipTitle>📋 Objednávky ({relevantOrders.length})</AmountTooltipTitle>
+          {relevantOrders.map((obj, idx) => (
+            <AmountTooltipItem key={idx}>
+              <AmountTooltipOrderNum>{obj.cislo_objednavky}</AmountTooltipOrderNum>
+              <AmountTooltipAmount>
+                {formatAmount(
+                  typ === 'skutecne' ? obj.skutecne_podil :
+                  typ === 'predpoklad' ? obj.predpoklad_podil :
+                  obj.rezervace_podil
+                )}
+                {obj.pocet_lp > 1 && (
+                  <span style={{ fontSize: '0.65rem', color: '#9ca3af', marginLeft: '0.25rem' }}>
+                    (/{obj.pocet_lp})
+                  </span>
+                )}
+              </AmountTooltipAmount>
+            </AmountTooltipItem>
+          ))}
+        </AmountTooltip>
+      </AmountWithTooltip>
+    );
+  };
+  
   // ===== LP PROGRESS BAR s TŘI TYPY ČERPÁNÍ =====
   const renderLPProgressBar = (lp, showThreeTypes = true) => {
     const color = getLPColor(lp);
@@ -1559,9 +1708,10 @@ const LimitovanePrislibyManager = () => {
             <LPProgressBarFill 
               $percent={lp.procento_skutecne} 
               $color={color.color}
-            >
-              {lp.procento_skutecne > 15 && `${lp.procento_skutecne.toFixed(0)}%`}
-            </LPProgressBarFill>
+            />
+            <LPProgressBarText $percent={lp.procento_skutecne}>
+              {lp.procento_skutecne.toFixed(0)}%
+            </LPProgressBarText>
             
             {lp.procento_skutecne > 100 && (
               <LPProgressBarOverflow>
@@ -1596,6 +1746,34 @@ const LimitovanePrislibyManager = () => {
                 <td>Skutečně:</td>
                 <td><strong>{formatAmount(lp.skutecne_cerpano)}</strong></td>
               </tr>
+              
+              {/* 💡 DETAIL OBJEDNÁVEK - pokud existují */}
+              {lp.objednavky_detail && lp.objednavky_detail.length > 0 && (
+                <>
+                  <tr style={{ height: '8px' }}><td colSpan="2"></td></tr>
+                  <tr>
+                    <td colSpan="2" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', paddingTop: '0.5rem', borderTop: '1px solid #e5e7eb' }}>
+                      📋 Objednávky ({lp.objednavky_detail.length}):
+                    </td>
+                  </tr>
+                  {lp.objednavky_detail.map((obj, idx) => (
+                    <tr key={idx} style={{ fontSize: '0.7rem' }}>
+                      <td style={{ paddingLeft: '1rem', color: '#6b7280' }}>
+                        {obj.cislo_objednavky}
+                      </td>
+                      <td style={{ color: '#059669', fontWeight: '600' }}>
+                        {formatAmount(obj.skutecne_podil)}
+                        {obj.pocet_lp > 1 && (
+                          <span style={{ fontSize: '0.65rem', color: '#9ca3af', marginLeft: '0.25rem' }}>
+                            (/{obj.pocet_lp})
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              )}
+              
               <tr className="divider">
                 <td>Zbývá:</td>
                 <td className={lp.zbyva_skutecne < 0 ? 'negative' : 'positive'}>
@@ -1706,9 +1884,10 @@ const LimitovanePrislibyManager = () => {
                     </td>
                     <td style={{ minWidth: '180px' }}>
                       <ProgressBar>
-                        <ProgressFill $percent={procento}>
+                        <ProgressFill $percent={procento} />
+                        <ProgressText $percent={procento}>
                           {procento.toFixed(1)}%
-                        </ProgressFill>
+                        </ProgressText>
                       </ProgressBar>
                     </td>
                     <td>
@@ -1777,8 +1956,8 @@ const LimitovanePrislibyManager = () => {
                     {formatAmount(lp.skutecne_cerpano)}
                   </MainAmount>
                   <SubAmounts>
-                    <SubAmount>Požadováno: {formatAmount(lp.rezervovano)}</SubAmount>
-                    <SubAmount>Plánováno: {formatAmount(lp.predpokladane_cerpani)}</SubAmount>
+                    <SubAmount>Požadováno: {renderAmountWithTooltip(lp.rezervovano, lp.objednavky_detail, 'rezervace')}</SubAmount>
+                    <SubAmount>Plánováno: {renderAmountWithTooltip(lp.predpokladane_cerpani, lp.objednavky_detail, 'predpoklad')}</SubAmount>
                     <SubAmount>Z pokladny: {formatAmount(lp.cerpano_pokladna || 0)}</SubAmount>
                   </SubAmounts>
                 </ThreeTypeAmount>
@@ -1789,16 +1968,16 @@ const LimitovanePrislibyManager = () => {
                     {formatAmount(lp.zbyva_skutecne)}
                   </MainAmount>
                   <SubAmounts>
-                    <SubAmount>Požadováno: {formatAmount(lp.zbyva_rezervace)}</SubAmount>
-                    <SubAmount>Plánováno: {formatAmount(lp.zbyva_predpoklad)}</SubAmount>
+                    <SubAmount>K dispozici: {formatAmount((lp.zbyva_skutecne || 0) - ((lp.rezervovano || 0) + (lp.predpokladane_cerpani || 0)))}</SubAmount>
                   </SubAmounts>
                 </ThreeTypeAmount>
               </td>
               <td style={{ minWidth: '180px' }}>
                 <ProgressBar>
-                  <ProgressFill $percent={lp.procento_skutecne}>
+                  <ProgressFill $percent={lp.procento_skutecne} />
+                  <ProgressText $percent={lp.procento_skutecne}>
                     {lp.procento_skutecne.toFixed(1)}%
-                  </ProgressFill>
+                  </ProgressText>
                 </ProgressBar>
               </td>
               <td>
@@ -1857,10 +2036,7 @@ const LimitovanePrislibyManager = () => {
                 </MainAmount>
                 <SubAmounts>
                   <SubAmount style={{ fontWeight: '600' }}>
-                    Požadováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.zbyva_rezervace || 0), 0))}
-                  </SubAmount>
-                  <SubAmount style={{ fontWeight: '600' }}>
-                    Plánováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.zbyva_predpoklad || 0), 0))}
+                    K dispozici: {formatAmount(data.reduce((sum, lp) => sum + ((lp.zbyva_skutecne || 0) - ((lp.rezervovano || 0) + (lp.predpokladane_cerpani || 0))), 0))}
                   </SubAmount>
                 </SubAmounts>
               </ThreeTypeAmount>
@@ -2038,8 +2214,7 @@ const LimitovanePrislibyManager = () => {
                 <StatLabel $light>Zbývá (dle čerpaného)</StatLabel>
                 <StatValue $light style={{ marginBottom: '0.5rem' }}>{formatAmount(stats.celkem_zbyva_skutecne)}</StatValue>
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-                  <div>→ Rezervováno: {formatAmount(stats.celkem_zbyva_rezervace)}</div>
-                  <div>→ Předpoklad: {formatAmount(stats.celkem_zbyva_predpoklad)}</div>
+                  <div>→ K dispozici: {formatAmount(stats.celkem_zbyva_skutecne - (stats.celkove_rezervovano + stats.celkove_predpokladane))}</div>
                 </div>
               </StatContent>
             </StatCard>
