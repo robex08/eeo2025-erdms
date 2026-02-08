@@ -127,8 +127,12 @@ function handle_order_v3_check($input, $config) {
         
         error_log("✅ User ID $user_id má oprávnění ke kontrole");
 
-        // 5. Zkontrolovat, zda objednávka existuje
-        $stmt = $db->prepare("SELECT id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
+        // 5. Zkontrolovat, zda objednávka existuje a načíst její aktuální stav
+        $stmt = $db->prepare("
+            SELECT id, stav_workflow_kod, stav_objednavky 
+            FROM " . TBL_OBJEDNAVKY . " 
+            WHERE id = ?
+        ");
         $stmt->execute(array($order_id));
         $order = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -140,6 +144,21 @@ function handle_order_v3_check($input, $config) {
                 'message' => 'Objednávka s ID ' . $order_id . ' neexistuje'
             ));
             return;
+        }
+        
+        // Získat aktuální stav workflow (poslední kód z pole)
+        $stav_workflow_kod = null;
+        $stav_workflow_nazev = $order['stav_objednavky']; // Český název z DB
+        
+        if (!empty($order['stav_workflow_kod'])) {
+            try {
+                $stavy = json_decode($order['stav_workflow_kod'], true);
+                if (is_array($stavy) && count($stavy) > 0) {
+                    $stav_workflow_kod = $stavy[count($stavy) - 1]; // Poslední stav
+                }
+            } catch (Exception $e) {
+                error_log("⚠️ Chyba při parsování stav_workflow_kod: " . $e->getMessage());
+            }
         }
 
         // 6. Získat jméno kontrolora
@@ -155,12 +174,55 @@ function handle_order_v3_check($input, $config) {
         // 7. Sestavit JSON metadata
         $dt_kontroly = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
         
-        $metadata = array(
-            'zkontrolovano' => $checked,
-            'kontroloval_user_id' => $user_id,
-            'kontroloval_jmeno' => $kontroloval_jmeno,
-            'dt_kontroly' => $dt_kontroly
-        );
+        // Pokud se kontrola ruší (checked = false), zachovat historii a přidat info o zrušení
+        if (!$checked) {
+            // Načíst existující metadata pro zachování historie
+            $stmt = $db->prepare("SELECT kontrola_metadata FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
+            $stmt->execute(array($order_id));
+            $existing_metadata = $stmt->fetchColumn();
+            
+            $metadata = array(
+                'zkontrolovano' => false,
+                'zrusil_user_id' => $user_id,
+                'zrusil_jmeno' => $kontroloval_jmeno,
+                'dt_zruseni' => $dt_kontroly,
+                'stav_workflow_kod_pri_zruseni' => $stav_workflow_kod,
+                'stav_workflow_nazev_pri_zruseni' => $stav_workflow_nazev
+            );
+            
+            // Zachovat historii předchozí kontroly (pokud existuje)
+            if (!empty($existing_metadata)) {
+                try {
+                    $old_metadata = json_decode($existing_metadata, true);
+                    if (is_array($old_metadata) && isset($old_metadata['zkontrolovano']) && $old_metadata['zkontrolovano']) {
+                        // Přenést data o původní kontrole
+                        $metadata['kontroloval_user_id'] = $old_metadata['kontroloval_user_id'];
+                        $metadata['kontroloval_jmeno'] = $old_metadata['kontroloval_jmeno'];
+                        $metadata['dt_kontroly'] = $old_metadata['dt_kontroly'];
+                        $metadata['stav_workflow_kod'] = $old_metadata['stav_workflow_kod'];
+                        $metadata['stav_workflow_nazev'] = $old_metadata['stav_workflow_nazev'];
+                    }
+                } catch (Exception $e) {
+                    error_log("⚠️ Chyba při parsování starých metadata: " . $e->getMessage());
+                }
+            }
+        } else {
+            // Ukládat plná metadata pouze při kontrole (checked = true)
+            $metadata = array(
+                'zkontrolovano' => true,
+                'kontroloval_user_id' => $user_id,
+                'kontroloval_jmeno' => $kontroloval_jmeno,
+                'dt_kontroly' => $dt_kontroly,
+                'stav_workflow_kod' => $stav_workflow_kod,
+                'stav_workflow_nazev' => $stav_workflow_nazev,
+                // Vyčistit info o případném předchozím zrušení
+                'zrusil_user_id' => null,
+                'zrusil_jmeno' => null,
+                'dt_zruseni' => null,
+                'stav_workflow_kod_pri_zruseni' => null,
+                'stav_workflow_nazev_pri_zruseni' => null
+            );
+        }
         
         $metadata_json = json_encode($metadata);
 

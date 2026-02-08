@@ -66,7 +66,7 @@ const ModalContent = styled.div`
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   width: 100%;
   max-width: 600px;
-  max-height: 80vh;
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
 `;
@@ -133,26 +133,28 @@ const ColumnItem = styled.div`
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: ${props => props.$visible ? 'white' : '#f8fafc'};
-  border: 2px solid ${props => props.$visible ? '#e2e8f0' : '#e2e8f0'};
+  background: ${props => props.$locked ? '#f8fafc' : (props.$visible ? 'white' : '#f8fafc')};
+  border: 2px solid ${props => props.$locked ? '#cbd5e1' : (props.$visible ? '#e2e8f0' : '#e2e8f0')};
   border-radius: 8px;
   transition: all 0.2s ease;
+  opacity: ${props => props.$locked ? 0.6 : 1};
+  cursor: ${props => props.$locked ? 'not-allowed' : 'default'};
 
   &:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
+    background: ${props => props.$locked ? '#f8fafc' : '#f8fafc'};
+    border-color: ${props => props.$locked ? '#cbd5e1' : '#cbd5e1'};
   }
 `;
 
 const DragHandle = styled.div`
   display: flex;
   align-items: center;
-  color: #94a3b8;
-  cursor: grab;
+  color: ${props => props.$locked ? '#cbd5e1' : '#94a3b8'};
+  cursor: ${props => props.$locked ? 'not-allowed' : 'grab'};
   font-size: 1.25rem;
 
   &:active {
-    cursor: grabbing;
+    cursor: ${props => props.$locked ? 'not-allowed' : 'grabbing'};
   }
 `;
 
@@ -169,15 +171,16 @@ const VisibilityToggle = styled.button`
   justify-content: center;
   width: 36px;
   height: 36px;
-  background: ${props => props.$visible ? '#10b981' : '#ef4444'};
+  background: ${props => props.$locked ? '#cbd5e1' : (props.$visible ? '#10b981' : '#ef4444')};
   border: none;
   border-radius: 8px;
   color: white;
-  cursor: pointer;
+  cursor: ${props => props.$locked ? 'not-allowed' : 'pointer'};
   transition: all 0.2s ease;
 
   &:hover {
-    transform: scale(1.05);
+    transform: ${props => props.$locked ? 'scale(1)' : 'scale(1.05)'};
+  }
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   }
 
@@ -241,7 +244,7 @@ const SaveButton = styled.button`
 // ============================================================================
 
 // Sloupce které nelze skrýt ani přesunout
-const LOCKED_COLUMNS = ['expander', 'actions'];
+const LOCKED_COLUMNS = ['expander', 'actions', 'kontrola_komentare', 'approve'];
 
 // ============================================================================
 // COMPONENT
@@ -401,42 +404,34 @@ function OrdersColumnConfigV3({
                     <ColumnItem
                       key={columnId}
                       $visible={columnVisibility[columnId]}
+                      $locked={isLocked}
                       draggable={!isLocked}
                       onDragStart={(e) => handleDragStart(e, index, columnId)}
                       onDragOver={(e) => handleDragOver(e, index, columnId)}
                       onDragEnd={handleDragEnd}
-                      style={{
-                        opacity: isLocked ? 0.6 : 1,
-                        cursor: isLocked ? 'not-allowed' : 'default'
-                      }}
                     >
-                      <DragHandle 
-                        title={isLocked ? 'Tento sloupec nelze přesouvat' : 'Přetáhněte pro změnu pořadí'}
-                        style={{ 
-                          cursor: isLocked ? 'not-allowed' : 'grab',
-                          opacity: isLocked ? 0.3 : 1
-                        }}
-                      >
-                        <FontAwesomeIcon icon={faGripVertical} />
-                      </DragHandle>
+                      {!isLocked && (
+                        <DragHandle 
+                          title="Přetáhněte pro změnu pořadí"
+                        >
+                          <FontAwesomeIcon icon={faGripVertical} />
+                        </DragHandle>
+                      )}
 
                       <ColumnLabel $visible={columnVisibility[columnId]}>
                         {columnLabels[columnId] || columnId}
-                        {isLocked && <span style={{ marginLeft: '8px', fontSize: '0.75em', color: '#94a3b8' }}>(固定)</span>}
+                        {isLocked && <span style={{ marginLeft: '8px', fontSize: '0.75em', color: '#94a3b8' }}>(fixní)</span>}
                       </ColumnLabel>
 
-                      <VisibilityToggle
-                        $visible={columnVisibility[columnId]}
-                        onClick={() => handleToggleVisibility(columnId)}
-                        title={isLocked ? 'Tento sloupec nelze skrýt' : (columnVisibility[columnId] ? 'Skrýt sloupec' : 'Zobrazit sloupec')}
-                        disabled={isLocked}
-                        style={{
-                          opacity: isLocked ? 0.3 : 1,
-                          cursor: isLocked ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        <FontAwesomeIcon icon={columnVisibility[columnId] ? faEye : faEyeSlash} />
-                      </VisibilityToggle>
+                      {!isLocked && (
+                        <VisibilityToggle
+                          $visible={columnVisibility[columnId]}
+                          onClick={() => handleToggleVisibility(columnId)}
+                          title={columnVisibility[columnId] ? 'Skrýt sloupec' : 'Zobrazit sloupec'}
+                        >
+                          <FontAwesomeIcon icon={columnVisibility[columnId] ? faEye : faEyeSlash} />
+                        </VisibilityToggle>
+                      )}
                     </ColumnItem>
                   );
                 })}
