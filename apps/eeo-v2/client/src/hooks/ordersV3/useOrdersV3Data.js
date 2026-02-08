@@ -28,6 +28,7 @@ const REQUEST_STATUS = {
 export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
   const [data, setData] = useState([]);
   const [stats, setStats] = useState(null);
+  const [unfilteredStats, setUnfilteredStats] = useState(null);
   const [pagination, setPagination] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -101,6 +102,7 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
           // Update state
           setData(response.data.orders || []);
           setStats(response.data.stats || null);
+          setUnfilteredStats(response.data.unfilteredStats || null);
           setPagination(response.data.pagination || null);
           setError(null);
           
@@ -167,6 +169,7 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     // Data
     data,
     stats,
+    unfilteredStats,
     pagination,
     loading,
     error,

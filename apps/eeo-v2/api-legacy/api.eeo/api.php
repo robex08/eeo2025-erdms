@@ -264,6 +264,7 @@ require_once __DIR__ . '/v2025.03_25/lib/docxOrderDataHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/importHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyTriggers.php';
+require_once __DIR__ . '/v2025.03_25/lib/lpHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
@@ -2174,6 +2175,18 @@ switch ($endpoint) {
     case 'order-v3/items':
         if ($request_method === 'POST') {
             handle_order_v3_items($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    // === LP (LIMITOVANÉ PŘÍSLÍBY) ===
+    
+    // POST /api.eeo/lp/list - Seznam aktivních LP
+    case 'lp/list':
+        if ($request_method === 'POST') {
+            handle_lp_list($input, $config);
         } else {
             http_response_code(405);
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));

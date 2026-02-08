@@ -69,6 +69,7 @@ export function useOrdersV3({
   const {
     data: orders,
     stats: apiStats,
+    unfilteredStats: apiUnfilteredStats,
     pagination: apiPagination,
     loading,
     error,
@@ -147,19 +148,16 @@ export function useOrdersV3({
   
   // Update stats když se změní API response
   useEffect(() => {
-    if (apiStats) {
-      const hasActiveDashboardFilters = !!dashboardFilters.filter_status;
-      
-      if (!hasActiveDashboardFilters) {
-        // Bez dashboard filtrů = unfiltered baseline
-        setUnfilteredStats(apiStats);
-        setCurrentStats(apiStats);
-      } else {
-        // S dashboard filtry = pouze current stats
-        setCurrentStats(apiStats);
-      }
+    // 🎯 Vždy použij unfilteredStats z API (celková suma za období)
+    if (apiUnfilteredStats) {
+      setUnfilteredStats(apiUnfilteredStats);
     }
-  }, [apiStats, dashboardFilters.filter_status]);
+    
+    // 🔍 Použij filtrované stats (pokud existují)
+    if (apiStats) {
+      setCurrentStats(apiStats);
+    }
+  }, [apiStats, apiUnfilteredStats]);
   
   // ✅ Column configuration přesunuto do useOrdersV3State
   
@@ -232,6 +230,11 @@ export function useOrdersV3({
       if (stavArray.length > 0) {
         backendFilters.stav = stavArray;
       }
+    }
+    
+    // LP kódy - filtrování podle Limitovaných příslibů
+    if (filters.lp_kody && Array.isArray(filters.lp_kody) && filters.lp_kody.length > 0) {
+      backendFilters.lp_kody = filters.lp_kody.map(id => String(id));
     }
     
     // Datumové rozsahy
@@ -729,6 +732,11 @@ export function useOrdersV3({
     // ZÁKLAD jsou VŽDY unfilteredStats (celkové hodnoty)
     const baseStats = { ...unfilteredStats };
     
+    console.log('📊 [enhancedStats] unfilteredStats:', {
+      total: unfilteredStats.total,
+      totalAmount: unfilteredStats.totalAmount
+    });
+    
     // Pro filtrované hodnoty použij currentStats z BE (ne počítání z orders na stránce!)
     let filteredTotalAmount = baseStats.totalAmount; // default = celková částka
     let filteredCount = baseStats.total; // default = celkový počet
@@ -738,18 +746,31 @@ export function useOrdersV3({
       filteredTotalAmount = currentStats.totalAmount;
       filteredCount = currentStats.total || 0;
       
+      console.log('📊 [enhancedStats] currentStats:', {
+        total: currentStats.total,
+        totalAmount: currentStats.totalAmount
+      });
+      
       // Také aktualizuj dokoncenaAmount z currentStats
       if (currentStats.dokoncenaAmount !== undefined) {
         baseStats.dokoncenaAmount = currentStats.dokoncenaAmount;
       }
     }
     
-    // Rozšířené stats
-    return {
+    const result = {
       ...baseStats,
       filteredTotalAmount,
       filteredCount
     };
+    
+    console.log('📊 [enhancedStats] RESULT:', {
+      totalAmount: result.totalAmount,
+      filteredTotalAmount: result.filteredTotalAmount,
+      total: result.total,
+      filteredCount: result.filteredCount
+    });
+    
+    return result;
   }, [unfilteredStats, currentStats]);
 
   // ============================================================================

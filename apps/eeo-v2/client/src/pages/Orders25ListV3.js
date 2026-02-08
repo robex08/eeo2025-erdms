@@ -18,7 +18,7 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useContext, useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -606,10 +606,6 @@ function Orders25ListV3() {
       try {
         const statesData = await fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' });
         
-        // 🔍 DEBUG: Vypsat RAW data z backendu (před transformací)
-        console.log('🔍 RAW DATA stavů z BE (před transformací):', statesData);
-        console.log('🔍 První stav:', statesData?.[0]);
-        
         // Seřaď stavy abecedně podle názvu a přidej .label (stejně jako OrdersFiltersV3Full)
         const sortedStates = (statesData || []).sort((a, b) => {
           const nameA = (a.nazev_stavu || a.nazev || '').toLowerCase();
@@ -625,9 +621,6 @@ function Orders25ListV3() {
             kod_stavu: kod
           };
         });
-        
-        console.log('🔍 TRANSFORMOVANÁ DATA (po map):', sortedStates);
-        console.log('🔍 První transformovaný stav:', sortedStates?.[0]);
         
         setOrderStatesList(sortedStates);
         
@@ -784,6 +777,36 @@ function Orders25ListV3() {
     originalClearFilters(); // Vymaže sloupcové filtry a dashboard filtry
     setGlobalFilter('');    // Vymaže fulltext search
   }, [originalClearFilters, setGlobalFilter]);
+
+  // Helper pro detekci jakýchkoliv aktivních filtrů (column filters nebo dashboard filter)
+  const hasAnyActiveFilters = useMemo(() => {
+    const hasFilters = !!(
+      dashboardFilters?.filter_status ||
+      (columnFilters?.objednatel?.length > 0) ||
+      (columnFilters?.garant?.length > 0) ||
+      (columnFilters?.prikazce?.length > 0) ||
+      (columnFilters?.schvalovatel?.length > 0) ||
+      (columnFilters?.stav?.length > 0) ||
+      (columnFilters?.lp_kody?.length > 0) ||
+      columnFilters?.dateFrom ||
+      columnFilters?.dateTo ||
+      columnFilters?.amountFrom ||
+      columnFilters?.amountTo ||
+      columnFilters?.maBytZverejneno ||
+      columnFilters?.byloZverejneno ||
+      columnFilters?.mimoradneObjednavky ||
+      (globalFilter && globalFilter.trim())
+    );
+    
+    console.log('🔍 hasAnyActiveFilters:', hasFilters, {
+      dashboardFilters,
+      columnFilters,
+      globalFilter,
+      lp_kody_length: columnFilters?.lp_kody?.length
+    });
+    
+    return hasFilters;
+  }, [columnFilters, dashboardFilters, globalFilter]);
 
   // ✅ OPTIMALIZACE: localStorage efekty nahrazeny debounced save v useOrdersV3State
   
@@ -1102,18 +1125,30 @@ function Orders25ListV3() {
 
       {/* Dashboard */}
       {showDashboard && (
-        <OrdersDashboardV3Full
-          stats={stats || {}}
-          totalAmount={stats?.totalAmount || 0}
-          filteredTotalAmount={stats?.filteredTotalAmount || stats?.totalAmount || 0}
-          filteredCount={stats?.filteredCount || orders?.length || 0}
-          hasActiveFilters={!!dashboardFilters?.filter_status}
-          activeStatus={dashboardFilters.filter_status}
-          onStatusClick={handleDashboardFilterChange}
-          onHide={() => updatePreferences({ showDashboard: false })}
-          mode={dashboardMode}
-          onModeChange={(mode) => updatePreferences({ dashboardMode: mode })}
-        />
+        <>
+          {(() => {
+            console.log('🎯 [Dashboard Props]:', {
+              'stats.total': stats?.total,
+              'stats.totalAmount': stats?.totalAmount,
+              'stats.filteredTotalAmount': stats?.filteredTotalAmount,
+              'stats.filteredCount': stats?.filteredCount,
+              hasActiveFilters: hasAnyActiveFilters
+            });
+            return null;
+          })()}
+          <OrdersDashboardV3Full
+            stats={stats || {}}
+            totalAmount={stats?.totalAmount || 0}
+            filteredTotalAmount={stats?.filteredTotalAmount || stats?.totalAmount || 0}
+            filteredCount={stats?.filteredCount || orders?.length || 0}
+            hasActiveFilters={hasAnyActiveFilters}
+            activeStatus={dashboardFilters.filter_status}
+            onStatusClick={handleDashboardFilterChange}
+            onHide={() => updatePreferences({ showDashboard: false })}
+            mode={dashboardMode}
+            onModeChange={(mode) => updatePreferences({ dashboardMode: mode })}
+          />
+        </>
       )}
 
       {/* Filters - zobrazit pouze když showFilters === true */}
