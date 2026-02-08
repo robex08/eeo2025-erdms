@@ -723,7 +723,7 @@ const OrderCommentsTooltip = ({
   // ✅ Automatické rozbalení všech odpovědí při načtení
   useEffect(() => {
     if (comments && comments.length > 0) {
-      console.log('🔍 COMMENTS DEBUG:', comments.map(c => ({ 
+      console.log('🔍 COMMENTS DEBUG:', comments.filter(c => c).map(c => ({ 
         id: c.id, 
         text: c.obsah?.substring(0, 20), 
         parent_comment_id: c.parent_comment_id 
@@ -872,6 +872,17 @@ const OrderCommentsTooltip = ({
   const topLevelComments = (comments || []).filter(c => c && !c.parent_comment_id);
   const getReplies = (commentId) => (comments || []).filter(c => c && c.parent_comment_id === commentId);
   
+  // Helper pro získání jména autora podle ID
+  const getCommentById = (commentId) => (comments || []).find(c => c && c.id === commentId);
+  
+  // Helper pro získání top-level parent (pro single-level threading)
+  const getTopLevelParent = (commentId) => {
+    const comment = getCommentById(commentId);
+    if (!comment) return commentId;
+    // Pokud má comment parenta, vezmi toho parenta (max 1 úroveň)
+    return comment.parent_comment_id || commentId;
+  };
+  
   return (
     <>
       <TooltipOverlay onClick={onClose} />
@@ -985,6 +996,9 @@ const OrderCommentsTooltip = ({
                       <RepliesWrapper>
                         {replies.map((reply) => {
                           const isOwnReply = (reply.user_id || reply.autor_id) === currentUserId;
+                          const parentComment = getCommentById(reply.parent_comment_id);
+                          const replyingToName = parentComment?.autor_jmeno || 'Neznámý';
+                          
                           return (
                             <ReplyItem key={reply.id}>
                               <ReplyHeader>
@@ -1006,7 +1020,22 @@ const OrderCommentsTooltip = ({
                                   )}
                                 </div>
                               </ReplyHeader>
+                              <div style={{ fontSize: '0.7rem', color: '#2563eb', marginBottom: '0.3rem', fontStyle: 'italic' }}>
+                                Odpověď na {replyingToName}
+                              </div>
                               <ReplyText>{reply.obsah}</ReplyText>
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <ReplyButton 
+                                  onClick={() => setReplyToComment({ 
+                                    id: getTopLevelParent(reply.parent_comment_id), 
+                                    author: reply.autor_jmeno 
+                                  })}
+                                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                                >
+                                  <FontAwesomeIcon icon={faReply} />
+                                  Odpovědět
+                                </ReplyButton>
+                              </div>
                             </ReplyItem>
                           );
                         })}
