@@ -2260,6 +2260,63 @@ switch ($endpoint) {
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
+    
+    // === ORDERS V3 - KONTROLA A KOMENTÁŘE ===
+    
+    // POST /api.eeo/orders-v3/check - Toggle stav kontroly objednávky
+    case 'orders-v3/check':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3CheckHandlers.php';
+            handle_order_v3_check($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/get-checks - Načte stavy kontrol pro více objednávek
+    case 'orders-v3/get-checks':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3CheckHandlers.php';
+            handle_order_v3_get_checks($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/comments/list - Načte komentáře k objednávce
+    case 'orders-v3/comments/list':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3CommentsHandlers.php';
+            handle_order_v3_comments_list($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/comments/add - Přidá nový komentář k objednávce
+    case 'orders-v3/comments/add':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3CommentsHandlers.php';
+            handle_order_v3_comments_add($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/orders-v3/comments/delete - Smazání vlastního komentáře (soft delete)
+    case 'orders-v3/comments/delete':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3CommentsHandlers.php';
+            handle_order_v3_comments_delete($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
 
     // === ORDER V2 - STANDARDIZED API ENDPOINTS ===
     
