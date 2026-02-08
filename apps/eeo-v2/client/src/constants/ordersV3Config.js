@@ -109,6 +109,9 @@ export const ORDERS_V3_CONFIG = {
       // Status array
       stav: [],
       
+      // LP codes array
+      lp_kody: [],
+      
       // Date range
       dateFrom: '',
       dateTo: '',
