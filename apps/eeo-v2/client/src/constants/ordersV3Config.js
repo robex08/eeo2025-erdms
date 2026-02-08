@@ -40,7 +40,8 @@ export const ORDERS_V3_CONFIG = {
   // ============================================================================
   DEFAULT_COLUMN_ORDER: [
     'expander',
-    'approve', 
+    'approve',
+    'kontrola_komentare', // ✅ Kontrola + Komentáře (2026-02-08)
     'dt_objednavky',
     'cislo_objednavky',
     'financovani',
@@ -58,6 +59,7 @@ export const ORDERS_V3_CONFIG = {
   DEFAULT_COLUMN_VISIBILITY: {
     expander: true,
     approve: true,
+    kontrola_komentare: true, // ✅ Kontrola + Komentáře (2026-02-08)
     dt_objednavky: true,
     cislo_objednavky: true,
     financovani: true,
@@ -134,6 +136,7 @@ export const ORDERS_V3_CONFIG = {
     columnVisibility: {
       expander: true,
       approve: true,
+      kontrola_komentare: true, // ✅ Kontrola + Komentáře (2026-02-08)
       dt_objednavky: true,
       cislo_objednavky: true,
       financovani: true,
@@ -150,6 +153,7 @@ export const ORDERS_V3_CONFIG = {
     columnOrder: [
       'expander',
       'approve',
+      'kontrola_komentare', // ✅ Kontrola + Komentáře (2026-02-08)
       'dt_objednavky',
       'cislo_objednavky',
       'financovani',

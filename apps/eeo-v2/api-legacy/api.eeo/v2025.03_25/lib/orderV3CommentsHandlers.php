@@ -45,21 +45,38 @@ require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
 
 /**
- * Kontrola, zda má uživatel přístup k objednávce (12 rolí účastníků + admin)
+ * Kontrola, zda má uživatel přístup k objednávce a jejím komentářům
+ * 
+ * ✅ PRAVIDLA PŘÍSTUPU:
+ * 1. ADMINI (isAdmin) - má přístup ke VŠEM objednávkám a komentářům
+ * 2. Pokud uživatel VIDÍ objednávku (dle Orders V3 logiky) - má přístup k jejím komentářům
+ *    - To zahrnuje: vlastní objednávky, podřízené (příkazce), účastníky (12 rolí)
  * 
  * @param PDO $db DB připojení
  * @param int $user_id ID uživatele
  * @param int $order_id ID objednávky
  * @param array $user_roles Role uživatele
+ * @param bool $is_admin Je uživatel admin (isAdmin flag)
  * @return bool True pokud má přístup
  */
-function can_access_order_comments($db, $user_id, $order_id, $user_roles = array()) {
-    // 1. Admin má přístup ke VŠEM objednávkám
-    if (in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles)) {
+function can_access_order_comments($db, $user_id, $order_id, $user_roles = array(), $is_admin = false) {
+    // 1. ADMINI má přístup ke VŠEM objednávkám (isAdmin flag)
+    if ($is_admin) {
+        error_log("✅ User ID $user_id má přístup - isAdmin");
         return true;
     }
     
-    // 2. Zkontrolovat, zda je uživatel účastníkem objednávky (12 rolí)
+    // 2. SUPERADMIN a ADMINISTRATOR mají přístup ke VŠEM objednávkám
+    if (in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles)) {
+        error_log("✅ User ID $user_id má přístup - SUPERADMIN/ADMINISTRATOR role");
+        return true;
+    }
+    
+    // 3. Zkontrolovat, zda uživatel VIDÍ objednávku podle Orders V3 logiky:
+    //    a) Je účastníkem objednávky (12 rolí)
+    //    b) Je příkazce nadřízený autorovi objednávky (hierarchie)
+    
+    // 3a) Přímý účastník objednávky (12 rolí)
     $stmt = $db->prepare("
         SELECT COUNT(*) as is_participant
         FROM " . TBL_OBJEDNAVKY . "
@@ -80,7 +97,6 @@ function can_access_order_comments($db, $user_id, $order_id, $user_roles = array
           )
     ");
     
-    // Všech 12 parametrů musí být user_id (kontrolujeme OR podmínky)
     $params = array($order_id);
     for ($i = 0; $i < 12; $i++) {
         $params[] = $user_id;
@@ -89,7 +105,41 @@ function can_access_order_comments($db, $user_id, $order_id, $user_roles = array
     $stmt->execute($params);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    return ($result && $result['is_participant'] > 0);
+    if ($result && $result['is_participant'] > 0) {
+        error_log("✅ User ID $user_id má přístup - účastník objednávky");
+        return true;
+    }
+    
+    // 3b) Příkazce vidí objednávky svých podřízených (hierarchie)
+    // Získat autora objednávky
+    $stmt = $db->prepare("
+        SELECT uzivatel_id 
+        FROM " . TBL_OBJEDNAVKY . " 
+        WHERE id = ?
+    ");
+    $stmt->execute(array($order_id));
+    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($order) {
+        $order_author_id = (int)$order['uzivatel_id'];
+        
+        // Zkontrolovat, zda je current user příkazce autora objednávky
+        $stmt = $db->prepare("
+            SELECT prikazce_id 
+            FROM " . TBL_UZIVATELE . " 
+            WHERE id = ?
+        ");
+        $stmt->execute(array($order_author_id));
+        $author = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($author && (int)$author['prikazce_id'] === $user_id) {
+            error_log("✅ User ID $user_id má přístup - příkazce autora objednávky");
+            return true;
+        }
+    }
+    
+    error_log("⛔ User ID $user_id NEMÁ přístup k objednávce $order_id");
+    return false;
 }
 
 /**
@@ -154,7 +204,7 @@ function handle_order_v3_comments_list($input, $config) {
         
         $user_id = (int)$token_data['id'];
         
-        // Získat role uživatele
+        // Získat role uživatele a isAdmin flag
         $stmt = $db->prepare("
             SELECT r.kod_role
             FROM " . TBL_UZIVATELE_ROLE . " ur
@@ -167,9 +217,15 @@ function handle_order_v3_comments_list($input, $config) {
         foreach ($roles_result as $row) {
             $user_roles[] = $row['kod_role'];
         }
+        
+        // Získat isAdmin flag
+        $stmt = $db->prepare("SELECT isAdmin FROM " . TBL_UZIVATELE . " WHERE id = ?");
+        $stmt->execute(array($user_id));
+        $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        $is_admin = ($user_data && (int)$user_data['isAdmin'] === 1);
 
         // 4. Kontrola přístupu k objednávce
-        if (!can_access_order_comments($db, $user_id, $order_id, $user_roles)) {
+        if (!can_access_order_comments($db, $user_id, $order_id, $user_roles, $is_admin)) {
             error_log("⛔ User ID $user_id nemá přístup k objednávce $order_id");
             http_response_code(403);
             echo json_encode(array(
@@ -325,7 +381,7 @@ function handle_order_v3_comments_add($input, $config) {
         
         $user_id = (int)$token_data['id'];
         
-        // Získat role uživatele
+        // Získat role uživatele a isAdmin flag
         $stmt = $db->prepare("
             SELECT r.kod_role
             FROM " . TBL_UZIVATELE_ROLE . " ur
@@ -338,9 +394,15 @@ function handle_order_v3_comments_add($input, $config) {
         foreach ($roles_result as $row) {
             $user_roles[] = $row['kod_role'];
         }
+        
+        // Získat isAdmin flag
+        $stmt = $db->prepare("SELECT isAdmin FROM " . TBL_UZIVATELE . " WHERE id = ?");
+        $stmt->execute(array($user_id));
+        $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        $is_admin = ($user_data && (int)$user_data['isAdmin'] === 1);
 
         // 4. Kontrola přístupu k objednávce
-        if (!can_access_order_comments($db, $user_id, $order_id, $user_roles)) {
+        if (!can_access_order_comments($db, $user_id, $order_id, $user_roles, $is_admin)) {
             error_log("⛔ User ID $user_id nemá přístup k objednávce $order_id");
             http_response_code(403);
             echo json_encode(array(
@@ -528,16 +590,24 @@ function handle_order_v3_comments_delete($input, $config) {
             return;
         }
         
-        // Pouze vlastník může smazat (nebo admin)
-        $stmt = $db->prepare("
-            SELECT r.kod_role
-            FROM " . TBL_UZIVATELE_ROLE . " ur
-            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
-            WHERE ur.uzivatel_id = ?
-              AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
-        ");
+        // Pouze vlastník může smazat (nebo admin/isAdmin)
+        $stmt = $db->prepare("SELECT isAdmin FROM " . TBL_UZIVATELE . " WHERE id = ?");
         $stmt->execute(array($user_id));
-        $is_admin = ($stmt->rowCount() > 0);
+        $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        $is_admin = ($user_data && (int)$user_data['isAdmin'] === 1);
+        
+        // Kontrola SUPERADMIN/ADMINISTRATOR role
+        if (!$is_admin) {
+            $stmt = $db->prepare("
+                SELECT r.kod_role
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+                WHERE ur.uzivatel_id = ?
+                  AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
+            ");
+            $stmt->execute(array($user_id));
+            $is_admin = ($stmt->rowCount() > 0);
+        }
         
         if ($comment['user_id'] != $user_id && !$is_admin) {
             error_log("⛔ User ID $user_id nemá právo smazat komentář $comment_id (vlastník: {$comment['user_id']})");
@@ -610,6 +680,12 @@ function handle_order_v3_comments_delete($input, $config) {
  * - uzivatel_id, objednatel_id, garant_uzivatel_id, schvalovatel_id
  * - prikazce_id, uzivatel_akt_id, odesilatel_id, dodavatel_potvrdil_id
  * - zverejnil_id, fakturant_id, dokoncil_id, potvrdil_vecnou_spravnost_id
+ * 
+ * TODO: Budoucí rozšíření - org hierarchie (node/edge)
+ * - Implementovat filtrování příjemců podle organizační hierarchie
+ * - Vytvořit prop/node/edge strukturu pro hierarchii
+ * - Rozšířit logiku pro parent/child vztahy v org struktuře
+ * - Umožnit nastavení "notifikovat nadřízené" / "notifikovat tým" apod.
  * 
  * @param PDO $db Database connection
  * @param int $order_id ID objednávky

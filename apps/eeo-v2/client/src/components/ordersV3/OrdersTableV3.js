@@ -2099,6 +2099,7 @@ const OrdersTableV3 = ({
   
   // Definice sloupců přesně jako v původním Orders25List.js
   const columns = useMemo(() => {
+    console.log('🔍 [OrdersTableV3] Creating columns...');
     const allColumns = [
       {
         id: 'expander',
@@ -2978,6 +2979,11 @@ const OrdersTableV3 = ({
       },
     ];
 
+    console.log('🔍 [OrdersTableV3] allColumns count:', allColumns.length);
+    console.log('🔍 [OrdersTableV3] allColumns IDs:', allColumns.map(c => c.id));
+    console.log('🔍 [OrdersTableV3] visibleColumns:', visibleColumns);
+    console.log('🔍 [OrdersTableV3] columnOrder:', columnOrder);
+
     // Filtrovat pouze viditelné sloupce
     let filtered = allColumns;
     if (visibleColumns && visibleColumns.length > 0) {
@@ -2998,6 +3004,9 @@ const OrdersTableV3 = ({
         return indexA - indexB;
       });
     }
+    
+    console.log('🔍 [OrdersTableV3] filtered columns count:', filtered.length);
+    console.log('🔍 [OrdersTableV3] filtered columns IDs:', filtered.map(c => c.id));
     
     return filtered;
   }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded]);
