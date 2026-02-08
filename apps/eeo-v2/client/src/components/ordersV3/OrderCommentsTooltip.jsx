@@ -720,6 +720,30 @@ const OrderCommentsTooltip = ({
     }
   }, [replyToComment]);
   
+  // ✅ Automatické rozbalení všech odpovědí při načtení
+  useEffect(() => {
+    if (comments && comments.length > 0) {
+      console.log('🔍 COMMENTS DEBUG:', comments.map(c => ({ 
+        id: c.id, 
+        text: c.obsah?.substring(0, 20), 
+        parent_comment_id: c.parent_comment_id 
+      })));
+      
+      const newExpandedReplies = {};
+      const topLevel = comments.filter(c => c && !c.parent_comment_id);
+      console.log('🔍 TOP LEVEL:', topLevel.length);
+      
+      topLevel.forEach(comment => {
+        const replies = comments.filter(c => c && c.parent_comment_id === comment.id);
+        console.log(`🔍 Comment ${comment.id} has ${replies.length} replies`);
+        if (replies.length > 0) {
+          newExpandedReplies[comment.id] = true;
+        }
+      });
+      setExpandedReplies(newExpandedReplies);
+    }
+  }, [comments]);
+  
   // Výpočet pozice tooltipu
   useLayoutEffect(() => {
     if (!iconRef || !containerRef.current) return;
