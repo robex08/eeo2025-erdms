@@ -316,6 +316,7 @@ function enrichFinancovaniV3($db, &$order) {
             'LP' => 'Limitovaný příslib',
             'SMLOUVA' => 'Smlouva',
             'INDIVIDUALNI_SCHVALENI' => 'Individuální schválení',
+            'POJISTNA_UDALOST' => 'Pojistná událost',
             'FINKP' => 'Finanční kontrola'
         );
         
@@ -773,6 +774,14 @@ function handle_order_v3_list($input, $config, $queries) {
             
             // Hledání v čísle smlouvy
             $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) LIKE ?";
+            $where_params[] = '%' . $financovani_search . '%';
+            
+            // Hledání v čísle pojistné události
+            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_pojistne_udalosti')) LIKE ?";
+            $where_params[] = '%' . $financovani_search . '%';
+            
+            // Hledání v poznámce pojistné události
+            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.poznamka')) LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v individuálním schválení
