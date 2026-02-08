@@ -324,20 +324,28 @@ export async function loadOrderComments({ token, username, order_id, limit = 100
  * @param {string} params.username - Username
  * @param {number} params.order_id - ID objednávky
  * @param {string} params.obsah - Text komentáře
+ * @param {number} [params.parent_comment_id] - ID nadřazeného komentáře (pro odpovědi)
  * @returns {Promise<Object>} Response {status, data: comment, message, comments_count}
  */
-export async function addOrderComment({ token, username, order_id, obsah }) {
+export async function addOrderComment({ token, username, order_id, obsah, parent_comment_id }) {
+  const body = {
+    token,
+    username,
+    order_id,
+    obsah
+  };
+  
+  // Přidat parent_comment_id pouze pokud je definován
+  if (parent_comment_id !== null && parent_comment_id !== undefined) {
+    body.parent_comment_id = parent_comment_id;
+  }
+  
   const response = await fetch(`${API_BASE_URL}/orders-v3/comments/add`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      token,
-      username,
-      order_id,
-      obsah
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
