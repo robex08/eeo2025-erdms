@@ -847,7 +847,7 @@ export function useOrdersV3({
    * @param {string} text - Text komentáře
    * @returns {Promise<Object>} {comment: Object, comments_count: number}
    */
-  const handleAddComment = useCallback(async (orderId, text) => {
+  const handleAddComment = useCallback(async (orderId, text, parentCommentId = null) => {
     if (!token || !username) {
       console.error('Missing token or username');
       return null;
@@ -858,12 +858,19 @@ export function useOrdersV3({
     }
     
     try {
-      const response = await addOrderComment({
+      const requestData = {
         token,
         username,
         order_id: orderId,
         obsah: text
-      });
+      };
+      
+      // Přidat parent_comment_id pouze pokud je definován
+      if (parentCommentId !== null && parentCommentId !== undefined) {
+        requestData.parent_comment_id = parentCommentId;
+      }
+      
+      const response = await addOrderComment(requestData);
       
       if (response.status === 'success') {
         return {
