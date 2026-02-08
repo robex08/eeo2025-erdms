@@ -329,32 +329,54 @@ const ShowRepliesButton = styled.button`
 
 const RepliesWrapper = styled.div`
   margin-top: 0.75rem;
-  margin-left: 1.5rem;
-  padding-left: 1rem;
-  border-left: 2px solid #e2e8f0;
+  margin-left: 2rem;
+  padding-left: 1.25rem;
+  border-left: 3px solid #3b82f6;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  background: linear-gradient(to right, rgba(59, 130, 246, 0.03), transparent);
+  padding-right: 0.5rem;
+  border-radius: 0 6px 6px 0;
 `;
 
 const ReplyItem = styled.div`
-  padding: 0.5rem;
-  background: #f8fafc;
+  padding: 0.75rem;
+  background: white;
   border-radius: 6px;
   font-size: 0.85rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+  
+  &:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+  }
 `;
 
 const ReplyHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
 `;
 
 const ReplyAuthor = styled.div`
   font-weight: 600;
-  font-size: 0.75rem;
-  color: #475569;
+  font-size: 0.8rem;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  
+  &:before {
+    content: '↳';
+    font-size: 1rem;
+    color: #3b82f6;
+  }
 `;
 
 const ReplyDate = styled.div`
@@ -363,8 +385,9 @@ const ReplyDate = styled.div`
 `;
 
 const ReplyText = styled.div`
-  color: #64748b;
-  line-height: 1.4;
+  color: #475569;
+  line-height: 1.5;
+  font-size: 0.875rem;
 `;
 
 const ReplyInputWrapper = styled.div`
@@ -673,6 +696,7 @@ const OrderCommentsTooltip = ({
 }) => {
   const containerRef = useRef(null);
   const deleteButtonRef = useRef(null);
+  const replyTextareaRef = useRef(null);
   
   const [isPositioned, setIsPositioned] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -688,6 +712,13 @@ const OrderCommentsTooltip = ({
   const [replyToComment, setReplyToComment] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
+  
+  // ✅ Automatický fokus do reply textarea
+  useEffect(() => {
+    if (replyToComment && replyTextareaRef.current) {
+      replyTextareaRef.current.focus();
+    }
+  }, [replyToComment]);
   
   // Výpočet pozice tooltipu
   useLayoutEffect(() => {
@@ -967,6 +998,7 @@ const OrderCommentsTooltip = ({
                           </CancelReplyButton>
                         </ReplyInputHeader>
                         <ReplyTextarea
+                          ref={replyTextareaRef}
                           value={replyText}
                           onChange={(e) => setReplyText(e.target.value)}
                           placeholder="Napište odpověď..."
