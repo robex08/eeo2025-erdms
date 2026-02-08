@@ -342,9 +342,20 @@ const OrdersDashboardV3Full = ({
   
   // 🎯 KLÍČOVÁ LOGIKA: 
   // - Modrá sekce (totalAmount) VŽDY zobrazuje celkovou částku za období - NIKDY se nemění!
-  // - Malé dlaždice používají filteredStats když je aktivní filtr, jinak stats
-  const displayStats = hasActiveFilters && filteredStats ? filteredStats : stats;
-  const displayTotalForCalculations = hasActiveFilters ? filteredTotalAmount : totalAmount;
+  // - Malé dlaždice používají filteredStats když je aktivní filtr A filteredStats existuje
+  // - Pokud filteredStats je null (např. při sloupcových filtrech), použij stats jako fallback
+  const displayStats = (hasActiveFilters && filteredStats) ? filteredStats : stats;
+  
+  // ✅ Pro výpočty: použij filteredTotalAmount pokud existuje, jinak totalAmount
+  const displayTotalForCalculations = (filteredTotalAmount !== undefined && filteredTotalAmount !== null) 
+    ? filteredTotalAmount 
+    : totalAmount;
+  
+  // ✅ FIX: Zobrazit oranžovou sekci když jsou aktivní filtry
+  // Pokud filteredTotalAmount nebo filteredCount nejsou definovány, zobrazíme totalAmount a stats.total jako fallback
+  const showFilteredSection = hasActiveFilters;
+  const displayFilteredAmount = (filteredTotalAmount !== undefined && filteredTotalAmount !== null) ? filteredTotalAmount : totalAmount;
+  const displayFilteredCount = (filteredCount !== undefined && filteredCount !== null) ? filteredCount : stats.total;
 
   // Určení, zda zobrazit dlaždici (pro dynamický režim)
   const shouldShowTile = (count) => {
@@ -405,8 +416,8 @@ const OrdersDashboardV3Full = ({
                 Celková cena s DPH za období ({stats.total || 0})
               </LargeStatLabel>
               
-              {/* Oranžová sekce pro vybrané - zobrazit když jsou aktivní JAKÉKOLIV filtry */}
-              {hasActiveFilters && (
+              {/* Oranžová sekce pro vybrané - zobrazit když jsou aktivní JAKÉKOLIV filtry A máme validní data */}
+              {showFilteredSection && (
                 <div style={{
                   marginTop: '0.75rem',
                   paddingTop: '0.75rem',
@@ -417,7 +428,7 @@ const OrdersDashboardV3Full = ({
                     fontWeight: '700',
                     color: '#d97706',
                   }}>
-                    {Math.round(filteredTotalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
+                    {Math.round(displayFilteredAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                   </div>
                   <div style={{
                     fontSize: '0.75rem',
@@ -425,7 +436,7 @@ const OrdersDashboardV3Full = ({
                     color: '#d97706',
                     marginTop: '0.25rem'
                   }}>
-                    Celková cena s DPH za vybrané ({filteredCount})
+                    Celková cena s DPH za vybrané ({displayFilteredCount})
                   </div>
                 </div>
               )}
@@ -612,8 +623,8 @@ const OrdersDashboardV3Full = ({
               Celková cena s DPH za období ({stats.total || 0})
             </LargeStatLabel>
             
-            {/* Oranžová sekce pro vybrané - zobrazit když jsou aktivní JAKÉKOLIV filtry */}
-            {hasActiveFilters && (
+            {/* Oranžová sekce pro vybrané - zobrazit když jsou aktivní JAKÉKOLIV filtry A máme validní data */}
+            {showFilteredSection && (
               <div style={{
                 marginTop: '0.75rem',
                 paddingTop: '0.75rem',
@@ -626,7 +637,7 @@ const OrdersDashboardV3Full = ({
                   textAlign: 'center',
                   marginBottom: '0.25rem'
                 }}>
-                  {Math.round(filteredTotalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
+                  {Math.round(displayFilteredAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                 </div>
                 <div style={{
                   fontSize: '0.75rem',
@@ -636,7 +647,7 @@ const OrdersDashboardV3Full = ({
                   paddingBottom: '0.75rem',
                   borderBottom: '1px solid rgba(100, 116, 139, 0.2)'
                 }}>
-                  Celková cena s DPH za vybrané ({filteredCount})
+                  Celková cena s DPH za vybrané ({displayFilteredCount})
                 </div>
               </div>
             )}
