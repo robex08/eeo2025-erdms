@@ -497,10 +497,10 @@ function App() {
       },
 
       // Callback pro změnu počtu nepřečtených notifikací
-      onUnreadCountChange: (count) => {
+      onUnreadCountChange: (count, badgeColor) => {
         const ctx = bgTasksContextRef.current;
         if (ctx?.handleUnreadCountChange) {
-          ctx.handleUnreadCountChange(count);
+          ctx.handleUnreadCountChange(count, badgeColor);
         }
       },
 

@@ -148,6 +148,8 @@ export function useOrdersV3({
     withAttachments: 0,
     mimoradneUdalosti: 0,
     mojeObjednavky: 0,
+    withComments: 0,
+    withMyComments: 0,
   }));
   
   // Current stats (filtrované) - z API response
@@ -383,6 +385,10 @@ export function useOrdersV3({
         activeFilters.s_fakturou = true;
       } else if (currentDashboard.filter_status === 's_prilohami') {
         activeFilters.s_prilohami = true;
+      } else if (currentDashboard.filter_status === 's_komentari') {
+        activeFilters.s_komentari = true;
+      } else if (currentDashboard.filter_status === 's_mymi_komentari') {
+        activeFilters.s_mymi_komentari = true;
       } else {
         activeFilters.stav_workflow = currentDashboard.filter_status;
       }

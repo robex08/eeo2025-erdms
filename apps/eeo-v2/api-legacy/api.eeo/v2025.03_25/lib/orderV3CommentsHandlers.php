@@ -244,7 +244,14 @@ function handle_order_v3_comments_list($input, $config) {
             SELECT 
                 k.id,
                 k.objednavka_id,
-                k.parent_comment_id,
+                -- ✅ OPRAVA: Pokud parent je smazaný, nastav NULL (osiřelý komentář zobraz jako samostatný)
+                CASE 
+                    WHEN k.parent_comment_id IS NOT NULL 
+                         AND EXISTS (SELECT 1 FROM 25a_objednavky_komentare p 
+                                    WHERE p.id = k.parent_comment_id AND p.smazano = 0)
+                    THEN k.parent_comment_id
+                    ELSE NULL
+                END as parent_comment_id,
                 k.user_id,
                 k.obsah,
                 k.obsah_plain,
@@ -535,6 +542,15 @@ function handle_order_v3_comments_add($input, $config) {
         } catch (Exception $notif_error) {
             // Logujeme chybu, ale nezastavujeme zpracování
             error_log("⚠️ Chyba při vytváření notifikací pro komentář $comment_id: " . $notif_error->getMessage());
+        }
+
+        // 10. 🔔 NOVÉ: Pokud je to odpověď na komentář, pošli speciální notifikaci autorovi původního komentáře
+        if ($parent_comment_id) {
+            try {
+                create_comment_reply_notification($db, $order_id, $parent_comment_id, $user_id, $comment_id, $comment);
+            } catch (Exception $reply_notif_error) {
+                error_log("⚠️ Chyba při vytváření notifikace pro odpověď na komentář $parent_comment_id: " . $reply_notif_error->getMessage());
+            }
         }
 
         // 10. Úspěšná odpověď
@@ -993,32 +1009,161 @@ function create_order_comment_notifications($db, $order_id, $author_user_id, $co
     
     $dt_vytvoreni = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
     
-    // 4. Vložit notifikace pro všechny účastníky
-    $stmt = $db->prepare("
-        INSERT INTO 25_notifikace 
-            (uzivatel_id, typ_udalosti, objekt_id, titulek, zprava, dt_vytvoreni, precteno, url)
-        VALUES 
-            (?, 'ORDER_COMMENT_ADDED', ?, ?, ?, ?, 0, ?)
-    ");
-    
-    $notification_url = "/objednavky/detail/$order_id";
+    // 4. Vložit notifikace pro všechny účastníky (nový dvoustupňový systém)
     $created_count = 0;
     
     foreach ($participants_list as $user_id) {
         try {
+            // A) Vytvoř notifikaci v hlavní tabulce (pouze in-app, bez emailu)
+            $stmt = $db->prepare("
+                INSERT INTO " . TBL_NOTIFIKACE . "
+                    (typ, nadpis, zprava, od_uzivatele_id, pro_uzivatele_id, priorita, kategorie, 
+                     objekt_typ, objekt_id, odeslat_email, email_odeslan, dt_created, aktivni)
+                VALUES 
+                    (?, ?, ?, ?, ?, 'normal', 'objednavky', 'objednavka', ?, 0, 0, ?, 1)
+            ");
             $stmt->execute(array(
-                $user_id,
-                $order_id,
+                'ORDER_COMMENT_ADDED',
                 $notif_title,
                 $notif_message,
-                $dt_vytvoreni,
-                $notification_url
+                $author_user_id,
+                $user_id,
+                $order_id,
+                $dt_vytvoreni
             ));
-            $created_count++;
+            
+            $notifikace_id = $db->lastInsertId();
+            
+            // B) Vytvoř záznam pro čtení
+            if ($notifikace_id) {
+                $read_stmt = $db->prepare("
+                    INSERT INTO " . TBL_NOTIFIKACE_PRECTENI . "
+                        (notifikace_id, uzivatel_id, precteno, skryto, dt_created, smazano)
+                    VALUES 
+                        (?, ?, 0, 0, ?, 0)
+                ");
+                $read_stmt->execute(array($notifikace_id, $user_id, $dt_vytvoreni));
+                $created_count++;
+            }
+            
         } catch (PDOException $e) {
             error_log("⚠️ Chyba při vytváření notifikace pro user_id $user_id: " . $e->getMessage());
         }
     }
     
     error_log("✅ Vytvořeno $created_count/$participants_count notifikací pro komentář $comment_id");
+}
+
+/**
+ * Vytvoří speciální notifikaci pro autora původního komentáře, když mu někdo odpoví
+ * 
+ * @param PDO $db Database connection
+ * @param int $order_id ID objednávky
+ * @param int $parent_comment_id ID původního komentáře na který se odpovídá
+ * @param int $reply_author_id ID autora odpovědi (nebude notifikován)
+ * @param int $reply_comment_id ID nové odpovědi
+ * @param array $reply_comment Data nové odpovědi
+ * @return void
+ */
+function create_comment_reply_notification($db, $order_id, $parent_comment_id, $reply_author_id, $reply_comment_id, $reply_comment) {
+    error_log("💬 Vytvářím notifikaci pro odpověď na komentář $parent_comment_id (reply ID: $reply_comment_id)");
+    
+    // 1. Najít autora původního komentáře
+    $stmt = $db->prepare("
+        SELECT 
+            k.user_id as original_author_id,
+            CONCAT(u.jmeno, ' ', u.prijmeni) as original_author_name,
+            k.obsah as original_obsah
+        FROM 25a_objednavky_komentare k
+        INNER JOIN " . TBL_UZIVATELE . " u ON k.user_id = u.id
+        WHERE k.id = ? AND k.smazano = 0
+    ");
+    $stmt->execute(array($parent_comment_id));
+    $original_comment = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$original_comment) {
+        error_log("⚠️ Původní komentář $parent_comment_id nenalezen nebo je smazaný");
+        return;
+    }
+    
+    $original_author_id = (int)$original_comment['original_author_id'];
+    
+    // 2. Neodesílat notifikaci sobě samému (pokud autor odpovídá sám sobě)
+    if ($original_author_id === $reply_author_id) {
+        error_log("ℹ️ Autor odpovídá sám sobě - notifikace se neposílá");
+        return;
+    }
+    
+    // 3. Načíst info o objednávce
+    $stmt = $db->prepare("
+        SELECT cislo_objednavky, predmet, dt_vytvoreni
+        FROM " . TBL_OBJEDNAVKY . "
+        WHERE id = ?
+    ");
+    $stmt->execute(array($order_id));
+    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$order) {
+        error_log("⚠️ Objednávka $order_id nenalezena");
+        return;
+    }
+    
+    // 4. Připravit text notifikace
+    $reply_author_name = isset($reply_comment['autor_jmeno']) ? $reply_comment['autor_jmeno'] : 'Uživatel';
+    $order_number = $order['cislo_objednavky'] ? $order['cislo_objednavky'] : "#" . $order_id;
+    $order_date = date('d.m.Y', strtotime($order['dt_vytvoreni']));
+    
+    $reply_preview = isset($reply_comment['obsah']) ? strip_tags($reply_comment['obsah']) : '';
+    if (strlen($reply_preview) > 80) {
+        $reply_preview = mb_substr($reply_preview, 0, 80) . '...';
+    }
+    
+    $original_preview = strip_tags($original_comment['original_obsah']);
+    if (strlen($original_preview) > 50) {
+        $original_preview = mb_substr($original_preview, 0, 50) . '...';
+    }
+    
+    $notif_title = "Odpověď na váš komentář k obj. $order_number";
+    $notif_message = "$reply_author_name odpověděl na váš komentář \"$original_preview\" - z objednávky ze dne $order_date: \"$reply_preview\"";
+    
+    $dt_vytvoreni = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+    
+    // 5. Vložit notifikaci pouze pro autora původního komentáře (nový dvoustupňový systém)
+    try {
+        // A) Vytvoř notifikaci v hlavní tabulce (pouze in-app, bez emailu)
+        $stmt = $db->prepare("
+            INSERT INTO " . TBL_NOTIFIKACE . "
+                (typ, nadpis, zprava, od_uzivatele_id, pro_uzivatele_id, priorita, kategorie,
+                 objekt_typ, objekt_id, odeslat_email, email_odeslan, dt_created, aktivni)
+            VALUES 
+                (?, ?, ?, ?, ?, 'normal', 'komentare', 'objednavka', ?, 0, 0, ?, 1)
+        ");
+        $stmt->execute(array(
+            'COMMENT_REPLY',
+            $notif_title,
+            $notif_message,
+            $reply_author_id,
+            $original_author_id,
+            $order_id,
+            $dt_vytvoreni
+        ));
+        
+        $notifikace_id = $db->lastInsertId();
+        
+        // B) Vytvoř záznam pro čtení
+        if ($notifikace_id) {
+            $read_stmt = $db->prepare("
+                INSERT INTO " . TBL_NOTIFIKACE_PRECTENI . "
+                    (notifikace_id, uzivatel_id, precteno, skryto, dt_created, smazano)
+                VALUES 
+                    (?, ?, 0, 0, ?, 0)
+            ");
+            $read_stmt->execute(array($notifikace_id, $original_author_id, $dt_vytvoreni));
+            
+            error_log("✅ Notifikace pro odpověď odeslána uživateli $original_author_id (autor původního komentáře $parent_comment_id)");
+        }
+        
+    } catch (PDOException $e) {
+        error_log("❌ Chyba při vytváření notifikace pro odpověď: " . $e->getMessage());
+    }
 }

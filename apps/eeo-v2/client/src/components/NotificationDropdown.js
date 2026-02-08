@@ -123,7 +123,21 @@ const HeaderTitle = styled.h3`
 `;
 
 const UnreadBadge = styled.span`
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: ${(props) => {
+    // Barvy badge podle priority notifikací - stejná logika jako v Layout.js
+    const color = props.$badgeColor || 'gray';
+    switch (color) {
+      case 'red':
+        return 'linear-gradient(135deg, #ef4444, #dc2626)'; // Urgent/EXCEPTIONAL
+      case 'blue':
+        return 'linear-gradient(135deg, #3b82f6, #2563eb)'; // Komentáře  
+      case 'green':
+        return 'linear-gradient(135deg, #22c55e, #16a34a)'; // Objednávky
+      case 'gray':
+      default:
+        return 'linear-gradient(135deg, #6b7280, #4b5563)'; // Ostatní
+    }
+  }};
   color: white;
   font-size: 12px;
   font-weight: 600;
@@ -131,6 +145,9 @@ const UnreadBadge = styled.span`
   border-radius: 12px;
   min-width: 24px;
   text-align: center;
+  
+  /* Smooth animation při změně barvy */
+  transition: background 0.3s ease;
 `;
 
 const HeaderActions = styled.div`
@@ -438,6 +455,7 @@ export const NotificationDropdown = ({
   onClose,
   notifications = [],
   unreadCount = 0,
+  badgeColor = 'gray',
   onNotificationClick,
   onMarkAsRead,
   onMarkAllRead,
@@ -654,7 +672,7 @@ export const NotificationDropdown = ({
           <HeaderTitle>
             <FontAwesomeIcon icon={faBell} />
             Notifikace
-            {unreadCount > 0 && <UnreadBadge>{unreadCount > 99 ? '99+' : unreadCount}</UnreadBadge>}
+            {unreadCount > 0 && <UnreadBadge $badgeColor={badgeColor}>{unreadCount > 99 ? '99+' : unreadCount}</UnreadBadge>}
           </HeaderTitle>
           <HeaderActions>
             {unreadCount > 0 && (

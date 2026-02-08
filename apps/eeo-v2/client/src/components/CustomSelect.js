@@ -150,12 +150,12 @@ const CustomSelectOption = styled.div`
   font-size: 0.875rem;
   border-bottom: 1px solid #f3f4f6;
   color: #1f2937;
-  font-weight: 400 !important; /* Normal font pro všechny možnosti - s !important */
+  font-weight: 400; /* Normal font pro všechny možnosti */
 
-  /* Hierarchické zobrazení - level 0 (okresy) tučně, level 1 (stanoviště) odsazené */
+  /* Hierarchické zobrazení - level 0 (okresy) na pozadí, level 1 (stanoviště) odsazené */
   ${props => props.level === 0 && props.isParent && `
-    font-weight: 600 !important;
     background-color: #f9fafb;
+    font-weight: 500;
   `}
 
   ${props => props.level === 1 && `
@@ -164,7 +164,6 @@ const CustomSelectOption = styled.div`
 
   &:hover {
     background: #f8fafc;
-    font-weight: ${props => props.level === 0 && props.isParent ? '600 !important' : '400 !important'};
   }
 
   &:last-child {
@@ -174,7 +173,7 @@ const CustomSelectOption = styled.div`
   ${props => props.selected && `
     background: #eff6ff;
     border-left: 3px solid #3b82f6;
-    font-weight: 600 !important; /* Bold jen pro vybranou možnost */
+    font-weight: 600; /* Bold jen pro vybranou možnost */
   `}
 
   ${props => props.highlighted && !props.selected && `

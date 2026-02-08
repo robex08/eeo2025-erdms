@@ -921,8 +921,7 @@ function handle_notifications_unread_count($input, $config, $queries) {
         $db = get_db($config);
         $uzivatel_id = $token_data['id'];
 
-        // Spočítej nepřečtené z " . TBL_NOTIFIKACE_PRECTENI . "
-        // MUSÍ být: nepřečtené (precteno=0), NEsmazané (smazano=0), NEdismissnuté (skryto=0)
+        // 1. Celkový počet nepřečtených
         $sql = "SELECT COUNT(*) as unread_count
                 FROM " . TBL_NOTIFIKACE_PRECTENI . " nr
                 INNER JOIN " . TBL_NOTIFIKACE . " n ON nr.notifikace_id = n.id
@@ -934,13 +933,108 @@ function handle_notifications_unread_count($input, $config, $queries) {
 
         $stmt = $db->prepare($sql);
         $stmt->execute(array(':uzivatel_id' => $uzivatel_id));
-
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         $count = (int)$result['unread_count'];
 
+        // 2. Detekce priority pro barevný badge
+        $badge_color = 'orange'; // ✅ VÝCHOZÍ ORANŽOVÁ pro méně důležité notifikace
+        $priority_info = array();
+        
+        if ($count > 0) {
+            // Kontrola kategorií pro určení barvy
+            $priority_sql = "SELECT 
+                                n.kategorie,
+                                n.typ,
+                                n.priorita,
+                                COUNT(*) as count_per_type
+                            FROM " . TBL_NOTIFIKACE_PRECTENI . " nr
+                            INNER JOIN " . TBL_NOTIFIKACE . " n ON nr.notifikace_id = n.id
+                            WHERE nr.uzivatel_id = :uzivatel_id
+                              AND nr.precteno = 0
+                              AND nr.skryto = 0
+                              AND nr.smazano = 0
+                              AND n.aktivni = 1
+                            GROUP BY n.kategorie, n.typ, n.priorita
+                            ORDER BY 
+                                CASE n.priorita 
+                                    WHEN 'urgent' THEN 1
+                                    WHEN 'EXCEPTIONAL' THEN 1
+                                    WHEN 'high' THEN 2
+                                    WHEN 'normal' THEN 3
+                                    WHEN 'low' THEN 4
+                                    ELSE 5
+                                END";
+            
+            $priority_stmt = $db->prepare($priority_sql);
+            $priority_stmt->execute(array(':uzivatel_id' => $uzivatel_id));
+            $priority_results = $priority_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // 🐛 DEBUG: Kolik řádků vrátil dotaz?
+            error_log("🔍 [Notifications] priority_results count: " . count($priority_results));
+            
+            $has_comments = false;
+            $has_orders_normal = false; 
+            $has_high_priority = false;
+            
+            foreach ($priority_results as $row) {
+                // 🐛 DEBUG: Log každý řádek
+                error_log("🔍 [Notifications] Row: typ={$row['typ']}, priorita={$row['priorita']}, kategorie={$row['kategorie']}, count={$row['count_per_type']}");
+                
+                $priority_info[] = array(
+                    'kategorie' => $row['kategorie'],
+                    'typ' => $row['typ'],
+                    'priorita' => $row['priorita'],
+                    'count' => (int)$row['count_per_type']
+                );
+                
+                // Detekce typu pro barvu
+                $typ = $row['typ'];
+                $priorita = $row['priorita'];
+                
+                // 🔴 ČERVENÁ - Urgentní/high priorita + schvalování
+                if ($priorita === 'EXCEPTIONAL' || $priorita === 'high' || $priorita === 'APPROVAL') {
+                    $has_high_priority = true;
+                    error_log("✅ [Notifications] Detekována HIGH priorita: typ=$typ, priorita=$priorita");
+                }
+                // 🔵 MODRÁ - Komentáře (pouze pokud nejsou červené)
+                elseif (strpos($typ, 'COMMENT') !== false) {
+                    $has_comments = true;
+                    error_log("✅ [Notifications] Detekovány KOMENTÁŘE: typ=$typ");
+                }
+                // 🟢 ZELENÁ - Změny stavů objednávek s INFO prioritou
+                elseif ($priorita === 'INFO' && strpos($typ, 'ORDER_') !== false) {
+                    $has_orders_normal = true;
+                    error_log("✅ [Notifications] Detekovány INFO OBJEDNÁVKY: typ=$typ, priorita=$priorita");
+                }
+                // 🟢 ZELENÁ - Změny stavů objednávek s normal/low prioritou
+                elseif (strpos($typ, 'ORDER_') !== false && ($priorita === 'normal' || $priorita === 'low')) {
+                    $has_orders_normal = true;
+                    error_log("✅ [Notifications] Detekovány NORMÁLNÍ OBJEDNÁVKY: typ=$typ, priorita=$priorita");
+                }
+            }
+            
+            // Priorita barev: červená > modrá > zelená
+            if ($has_high_priority) {
+                $badge_color = 'red';      // 🔴 Vysoká priorita (urgent/EXCEPTIONAL/high)
+            } elseif ($has_comments) {
+                $badge_color = 'blue';     // 🔵 Komentáře k objednávce
+            } elseif ($has_orders_normal) {
+                $badge_color = 'green';    // 🟢 Změny stavů objednávek s normal/low prioritou
+            }
+            // jinak zůstává červená (výchozí)
+        } else {
+            // Žádné nepřečtené notifikace = šedá
+            $badge_color = 'gray';
+        }
+
+        // 🐛 DEBUG: Log badge color pro debugging
+        error_log("🔔 [Notifications/unread-count] user_id=$uzivatel_id, count=$count, badge_color=$badge_color, has_high_priority=" . ($has_high_priority ? 'true' : 'false') . ", has_comments=" . ($has_comments ? 'true' : 'false') . ", has_orders_normal=" . ($has_orders_normal ? 'true' : 'false'));
+
         echo json_encode(array(
             'status' => 'ok',
-            'unread_count' => $count
+            'unread_count' => $count,
+            'badge_color' => $badge_color,
+            'priority_info' => $priority_info
         ));
 
     } catch (Exception $e) {

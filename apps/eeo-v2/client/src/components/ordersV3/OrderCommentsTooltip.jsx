@@ -878,7 +878,7 @@ const OrderCommentsTooltip = ({
     
     setPosition({ top, left });
     setIsPositioned(true);
-  }, [iconRef, comments]);
+  }, [iconRef]); // ✅ OPRAVA: Removed 'comments' dependency to prevent repositioning on comment updates
   
   useEffect(() => {
     if (onLoadComments && !loading && comments.length === 0) {

@@ -1492,10 +1492,16 @@ const Select = styled.select`
     cursor: not-allowed;
   }
 
+  /* Všechny options mají normální font-weight */
+  option {
+    font-weight: 400 !important;
+    color: #1f2937;
+  }
+
   /* Placeholder styl pro první option */
   option:first-of-type {
     color: #9ca3af;
-    font-weight: 400;
+    font-weight: 400 !important;
   }
 `;
 
@@ -2749,6 +2755,11 @@ const AresLocationSelect = styled.select`
 
   &:hover {
     border-color: #40a9ff;
+  }
+
+  /* Options mají normální font-weight */
+  option {
+    font-weight: 400 !important;
   }
 `;
 
@@ -9419,7 +9430,7 @@ function OrderForm25() {
         setTimeout(() => {
           // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na seznam objednávek s forceReload
           const targetPath = returnToRef.current || '/orders25-list';
-          console.log('🔙 OrderForm25 NAVIGATE (uloženo):', { targetPath, returnToRef: returnToRef.current });
+          // console.log('🔙 OrderForm25 NAVIGATE (uloženo):', { targetPath, returnToRef: returnToRef.current });
           navigate(targetPath, { 
             state: { 
               forceReload: true,
@@ -16921,7 +16932,7 @@ function OrderForm25() {
 
         // Přesměruj na uloženou cestu (returnTo) nebo fallback na seznam
         const targetPath = returnToRef.current || '/orders25-list';
-        console.log('🔙 OrderForm25 NAVIGATE (dokončená):', { targetPath, returnToRef: returnToRef.current });
+        // console.log('🔙 OrderForm25 NAVIGATE (dokončená):', { targetPath, returnToRef: returnToRef.current });
         navigate(targetPath, { 
           state: { 
             forceReload: true,
@@ -17076,7 +17087,7 @@ function OrderForm25() {
       setCancelWarningMessage('');
 
       const targetPath = returnToRef.current || '/orders25-list';
-      console.log('🔙 OrderForm25 NAVIGATE (koncept zrušen):', { targetPath, returnToRef: returnToRef.current });
+      // console.log('🔙 OrderForm25 NAVIGATE (koncept zrušen):', { targetPath, returnToRef: returnToRef.current });
       addDebugLog('info', 'CANCEL', 'redirect', `Přesměrovávám na: ${targetPath}`);
 
       // 5. Přesměruj s dostatečným zpožděním, aby se stihly dokončit všechny async operace
@@ -17101,7 +17112,7 @@ function OrderForm25() {
 
       // Přesměruj i přes chybu (lepší než zůstat na formuláři)
       const targetPath = returnToRef.current || '/orders25-list';
-      console.log('🔙 OrderForm25 NAVIGATE (error při zavírání):', { targetPath, returnToRef: returnToRef.current });
+      // console.log('🔙 OrderForm25 NAVIGATE (error při zavírání):', { targetPath, returnToRef: returnToRef.current });
       setTimeout(() => {
         navigate(targetPath, { 
           state: { 
@@ -27938,7 +27949,8 @@ const StableSelectOption = styled.div`
   };
   border-left: ${props => props.selected ? '3px solid #3b82f6' : '3px solid transparent'};
   border-bottom: ${props => props.level === 0 ? '1px solid #e5e7eb' : 'none'};
-  font-weight: 600 !important;
+  font-weight: ${props => props.selected ? '600' : '400'};
+  
   /* Focusable pro tab navigaci */
   outline: none;
 
@@ -27966,7 +27978,7 @@ const StableSelectOption = styled.div`
 
   span {
     padding-left: ${props => (props.level || 0) * 20}px;
-    font-weight: 600 !important;
+    font-weight: inherit;
   }
 `;
 
@@ -27975,7 +27987,8 @@ const StableSelectValue = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  color: ${props => props.$hasValue ? '#1f2937' : '#9ca3af'};
+  font-weight: ${props => props.$hasValue ? '600' : '400'};
 `;
 
 // Helper funkce pro normalizaci textu (odstranění diakritiky pro vyhledávání)
@@ -28310,7 +28323,7 @@ const StableCustomSelect = React.memo(({
             {React.cloneElement(icon, { size: 16 })}
           </span>
         )}
-        <StableSelectValue title={displayValue}>
+        <StableSelectValue title={displayValue} $hasValue={hasValue}>
           {(() => {
             // 🏷️ Check if selected option is majetek for druh_objednavky_kod
             if (field === 'druh_objednavky_kod' && normalizedValue) {

@@ -856,7 +856,23 @@ const NotificationBadge = styled.span`
   position: absolute;
   top: 0.2em;
   right: 0.2em;
-  background: #dc2626;
+  background: ${(props) => {
+    // Barvy badge podle priority notifikací
+    const color = props.$badgeColor || 'gray';
+    switch (color) {
+      case 'red':
+        return '#dc2626'; // Urgent/EXCEPTIONAL/APPROVAL (nejvyšší priorita)
+      case 'blue':
+        return '#3b82f6'; // Komentáře
+      case 'green':
+        return '#22c55e'; // Objednávky
+      case 'orange':
+        return '#f97316'; // Méně důležité notifikace
+      case 'gray':
+      default:
+        return '#6b7280'; // Žádné notifikace
+    }
+  }};
   color: white;
   font-size: 0.65em;
   font-weight: 600;
@@ -867,6 +883,9 @@ const NotificationBadge = styled.span`
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   pointer-events: none;
   line-height: 1.2;
+  
+  /* Smooth animation při změně barvy */
+  transition: background 0.3s ease;
 `;
 const MenuBar = styled.nav`
   position: fixed;
@@ -1119,8 +1138,21 @@ const NotificationBellWrapper = ({ userId }) => {
   const navigate = useNavigate();
   const { userDetail } = useContext(AuthContext);
 
-  // ✅ POUZE backend unread count (z BackgroundTasksContext)
+  // ✅ POUZE backend unread count a badge color (z BackgroundTasksContext)
   const unreadCount = bgTasks?.unreadNotificationsCount || 0;
+  const badgeColor = bgTasks?.notificationsBadgeColor || 'gray';
+
+  // 🐛 DEBUG
+  useEffect(() => {
+    console.log('🔔 [NotificationBellWrapper] Badge color changed:', {
+      badgeColor,
+      unreadCount,
+      bgTasks: bgTasks ? {
+        notificationsBadgeColor: bgTasks.notificationsBadgeColor,
+        unreadNotificationsCount: bgTasks.unreadNotificationsCount
+      } : null
+    });
+  }, [badgeColor, unreadCount, bgTasks]);
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -1477,7 +1509,7 @@ const NotificationBellWrapper = ({ userId }) => {
           <FontAwesomeIcon icon={faBell} />
           {/* 🎯 Skryj bulinu když je dropdown otevřený */}
           {unreadCount > 0 && !dropdownVisible && (
-            <NotificationBadge>
+            <NotificationBadge $badgeColor={badgeColor}>
               {unreadCount > 99 ? '99+' : unreadCount}
             </NotificationBadge>
           )}
@@ -1494,6 +1526,7 @@ const NotificationBellWrapper = ({ userId }) => {
               onClose={() => setDropdownVisible(false)}
               notifications={notifications}
               unreadCount={unreadCount}
+              badgeColor={badgeColor}
               onNotificationClick={handleNotificationClick}
               onMarkAsRead={handleMarkAsRead}
               onMarkAllRead={handleMarkAllRead}
@@ -3057,7 +3090,7 @@ const Layout = ({ children }) => {
                       to="/orders" 
                       onClick={() => setPrehledMenuOpen(false)}
                     >
-                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky 2026
+                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky &lt; 2026
                     </MenuDropdownItem>
                   </MenuDropdownContent>,
                   document.body

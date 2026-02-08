@@ -33,7 +33,8 @@ import {
   faXmark,
   faCircleNotch,
   faHourglassHalf,
-  faEdit
+  faEdit,
+  faComment
 } from '@fortawesome/free-solid-svg-icons';
 
 // =============================================================================
@@ -2246,6 +2247,22 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             )}
           </Card>
           </div>
+
+          {/* 🆕 KOMENTÁŘE K OBJEDNÁVCE (full width) */}
+          {order.comments_count > 0 && (
+            <Card style={{ marginTop: '0.75rem' }}>
+              <CardTitle>
+                <FontAwesomeIcon icon={faComment} />
+                Komentáře k objednávce ({order.comments_count})
+              </CardTitle>
+              <EmptyState>
+                <div style={{ textAlign: 'center', color: '#64748b' }}>
+                  <FontAwesomeIcon icon={faComment} style={{ fontSize: '2rem', marginBottom: '0.5rem', opacity: 0.5 }} />
+                  <div>Pro zobrazení komentářů klikněte na ikonu <FontAwesomeIcon icon={faComment} style={{ color: '#a855f7' }} /> v hlavní tabulce</div>
+                </div>
+              </EmptyState>
+            </Card>
+          )}
 
           {/* Workflow (pokud existuje) */}
           {workflow && workflow.length > 0 && (

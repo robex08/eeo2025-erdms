@@ -56,25 +56,44 @@ export function useOrdersV3State(userId) {
     if (!userId) return getDefaultPreferences();
     
     try {
-      // Načti všechny preference najednou
+      // 🔄 PRIORITA NAČÍTÁNÍ:
+      // 1. Backend user profile (ordersV3Preferences) - synchronizováno napříč zařízeními
+      // 2. LocalStorage - fallback pro lokální změny
+      // 3. Default values
+      
+      let backendPreferences = null;
+      try {
+        const { loadSettingsFromLocalStorage } = require('../../services/userSettingsApi');
+        const userSettings = loadSettingsFromLocalStorage(userId);
+        backendPreferences = userSettings?.ordersV3Preferences || null;
+      } catch (err) {
+        // Backend preferences nedostupné, použij localStorage
+      }
+      
+      // Načti všechny preference z localStorage jako fallback
       const keys = [
         'showDashboard', 'showFilters', 'dashboardMode', 'showRowColoring',
         'itemsPerPage', 'selectedPeriod', 'columnFilters', 'dashboardFilters',
-        'expandedRows', 'columnVisibility', 'columnOrder'
+        'expandedRows', 'columnVisibility', 'columnOrder', 'columnSizing'
       ];
       
-      const saved = {};
+      const localStoragePrefs = {};
       keys.forEach(key => {
         const value = localStorage.getItem(`${STORAGE_PREFIX}_${key}_${userId}`);
         if (value !== null) {
           const parsedValue = key.includes('Filters') || key.includes('expanded') || key.includes('column') 
             ? JSON.parse(value) 
             : (key === 'itemsPerPage' ? parseInt(value, 10) : value);
-          saved[key] = parsedValue;
+          localStoragePrefs[key] = parsedValue;
         }
       });
       
-      return { ...getDefaultPreferences(), ...saved };
+      // Merge: default → backend → localStorage (localStorage má nejvyšší prioritu pro lokální změny)
+      return { 
+        ...getDefaultPreferences(), 
+        ...(backendPreferences || {}),
+        ...localStoragePrefs 
+      };
     } catch {
       return getDefaultPreferences();
     }
@@ -141,11 +160,13 @@ export function useOrdersV3State(userId) {
     expandedRows: preferences.expandedRows,
     columnVisibility: preferences.columnVisibility,
     columnOrder: preferences.columnOrder,
+    columnSizing: preferences.columnSizing,
     
     // Convenience setters (optimized through updatePreferences)
     setDashboardFilters: useCallback((filters) => updatePreferences({ dashboardFilters: filters }), [updatePreferences]),
     setColumnVisibility: useCallback((visibility) => updatePreferences({ columnVisibility: visibility }), [updatePreferences]),
     setColumnOrder: useCallback((order) => updatePreferences({ columnOrder: order }), [updatePreferences]),
+    setColumnSizing: useCallback((sizing) => updatePreferences({ columnSizing: sizing }), [updatePreferences]),
     setExpandedRows: useCallback((rows) => updatePreferences({ expandedRows: rows }), [updatePreferences]),
   };
 }
