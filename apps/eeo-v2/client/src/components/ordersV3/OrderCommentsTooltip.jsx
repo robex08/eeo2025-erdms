@@ -24,7 +24,8 @@ import {
   faChevronDown,
   faChevronUp,
   faExpand,
-  faCompress
+  faCompress,
+  faEdit
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -268,12 +269,102 @@ const DeleteIconButton = styled.button`
   }
 `;
 
+const EditIconButton = styled.button`
+  background: transparent;
+  border: none;
+  color: #3b82f6;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  font-size: 0.9rem;
+  width: 24px;
+  height: 24px;
+  
+  &:hover {
+    background: #dbeafe;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
 const CommentText = styled.div`
   font-size: 0.9rem;
   color: #334155;
   line-height: 1.5;
   word-wrap: break-word;
   white-space: pre-wrap;
+`;
+
+const EditTextarea = styled.textarea`
+  width: 100%;
+  min-height: 80px;
+  padding: 0.5rem;
+  border: 2px solid #3b82f6;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  background: #eff6ff;
+  color: #334155;
+  line-height: 1.5;
+  
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+  }
+`;
+
+const EditActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  align-items: center;
+`;
+
+const SaveEditButton = styled.button`
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-1px);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const CancelEditButton = styled.button`
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  
+  &:hover {
+    background: #e2e8f0;
+    color: #475569;
+  }
 `;
 
 const CommentActions = styled.div`
@@ -692,7 +783,11 @@ const OrderCommentsTooltip = ({
   currentUserId,
   onLoadComments,
   onAddComment,
-  onDeleteComment
+  onDeleteComment,
+  showToast = null,
+  token = null,
+  username = null,
+  onUpdateComments = null  // ✅ Nový callback pro optimalizaci
 }) => {
   const containerRef = useRef(null);
   const deleteButtonRef = useRef(null);
@@ -713,6 +808,11 @@ const OrderCommentsTooltip = ({
   const [replyText, setReplyText] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
   
+  // ✅ State pro editaci komentářů
+  const [editingComment, setEditingComment] = useState(null); // { id, originalText }
+  const [editText, setEditText] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+  
   // ✅ Automatický fokus do reply textarea
   useEffect(() => {
     if (replyToComment && replyTextareaRef.current) {
@@ -723,19 +823,11 @@ const OrderCommentsTooltip = ({
   // ✅ Automatické rozbalení všech odpovědí při načtení
   useEffect(() => {
     if (comments && comments.length > 0) {
-      console.log('🔍 COMMENTS DEBUG:', comments.filter(c => c).map(c => ({ 
-        id: c.id, 
-        text: c.obsah?.substring(0, 20), 
-        parent_comment_id: c.parent_comment_id 
-      })));
-      
       const newExpandedReplies = {};
       const topLevel = comments.filter(c => c && !c.parent_comment_id);
-      console.log('🔍 TOP LEVEL:', topLevel.length);
       
       topLevel.forEach(comment => {
         const replies = comments.filter(c => c && c.parent_comment_id === comment.id);
-        console.log(`🔍 Comment ${comment.id} has ${replies.length} replies`);
         if (replies.length > 0) {
           newExpandedReplies[comment.id] = true;
         }
@@ -852,6 +944,86 @@ const OrderCommentsTooltip = ({
     }
   }, [onDeleteComment]);
   
+  // Handler pro začátek editace
+  const handleStartEdit = useCallback((comment) => {
+    setEditingComment({ id: comment.id, originalText: comment.obsah });
+    setEditText(comment.obsah);
+  }, []);
+  
+  // Handler pro zrušení editace
+  const handleCancelEdit = useCallback(() => {
+    setEditingComment(null);
+    setEditText('');
+  }, []);
+  
+  // Handler pro uložení editace
+  const handleSaveEdit = useCallback(async () => {
+    if (!editText.trim() || !editingComment) return;
+    
+    if (!token || !username) {
+      console.error('Missing token or username');
+      if (showToast) {
+        showToast('Chybí autentizační údaje', 'error');
+      }
+      return;
+    }
+    
+    setIsUpdating(true);
+    try {
+      const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
+      const response = await fetch(`${apiBase}orders-v3/comments/update`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token,
+          username,
+          comment_id: editingComment.id,
+          obsah: editText.trim()
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.message || 'Chyba při aktualizaci komentáře');
+      }
+      
+      setEditingComment(null);
+      setEditText('');
+      
+      // ✅ OPTIMALIZACE: Místo celého refresh, aktualizuj pouze lokální stav
+      if (comments && comments.length > 0 && onUpdateComments) {
+        const updatedComments = comments.map(comment => {
+          if (comment && comment.id === editingComment.id) {
+            return {
+              ...comment,
+              obsah: editText.trim(),
+              dt_aktualizace: result.data?.dt_aktualizace || new Date().toISOString()
+            };
+          }
+          return comment;
+        });
+        onUpdateComments(updatedComments); // ✅ Pošli aktualizované komentáře do parent komponenty
+      } else {
+        // Fallback - reload celých komentářů
+        onLoadComments();
+      }
+      
+      if (showToast) {
+        showToast('Komentář byl úspěšně upraven', 'success');
+      }
+    } catch (err) {
+      console.error('Chyba při ukládání editace:', err);
+      if (showToast) {
+        showToast(err.message || 'Nepodařilo se uložit změny', 'error');
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [editText, editingComment, onLoadComments, showToast, token, username]);
+  
   // Formátování data
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -962,21 +1134,52 @@ const OrderCommentsTooltip = ({
                       <CommentDateWrapper>
                         <CommentDate>{formatDate(comment.dt_vytvoreni)}</CommentDate>
                         {isOwn && (
-                          <DeleteIconButton
-                            onClick={(e) => handleDeleteClick(comment.id, e)}
-                            disabled={isDeleting === comment.id}
-                            title="Smazat komentář"
-                          >
-                            <FontAwesomeIcon 
-                              icon={isDeleting === comment.id ? faSpinner : faTrash} 
-                              spin={isDeleting === comment.id} 
-                            />
-                          </DeleteIconButton>
+                          <>
+                            <EditIconButton
+                              onClick={() => handleStartEdit(comment)}
+                              disabled={editingComment?.id === comment.id}
+                              title="Upravit komentář"
+                            >
+                              <FontAwesomeIcon icon={faEdit} />
+                            </EditIconButton>
+                            <DeleteIconButton
+                              onClick={(e) => handleDeleteClick(comment.id, e)}
+                              disabled={isDeleting === comment.id}
+                              title="Smazat komentář"
+                            >
+                              <FontAwesomeIcon 
+                                icon={isDeleting === comment.id ? faSpinner : faTrash} 
+                                spin={isDeleting === comment.id} 
+                              />
+                            </DeleteIconButton>
+                          </>
                         )}
                       </CommentDateWrapper>
                     </CommentHeader>
                     
-                    <CommentText>{comment.obsah}</CommentText>
+                    {editingComment?.id === comment.id ? (
+                      <div>
+                        <EditTextarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          disabled={isUpdating}
+                          autoFocus
+                        />
+                        <EditActions>
+                          <SaveEditButton
+                            onClick={handleSaveEdit}
+                            disabled={isUpdating || !editText.trim()}
+                          >
+                            {isUpdating ? 'Ukládám...' : 'Uložit'}
+                          </SaveEditButton>
+                          <CancelEditButton onClick={handleCancelEdit}>
+                            Zrušit
+                          </CancelEditButton>
+                        </EditActions>
+                      </div>
+                    ) : (
+                      <CommentText>{comment.obsah}</CommentText>
+                    )}
                     
                     <CommentActions>
                       <ReplyButton onClick={() => setReplyToComment({ id: comment.id, author: comment.autor_jmeno })}>
@@ -1006,24 +1209,57 @@ const OrderCommentsTooltip = ({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <ReplyDate>{formatDate(reply.dt_vytvoreni)}</ReplyDate>
                                   {isOwnReply && (
-                                    <DeleteIconButton
-                                      onClick={(e) => handleDeleteClick(reply.id, e)}
-                                      disabled={isDeleting === reply.id}
-                                      title="Smazat odpověď"
-                                      style={{ fontSize: '0.7rem' }}
-                                    >
-                                      <FontAwesomeIcon 
-                                        icon={isDeleting === reply.id ? faSpinner : faTrash} 
-                                        spin={isDeleting === reply.id} 
-                                      />
-                                    </DeleteIconButton>
+                                    <>
+                                      <EditIconButton
+                                        onClick={() => handleStartEdit(reply)}
+                                        disabled={editingComment?.id === reply.id}
+                                        title="Upravit odpověď"
+                                        style={{ fontSize: '0.7rem' }}
+                                      >
+                                        <FontAwesomeIcon icon={faEdit} />
+                                      </EditIconButton>
+                                      <DeleteIconButton
+                                        onClick={(e) => handleDeleteClick(reply.id, e)}
+                                        disabled={isDeleting === reply.id}
+                                        title="Smazat odpověď"
+                                        style={{ fontSize: '0.7rem' }}
+                                      >
+                                        <FontAwesomeIcon 
+                                          icon={isDeleting === reply.id ? faSpinner : faTrash} 
+                                          spin={isDeleting === reply.id} 
+                                        />
+                                      </DeleteIconButton>
+                                    </>
                                   )}
                                 </div>
                               </ReplyHeader>
                               <div style={{ fontSize: '0.7rem', color: '#2563eb', marginBottom: '0.3rem', fontStyle: 'italic' }}>
                                 Odpověď na {replyingToName}
                               </div>
-                              <ReplyText>{reply.obsah}</ReplyText>
+                              {editingComment?.id === reply.id ? (
+                                <div>
+                                  <EditTextarea
+                                    value={editText}
+                                    onChange={(e) => setEditText(e.target.value)}
+                                    disabled={isUpdating}
+                                    autoFocus
+                                    style={{ minHeight: '60px', fontSize: '0.85rem' }}
+                                  />
+                                  <EditActions>
+                                    <SaveEditButton
+                                      onClick={handleSaveEdit}
+                                      disabled={isUpdating || !editText.trim()}
+                                    >
+                                      {isUpdating ? 'Ukládám...' : 'Uložit'}
+                                    </SaveEditButton>
+                                    <CancelEditButton onClick={handleCancelEdit}>
+                                      Zrušit
+                                    </CancelEditButton>
+                                  </EditActions>
+                                </div>
+                              ) : (
+                                <ReplyText>{reply.obsah}</ReplyText>
+                              )}
                               <div style={{ marginTop: '0.5rem' }}>
                                 <ReplyButton 
                                   onClick={() => setReplyToComment({ 

@@ -35,6 +35,7 @@ import {
   faPalette,
   faTimes,
   faEraser,
+  faSync,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -48,6 +49,7 @@ import { ToastContext } from '../context/ToastContext';
 // API Services
 import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
 import { findOrderPageV3 } from '../services/apiOrdersV3';
+import { getOrderDetailV3 } from '../services/apiOrderV3';
 import { fetchCiselniky } from '../services/api2auth';
 
 // Custom hooks
@@ -61,6 +63,8 @@ import OrdersFiltersV3Full from '../components/ordersV3/OrdersFiltersV3Full';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
 import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 import VirtualizedOrdersTable from '../components/ordersV3/VirtualizedOrdersTable';
+import { OrderContextMenu } from '../components/OrderContextMenu';
+import { SmartTooltip } from '../styles/SmartTooltip';
 
 // Config
 import ORDERS_V3_CONFIG from '../constants/ordersV3Config';
@@ -209,6 +213,47 @@ const PeriodSelector = styled.select`
   option {
     background: #1e40af;
     color: white;
+  }
+`;
+
+const ReloadButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+
+  &:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  svg {
+    font-size: 0.9rem;
+    animation: ${props => props.$loading ? 'spin 1s linear infinite' : 'none'};
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 `;
 
@@ -600,6 +645,9 @@ function Orders25ListV3() {
   // State pro dialogy
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [docxModalOrder, setDocxModalOrder] = useState(null);
+  
+  // 🆕 State pro kontextové menu
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, order, selectedData }
   
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
@@ -1006,6 +1054,216 @@ function Orders25ListV3() {
     handleToggleRow(order.id);
   };
 
+  // 🆕 CONTEXT MENU HANDLERS
+  
+  // Handler pro otevření kontextového menu
+  const handleContextMenu = useCallback((e, order, cellData = null) => {
+    e.preventDefault(); // Zabraň výchozímu kontextovému menu
+
+    // Zjisti na jakou buňku se kliklo
+    let selectedData = null;
+    const target = e.target;
+
+    if (cellData) {
+      selectedData = cellData;
+    } else if (target && target.closest('td')) {
+      // Najdi text obsahu buňky
+      const cellElement = target.closest('td');
+      selectedData = {
+        value: cellElement.textContent?.trim() || '',
+        element: cellElement
+      };
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      order: order,
+      selectedData: selectedData
+    });
+  }, []);
+
+  // Handler pro event delegation (klik na tabulku)
+  const handleTableContextMenu = useCallback((e) => {
+    const row = e.target.closest('tr[data-order-index]');
+    if (!row) return;
+
+    const orderIndex = parseInt(row.dataset.orderIndex, 10);
+    const order = orders[orderIndex]; // V3 používá přímo orders array (backend pagination)
+    if (!order) return;
+
+    handleContextMenu(e, order);
+  }, [orders, handleContextMenu]);
+
+  // Handler pro zavření kontextového menu
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Context menu actions
+  const handleAddToTodo = useCallback((order) => {
+    // TODO: Implementovat přidání do TODO
+    showToast?.(`Přidáno do TODO: ${order.cislo_objednavky}`, { type: 'info' });
+  }, [showToast]);
+
+  const handleAddAlarm = useCallback((order) => {
+    // TODO: Implementovat přidání alarmu
+    showToast?.(`Přidán alarm pro: ${order.cislo_objednavky}`, { type: 'info' });
+  }, [showToast]);
+
+  const handleContextMenuEdit = useCallback((order) => {
+    handleCloseContextMenu();
+    handleEditOrder(order);
+  }, [handleCloseContextMenu, handleEditOrder]);
+
+  const handleContextMenuDelete = useCallback((order) => {
+    handleCloseContextMenu();
+    handleDeleteOrder(order);
+  }, [handleCloseContextMenu, handleDeleteOrder]);
+
+  const handleGenerateDocx = useCallback((order) => {
+    handleCloseContextMenu();
+    handleExportOrder(order);
+  }, [handleCloseContextMenu, handleExportOrder]);
+
+  const handleGenerateFinancialControl = useCallback(async (order) => {
+    handleCloseContextMenu();
+    try {
+      showProgress?.('Načítání dat pro finanční kontrolu...');
+      
+      // Načti enriched data pro finanční kontrolu
+      const enrichedOrder = await getOrderV2(order.id, { token, username });
+      
+      hideProgress?.();
+      
+      // TODO: Otevřít modal pro finanční kontrolu
+      showToast?.(`Finanční kontrola pro: ${order.cislo_objednavky}`, { type: 'success' });
+      console.log('💰 Finanční kontrola:', enrichedOrder);
+    } catch (error) {
+      hideProgress?.();
+      showToast?.(`Chyba při načítání dat: ${error.message}`, { type: 'error' });
+    }
+  }, [handleCloseContextMenu, token, username, showProgress, hideProgress, showToast]);
+
+  const handleApproveFromContextMenu = useCallback(async (order) => {
+    handleCloseContextMenu();
+    try {
+      showProgress?.('Načítání detailu objednávky...');
+      
+      // Načti detail objednávky pro schválení
+      const detailData = await getOrderDetailV3(order.id, { token, username });
+      
+      hideProgress?.();
+      
+      // TODO: Otevřít dialog pro schválení (podobně jako v OrdersTableV3)
+      showToast?.(`Schvalování objednávky: ${order.cislo_objednavky}`, { type: 'info' });
+      console.log('✅ Schválení:', detailData);
+    } catch (error) {
+      hideProgress?.();
+      showToast?.(`Chyba při načítání detailu: ${error.message}`, { type: 'error' });
+    }
+  }, [handleCloseContextMenu, token, username, showProgress, hideProgress, showToast]);
+
+  // 🆕 V3: Handler pro přidání komentáře z context menu
+  const handleContextMenuAddComment = useCallback((order) => {
+    handleCloseContextMenu();
+    // Stejná logika jako klik na ikonu komentáře v tabulce
+    // TODO: Otevřít CommentsTooltip - zatím jen toast
+    showToast?.(`Komentáře pro objednávku: ${order.cislo_objednavky}`, { type: 'info' });
+  }, [handleCloseContextMenu, showToast]);
+
+  // 🆕 V3: Handler pro kontrolu OBJ z context menu
+  const handleContextMenuToggleCheck = useCallback(async (order) => {
+    handleCloseContextMenu();
+    try {
+      const currentChecked = order?.kontrola?.zkontrolovano || false;
+      await handleToggleOrderCheck(order.id, !currentChecked);
+      showToast?.(
+        currentChecked 
+          ? `Kontrola zrušena pro: ${order.cislo_objednavky}` 
+          : `Objednávka označena jako zkontrolovaná: ${order.cislo_objednavky}`,
+        { type: 'success' }
+      );
+    } catch (error) {
+      showToast?.(`Chyba při změně kontroly: ${error.message}`, { type: 'error' });
+    }
+  }, [handleCloseContextMenu, handleToggleOrderCheck, showToast]);
+
+  // 🆕 V3: Permissions pro kontextové menu
+  
+  // canAddComment - kontrola zda je uživatel účastník objednávky (12 rolí) nebo admin
+  const canAddComment = useCallback((order) => {
+    if (!order || !user_id) return false;
+    
+    // Admin role
+    const isAdmin = hasPermission('SUPERADMIN') || 
+                    hasPermission('ADMINISTRATOR') || 
+                    hasPermission('ORDER_MANAGE');
+    
+    if (isAdmin) return true;
+    
+    // 12 rolí účastníků objednávky
+    const participantRoles = [
+      order.uzivatel_id,                        // 1. Autor
+      order.objednatel_id,                      // 2. Objednatel
+      order.garant_uzivatel_id,                 // 3. Garant
+      order.schvalovatel_id,                    // 4. Schvalovatel
+      order.prikazce_id,                        // 5. Příkazce
+      order.uzivatel_akt_id,                    // 6. Aktualizoval
+      order.odesilatel_id,                      // 7. Odesilatel
+      order.dodavatel_potvrdil_id,              // 8. Potvrdil dodavatel
+      order.zverejnil_id,                       // 9. Zveřejnil
+      order.fakturant_id,                       // 10. Fakturant
+      order.dokoncil_id,                        // 11. Dokončil
+      order.potvrdil_vecnou_spravnost_id,       // 12. Potvrdil věcnou správnost
+    ];
+    
+    return participantRoles.some(roleId => String(roleId) === String(user_id));
+  }, [user_id, hasPermission]);
+
+  // canToggleCheck - pouze SUPERADMIN, ADMINISTRATOR, KONTROLOR_OBJEDNAVEK
+  const canToggleCheck = useCallback(() => {
+    return hasPermission('SUPERADMIN') || 
+           hasPermission('ADMINISTRATOR') || 
+           hasPermission('KONTROLOR_OBJEDNAVEK');
+  }, [hasPermission]);
+
+  // canApprove - příkazce nebo admin + workflow stav
+  const canApprove = useCallback((order) => {
+    if (!order) return false;
+    
+    const isPrikazce = String(order.prikazce_id) === String(user_id);
+    const isAdminRole = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    
+    const hasPermissionToApprove = isPrikazce || isAdminRole;
+    
+    if (!hasPermissionToApprove) {
+      return false;
+    }
+    
+    // Zkontroluj workflow stav
+    let workflowStates = [];
+    try {
+      if (Array.isArray(order.stav_workflow_kod)) {
+        workflowStates = order.stav_workflow_kod;
+      } else if (typeof order.stav_workflow_kod === 'string') {
+        workflowStates = JSON.parse(order.stav_workflow_kod);
+      }
+    } catch (e) {
+      workflowStates = [];
+    }
+    
+    const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+    const lastState = workflowStates.length > 0 
+      ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+          ? workflowStates[workflowStates.length - 1] 
+          : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+        ).toUpperCase()
+      : '';
+    
+    return allowedStates.includes(lastState);
+  }, [user_id, hasPermission]);
+
   return (
     <>
       {/* Initialization Overlay - zobrazí se při prvním načtení */}
@@ -1047,6 +1305,21 @@ function Orders25ListV3() {
             <option value="last-quarter">Poslední kvartál</option>
             <option value="all-months">Všechny měsíce</option>
           </PeriodSelector>
+
+          {/* ✨ Reload tlačítko */}
+          <SmartTooltip text="Načíst objednávky z databáze (vyčistit cache)" icon="info" preferredPosition="bottom">
+            <ReloadButton
+              onClick={() => {
+                clearCache?.();
+                loadOrders();
+                showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
+              }}
+              disabled={loading}
+              $loading={loading}
+            >
+              <FontAwesomeIcon icon={faSync} />
+            </ReloadButton>
+          </SmartTooltip>
         </HeaderActions>
       </Header>
 
@@ -1054,64 +1327,70 @@ function Orders25ListV3() {
       <ActionBar>
         {/* Toggle Dashboard - zobrazit POUZE když je skrytý */}
         {!showDashboard && (
-          <ToggleButton
-            $active={false}
-            onClick={() => updatePreferences({ showDashboard: true })}
-            title="Zobrazit dashboard s přehledem statistik"
-          >
-            <FontAwesomeIcon icon={faChartBar} />
-            Dashboard
-          </ToggleButton>
+          <SmartTooltip text="Zobrazit dashboard s přehledem statistik" icon="info" preferredPosition="bottom">
+            <ToggleButton
+              $active={false}
+              onClick={() => updatePreferences({ showDashboard: true })}
+            >
+              <FontAwesomeIcon icon={faChartBar} />
+              Dashboard
+            </ToggleButton>
+          </SmartTooltip>
         )}
 
         {/* Toggle Filtry - zobrazit POUZE když jsou skryté */}
         {!showFilters && (
-          <ToggleButton
-            $active={false}
-            onClick={() => updatePreferences({ showFilters: true })}
-            title="Zobrazit pokročilé filtry"
-          >
-            <FontAwesomeIcon icon={faFilter} />
-            Filtry
-          </ToggleButton>
+          <SmartTooltip text="Zobrazit pokročilé filtry" icon="info" preferredPosition="bottom">
+            <ToggleButton
+              $active={false}
+              onClick={() => updatePreferences({ showFilters: true })}
+            >
+              <FontAwesomeIcon icon={faFilter} />
+              Filtry
+            </ToggleButton>
+          </SmartTooltip>
         )}
 
         {/* Vymazat filtry - zobrazovat v ActionBar když JE skrytý panel filtrů A jsou aktivní filtry */}
         {!showFilters && (Object.values(columnFilters || {}).some(v => v && (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')) || (globalFilter && globalFilter.trim() !== '')) && (
-          <ToggleButton
-            onClick={handleClearFilters}
-            title="Vymaže všechny aktivní filtry včetně fulltext searche"
-            style={{
-              background: '#dc2626',
-              borderColor: '#dc2626', 
-              color: 'white'
-            }}
-          >
-            <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
-            Vymazat filtry
-          </ToggleButton>
+          <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
+            <ToggleButton
+              onClick={handleClearFilters}
+              style={{
+                background: '#dc2626',
+                borderColor: '#dc2626', 
+                color: 'white'
+              }}
+            >
+              <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
+              Vymazat filtry
+            </ToggleButton>
+          </SmartTooltip>
         )}
 
         {/* Toggle Podbarvení řádků */}
-        <ToggleButton
-          $active={showRowColoring}
-          onClick={() => updatePreferences({ showRowColoring: !showRowColoring })}
-          title={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'}
-        >
-          <FontAwesomeIcon icon={faPalette} />
-        </ToggleButton>
+        <SmartTooltip text={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'} icon="info" preferredPosition="bottom">
+          <ToggleButton
+            $active={showRowColoring}
+            onClick={() => updatePreferences({ showRowColoring: !showRowColoring })}
+          >
+            <FontAwesomeIcon icon={faPalette} />
+          </ToggleButton>
+        </SmartTooltip>
 
         {/* Konfigurace sloupců */}
-        <OrdersColumnConfigV3
-          columnVisibility={columnVisibility}
-          columnOrder={columnOrder}
-          columnLabels={COLUMN_LABELS}
-          onVisibilityChange={handleColumnVisibilityChange}
-          onOrderChange={handleColumnOrderChange}
-          onReset={handleResetColumnConfig}
-          onSave={handleSaveColumnConfig}
-          userId={user_id}
-        />
+        <SmartTooltip text="Nastavit viditelnost a pořadí sloupců tabulky" icon="info" preferredPosition="bottom">
+          <OrdersColumnConfigV3
+            columnVisibility={columnVisibility}
+            columnOrder={columnOrder}
+            columnLabels={COLUMN_LABELS}
+            onVisibilityChange={handleColumnVisibilityChange}
+            onOrderChange={handleColumnOrderChange}
+            onReset={handleResetColumnConfig}
+            onSave={handleSaveColumnConfig}
+            userId={user_id}
+          />
+        </SmartTooltip>
       </ActionBar>
 
       {/* Error state */}
@@ -1201,7 +1480,37 @@ function Orders25ListV3() {
         onLoadComments={handleLoadComments}
         onAddComment={handleAddComment}
         onDeleteComment={handleDeleteComment}
+        onTableContextMenu={handleTableContextMenu}
       />
+
+      {/* 🆕 Kontextové menu */}
+      {contextMenu && (
+        <OrderContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          order={contextMenu.order}
+          selectedData={contextMenu.selectedData}
+          onClose={handleCloseContextMenu}
+          onAddToTodo={handleAddToTodo}
+          onAddAlarm={handleAddAlarm}
+          onAddComment={handleContextMenuAddComment}
+          onToggleCheck={handleContextMenuToggleCheck}
+          onEdit={handleContextMenuEdit}
+          onDelete={handleContextMenuDelete}
+          onGenerateDocx={handleGenerateDocx}
+          onGenerateFinancialControl={handleGenerateFinancialControl}
+          onApprove={handleApproveFromContextMenu}
+          canDelete={
+            hasPermission('ORDER_MANAGE') ||
+            hasPermission('ORDER_DELETE_ALL') ||
+            hasPermission('ORDER_2025') ||
+            (hasPermission('ORDER_DELETE_OWN') && contextMenu.order.uzivatel_id === user_id)
+          }
+          canApprove={canApprove(contextMenu.order)}
+          canAddComment={canAddComment(contextMenu.order)}
+          canToggleCheck={canToggleCheck()}
+        />
+      )}
 
       {/* Pagination */}
       {totalItems > 0 && (

@@ -13,7 +13,9 @@ import {
   faPaste,
   faTimes,
   faFileInvoice,
-  faCheckCircle
+  faCheckCircle,
+  faComment,
+  faCheckSquare
 } from '@fortawesome/free-solid-svg-icons';
 
 const MenuContainer = styled.div`
@@ -95,6 +97,8 @@ const MenuLabel = styled.span`
  * @param {Function} props.onClose - Callback pro zavření menu
  * @param {Function} props.onAddToTodo - Přidat do TODO
  * @param {Function} props.onAddAlarm - Přidat upozornění/alarm
+ * @param {Function} props.onAddComment - Přidat komentář k objednávce (V3)
+ * @param {Function} props.onToggleCheck - Označit/zrušit kontrolu objednávky (V3)
  * @param {Function} props.onEdit - Editovat objednávku
  * @param {Function} props.onDelete - Smazat objednávku
  * @param {Function} props.onGenerateDocx - Generovat DOCX ze šablony
@@ -102,6 +106,8 @@ const MenuLabel = styled.span`
  * @param {Function} props.onApprove - Schválit objednávku (pro příkazce)
  * @param {boolean} props.canDelete - Má uživatel právo smazat?
  * @param {boolean} props.canApprove - Je uživatel příkazce této objednávky?
+ * @param {boolean} props.canAddComment - Má uživatel právo přidat komentář?
+ * @param {boolean} props.canToggleCheck - Má uživatel právo kontrolovat objednávku?
  * @param {Object} props.selectedData - Vybraná data (buňka nebo řádek)
  */
 export const OrderContextMenu = ({
@@ -111,6 +117,8 @@ export const OrderContextMenu = ({
   onClose,
   onAddToTodo,
   onAddAlarm,
+  onAddComment,
+  onToggleCheck,
   onEdit,
   onDelete,
   onGenerateDocx,
@@ -118,6 +126,8 @@ export const OrderContextMenu = ({
   onApprove,
   canDelete = false,
   canApprove = false,
+  canAddComment = false,
+  canToggleCheck = false,
   selectedData = null
 }) => {
   const menuRef = useRef(null);
@@ -541,6 +551,38 @@ export const OrderContextMenu = ({
         <FontAwesomeIcon icon={faBell} />
         <MenuLabel>Přidat upozornění - ALARM</MenuLabel>
       </MenuItem>
+
+      {/* 🆕 V3: Komentáře */}
+      {onAddComment && (
+        <MenuItem 
+          onClick={() => { onAddComment(order); onClose(); }}
+          disabled={!canAddComment}
+          title={!canAddComment ? 'Nemáte oprávnění k přidání komentáře' : 'Přidat komentář k objednávce'}
+        >
+          <FontAwesomeIcon icon={faComment} />
+          <MenuLabel>Přidat komentář</MenuLabel>
+        </MenuItem>
+      )}
+
+      {/* 🆕 V3: Kontrola OBJ */}
+      {onToggleCheck && (
+        <MenuItem 
+          onClick={() => { onToggleCheck(order); onClose(); }}
+          disabled={!canToggleCheck}
+          title={
+            !canToggleCheck 
+              ? 'Nemáte oprávnění ke kontrole objednávek (pouze SUPERADMIN, ADMINISTRATOR, KONTROLOR_OBJEDNAVEK)' 
+              : order?.kontrola?.zkontrolovano 
+                ? 'Zrušit označení kontroly'
+                : 'Označit objednávku jako zkontrolovanou'
+          }
+        >
+          <FontAwesomeIcon icon={faCheckSquare} />
+          <MenuLabel>
+            {order?.kontrola?.zkontrolovano ? '✓ Zrušit kontrolu OBJ' : 'Kontrola OBJ'}
+          </MenuLabel>
+        </MenuItem>
+      )}
 
       <MenuDivider />
 
