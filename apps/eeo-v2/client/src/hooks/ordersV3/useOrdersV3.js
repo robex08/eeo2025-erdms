@@ -732,11 +732,6 @@ export function useOrdersV3({
     // ZÁKLAD jsou VŽDY unfilteredStats (celkové hodnoty)
     const baseStats = { ...unfilteredStats };
     
-    console.log('📊 [enhancedStats] unfilteredStats:', {
-      total: unfilteredStats.total,
-      totalAmount: unfilteredStats.totalAmount
-    });
-    
     // Pro filtrované hodnoty použij currentStats z BE (ne počítání z orders na stránce!)
     let filteredTotalAmount = baseStats.totalAmount; // default = celková částka
     let filteredCount = baseStats.total; // default = celkový počet
@@ -746,31 +741,18 @@ export function useOrdersV3({
       filteredTotalAmount = currentStats.totalAmount;
       filteredCount = currentStats.total || 0;
       
-      console.log('📊 [enhancedStats] currentStats:', {
-        total: currentStats.total,
-        totalAmount: currentStats.totalAmount
-      });
-      
       // Také aktualizuj dokoncenaAmount z currentStats
       if (currentStats.dokoncenaAmount !== undefined) {
         baseStats.dokoncenaAmount = currentStats.dokoncenaAmount;
       }
     }
     
-    const result = {
+    // Rozšířené stats
+    return {
       ...baseStats,
       filteredTotalAmount,
       filteredCount
     };
-    
-    console.log('📊 [enhancedStats] RESULT:', {
-      totalAmount: result.totalAmount,
-      filteredTotalAmount: result.filteredTotalAmount,
-      total: result.total,
-      filteredCount: result.filteredCount
-    });
-    
-    return result;
   }, [unfilteredStats, currentStats]);
 
   // ============================================================================
@@ -783,6 +765,7 @@ export function useOrdersV3({
     loading,
     error,
     stats: enhancedStats,
+    filteredStats: currentStats, // Pro malé dlaždice když je aktivní filtr
     
     // Pagination
     currentPage,
