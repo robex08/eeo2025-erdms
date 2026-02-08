@@ -449,8 +449,8 @@ export const getNotificationsList = async (options = {}) => {
 };
 
 /**
- * Počet nepřečtených notifikací
- * @returns {Promise<number>} - Počet nepřečtených
+ * Počet nepřečtených notifikací s informací o barvě badge
+ * @returns {Promise<Object>} - {unread_count: number, badge_color: string, priority_info?: array}
  */
 export const getUnreadCount = async () => {
   try {
@@ -459,13 +459,18 @@ export const getUnreadCount = async () => {
     const response = await notificationsApi.post('/notifications/unread-count', auth);
     const result = handleApiResponse(response);
 
-    return result.unread_count;
+    // Vrátíme celý objekt s informacemi o barvě badge
+    return {
+      unread_count: result.unread_count || 0,
+      badge_color: result.badge_color || 'gray',
+      priority_info: result.priority_info || []
+    };
 
   } catch (error) {
 
-    // Pokud endpoint neexistuje (404) nebo má jinou chybu, vrať 0 místo crashování
+    // Pokud endpoint neexistuje (404) nebo má jinou chybu, vrať default hodnoty
     if (error.response?.status === 404) {
-      return 0;
+      return { unread_count: 0, badge_color: 'gray', priority_info: [] };
     }
 
     // Pro ostatní chyby také vrať 0 místo throwování

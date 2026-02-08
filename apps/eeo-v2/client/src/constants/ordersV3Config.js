@@ -167,6 +167,7 @@ export const ORDERS_V3_CONFIG = {
       'faktury_celkova_castka_s_dph',
       'actions'
     ],
+    columnSizing: {}, // Uživatelem nastavené šířky sloupců (prázdné = default z columnDefs)
   },
 
   // ============================================================================

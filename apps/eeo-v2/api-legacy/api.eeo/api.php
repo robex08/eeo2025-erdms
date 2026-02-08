@@ -141,6 +141,7 @@ function cz_get_namedays_list() {
 define('TBL_OBJEDNAVKY', '25a_objednavky');
 define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
 define('TBL_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
+define('TBL_OBJEDNAVKY_KOMENTARE', '25a_objednavky_komentare');
 define('TBL_POKLADNI_KNIHY', '25a_pokladni_knihy');
 define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
 define('TBL_POKLADNI_POLOZKY_DETAIL', '25a_pokladni_polozky_detail');
