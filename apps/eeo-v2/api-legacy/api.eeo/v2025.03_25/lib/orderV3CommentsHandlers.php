@@ -401,8 +401,13 @@ function handle_order_v3_comments_add($input, $config) {
         $total_row = $stmt->fetch(PDO::FETCH_ASSOC);
         $total = $total_row ? (int)$total_row['total'] : 0;
 
-        // 9. TODO: Vytvořit notifikaci pro účastníky (implementováno v kroku 6)
-        // create_order_comment_notification($db, $order_id, $user_id, $comment_id);
+        // 9. Vytvořit notifikace pro všechny účastníky objednávky
+        try {
+            create_order_comment_notifications($db, $order_id, $user_id, $comment_id, $comment);
+        } catch (Exception $notif_error) {
+            // Logujeme chybu, ale nezastavujeme zpracování
+            error_log("⚠️ Chyba při vytváření notifikací pro komentář $comment_id: " . $notif_error->getMessage());
+        }
 
         // 10. Úspěšná odpověď
         http_response_code(200);
@@ -596,4 +601,132 @@ function handle_order_v3_comments_delete($input, $config) {
             'message' => 'Chyba při zpracování: ' . $e->getMessage()
         ));
     }
+}
+
+/**
+ * Vytvoří notifikace pro všechny účastníky objednávky při přidání komentáře
+ * 
+ * Posílá notifikace všem 12 rolím účastníků objednávky (kromě autora komentáře):
+ * - uzivatel_id, objednatel_id, garant_uzivatel_id, schvalovatel_id
+ * - prikazce_id, uzivatel_akt_id, odesilatel_id, dodavatel_potvrdil_id
+ * - zverejnil_id, fakturant_id, dokoncil_id, potvrdil_vecnou_spravnost_id
+ * 
+ * @param PDO $db Database connection
+ * @param int $order_id ID objednávky
+ * @param int $author_user_id ID autora komentáře (nebude notifikován)
+ * @param int $comment_id ID komentáře
+ * @param array $comment Data komentáře (pro text notifikace)
+ * @return void
+ */
+function create_order_comment_notifications($db, $order_id, $author_user_id, $comment_id, $comment) {
+    error_log("📧 Vytvářím notifikace pro komentář $comment_id k objednávce $order_id");
+    
+    // 1. Načíst všechny účastníky objednávky (12 rolí)
+    $stmt = $db->prepare("
+        SELECT 
+            uzivatel_id,
+            objednatel_id,
+            garant_uzivatel_id,
+            schvalovatel_id,
+            prikazce_id,
+            uzivatel_akt_id,
+            odesilatel_id,
+            dodavatel_potvrdil_id,
+            zverejnil_id,
+            fakturant_id,
+            dokoncil_id,
+            potvrdil_vecnou_spravnost_id,
+            cislo_objednavky,
+            predmet
+        FROM " . TBL_OBJEDNAVKY . "
+        WHERE id = ?
+    ");
+    $stmt->execute(array($order_id));
+    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$order) {
+        error_log("⚠️ Objednávka $order_id nenalezena - notifikace nebudou vytvořeny");
+        return;
+    }
+    
+    // 2. Sestavit seznam unikátních user_id účastníků (kromě autora)
+    $participants = array();
+    $role_fields = array(
+        'uzivatel_id',
+        'objednatel_id',
+        'garant_uzivatel_id',
+        'schvalovatel_id',
+        'prikazce_id',
+        'uzivatel_akt_id',
+        'odesilatel_id',
+        'dodavatel_potvrdil_id',
+        'zverejnil_id',
+        'fakturant_id',
+        'dokoncil_id',
+        'potvrdil_vecnou_spravnost_id'
+    );
+    
+    foreach ($role_fields as $field) {
+        $user_id = isset($order[$field]) ? (int)$order[$field] : 0;
+        if ($user_id > 0 && $user_id != $author_user_id) {
+            $participants[$user_id] = true; // Použití key jako ID zajistí unikátnost
+        }
+    }
+    
+    $participants_list = array_keys($participants);
+    $participants_count = count($participants_list);
+    
+    error_log("👥 Nalezeno $participants_count unikátních účastníků pro notifikaci");
+    
+    if ($participants_count === 0) {
+        error_log("ℹ️ Žádní účastníci k notifikaci (kromě autora)");
+        return;
+    }
+    
+    // 3. Připravit text notifikace
+    $autor_jmeno = isset($comment['autor_jmeno']) ? $comment['autor_jmeno'] : 'Uživatel';
+    $order_number = $order['cislo_objednavky'] ? $order['cislo_objednavky'] : "#" . $order_id;
+    $predmet = $order['predmet'] ? mb_substr($order['predmet'], 0, 50) . '...' : '';
+    
+    $obsah_preview = isset($comment['obsah']) ? strip_tags($comment['obsah']) : '';
+    if (strlen($obsah_preview) > 100) {
+        $obsah_preview = mb_substr($obsah_preview, 0, 100) . '...';
+    }
+    
+    $notif_title = "Nový komentář k objednávce $order_number";
+    $notif_message = "$autor_jmeno přidal komentář: \"$obsah_preview\"";
+    if ($predmet) {
+        $notif_message .= " ($predmet)";
+    }
+    
+    $dt_vytvoreni = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+    
+    // 4. Vložit notifikace pro všechny účastníky
+    $stmt = $db->prepare("
+        INSERT INTO 25_notifikace 
+            (uzivatel_id, typ_udalosti, objekt_id, titulek, zprava, dt_vytvoreni, precteno, url)
+        VALUES 
+            (?, 'ORDER_COMMENT_ADDED', ?, ?, ?, ?, 0, ?)
+    ");
+    
+    $notification_url = "/objednavky/detail/$order_id";
+    $created_count = 0;
+    
+    foreach ($participants_list as $user_id) {
+        try {
+            $stmt->execute(array(
+                $user_id,
+                $order_id,
+                $notif_title,
+                $notif_message,
+                $dt_vytvoreni,
+                $notification_url
+            ));
+            $created_count++;
+        } catch (PDOException $e) {
+            error_log("⚠️ Chyba při vytváření notifikace pro user_id $user_id: " . $e->getMessage());
+        }
+    }
+    
+    error_log("✅ Vytvořeno $created_count/$participants_count notifikací pro komentář $comment_id");
 }
