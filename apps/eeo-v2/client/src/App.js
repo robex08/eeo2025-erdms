@@ -1,6 +1,6 @@
 // CSS migrováno do GlobalStyles (emotion)
 import { css } from '@emotion/react';
-import React, { useContext, lazy, Suspense, useEffect, useRef, useCallback } from 'react';
+import React, { useContext, lazy, Suspense, useEffect, useRef, useCallback, useState } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext'; // Ensure correct import
 import { ToastProvider, ToastContext } from './context/ToastContext';
@@ -18,6 +18,7 @@ import { initSecurityMeasures } from './utils/securityImprovements';
 import ordersCacheService from './services/ordersCacheService';
 import { getCacheConfig } from './config/cacheConfig';
 import useDevice from './hooks/useDevice';
+import { getGlobalSettings } from './services/globalSettingsApi';
 const MobileLoginPage = lazy(() => import('./components/mobile/MobileLoginPage'));
 const MobileDashboard = lazy(() => import('./components/mobile/MobileDashboard'));
 const Login = lazy(() => import('./pages/Login'));
@@ -52,6 +53,8 @@ const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
 const PostLoginModal = lazy(() => import('./components/PostLoginModal'));
 const UpdateNotificationModal = lazy(() => import('./components/UpdateNotificationModal'));
+const AccessDenied = lazy(() => import('./pages/AccessDenied'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
 );
@@ -190,7 +193,7 @@ function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
 }
 
 // Simple helper component for last route restoration
-function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail }) {
+function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail, moduleSettings, moduleSettingsLoaded }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -223,7 +226,8 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
 
   // Restore last location only on initial load from root
   useEffect(() => {
-    if (isLoggedIn && location.pathname === '/') {
+    // ⏳ KRITICKÉ: Počkat na načtení moduleSettings PŘED navigací
+    if (isLoggedIn && location.pathname === '/' && moduleSettingsLoaded) {
       // 🎨 PRIORITA: userSettings.vychozi_sekce_po_prihlaseni → lastRoute → fallback
       // Po čerstvém přihlášení má prioritu nastavení uživatele
       
@@ -235,6 +239,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
           const { loadSettingsFromLocalStorage } = require('./services/userSettingsApi');
           const userSettings = loadSettingsFromLocalStorage(user_id);
           
+          // PRIORITA 1: userSettings.vychozi_sekce_po_prihlaseni (pokud je dostupná)
           if (userSettings?.vychozi_sekce_po_prihlaseni) {
             // ✅ SPRÁVNÉ MAPOVÁNÍ: Podle availableSections.js
             const sectionMap = {
@@ -259,46 +264,90 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
               'help': '/help' // Nápověda a manuály
             };
             
-            let targetSection = userSettings.vychozi_sekce_po_prihlaseni;
-            let targetRoute = sectionMap[targetSection];
+            const targetSection = userSettings.vychozi_sekce_po_prihlaseni;
+            const targetRoute = sectionMap[targetSection];
             
             // 🔒 SECURITY: Zkontroluj, zda má uživatel oprávnění k této sekci
-            const { isSectionAvailable, getFirstAvailableSection } = require('./utils/availableSections');
+            const { isSectionAvailable } = require('./utils/availableSections');
             
-            if (!isSectionAvailable(targetSection, hasPermission, userDetail)) {
-              console.warn('⚠️ User does not have permission for section:', targetSection);
-              // Fallback: Použij první dostupnou sekci
-              targetSection = getFirstAvailableSection(hasPermission, userDetail);
-              targetRoute = sectionMap[targetSection] || '/profile';
+            if (targetRoute && isSectionAvailable(targetSection, hasPermission, userDetail)) {
+              // ✅ User settings sekce JE dostupná → použij ji (NEJVYŠŠÍ PRIORITA)
+              console.log('✅ PRIORITA 1: Použita user settings sekce:', targetSection);
+              navigate(targetRoute, { replace: true });
+              return;
+            } else {
+              console.warn('⚠️ User settings sekce není dostupná:', targetSection);
+              // Pokračuj na PRIORITU 2 (global homepage)
             }
-            
-            // ✅ Fallback pokud route není v mapě nebo sekce neexistuje
-            if (!targetRoute || !targetSection) {
-              console.warn('⚠️ Unknown or missing section in userSettings:', targetSection);
-              targetSection = getFirstAvailableSection(hasPermission, userDetail);
-              targetRoute = sectionMap[targetSection] || '/profile';
-            }
-            
-            navigate(targetRoute, { replace: true });
-            return;
           }
         }
       } catch (error) {
-        console.warn('⚠️ Chyba při načítání výchozí sekce:', error);
+        console.warn('⚠️ Chyba při načítání user settings:', error);
       }
       
-      // Fallback 1: lastRoute per-user (pro případ kdy userSettings není nastaveno)
+      // PRIORITA 2: Global homepage (pokud je dostupná)
+      try {
+        const { getDefaultHomepageSync } = require('./utils/homepageHelper');
+        const { isSectionAvailable } = require('./utils/availableSections');
+        
+        const homepage = getDefaultHomepageSync();
+        const homepageSection = homepage.replace('/', '').replace('-', '_');
+        
+        // Kontrola dostupnosti homepage
+        const homepageSectionKey = homepage.replace('/', '');
+        if (homepageSectionKey && isSectionAvailable(homepageSectionKey, hasPermission, userDetail)) {
+          console.log('✅ PRIORITA 2: Použita global homepage:', homepage);
+          navigate(homepage, { replace: true });
+          return;
+        } else {
+          console.warn('⚠️ Global homepage není dostupná:', homepage);
+          // Pokračuj na PRIORITU 3 (lastRoute)
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při načítání global homepage:', error);
+      }
+      
+      // PRIORITA 3: lastRoute per-user
+      // ⚠️ VALIDACE: Ignoruj neplatné nebo problematické cesty
       const lastRoute = userId ? localStorage.getItem(`app_lastRoute_user_${userId}`) : null;
-      if (lastRoute && lastRoute !== '/orders-list-new') {
-        navigate(lastRoute, { replace: true });
-        return;
+      const invalidRoutes = ['/orders-list-new', '/login', '/logout', '/', ''];
+      
+      if (lastRoute && !invalidRoutes.includes(lastRoute)) {
+        // ✅ BEZPEČNÉ: Validuj že route začíná s '/' a neobsahuje podezřelé znaky
+        if (lastRoute.startsWith('/') && !/[<>{}]/.test(lastRoute)) {
+          try {
+            console.log('✅ PRIORITA 3: Použita lastRoute:', lastRoute);
+            navigate(lastRoute, { replace: true });
+            return;
+          } catch (navError) {
+            console.warn('⚠️ Chyba při navigaci na lastRoute:', lastRoute, navError);
+            // Pokračuj na PRIORITU 4 (ultimate fallback)
+          }
+        }
       }
       
-      // Fallback 2: Seznam objednávek
-      navigate('/orders25-list', { replace: true });
+      // PRIORITA 4: Ultimate fallback - první dostupný modul nebo /profile
+      try {
+        const { getFirstAvailableSection } = require('./utils/availableSections');
+        const fallbackSection = getFirstAvailableSection(hasPermission, userDetail);
+        
+        const fallbackMap = {
+          'orders25-list': '/orders25-list',
+          'orders25-list-v3': '/orders25-list-v3',
+          'invoices25-list': '/invoices25-list',
+          'profile': '/profile'
+        };
+        
+        const fallbackRoute = fallbackMap[fallbackSection] || '/profile';
+        console.log('✅ PRIORITA 4 (ultimate fallback):', fallbackRoute);
+        navigate(fallbackRoute, { replace: true });
+      } catch (error) {
+        console.error('❌ Kritická chyba při fallback navigaci:', error);
+        navigate('/profile', { replace: true });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, navigate, location.pathname]);
+  }, [isLoggedIn, navigate, location.pathname, moduleSettingsLoaded]);
 
   return null;
 }
@@ -309,6 +358,16 @@ function App() {
   const { showToast } = useContext(ToastContext) || {};
   const bgTasksContext = useBgTasksContext();
   const exchangeRatesContext = useExchangeRates(); // ← Nový context pro směnné kurzy
+
+  // 🎛️ Module visibility settings - načítá se při loginu (MUSÍ BÝT PŘED RestoreLastRoute!)
+  const [moduleSettings, setModuleSettings] = useState({
+    module_orders_visible: true,
+    module_orders_v3_visible: false,
+    module_invoices_visible: true,
+    module_annual_fees_visible: true,
+    module_default_homepage: 'orders25-list' // 'orders25-list' nebo 'orders25-list-v3'
+  });
+  const [moduleSettingsLoaded, setModuleSettingsLoaded] = useState(false);
 
   // 🔔 POST-LOGIN MODAL: State pro modal dialog po přihlášení
   const [postLoginModal, setPostLoginModal] = React.useState({
@@ -356,6 +415,43 @@ function App() {
   useEffect(() => {
     bgTasksRef.current = bgTasks;
   }, [bgTasks]);
+
+  // Načíst module settings po přihlášení
+  useEffect(() => {
+    if (!isLoggedIn || !token || !username) {
+      // 🔄 RESET: Při logout resetovat flag aby se znovu načetly při dalším login
+      setModuleSettingsLoaded(false);
+      return;
+    }
+
+    const loadModuleSettings = async () => {
+      try {
+        const settings = await getGlobalSettings(token, username);
+        const moduleSettingsData = {
+          module_orders_visible: settings.module_orders_visible ?? true,
+          module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
+          module_invoices_visible: settings.module_invoices_visible ?? true,
+          module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
+          module_default_homepage: settings.module_default_homepage ?? 'orders25-list'
+        };
+        setModuleSettings(moduleSettingsData);
+        // 💾 Uložit do localStorage pro sync přístup (NotFound, AccessDenied)
+        try {
+          localStorage.setItem('app_moduleSettings', JSON.stringify(moduleSettingsData));
+        } catch (storageError) {
+          console.warn('⚠️ Nelze uložit module settings do localStorage:', storageError);
+        }
+        // ✅ KRITICKÉ: Nastavit flag že settings jsou načtené
+        setModuleSettingsLoaded(true);
+      } catch (error) {
+        console.error('❌ Chyba při načítání module settings:', error);
+        // I při chybě nastavit flag aby se RestoreLastRoute neblokoval
+        setModuleSettingsLoaded(true);
+      }
+    };
+
+    loadModuleSettings();
+  }, [isLoggedIn, token, username]);
 
   // ✅ TOKEN AUTO-REFRESH: Callback pro automatickou aktualizaci tokenu
   const handleTokenRefresh = useCallback(async (newToken) => {
@@ -650,7 +746,7 @@ function App() {
               {/* Logout redirect listener */}
               <LogoutRedirectListener isLoggedIn={isLoggedIn} />
               {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
-              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} hasPermission={hasPermission} userDetail={userDetail} />
+              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} hasPermission={hasPermission} userDetail={userDetail} moduleSettings={moduleSettings} moduleSettingsLoaded={moduleSettingsLoaded} />
               <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
                   {!isLoggedIn && <Route path="*" element={<Navigate to="/login" replace />} />}
@@ -663,22 +759,44 @@ function App() {
 
                   {isLoggedIn && <Route path="/orders" element={<Orders />} />}
 
+                  {/* 📋 Objednávky - pokud disabled → jen admin/BETA_TESTER */}
                   {isLoggedIn && hasPermission && (
                     hasPermission('ORDER_MANAGE') ||
                     hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_DELETE_ALL') ||
                     hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
+                  ) && (
+                    moduleSettings.module_orders_visible || 
+                    (hasAdminRole && hasAdminRole()) || 
+                    (hasPermission && hasPermission('BETA_TESTER'))
                   ) && <Route path="/orders25-list" element={<Orders25List />} />}
-                  {/* 🚀 V3 - BETA: Nová verze s backend paging (zatím jen pro ADMINY) */}
-                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/orders25-list-v3" element={<Orders25ListV3 />} />}
-                  {/* 💰 BETA: Evidence ročních poplatků */}
+                  {/* 🚀 V3 - BETA: Pokud disabled → jen admin/BETA_TESTER, pokud enabled → stejná práva jako Orders25List */}
+                  {isLoggedIn && hasPermission && (
+                    hasPermission('ORDER_MANAGE') ||
+                    hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_DELETE_ALL') ||
+                    hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
+                  ) && (
+                    moduleSettings.module_orders_v3_visible || 
+                    (hasAdminRole && hasAdminRole()) || 
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/orders25-list-v3" element={<Orders25ListV3 />} />}
+                  {/* 💰 BETA: Evidence ročních poplatků - pokud disabled → jen admin/BETA_TESTER */}
                   {isLoggedIn && hasPermission && (
                     hasPermission('ANNUAL_FEES_MANAGE') ||
                     hasPermission('ANNUAL_FEES_VIEW') ||
                     hasPermission('ANNUAL_FEES_CREATE') ||
                     hasPermission('ANNUAL_FEES_EDIT') ||
                     hasPermission('ADMIN')
+                  ) && (
+                    moduleSettings.module_annual_fees_visible || 
+                    (hasAdminRole && hasAdminRole()) || 
+                    (hasPermission && hasPermission('BETA_TESTER'))
                   ) && <Route path="/annual-fees" element={<AnnualFeesPage />} />}
-                  {isLoggedIn && <Route path="/invoices25-list" element={<Invoices25List />} />}
+                  {/* 📄 Faktury - pokud disabled → jen admin/BETA_TESTER */}
+                  {isLoggedIn && (
+                    moduleSettings.module_invoices_visible || 
+                    (hasAdminRole && hasAdminRole()) || 
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/invoices25-list" element={<Invoices25List />} />}
                   {isLoggedIn && <Route path="/invoice-evidence/:orderId?" element={<InvoiceEvidencePage />} />}
                   {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}
                   {isLoggedIn && hasPermission && (hasPermission('USER_VIEW') || hasPermission('USER_MANAGE')) && <Route path="/users" element={<Users />} />}
@@ -719,6 +837,12 @@ function App() {
                   {isLoggedIn && hasPermission && hasPermission('SUPERADMIN') && <Route path="/debug" element={<DebugPanel />} />}
                   {isLoggedIn && process.env.NODE_ENV === 'development' && <Route path="/test-notifications" element={<NotificationTestPanel />} />}
                   {isLoggedIn && process.env.NODE_ENV === 'development' && <Route path="/test-order-v2" element={<OrderV2TestPanel />} />}
+                  
+                  {/* 403 - Access Denied */}
+                  {isLoggedIn && <Route path="/access-denied" element={<AccessDenied />} />}
+                  
+                  {/* 404 - Catch-all pro neexistující routes */}
+                  {isLoggedIn && <Route path="*" element={<NotFound />} />}
                 </Routes>
               </Suspense>
             </Layout>

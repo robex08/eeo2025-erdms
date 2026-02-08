@@ -22,6 +22,7 @@ import draftManager from '../services/DraftManager'; // 🎯 CENTRALIZOVANÝ DRA
 import formDataManager from '../services/FormDataManager'; // 🎯 CENTRALIZOVANÝ DATA MANAGER
 import { useAutosave } from '../hooks/useAutosave'; // 🎯 CENTRALIZOVANÝ AUTOSAVE HOOK
 import { prettyDate, formatDateOnly } from '../utils/format';
+import { getDefaultHomepage, getDefaultHomepageSync } from '../utils/homepageHelper';
 import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, searchSupplierByIco, searchSuppliersList, fetchSupplierContacts, createSupplier, updateSupplierByIco, fetchTemplatesList, fetchTemplatesListWithMeta, createTemplate, updateTemplate, deleteTemplate, getUserDetailApi2, fetchUskyList } from '../services/api2auth';
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
 // NOTE: setDebugLogger removed - was unused (only commented call on line 11445)
@@ -4117,8 +4118,8 @@ function OrderForm25() {
       if (referrer.includes('/orders25-list')) return '/orders25-list';
     }
     
-    // Default fallback
-    return '/orders25-list';
+    // Default fallback - použij dynamickou homepage z nastavení
+    return getDefaultHomepageSync();
   }, [location.state]);
   
   const returnToRef = useRef(returnToPath);
@@ -7130,7 +7131,8 @@ function OrderForm25() {
                 'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu',
                 { type: 'error' }
               );
-              navigate('/orders25-list', { replace: true });
+              const homepage = await getDefaultHomepage();
+              navigate(homepage, { replace: true });
               return;
             }
             
@@ -7142,7 +7144,9 @@ function OrderForm25() {
             );
             // Přesměruj zpět na seznam po 2 sekundách
             setTimeout(() => {
-              navigate('/orders25-list', { replace: true });
+              getDefaultHomepage().then(homepage => {
+                navigate(homepage, { replace: true });
+              });
             }, 2000);
             return;
           }
@@ -7154,7 +7158,9 @@ function OrderForm25() {
             );
             // Přesměruj zpět na seznam po 2 sekundách
             setTimeout(() => {
-              navigate('/orders25-list', { replace: true });
+              getDefaultHomepage().then(homepage => {
+                navigate(homepage, { replace: true });
+              });
             }, 2000);
             return;
           }
@@ -7177,7 +7183,8 @@ function OrderForm25() {
             addDebugLog('warning', 'EDIT', 'locked', `Objednávka ${editOrderId} je zamčena uživatelem ${lockedByUserName}`);
 
             // 🔥 OPRAVENO: Použít React Router navigate místo window.location.href
-            navigate('/orders25-list', { replace: true });
+            const homepage = await getDefaultHomepage();
+            navigate(homepage, { replace: true });
             return; // ZABLOKOVAT načtení formuláře
           } else if (dbOrder.lock_info?.is_owned_by_me === true) {
             // ✅ Moje zamčená objednávka - pokračuj v editaci
@@ -7205,7 +7212,9 @@ function OrderForm25() {
                   'warning'
                 );
 
-                window.history.replaceState({}, '', '/orders25-list');
+                // Přesměruj na dynamickou homepage
+                const homepage = getDefaultHomepageSync();
+                navigate(homepage, { replace: true });
                 return;
               }
 
@@ -9428,8 +9437,8 @@ function OrderForm25() {
 
         // 3. Počkej 50ms, aby se broadcast propagoval
         setTimeout(() => {
-          // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na seznam objednávek s forceReload
-          const targetPath = returnToRef.current || '/orders25-list';
+          // 4. Přepnout na uloženou cestu (returnTo) nebo fallback na výchozí homepage
+          const targetPath = returnToRef.current || getDefaultHomepageSync();
           // console.log('🔙 OrderForm25 NAVIGATE (uloženo):', { targetPath, returnToRef: returnToRef.current });
           navigate(targetPath, { 
             state: { 
@@ -16930,8 +16939,8 @@ function OrderForm25() {
           // Ignoruj chybu broadcastu
         }
 
-        // Přesměruj na uloženou cestu (returnTo) nebo fallback na seznam
-        const targetPath = returnToRef.current || '/orders25-list';
+        // Přesměruj na uloženou cestu (returnTo) nebo fallback na výchozí homepage
+        const targetPath = returnToRef.current || getDefaultHomepageSync();
         // console.log('🔙 OrderForm25 NAVIGATE (dokončená):', { targetPath, returnToRef: returnToRef.current });
         navigate(targetPath, { 
           state: { 
@@ -17086,7 +17095,7 @@ function OrderForm25() {
       setShowCancelConfirmModal(false);
       setCancelWarningMessage('');
 
-      const targetPath = returnToRef.current || '/orders25-list';
+      const targetPath = returnToRef.current || getDefaultHomepageSync();
       // console.log('🔙 OrderForm25 NAVIGATE (koncept zrušen):', { targetPath, returnToRef: returnToRef.current });
       addDebugLog('info', 'CANCEL', 'redirect', `Přesměrovávám na: ${targetPath}`);
 
@@ -17111,7 +17120,7 @@ function OrderForm25() {
       setCancelWarningMessage('');
 
       // Přesměruj i přes chybu (lepší než zůstat na formuláři)
-      const targetPath = returnToRef.current || '/orders25-list';
+      const targetPath = returnToRef.current || getDefaultHomepageSync();
       // console.log('🔙 OrderForm25 NAVIGATE (error při zavírání):', { targetPath, returnToRef: returnToRef.current });
       setTimeout(() => {
         navigate(targetPath, { 
@@ -19420,7 +19429,9 @@ function OrderForm25() {
           );
           // Přesměruj zpět na seznam po 3 sekundách
           setTimeout(() => {
-            navigate('/orders25-list', { replace: true });
+            getDefaultHomepage().then(homepage => {
+              navigate(homepage, { replace: true });
+            });
           }, 3000);
         }
       }, 20000); // 20 sekund timeout

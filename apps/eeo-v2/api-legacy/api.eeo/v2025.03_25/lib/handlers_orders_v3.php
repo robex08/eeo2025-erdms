@@ -258,7 +258,8 @@ function handle_orders_v3_detail($input, $config) {
 
         // ✅ Kontrola existence souborů pro fakturní přílohy
         // ENVIRONMENT-AWARE: Použít aktuální UPLOAD_ROOT_PATH z .env (DEV/PROD)
-        $upload_root = $config['upload']['root_path'] ?? '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+        require_once __DIR__ . '/environment-utils.php';
+        $upload_root = $config['upload']['root_path'] ?? get_upload_root_path();
         error_log("🔍 [V3 ORDER DETAIL] Upload root: $upload_root");
         
         foreach ($invoice_attachments as &$attachment) {

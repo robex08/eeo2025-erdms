@@ -727,7 +727,7 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, setOrderToApprove, setApprovalComment, setShowApprovalDialog }) => {
+const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog }) => {
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
   
@@ -736,7 +736,9 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     const fileName = attachment.originalni_nazev_souboru || `priloha_${attachment.id}`;
 
     if (!attachment.id || !orderId || !token || !username) {
-      alert('Nelze otevřít přílohu - chybí potřebné údaje');
+      if (showToast) {
+        showToast('Nelze otevřít přílohu - chybí potřebné údaje', { type: 'error' });
+      }
       return;
     }
 
@@ -814,7 +816,9 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
     } catch (error) {
       console.error('Chyba při otevírání přílohy:', error);
-      alert(error.message || 'Nepodařilo se otevřít přílohu');
+      if (showToast) {
+        showToast(error.message || 'Nepodařilo se otevřít přílohu', { type: 'error' });
+      }
     }
   };
 
