@@ -965,9 +965,11 @@ const OrdersFiltersV3Full = ({
   };
 
   const clearFilter = (field) => {
-    const newValue = Array.isArray(filters[field]) ? [] : '';
-    // Přít použít onFilterChange aby se správně uložilo do localStorage
-    onFilterChange({ ...filters, [field]: newValue });
+    // ✅ FIX: Odstranit pole/hodnotu z objektu místo nastavení na [] nebo ''
+    // Jinak se při reloadu načte z localStorage prázdné pole a filtr zůstane "aktivní"
+    const newFilters = { ...filters };
+    delete newFilters[field];
+    onFilterChange(newFilters);
   };
 
   return (
