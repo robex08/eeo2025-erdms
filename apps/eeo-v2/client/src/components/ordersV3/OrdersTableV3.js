@@ -1265,6 +1265,11 @@ const getFinancovaniDetail = (order) => {
   
   const typ = order.financovani.typ || '';
   
+  // 🔍 DEBUG - zkontrolovat, co obsahuje financovani pro POJISTNA_UDALOST
+  if (typ === 'POJISTNA_UDALOST') {
+    console.log('🔍 POJISTNA_UDALOST financovani:', order.financovani);
+  }
+  
   // LP - zobrazit jen LP kód (bez názvu/popisu)
   if (typ === 'LP') {
     // Priorita 1: lp_nazvy array s kompletními daty - zobrazit jen kód
