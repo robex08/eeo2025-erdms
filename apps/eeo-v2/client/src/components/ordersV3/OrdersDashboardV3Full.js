@@ -306,14 +306,19 @@ const STATUS_COLORS = {
 /**
  * OrdersDashboardV3Full - Plný dashboard s možností PLNĚ/DYNAMICKÉ/KOMPAKTNÍ
  * 
- * @param {Object} stats - Statistiky objednávek (total, nova, ke_schvaleni, ...)
- * @param {number} totalAmount - Celková částka s DPH
+ * @param {Object} stats - Celkové statistiky objednávek za období (pro modrou sekci)
+ * @param {Object} filteredStats - Filtrované statistiky (pro malé dlaždice když je filtr)
+ * @param {number} totalAmount - Celková částka s DPH za období
+ * @param {number} filteredTotalAmount - Filtrovaná částka s DPH
+ * @param {number} filteredCount - Počet filtrovaných objednávek
+ * @param {boolean} hasActiveFilters - Jsou aktivní filtry?
  * @param {Function} onStatusClick - Handler pro kliknutí na status kartu
  * @param {string} activeStatus - Aktivní status filter
  * @param {Function} onHide - Handler pro skrytí dashboardu
  */
 const OrdersDashboardV3Full = ({
   stats = {},
+  filteredStats = null,
   totalAmount = 0,
   filteredTotalAmount = 0,
   filteredCount = 0,
@@ -334,6 +339,12 @@ const OrdersDashboardV3Full = ({
     setDashboardMode(newMode);
     onModeChange?.(newMode);
   };
+  
+  // 🎯 KLÍČOVÁ LOGIKA: 
+  // - Modrá sekce (totalAmount) VŽDY zobrazuje celkovou částku za období - NIKDY se nemění!
+  // - Malé dlaždice používají filteredStats když je aktivní filtr, jinak stats
+  const displayStats = hasActiveFilters && filteredStats ? filteredStats : stats;
+  const displayTotalForCalculations = hasActiveFilters ? filteredTotalAmount : totalAmount;
 
   // Určení, zda zobrazit dlaždici (pro dynamický režim)
   const shouldShowTile = (count) => {
@@ -432,16 +443,16 @@ const OrdersDashboardV3Full = ({
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
                 {/* Rozpracované částka = celková - dokončená */}
-                {Math.round((totalAmount - (stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round((displayTotalForCalculations - (displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
                 {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
                 {(
-                  (stats.total || 0) -
-                  (stats.dokoncena || 0) -
-                  (stats.zrusena || 0) -
-                  (stats.smazana || 0) -
-                  (stats.archivovano || 0)
+                  (displayStats.total || 0) -
+                  (displayStats.dokoncena || 0) -
+                  (displayStats.zrusena || 0) -
+                  (displayStats.smazana || 0) -
+                  (displayStats.archivovano || 0)
                 ).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
@@ -456,10 +467,10 @@ const OrdersDashboardV3Full = ({
               <SummaryLabel $color="#065f46">DOKONČENÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
                 {/* Pokud není dokoncenaAmount, zobrazit 0 nebo proporcional výpočet */}
-                {Math.round(stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round(displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
-                {(stats.dokoncena || 0).toLocaleString('cs-CZ')} obj
+                {(displayStats.dokoncena || 0).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
           </SummaryRow>
@@ -468,7 +479,7 @@ const OrdersDashboardV3Full = ({
           {/* Počet objednávek - vždy */}
           <StatCard $color="#2196f3">
             <StatHeader>
-              <StatValue>{stats.total || 0}</StatValue>
+              <StatValue>{displayStats.total || 0}</StatValue>
               <StatIcon $color="#2196f3">
                 <FontAwesomeIcon icon={faFileAlt} />
               </StatIcon>
@@ -477,7 +488,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
 
           {/* Dynamické stavové karty - pouze s hodnotou > 0 */}
-          {(stats.ke_schvaleni || 0) > 0 && (
+          {(displayStats.ke_schvaleni || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.KE_SCHVALENI.dark}
               $clickable
@@ -485,7 +496,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('ke_schvaleni')}
             >
               <StatHeader>
-                <StatValue>{stats.ke_schvaleni || 0}</StatValue>
+                <StatValue>{displayStats.ke_schvaleni || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                   <FontAwesomeIcon icon={faHourglassHalf} />
                 </StatIcon>
@@ -494,7 +505,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {(stats.schvalena || 0) > 0 && (
+          {(displayStats.schvalena || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.SCHVALENA.dark}
               $clickable
@@ -502,7 +513,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('schvalena')}
             >
               <StatHeader>
-                <StatValue>{stats.schvalena || 0}</StatValue>
+                <StatValue>{displayStats.schvalena || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                   <FontAwesomeIcon icon={faShield} />
                 </StatIcon>
@@ -511,7 +522,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {(stats.rozpracovana || 0) > 0 && (
+          {(displayStats.rozpracovana || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.ROZPRACOVANA.dark}
               $clickable
@@ -519,7 +530,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('rozpracovana')}
             >
               <StatHeader>
-                <StatValue>{stats.rozpracovana || 0}</StatValue>
+                <StatValue>{displayStats.rozpracovana || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.ROZPRACOVANA.dark}>
                   ⚙️
                 </StatIcon>
@@ -528,7 +539,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {(stats.dokoncena || 0) > 0 && (
+          {(displayStats.dokoncena || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.DOKONCENA.dark}
               $clickable
@@ -536,7 +547,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('dokoncena')}
             >
               <StatHeader>
-                <StatValue>{stats.dokoncena || 0}</StatValue>
+                <StatValue>{displayStats.dokoncena || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.DOKONCENA.dark}>
                   🎯
                 </StatIcon>
@@ -642,16 +653,16 @@ const OrdersDashboardV3Full = ({
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
                 {/* Rozpracované částka = celková - dokončená */}
-                {Math.round((totalAmount - (stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round((displayTotalForCalculations - (displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
                 {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
                 {(
-                  (stats.total || 0) -
-                  (stats.dokoncena || 0) -
-                  (stats.zrusena || 0) -
-                  (stats.smazana || 0) -
-                  (stats.archivovano || 0)
+                  (displayStats.total || 0) -
+                  (displayStats.dokoncena || 0) -
+                  (displayStats.zrusena || 0) -
+                  (displayStats.smazana || 0) -
+                  (displayStats.archivovano || 0)
                 ).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
@@ -666,10 +677,10 @@ const OrdersDashboardV3Full = ({
               <SummaryLabel $color="#065f46">DOKONČENÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
                 {/* Pokud není dokoncenaAmount, zobrazit 0 nebo proporcional výpočet */}
-                {Math.round(stats.dokoncenaAmount || (totalAmount * (stats.dokoncena || 0) / (stats.total || 1)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round(displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1)) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
-                {(stats.dokoncena || 0).toLocaleString('cs-CZ')} obj
+                {(displayStats.dokoncena || 0).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
           </SummaryRow>
@@ -679,7 +690,7 @@ const OrdersDashboardV3Full = ({
         {/* Počet objednávek - vždy */}
         <StatCard $color="#2196f3">
           <StatHeader>
-            <StatValue>{stats.total || 0}</StatValue>
+            <StatValue>{displayStats.total || 0}</StatValue>
             <StatIcon $color="#2196f3">
               <FontAwesomeIcon icon={faFileAlt} />
             </StatIcon>
@@ -688,7 +699,7 @@ const OrdersDashboardV3Full = ({
         </StatCard>
 
         {/* Stavové dlaždice */}
-        {shouldShowTile(stats.nova || 0) && (
+        {shouldShowTile(displayStats.nova || 0) && (
           <StatCard
             $color={STATUS_COLORS.NOVA.dark}
             $clickable
@@ -696,14 +707,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('nova')}
           >
             <StatHeader>
-              <StatValue>{stats.nova || 0}</StatValue>
+              <StatValue>{displayStats.nova || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.NOVA.dark}>📝</StatIcon>
             </StatHeader>
             <StatLabel>Nová / Koncept</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.ke_schvaleni || 0) && (
+        {shouldShowTile(displayStats.ke_schvaleni || 0) && (
           <StatCard
             $color={STATUS_COLORS.KE_SCHVALENI.dark}
             $clickable
@@ -711,7 +722,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('ke_schvaleni')}
           >
             <StatHeader>
-              <StatValue>{stats.ke_schvaleni || 0}</StatValue>
+              <StatValue>{displayStats.ke_schvaleni || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                 <FontAwesomeIcon icon={faHourglassHalf} />
               </StatIcon>
@@ -720,7 +731,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.schvalena || 0) && (
+        {shouldShowTile(displayStats.schvalena || 0) && (
           <StatCard
             $color={STATUS_COLORS.SCHVALENA.dark}
             $clickable
@@ -728,7 +739,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('schvalena')}
           >
             <StatHeader>
-              <StatValue>{stats.schvalena || 0}</StatValue>
+              <StatValue>{displayStats.schvalena || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                 <FontAwesomeIcon icon={faShield} />
               </StatIcon>
@@ -737,7 +748,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.zamitnuta || 0) && (
+        {shouldShowTile(displayStats.zamitnuta || 0) && (
           <StatCard
             $color={STATUS_COLORS.ZAMITNUTA.dark}
             $clickable
@@ -745,7 +756,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('zamitnuta')}
           >
             <StatHeader>
-              <StatValue>{stats.zamitnuta || 0}</StatValue>
+              <StatValue>{displayStats.zamitnuta || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
                 <FontAwesomeIcon icon={faTimesCircle} />
               </StatIcon>
@@ -754,7 +765,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.rozpracovana || 0) && (
+        {shouldShowTile(displayStats.rozpracovana || 0) && (
           <StatCard
             $color={STATUS_COLORS.ROZPRACOVANA.dark}
             $clickable
@@ -762,14 +773,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('rozpracovana')}
           >
             <StatHeader>
-              <StatValue>{stats.rozpracovana || 0}</StatValue>
+              <StatValue>{displayStats.rozpracovana || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.ROZPRACOVANA.dark}>⚙️</StatIcon>
             </StatHeader>
             <StatLabel>Rozpracovaná</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.odeslana || 0) && (
+        {shouldShowTile(displayStats.odeslana || 0) && (
           <StatCard
             $color={STATUS_COLORS.ODESLANA.dark}
             $clickable
@@ -777,14 +788,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('odeslana')}
           >
             <StatHeader>
-              <StatValue>{stats.odeslana || 0}</StatValue>
+              <StatValue>{displayStats.odeslana || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.ODESLANA.dark}>📤</StatIcon>
             </StatHeader>
             <StatLabel>Odeslaná dodavateli</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.potvrzena || 0) && (
+        {shouldShowTile(displayStats.potvrzena || 0) && (
           <StatCard
             $color={STATUS_COLORS.POTVRZENA.dark}
             $clickable
@@ -792,14 +803,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('potvrzena')}
           >
             <StatHeader>
-              <StatValue>{stats.potvrzena || 0}</StatValue>
+              <StatValue>{displayStats.potvrzena || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.POTVRZENA.dark}>✅</StatIcon>
             </StatHeader>
             <StatLabel>Potvrzená dodavatelem</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.k_uverejneni_do_registru || 0) && (
+        {shouldShowTile(displayStats.k_uverejneni_do_registru || 0) && (
           <StatCard
             $color={STATUS_COLORS.K_UVEREJNENI_DO_REGISTRU.dark}
             $clickable
@@ -807,14 +818,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('k_uverejneni_do_registru')}
           >
             <StatHeader>
-              <StatValue>{stats.k_uverejneni_do_registru || 0}</StatValue>
+              <StatValue>{displayStats.k_uverejneni_do_registru || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.K_UVEREJNENI_DO_REGISTRU.dark}>📋</StatIcon>
             </StatHeader>
             <StatLabel>Ke zveřejnění</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.uverejnena || 0) && (
+        {shouldShowTile(displayStats.uverejnena || 0) && (
           <StatCard
             $color={STATUS_COLORS.UVEREJNENA.dark}
             $clickable
@@ -822,7 +833,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('uverejnena')}
           >
             <StatHeader>
-              <StatValue>{stats.uverejnena || 0}</StatValue>
+              <StatValue>{displayStats.uverejnena || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.UVEREJNENA.dark}>
                 <FontAwesomeIcon icon={faFileContract} />
               </StatIcon>
@@ -831,7 +842,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.ceka_potvrzeni || 0) && (
+        {shouldShowTile(displayStats.ceka_potvrzeni || 0) && (
           <StatCard
             $color={STATUS_COLORS.CEKA_POTVRZENI.dark}
             $clickable
@@ -839,14 +850,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('ceka_potvrzeni')}
           >
             <StatHeader>
-              <StatValue>{stats.ceka_potvrzeni || 0}</StatValue>
+              <StatValue>{displayStats.ceka_potvrzeni || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.CEKA_POTVRZENI.dark}>⏰</StatIcon>
             </StatHeader>
             <StatLabel>Čeká na potvrzení</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.ceka_se || 0) && (
+        {shouldShowTile(displayStats.ceka_se || 0) && (
           <StatCard
             $color={STATUS_COLORS.CEKA_SE.dark}
             $clickable
@@ -854,7 +865,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('ceka_se')}
           >
             <StatHeader>
-              <StatValue>{stats.ceka_se || 0}</StatValue>
+              <StatValue>{displayStats.ceka_se || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.CEKA_SE.dark}>
                 <FontAwesomeIcon icon={faClock} />
               </StatIcon>
@@ -863,7 +874,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.fakturace || 0) && (
+        {shouldShowTile(displayStats.fakturace || 0) && (
           <StatCard
             $color={STATUS_COLORS.FAKTURACE.dark}
             $clickable
@@ -871,14 +882,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('fakturace')}
           >
             <StatHeader>
-              <StatValue>{stats.fakturace || 0}</StatValue>
+              <StatValue>{displayStats.fakturace || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.FAKTURACE.dark}>💰</StatIcon>
             </StatHeader>
             <StatLabel>Fakturace</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.vecna_spravnost || 0) && (
+        {shouldShowTile(displayStats.vecna_spravnost || 0) && (
           <StatCard
             $color={STATUS_COLORS.VECNA_SPRAVNOST.dark}
             $clickable
@@ -886,7 +897,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('vecna_spravnost')}
           >
             <StatHeader>
-              <StatValue>{stats.vecna_spravnost || 0}</StatValue>
+              <StatValue>{displayStats.vecna_spravnost || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.VECNA_SPRAVNOST.dark}>
                 <FontAwesomeIcon icon={faCheckCircle} />
               </StatIcon>
@@ -895,7 +906,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.dokoncena || 0) && (
+        {shouldShowTile(displayStats.dokoncena || 0) && (
           <StatCard
             $color={STATUS_COLORS.DOKONCENA.dark}
             $clickable
@@ -903,14 +914,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('dokoncena')}
           >
             <StatHeader>
-              <StatValue>{stats.dokoncena || 0}</StatValue>
+              <StatValue>{displayStats.dokoncena || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.DOKONCENA.dark}>🎯</StatIcon>
             </StatHeader>
             <StatLabel>Dokončená</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.zrusena || 0) && (
+        {shouldShowTile(displayStats.zrusena || 0) && (
           <StatCard
             $color={STATUS_COLORS.ZRUSENA.dark}
             $clickable
@@ -918,7 +929,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('zrusena')}
           >
             <StatHeader>
-              <StatValue>{stats.zrusena || 0}</StatValue>
+              <StatValue>{displayStats.zrusena || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.ZRUSENA.dark}>
                 <FontAwesomeIcon icon={faXmark} />
               </StatIcon>
@@ -927,7 +938,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.smazana || 0) && (
+        {shouldShowTile(displayStats.smazana || 0) && (
           <StatCard
             $color={STATUS_COLORS.SMAZANA.dark}
             $clickable
@@ -935,14 +946,14 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('smazana')}
           >
             <StatHeader>
-              <StatValue>{stats.smazana || 0}</StatValue>
+              <StatValue>{displayStats.smazana || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.SMAZANA.dark}>🗑️</StatIcon>
             </StatHeader>
             <StatLabel>Smazaná</StatLabel>
           </StatCard>
         )}
 
-        {shouldShowTile(stats.archivovano || 0) && (
+        {shouldShowTile(displayStats.archivovano || 0) && (
           <StatCard
             $color={STATUS_COLORS.ARCHIVOVANO.dark}
             $clickable
@@ -950,7 +961,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('archivovano')}
           >
             <StatHeader>
-              <StatValue>{stats.archivovano || 0}</StatValue>
+              <StatValue>{displayStats.archivovano || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.ARCHIVOVANO.dark}>📦</StatIcon>
             </StatHeader>
             <StatLabel>Archivováno / Import</StatLabel>
