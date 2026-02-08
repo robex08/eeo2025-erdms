@@ -79,13 +79,6 @@ export function useOrdersV3State(userId) {
       return getDefaultPreferences();
     }
   });
-
-  // 🔍 DEBUG LOG pro troubleshooting
-  useEffect(() => {
-    console.log('🔍 [useOrdersV3State] Current preferences:', preferences);
-    console.log('🔍 [useOrdersV3State] columnVisibility:', preferences.columnVisibility);
-    console.log('🔍 [useOrdersV3State] columnOrder:', preferences.columnOrder);
-  }, [preferences]);
   
   // Debounced localStorage save
   const saveTimeoutRef = useRef(null);
