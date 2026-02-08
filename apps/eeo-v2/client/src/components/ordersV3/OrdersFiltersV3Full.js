@@ -17,13 +17,14 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import DatePicker from '../DatePicker';
 import { fetchAllUsers, fetchApprovers, fetchCiselniky } from '../../services/api2auth';
+import { fetchLPList } from '../../services/apiOrdersV3';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 
 // ============================================================================
 // MULTISELECT KOMPONENTA
 // ============================================================================
 
-const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }) => {
+const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon, showSecondColumn = false }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const dropdownRef = React.useRef(null);
@@ -67,7 +68,9 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
 
     return options.filter(opt => {
       const label = (opt.label || opt.displayName || opt.nazev_stavu || opt.nazev || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return label.includes(search);
+      const code = (opt.id || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const usek = (opt.usekLabel || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return label.includes(search) || code.includes(search) || usek.includes(search);
     });
   }, [options, searchTerm]);
 
@@ -169,8 +172,11 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
         <div style={{
           position: 'absolute',
           top: '100%',
-          left: 0,
-          right: 0,
+          right: showSecondColumn ? 0 : 'auto',
+          left: showSecondColumn ? 'auto' : 0,
+          width: showSecondColumn ? 'fit-content' : '100%',
+          minWidth: showSecondColumn ? '650px' : '100%',
+          maxWidth: showSecondColumn ? '850px' : 'none',
           marginTop: '4px',
           background: '#ffffff',
           border: '2px solid #3b82f6',
@@ -275,14 +281,37 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
                 const optLabel = opt.label || opt.displayName || opt.nazev_stavu || opt.nazev || 'Bez názvu';
                 const isChecked = valueSet.has(optValue);
 
+                // Renderování group headeru (název úseku)
+                if (opt.isGroupHeader) {
+                  return (
+                    <div
+                      key={optValue || idx}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#f3f4f6',
+                        borderBottom: '2px solid #e5e7eb',
+                        fontSize: '0.8rem',
+                        fontWeight: '700',
+                        color: '#374151',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }}
+                    >
+                      {optLabel}
+                    </div>
+                  );
+                }
+
+                // Normální položka
                 return (
                   <div
                     key={optValue || idx}
                     onClick={(e) => handleItemClick(e, optValue)}
                     style={{
                       padding: '0.75rem 1rem',
+                      paddingLeft: '1.5rem',
                       display: 'flex',
-                      alignItems: 'center',
+                      alignItems: 'flex-start',
                       gap: '0.75rem',
                       cursor: 'pointer',
                       background: isChecked ? '#eff6ff' : 'transparent',
@@ -305,17 +334,82 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
                         height: '16px',
                         cursor: 'pointer',
                         accentColor: '#3b82f6',
-                        pointerEvents: 'none'
+                        pointerEvents: 'none',
+                        flexShrink: 0,
+                        marginTop: '0.15rem'
                       }}
                     />
-                    <span style={{
-                      fontSize: '0.875rem',
-                      color: isChecked ? '#1e3a8a' : '#374151',
-                      fontWeight: isChecked ? '600' : '400',
-                      userSelect: 'none'
-                    }}>
-                      {optLabel}
-                    </span>
+                    {showSecondColumn && opt.cerpanoLabel ? (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.35rem',
+                        flex: 1
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          <span style={{
+                            fontSize: '0.875rem',
+                            color: isChecked ? '#1e3a8a' : '#374151',
+                            fontWeight: isChecked ? '600' : '500',
+                            userSelect: 'none'
+                          }}>
+                            {optLabel}
+                          </span>
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '0.15rem 0.5rem',
+                            background: opt.badgeColor || '#10b981',
+                            color: '#ffffff',
+                            borderRadius: '10px',
+                            fontSize: '0.7rem',
+                            fontWeight: '700',
+                            fontFamily: 'monospace',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                            lineHeight: 1
+                          }}>
+                            {opt.procentoLabel}
+                          </div>
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.15rem',
+                          paddingLeft: '0.1rem'
+                        }}>
+                          <span style={{
+                            fontSize: '0.75rem',
+                            color: '#6b7280',
+                            fontFamily: 'monospace'
+                          }}>
+                            {opt.cerpanoLabel}
+                          </span>
+                          {opt.usekLabel && (
+                            <span style={{
+                              fontSize: '0.7rem',
+                              color: '#9ca3af',
+                              fontStyle: 'italic'
+                            }}>
+                              {opt.usekLabel}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{
+                        fontSize: '0.875rem',
+                        color: isChecked ? '#1e3a8a' : '#374151',
+                        fontWeight: isChecked ? '600' : '400',
+                        userSelect: 'none',
+                        flex: 1
+                      }}>
+                        {optLabel}
+                      </span>
+                    )}
                   </div>
                 );
               })
@@ -616,6 +710,7 @@ const OrdersFiltersV3Full = ({
   const [usersList, setUsersList] = useState([]);
   const [approversList, setApproversList] = useState([]);
   const [orderStatesList, setOrderStatesList] = useState([]);
+  const [lpList, setLpList] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // State pro zobrazování rozšířených filtrů (nezávislé na showFilters)
@@ -630,10 +725,11 @@ const OrdersFiltersV3Full = ({
         setLoading(true);
 
         // Načíst všechny data paralelně
-        const [usersData, approversData, statesData] = await Promise.all([
+        const [usersData, approversData, statesData, lpData] = await Promise.all([
           fetchAllUsers({ token, username, show_inactive: true }),
           fetchApprovers({ token, username }),
-          fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' })
+          fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' }),
+          fetchLPList({ token, username })
         ]);
 
         // Zpracuj approvers data - přidej displayName s tituly (jako v Orders25List)
@@ -671,6 +767,7 @@ const OrdersFiltersV3Full = ({
         setUsersList(usersData || []);
         setApproversList(approversWithDisplayName);
         setOrderStatesList(statesData || []);
+        setLpList(lpData || []);
       } catch (error) {
         console.error('❌ Chyba při načítání dat pro filtry:', error);
       } finally {
@@ -731,6 +828,89 @@ const OrdersFiltersV3Full = ({
         return nameA.localeCompare(nameB);
       });
   }, [approversList]);
+
+  // Připrav LP options
+  const lpOptions = useMemo(() => {
+    if (!lpList || lpList.length === 0) return [];
+
+    // Nejdřív zpracuj a transformuj data
+    const transformedData = [...lpList].map(lp => {
+      const cerpano = parseFloat(lp.cerpano_celkem || 0);
+      const limit = parseFloat(lp.limit_celkem || 0);
+      const procento = limit > 0 ? (cerpano / limit) * 100 : 0;
+      
+      // Určení barvy podle čerpání
+      let badgeColor = '#10b981'; // zelená (0-50%)
+      if (procento > 80) badgeColor = '#ef4444'; // červená (>80%)
+      else if (procento > 50) badgeColor = '#f59e0b'; // oranžová (50-80%)
+      
+      const formatCerpano = cerpano.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      const formatLimit = limit.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      const formatProcento = procento.toFixed(1);
+      
+      // Formát: "Název úseku (ZKRATKA)" nebo jen zkratka/název pokud chybí druhá část
+      let usekLabel = 'Bez úseku';
+      if (lp.usek_nazev && lp.usek_zkr) {
+        usekLabel = `${lp.usek_nazev} (${lp.usek_zkr})`;
+      } else if (lp.usek_zkr) {
+        usekLabel = lp.usek_zkr;
+      } else if (lp.usek_nazev) {
+        usekLabel = lp.usek_nazev;
+      }
+      
+      return {
+        ...lp,
+        id: String(lp.id),
+        label: `${lp.cislo_lp} - ${lp.nazev_uctu || ''}`,
+        cerpanoLabel: `${formatCerpano} Kč / ${formatLimit} Kč`,
+        procentoLabel: `${formatProcento}%`,
+        cerpanoValue: cerpano,
+        badgeColor,
+        usekLabel
+      };
+    });
+
+    // Zgrupuj podle úseku
+    const grouped = transformedData.reduce((acc, lp) => {
+      const usek = lp.usekLabel;
+      if (!acc[usek]) {
+        acc[usek] = {
+          items: [],
+          usek_nazev: lp.usek_nazev || lp.usek_zkr || 'Bez úseku',
+          usek_zkr: lp.usek_zkr || ''
+        };
+      }
+      acc[usek].items.push(lp);
+      return acc;
+    }, {});
+
+    // Vytvoř finální pole s group headers a položkami
+    const result = [];
+    
+    // Seřaď úseky podle názvu (ne zkratky)
+    const sortedUseky = Object.keys(grouped).sort((a, b) => {
+      const nameA = grouped[a].usek_nazev.toLowerCase();
+      const nameB = grouped[b].usek_nazev.toLowerCase();
+      return nameA.localeCompare(nameB, 'cs');
+    });
+    
+    sortedUseky.forEach(usek => {
+      // Přidej group header
+      result.push({
+        id: `header-${usek}`,
+        label: usek,
+        isGroupHeader: true
+      });
+      
+      // Přidej položky úseku (seřazené podle cislo_lp)
+      const sortedItems = grouped[usek].items.sort((a, b) => 
+        (a.cislo_lp || '').localeCompare(b.cislo_lp || '')
+      );
+      result.push(...sortedItems);
+    });
+
+    return result;
+  }, [lpList]);
 
   // Připrav status options
   const statusOptions = useMemo(() => {
@@ -1151,6 +1331,35 @@ const OrdersFiltersV3Full = ({
               </PriceInputWrapper>
             </PriceRangeInputs>
           </PriceRangeGroup>
+
+          {/* Limitované příslíby - vpravo pod Stav objednávky, za Cena od-do */}
+          <FilterGroup>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <FontAwesomeIcon icon={faFileContract} />
+                Limitované příslíby
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                visible={filters.lp_kody?.length > 0}
+                onClick={() => clearFilter('lp_kody')}
+                title="Vymazat filtr"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </FilterClearButton>
+            </FilterLabel>
+            <SelectWithIcon>
+              <MultiSelectLocal
+                field="lp_kody"
+                value={filters.lp_kody || []}
+                onChange={handleMultiSelectChange('lp_kody')}
+                options={lpOptions}
+                placeholder="Vyberte LP kódy..."
+                icon={<FontAwesomeIcon icon={faFileContract} />}
+                showSecondColumn={true}
+              />
+            </SelectWithIcon>
+          </FilterGroup>
 
           {/* Stav registru */}
           <FilterGroup>

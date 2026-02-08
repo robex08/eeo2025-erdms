@@ -6,11 +6,37 @@
  * - POST /order-v3/list  - Seznam objednávek s paginací a stats
  * - POST /order-v3/stats - Pouze statistiky pro dashboard
  * - POST /order-v3/items - Detail položek objednávky (lazy loading)
+ * - POST /lp/list        - Seznam aktivních LP (limitované příslíby)
  * 
  * DŮLEŽITÉ: Zachovává DB názvy sloupců 1:1, žádné mappingy!
  */
 
 const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+
+/**
+ * Načte seznam aktivních limitovaných příslibů
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @returns {Promise<Array>} Seznam LP [{id, cislo_lp, nazev_uctu}]
+ */
+export async function fetchLPList({ token, username }) {
+  const response = await fetch(`${API_BASE_URL}/lp/list`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token, username }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  const responseData = await response.json();
+  return responseData.data || [];
+}
 
 /**
  * Načte seznam objednávek s paginací

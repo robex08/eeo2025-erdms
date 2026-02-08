@@ -549,6 +549,23 @@ function handle_order_v3_list($input, $config, $queries) {
             }
         }
         
+        // LP kódy - filtr podle pole ID limitovaných příslibů
+        if (!empty($filters['lp_kody']) && is_array($filters['lp_kody'])) {
+            // Filtrovat objednávky které mají v JSON financovani.lp_kody některý z vybraných LP ID
+            $lp_ids = array_map('intval', $filters['lp_kody']);
+            $lp_conditions = array();
+            
+            foreach ($lp_ids as $lp_id) {
+                // Hledej LP ID v JSON poli financovani.lp_kody
+                $lp_conditions[] = "JSON_SEARCH(JSON_EXTRACT(o.financovani, '$.lp_kody'), 'one', CAST(? AS CHAR)) IS NOT NULL";
+                $where_params[] = $lp_id;
+            }
+            
+            if (!empty($lp_conditions)) {
+                $where_conditions[] = '(' . implode(' OR ', $lp_conditions) . ')';
+            }
+        }
+        
         // ========================================================================
         // TEXTOVÉ FILTRY (SLOUPCOVÉ) - pro kombinované sloupce z tabulky
         // ========================================================================
@@ -595,13 +612,36 @@ function handle_order_v3_list($input, $config, $queries) {
             }
         }
         
-        // Filtr pro financování - hledá v JSON poli dle typu nebo typu názvu
+        // Filtr pro financování - hledá v JSON poli dle typu, názvu, LP kódů, smlouvy, atd.
         if (!empty($filters['financovani'])) {
-            // Vyhledává v financovani JSON poli podle typu nebo typ_nazev
             $financovani_search = $filters['financovani'];
-            // Hledáme v JSON: buď typ (LP, SMLOUVA), nebo typ_nazev (Limitovaný příslib, Smlouva)
-            $where_conditions[] = "(o.financovani LIKE ?)";
-            $where_params[] = '%' . $financovani_search . '%';
+            
+            // Hledáme v:
+            // 1. typ (LP, SMLOUVA, INDIVIDUALNI_SCHVALENI)
+            // 2. typ_nazev (Limitovaný příslib, Smlouva, ...)
+            // 3. LP kódy - pomocí JOIN na tabulku limitovaných příslibů (ne v JSON ID, ale v reálných kódech LPIT1)
+            // 4. cislo_smlouvy (pro SMLOUVA)
+            // 5. individualni_schvaleni (pro INDIVIDUALNI_SCHVALENI)
+            
+            $where_conditions[] = "(
+                o.financovani LIKE ? 
+                OR JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) LIKE ?
+                OR JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni')) LIKE ?
+                OR EXISTS (
+                    SELECT 1 FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
+                    WHERE LOWER(lp.cislo_lp) LIKE LOWER(?)
+                    AND JSON_SEARCH(
+                        JSON_EXTRACT(o.financovani, '$.lp_kody'),
+                        'one',
+                        CAST(lp.id AS CHAR)
+                    ) IS NOT NULL
+                )
+            )";
+            $search_param = '%' . $financovani_search . '%';
+            $where_params[] = $search_param; // typ, typ_nazev
+            $where_params[] = $search_param; // cislo_smlouvy
+            $where_params[] = $search_param; // individualni_schvaleni
+            $where_params[] = $search_param; // lp.cislo_lp (např. LPIT1)
         }
         
         // Filtr pro workflow stav
@@ -663,6 +703,31 @@ function handle_order_v3_list($input, $config, $queries) {
         // Filtr pro objednávky s přílohami
         if (!empty($filters['s_prilohami']) && $filters['s_prilohami'] === true) {
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id AND p.aktivni = 1)";
+        }
+        
+        // ========================================================================
+        // 🔍 FILTR LP KÓDŮ - Limitované příslíby
+        // Filtruje objednávky podle LP přiřazených v položkách (JOIN na lp_id)
+        // ========================================================================
+        if (!empty($filters['lp_kody']) && is_array($filters['lp_kody']) && count($filters['lp_kody']) > 0) {
+            // Frontend posílá pole LP ID (z multiselect dropdownu)
+            $lp_ids = array_map('intval', $filters['lp_kody']);
+            $placeholders = implode(',', array_fill(0, count($lp_ids), '?'));
+            
+            error_log("🔍 [OrderV3] LP Filter: lp_ids = " . implode(',', $lp_ids));
+            
+            // Hledáme objednávky, které mají alespoň jednu položku s vybraným LP
+            $where_conditions[] = "EXISTS (
+                SELECT 1 
+                FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol
+                WHERE pol.objednavka_id = o.id 
+                AND pol.lp_id IN ($placeholders)
+            )";
+            
+            // Přidat LP ID do parametrů
+            foreach ($lp_ids as $lp_id) {
+                $where_params[] = $lp_id;
+            }
         }
         
         // ========================================================================
@@ -1162,13 +1227,35 @@ function handle_order_v3_list($input, $config, $queries) {
 
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;
+        $unfilteredStats = null;
+        
         if ($page === 1) {
-            // Pokud je admin, předáme admin mode flag
-            $stats_where_sql = $where_sql;
+            // 🎯 unfilteredStats - MUSÍ mít stejná práva jako hlavní query!
             if ($is_admin_v2) {
-                $stats_where_sql = $stats_where_sql ? $stats_where_sql . " AND __ADMIN_MODE__" : "__ADMIN_MODE__";
+                // ADMIN - stejná práva jako main query
+                $unfilteredStats = getOrderStatsWithPeriod($db, $period, $user_id, "__ADMIN_MODE__", array());
+            } else {
+                // NON-ADMIN - user permissions
+                $unfilteredStats = getOrderStatsWithPeriod($db, $period, $user_id, null, array());
             }
-            $stats = getOrderStatsWithPeriod($db, $period, $user_id, $stats_where_sql, $where_params);
+            error_log("🔵 [OrderV3] unfilteredStats: total={$unfilteredStats['total']}, totalAmount={$unfilteredStats['totalAmount']}");
+            
+            // 🔍 Pokud jsou aktivní filtry, načíst i filtrované stats
+            $hasActiveFilters = !empty($where_sql);
+            error_log("🔍 [OrderV3] hasActiveFilters: " . ($hasActiveFilters ? 'YES' : 'NO') . ", where_sql: " . ($where_sql ?: 'EMPTY'));
+            
+            if ($hasActiveFilters) {
+                $stats_where_sql = $where_sql;
+                if ($is_admin_v2) {
+                    $stats_where_sql = $stats_where_sql ? $stats_where_sql . " AND __ADMIN_MODE__" : "__ADMIN_MODE__";
+                }
+                $stats = getOrderStatsWithPeriod($db, $period, $user_id, $stats_where_sql, $where_params);
+                error_log("🟠 [OrderV3] filteredStats: total={$stats['total']}, totalAmount={$stats['totalAmount']}");
+            } else {
+                // Bez filtrů jsou stats stejné jako unfilteredStats
+                $stats = $unfilteredStats;
+                error_log("⚪ [OrderV3] No filters - stats = unfilteredStats");
+            }
         }
 
         // 12. Hlavní query pro data
@@ -1287,6 +1374,10 @@ function handle_order_v3_list($input, $config, $queries) {
         
         if ($stats !== null) {
             $response['data']['stats'] = $stats;
+        }
+        
+        if ($unfilteredStats !== null) {
+            $response['data']['unfilteredStats'] = $unfilteredStats;
         }
         
         echo json_encode($response);

@@ -394,8 +394,8 @@ const OrdersDashboardV3Full = ({
                 Celková cena s DPH za období ({stats.total || 0})
               </LargeStatLabel>
               
-              {/* Oranžová sekce pro vybrané - jen když je aktivní dashboard filtr */}
-              {activeStatus && (
+              {/* Oranžová sekce pro vybrané - zobrazit když jsou aktivní JAKÉKOLIV filtry */}
+              {hasActiveFilters && (
                 <div style={{
                   marginTop: '0.75rem',
                   paddingTop: '0.75rem',
@@ -601,8 +601,8 @@ const OrdersDashboardV3Full = ({
               Celková cena s DPH za období ({stats.total || 0})
             </LargeStatLabel>
             
-            {/* Oranžová sekce pro vybrané - jen když je aktivní dashboard filtr */}
-            {activeStatus && filteredCount < (stats.total || 0) && (
+            {/* Oranžová sekce pro vybrané - zobrazit když jsou aktivní JAKÉKOLIV filtry */}
+            {hasActiveFilters && (
               <div style={{
                 marginTop: '0.75rem',
                 paddingTop: '0.75rem',
