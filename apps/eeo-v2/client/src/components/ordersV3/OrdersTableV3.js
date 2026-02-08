@@ -49,6 +49,8 @@ import {
   faUndo,
   faTrash,
   faSearch,
+  faArrowsLeftRight,
+  faSortAlphaDown,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -189,7 +191,7 @@ const TableHead = styled.thead`
 `;
 
 const TableHeaderCell = styled.th`
-  padding: 0.75rem 0.5rem;
+  padding: 0.5rem 0.35rem;
   text-align: ${props => props.$align || 'left'};
   font-weight: 600;
   color: #334155;
@@ -203,6 +205,9 @@ const TableHeaderCell = styled.th`
   transition: background-color 0.2s ease;
   position: relative;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  width: ${props => props.$width || 'auto'};
+  max-width: ${props => props.$width || 'none'};
+  min-width: ${props => props.$width || 'auto'};
 
   &:hover {
     background-color: ${props => props.$sortable ? '#e2e8f0' : 'transparent'};
@@ -561,7 +566,7 @@ const TableBody = styled.tbody`
 `;
 
 const TableCell = styled.td`
-  padding: 0.65rem 0.5rem;
+  padding: 0.5rem 0.4rem;
   border-bottom: 1px solid #e5e7eb;
   text-align: ${props => props.$align || 'left'};
   vertical-align: middle;
@@ -602,7 +607,7 @@ const StatusBadge = styled.div`
   gap: 0.4rem;
   padding: 0.4rem 0.75rem;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 600;
   background: ${props => {
     const colors = {
@@ -662,14 +667,14 @@ const StatusBadge = styled.div`
 
 const ActionMenu = styled.div`
   display: flex;
-  gap: 0.35rem;
+  gap: 0.10rem;
   justify-content: center;
   align-items: center;
 `;
 
 const ActionMenuButton = styled.button`
   background: transparent;
-  border: 1px solid #d1d5db;
+  border: none;
   border-radius: 4px;
   color: #6b7280;
   cursor: pointer;
@@ -682,7 +687,6 @@ const ActionMenuButton = styled.button`
 
   &:hover:not(:disabled) {
     background: #f1f5f9;
-    border-color: #94a3b8;
     color: #475569;
   }
 
@@ -693,25 +697,21 @@ const ActionMenuButton = styled.button`
 
   &.edit:hover:not(:disabled) {
     background: #dbeafe;
-    border-color: #3b82f6;
     color: #1e40af;
   }
 
   &.create-invoice:hover:not(:disabled) {
     background: #d1fae5;
-    border-color: #10b981;
     color: #065f46;
   }
 
   &.export-document:hover:not(:disabled) {
     background: #fef3c7;
-    border-color: #f59e0b;
     color: #92400e;
   }
 
   &.delete:hover:not(:disabled) {
     background: #fee2e2;
-    border-color: #ef4444;
     color: #dc2626;
   }
 `;
@@ -1635,7 +1635,11 @@ const OrdersTableV3 = ({
   const [columnSizing, setColumnSizing] = useState(() => {
     if (userId) {
       try {
-        const saved = localStorage.getItem(`ordersV3_columnSizing_v2_${userId}`);
+        // Vymazat staré verze při prvním načtení
+        localStorage.removeItem(`ordersV3_columnSizing_v2_${userId}`);
+        localStorage.removeItem(`ordersV3_columnSizing_v3_${userId}`);
+        
+        const saved = localStorage.getItem(`ordersV3_columnSizing_v4_${userId}`);
         return saved ? JSON.parse(saved) : {};
       } catch {
         return {};
@@ -1647,7 +1651,7 @@ const OrdersTableV3 = ({
   // Uložit column sizing do localStorage při změně (per user)
   useEffect(() => {
     if (userId && Object.keys(columnSizing).length > 0) {
-      localStorage.setItem(`ordersV3_columnSizing_v2_${userId}`, JSON.stringify(columnSizing));
+      localStorage.setItem(`ordersV3_columnSizing_v4_${userId}`, JSON.stringify(columnSizing));
     }
   }, [columnSizing, userId]);
   
@@ -2154,7 +2158,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 120,
+        size: 100,
         enableSorting: true,
       },
       {
@@ -2184,14 +2188,13 @@ const OrdersTableV3 = ({
                   fontWeight: 'normal',
                   color: '#1e293b',
                   marginTop: '4px',
-                  maxWidth: '300px',
+                  maxWidth: '150px',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   display: '-webkit-box',
-                  WebkitLineClamp: 2,
+                  WebkitLineClamp: 1,
                   WebkitBoxOrient: 'vertical',
-                  lineHeight: '1.3',
-                  maxHeight: '2.6em'
+                  lineHeight: '1.2'
                 }}>
                   {order.predmet}
                 </div>
@@ -2199,7 +2202,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 180,
+        size: 160,
         enableSorting: true,
       },
       {
@@ -2233,7 +2236,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 110,
         enableSorting: true,
       },
       {
@@ -2253,7 +2256,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 160,
+        size: 130,
         enableSorting: true,
       },
       {
@@ -2273,7 +2276,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 160,
+        size: 130,
         enableSorting: true,
       },
       {
@@ -2288,16 +2291,30 @@ const OrdersTableV3 = ({
           }
           
           return (
-            <div style={{ lineHeight: '1.5' }}>
-              <div style={{ fontWeight: 600, fontSize: '0.95em', marginBottom: '2px' }}>
+            <div style={{ lineHeight: '1.4' }}>
+              <div style={{ 
+                fontWeight: 600, 
+                fontSize: '0.9em', 
+                marginBottom: '2px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                maxWidth: '200px'
+              }}>
                 {order.dodavatel_nazev}
               </div>
               
               {order.dodavatel_adresa && (
                 <div style={{ 
-                  fontSize: '0.80em', 
+                  fontSize: '0.8em', 
                   color: '#4b5563',
-                  marginBottom: '2px'
+                  marginBottom: '2px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '200px'
                 }}>
                   {order.dodavatel_adresa}
                 </div>
@@ -2305,7 +2322,7 @@ const OrdersTableV3 = ({
               
               {order.dodavatel_ico && (
                 <div style={{ 
-                  fontSize: '0.80em', 
+                  fontSize: '0.8em', 
                   color: '#6b7280',
                   fontWeight: 500
                 }}>
@@ -2315,19 +2332,19 @@ const OrdersTableV3 = ({
               
               {(order.dodavatel_kontakt_jmeno || order.dodavatel_kontakt_email || order.dodavatel_kontakt_telefon) && (
                 <div style={{
-                  fontSize: '0.80em',
+                  fontSize: '0.8em',
                   color: '#1f2937',
-                  marginTop: '4px',
+                  marginTop: '2px',
                   fontWeight: 500
                 }}>
                   {order.dodavatel_kontakt_jmeno && (
                     <div>Kontakt: {order.dodavatel_kontakt_jmeno}</div>
                   )}
                   {order.dodavatel_kontakt_email && (
-                    <div>✉ {order.dodavatel_kontakt_email}</div>
+                    <div>{order.dodavatel_kontakt_email}</div>
                   )}
                   {order.dodavatel_kontakt_telefon && (
-                    <div>☎ {order.dodavatel_kontakt_telefon}</div>
+                    <div>{order.dodavatel_kontakt_telefon}</div>
                   )}
                 </div>
               )}
@@ -2339,7 +2356,7 @@ const OrdersTableV3 = ({
           const b = rowB.original.dodavatel_nazev || '';
           return a.localeCompare(b, 'cs');
         },
-        size: 300,
+        size: 220,
         enableSorting: true,
       },
       {
@@ -2376,13 +2393,13 @@ const OrdersTableV3 = ({
             </StatusBadge>
           );
         },
-        size: 150,
+        size: 130,
         enableSorting: true,
       },
       {
         accessorKey: 'stav_registru',
         id: 'stav_registru',
-        header: 'Stav registru',
+        header: 'REGISTR',
         cell: ({ row }) => {
           const order = row.original;
           const registr = order.registr_smluv;
@@ -2447,13 +2464,41 @@ const OrdersTableV3 = ({
             </StatusBadge>
           );
         },
-        size: 150,
+        sortingFn: (rowA, rowB) => {
+          const getRegistrValue = (order) => {
+            const registr = order.registr_smluv;
+            let workflowStatus = null;
+            
+            if (order.stav_workflow_kod) {
+              try {
+                const parsed = Array.isArray(order.stav_workflow_kod) 
+                  ? order.stav_workflow_kod 
+                  : JSON.parse(order.stav_workflow_kod);
+                workflowStatus = Array.isArray(parsed) && parsed.length > 0 
+                  ? parsed[parsed.length - 1] 
+                  : parsed;
+              } catch (e) {
+                workflowStatus = order.stav_workflow_kod;
+              }
+            }
+            
+            // Priority: 2 = Zveřejněno, 1 = Má být zveřejněno, 0 = prázdné
+            if (registr?.dt_zverejneni && registr?.registr_iddt) return 2;
+            if (workflowStatus === 'UVEREJNIT' || registr?.zverejnit === 'ANO') return 1;
+            return 0;
+          };
+          
+          const valueA = getRegistrValue(rowA.original);
+          const valueB = getRegistrValue(rowB.original);
+          return valueA - valueB;
+        },
+        size: 110,
         enableSorting: true,
       },
       {
         accessorKey: 'max_cena_s_dph',
         id: 'max_cena_s_dph',
-        header: 'Max. cena s DPH',
+        header: 'MAX CENA DPH',
         cell: ({ row }) => {
           const maxPrice = parseFloat(row.original.max_cena_s_dph || 0);
           const fakturaPrice = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
@@ -2473,13 +2518,13 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 150,
         enableSorting: true,
       },
       {
         accessorKey: 'cena_s_dph',
         id: 'cena_s_dph',
-        header: 'Cena s DPH',
+        header: 'CENA DPH',
         cell: ({ row }) => {
           const price = getOrderTotalPriceWithDPH(row.original);
           
@@ -2496,13 +2541,13 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 150,
         enableSorting: true,
       },
       {
         accessorKey: 'faktury_celkova_castka_s_dph',
         id: 'faktury_celkova_castka_s_dph',
-        header: 'Cena FA s DPH',
+        header: 'FA CENA DPH',
         cell: ({ row }) => {
           const order = row.original;
           const price = parseFloat(order.faktury_celkova_castka_s_dph || 0);
@@ -2523,7 +2568,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 150,
         enableSorting: true,
       },
       {
@@ -2533,10 +2578,10 @@ const OrdersTableV3 = ({
             {hasActiveSorting && (
               <SmartTooltip text="Zrušit třídění">
                 <FontAwesomeIcon 
-                  icon={faUndo} 
+                  icon={faTimes} 
                   style={{ 
-                    color: '#6b7280', 
-                    fontSize: '12px', 
+                    color: '#dc2626', 
+                    fontSize: '16px', 
                     cursor: 'pointer',
                     transition: 'all 0.2s ease'
                   }}
@@ -2545,17 +2590,43 @@ const OrdersTableV3 = ({
                     onSortingChange([]);
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = '#3b82f6';
-                    e.currentTarget.style.transform = 'scale(1.1)';
+                    e.currentTarget.style.color = '#991b1b';
+                    e.currentTarget.style.transform = 'scale(1.15)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.color = '#6b7280';
+                    e.currentTarget.style.color = '#dc2626';
                     e.currentTarget.style.transform = 'scale(1)';
                   }}
                 />
               </SmartTooltip>
             )}
-            <FontAwesomeIcon icon={faBolt} style={{ color: '#eab308', fontSize: '16px' }} />
+            <SmartTooltip text="Reset šířky sloupců">
+              <FontAwesomeIcon 
+                icon={faArrowsLeftRight} 
+                style={{ 
+                  color: '#10b981', 
+                  fontSize: '16px', 
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setColumnSizing({});
+                  if (userId) {
+                    localStorage.removeItem(`ordersV3_columnSizing_v4_${userId}`);
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#059669';
+                  e.currentTarget.style.transform = 'scale(1.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = '#10b981';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              />
+            </SmartTooltip>
+            <FontAwesomeIcon icon={faBolt} style={{ color: '#eab308', fontSize: '18px' }} />
           </div>
         ),
         meta: {
@@ -2654,8 +2725,11 @@ const OrdersTableV3 = ({
     columns,
     state: {
       sorting,
+      columnSizing,
     },
     onSortingChange,
+    onColumnSizingChange: setColumnSizing,
+    columnResizeMode: 'onChange',
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableSortingRemoval: true, // Povolit 3-state sorting: asc -> desc -> none
@@ -2797,14 +2871,14 @@ const OrdersTableV3 = ({
                         // Číselné sloupce - OperatorInput
                         if (columnId === 'max_cena_s_dph' || columnId === 'cena_s_dph' || columnId === 'faktury_celkova_castka_s_dph') {
                           return (
-                            <div style={{ position: 'relative', marginTop: '4px' }}>
+                            <div style={{ position: 'relative', marginTop: '4px', width: '100%' }}>
                               <OperatorInput
                                 value={localColumnFilters[columnId] || ''}
                                 onChange={(value) => handleFilterChange(columnId, value)}
                                 placeholder={
-                                  columnId === 'max_cena_s_dph' ? 'Max. cena s DPH' :
-                                  columnId === 'cena_s_dph' ? 'Cena s DPH' :
-                                  'Cena FA s DPH'
+                                  columnId === 'max_cena_s_dph' ? 'Max. cena' :
+                                  columnId === 'cena_s_dph' ? 'Cena' :
+                                  'Cena FA'
                                 }
                                 clearButton={true}
                                 onClear={(e) => {

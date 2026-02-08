@@ -95,9 +95,8 @@ const Wrapper = styled.div`
   background: white;
   transition: all 0.2s ease;
   position: relative;
-  overflow: visible; /* Změna z hidden na visible pro clear button */
+  overflow: visible;
   width: 100%;
-  max-width: 180px; /* Omezit maximální šířku pro úsporu místa */
 
   &:focus-within {
     border-color: #3b82f6;
@@ -177,7 +176,7 @@ const NumberInput = styled.input`
   outline: none;
   text-align: right;
   background: transparent;
-  min-width: 50px;
+  min-width: 35px;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
