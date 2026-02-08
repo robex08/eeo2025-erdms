@@ -777,7 +777,7 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v čísle pojistné události
-            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_pojistne_udalosti')) LIKE ?";
+            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.pojistna_udalost_cislo')) LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v poznámce pojistné události
@@ -1356,7 +1356,21 @@ function handle_order_v3_list($input, $config, $queries) {
                 
                 -- 🆕 Kontrola a komentáře (Order V3)
                 o.kontrola_metadata,
-                (SELECT COUNT(*) FROM 25a_objednavky_komentare kom WHERE kom.objednavka_id = o.id AND kom.smazano = 0) as comments_count
+                (SELECT COUNT(*) FROM 25a_objednavky_komentare kom WHERE kom.objednavka_id = o.id AND kom.smazano = 0) as comments_count,
+                
+                -- 🆕 Poslední komentář (pro bubble tooltip)
+                (SELECT CONCAT(u.jmeno, ' ', u.prijmeni)
+                 FROM 25a_objednavky_komentare kom
+                 INNER JOIN " . TBL_UZIVATELE . " u ON kom.user_id = u.id
+                 WHERE kom.objednavka_id = o.id AND kom.smazano = 0
+                 ORDER BY kom.dt_vytvoreni DESC
+                 LIMIT 1) as last_comment_author,
+                
+                (SELECT kom.dt_vytvoreni
+                 FROM 25a_objednavky_komentare kom
+                 WHERE kom.objednavka_id = o.id AND kom.smazano = 0
+                 ORDER BY kom.dt_vytvoreni DESC
+                 LIMIT 1) as last_comment_date
                 
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
