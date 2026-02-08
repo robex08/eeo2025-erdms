@@ -786,8 +786,10 @@ export function useOrdersV3({
       });
       
       if (response.status === 'success') {
-        // Aktualizovat kontrola_metadata v orders cache
-        // clearCache(); // Nebo updateovat konkrétní order v cache
+        // Vyčistit cache a explicitně reload data
+        clearCache();
+        // Explicitní reload pro okamžitou aktualizaci UI
+        await loadOrders();
         return response.data;
       } else {
         throw new Error(response.message || 'Chyba při kontrole objednávky');
@@ -796,7 +798,7 @@ export function useOrdersV3({
       console.error('Error toggling order check:', error);
       throw error;
     }
-  }, [token, username]);
+  }, [token, username, clearCache, loadOrders]);
 
   // ============================================================================
   // KOMENTÁŘE - Load, Add, Delete

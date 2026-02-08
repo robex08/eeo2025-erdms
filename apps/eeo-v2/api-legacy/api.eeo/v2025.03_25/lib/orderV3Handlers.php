@@ -1343,7 +1343,11 @@ function handle_order_v3_list($input, $config, $queries) {
                 -- Registr - sloupce z objednávky
                 o.dt_zverejneni,
                 o.zverejnit,
-                o.zverejnil_id
+                o.zverejnil_id,
+                
+                -- 🆕 Kontrola a komentáře (Order V3)
+                o.kontrola_metadata,
+                (SELECT COUNT(*) FROM 25a_objednavky_komentare kom WHERE kom.objednavka_id = o.id AND kom.smazano = 0) as comments_count
                 
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id

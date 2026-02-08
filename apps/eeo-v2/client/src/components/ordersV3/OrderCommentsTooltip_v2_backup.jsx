@@ -1,12 +1,10 @@
 /**
- * OrderCommentsTooltip.jsx - Version 3.0
+ * OrderCommentsTooltip.jsx
  * 
- * ✅ Opravy:
- * - Viewport overflow protection (max-height: 80vh)
- * - Ikona smazat vedle data (bez textu)
- * - Podpora pro odpovědi (parent_comment_id)
- * - Inline confirm dialog pro smazání
+ * Floating tooltip panel pro zobrazení a správu komentářů k objednávce.
+ * Zobrazuje se jako floating panel vedle ikony komentáře.
  * 
+ * Verze: 2.0 - Inline delete confirmation
  * Datum: 8. 2. 2026
  */
 
@@ -19,12 +17,7 @@ import {
   faSpinner, 
   faTrash,
   faPaperPlane,
-  faExclamationTriangle,
-  faReply,
-  faChevronDown,
-  faChevronUp,
-  faExpand,
-  faCompress
+  faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -49,31 +42,16 @@ const TooltipOverlay = styled.div`
 
 const TooltipContainer = styled.div`
   position: fixed;
+  width: 400px;
+  max-height: 500px;
   background: white;
-  border-radius: ${props => props.$isFullscreen ? '0' : '8px'};
+  border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
   z-index: 9999;
   
-  /* ✅ Fullscreen nebo normální režim */
-  ${props => props.$isFullscreen ? `
-    top: 0 !important;
-    left: 0 !important;
-    right: 0;
-    bottom: 0;
-    width: 100vw;
-    height: 100vh;
-    max-width: 100vw;
-    max-height: 100vh;
-  ` : `
-    width: 450px;
-    height: 80vh;
-    max-width: calc(100vw - 40px);
-    top: ${props.$top}px;
-    left: ${props.$left}px;
-  `}
-  
+  /* Animace pouze když je positioned */
   animation: ${props => props.$isPositioned ? 'slideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'};
   
   @keyframes slideIn {
@@ -87,9 +65,14 @@ const TooltipContainer = styled.div`
     }
   }
   
+  /* Dynamická pozice - nastaví se přes inline styles */
+  top: ${props => props.$top}px;
+  left: ${props => props.$left}px;
+  
+  /* Responsive pro malé obrazovky */
   @media (max-width: 768px) {
     width: 90vw;
-    max-width: 450px;
+    max-width: 400px;
     top: 50% !important;
     left: 50% !important;
     transform: translate(-50%, -50%);
@@ -151,35 +134,12 @@ const CloseButton = styled.button`
   }
 `;
 
-const HeaderButtons = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-`;
-
-const FullscreenButton = styled.button`
-  background: none;
-  border: none;
-  color: #64748b;
-  cursor: pointer;
-  padding: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  
-  &:hover {
-    background: #e2e8f0;
-    color: #3b82f6;
-  }
-`;
-
 const TooltipContent = styled.div`
   flex: 1;
   overflow-y: auto;
   padding: 1rem;
   
+  /* Vlastní scrollbar */
   &::-webkit-scrollbar {
     width: 8px;
   }
@@ -232,40 +192,9 @@ const CommentAuthor = styled.div`
   color: #0f172a;
 `;
 
-const CommentDateWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-`;
-
 const CommentDate = styled.div`
   font-size: 0.75rem;
   color: #64748b;
-`;
-
-const DeleteIconButton = styled.button`
-  background: transparent;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  padding: 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  font-size: 0.9rem;
-  width: 24px;
-  height: 24px;
-  
-  &:hover {
-    background: #fee2e2;
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 `;
 
 const CommentText = styled.div`
@@ -277,28 +206,30 @@ const CommentText = styled.div`
 `;
 
 const CommentActions = styled.div`
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid ${props => props.$isOwn ? '#dbeafe' : '#e2e8f0'};
 `;
 
-const ReplyButton = styled.button`
+const DeleteButton = styled.button`
   background: transparent;
   border: none;
-  color: #3b82f6;
+  color: #ef4444;
   cursor: pointer;
   padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   gap: 0.375rem;
   border-radius: 4px;
   transition: all 0.15s ease;
-  font-weight: 500;
   
   &:hover {
-    background: #eff6ff;
+    background: #fee2e2;
   }
   
   &:disabled {
@@ -307,167 +238,29 @@ const ReplyButton = styled.button`
   }
 `;
 
-const ShowRepliesButton = styled.button`
-  background: transparent;
-  border: none;
-  color: #64748b;
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  font-weight: 500;
-  
-  &:hover {
-    background: #f1f5f9;
-    color: #475569;
-  }
-`;
-
-const RepliesWrapper = styled.div`
-  margin-top: 0.75rem;
-  margin-left: 1.5rem;
-  padding-left: 1rem;
-  border-left: 2px solid #e2e8f0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-`;
-
-const ReplyItem = styled.div`
-  padding: 0.5rem;
-  background: #f8fafc;
-  border-radius: 6px;
-  font-size: 0.85rem;
-`;
-
-const ReplyHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.25rem;
-`;
-
-const ReplyAuthor = styled.div`
-  font-weight: 600;
-  font-size: 0.75rem;
-  color: #475569;
-`;
-
-const ReplyDate = styled.div`
-  font-size: 0.7rem;
-  color: #94a3b8;
-`;
-
-const ReplyText = styled.div`
-  color: #64748b;
-  line-height: 1.4;
-`;
-
-const ReplyInputWrapper = styled.div`
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background: #eff6ff;
-  border-radius: 6px;
-  border: 2px solid #3b82f6;
-`;
-
-const ReplyInputHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-`;
-
-const ReplyingTo = styled.div`
-  font-size: 0.75rem;
-  color: #3b82f6;
-  font-weight: 600;
-`;
-
-const CancelReplyButton = styled.button`
-  background: transparent;
-  border: none;
-  color: #64748b;
-  cursor: pointer;
-  padding: 0.25rem;
-  font-size: 0.75rem;
-  
-  &:hover {
-    color: #ef4444;
-  }
-`;
-
-const ReplyTextarea = styled.textarea`
-  width: 100%;
-  min-height: 60px;
-  padding: 0.5rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  resize: vertical;
-  transition: border-color 0.15s ease;
-  
-  &:focus {
-    outline: none;
-    border-color: #3b82f6;
-  }
-  
-  &::placeholder {
-    color: #94a3b8;
-  }
-`;
-
-const SendReplyButton = styled.button`
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 0.85rem;
-  transition: all 0.15s ease;
-  margin-top: 0.5rem;
-  
-  &:hover:not(:disabled) {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-    transform: translateY(-1px);
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`;
-
+// ✅ Inline confirm bublina
 const DeleteConfirmBubble = styled.div`
-  position: fixed;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 0.5rem;
   background: white;
   border: 2px solid #ef4444;
   border-radius: 8px;
   padding: 0.75rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 10001;
+  z-index: 10000;
   min-width: 200px;
   animation: popIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   
   @keyframes popIn {
     from {
       opacity: 0;
-      transform: scale(0.8);
+      transform: scale(0.8) translateY(10px);
     }
     to {
       opacity: 1;
-      transform: scale(1);
+      transform: scale(1) translateY(0);
     }
   }
 `;
@@ -498,6 +291,11 @@ const ConfirmButton = styled.button`
   
   &:hover {
     background: #dc2626;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 
@@ -672,74 +470,67 @@ const OrderCommentsTooltip = ({
   onDeleteComment
 }) => {
   const containerRef = useRef(null);
-  const deleteButtonRef = useRef(null);
-  
   const [isPositioned, setIsPositioned] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [newCommentText, setNewCommentText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   
-  // ✅ State pro delete confirmation s pozicí
-  const [deleteConfirm, setDeleteConfirm] = useState({ id: null, position: null });
+  // ✅ State pro inline delete confirmation (jen ID komentáře)
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
-  // ✅ State pro reply mode
-  const [replyToComment, setReplyToComment] = useState(null);
-  const [replyText, setReplyText] = useState('');
-  const [expandedReplies, setExpandedReplies] = useState({});
-  
-  // Výpočet pozice tooltipu
+  // Výpočet pozice tooltipu pomocí useLayoutEffect
   useLayoutEffect(() => {
     if (!iconRef || !containerRef.current) return;
     
+    // ✅ iconRef může být buď přímo DOM element nebo React ref objekt
     const iconElement = iconRef.current || iconRef;
     if (!iconElement || !iconElement.getBoundingClientRect) return;
     
     const iconRect = iconElement.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
     
-    const tooltipWidth = Math.min(containerRect.width, window.innerWidth - 40);
+    const tooltipWidth = containerRect.width;
     const tooltipHeight = containerRect.height;
-    const padding = 20;
-    const maxHeight = window.innerHeight * 0.8; // 80vh
-    const effectiveHeight = Math.min(tooltipHeight, maxHeight);
+    const padding = 10;
     
-    // Default: vpravo od ikony
+    // Priorita: Umístit vpravo od ikony
     let left = iconRect.right + padding;
-    let top = iconRect.top + (iconRect.height / 2) - (effectiveHeight / 2);
+    let top = iconRect.top + (iconRect.height / 2) - (tooltipHeight / 2);
     
-    // ✅ Kontrola pravé hrany - pokud přesahuje, přesuň vlevo od ikony
-    if (left + tooltipWidth > window.innerWidth - padding) {
+    // Kontrola pravé hranice viewport
+    if (left + tooltipWidth > window.innerWidth) {
+      // Umístit vlevo od ikony
       left = iconRect.left - tooltipWidth - padding;
     }
     
-    // ✅ Pokud je i vlevo málo místa, vycentruj
+    // Pokud se nevejde ani vlevo, umístit doprostřed obrazovky
     if (left < padding) {
-      left = Math.max(padding, (window.innerWidth - tooltipWidth) / 2);
+      left = (window.innerWidth - tooltipWidth) / 2;
     }
     
-    // ✅ Kontrola spodní hrany
-    if (top + effectiveHeight > window.innerHeight - padding) {
-      top = window.innerHeight - effectiveHeight - padding;
+    // Kontrola dolní hranice viewport
+    if (top + tooltipHeight > window.innerHeight) {
+      top = window.innerHeight - tooltipHeight - padding;
     }
     
-    // ✅ Kontrola horní hrany
+    // Kontrola horní hranice viewport
     if (top < padding) {
       top = padding;
     }
     
     setPosition({ top, left });
     setIsPositioned(true);
-  }, [iconRef, comments]);
+  }, [iconRef]);
   
+  // Načíst komentáře při otevření
   useEffect(() => {
     if (onLoadComments && !loading && comments.length === 0) {
       onLoadComments();
     }
   }, []);
   
-  // Handler pro main comment
+  // Handler pro odeslání nového komentáře
   const handleSubmit = useCallback(async () => {
     if (!newCommentText.trim()) return;
     
@@ -747,46 +538,21 @@ const OrderCommentsTooltip = ({
     try {
       await onAddComment(newCommentText.trim());
       setNewCommentText('');
-      onLoadComments(); // ✅ Reload comments po přidání
     } catch (err) {
       console.error('Chyba při přidávání komentáře:', err);
     } finally {
       setIsSubmitting(false);
     }
-  }, [newCommentText, onAddComment, onLoadComments]);
+  }, [newCommentText, onAddComment]);
   
-  // Handler pro reply
-  const handleSubmitReply = useCallback(async () => {
-    if (!replyText.trim() || !replyToComment) return;
-    
-    setIsSubmitting(true);
-    try {
-      await onAddComment(replyText.trim(), replyToComment.id);
-      setReplyText('');
-      setReplyToComment(null);
-      onLoadComments(); // Reload comments
-    } catch (err) {
-      console.error('Chyba při přidávání odpovědi:', err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [replyText, replyToComment, onAddComment, onLoadComments]);
-  
-  // Handler pro zobrazení delete confirm
-  const handleDeleteClick = useCallback((commentId, event) => {
-    const buttonRect = event.currentTarget.getBoundingClientRect();
-    setDeleteConfirm({
-      id: commentId,
-      position: {
-        top: buttonRect.bottom + 5,
-        left: buttonRect.left
-      }
-    });
+  // Handler pro zobrazení inline confirm bubliny
+  const handleDeleteClick = useCallback((commentId) => {
+    setDeleteConfirmId(commentId);
   }, []);
   
-  // Handler pro potvrzení smazání
+  // Handler pro potvrzení smazání z inline bubliny
   const handleConfirmedDelete = useCallback(async (commentId) => {
-    setDeleteConfirm({ id: null, position: null });
+    setDeleteConfirmId(null);
     setIsDeleting(commentId);
     try {
       await onDeleteComment(commentId);
@@ -810,12 +576,8 @@ const OrderCommentsTooltip = ({
     });
   };
   
-  // Poslední komentář
+  // ✅ Poslední komentář (nejnovější)
   const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
-  
-  // Filtrování top-level komentářů a odpovědí (ošetření undefined/null)
-  const topLevelComments = (comments || []).filter(c => c && !c.parent_comment_id);
-  const getReplies = (commentId) => (comments || []).filter(c => c && c.parent_comment_id === commentId);
   
   return (
     <>
@@ -825,7 +587,6 @@ const OrderCommentsTooltip = ({
         $top={position.top}
         $left={position.left}
         $isPositioned={isPositioned}
-        $isFullscreen={isFullscreen}
         onClick={(e) => e.stopPropagation()}
         style={{ 
           visibility: isPositioned ? 'visible' : 'hidden',
@@ -844,17 +605,9 @@ const OrderCommentsTooltip = ({
               </TooltipTitleSub>
             )}
           </TooltipTitle>
-          <HeaderButtons>
-            <FullscreenButton 
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              title={isFullscreen ? 'Zmenšit' : 'Zvětšit na celé okno'}
-            >
-              <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
-            </FullscreenButton>
-            <CloseButton onClick={onClose}>
-              <FontAwesomeIcon icon={faTimes} />
-            </CloseButton>
-          </HeaderButtons>
+          <CloseButton onClick={onClose}>
+            <FontAwesomeIcon icon={faTimes} />
+          </CloseButton>
         </TooltipHeader>
         
         <TooltipContent>
@@ -882,113 +635,45 @@ const OrderCommentsTooltip = ({
             </EmptyState>
           )}
           
-          {!loading && !error && topLevelComments.length > 0 && (
+          {!loading && !error && comments.length > 0 && (
             <CommentsTimeline>
-              {topLevelComments.map((comment) => {
+              {comments.map((comment) => {
                 const isOwn = (comment.user_id || comment.autor_id) === currentUserId;
-                const replies = getReplies(comment.id);
-                const isExpanded = expandedReplies[comment.id];
                 
                 return (
                   <CommentItem key={comment.id} $isOwn={isOwn}>
                     <CommentHeader>
                       <CommentAuthor>{comment.autor_jmeno || 'Neznámý'}</CommentAuthor>
-                      <CommentDateWrapper>
-                        <CommentDate>{formatDate(comment.dt_vytvoreni)}</CommentDate>
-                        {isOwn && (
-                          <DeleteIconButton
-                            onClick={(e) => handleDeleteClick(comment.id, e)}
-                            disabled={isDeleting === comment.id}
-                            title="Smazat komentář"
-                          >
-                            <FontAwesomeIcon 
-                              icon={isDeleting === comment.id ? faSpinner : faTrash} 
-                              spin={isDeleting === comment.id} 
-                            />
-                          </DeleteIconButton>
-                        )}
-                      </CommentDateWrapper>
+                      <CommentDate>{formatDate(comment.dt_vytvoreni)}</CommentDate>
                     </CommentHeader>
-                    
                     <CommentText>{comment.obsah}</CommentText>
-                    
-                    <CommentActions>
-                      <ReplyButton onClick={() => setReplyToComment({ id: comment.id, author: comment.autor_jmeno })}>
-                        <FontAwesomeIcon icon={faReply} />
-                        Odpovědět
-                      </ReplyButton>
-                      
-                      {replies.length > 0 && (
-                        <ShowRepliesButton onClick={() => setExpandedReplies(prev => ({ ...prev, [comment.id]: !isExpanded }))}>
-                          <FontAwesomeIcon icon={isExpanded ? faChevronUp : faChevronDown} />
-                          {replies.length} {replies.length === 1 ? 'odpověď' : replies.length < 5 ? 'odpovědi' : 'odpovědí'}
-                        </ShowRepliesButton>
-                      )}
-                    </CommentActions>
-                    
-                    {isExpanded && replies.length > 0 && (
-                      <RepliesWrapper>
-                        {replies.map((reply) => {
-                          const isOwnReply = (reply.user_id || reply.autor_id) === currentUserId;
-                          return (
-                            <ReplyItem key={reply.id}>
-                              <ReplyHeader>
-                                <ReplyAuthor>{reply.autor_jmeno || 'Neznámý'}</ReplyAuthor>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <ReplyDate>{formatDate(reply.dt_vytvoreni)}</ReplyDate>
-                                  {isOwnReply && (
-                                    <DeleteIconButton
-                                      onClick={(e) => handleDeleteClick(reply.id, e)}
-                                      disabled={isDeleting === reply.id}
-                                      title="Smazat odpověď"
-                                      style={{ fontSize: '0.7rem' }}
-                                    >
-                                      <FontAwesomeIcon 
-                                        icon={isDeleting === reply.id ? faSpinner : faTrash} 
-                                        spin={isDeleting === reply.id} 
-                                      />
-                                    </DeleteIconButton>
-                                  )}
-                                </div>
-                              </ReplyHeader>
-                              <ReplyText>{reply.obsah}</ReplyText>
-                            </ReplyItem>
-                          );
-                        })}
-                      </RepliesWrapper>
-                    )}
-                    
-                    {replyToComment?.id === comment.id && (
-                      <ReplyInputWrapper>
-                        <ReplyInputHeader>
-                          <ReplyingTo>Odpověď pro {replyToComment.author}</ReplyingTo>
-                          <CancelReplyButton onClick={() => { setReplyToComment(null); setReplyText(''); }}>
-                            Zrušit
-                          </CancelReplyButton>
-                        </ReplyInputHeader>
-                        <ReplyTextarea
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
-                          placeholder="Napište odpověď..."
-                          disabled={isSubmitting}
-                        />
-                        <SendReplyButton
-                          onClick={handleSubmitReply}
-                          disabled={isSubmitting || !replyText.trim()}
+                    {isOwn && (
+                      <CommentActions $isOwn={isOwn}>
+                        <DeleteButton
+                          onClick={() => handleDeleteClick(comment.id)}
+                          disabled={isDeleting === comment.id}
                         >
-                          {isSubmitting ? (
-                            <>
-                              <FontAwesomeIcon icon={faSpinner} spin />
-                              Odesílám
-                            </>
-                          ) : (
-                            <>
-                              <FontAwesomeIcon icon={faPaperPlane} />
-                              Odeslat
-                            </>
-                          )}
-                        </SendReplyButton>
-                      </ReplyInputWrapper>
+                          <FontAwesomeIcon icon={isDeleting === comment.id ? faSpinner : faTrash} spin={isDeleting === comment.id} />
+                          Smazat
+                        </DeleteButton>
+                        
+                        {/* ✅ Inline confirm bublina */}
+                        {deleteConfirmId === comment.id && (
+                          <DeleteConfirmBubble onClick={(e) => e.stopPropagation()}>
+                            <DeleteConfirmText>
+                              Smazat komentář?
+                            </DeleteConfirmText>
+                            <DeleteConfirmButtons>
+                              <CancelButton onClick={() => setDeleteConfirmId(null)}>
+                                Ne
+                              </CancelButton>
+                              <ConfirmButton onClick={() => handleConfirmedDelete(comment.id)}>
+                                Ano, smazat
+                              </ConfirmButton>
+                            </DeleteConfirmButtons>
+                          </DeleteConfirmBubble>
+                        )}
+                      </CommentActions>
                     )}
                   </CommentItem>
                 );
@@ -1029,28 +714,6 @@ const OrderCommentsTooltip = ({
           </CommentInputWrapper>
         </TooltipFooter>
       </TooltipContainer>
-      
-      {deleteConfirm.id && deleteConfirm.position && (
-        <DeleteConfirmBubble 
-          style={{ 
-            top: deleteConfirm.position.top, 
-            left: deleteConfirm.position.left 
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <DeleteConfirmText>
-            Smazat komentář?
-          </DeleteConfirmText>
-          <DeleteConfirmButtons>
-            <CancelButton onClick={() => setDeleteConfirm({ id: null, position: null })}>
-              Ne
-            </CancelButton>
-            <ConfirmButton onClick={() => handleConfirmedDelete(deleteConfirm.id)}>
-              Ano, smazat
-            </ConfirmButton>
-          </DeleteConfirmButtons>
-        </DeleteConfirmBubble>
-      )}
     </>
   );
 };

@@ -39,7 +39,7 @@ const TooltipBubble = styled.div`
   line-height: 1.6;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
 
   /* Pozicování */
