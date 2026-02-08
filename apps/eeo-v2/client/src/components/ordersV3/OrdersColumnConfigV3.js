@@ -274,14 +274,6 @@ function OrdersColumnConfigV3({
   
   // Ensure columnOrder is always an array
   const safeColumnOrder = Array.isArray(columnOrder) ? columnOrder : [];
-  
-  // 🔍 DEBUG LOG
-  console.log('🔍 [OrdersColumnConfigV3] columnVisibility:', columnVisibility);
-  console.log('🔍 [OrdersColumnConfigV3] columnOrder:', columnOrder);
-  console.log('🔍 [OrdersColumnConfigV3] Has kontrola_komentare?:', 
-    columnOrder.includes('kontrola_komentare'), 
-    columnVisibility?.kontrola_komentare
-  );
 
   const handleToggleVisibility = (columnId) => {
     // Zakázat skrytí locked sloupců
