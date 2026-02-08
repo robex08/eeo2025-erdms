@@ -1265,11 +1265,6 @@ const getFinancovaniDetail = (order) => {
   
   const typ = order.financovani.typ || '';
   
-  // 🔍 DEBUG - zkontrolovat, co obsahuje financovani pro POJISTNA_UDALOST
-  if (typ === 'POJISTNA_UDALOST') {
-    console.log('🔍 POJISTNA_UDALOST financovani:', order.financovani);
-  }
-  
   // LP - zobrazit jen LP kód (bez názvu/popisu)
   if (typ === 'LP') {
     // Priorita 1: lp_nazvy array s kompletními daty - zobrazit jen kód
@@ -1293,7 +1288,7 @@ const getFinancovaniDetail = (order) => {
   }
   // Pojistná událost - zobrazit číslo pojistné události
   else if (typ === 'POJISTNA_UDALOST') {
-    return order.financovani.cislo_pojistne_udalosti || order.financovani.poznamka || '';
+    return order.financovani.pojistna_udalost_cislo || order.financovani.poznamka || '';
   }
   // Individuální schválení - zobrazit ID individuálního schválení
   else if (typ === 'INDIVIDUALNI_SCHVALENI') {
