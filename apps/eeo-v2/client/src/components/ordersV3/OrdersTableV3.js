@@ -1548,6 +1548,7 @@ const OrdersTableV3 = ({
   onLoadComments = null,
   onAddComment = null,
   onDeleteComment = null,
+  onTableContextMenu = null, // 🆕 Handler pro kontextové menu
 }) => {
   // Hook pro expandované řádky s lazy loading a localStorage persistence
   const {
@@ -1912,9 +1913,12 @@ const OrdersTableV3 = ({
           loading: false,
           error: 'Chyba při načítání komentářů',
         }));
+        if (showToast) {
+          showToast(err.message || 'Chyba při načítání komentářů', 'error');
+        }
       }
     }
-  }, [commentsTooltip, onLoadComments]);
+  }, [commentsTooltip, onLoadComments, data, showToast]);
   
   // 🆕 Handler pro přidání komentáře (s podporou parent_comment_id pro odpovědi)
   const handleAddCommentInternal = useCallback(async (text, parentCommentId = null) => {
@@ -1945,11 +1949,19 @@ const OrdersTableV3 = ({
       // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
       if (clearCache) clearCache();
       
+      // ✅ Toast notifikace
+      if (showToast) {
+        showToast(parentCommentId ? 'Odpověď byla přidána' : 'Komentář byl přidán', 'success');
+      }
+      
     } catch (err) {
       console.error('Chyba při přidávání komentáře:', err);
+      if (showToast) {
+        showToast(err.message || 'Chyba při přidávání komentáře', 'error');
+      }
       throw err;
     }
-  }, [commentsTooltip.orderId, onAddComment, clearCache, data]);
+  }, [commentsTooltip.orderId, onAddComment, clearCache, data, showToast]);
   
   // 🆕 Handler pro smazání komentáře
   const handleDeleteCommentInternal = useCallback(async (commentId) => {
@@ -1977,11 +1989,19 @@ const OrdersTableV3 = ({
       // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
       if (clearCache) clearCache();
       
+      // ✅ Toast notifikace
+      if (showToast) {
+        showToast('Komentář byl smazán', 'success');
+      }
+      
     } catch (err) {
       console.error('Chyba při mazání komentáře:', err);
+      if (showToast) {
+        showToast(err.message || 'Chyba při mazání komentáře', 'error');
+      }
       throw err;
     }
-  }, [onDeleteComment, clearCache, commentsTooltip.orderId, data]);
+  }, [onDeleteComment, clearCache, commentsTooltip.orderId, data, showToast]);
   
   // Handler pro zpracování schválení objednávky
   const handleApprovalAction = useCallback(async (action) => {
@@ -3687,6 +3707,8 @@ const OrdersTableV3 = ({
                   <tr 
                     style={rowStyle}
                     data-order-id={order.id} // 🎯 Pro scroll targeting
+                    data-order-index={table.getRowModel().rows.indexOf(row)} // 🆕 Pro context menu
+                    onContextMenu={onTableContextMenu} // 🆕 Kontextové menu
                   >
                     {row.getVisibleCells().map(cell => (
                       <TableCell
@@ -4269,6 +4291,17 @@ const OrdersTableV3 = ({
           }}
           onAddComment={handleAddCommentInternal}
           onDeleteComment={handleDeleteCommentInternal}
+          onUpdateComments={(updatedComments) => {
+            // ✅ Optimalizace: Aktualizuj komentáře bez refresh
+            setCommentsTooltip(prev => ({
+              ...prev,
+              comments: updatedComments,
+              commentsCount: updatedComments.length || prev.commentsCount
+            }));
+          }}
+          showToast={showToast}
+          token={token}
+          username={username}
         />,
         document.body
       )}
