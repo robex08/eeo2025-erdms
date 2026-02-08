@@ -204,7 +204,7 @@ function handle_order_v3_comments_list($input, $config) {
         
         $user_id = (int)$token_data['id'];
         
-        // Získat role uživatele a isAdmin flag
+        // Získat role uživatele
         $stmt = $db->prepare("
             SELECT r.kod_role
             FROM " . TBL_UZIVATELE_ROLE . " ur
@@ -218,11 +218,8 @@ function handle_order_v3_comments_list($input, $config) {
             $user_roles[] = $row['kod_role'];
         }
         
-        // Získat isAdmin flag
-        $stmt = $db->prepare("SELECT isAdmin FROM " . TBL_UZIVATELE . " WHERE id = ?");
-        $stmt->execute(array($user_id));
-        $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
-        $is_admin = ($user_data && (int)$user_data['isAdmin'] === 1);
+        // ✅ Kontrola admin práv podle rolí (ne podle DB sloupce)
+        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
 
         // 4. Kontrola přístupu k objednávce
         if (!can_access_order_comments($db, $user_id, $order_id, $user_roles, $is_admin)) {
@@ -238,10 +235,15 @@ function handle_order_v3_comments_list($input, $config) {
         error_log("✅ User ID $user_id má přístup k objednávce $order_id");
 
         // 5. Načíst komentáře (chronologicky, nesmazané)
+        // ⚠️ LIMIT a OFFSET musí být INT, ne string z prepared statement
+        $limit_int = (int)$limit;
+        $offset_int = (int)$offset;
+        
         $stmt = $db->prepare("
             SELECT 
                 k.id,
                 k.objednavka_id,
+                k.parent_comment_id,
                 k.user_id,
                 k.obsah,
                 k.obsah_plain,
@@ -254,14 +256,36 @@ function handle_order_v3_comments_list($input, $config) {
             WHERE k.objednavka_id = ?
               AND k.smazano = 0
             ORDER BY k.dt_vytvoreni ASC
-            LIMIT ? OFFSET ?
+            LIMIT $limit_int OFFSET $offset_int
         ");
-        $stmt->execute(array($order_id, $limit, $offset));
+        $stmt->execute(array($order_id));
         $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // 6. Přidat flag "muze_smazat" (vlastní komentáře)
+        // ✅ OPTIMALIZACE: Počet odpovědí získáme jedním dotazem pro všechny komentáře
+        $comment_ids = array_column($comments, 'id');
+        $replies_counts = array();
+        
+        if (!empty($comment_ids)) {
+            $placeholders = implode(',', array_fill(0, count($comment_ids), '?'));
+            $stmt_replies = $db->prepare("
+                SELECT parent_comment_id, COUNT(*) as count
+                FROM 25a_objednavky_komentare
+                WHERE parent_comment_id IN ($placeholders)
+                  AND smazano = 0
+                GROUP BY parent_comment_id
+            ");
+            $stmt_replies->execute($comment_ids);
+            $replies_result = $stmt_replies->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($replies_result as $row) {
+                $replies_counts[$row['parent_comment_id']] = (int)$row['count'];
+            }
+        }
+        
         foreach ($comments as &$comment) {
             $comment['muze_smazat'] = ($comment['user_id'] == $user_id);
+            $comment['replies_count'] = isset($replies_counts[$comment['id']]) ? $replies_counts[$comment['id']] : 0;
             
             // Parsovat metadata JSON
             if ($comment['metadata']) {
@@ -279,17 +303,31 @@ function handle_order_v3_comments_list($input, $config) {
         $stmt->execute(array($order_id));
         $total_row = $stmt->fetch(PDO::FETCH_ASSOC);
         $total = $total_row ? (int)$total_row['total'] : 0;
+        
+        // 8. Najít poslední komentář (pro bubble tooltip)
+        $last_comment = null;
+        if (!empty($comments)) {
+            $last_comment = end($comments); // Poslední v chronologickém pořadí
+        }
 
-        // 8. Úspěšná odpověď
-        http_response_code(200);
-        echo json_encode(array(
+        // 9. Úspěšná odpověď
+        $response_data = array(
             'status' => 'success',
             'data' => $comments,
             'message' => 'Komentáře načteny',
             'count' => count($comments),
             'total' => $total,
-            'comments_count' => $total // Pro badge v UI
-        ));
+            'comments_count' => $total, // Pro badge v UI
+            'last_comment_author' => $last_comment ? $last_comment['autor_jmeno'] : null,
+            'last_comment_date' => $last_comment ? $last_comment['dt_vytvoreni'] : null
+        );
+        
+        // 🔍 DEBUG: Log response structure
+        error_log("🔍 Response structure: " . json_encode(array_keys($response_data)));
+        error_log("🔍 Comments count in data: " . count($comments));
+        
+        http_response_code(200);
+        echo json_encode($response_data);
 
     } catch (PDOException $e) {
         error_log("❌ SQL ERROR v handle_order_v3_comments_list: " . $e->getMessage());
@@ -338,6 +376,7 @@ function handle_order_v3_comments_add($input, $config) {
     $username = isset($input['username']) ? $input['username'] : '';
     $order_id = isset($input['order_id']) ? (int)$input['order_id'] : 0;
     $obsah = isset($input['obsah']) ? trim($input['obsah']) : '';
+    $parent_comment_id = isset($input['parent_comment_id']) ? (int)$input['parent_comment_id'] : null;
     
     if (!$token || !$username) {
         http_response_code(400);
@@ -395,11 +434,8 @@ function handle_order_v3_comments_add($input, $config) {
             $user_roles[] = $row['kod_role'];
         }
         
-        // Získat isAdmin flag
-        $stmt = $db->prepare("SELECT isAdmin FROM " . TBL_UZIVATELE . " WHERE id = ?");
-        $stmt->execute(array($user_id));
-        $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
-        $is_admin = ($user_data && (int)$user_data['isAdmin'] === 1);
+        // ✅ Kontrola admin práv podle rolí (ne podle DB sloupce)
+        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
 
         // 4. Kontrola přístupu k objednávce
         if (!can_access_order_comments($db, $user_id, $order_id, $user_roles, $is_admin)) {
@@ -411,6 +447,35 @@ function handle_order_v3_comments_add($input, $config) {
             ));
             return;
         }
+        
+        // ✅ Pokud je zadán parent_comment_id, ověřit, že existuje a patří ke stejné objednávce
+        if ($parent_comment_id !== null && $parent_comment_id > 0) {
+            $stmt = $db->prepare("
+                SELECT objednavka_id 
+                FROM 25a_objednavky_komentare 
+                WHERE id = ? AND smazano = 0
+            ");
+            $stmt->execute(array($parent_comment_id));
+            $parent = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$parent) {
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error',
+                    'message' => 'Nadřazený komentář nebyl nalezen'
+                ));
+                return;
+            }
+            
+            if ((int)$parent['objednavka_id'] !== $order_id) {
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error',
+                    'message' => 'Nadřazený komentář patří k jiné objednávce'
+                ));
+                return;
+            }
+        }
 
         // 5. Sanitizace obsahu (XSS prevence)
         $obsah_safe = htmlspecialchars($obsah, ENT_QUOTES, 'UTF-8');
@@ -421,11 +486,11 @@ function handle_order_v3_comments_add($input, $config) {
         // 6. Vložit komentář do DB
         $stmt = $db->prepare("
             INSERT INTO 25a_objednavky_komentare 
-                (objednavka_id, user_id, obsah, obsah_plain, dt_vytvoreni, smazano)
+                (objednavka_id, parent_comment_id, user_id, obsah, obsah_plain, dt_vytvoreni, smazano)
             VALUES 
-                (?, ?, ?, ?, ?, 0)
+                (?, ?, ?, ?, ?, ?, 0)
         ");
-        $stmt->execute(array($order_id, $user_id, $obsah_safe, $obsah_plain, $dt_vytvoreni));
+        $stmt->execute(array($order_id, $parent_comment_id, $user_id, $obsah_safe, $obsah_plain, $dt_vytvoreni));
         
         $comment_id = $db->lastInsertId();
         
@@ -590,24 +655,17 @@ function handle_order_v3_comments_delete($input, $config) {
             return;
         }
         
-        // Pouze vlastník může smazat (nebo admin/isAdmin)
-        $stmt = $db->prepare("SELECT isAdmin FROM " . TBL_UZIVATELE . " WHERE id = ?");
+        // Pouze vlastník může smazat (nebo SUPERADMIN/ADMINISTRATOR)
+        // Získat role uživatele
+        $stmt = $db->prepare("
+            SELECT r.kod_role
+            FROM " . TBL_UZIVATELE_ROLE . " ur
+            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+            WHERE ur.uzivatel_id = ?
+              AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
+        ");
         $stmt->execute(array($user_id));
-        $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
-        $is_admin = ($user_data && (int)$user_data['isAdmin'] === 1);
-        
-        // Kontrola SUPERADMIN/ADMINISTRATOR role
-        if (!$is_admin) {
-            $stmt = $db->prepare("
-                SELECT r.kod_role
-                FROM " . TBL_UZIVATELE_ROLE . " ur
-                INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
-                WHERE ur.uzivatel_id = ?
-                  AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
-            ");
-            $stmt->execute(array($user_id));
-            $is_admin = ($stmt->rowCount() > 0);
-        }
+        $is_admin = ($stmt->rowCount() > 0);
         
         if ($comment['user_id'] != $user_id && !$is_admin) {
             error_log("⛔ User ID $user_id nemá právo smazat komentář $comment_id (vlastník: {$comment['user_id']})");

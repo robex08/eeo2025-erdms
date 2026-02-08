@@ -18,11 +18,13 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSquare as farSquare } from '@fortawesome/free-regular-svg-icons';
 import DatePicker from '../DatePicker';
 import OperatorInput from '../OperatorInput';
 import useExpandedRowsV3 from '../../hooks/ordersV3/useExpandedRowsV3';
 import OrderExpandedRowV3 from './OrderExpandedRowV3';
 import OrderCommentsTooltip from './OrderCommentsTooltip';
+import ConfirmDialog from '../ConfirmDialog';
 import { updateOrderV3 } from '../../services/apiOrdersV3';
 import { getOrderDetailV3 } from '../../services/apiOrderV3';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
@@ -54,6 +56,7 @@ import {
   faSort,
   faSortAlphaDown,
   faComment,
+  faComments,
   faCircle,
   faCheckSquare,
 } from '@fortawesome/free-solid-svg-icons';
@@ -288,12 +291,13 @@ const HeaderContent = styled.div`
 `;
 
 const HeaderRow = styled.div`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: ${props => {
     if (props.$align === 'center') return 'center';
     if (props.$align === 'right') return 'flex-end';
-    return 'space-between';
+    return 'flex-start';
   }};
   gap: 0.5rem;
   min-width: 0;
@@ -306,6 +310,8 @@ const HeaderTextWrapper = styled.div`
   gap: 0.25rem;
   flex: 1;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 `;
 
 const HeaderText = styled.span`
@@ -511,11 +517,24 @@ const FilterBadge = styled.span`
 `;
 
 const ColumnActions = styled.div`
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 0.25rem;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.2s ease;
+  background: linear-gradient(90deg, transparent 0%, rgba(248, 250, 252, 0.85) 25%, rgba(248, 250, 252, 0.95) 100%);
+  padding-left: 1.5rem;
+  pointer-events: none;
+  z-index: 10;
+  
+  /* Povolit klikání na tlačítka když jsou viditelné */
+  button {
+    pointer-events: auto;
+  }
 `;
 
 const ColumnActionButton = styled.button`
@@ -1267,6 +1286,10 @@ const getFinancovaniDetail = (order) => {
   else if (typ === 'SMLOUVA') {
     return order.financovani.cislo_smlouvy || '';
   }
+  // Pojistná událost - zobrazit číslo pojistné události
+  else if (typ === 'POJISTNA_UDALOST') {
+    return order.financovani.cislo_pojistne_udalosti || order.financovani.poznamka || '';
+  }
   // Individuální schválení - zobrazit ID individuálního schválení
   else if (typ === 'INDIVIDUALNI_SCHVALENI') {
     return order.financovani.individualni_schvaleni || '';
@@ -1649,9 +1672,13 @@ const OrdersTableV3 = ({
     iconRef: null,
     comments: [],
     commentsCount: 0,
+    lastComment: null, // ✅ Info o posledním komentáři pro bubble tooltip
     loading: false,
     error: null,
   });
+  
+  // ✅ State pro reset sloupce confirm dialog
+  const [resetColumnsConfirm, setResetColumnsConfirm] = useState(false);
   
   // State pro resizing - načíst z localStorage (per user)
   const [columnSizing, setColumnSizing] = useState(() => {
@@ -1853,13 +1880,33 @@ const OrdersTableV3 = ({
     if (onLoadComments) {
       try {
         const result = await onLoadComments(order.id);
+        
+        // ✅ Backend vrací buď result.data nebo result.comments (podle middleware transformace)
+        const commentsArray = result.data || result.comments || [];
+        
+        // ✅ Najít poslední komentář (nejvyšší ID nebo nejnovější datum)
+        const lastComment = commentsArray.length > 0 
+          ? commentsArray.reduce((latest, c) => 
+              (!latest || new Date(c.dt_vytvoreni) > new Date(latest.dt_vytvoreni)) ? c : latest
+            , null)
+          : null;
+        
         setCommentsTooltip(prev => ({
           ...prev,
-          comments: result.comments || [],
+          comments: commentsArray,
           commentsCount: result.comments_count || 0,
+          lastComment: lastComment,
           loading: false,
         }));
+        
+        // ✅ Aktualizovat last_comment info i v tabulce (pro bubble tooltip)
+        const orderInTable = data.find(o => o.id === order.id);
+        if (orderInTable && result.last_comment_author && result.last_comment_date) {
+          orderInTable.last_comment_author = result.last_comment_author;
+          orderInTable.last_comment_date = result.last_comment_date;
+        }
       } catch (err) {
+        console.error('❌ Chyba při načítání komentářů:', err);
         setCommentsTooltip(prev => ({
           ...prev,
           loading: false,
@@ -1869,28 +1916,40 @@ const OrdersTableV3 = ({
     }
   }, [commentsTooltip, onLoadComments]);
   
-  // 🆕 Handler pro přidání komentáře
-  const handleAddCommentInternal = useCallback(async (text) => {
+  // 🆕 Handler pro přidání komentáře (s podporou parent_comment_id pro odpovědi)
+  const handleAddCommentInternal = useCallback(async (text, parentCommentId = null) => {
     if (!commentsTooltip.orderId || !onAddComment) return;
     
     try {
-      const result = await onAddComment(commentsTooltip.orderId, text);
+      const result = await onAddComment(commentsTooltip.orderId, text, parentCommentId);
       
-      // Aktualizovat seznam komentářů
+      // ✅ API vrací: {status, data: {comment}, message, comments_count}
+      const newComment = result.data?.comment || result.data;
+      const newCount = result.comments_count;
+      
+      // ✅ Aktualizovat seznam komentářů v tooltipu
       setCommentsTooltip(prev => ({
         ...prev,
-        comments: [...prev.comments, result.comment],
-        commentsCount: result.comments_count || (prev.commentsCount + 1),
+        comments: [...prev.comments, newComment],
+        commentsCount: newCount || (prev.commentsCount + 1),
       }));
       
-      // Aktualizovat počet v data
+      // ✅ OKAMŽITÁ aktualizace ikony v tabulce - mutace data pole
+      if (newCount !== undefined) {
+        const orderInTable = data.find(o => o.id === commentsTooltip.orderId);
+        if (orderInTable) {
+          orderInTable.comments_count = newCount;
+        }
+      }
+      
+      // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
       if (clearCache) clearCache();
       
     } catch (err) {
       console.error('Chyba při přidávání komentáře:', err);
       throw err;
     }
-  }, [commentsTooltip.orderId, onAddComment, clearCache]);
+  }, [commentsTooltip.orderId, onAddComment, clearCache, data]);
   
   // 🆕 Handler pro smazání komentáře
   const handleDeleteCommentInternal = useCallback(async (commentId) => {
@@ -1898,22 +1957,31 @@ const OrdersTableV3 = ({
     
     try {
       const result = await onDeleteComment(commentId);
+      const newCount = result.comments_count;
       
-      // Odstranit komentář ze seznamu
+      // ✅ Odstranit komentář ze seznamu v tooltipu
       setCommentsTooltip(prev => ({
         ...prev,
         comments: prev.comments.filter(c => c.id !== commentId),
-        commentsCount: result.comments_count || (prev.commentsCount - 1),
+        commentsCount: newCount || (prev.commentsCount - 1),
       }));
       
-      // Aktualizovat počet v data
+      // ✅ OKAMŽITÁ aktualizace ikony v tabulce - mutace data pole
+      if (newCount !== undefined) {
+        const orderInTable = data.find(o => o.id === commentsTooltip.orderId);
+        if (orderInTable) {
+          orderInTable.comments_count = newCount;
+        }
+      }
+      
+      // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
       if (clearCache) clearCache();
       
     } catch (err) {
       console.error('Chyba při mazání komentáře:', err);
       throw err;
     }
-  }, [onDeleteComment, clearCache]);
+  }, [onDeleteComment, clearCache, commentsTooltip.orderId, data]);
   
   // Handler pro zpracování schválení objednávky
   const handleApprovalAction = useCallback(async (action) => {
@@ -2138,8 +2206,17 @@ const OrdersTableV3 = ({
       },
       {
         id: 'approve',
+        enableSorting: false,
         header: () => (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '0.3rem',
+            width: '100%',
+            height: '100%',
+            padding: '0.25rem 0'
+          }}>
             <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
           </div>
         ),
@@ -2262,10 +2339,19 @@ const OrdersTableV3 = ({
       // 🆕 KONTROLA & KOMENTÁŘE - Dual ikony ve svislo rozděleném sloupci
       {
         id: 'kontrola_komentare',
+        enableSorting: false,
         header: () => (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-            <FontAwesomeIcon icon={faCheckSquare} style={{ fontSize: '0.75rem', opacity: 0.6 }} />
-            <FontAwesomeIcon icon={faComment} style={{ fontSize: '0.75rem', opacity: 0.6 }} />
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            fontSize: '1rem',
+            color: '#475569',
+            padding: '0.25rem'
+          }}>
+            <FontAwesomeIcon icon={faCheckSquare} title="Kontrola" />
+            <FontAwesomeIcon icon={faComments} title="Komentáře" />
           </div>
         ),
         cell: ({ row }) => {
@@ -2278,6 +2364,10 @@ const OrdersTableV3 = ({
           let isChecked = false;
           let checkedBy = null;
           let checkedDate = null;
+          let checkedStavNazev = null;
+          let zrusilJmeno = null;
+          let zruseniDate = null;
+          let stavPriZruseni = null;
           
           try {
             if (order.kontrola_metadata) {
@@ -2287,14 +2377,136 @@ const OrdersTableV3 = ({
               isChecked = !!metadata.zkontrolovano;
               checkedBy = metadata.kontroloval_jmeno;
               checkedDate = metadata.dt_kontroly;
+              checkedStavNazev = metadata.stav_workflow_nazev;
+              zrusilJmeno = metadata.zrusil_jmeno;
+              zruseniDate = metadata.dt_zruseni;
+              stavPriZruseni = metadata.stav_workflow_nazev_pri_zruseni;
             }
           } catch (e) {
             // Ignore parse errors
           }
           
+          // 🎨 Vypočítat stav kontroly (3 stavy):
+          // 1. unchecked (false) - šedá faSquare
+          // 2. ok (dt_kontroly >= dt_modifikace) - zelená faCheckSquare
+          // 3. warning (dt_kontroly < dt_modifikace) - oranžová faCheckSquare
+          let checkStatus = 'unchecked';
+          let statusColor = '#cbd5e1';
+          let statusBg = 'transparent';
+          let statusBorder = '#d1d5db';
+          let hoverBg = '#f3f4f6';
+          let hoverBorder = '#9ca3af';
+          let hoverColor = '#6b7280';
+          let tooltipText = 'Klikněte pro označení jako zkontrolováno';
+          let tooltipIcon = 'info';
+          
+          // Pokud byla kontrola zrušena, zobrazit info
+          if (!isChecked && zruseniDate) {
+            tooltipText = (
+              <div style={{ fontSize: '13px', lineHeight: '1.6', background: 'rgba(0, 0, 0, 0.85)', padding: '8px', borderRadius: '6px' }}>
+                <div style={{ color: '#fca5a5', fontWeight: 600, marginBottom: '6px' }}>
+                  ⛔ Kontrola zrušena
+                </div>
+                <div style={{ color: '#fdba74', marginBottom: '4px' }}>
+                  <strong>Zrušil:</strong> {zrusilJmeno || 'Neznámý'}
+                </div>
+                <div style={{ color: '#fdba74', marginBottom: '4px' }}>
+                  <strong>Kdy:</strong> {new Date(zruseniDate).toLocaleString('cs-CZ')}
+                </div>
+                {stavPriZruseni && (
+                  <div style={{ color: '#fdba74', marginBottom: '8px' }}>
+                    <strong>Stav při zrušení:</strong> {stavPriZruseni}
+                  </div>
+                )}
+                {checkedDate && (
+                  <div style={{ borderTop: '1px solid #475569', marginTop: '8px', paddingTop: '8px' }}>
+                    <div style={{ color: '#cbd5e1', fontSize: '12px', marginBottom: '4px' }}>
+                      Původně zkontroloval:
+                    </div>
+                    <div style={{ color: '#e2e8f0' }}>
+                      {checkedBy || 'Neznámý'} ({new Date(checkedDate).toLocaleString('cs-CZ')})
+                    </div>
+                    {checkedStavNazev && (
+                      <div style={{ color: '#e2e8f0' }}>
+                        Stav při kontrole: {checkedStavNazev}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+            tooltipIcon = 'info';
+          }
+          
+          if (isChecked && checkedDate) {
+            const kontrolaDt = new Date(checkedDate);
+            const objednavkaDt = new Date(order.dt_modifikace || order.dt_vytvoreni);
+            
+            if (kontrolaDt >= objednavkaDt) {
+              // ✅ Zelená - kontrola je aktuální
+              checkStatus = 'ok';
+              statusColor = '#10b981';
+              hoverBg = '#d1fae5';
+              hoverBorder = '#10b981';
+              hoverColor = '#059669';
+              tooltipText = (
+                <div style={{ fontSize: '13px', lineHeight: '1.6', background: 'rgba(0, 0, 0, 0.85)', padding: '8px', borderRadius: '6px' }}>
+                  <div style={{ color: '#86efac', fontWeight: 600, marginBottom: '6px' }}>
+                    ✓ Zkontrolováno
+                  </div>
+                  <div style={{ color: '#d1fae5', marginBottom: '4px' }}>
+                    <strong>Kontroloval:</strong> {checkedBy || 'Neznámý'}
+                  </div>
+                  <div style={{ color: '#d1fae5', marginBottom: '4px' }}>
+                    <strong>Kdy:</strong> {new Date(checkedDate).toLocaleString('cs-CZ')}
+                  </div>
+                  {checkedStavNazev && (
+                    <div style={{ color: '#d1fae5' }}>
+                      <strong>Stav:</strong> {checkedStavNazev}
+                    </div>
+                  )}
+                </div>
+              );
+              tooltipIcon = 'success';
+            } else {
+              // ⚠️ Oranžová - objednávka byla změněna po kontrole
+              checkStatus = 'warning';
+              statusColor = '#f59e0b';
+              hoverBg = '#fef3c7';
+              hoverBorder = '#f59e0b';
+              hoverColor = '#d97706';
+              tooltipText = (
+                <div style={{ fontSize: '13px', lineHeight: '1.6', background: 'rgba(0, 0, 0, 0.85)', padding: '8px', borderRadius: '6px' }}>
+                  <div style={{ color: '#fde047', fontWeight: 600, marginBottom: '6px' }}>
+                    ⚠️ Změněno po kontrole
+                  </div>
+                  <div style={{ color: '#fcd34d', marginBottom: '4px' }}>
+                    <strong>Kontroloval:</strong> {checkedBy || 'Neznámý'}
+                  </div>
+                  <div style={{ color: '#fcd34d', marginBottom: '4px' }}>
+                    <strong>Kontrola:</strong> {new Date(checkedDate).toLocaleString('cs-CZ')}
+                  </div>
+                  <div style={{ color: '#fcd34d', marginBottom: '4px' }}>
+                    <strong>Změna:</strong> {new Date(objednavkaDt).toLocaleString('cs-CZ')}
+                  </div>
+                  {checkedStavNazev && (
+                    <div style={{ color: '#fcd34d' }}>
+                      <strong>Stav při kontrole:</strong> {checkedStavNazev}
+                    </div>
+                  )}
+                </div>
+              );
+              tooltipIcon = 'warning';
+            }
+          }
+          
           // Počet komentářů
           const commentsCount = order.comments_count || 0;
           const badgeText = commentsCount > 9 ? '9+' : String(commentsCount);
+          
+          // Šedé pozadí pokud už bylo s kontrolou pracováno (pouze pro checkbox kontroly)
+          const hasBeenChecked = !!(checkedDate); // Pokud existuje dt_kontroly, už bylo pracováno
+          const checkboxBg = hasBeenChecked ? '#f1f5f9' : 'transparent';
           
           return (
             <div style={{ 
@@ -2307,10 +2519,8 @@ const OrdersTableV3 = ({
               {/* Checkbox ikona - horní polovina */}
               <div ref={(el) => { checkIconRef = el; }}>
                 <SmartTooltip 
-                  text={isChecked 
-                    ? `Zkontrolováno: ${checkedBy || 'Neznámý'}${checkedDate ? ` (${new Date(checkedDate).toLocaleDateString('cs-CZ')})` : ''}` 
-                    : 'Klikněte pro označení jako zkontrolováno'}
-                  icon={isChecked ? 'success' : 'info'}
+                  text={tooltipText}
+                  icon={tooltipIcon}
                   preferredPosition="top"
                 >
                   <button
@@ -2318,18 +2528,45 @@ const OrdersTableV3 = ({
                       e.stopPropagation();
                       if (onToggleOrderCheck) {
                         try {
-                          await onToggleOrderCheck(order.id, !isChecked);
+                          const result = await onToggleOrderCheck(order.id, !isChecked);
                           if (clearCache) clearCache();
+                          
+                          // Zobrazit toast s metadaty
+                          if (showToast && result && result.kontrola) {
+                            const metadata = result.kontrola;
+                            let toastMsg = '';
+                            
+                            if (metadata.zkontrolovano) {
+                              toastMsg = `✅ Objednávka zkontrolována\n`;
+                              toastMsg += `Kontroloval: ${metadata.kontroloval_jmeno}\n`;
+                              toastMsg += `Čas: ${new Date(metadata.dt_kontroly).toLocaleString('cs-CZ')}\n`;
+                              if (metadata.stav_workflow_nazev) {
+                                toastMsg += `Stav: ${metadata.stav_workflow_nazev}`;
+                              }
+                            } else {
+                              toastMsg = `⛔ Kontrola zrušena\n`;
+                              toastMsg += `Zrušil: ${metadata.zrusil_jmeno}\n`;
+                              toastMsg += `Čas: ${new Date(metadata.dt_zruseni).toLocaleString('cs-CZ')}\n`;
+                              if (metadata.stav_workflow_nazev_pri_zruseni) {
+                                toastMsg += `Stav při zrušení: ${metadata.stav_workflow_nazev_pri_zruseni}`;
+                              }
+                            }
+                            
+                            showToast(toastMsg, { type: 'success' });
+                          }
                         } catch (err) {
                           console.error('Chyba při změně kontroly:', err);
+                          if (showToast) {
+                            showToast('❌ Chyba při změně kontroly', { type: 'error' });
+                          }
                         }
                       }
                     }}
                     style={{
-                      background: 'transparent',
-                      border: '1px solid #d1d5db',
+                      background: hasBeenChecked ? checkboxBg : statusBg,
+                      border: `1px solid ${statusBorder}`,
                       borderRadius: '4px',
-                      color: isChecked ? '#10b981' : '#cbd5e1',
+                      color: statusColor,
                       cursor: 'pointer',
                       padding: '0.3rem 0.4rem',
                       fontSize: '1rem',
@@ -2341,17 +2578,17 @@ const OrdersTableV3 = ({
                       minHeight: '32px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = isChecked ? '#d1fae5' : '#f3f4f6';
-                      e.currentTarget.style.borderColor = isChecked ? '#10b981' : '#9ca3af';
-                      e.currentTarget.style.color = isChecked ? '#059669' : '#6b7280';
+                      e.currentTarget.style.background = hoverBg;
+                      e.currentTarget.style.borderColor = hoverBorder;
+                      e.currentTarget.style.color = hoverColor;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                      e.currentTarget.style.color = isChecked ? '#10b981' : '#cbd5e1';
+                      e.currentTarget.style.background = hasBeenChecked ? checkboxBg : statusBg;
+                      e.currentTarget.style.borderColor = statusBorder;
+                      e.currentTarget.style.color = statusColor;
                     }}
                   >
-                    <FontAwesomeIcon icon={isChecked ? faCheckSquare : faCircle} />
+                    <FontAwesomeIcon icon={checkStatus === 'unchecked' ? farSquare : faCheckSquare} />
                   </button>
                 </SmartTooltip>
               </div>
@@ -2359,7 +2596,15 @@ const OrdersTableV3 = ({
               {/* Komentáře ikona - dolní polovina */}
               <div ref={(el) => { commentIconRef = el; }} style={{ position: 'relative' }}>
                 <SmartTooltip 
-                  text={commentsCount > 0 ? `${commentsCount} komentář${commentsCount === 1 ? '' : (commentsCount < 5 ? 'e' : 'ů')}` : 'Zatím žádné komentáře'}
+                  text={commentsCount > 0 
+                    ? (() => {
+                        const lastComm = order.last_comment_author && order.last_comment_date
+                          ? `\nPoslední: ${order.last_comment_author} (${new Date(order.last_comment_date).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })})`
+                          : '';
+                        return `${commentsCount} komentář${commentsCount === 1 ? '' : (commentsCount < 5 ? 'e' : 'ů')}${lastComm}`;
+                      })()
+                    : 'Zatím žádné komentáře'
+                  }
                   icon="info"
                   preferredPosition="top"
                 >
@@ -2865,8 +3110,8 @@ const OrdersTableV3 = ({
       {
         id: 'actions',
         header: () => (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%', overflow: 'visible' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5em', position: 'relative' }}>
               {hasActiveSorting && (
                 <SmartTooltip text="Zrušit třídění">
                   <div
@@ -2881,29 +3126,32 @@ const OrdersTableV3 = ({
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = 'scale(1.15)';
+                      const icon = e.currentTarget.querySelector('svg');
+                      if (icon) icon.style.color = '#dc2626';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'scale(1)';
+                      const icon = e.currentTarget.querySelector('svg');
+                      if (icon) icon.style.color = '#9ca3af';
                     }}
                   >
                     <FontAwesomeIcon 
                       icon={faSort} 
                       style={{ 
                         color: '#9ca3af',
-                        fontSize: '16px'
+                        fontSize: '16px',
+                        transition: 'color 0.2s'
                       }}
                     />
                     <FontAwesomeIcon 
                       icon={faTimes} 
                       style={{ 
                         position: 'absolute',
-                        top: '-4px',
-                        right: '-4px',
+                        top: '-2px',
+                        right: '-8px',
                         color: '#dc2626',
-                        fontSize: '8px',
-                        backgroundColor: 'white',
-                        borderRadius: '50%',
-                        padding: '1px'
+                        fontSize: '10px',
+                        fontWeight: 'bold'
                       }}
                     />
                   </div>
@@ -2925,29 +3173,32 @@ const OrdersTableV3 = ({
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'scale(1.15)';
+                    const icon = e.currentTarget.querySelector('svg');
+                    if (icon) icon.style.color = '#dc2626';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'scale(1)';
+                    const icon = e.currentTarget.querySelector('svg');
+                    if (icon) icon.style.color = '#9ca3af';
                   }}
                 >
                   <FontAwesomeIcon 
                     icon={faArrowsLeftRight} 
                     style={{ 
                       color: '#9ca3af',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      transition: 'color 0.2s'
                     }}
                   />
                   <FontAwesomeIcon 
                     icon={faTimes} 
                     style={{ 
                       position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
+                      top: '-2px',
+                      right: '-8px',
                       color: '#dc2626',
-                      fontSize: '8px',
-                      backgroundColor: 'white',
-                      borderRadius: '50%',
-                      padding: '1px'
+                      fontSize: '10px',
+                      fontWeight: 'bold'
                     }}
                   />
                 </div>
@@ -2961,40 +3212,38 @@ const OrdersTableV3 = ({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (userId && window.confirm('Resetovat všechna nastavení sloupců (viditelnost, pořadí, šířky)?')) {
-                      const storagePrefix = 'ordersV3_v3';
-                      localStorage.removeItem(`${storagePrefix}_columnVisibility_${userId}`);
-                      localStorage.removeItem(`${storagePrefix}_columnOrder_${userId}`);
-                      localStorage.removeItem(`${storagePrefix}_columnSizing_${userId}`);
-                      localStorage.removeItem(`${storagePrefix}_preferences_${userId}`);
-                      window.location.reload();
+                    if (userId) {
+                      setResetColumnsConfirm(true);
                     }
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'scale(1.15)';
+                    const icon = e.currentTarget.querySelector('svg');
+                    if (icon) icon.style.color = '#dc2626';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'scale(1)';
+                    const icon = e.currentTarget.querySelector('svg');
+                    if (icon) icon.style.color = '#9ca3af';
                   }}
                 >
                   <FontAwesomeIcon 
                     icon={faEyeSlash} 
                     style={{ 
                       color: '#9ca3af',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      transition: 'color 0.2s'
                     }}
                   />
                   <FontAwesomeIcon 
                     icon={faTimes} 
                     style={{ 
                       position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
+                      top: '-2px',
+                      right: '-8px',
                       color: '#dc2626',
-                      fontSize: '8px',
-                      backgroundColor: 'white',
-                      borderRadius: '50%',
-                      padding: '1px'
+                      fontSize: '10px',
+                      fontWeight: 'bold'
                     }}
                   />
                 </div>
@@ -3007,6 +3256,12 @@ const OrdersTableV3 = ({
         ),
         meta: {
           align: 'center',
+          cellStyle: {
+            overflow: 'visible'
+          },
+          headerStyle: {
+            overflow: 'visible'
+          }
         },
         cell: ({ row }) => {
           const order = row.original;
@@ -3129,7 +3384,7 @@ const OrdersTableV3 = ({
             <tr key={headerGroup.id}>
               {headerGroup.headers.map(header => {
                 const columnId = header.column.id;
-                const canHide = columnId !== 'expander' && columnId !== 'actions' && columnId !== 'approve';
+                const canHide = columnId !== 'expander' && columnId !== 'actions' && columnId !== 'approve' && columnId !== 'kontrola_komentare';
                 
                 return (
                   <TableHeaderCell
@@ -3142,6 +3397,7 @@ const OrdersTableV3 = ({
                     onDragOver={(e) => handleDragOver(e, columnId)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, columnId)}
+                    style={header.column.columnDef.meta?.headerStyle || {}}
                   >
                     <HeaderContent $align={header.column.columnDef.meta?.align || 'left'}>
                       {/* První řádek: název + sorting + akce */}
@@ -4016,6 +4272,28 @@ const OrdersTableV3 = ({
         />,
         document.body
       )}
+
+      {/* ✅ Confirm dialog pro reset sloupců */}
+      <ConfirmDialog
+        isOpen={resetColumnsConfirm}
+        onClose={() => setResetColumnsConfirm(false)}
+        onConfirm={() => {
+          if (userId) {
+            const storagePrefix = 'ordersV3_v3';
+            localStorage.removeItem(`${storagePrefix}_columnVisibility_${userId}`);
+            localStorage.removeItem(`${storagePrefix}_columnOrder_${userId}`);
+            localStorage.removeItem(`${storagePrefix}_columnSizing_${userId}`);
+            localStorage.removeItem(`${storagePrefix}_preferences_${userId}`);
+            window.location.reload();
+          }
+          setResetColumnsConfirm(false);
+        }}
+        title="Reset nastavení sloupců"
+        message="Resetovat všechna nastavení sloupců (viditelnost, pořadí, šířky)?"
+        confirmText="Resetovat"
+        cancelText="Zrušit"
+        type="warning"
+      />
     </>
   );
 };
