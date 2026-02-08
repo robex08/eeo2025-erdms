@@ -223,3 +223,156 @@ export async function updateOrderV3({ token, username, payload }) {
 
   return response.json();
 }
+
+/**
+ * Toggle stav kontroly objednávky
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.order_id - ID objednávky
+ * @param {boolean} params.checked - True = zkontrolováno, False = zrušit kontrolu
+ * @returns {Promise<Object>} Response {status, data, message}
+ */
+export async function toggleOrderCheck({ token, username, order_id, checked }) {
+  const response = await fetch(`${API_BASE_URL}/orders-v3/check`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      order_id,
+      checked
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Načte stavy kontrol pro více objednávek (bulk)
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {Array<number>} params.order_ids - Pole ID objednávek
+ * @returns {Promise<Object>} Response {status, data: {order_id: metadata}, count}
+ */
+export async function getOrdersChecks({ token, username, order_ids }) {
+  const response = await fetch(`${API_BASE_URL}/orders-v3/get-checks`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      order_ids
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Načte komentáře k objednávce
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.order_id - ID objednávky
+ * @param {number} params.limit - Max počet komentářů (výchozí: 100)
+ * @param {number} params.offset - Offset pro stránkování (výchozí: 0)
+ * @returns {Promise<Object>} Response {status, data: Array, count, total, comments_count}
+ */
+export async function loadOrderComments({ token, username, order_id, limit = 100, offset = 0 }) {
+  const response = await fetch(`${API_BASE_URL}/orders-v3/comments/list`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      order_id,
+      limit,
+      offset
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Přidá nový komentář k objednávce
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.order_id - ID objednávky
+ * @param {string} params.obsah - Text komentáře
+ * @returns {Promise<Object>} Response {status, data: comment, message, comments_count}
+ */
+export async function addOrderComment({ token, username, order_id, obsah }) {
+  const response = await fetch(`${API_BASE_URL}/orders-v3/comments/add`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      order_id,
+      obsah
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Smazání vlastního komentáře (soft delete)
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.comment_id - ID komentáře
+ * @returns {Promise<Object>} Response {status, data: {comment_id, order_id}, message, comments_count}
+ */
+export async function deleteOrderComment({ token, username, comment_id }) {
+  const response = await fetch(`${API_BASE_URL}/orders-v3/comments/delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      comment_id
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
