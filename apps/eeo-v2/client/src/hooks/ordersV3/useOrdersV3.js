@@ -304,6 +304,15 @@ export function useOrdersV3({
     }
     
     // Sloučené filtry (pro tabulkové filtry)
+    // ⚠️ Kombinované sloupce - nové názvy (backend očekává tyto)
+    if (filters.objednatel_garant) {
+      backendFilters.objednatel_garant = filters.objednatel_garant;
+    }
+    if (filters.prikazce_schvalovatel) {
+      backendFilters.prikazce_schvalovatel = filters.prikazce_schvalovatel;
+    }
+    
+    // ⚠️ BACKWARD COMPATIBILITY: Staré názvy (pokud ještě existují v localStorage)
     if (filters.objednatel_jmeno) {
       backendFilters.objednatel_jmeno = filters.objednatel_jmeno;
     }
@@ -316,6 +325,7 @@ export function useOrdersV3({
     if (filters.schvalovatel_jmeno) {
       backendFilters.schvalovatel_jmeno = filters.schvalovatel_jmeno;
     }
+    
     if (filters.stav_workflow) {
       backendFilters.stav_workflow = filters.stav_workflow;
     }
@@ -428,8 +438,8 @@ export function useOrdersV3({
       'dodavatel_nazev': 'dodavatel_nazev',
       'stav_objednavky': 'stav', // Mapuje na filters.stav pre backend
       'dt_objednavky': 'datum_presne', // Přesné filtrování podle datumu ze sloupce
-      'objednatel_garant': 'objednatel_jmeno', // Hledá v objednatel i garant
-      'prikazce_schvalovatel': 'prikazce_jmeno', // Hledá v příkazce i schvalovatel
+      'objednatel_garant': 'objednatel_garant', // ✅ Backend čeká tento název
+      'prikazce_schvalovatel': 'prikazce_schvalovatel', // ✅ Backend čeká tento název
       'financovani': 'financovani',
       'max_cena_s_dph': 'cena_max',
       'cena_s_dph': 'cena_polozky',
@@ -453,31 +463,14 @@ export function useOrdersV3({
       // ✅ Clear cache při změně filtrů
       clearCache();
       
-      // Pro kombinované sloupce - poslat hodnotu oběma polím
-      if (columnId === 'objednatel_garant') {
-        updatePreferences({
-          columnFilters: {
-            ...columnFilters,
-            objednatel_jmeno: value,
-            garant_jmeno: value,
-          }
-        });
-      } else if (columnId === 'prikazce_schvalovatel') {
-        updatePreferences({
-          columnFilters: {
-            ...columnFilters,
-            prikazce_jmeno: value,
-            schvalovatel_jmeno: value,
-          }
-        });
-      } else {
-        updatePreferences({
-          columnFilters: {
-            ...columnFilters,
-            [filterName]: value,
-          }
-        });
-      }
+      // ✅ Standardní aplikace filtru bez rozdvojení
+      updatePreferences({
+        columnFilters: {
+          ...columnFilters,
+          [filterName]: value,
+        }
+      });
+      
       setCurrentPage(1); // Reset na první stránku
     };
     
