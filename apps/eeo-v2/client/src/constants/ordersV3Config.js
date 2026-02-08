@@ -40,8 +40,8 @@ export const ORDERS_V3_CONFIG = {
   // ============================================================================
   DEFAULT_COLUMN_ORDER: [
     'expander',
-    'approve',
     'kontrola_komentare', // ✅ Kontrola + Komentáře (2026-02-08)
+    'approve',
     'dt_objednavky',
     'cislo_objednavky',
     'financovani',
@@ -58,8 +58,8 @@ export const ORDERS_V3_CONFIG = {
   
   DEFAULT_COLUMN_VISIBILITY: {
     expander: true,
-    approve: true,
     kontrola_komentare: true, // ✅ Kontrola + Komentáře (2026-02-08)
+    approve: true,
     dt_objednavky: true,
     cislo_objednavky: true,
     financovani: true,
@@ -77,7 +77,7 @@ export const ORDERS_V3_CONFIG = {
   // ============================================================================
   // STORAGE KEYS
   // ============================================================================
-  STORAGE_PREFIX: 'ordersV3_v2', // v2: Opravuje column filtry mapování (datum_presne)
+  STORAGE_PREFIX: 'ordersV3_v3', // v3: Přidána kontrola_komentare column (2026-02-08)
   
   getStorageKey: (key, userId) => `ordersV3_v2_${key}_${userId}`,
 
@@ -135,8 +135,8 @@ export const ORDERS_V3_CONFIG = {
     expandedRows: {},
     columnVisibility: {
       expander: true,
-      approve: true,
       kontrola_komentare: true, // ✅ Kontrola + Komentáře (2026-02-08)
+      approve: true,
       dt_objednavky: true,
       cislo_objednavky: true,
       financovani: true,
@@ -152,8 +152,8 @@ export const ORDERS_V3_CONFIG = {
     },
     columnOrder: [
       'expander',
-      'approve',
       'kontrola_komentare', // ✅ Kontrola + Komentáře (2026-02-08)
+      'approve',
       'dt_objednavky',
       'cislo_objednavky',
       'financovani',
