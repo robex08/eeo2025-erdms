@@ -160,7 +160,16 @@ function handle_get_settings($db, $forDisplay = false) {
             'post_login_modal_valid_from' => $settings['post_login_modal_valid_from'] ?? null,
             'post_login_modal_valid_to' => $settings['post_login_modal_valid_to'] ?? null,
             'post_login_modal_message_id' => isset($settings['post_login_modal_message_id']) && $settings['post_login_modal_message_id'] !== 'NULL' && $settings['post_login_modal_message_id'] !== null ? (int)$settings['post_login_modal_message_id'] : null,
-            'post_login_modal_content' => $modalContent
+            'post_login_modal_content' => $modalContent,
+            
+            // Module visibility settings
+            'module_orders_visible' => ($settings['module_orders_visible'] ?? '1') === '1',
+            'module_orders_v3_visible' => ($settings['module_orders_v3_visible'] ?? '0') === '1',
+            'module_invoices_visible' => ($settings['module_invoices_visible'] ?? '1') === '1',
+            'module_annual_fees_visible' => ($settings['module_annual_fees_visible'] ?? '1') === '1',
+            
+            // Default homepage
+            'module_default_homepage' => $settings['module_default_homepage'] ?? 'orders25-list'
         );
         
         http_response_code(200);
@@ -208,7 +217,14 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'post_login_modal_valid_from' => 'post_login_modal_valid_from',
             'post_login_modal_valid_to' => 'post_login_modal_valid_to',
             'post_login_modal_message_id' => 'post_login_modal_message_id',
-            'post_login_modal_content' => 'post_login_modal_content'
+            'post_login_modal_content' => 'post_login_modal_content',
+            // Module visibility
+            'module_orders_visible' => 'module_orders_visible',
+            'module_orders_v3_visible' => 'module_orders_v3_visible',
+            'module_invoices_visible' => 'module_invoices_visible',
+            'module_annual_fees_visible' => 'module_annual_fees_visible',
+            // Default homepage
+            'module_default_homepage' => 'module_default_homepage'
         );
         
         $db->beginTransaction();

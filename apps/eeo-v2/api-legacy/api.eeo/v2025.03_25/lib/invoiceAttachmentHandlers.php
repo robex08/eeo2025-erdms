@@ -433,8 +433,9 @@ function handle_invoices25_attachments_upload($input, $config, $queries) {
         $filename = $systemovy_nazev . '.' . $ext;
         $full_path = $upload_dir . $filename;
         
-        // Do DB ukládáme plnou fyzickou cestu (stejně jako u objednávek)
-        $db_path = $full_path;
+        // ✅ Do DB ukládáme JEN název souboru, ne plnou cestu!
+        // Plná cesta se sestaví při downloadu z UPLOAD_ROOT_PATH + filename
+        $db_path = $filename;
 
         // Vytvoř složky pokud neexistují
         if (!file_exists($upload_dir)) {

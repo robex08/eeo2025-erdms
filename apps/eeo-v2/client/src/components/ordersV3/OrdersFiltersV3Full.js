@@ -713,8 +713,25 @@ const OrdersFiltersV3Full = ({
   const [lpList, setLpList] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // State pro zobrazování rozšířených filtrů (nezávislé na showFilters)
-  const [showExtendedFilters, setShowExtendedFilters] = useState(true);
+  // State pro zobrazování rozšířených filtrů (nezávislé na showFilters) - načíst z localStorage
+  const [showExtendedFilters, setShowExtendedFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ordersV3_showExtendedFilters');
+      return saved !== null ? JSON.parse(saved) : true; // Default: rozbaleno
+    } catch (err) {
+      console.error('⚠️ Chyba při načítání stavu rozšířených filtrů:', err);
+      return true;
+    }
+  });
+
+  // Uložit stav rozšířených filtrů do localStorage při změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('ordersV3_showExtendedFilters', JSON.stringify(showExtendedFilters));
+    } catch (err) {
+      console.error('⚠️ Chyba při ukládání stavu rozšířených filtrů:', err);
+    }
+  }, [showExtendedFilters]);
 
   // Load data from API při mountu
   useEffect(() => {

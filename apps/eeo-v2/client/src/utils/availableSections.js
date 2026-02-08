@@ -16,6 +16,17 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
   );
   
+  // 🔒 KRITICKÉ: Načíst module visibility settings z localStorage cache
+  let moduleSettings = {};
+  try {
+    const cached = localStorage.getItem('app_moduleSettings');
+    if (cached) {
+      moduleSettings = JSON.parse(cached);
+    }
+  } catch (error) {
+    console.warn('⚠️ Chyba při načítání module settings:', error);
+  }
+  
   // ✅ PRIORITA 1: OBJEDNÁVKY - jakékoliv ORDER oprávnění (většina uživatelů)
   const hasOrderPermission = hasPermission && (
     hasPermission('ORDER_MANAGE') ||
@@ -24,22 +35,33 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
   );
   
-  if (hasOrderPermission) {
+  // ✅ Kontrola module visibility - admin má vždy přístup
+  if (hasOrderPermission && (isAdmin || moduleSettings.module_orders_visible)) {
     sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
   }
   
-  // 🚀 OBJEDNÁVKY V3 - pouze pro ADMIN (beta verze)
-  if (isAdmin) {
+  // 🚀 OBJEDNÁVKY V3 - logika:
+  // 1. Pokud je modul GLOBÁLNĚ POVOLENÝ → dostupné VŠEM s ORDER permissí
+  // 2. Pokud je modul ZAKÁZANÝ → dostupné POUZE pro admin/BETA_TESTER
+  const hasBetaTesterPermission = hasPermission && hasPermission('BETA_TESTER');
+  const isV3GloballyEnabled = moduleSettings.module_orders_v3_visible;
+  
+  if (isV3GloballyEnabled && hasOrderPermission) {
+    // Modul je globálně povolený → dostupný všem s ORDER permissí
+    sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
+  } else if (!isV3GloballyEnabled && (isAdmin || hasBetaTesterPermission)) {
+    // Modul je zakázaný → dostupný pouze admin/BETA_TESTER
     sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
   }
   
-  // 💰 ROČNÍ POPLATKY - pouze pro ADMIN (beta verze)
-  if (isAdmin) {
+  // 💰 ROČNÍ POPLATKY - admin má vždy přístup nebo pokud je modul povolený
+  if (isAdmin && (isAdmin || moduleSettings.module_annual_fees_visible)) {
     sections.push({ value: 'annual-fees', label: 'Roční poplatky' });
   }
   
-  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW
-  if (isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) {
+  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW + kontrola module visibility
+  if ((isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && 
+      (isAdmin || moduleSettings.module_invoices_visible)) {
     sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
   }
   
@@ -149,5 +171,40 @@ export const isSectionAvailable = (sectionValue, hasPermission, userDetail) => {
  */
 export const getFirstAvailableSection = (hasPermission, userDetail) => {
   const sections = getAvailableSections(hasPermission, userDetail);
-  return sections.length > 0 ? sections[0].value : 'profile'; // Fallback na profil (vždy dostupný)
+  
+  // ✅ ULTIMATE FALLBACK: Použij výchozí homepage z global settings
+  if (sections.length === 0) {
+    // Pokud není žádná sekce dostupná, vrať profile
+    return 'profile';
+  }
+  
+  // 🔒 KRITICKÉ: Pokud první sekce je orders25-list nebo orders25-list-v3,
+  // ověř že je modul skutečně dostupný. Pokud ne, použij global homepage.
+  const firstSection = sections[0].value;
+  
+  if (firstSection === 'orders25-list' || firstSection === 'orders25-list-v3') {
+    try {
+      const cached = localStorage.getItem('app_moduleSettings');
+      if (cached) {
+        const moduleSettings = JSON.parse(cached);
+        const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+          role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+        );
+        
+        // Pokud není admin a modul není visible, použij global homepage
+        if (!isAdmin) {
+          if (firstSection === 'orders25-list' && !moduleSettings.module_orders_visible) {
+            return moduleSettings.module_default_homepage || 'profile';
+          }
+          if (firstSection === 'orders25-list-v3' && !moduleSettings.module_orders_v3_visible) {
+            return moduleSettings.module_default_homepage || 'profile';
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Chyba při kontrole module visibility:', error);
+    }
+  }
+  
+  return firstSection;
 };

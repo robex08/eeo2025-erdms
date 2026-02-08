@@ -244,7 +244,8 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
             $uploadPath = $uploadConfig['relative_path'];
         } else {
-            $uploadPath = '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+            require_once __DIR__ . '/environment-utils.php';
+            $uploadPath = get_upload_root_path();
         }
         
         // Přidat lomítko na konec pokud chybí
@@ -255,9 +256,9 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         // Název souboru: fa-{datum}_{guid}.{ext}
         $fileExt = $validation['extension'];
         $finalFileName = 'fa-' . $systemovy_guid . ($fileExt ? '.' . $fileExt : '');
-        $systemova_cesta = $uploadPath . $finalFileName;
+        $fullFilePath = $uploadPath . $finalFileName;
         
-        if (!move_uploaded_file($_FILES['file']['tmp_name'], $systemova_cesta)) {
+        if (!move_uploaded_file($_FILES['file']['tmp_name'], $fullFilePath)) {
             http_response_code(500);
             echo json_encode(array('status' => 'error', 'message' => 'Nelze uložit soubor'));
             exit;
@@ -275,7 +276,7 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
             $systemovy_guid,
             $typ_prilohy,
             $originalni_nazev,
-            $systemova_cesta,
+            $finalFileName,  // ✅ Jen název souboru, ne plná cesta!
             $velikost,
             $token_data['id']
         ));
