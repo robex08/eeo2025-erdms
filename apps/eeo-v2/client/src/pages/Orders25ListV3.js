@@ -508,6 +508,7 @@ function Orders25ListV3() {
     loading,
     error,
     stats,
+    filteredStats,
     
     // Pagination
     currentPage,
@@ -797,13 +798,6 @@ function Orders25ListV3() {
       columnFilters?.mimoradneObjednavky ||
       (globalFilter && globalFilter.trim())
     );
-    
-    console.log('🔍 hasAnyActiveFilters:', hasFilters, {
-      dashboardFilters,
-      columnFilters,
-      globalFilter,
-      lp_kody_length: columnFilters?.lp_kody?.length
-    });
     
     return hasFilters;
   }, [columnFilters, dashboardFilters, globalFilter]);
@@ -1125,30 +1119,19 @@ function Orders25ListV3() {
 
       {/* Dashboard */}
       {showDashboard && (
-        <>
-          {(() => {
-            console.log('🎯 [Dashboard Props]:', {
-              'stats.total': stats?.total,
-              'stats.totalAmount': stats?.totalAmount,
-              'stats.filteredTotalAmount': stats?.filteredTotalAmount,
-              'stats.filteredCount': stats?.filteredCount,
-              hasActiveFilters: hasAnyActiveFilters
-            });
-            return null;
-          })()}
-          <OrdersDashboardV3Full
-            stats={stats || {}}
-            totalAmount={stats?.totalAmount || 0}
-            filteredTotalAmount={stats?.filteredTotalAmount || stats?.totalAmount || 0}
-            filteredCount={stats?.filteredCount || orders?.length || 0}
-            hasActiveFilters={hasAnyActiveFilters}
-            activeStatus={dashboardFilters.filter_status}
-            onStatusClick={handleDashboardFilterChange}
-            onHide={() => updatePreferences({ showDashboard: false })}
-            mode={dashboardMode}
-            onModeChange={(mode) => updatePreferences({ dashboardMode: mode })}
-          />
-        </>
+        <OrdersDashboardV3Full
+          stats={stats || {}}
+          filteredStats={filteredStats}
+          totalAmount={stats?.totalAmount || 0}
+          filteredTotalAmount={stats?.filteredTotalAmount || stats?.totalAmount || 0}
+          filteredCount={stats?.filteredCount || orders?.length || 0}
+          hasActiveFilters={hasAnyActiveFilters}
+          activeStatus={dashboardFilters.filter_status}
+          onStatusClick={handleDashboardFilterChange}
+          onHide={() => updatePreferences({ showDashboard: false })}
+          mode={dashboardMode}
+          onModeChange={(mode) => updatePreferences({ dashboardMode: mode })}
+        />
       )}
 
       {/* Filters - zobrazit pouze když showFilters === true */}

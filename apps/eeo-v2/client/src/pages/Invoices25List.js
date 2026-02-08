@@ -763,11 +763,12 @@ const TableHead = styled.thead`
 
 const TableRow = styled.tr`
   border-bottom: 1px solid #e5e7eb;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
   background: white;
 
   &:hover {
-    background: #f8fafc;
+    background-color: #f3f4f6 !important;
+    background: #f3f4f6 !important;
   }
 
   /* STORNO state styling - jen text obsahu */
