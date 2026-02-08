@@ -606,12 +606,28 @@ function Orders25ListV3() {
       try {
         const statesData = await fetchCiselniky({ token, username, typ: 'OBJEDNAVKA' });
         
-        // Seřaď stavy abecedně podle názvu
+        // 🔍 DEBUG: Vypsat RAW data z backendu (před transformací)
+        console.log('🔍 RAW DATA stavů z BE (před transformací):', statesData);
+        console.log('🔍 První stav:', statesData?.[0]);
+        
+        // Seřaď stavy abecedně podle názvu a přidej .label (stejně jako OrdersFiltersV3Full)
         const sortedStates = (statesData || []).sort((a, b) => {
           const nameA = (a.nazev_stavu || a.nazev || '').toLowerCase();
           const nameB = (b.nazev_stavu || b.nazev || '').toLowerCase();
           return nameA.localeCompare(nameB, 'cs');
+        }).map(status => {
+          const kod = status.kod_stavu || status.kod || '';
+          const nazev = status.nazev_stavu || status.nazev || kod;
+          return {
+            ...status,
+            id: kod,
+            label: nazev, // ✅ Přidej .label pro zobrazení v UI
+            kod_stavu: kod
+          };
         });
+        
+        console.log('🔍 TRANSFORMOVANÁ DATA (po map):', sortedStates);
+        console.log('🔍 První transformovaný stav:', sortedStates?.[0]);
         
         setOrderStatesList(sortedStates);
         
