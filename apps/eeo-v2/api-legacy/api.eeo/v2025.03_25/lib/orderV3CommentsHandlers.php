@@ -15,6 +15,7 @@
  * 📋 ENDPOINTY:
  * - POST orders-v3/comments/list      → Načte komentáře k objednávce
  * - POST orders-v3/comments/add       → Přidá nový komentář
+ * - POST orders-v3/comments/update    → Aktualizuje vlastní komentář
  * - POST orders-v3/comments/delete    → Smaže vlastní komentář (soft delete)
  * 
  * 👥 12 ROLÍ ÚČASTNÍKŮ (právo přístupu):
@@ -554,6 +555,163 @@ function handle_order_v3_comments_add($input, $config) {
         ));
     } catch (Exception $e) {
         error_log("❌ ERROR v handle_order_v3_comments_add: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při zpracování: ' . $e->getMessage()
+        ));
+    }
+}
+
+/**
+ * POST - Aktualizace vlastního komentáře
+ * Endpoint: orders-v3/comments/update
+ * POST: {token, username, comment_id, obsah}
+ * 
+ * @param array $input POST data
+ * @param array $config Konfigurace
+ * @return void Vrací JSON response
+ */
+function handle_order_v3_comments_update($input, $config) {
+    error_log("╔═══════════════════════════════════════════════════════════");
+    error_log("║ ✏️ ORDER V3 - AKTUALIZACE KOMENTÁŘE");
+    error_log("║ Čas: " . date('Y-m-d H:i:s'));
+    error_log("║ Uživatel: " . (isset($input['username']) ? $input['username'] : 'N/A'));
+    error_log("║ Comment ID: " . (isset($input['comment_id']) ? $input['comment_id'] : 'N/A'));
+    error_log("║ Endpoint: orders-v3/comments/update");
+    error_log("╚═══════════════════════════════════════════════════════════");
+    
+    // 1. Validace HTTP metody - POUZE POST
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        return;
+    }
+
+    // 2. Validace parametrů
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $comment_id = isset($input['comment_id']) ? (int)$input['comment_id'] : 0;
+    $obsah = isset($input['obsah']) ? trim($input['obsah']) : '';
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        return;
+    }
+    
+    if ($comment_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné comment_id'));
+        return;
+    }
+    
+    if (empty($obsah)) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Obsah komentáře nesmí být prázdný'));
+        return;
+    }
+
+    // 3. Ověření tokenu
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+        
+        $user_id = (int)$token_data['id'];
+
+        // 4. Zkontrolovat, zda komentář existuje a patří uživateli
+        $stmt = $db->prepare("
+            SELECT 
+                id,
+                objednavka_id,
+                user_id,
+                smazano,
+                obsah as original_obsah
+            FROM 25a_objednavky_komentare
+            WHERE id = ?
+        ");
+        $stmt->execute(array($comment_id));
+        $comment = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$comment) {
+            error_log("❌ Komentář ID $comment_id neexistuje");
+            http_response_code(404);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Komentář nenalezen'
+            ));
+            return;
+        }
+        
+        if ($comment['smazano'] == 1) {
+            error_log("⚠️ Komentář ID $comment_id je smazaný - nelze editovat");
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Smazaný komentář nelze editovat'
+            ));
+            return;
+        }
+        
+        // 5. Ověřit, že komentář patří uživateli
+        if ((int)$comment['user_id'] !== $user_id) {
+            error_log("❌ User ID $user_id se pokouší editovat cizí komentář (vlastník: " . $comment['user_id'] . ")");
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Nemáte oprávnění editovat tento komentář'
+            ));
+            return;
+        }
+
+        // 6. Aktualizovat komentář
+        $dt_aktualizace = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+        
+        $updateStmt = $db->prepare("
+            UPDATE 25a_objednavky_komentare
+            SET obsah = ?,
+                dt_aktualizace = ?
+            WHERE id = ?
+        ");
+        
+        $success = $updateStmt->execute(array(
+            $obsah,
+            $dt_aktualizace,
+            $comment_id
+        ));
+        
+        if (!$success) {
+            throw new Exception('Chyba při aktualizaci komentáře');
+        }
+        
+        error_log("✅ Komentář ID $comment_id úspěšně aktualizován");
+        error_log("   Původní text: " . substr($comment['original_obsah'], 0, 50) . "...");
+        error_log("   Nový text: " . substr($obsah, 0, 50) . "...");
+        
+        // 7. Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'message' => 'Komentář byl úspěšně aktualizován',
+            'data' => array(
+                'comment_id' => $comment_id,
+                'dt_aktualizace' => $dt_aktualizace
+            )
+        ));
+
+    } catch (Exception $e) {
+        error_log("❌ Chyba při aktualizaci komentáře: " . $e->getMessage());
         http_response_code(500);
         echo json_encode(array(
             'status' => 'error',

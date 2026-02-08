@@ -441,11 +441,10 @@ const OrdersDashboardV3Full = ({
                 </div>
               )}
             </div>
-          </LargeStatCard>
-
-          <SummaryRow>
-            <SummaryItem 
-              $color="#d97706" 
+            
+            <SummaryRow>
+              <SummaryItem 
+                $color="#d97706" 
               $bg="rgba(217, 119, 6, 0.08)"
               $clickable={true}
               $isActive={activeStatus === 'rozpracovane_stavy'}
@@ -485,10 +484,11 @@ const OrdersDashboardV3Full = ({
               </SummaryValue>
             </SummaryItem>
           </SummaryRow>
+          </LargeStatCard>
 
-        <SmallCardsGrid>
-          {/* Počet objednávek - vždy */}
-          <StatCard $color="#2196f3">
+            <SmallCardsGrid>
+              {/* Počet objednávek - vždy */}
+              <StatCard $color="#2196f3">
             <StatHeader>
               <StatValue>{displayStats.total || 0}</StatValue>
               <StatIcon $color="#2196f3">
