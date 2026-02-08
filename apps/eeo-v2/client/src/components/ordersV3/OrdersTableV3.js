@@ -2269,8 +2269,9 @@ const OrdersTableV3 = ({
         ),
         cell: ({ row }) => {
           const order = row.original;
-          const checkIconRef = useRef(null);
-          const commentIconRef = useRef(null);
+          // ✅ Použití callback ref místo useRef hook
+          let checkIconRef = null;
+          let commentIconRef = null;
           
           // Parse kontrola metadata
           let isChecked = false;
@@ -2303,7 +2304,7 @@ const OrdersTableV3 = ({
               padding: '0.25rem 0'
             }}>
               {/* Checkbox ikona - horní polovina */}
-              <div ref={checkIconRef}>
+              <div ref={(el) => { checkIconRef = el; }}>
                 <SmartTooltip 
                   text={isChecked 
                     ? `Zkontrolováno: ${checkedBy || 'Neznámý'}${checkedDate ? ` (${new Date(checkedDate).toLocaleDateString('cs-CZ')})` : ''}` 
@@ -2355,7 +2356,7 @@ const OrdersTableV3 = ({
               </div>
               
               {/* Komentáře ikona - dolní polovina */}
-              <div ref={commentIconRef} style={{ position: 'relative' }}>
+              <div ref={(el) => { commentIconRef = el; }} style={{ position: 'relative' }}>
                 <SmartTooltip 
                   text={commentsCount > 0 ? `${commentsCount} komentář${commentsCount === 1 ? '' : (commentsCount < 5 ? 'e' : 'ů')}` : 'Zatím žádné komentáře'}
                   icon="info"
@@ -2364,7 +2365,7 @@ const OrdersTableV3 = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleOpenCommentsTooltip(order, commentIconRef);
+                      handleOpenCommentsTooltip(order, { current: commentIconRef });
                     }}
                     style={{
                       background: 'transparent',
