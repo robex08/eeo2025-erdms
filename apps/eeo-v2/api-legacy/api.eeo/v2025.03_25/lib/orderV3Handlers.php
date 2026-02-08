@@ -759,31 +759,47 @@ function handle_order_v3_list($input, $config, $queries) {
             $financovani_search = $filters['financovani'];
             
             // Hledáme v:
-            // 1. typ (LP, SMLOUVA, INDIVIDUALNI_SCHVALENI)
-            // 2. typ_nazev (Limitovaný příslib, Smlouva, ...)
-            // 3. LP kódy - pomocí JOIN na tabulku limitovaných příslibů (ne v JSON ID, ale v reálných kódech LPIT1)
-            // 4. cislo_smlouvy (pro SMLOUVA)
-            // 5. individualni_schvaleni (pro INDIVIDUALNI_SCHVALENI)
+            // 1. typ (LP) - při hledání "Limit", "Příslib" apod.
+            // 2. LP kódy - pomocí JOIN na tabulku limitovaných příslibů (LPIT1, LPKO1, ...)
+            // 3. cislo_smlouvy (pro SMLOUVA)
+            // 4. individualni_schvaleni (pro INDIVIDUALNI_SCHVALENI)
             
-            $where_conditions[] = "(
-                o.financovani LIKE ? 
-                OR JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) LIKE ?
-                OR JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni')) LIKE ?
-                OR EXISTS (
-                    SELECT 1 FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
-                    WHERE LOWER(lp.cislo_lp) LIKE LOWER(?)
-                    AND JSON_SEARCH(
-                        JSON_EXTRACT(o.financovani, '$.lp_kody'),
-                        'one',
-                        CAST(lp.id AS CHAR)
-                    ) IS NOT NULL
-                )
+            // Sestavení podmínek
+            $financovani_conditions = [];
+            
+            // Původní LIKE na celý JSON (najde "LP", čísla smluv, texty)
+            $financovani_conditions[] = "o.financovani LIKE ?";
+            $where_params[] = '%' . $financovani_search . '%';
+            
+            // Hledání v čísle smlouvy
+            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) LIKE ?";
+            $where_params[] = '%' . $financovani_search . '%';
+            
+            // Hledání v individuálním schválení
+            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni')) LIKE ?";
+            $where_params[] = '%' . $financovani_search . '%';
+            
+            // Rozpoznání textů "Limit", "Příslib" -> hledat typ=LP
+            $search_lower = mb_strtolower($financovani_search, 'UTF-8');
+            if (stripos($search_lower, 'limit') !== false || 
+                stripos($search_lower, 'příslib') !== false ||
+                stripos($search_lower, 'prislib') !== false) {
+                $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.typ')) = 'LP'";
+            }
+            
+            // Hledání v LP kódech (LPIT1, LPKO1, ...)
+            $financovani_conditions[] = "EXISTS (
+                SELECT 1 FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
+                WHERE LOWER(lp.cislo_lp) LIKE LOWER(?)
+                AND JSON_SEARCH(
+                    JSON_EXTRACT(o.financovani, '$.lp_kody'),
+                    'one',
+                    CAST(lp.id AS CHAR)
+                ) IS NOT NULL
             )";
-            $search_param = '%' . $financovani_search . '%';
-            $where_params[] = $search_param; // typ, typ_nazev
-            $where_params[] = $search_param; // cislo_smlouvy
-            $where_params[] = $search_param; // individualni_schvaleni
-            $where_params[] = $search_param; // lp.cislo_lp (např. LPIT1)
+            $where_params[] = '%' . $financovani_search . '%';
+            
+            $where_conditions[] = "(" . implode(" OR ", $financovani_conditions) . ")";
         }
         
         // Filtr pro workflow stav

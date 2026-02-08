@@ -1769,6 +1769,7 @@ const OrdersTableV3 = ({
   // Drag & Drop handlers
   const handleDragStart = useCallback((columnId) => {
     setDraggedColumn(columnId);
+    document.body.style.cursor = 'grabbing';
   }, []);
   
   const handleDragOver = useCallback((e, columnId) => {
@@ -1788,11 +1789,13 @@ const OrdersTableV3 = ({
     }
     setDraggedColumn(null);
     setDragOverColumn(null);
+    document.body.style.cursor = '';
   }, [draggedColumn, onColumnReorder]);
   
   const handleDragEnd = useCallback(() => {
     setDraggedColumn(null);
     setDragOverColumn(null);
+    document.body.style.cursor = '';
   }, []);
   
   // Handler pro zpracování schválení objednávky
@@ -2763,12 +2766,9 @@ const OrdersTableV3 = ({
                     $width={columnSizing[columnId] || (header.column.columnDef.size ? `${header.column.columnDef.size}px` : undefined)}
                     data-dragging={draggedColumn === columnId}
                     data-drag-over={dragOverColumn === columnId}
-                    draggable={canHide}
-                    onDragStart={() => handleDragStart(columnId)}
                     onDragOver={(e) => handleDragOver(e, columnId)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, columnId)}
-                    onDragEnd={handleDragEnd}
                   >
                     <HeaderContent $align={header.column.columnDef.meta?.align || 'left'}>
                       {/* První řádek: název + sorting + akce */}
@@ -2817,7 +2817,14 @@ const OrdersTableV3 = ({
                           <ColumnActions className="column-actions">
                             <ColumnActionButton
                               className="drag-handle"
+                              draggable={true}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                handleDragStart(columnId);
+                              }}
+                              onDragEnd={handleDragEnd}
                               title="Přesunout sloupec (táhněte)"
+                              style={{ cursor: 'grab' }}
                             >
                               <FontAwesomeIcon icon={faGripVertical} />
                             </ColumnActionButton>
@@ -2900,6 +2907,7 @@ const OrdersTableV3 = ({
                               value={localColumnFilters[columnId] || ''}
                               onChange={(e) => handleFilterChange(columnId, e.target.value)}
                               onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
                             />
                             {localColumnFilters[columnId] && (
                               <ColumnClearButton
