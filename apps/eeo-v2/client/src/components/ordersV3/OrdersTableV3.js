@@ -51,6 +51,7 @@ import {
   faTrash,
   faSearch,
   faArrowsLeftRight,
+  faSort,
   faSortAlphaDown,
   faComment,
   faCircle,
@@ -2865,59 +2866,144 @@ const OrdersTableV3 = ({
       {
         id: 'actions',
         header: () => (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%' }}>
-            {hasActiveSorting && (
-              <SmartTooltip text="Zrušit třídění">
-                <FontAwesomeIcon 
-                  icon={faTimes} 
-                  style={{ 
-                    color: '#dc2626', 
-                    fontSize: '16px', 
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              {hasActiveSorting && (
+                <SmartTooltip text="Zrušit třídění">
+                  <div
+                    style={{
+                      position: 'relative',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSortingChange([]);
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    <FontAwesomeIcon 
+                      icon={faSort} 
+                      style={{ 
+                        color: '#9ca3af',
+                        fontSize: '16px'
+                      }}
+                    />
+                    <FontAwesomeIcon 
+                      icon={faTimes} 
+                      style={{ 
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        color: '#dc2626',
+                        fontSize: '8px',
+                        backgroundColor: 'white',
+                        borderRadius: '50%',
+                        padding: '1px'
+                      }}
+                    />
+                  </div>
+                </SmartTooltip>
+              )}
+              <SmartTooltip text="Reset šířky sloupců">
+                <div
+                  style={{
+                    position: 'relative',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease'
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onSortingChange([]);
+                    setColumnSizing({});
+                    if (userId) {
+                      localStorage.removeItem(`ordersV3_columnSizing_v4_${userId}`);
+                    }
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = '#991b1b';
                     e.currentTarget.style.transform = 'scale(1.15)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.color = '#dc2626';
                     e.currentTarget.style.transform = 'scale(1)';
                   }}
-                />
+                >
+                  <FontAwesomeIcon 
+                    icon={faArrowsLeftRight} 
+                    style={{ 
+                      color: '#9ca3af',
+                      fontSize: '16px'
+                    }}
+                  />
+                  <FontAwesomeIcon 
+                    icon={faTimes} 
+                    style={{ 
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      color: '#dc2626',
+                      fontSize: '8px',
+                      backgroundColor: 'white',
+                      borderRadius: '50%',
+                      padding: '1px'
+                    }}
+                  />
+                </div>
               </SmartTooltip>
-            )}
-            <SmartTooltip text="Reset šířky sloupců">
-              <FontAwesomeIcon 
-                icon={faArrowsLeftRight} 
-                style={{ 
-                  color: '#10b981', 
-                  fontSize: '16px', 
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setColumnSizing({});
-                  if (userId) {
-                    localStorage.removeItem(`ordersV3_columnSizing_v4_${userId}`);
-                  }
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#059669';
-                  e.currentTarget.style.transform = 'scale(1.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = '#10b981';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              />
-            </SmartTooltip>
-            <FontAwesomeIcon icon={faBolt} style={{ color: '#eab308', fontSize: '18px' }} />
+              <SmartTooltip text="Reset zobrazených sloupců">
+                <div
+                  style={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (userId && window.confirm('Resetovat všechna nastavení sloupců (viditelnost, pořadí, šířky)?')) {
+                      const storagePrefix = 'ordersV3_v3';
+                      localStorage.removeItem(`${storagePrefix}_columnVisibility_${userId}`);
+                      localStorage.removeItem(`${storagePrefix}_columnOrder_${userId}`);
+                      localStorage.removeItem(`${storagePrefix}_columnSizing_${userId}`);
+                      localStorage.removeItem(`${storagePrefix}_preferences_${userId}`);
+                      window.location.reload();
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faEyeSlash} 
+                    style={{ 
+                      color: '#9ca3af',
+                      fontSize: '16px'
+                    }}
+                  />
+                  <FontAwesomeIcon 
+                    icon={faTimes} 
+                    style={{ 
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      color: '#dc2626',
+                      fontSize: '8px',
+                      backgroundColor: 'white',
+                      borderRadius: '50%',
+                      padding: '1px'
+                    }}
+                  />
+                </div>
+              </SmartTooltip>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FontAwesomeIcon icon={faBolt} style={{ color: '#eab308', fontSize: '18px' }} />
+            </div>
           </div>
         ),
         meta: {

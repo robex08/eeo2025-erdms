@@ -274,6 +274,14 @@ function OrdersColumnConfigV3({
   
   // Ensure columnOrder is always an array
   const safeColumnOrder = Array.isArray(columnOrder) ? columnOrder : [];
+  
+  // 🔍 DEBUG LOG
+  console.log('🔍 [OrdersColumnConfigV3] columnVisibility:', columnVisibility);
+  console.log('🔍 [OrdersColumnConfigV3] columnOrder:', columnOrder);
+  console.log('🔍 [OrdersColumnConfigV3] Has kontrola_komentare?:', 
+    columnOrder.includes('kontrola_komentare'), 
+    columnVisibility?.kontrola_komentare
+  );
 
   const handleToggleVisibility = (columnId) => {
     // Zakázat skrytí locked sloupců
@@ -324,7 +332,45 @@ function OrdersColumnConfigV3({
   };
 
   const handleReset = () => {
+    if (userId) {
+      // Vymazat VŠECHNY localStorage klíče pro Orders V3
+      const storagePrefix = 'ordersV3_v3'; // Použít aktuální prefix
+      const keysToRemove = [
+        `${storagePrefix}_showDashboard_${userId}`,
+        `${storagePrefix}_showFilters_${userId}`,
+        `${storagePrefix}_dashboardMode_${userId}`,
+        `${storagePrefix}_showRowColoring_${userId}`,
+        `${storagePrefix}_itemsPerPage_${userId}`,
+        `${storagePrefix}_selectedPeriod_${userId}`,
+        `${storagePrefix}_columnFilters_${userId}`,
+        `${storagePrefix}_dashboardFilters_${userId}`,
+        `${storagePrefix}_expandedRows_${userId}`,
+        `${storagePrefix}_columnVisibility_${userId}`,
+        `${storagePrefix}_columnOrder_${userId}`,
+        `${storagePrefix}_columnSizing_${userId}`, // Šířky sloupců
+        `${storagePrefix}_preferences_${userId}`, // Centralizované preferences
+      ];
+      
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      console.log('✅ localStorage vyčištěno, všechny preference resetovány');
+    }
+    
     onReset?.();
+    setIsOpen(false);
+    
+    // Reload stránky pro načtení výchozích hodnot
+    alert('Veškerá nastavení byla resetována na výchozí hodnoty. Stránka se obnoví.');
+    window.location.reload();
+  };
+
+  const handleResetColumnWidths = () => {
+    if (userId) {
+      const storagePrefix = 'ordersV3_v3';
+      localStorage.removeItem(`${storagePrefix}_columnSizing_${userId}`);
+      alert('Šířky sloupců byly resetovány. Stránka se obnoví.');
+      window.location.reload();
+    }
   };
 
   const handleSave = () => {
@@ -406,22 +452,14 @@ function OrdersColumnConfigV3({
             </ModalBody>
 
             <ModalFooter>
-              <ResetButton onClick={handleReset} title="Obnovit výchozí nastavení">
+              <ResetButton onClick={handleReset} title="Obnovit kompletně výchozí nastavení (smaže všechny preferences a šířky)">
                 <FontAwesomeIcon icon={faUndo} />
-                Výchozí
+                Reset vše
               </ResetButton>
               
               <ResetButton 
-                onClick={() => {
-                  if (userId) {
-                    localStorage.removeItem(`ordersV3_columnSizing_${userId}`);
-                    alert('Šířky sloupců byly resetovány. Stránka se obnoví.');
-                    window.location.reload();
-                  } else {
-                    alert('userId není k dispozici pro reset šířek');
-                  }
-                }} 
-                title="Resetovat šířky sloupců"
+                onClick={handleResetColumnWidths}
+                title="Resetovat pouze šířky sloupců"
                 style={{ marginLeft: '8px' }}
               >
                 <FontAwesomeIcon icon={faUndo} />
