@@ -1142,17 +1142,6 @@ const NotificationBellWrapper = ({ userId }) => {
   const unreadCount = bgTasks?.unreadNotificationsCount || 0;
   const badgeColor = bgTasks?.notificationsBadgeColor || 'gray';
 
-  // 🐛 DEBUG
-  useEffect(() => {
-    console.log('🔔 [NotificationBellWrapper] Badge color changed:', {
-      badgeColor,
-      unreadCount,
-      bgTasks: bgTasks ? {
-        notificationsBadgeColor: bgTasks.notificationsBadgeColor,
-        unreadNotificationsCount: bgTasks.unreadNotificationsCount
-      } : null
-    });
-  }, [badgeColor, unreadCount, bgTasks]);
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);

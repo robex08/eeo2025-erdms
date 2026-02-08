@@ -103,13 +103,8 @@ export const BackgroundTasksProvider = ({ children }) => {
    * Callback pro změnu počtu nepřečtených notifikací s informací o barvě badge
    */
   const handleUnreadCountChange = useCallback((count, badgeColor = 'gray') => {
-    console.log('🎯 [BackgroundTasksContext] handleUnreadCountChange called:', { count, badgeColor });
     setUnreadNotificationsCount(count);
     setNotificationsBadgeColor(badgeColor);
-    console.log('🎯 [BackgroundTasksContext] State updated:', { 
-      unreadNotificationsCount: count, 
-      notificationsBadgeColor: badgeColor 
-    });
 
     if (notificationsCallbackRef.current) {
       try {

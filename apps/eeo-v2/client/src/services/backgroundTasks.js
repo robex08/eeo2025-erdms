@@ -64,18 +64,13 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
       const unreadCount = unreadData.unread_count || unreadData || 0; // Backward compatibility
       const badgeColor = unreadData.badge_color || 'gray';
 
-      // 🐛 DEBUG: Log badge color
-      console.log('🔔 [backgroundTasks] unreadData:', unreadData, 'badgeColor:', badgeColor, 'unreadCount:', unreadCount);
-
       // Callback s aktuálním počtem nepřečtených a informací o barvě
       if (onUnreadCountChange) {
         // Rozšíříme callback o badge color informaci
         if (typeof unreadData === 'object' && unreadData.badge_color) {
-          console.log('✅ [backgroundTasks] Calling onUnreadCountChange with color:', badgeColor);
           onUnreadCountChange(unreadCount, badgeColor);
         } else {
           // Backward compatibility
-          console.log('⚠️ [backgroundTasks] Backward compatibility - no badge_color');
           onUnreadCountChange(unreadCount);
         }
       }
