@@ -22,6 +22,7 @@ import DatePicker from '../DatePicker';
 import OperatorInput from '../OperatorInput';
 import useExpandedRowsV3 from '../../hooks/ordersV3/useExpandedRowsV3';
 import OrderExpandedRowV3 from './OrderExpandedRowV3';
+import OrderCommentsTooltip from './OrderCommentsTooltip';
 import { updateOrderV3 } from '../../services/apiOrdersV3';
 import { getOrderDetailV3 } from '../../services/apiOrderV3';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
@@ -51,6 +52,9 @@ import {
   faSearch,
   faArrowsLeftRight,
   faSortAlphaDown,
+  faComment,
+  faCircle,
+  faCheckSquare,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -1515,6 +1519,11 @@ const OrdersTableV3 = ({
   onHighlightOrder = null, // 🎯 Callback pro zvýraznění objednávky po schválení
   showToast = null, // 🎯 Toast notifikace
   clearCache = null, // ✅ Vyčistí cache po update operacích
+  // 🆕 Kontrola a komentáře
+  onToggleOrderCheck = null,
+  onLoadComments = null,
+  onAddComment = null,
+  onDeleteComment = null,
 }) => {
   // Hook pro expandované řádky s lazy loading a localStorage persistence
   const {
@@ -1630,6 +1639,18 @@ const OrdersTableV3 = ({
   const [orderToApprove, setOrderToApprove] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
   const [approvalCommentError, setApprovalCommentError] = useState('');
+  
+  // 🆕 State pro komentáře tooltip
+  const [commentsTooltip, setCommentsTooltip] = useState({
+    isOpen: false,
+    orderId: null,
+    orderNumber: null,
+    iconRef: null,
+    comments: [],
+    commentsCount: 0,
+    loading: false,
+    error: null,
+  });
   
   // State pro resizing - načíst z localStorage (per user)
   const [columnSizing, setColumnSizing] = useState(() => {
@@ -1797,6 +1818,101 @@ const OrdersTableV3 = ({
     setDragOverColumn(null);
     document.body.style.cursor = '';
   }, []);
+  
+  // 🆕 Handler pro otevření toolttipu s komentáři
+  const handleOpenCommentsTooltip = useCallback(async (order, iconRef) => {
+    if (commentsTooltip.isOpen && commentsTooltip.orderId === order.id) {
+      // Zavřít pokud už je otevřený pro stejnou objednávku
+      setCommentsTooltip({
+        isOpen: false,
+        orderId: null,
+        orderNumber: null,
+        iconRef: null,
+        comments: [],
+        commentsCount: 0,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+    
+    // Otevřít tooltip
+    setCommentsTooltip({
+      isOpen: true,
+      orderId: order.id,
+      orderNumber: order.cislo_objednavky || `#${order.id}`,
+      iconRef,
+      comments: [],
+      commentsCount: order.comments_count || 0,
+      loading: true,
+      error: null,
+    });
+    
+    // Načíst komentáře
+    if (onLoadComments) {
+      try {
+        const result = await onLoadComments(order.id);
+        setCommentsTooltip(prev => ({
+          ...prev,
+          comments: result.comments || [],
+          commentsCount: result.comments_count || 0,
+          loading: false,
+        }));
+      } catch (err) {
+        setCommentsTooltip(prev => ({
+          ...prev,
+          loading: false,
+          error: 'Chyba při načítání komentářů',
+        }));
+      }
+    }
+  }, [commentsTooltip, onLoadComments]);
+  
+  // 🆕 Handler pro přidání komentáře
+  const handleAddCommentInternal = useCallback(async (text) => {
+    if (!commentsTooltip.orderId || !onAddComment) return;
+    
+    try {
+      const result = await onAddComment(commentsTooltip.orderId, text);
+      
+      // Aktualizovat seznam komentářů
+      setCommentsTooltip(prev => ({
+        ...prev,
+        comments: [...prev.comments, result.comment],
+        commentsCount: result.comments_count || (prev.commentsCount + 1),
+      }));
+      
+      // Aktualizovat počet v data
+      if (clearCache) clearCache();
+      
+    } catch (err) {
+      console.error('Chyba při přidávání komentáře:', err);
+      throw err;
+    }
+  }, [commentsTooltip.orderId, onAddComment, clearCache]);
+  
+  // 🆕 Handler pro smazání komentáře
+  const handleDeleteCommentInternal = useCallback(async (commentId) => {
+    if (!onDeleteComment) return;
+    
+    try {
+      const result = await onDeleteComment(commentId);
+      
+      // Odstranit komentář ze seznamu
+      setCommentsTooltip(prev => ({
+        ...prev,
+        comments: prev.comments.filter(c => c.id !== commentId),
+        commentsCount: result.comments_count || (prev.commentsCount - 1),
+      }));
+      
+      // Aktualizovat počet v data
+      if (clearCache) clearCache();
+      
+    } catch (err) {
+      console.error('Chyba při mazání komentáře:', err);
+      throw err;
+    }
+  }, [onDeleteComment, clearCache]);
   
   // Handler pro zpracování schválení objednávky
   const handleApprovalAction = useCallback(async (action) => {
@@ -2136,6 +2252,176 @@ const OrdersTableV3 = ({
           );
         },
         size: 45,
+        enableSorting: false,
+        meta: {
+          align: 'center',
+          fixed: true,
+        },
+      },
+      // 🆕 KONTROLA & KOMENTÁŘE - Dual ikony ve svislo rozděleném sloupci
+      {
+        id: 'kontrola_komentare',
+        header: () => (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+            <FontAwesomeIcon icon={faCheckSquare} style={{ fontSize: '0.75rem', opacity: 0.6 }} />
+            <FontAwesomeIcon icon={faComment} style={{ fontSize: '0.75rem', opacity: 0.6 }} />
+          </div>
+        ),
+        cell: ({ row }) => {
+          const order = row.original;
+          const checkIconRef = useRef(null);
+          const commentIconRef = useRef(null);
+          
+          // Parse kontrola metadata
+          let isChecked = false;
+          let checkedBy = null;
+          let checkedDate = null;
+          
+          try {
+            if (order.kontrola_metadata) {
+              const metadata = typeof order.kontrola_metadata === 'string' 
+                ? JSON.parse(order.kontrola_metadata) 
+                : order.kontrola_metadata;
+              isChecked = !!metadata.zkontrolovano;
+              checkedBy = metadata.kontroloval_jmeno;
+              checkedDate = metadata.dt_kontroly;
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+          
+          // Počet komentářů
+          const commentsCount = order.comments_count || 0;
+          const badgeText = commentsCount > 9 ? '9+' : String(commentsCount);
+          
+          return (
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              gap: '0.35rem',
+              padding: '0.25rem 0'
+            }}>
+              {/* Checkbox ikona - horní polovina */}
+              <div ref={checkIconRef}>
+                <SmartTooltip 
+                  text={isChecked 
+                    ? `Zkontrolováno: ${checkedBy || 'Neznámý'}${checkedDate ? ` (${new Date(checkedDate).toLocaleDateString('cs-CZ')})` : ''}` 
+                    : 'Klikněte pro označení jako zkontrolováno'}
+                  icon={isChecked ? 'success' : 'info'}
+                  preferredPosition="top"
+                >
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (onToggleOrderCheck) {
+                        try {
+                          await onToggleOrderCheck(order.id, !isChecked);
+                          if (clearCache) clearCache();
+                        } catch (err) {
+                          console.error('Chyba při změně kontroly:', err);
+                        }
+                      }
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      color: isChecked ? '#10b981' : '#cbd5e1',
+                      cursor: 'pointer',
+                      padding: '0.3rem 0.4rem',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease',
+                      minWidth: '32px',
+                      minHeight: '32px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = isChecked ? '#d1fae5' : '#f3f4f6';
+                      e.currentTarget.style.borderColor = isChecked ? '#10b981' : '#9ca3af';
+                      e.currentTarget.style.color = isChecked ? '#059669' : '#6b7280';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.color = isChecked ? '#10b981' : '#cbd5e1';
+                    }}
+                  >
+                    <FontAwesomeIcon icon={isChecked ? faCheckSquare : faCircle} />
+                  </button>
+                </SmartTooltip>
+              </div>
+              
+              {/* Komentáře ikona - dolní polovina */}
+              <div ref={commentIconRef} style={{ position: 'relative' }}>
+                <SmartTooltip 
+                  text={commentsCount > 0 ? `${commentsCount} komentář${commentsCount === 1 ? '' : (commentsCount < 5 ? 'e' : 'ů')}` : 'Zatím žádné komentáře'}
+                  icon="info"
+                  preferredPosition="top"
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenCommentsTooltip(order, commentIconRef);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      color: commentsCount > 0 ? '#3b82f6' : '#cbd5e1',
+                      cursor: 'pointer',
+                      padding: '0.3rem 0.4rem',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease',
+                      position: 'relative',
+                      minWidth: '32px',
+                      minHeight: '32px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = commentsCount > 0 ? '#eff6ff' : '#f3f4f6';
+                      e.currentTarget.style.borderColor = commentsCount > 0 ? '#3b82f6' : '#9ca3af';
+                      e.currentTarget.style.color = commentsCount > 0 ? '#2563eb' : '#6b7280';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.color = commentsCount > 0 ? '#3b82f6' : '#cbd5e1';
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faComment} />
+                    {commentsCount > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-6px',
+                        right: '-6px',
+                        background: '#ef4444',
+                        color: 'white',
+                        borderRadius: '10px',
+                        padding: '0 4px',
+                        fontSize: '0.65rem',
+                        fontWeight: '700',
+                        minWidth: '16px',
+                        height: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }}>
+                        {badgeText}
+                      </span>
+                    )}
+                  </button>
+                </SmartTooltip>
+              </div>
+            </div>
+          );
+        },
+        size: 50,
         enableSorting: false,
         meta: {
           align: 'center',
@@ -3604,6 +3890,43 @@ const OrdersTableV3 = ({
             </ApprovalDialogContent>
           </ApprovalDialog>
         </ApprovalDialogOverlay>,
+        document.body
+      )}
+      
+      {/* 🆕 Comments Tooltip */}
+      {commentsTooltip.isOpen && ReactDOM.createPortal(
+        <OrderCommentsTooltip
+          orderId={commentsTooltip.orderId}
+          orderNumber={commentsTooltip.orderNumber}
+          iconRef={commentsTooltip.iconRef}
+          onClose={() => setCommentsTooltip({
+            isOpen: false,
+            orderId: null,
+            orderNumber: null,
+            iconRef: null,
+            comments: [],
+            commentsCount: 0,
+            loading: false,
+            error: null,
+          })}
+          comments={commentsTooltip.comments}
+          commentsCount={commentsTooltip.commentsCount}
+          loading={commentsTooltip.loading}
+          error={commentsTooltip.error}
+          currentUserId={userId}
+          onLoadComments={async () => {
+            if (onLoadComments) {
+              const result = await onLoadComments(commentsTooltip.orderId);
+              setCommentsTooltip(prev => ({
+                ...prev,
+                comments: result.comments || [],
+                commentsCount: result.comments_count || 0,
+              }));
+            }
+          }}
+          onAddComment={handleAddCommentInternal}
+          onDeleteComment={handleDeleteCommentInternal}
+        />,
         document.body
       )}
     </>

@@ -2456,28 +2456,14 @@ const ProfilePage = () => {
     try {
       const user_id = userDetail?.uzivatel_id || userDetail?.id;
 
-      // Načíst čerstvá data přímo
+      // ✅ Načíst čerstvá data přímo - BEZ volání refreshUserDetail
+      // fetchFreshUserDetail samo načte data z BE, není potřeba invalidovat token
       const freshData = await fetchFreshUserDetail({ token, username, user_id });
       if (freshData) {
         setProfileData(freshData);
-
-        // Také aktualizovat AuthContext
-        try {
-          const result = await refreshUserDetail?.();
-          if (result === null) {
-            // refreshUserDetail vrátilo null, pravděpodobně došlo k odhlášení
-            if (showToast) {
-              showToast('Profil aktualizován, ale došlo k neočekávané změně stavu účtu.', 'warning');
-            }
-          } else {
-            if (showToast) {
-              showToast('Profil byl úspěšně aktualizován z databáze', 'success');
-            }
-          }
-        } catch (authError) {
-          if (showToast) {
-            showToast('Profil aktualizován, ale došlo k problému s autentizací: ' + authError.message, 'warning');
-          }
+        
+        if (showToast) {
+          showToast('Profil byl úspěšně aktualizován z databáze', 'success');
         }
       } else {
         if (showToast) {
