@@ -29,6 +29,8 @@ import {
   faList,
   faShield,
   faClock,
+  faComment,
+  faCommentDots,
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 
@@ -297,6 +299,8 @@ const STATUS_COLORS = {
   ARCHIVOVANO: { light: '#e5e7eb', dark: '#6b7280', bg: '#f9fafb' },
   WITH_INVOICES: { light: '#e0e7ff', dark: '#6366f1', bg: '#eef2ff' },
   WITH_ATTACHMENTS: { light: '#ddd6fe', dark: '#8b5cf6', bg: '#f5f3ff' },
+  WITH_COMMENTS: { light: '#bfdbfe', dark: '#3b82f6', bg: '#dbeafe' },
+  WITH_MY_COMMENTS: { light: '#a5b4fc', dark: '#6366f1', bg: '#e0e7ff' },
 };
 
 // ============================================================================
@@ -1044,6 +1048,40 @@ const OrdersDashboardV3Full = ({
               </StatIcon>
             </StatHeader>
             <StatLabel>Moje objednávky</StatLabel>
+          </StatCard>
+        )}
+
+        {shouldShowTile(stats.withComments || 0) && (
+          <StatCard
+            $color={STATUS_COLORS.WITH_COMMENTS.dark}
+            $clickable
+            $isActive={activeStatus === 's_komentari'}
+            onClick={() => onStatusClick?.('s_komentari')}
+          >
+            <StatHeader>
+              <StatValue>{stats.withComments || 0}</StatValue>
+              <StatIcon $color={STATUS_COLORS.WITH_COMMENTS.dark}>
+                <FontAwesomeIcon icon={faComment} />
+              </StatIcon>
+            </StatHeader>
+            <StatLabel>S komentářem</StatLabel>
+          </StatCard>
+        )}
+
+        {shouldShowTile(stats.withMyComments || 0) && (
+          <StatCard
+            $color={STATUS_COLORS.WITH_MY_COMMENTS.dark}
+            $clickable
+            $isActive={activeStatus === 's_mymi_komentari'}
+            onClick={() => onStatusClick?.('s_mymi_komentari')}
+          >
+            <StatHeader>
+              <StatValue>{stats.withMyComments || 0}</StatValue>
+              <StatIcon $color={STATUS_COLORS.WITH_MY_COMMENTS.dark}>
+                <FontAwesomeIcon icon={faCommentDots} />
+              </StatIcon>
+            </StatHeader>
+            <StatLabel>S mými komentáři</StatLabel>
           </StatCard>
         )}
         </SmallCardsGrid>

@@ -631,6 +631,7 @@ function Orders25ListV3() {
     showFilters,
     dashboardMode,
     showRowColoring,
+    columnSizing,
   } = useOrdersV3State(user_id);
   
   // State pro inicializaci - skryje obsah až do načtení všech dat
@@ -811,7 +812,7 @@ function Orders25ListV3() {
             behavior: 'smooth', 
             block: 'center' 
           });
-          console.log('✅ Scrolloval na objednávku #' + orderId);
+          // console.log('✅ Scrolloval na objednávku #' + orderId);
         }
       }, 300);
       
@@ -873,17 +874,50 @@ function Orders25ListV3() {
       if (user_id) {
         localStorage.setItem(`ordersV3_columnVisibility_${user_id}`, JSON.stringify(columnVisibility));
         localStorage.setItem(`ordersV3_columnOrder_${user_id}`, JSON.stringify(columnOrder));
+        localStorage.setItem(`ordersV3_columnSizing_${user_id}`, JSON.stringify(columnSizing));
       }
       
-      // TODO: Implementovat uložení do user settings na backend
-      // console.log('💾 Saving column config:', {
-      //   columnVisibility,
-      //   columnOrder,
-      // });
+      // ✅ Uložení do backend user profilu
+      try {
+        const { saveUserSettings, loadSettingsFromLocalStorage } = await import('../services/userSettingsApi');
+        
+        // Načíst aktuální nastavení
+        const currentSettings = loadSettingsFromLocalStorage(user_id) || {};
+        
+        // Přidat/aktualizovat Orders V3 preferences
+        const updatedSettings = {
+          ...currentSettings,
+          ordersV3Preferences: {
+            columnVisibility,
+            columnOrder,
+            columnSizing,
+            showDashboard,
+            showFilters,
+            dashboardMode,
+            showRowColoring,
+            itemsPerPage,
+            selectedPeriod,
+            updatedAt: new Date().toISOString()
+          }
+        };
+        
+        // Uložit do backend
+        await saveUserSettings({
+          token,
+          username,
+          userId: user_id,
+          nastaveni: updatedSettings
+        });
+        
+        showToast?.('✅ Konfigurace sloupců uložena do vašeho profilu', { type: 'success' });
+      } catch (backendError) {
+        console.warn('⚠️ Backend save failed, but localStorage saved:', backendError);
+        showToast?.('⚠️ Konfigurace uložena lokálně (backend nedostupný)', { type: 'warning' });
+      }
       
-      // console.log('✅ Column config saved to localStorage');
     } catch (err) {
       console.error('❌ Error saving column config:', err);
+      showToast?.('❌ Chyba při ukládání konfigurace', { type: 'error' });
     }
   };
 

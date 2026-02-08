@@ -386,8 +386,8 @@ export const getNotificationsList = async (options = {}) => {
 };
 
 /**
- * Počet nepřečtených notifikací
- * ✅ STARÝ API - FUNGUJE - ZACHOVÁNO!
+ * Počet nepřečtených notifikací s informací o barvě badge
+ * ✅ STARÝ API - FUNGUJE - ZACHOVÁNO a rozšířeno!
  */
 export const getUnreadCount = async () => {
   try {
@@ -396,15 +396,20 @@ export const getUnreadCount = async () => {
     const response = await notificationsApi.post('/notifications/unread-count', auth);
     const result = handleApiResponse(response);
 
-    return result.unread_count;
+    // Vrátíme rozšířený objekt s informacemi o barvě badge
+    return {
+      unread_count: result.unread_count || 0,
+      badge_color: result.badge_color || 'gray',
+      priority_info: result.priority_info || []
+    };
 
   } catch (error) {
 
     if (error.response?.status === 404) {
-      return 0;
+      return { unread_count: 0, badge_color: 'gray', priority_info: [] };
     }
 
-    return 0;
+    return { unread_count: 0, badge_color: 'gray', priority_info: [] };
   }
 };
 

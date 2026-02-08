@@ -59,12 +59,25 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
 
   callback: async () => {
     try {
-      // Získání počtu nepřečtených notifikací
-      const unreadCount = await getUnreadCount();
+      // Získání počtu nepřečtených notifikací s informacemi o barvě badge
+      const unreadData = await getUnreadCount();
+      const unreadCount = unreadData.unread_count || unreadData || 0; // Backward compatibility
+      const badgeColor = unreadData.badge_color || 'gray';
 
-      // Callback s aktuálním počtem nepřečtených
+      // 🐛 DEBUG: Log badge color
+      console.log('🔔 [backgroundTasks] unreadData:', unreadData, 'badgeColor:', badgeColor, 'unreadCount:', unreadCount);
+
+      // Callback s aktuálním počtem nepřečtených a informací o barvě
       if (onUnreadCountChange) {
-        onUnreadCountChange(unreadCount);
+        // Rozšíříme callback o badge color informaci
+        if (typeof unreadData === 'object' && unreadData.badge_color) {
+          console.log('✅ [backgroundTasks] Calling onUnreadCountChange with color:', badgeColor);
+          onUnreadCountChange(unreadCount, badgeColor);
+        } else {
+          // Backward compatibility
+          console.log('⚠️ [backgroundTasks] Backward compatibility - no badge_color');
+          onUnreadCountChange(unreadCount);
+        }
       }
 
       // Pokud jsou nové notifikace, načti jejich detaily
@@ -281,11 +294,19 @@ export const createPostOrderActionTask = (callbacks = {}) => ({
     }
 
     try {
-      // 2. Okamžitá kontrola notifikací
-      const unreadCount = await getUnreadCount();
+      // 2. Okamžitá kontrola notifikací s informací o barvě badge
+      const unreadData = await getUnreadCount();
+      const unreadCount = unreadData.unread_count || unreadData || 0; // Backward compatibility
+      const badgeColor = unreadData.badge_color || 'gray';
 
       if (callbacks.onNotificationsChecked) {
-        callbacks.onNotificationsChecked(unreadCount);
+        // Rozšíříme callback o badge color informaci
+        if (typeof unreadData === 'object' && unreadData.badge_color) {
+          callbacks.onNotificationsChecked(unreadCount, badgeColor);
+        } else {
+          // Backward compatibility
+          callbacks.onNotificationsChecked(unreadCount);
+        }
       }
 
       // Načti i detail nových notifikací

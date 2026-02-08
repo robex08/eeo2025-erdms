@@ -508,12 +508,12 @@ const calculateCurrentPhase = (formData) => {
   const phase = stateToPhaseMap[lastState] || 1;
   
   // 🔍 DEBUG: Výpis aktuální fáze
-  console.log('🔍 WORKFLOW MANAGER - CALCULATE PHASE:', {
-    stav_workflow_kod: formData.stav_workflow_kod,
-    workflowStates: workflowStates,
-    lastState: lastState,
-    calculatedPhase: phase
-  });
+  // console.log('🔍 WORKFLOW MANAGER - CALCULATE PHASE:', {
+  //   stav_workflow_kod: formData.stav_workflow_kod,
+  //   workflowStates: workflowStates,
+  //   lastState: lastState,
+  //   calculatedPhase: phase
+  // });
 
   return phase;
 };

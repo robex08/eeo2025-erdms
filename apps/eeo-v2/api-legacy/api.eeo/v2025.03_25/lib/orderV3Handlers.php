@@ -872,6 +872,17 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id AND p.aktivni = 1)";
         }
         
+        // Filtr pro objednávky s komentáři (všemi)
+        if (!empty($filters['s_komentari']) && $filters['s_komentari'] === true) {
+            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom WHERE kom.objednavka_id = o.id AND kom.smazano = 0)";
+        }
+        
+        // Filtr pro objednávky s mými komentáři
+        if (!empty($filters['s_mymi_komentari']) && $filters['s_mymi_komentari'] === true) {
+            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom WHERE kom.objednavka_id = o.id AND kom.user_id = ? AND kom.smazano = 0)";
+            $where_params[] = $user_id;
+        }
+        
         // ========================================================================
         // ❌ DUPLIKÁTNÍ LP FILTR ODSTRANĚN (řádky 854-871)
         // Důvod: LP kódy jsou uloženy v JSON poli o.financovani.lp_kody (hlavička objednávky),
@@ -1370,7 +1381,14 @@ function handle_order_v3_list($input, $config, $queries) {
                  FROM 25a_objednavky_komentare kom
                  WHERE kom.objednavka_id = o.id AND kom.smazano = 0
                  ORDER BY kom.dt_vytvoreni DESC
-                 LIMIT 1) as last_comment_date
+                 LIMIT 1) as last_comment_date,
+                
+                -- 🆕 Zjistit, zda aktuální uživatel reagoval na nějaký komentář
+                (SELECT COUNT(*) > 0
+                 FROM 25a_objednavky_komentare kom
+                 WHERE kom.objednavka_id = o.id 
+                   AND kom.user_id = ?
+                   AND kom.smazano = 0) as user_has_replied
                 
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
@@ -1390,8 +1408,11 @@ function handle_order_v3_list($input, $config, $queries) {
         error_log("[OrderV3 SQL] Admin status: " . ($is_admin_v2 ? 'ADMIN' : 'USER'));
         error_log("[OrderV3 SQL] FULL QUERY: " . str_replace("\n", " ", substr($sql_orders, 0, 500)) . "...");
         
+        // Přidat user_id pro subselect user_has_replied
+        $final_params = array_merge($where_params, [$user_id]);
+        
         $stmt_orders = $db->prepare($sql_orders);
-        $stmt_orders->execute($where_params);
+        $stmt_orders->execute($final_params);
         $orders = $stmt_orders->fetchAll(PDO::FETCH_ASSOC);
         
         error_log("[OrderV3 RESULT] Returned orders count: " . count($orders));
@@ -1625,7 +1646,25 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                     o.schvalovatel_id = ?
                 THEN 1 
                 ELSE 0 
-            END) as mojeObjednavky
+            END) as mojeObjednavky,
+            -- S KOMENTÁŘI (VŠEMI)
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom 
+                    WHERE kom.objednavka_id = o.id AND kom.smazano = 0
+                ) THEN 1 
+                ELSE 0 
+            END) as withComments,
+            -- S MÝMI KOMENTÁŘI
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom 
+                    WHERE kom.objednavka_id = o.id 
+                      AND kom.user_id = ? 
+                      AND kom.smazano = 0
+                ) THEN 1 
+                ELSE 0 
+            END) as withMyComments
         FROM " . TBL_OBJEDNAVKY . " o
         LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
         LEFT JOIN " . TBL_UZIVATELE . " u1 ON o.objednatel_id = u1.id
@@ -1635,8 +1674,8 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
         WHERE $where_clause
     ";
     
-    // Parametry: user_id (4x pro "moje objednávky" count) + where_params
-    $stmt_params = array_merge(array($user_id, $user_id, $user_id, $user_id), $where_params);
+    // Parametry: user_id (4x pro "moje objednávky" count) + user_id (pro "s mými komentáři") + where_params
+    $stmt_params = array_merge(array($user_id, $user_id, $user_id, $user_id, $user_id), $where_params);
     error_log("[OrderV3 STATS] SQL params count: " . count($stmt_params) . ", values: " . json_encode($stmt_params));
     $stmt_stats = $db->prepare($sql_stats);
     $stmt_stats->execute($stmt_params);
@@ -1799,13 +1838,31 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
                     o.schvalovatel_id = ?
                 THEN 1 
                 ELSE 0 
-            END) as mojeObjednavky
+            END) as mojeObjednavky,
+            -- S KOMENTÁŘI (VŠEMI)
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom 
+                    WHERE kom.objednavka_id = o.id AND kom.smazano = 0
+                ) THEN 1 
+                ELSE 0 
+            END) as withComments,
+            -- S MÝMI KOMENTÁŘI
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom 
+                    WHERE kom.objednavka_id = o.id 
+                      AND kom.user_id = ? 
+                      AND kom.smazano = 0
+                ) THEN 1 
+                ELSE 0 
+            END) as withMyComments
         FROM " . TBL_OBJEDNAVKY . " o
         WHERE o.aktivni = 1 AND YEAR(o.dt_objednavky) = ?
     ";
     
     $stmt_stats = $db->prepare($sql_stats);
-    $stmt_stats->execute(array($user_id, $user_id, $user_id, $user_id, $year));
+    $stmt_stats->execute(array($user_id, $user_id, $user_id, $user_id, $user_id, $year));
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
     
     // Celková cena s DPH - priorita: faktury > položky > max_cena_s_dph
@@ -1928,7 +1985,8 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana', 
         'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnene', 
         'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena', 
-        'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky'
+        'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
+        'withComments', 'withMyComments'
     );
     
     foreach ($counter_fields as $field) {

@@ -2637,7 +2637,7 @@ const OrdersTableV3 = ({
                       background: 'transparent',
                       border: '1px solid #d1d5db',
                       borderRadius: '4px',
-                      color: commentsCount > 0 ? '#3b82f6' : '#cbd5e1',
+                      color: commentsCount === 0 ? '#cbd5e1' : (order.user_has_replied ? '#a855f7' : '#3b82f6'),
                       cursor: 'pointer',
                       padding: '0.3rem 0.4rem',
                       fontSize: '1rem',
@@ -2650,14 +2650,15 @@ const OrdersTableV3 = ({
                       minHeight: '32px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = commentsCount > 0 ? '#eff6ff' : '#f3f4f6';
-                      e.currentTarget.style.borderColor = commentsCount > 0 ? '#3b82f6' : '#9ca3af';
-                      e.currentTarget.style.color = commentsCount > 0 ? '#2563eb' : '#6b7280';
+                      const hasReplied = order.user_has_replied;
+                      e.currentTarget.style.background = commentsCount > 0 ? (hasReplied ? '#faf5ff' : '#eff6ff') : '#f3f4f6';
+                      e.currentTarget.style.borderColor = commentsCount > 0 ? (hasReplied ? '#a855f7' : '#3b82f6') : '#9ca3af';
+                      e.currentTarget.style.color = commentsCount > 0 ? (hasReplied ? '#9333ea' : '#2563eb') : '#6b7280';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'transparent';
                       e.currentTarget.style.borderColor = '#d1d5db';
-                      e.currentTarget.style.color = commentsCount > 0 ? '#3b82f6' : '#cbd5e1';
+                      e.currentTarget.style.color = commentsCount === 0 ? '#cbd5e1' : (order.user_has_replied ? '#a855f7' : '#3b82f6');
                     }}
                   >
                     <FontAwesomeIcon icon={faComment} />

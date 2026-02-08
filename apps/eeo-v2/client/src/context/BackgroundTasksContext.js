@@ -25,6 +25,8 @@ export const useBackgroundTasks = () => {
 export const BackgroundTasksProvider = ({ children }) => {
   // Počet nepřečtených notifikací
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  // Barva badge u zvonečku podle priority notifikací
+  const [notificationsBadgeColor, setNotificationsBadgeColor] = useState('gray');
 
   // Reference na callbacky pro jednotlivé úlohy
   const ordersRefreshCallbackRef = useRef(null);
@@ -98,15 +100,22 @@ export const BackgroundTasksProvider = ({ children }) => {
   }, []);
 
   /**
-   * Callback pro změnu počtu nepřečtených notifikací
+   * Callback pro změnu počtu nepřečtených notifikací s informací o barvě badge
    */
-  const handleUnreadCountChange = useCallback((count) => {
+  const handleUnreadCountChange = useCallback((count, badgeColor = 'gray') => {
+    console.log('🎯 [BackgroundTasksContext] handleUnreadCountChange called:', { count, badgeColor });
     setUnreadNotificationsCount(count);
+    setNotificationsBadgeColor(badgeColor);
+    console.log('🎯 [BackgroundTasksContext] State updated:', { 
+      unreadNotificationsCount: count, 
+      notificationsBadgeColor: badgeColor 
+    });
 
     if (notificationsCallbackRef.current) {
       try {
-        notificationsCallbackRef.current(count);
+        notificationsCallbackRef.current(count, badgeColor);
       } catch (error) {
+        console.error('❌ [BackgroundTasksContext] Error in callback:', error);
       }
     }
   }, []);
@@ -139,6 +148,7 @@ export const BackgroundTasksProvider = ({ children }) => {
   const value = {
     // State
     unreadNotificationsCount,
+    notificationsBadgeColor,
 
     // Registrace callbacků
     registerOrdersRefreshCallback,
