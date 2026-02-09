@@ -1536,6 +1536,7 @@ const OrdersTableV3 = ({
   canExportDocument = () => true,
   canDelete = () => false,
   canHardDelete = () => false,
+  canGenerateFinancialControl = true, // 🔒 Kontrola oprávnění pro finanční kontrolu
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
   highlightOrderId = null, // 🎯 ID objednávky k zvýraznění po návratu z editace
@@ -2562,6 +2563,14 @@ const OrdersTableV3 = ({
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
+                      // 🔒 Kontrola permission - pokud nemá právo, nedělat nic
+                      if (!canGenerateFinancialControl) {
+                        if (showToast) {
+                          showToast('❌ Nemáte oprávnění pro kontrolu objednávek', { type: 'error' });
+                        }
+                        return;
+                      }
+                      
                       if (onToggleOrderCheck) {
                         try {
                           const result = await onToggleOrderCheck(order.id, !isChecked);
@@ -2603,7 +2612,8 @@ const OrdersTableV3 = ({
                       border: `1px solid ${statusBorder}`,
                       borderRadius: '4px',
                       color: statusColor,
-                      cursor: 'pointer',
+                      cursor: canGenerateFinancialControl ? 'pointer' : 'not-allowed',
+                      opacity: canGenerateFinancialControl ? 1 : 0.5,
                       padding: '0.3rem 0.4rem',
                       fontSize: '1rem',
                       display: 'flex',
@@ -2614,14 +2624,18 @@ const OrdersTableV3 = ({
                       minHeight: '32px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = hoverBg;
-                      e.currentTarget.style.borderColor = hoverBorder;
-                      e.currentTarget.style.color = hoverColor;
+                      if (canGenerateFinancialControl) {
+                        e.currentTarget.style.background = hoverBg;
+                        e.currentTarget.style.borderColor = hoverBorder;
+                        e.currentTarget.style.color = hoverColor;
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = hasBeenChecked ? checkboxBg : statusBg;
-                      e.currentTarget.style.borderColor = statusBorder;
-                      e.currentTarget.style.color = statusColor;
+                      if (canGenerateFinancialControl) {
+                        e.currentTarget.style.background = hasBeenChecked ? checkboxBg : statusBg;
+                        e.currentTarget.style.borderColor = statusBorder;
+                        e.currentTarget.style.color = statusColor;
+                      }
                     }}
                   >
                     <FontAwesomeIcon icon={checkStatus === 'unchecked' ? farSquare : faCheckSquare} />
