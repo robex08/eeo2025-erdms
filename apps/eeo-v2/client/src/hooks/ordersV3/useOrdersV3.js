@@ -380,7 +380,6 @@ export function useOrdersV3({
     const currentDashboard = currentDashboardFilters.current;
     if (currentDashboard.filter_status) {
       const statusKey = currentDashboard.filter_status;
-      console.log('🎯 Dashboard Filter Active:', statusKey);
       
       // Special filtry (nemění stav)
       if (statusKey === 'moje_objednavky') {
@@ -423,16 +422,12 @@ export function useOrdersV3({
         if (mappedStatus) {
           // ✅ Backend očekává filters.stav jako POLE (i když je jen 1 hodnota)
           activeFilters.stav = Array.isArray(mappedStatus) ? mappedStatus : [mappedStatus];
-          console.log('✅ Mapped to backend:', activeFilters.stav);
         } else {
           // Fallback pro neznámé hodnoty
-          console.warn('⚠️ Unknown dashboard status:', statusKey);
           activeFilters.stav = [statusKey.toUpperCase()];
         }
       }
     }
-    
-    console.log('📤 Final filters sent to API:', activeFilters);
     
     // ✅ Volání optimalizované API funkce s cache a deduplication
     // console.log('📤 API Request payload:', {
@@ -748,18 +743,6 @@ export function useOrdersV3({
    * IncludeS globalFilter pro fulltext search!
    */
   useEffect(() => {
-    console.log('🔄 useEffect triggered - loading orders', {
-      token: !!token,
-      username: !!username,
-      currentPage,
-      itemsPerPage,
-      selectedPeriod,
-      columnFilters,
-      dashboardFilters,
-      globalFilter,
-      sorting
-    });
-    
     if (token && username) {
       loadOrders(globalFilter); // ✅ Používej globalFilter i v základním načtení
     }
