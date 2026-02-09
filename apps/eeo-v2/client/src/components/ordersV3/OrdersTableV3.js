@@ -1595,6 +1595,22 @@ const OrdersTableV3 = ({
   
   // ✅ Synchronizace external columnFilters s local state s REVERSE mapováním
   useEffect(() => {
+    const filterKeys = Object.keys(columnFilters);
+    
+    // 🐛 FIX: Zkontrolovat, jestli jsou VŠECHNY hodnoty prázdné (clear all)
+    const allEmpty = filterKeys.length === 0 || filterKeys.every(key => {
+      const value = columnFilters[key];
+      if (Array.isArray(value)) return value.length === 0;
+      if (typeof value === 'boolean') return value === false;
+      return value === '' || value === null || value === undefined;
+    });
+    
+    if (allEmpty) {
+      // Všechny filtry jsou prázdné → vymaž všechny lokální filtry
+      setLocalColumnFilters({});
+      return;
+    }
+    
     // Mapuj backend formát na UI formát (POUZE změněné hodnoty, ne celý objekt)
     const mappedFilters = {};
     
