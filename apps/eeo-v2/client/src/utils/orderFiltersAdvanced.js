@@ -274,7 +274,7 @@ export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) =
   // 🔧 MAPOVÁNÍ: České názvy → Systémové kódy
   const czechToSystemCode = {
     'Nová': 'NOVA',
-    'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI',
     'Schválená': 'SCHVALENA',
     'Zamítnutá': 'ZAMITNUTA',
     'Čeká se': 'CEKA_SE',
@@ -290,21 +290,83 @@ export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) =
     'Vyřízená': 'VYRIZENA',
     'Zrušená': 'ZRUSENA',
     'Smazaná': 'SMAZANA',
-    'Archivováno': 'ARCHIVOVANO'
+    'Archivováno': 'ARCHIVOVANO',
+    // Další varianty
+    'Koncept': 'NOVA',
+    'Draft': 'NOVA'
   };
 
-  // Získej systémový stav objednávky (bere v úvahu registr_smluv)
-  const systemStatus = getOrderSystemStatus(order);
+  // 🔧 OBOUSMĚRNÉ MAPOVÁNÍ: Systémové kódy → České názvy (pro případ, že displayStatus obsahuje systémový kód)
+  const systemCodeToCzech = {
+    'NOVA': 'Nová',
+    'ODESLANA_KE_SCHVALENI': 'Ke schválení',
+    'SCHVALENA': 'Schválená',
+    'ZAMITNUTA': 'Zamítnutá',
+    'CEKA_SE': 'Čeká se',
+    'ROZPRACOVANA': 'Rozpracovaná',
+    'ODESLANA': 'Odeslaná dodavateli',
+    'POTVRZENA': 'Potvrzená dodavatelem',
+    'K_UVEREJNENI_DO_REGISTRU': 'Ke zveřejnění',
+    'UVEREJNENA': 'Zveřejněno',
+    'FAKTURACE': 'Fakturace',
+    'CEKA_POTVRZENI': 'Čeká na potvrzení',
+    'VECNA_SPRAVNOST': 'Věcná správnost',
+    'DOKONCENA': 'Dokončená',
+    'VYRIZENA': 'Vyřízená',
+    'ZRUSENA': 'Zrušená',
+    'SMAZANA': 'Smazaná',
+    'ARCHIVOVANO': 'Archivováno'
+  };
+
+  // 🔥 FIX: Získej OBOJE - český název z DB i systémový kód
+  const czechStatus = order.stav_objednavky; // České názvy z DB: "Ke schválení", "Dokončená", atd.
+  const systemStatus = getOrderSystemStatus(order); // Systémové kódy: "ODESLANA_KE_SCHVALENI", "DOKONCENA", atd.
   
-  if (!systemStatus) {
-    return statusFilter.includes('Nová') || statusFilter.includes('Koncept');
+  // 🐛 DEBUG
+  if (statusFilter.includes('Ke schválení') && order.id < 165) {
+    console.log('🔍 filterByStatusArray DEBUG:', {
+      orderId: order.id,
+      filterValue: statusFilter,
+      czechStatus,
+      systemStatus,
+      match: czechStatus === 'Ke schválení'
+    });
+  }
+  
+  if ((!czechStatus && !systemStatus) || systemStatus === 'DRAFT') {
+    return statusFilter.includes('Nová') || statusFilter.includes('Koncept') || statusFilter.includes('NOVA') || statusFilter.includes('Draft');
   }
 
-  // Porovnej systémový stav s filtrem
+  // 🎯 Porovnej s OBOJE - český název i systémový kód
   return statusFilter.some(filterValue => {
+    // 1. PRIORITA: Přímé porovnání českého názvu (dlaždice → DB české názvy)
+    if (czechStatus && filterValue === czechStatus) {
+      return true;
+    }
+    
+    // 2. Mapování českého názvu na systémový kód (sloupcový filtr)
     const expectedSystemCode = czechToSystemCode[filterValue];
-    // Porovnej buď systémový kód nebo přímou shodu
-    return expectedSystemCode === systemStatus || filterValue === systemStatus;
+    if (expectedSystemCode && expectedSystemCode === systemStatus) {
+      return true;
+    }
+    
+    // 3. Přímé porovnání systémového kódu (fallback)
+    if (filterValue === systemStatus) {
+      return true;
+    }
+    
+    // 4. Systémový kód v malých písmenech
+    if (filterValue.toUpperCase() === systemStatus) {
+      return true;
+    }
+    
+    // 5. Porovnání českého překladu systémového kódu (fallback)
+    const czechFromSystem = systemCodeToCzech[systemStatus];
+    if (czechFromSystem && removeDiacritics(czechFromSystem.toLowerCase()) === removeDiacritics(filterValue.toLowerCase())) {
+      return true;
+    }
+    
+    return false;
   });
 };
 
