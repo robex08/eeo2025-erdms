@@ -189,14 +189,26 @@ export function useOrderPermissions(hasPermission, userId) {
  * @param {Object} order - Objednávka
  * @param {number} userId - User ID
  * @returns {boolean}
+ * 
+ * ⚠️ POZOR: Backend API vrací některá pole s jiným názvem než v DB!
+ * - DB: garant_uzivatel_id → API: garant_id
+ * - Proto kontrolujeme obě varianty (compatibility)
  */
 function isUserInOrderRole(order, userId) {
   return (
     order.objednatel_id === userId ||
     order.uzivatel_id === userId ||
-    order.garant_uzivatel_id === userId ||
+    order.garant_uzivatel_id === userId || // ⚠️ Orders25List starý formát
+    order.garant_id === userId ||           // ✅ Orders V3 API formát
     order.schvalovatel_id === userId ||
-    order.prikazce_id === userId
+    order.prikazce_id === userId ||
+    order.uzivatel_akt_id === userId ||
+    order.odesilatel_id === userId ||
+    order.dodavatel_potvrdil_id === userId ||
+    order.zverejnil_id === userId ||
+    order.fakturant_id === userId ||
+    order.dokoncil_id === userId ||
+    order.potvrdil_vecnou_spravnost_id === userId
   );
 }
 

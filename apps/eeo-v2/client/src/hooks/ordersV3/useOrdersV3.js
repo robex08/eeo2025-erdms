@@ -262,30 +262,28 @@ export function useOrdersV3({
       backendFilters.cena_max_do = filters.amountTo;
     }
     
-    // Boolean filtry
-    if (filters.maBytZverejneno) {
-      backendFilters.ma_byt_zverejneno = true;
-    }
-    if (filters.byloZverejneno) {
-      backendFilters.bylo_zverejneno = true;
-    }
+    // Boolean filtry - mimořádné události
     if (filters.mimoradneObjednavky) {
       backendFilters.mimoradne_udalosti = true;
     }
     
-    // Stav registru (checkboxy) - konverze na pole pro backend
+    // ========================================================================
+    // STAV REGISTRU (checkboxy: maBytZverejneno, byloZverejneno)
+    // ========================================================================
     // Frontend používá: maBytZverejneno, byloZverejneno checkboxy
-    // Backend očekává: stav_registru pole ['publikovano', 'nepublikovano', 'nezverejnovat']
+    // Backend očekává: stav_registru pole ['publikovano', 'nepublikovano']
+    // 
+    // Logika:
+    // - byloZverejneno checked → 'publikovano' (dt_zverejneni IS NOT NULL)
+    // - maBytZverejneno checked → 'nepublikovano' (zverejnit IS NOT NULL AND dt_zverejneni IS NULL)
+    // - Obě checked → obě hodnoty v poli
+    // - Nic checked → nefiltrovat
     const stavRegistru = [];
     if (filters.byloZverejneno) {
       stavRegistru.push('publikovano');
     }
-    if (filters.maBytZverejneno && !filters.byloZverejneno) {
+    if (filters.maBytZverejneno) {
       stavRegistru.push('nepublikovano');
-    }
-    if (!filters.maBytZverejneno && !filters.byloZverejneno) {
-      // Pokud nic není zaškrtnuté, mohlo by to znamenat "nezveřejňovat"
-      // Ale podle logiky je lepší to vůbec nefiltrovat
     }
     if (stavRegistru.length > 0) {
       backendFilters.stav_registru = stavRegistru;
@@ -709,9 +707,13 @@ export function useOrdersV3({
    */
   useEffect(() => {
     if (token && username) {
-      // console.log('🔍 useOrdersV3 effect triggered, globalFilter:', globalFilter);
       loadOrders(globalFilter); // ✅ Používej globalFilter i v základním načtení
     }
+    
+    // ✅ CLEANUP: Cancel předchozího requestu při změně filtrů
+    return () => {
+      cancelCurrentRequest();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     token,

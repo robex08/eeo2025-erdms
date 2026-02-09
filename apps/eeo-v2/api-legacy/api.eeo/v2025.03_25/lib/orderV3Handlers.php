@@ -485,6 +485,9 @@ function handle_order_v3_list($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     
+    // DEBUG: Log celý input
+    error_log("[OrderV3 DEBUG] Full input: " . json_encode($input));
+    
     if (!$token || !$username) {
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
@@ -522,6 +525,7 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // 6. Filtry
         $filters = isset($input['filters']) ? $input['filters'] : array();
+        error_log("[OrderV3 FULLTEXT] Received filters: " . json_encode($filters));
         
         // 7. Třídění
         $sorting = isset($input['sorting']) ? $input['sorting'] : array();
@@ -963,34 +967,6 @@ function handle_order_v3_list($input, $config, $queries) {
                             LOWER(ux.email) LIKE LOWER(?)
                         )
                     ) OR
-                    -- Hledání v smlouvách (číslo a název) + JSON individuální schválení 
-                    EXISTS (
-                        SELECT 1 FROM " . TBL_SMLOUVY . " s
-                        WHERE s.aktivni = 1 AND (
-                            LOWER(s.cislo_smlouvy) LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                s.nazev_smlouvy, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                s.poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?)
-                        )
-                    ) OR
-                    -- Hledání v individuálním schválení z JSON financování
-                    LOWER(JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni'))) LIKE LOWER(?) OR
-                    -- Hledání v LP kódech z tabulky
-                    EXISTS (
-                        SELECT 1 FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
-                        WHERE (
-                            LOWER(lp.cislo_lp) LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                lp.nazev_uctu, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?)
-                        ) AND (
-                            -- Hledání LP kódu v JSON financování
-                            JSON_SEARCH(JSON_EXTRACT(o.financovani, '$.doplnujici_data.lp_kod'), 'one', CAST(lp.id AS CHAR)) IS NOT NULL
-                        )
-                    ) OR
                     EXISTS (
                         SELECT 1 FROM " . TBL_FAKTURY . " f 
                         WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (
@@ -1036,18 +1012,19 @@ function handle_order_v3_list($input, $config, $queries) {
                 // Přidáme parametry: první běžný pattern, zbytek bez diakritiky
                 $where_params[] = $search_pattern; // cislo_objednavky (číselné, bez diakritiky)
                 
-                // SPRÁVNÝ POČET PARAMETRŮ (celkem 27):
+                // SPRÁVNÝ POČET PARAMETRŮ (celkem 22):
                 // - 3 základní (predmet, poznamka, dodavatel)
                 // - 8 uživatelé u1-u4 (4 jména + 4 emaily)
                 // - 2 dodatečni uživatelé EXISTS (jmeno+email)
-                // - 4 smlouvy (cislo, nazev, poznamka + JSON)
-                // - 2 LP kódy (cislo_lp, nazev_uctu)
-                // - 8 původních (4 faktury + 2 přílohy + 2 položky)
-                for ($i = 0; $i < 27; $i++) {
+                // - 4 faktury (cislo, poznamka, vecna_spravnost, umisteni_majetku)
+                // - 2 přílohy (nazev_souboru, typ_prilohy)
+                // - 2 položky (popis, poznamka)
+                // ODSTRANĚNO: 3 smlouvy + 1 JSON individualni_schvaleni + 2 LP kódy (neměly vazbu na objednávku)
+                for ($i = 0; $i < 21; $i++) {
                     $where_params[] = $search_pattern_no_diacritics; // textové sloupce
                 }
                 
-                // error_log("[OrderV3] Fulltext search applied: '$search_term' (normalized: '$search_term_no_diacritics')");
+                error_log("[OrderV3 FULLTEXT] Fulltext search applied: '$search_term' (normalized: '$search_term_no_diacritics')");
             }
         }
         
@@ -1151,16 +1128,16 @@ function handle_order_v3_list($input, $config, $queries) {
             foreach ($filters['stav_registru'] as $stav) {
                 switch ($stav) {
                     case 'publikovano':
-                        // Bylo zveřejněno v registru (existuje dt_zverejneni)
-                        $stav_conditions[] = "o.dt_zverejneni IS NOT NULL";
+                        // Bylo zveřejněno v registru (dt_zverejneni IS NOT NULL NEBO stav "Uveřejněna v registru smluv")
+                        $stav_conditions[] = "(o.dt_zverejneni IS NOT NULL OR o.stav_objednavky = 'Uveřejněna v registru smluv')";
                         break;
                     case 'nepublikovano':
-                        // Má být zveřejněno (zverejnit IS NOT NULL), ale ještě nebylo (dt_zverejneni IS NULL)
-                        $stav_conditions[] = "(o.zverejnit IS NOT NULL AND o.dt_zverejneni IS NULL)";
+                        // Má být zveřejněno = stav "Ke zveřejnění" (teprv bude), ale ještě nebylo (dt_zverejneni IS NULL)
+                        $stav_conditions[] = "(o.stav_objednavky = 'Ke zveřejnění' AND o.dt_zverejneni IS NULL)";
                         break;
                     case 'nezverejnovat':
-                        // Nemá být vůbec zveřejněno (zverejnit IS NULL)
-                        $stav_conditions[] = "o.zverejnit IS NULL";
+                        // Nemá být vůbec zveřejněno - stav "NEUVEREJNIT" nebo jiné neaktivní stavy
+                        $stav_conditions[] = "(o.stav_objednavky = 'NEUVEREJNIT' OR (o.stav_objednavky NOT IN ('Ke zveřejnění', 'Uveřejněna v registru smluv') AND o.dt_zverejneni IS NULL))";
                         break;
                 }
             }
