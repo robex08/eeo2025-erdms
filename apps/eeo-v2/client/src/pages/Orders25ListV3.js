@@ -535,6 +535,7 @@ function Orders25ListV3() {
     canDelete,
     canHardDelete,
     canViewDetails,
+    canGenerateFinancialControl,
   } = useOrderPermissions(hasPermission, currentUserId);
 
   // ✅ Permission funkce nyní v useOrderPermissions hook
@@ -1512,6 +1513,7 @@ function Orders25ListV3() {
         canExportDocument={canExportDocument}
         canDelete={canDelete}
         canHardDelete={canHardDelete}
+        canGenerateFinancialControl={canGenerateFinancialControl()}
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
@@ -1560,6 +1562,7 @@ function Orders25ListV3() {
           canApprove={canApprove(contextMenu.order)}
           canAddComment={canAddComment(contextMenu.order)}
           canToggleCheck={canToggleCheck()}
+          canGenerateFinancialControl={canGenerateFinancialControl()}
         />
       )}
 

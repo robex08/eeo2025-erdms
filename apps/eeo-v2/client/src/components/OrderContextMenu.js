@@ -108,6 +108,7 @@ const MenuLabel = styled.span`
  * @param {boolean} props.canApprove - Je uživatel příkazce této objednávky?
  * @param {boolean} props.canAddComment - Má uživatel právo přidat komentář?
  * @param {boolean} props.canToggleCheck - Má uživatel právo kontrolovat objednávku?
+ * @param {boolean} props.canGenerateFinancialControl - Má uživatel právo generovat finanční kontrolu?
  * @param {Object} props.selectedData - Vybraná data (buňka nebo řádek)
  */
 export const OrderContextMenu = ({
@@ -128,6 +129,7 @@ export const OrderContextMenu = ({
   canApprove = false,
   canAddComment = false,
   canToggleCheck = false,
+  canGenerateFinancialControl: canGenerateFinancialControlProp = false, // ✅ Default false - vyžaduje explicitní právo
   selectedData = null
 }) => {
   const menuRef = useRef(null);
@@ -224,6 +226,9 @@ export const OrderContextMenu = ({
   // Funkce pro kontrolu, zda může být generována finanční kontrola
   const canGenerateFinancialControl = () => {
     if (!order) return false;
+    
+    // 🔒 Kontrola permission - pokud nemá právo, vrátit false
+    if (!canGenerateFinancialControlProp) return false;
 
     // ✅ Finanční kontrola je dostupná POUZE pro stav DOKONCENA
     let workflowStates = [];
@@ -621,7 +626,9 @@ export const OrderContextMenu = ({
         disabled={!canGenerateFinancialControl()}
         onClick={() => { if (canGenerateFinancialControl() && onGenerateFinancialControl) { onGenerateFinancialControl(order); onClose(); } }}
         title={
-          !canGenerateFinancialControl()
+          !canGenerateFinancialControlProp
+            ? 'Nemáte oprávnění pro generování finanční kontroly'
+            : !canGenerateFinancialControl()
             ? 'Finanční kontrola je dostupná pouze pro objednávky ve stavu DOKONČENA'
             : 'Generovat finanční kontrolu (PDF/tisk)'
         }
