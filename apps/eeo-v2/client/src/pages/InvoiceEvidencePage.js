@@ -2727,8 +2727,15 @@ export default function InvoiceEvidencePage() {
       const is423Error = err?.response?.status === 423 || err?.message?.includes('423') || err?.message?.includes('zamčen');
       
       if (is423Error) {
-        setError('Objednávka je zamčená jiným uživatelem');
-        showToast && showToast('Objednávka je zamčená jiným uživatelem', 'error');
+        // Získej jméno uživatele, který má objednávku zamčenou
+        const lockInfo = err?.response?.data?.lock_info;
+        const lockedByUser = lockInfo?.locked_by_user_fullname || lockInfo?.locked_by_user_email || 'jiným uživatelem';
+        const errorMessage = lockedByUser === 'jiným uživatelem' 
+          ? 'Objednávka je zamčená jiným uživatelem'
+          : `Objednávka je zamčená uživatelem: ${lockedByUser}`;
+        
+        setError(errorMessage);
+        showToast && showToast(errorMessage, 'error');
         setOrderLoading(false);
         // Naviguj zpět na seznam faktur
         setTimeout(() => {
