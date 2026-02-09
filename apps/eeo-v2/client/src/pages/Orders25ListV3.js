@@ -523,6 +523,10 @@ function Orders25ListV3() {
   // Prefer ToastContext, fallback to ProgressContext
   const showToast = toastShowToast || progressShowToast;
 
+  // 🐛 CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
+  // Musíme konvertovat na number pro správné porovnání v permissions
+  const currentUserId = useMemo(() => parseInt(user_id, 10), [user_id]);
+
   // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
   const {
     canEdit,
@@ -531,7 +535,7 @@ function Orders25ListV3() {
     canDelete,
     canHardDelete,
     canViewDetails,
-  } = useOrderPermissions(hasPermission, user_id);
+  } = useOrderPermissions(hasPermission, currentUserId);
 
   // ✅ Permission funkce nyní v useOrderPermissions hook
 
@@ -543,6 +547,17 @@ function Orders25ListV3() {
     const saved = localStorage.getItem(`ordersV3_globalFilter_${user_id}`);
     return saved || '';
   });
+
+  // ✅ DEBOUNCED globalFilter - zpoždění 400ms pro omezení API requestů
+  const [debouncedGlobalFilter, setDebouncedGlobalFilter] = useState(globalFilter);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedGlobalFilter(globalFilter);
+    }, 400); // 400ms debounce - vhodné pro fulltext search
+
+    return () => clearTimeout(timer);
+  }, [globalFilter]);
 
   // State pro číselník stavů (načítá se z API)
   const [orderStatesList, setOrderStatesList] = useState([]);
@@ -605,7 +620,7 @@ function Orders25ListV3() {
     showProgress,
     hideProgress,
     sorting: sorting,
-    globalFilter: globalFilter, // ✅ Předání globalFilter do hooku
+    globalFilter: debouncedGlobalFilter, // ✅ Použití debounced hodnoty pro API requesty
   });
 
   // ✅ VIRTUALIZATION: Automatic based na data size (declared after orders)
@@ -1227,7 +1242,7 @@ function Orders25ListV3() {
   
   // canAddComment - kontrola zda je uživatel účastník objednávky (12 rolí) nebo admin
   const canAddComment = useCallback((order) => {
-    if (!order || !user_id) return false;
+    if (!order || !currentUserId || isNaN(currentUserId)) return false;
     
     // Admin role
     const isAdmin = hasPermission('SUPERADMIN') || 
@@ -1237,10 +1252,12 @@ function Orders25ListV3() {
     if (isAdmin) return true;
     
     // 12 rolí účastníků objednávky
+    // ⚠️ POZOR: Backend API vrací některá pole s jiným názvem!
+    // - garant_uzivatel_id (DB) → garant_id (API)
     const participantRoles = [
       order.uzivatel_id,                        // 1. Autor
       order.objednatel_id,                      // 2. Objednatel
-      order.garant_uzivatel_id,                 // 3. Garant
+      order.garant_uzivatel_id || order.garant_id, // 3. Garant (compatibility s oběma formáty)
       order.schvalovatel_id,                    // 4. Schvalovatel
       order.prikazce_id,                        // 5. Příkazce
       order.uzivatel_akt_id,                    // 6. Aktualizoval
@@ -1252,8 +1269,8 @@ function Orders25ListV3() {
       order.potvrdil_vecnou_spravnost_id,       // 12. Potvrdil věcnou správnost
     ];
     
-    return participantRoles.some(roleId => String(roleId) === String(user_id));
-  }, [user_id, hasPermission]);
+    return participantRoles.some(roleId => roleId === currentUserId);
+  }, [currentUserId, hasPermission]);
 
   // canToggleCheck - pouze SUPERADMIN, ADMINISTRATOR, KONTROLOR_OBJEDNAVEK
   const canToggleCheck = useCallback(() => {
@@ -1266,7 +1283,7 @@ function Orders25ListV3() {
   const canApprove = useCallback((order) => {
     if (!order) return false;
     
-    const isPrikazce = String(order.prikazce_id) === String(user_id);
+    const isPrikazce = order.prikazce_id === currentUserId;
     const isAdminRole = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
     
     const hasPermissionToApprove = isPrikazce || isAdminRole;
@@ -1538,7 +1555,7 @@ function Orders25ListV3() {
             hasPermission('ORDER_MANAGE') ||
             hasPermission('ORDER_DELETE_ALL') ||
             hasPermission('ORDER_2025') ||
-            (hasPermission('ORDER_DELETE_OWN') && contextMenu.order.uzivatel_id === user_id)
+            (hasPermission('ORDER_DELETE_OWN') && contextMenu.order.uzivatel_id === currentUserId)
           }
           canApprove={canApprove(contextMenu.order)}
           canAddComment={canAddComment(contextMenu.order)}

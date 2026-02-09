@@ -59,10 +59,13 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
       return currentRequestRef.current;
     }
     
-    // ✅ CACHE CHECK: Zkontroluj cache pro rychlé výsledky (max 2s starý pro debug)
+    // ✅ CACHE CHECK: Zkontroluj cache pro rychlé výsledky
+    // Pro fulltext search kratší expiraci (500ms), jinak 2s
+    const hasFulltext = params.filters?.fulltext_search;
+    const cacheExpiration = hasFulltext ? 500 : 2000; // 500ms pro fulltext, 2s pro ostatní
+    
     const cached = cacheRef.current.get(requestSignature);
-    if (cached && (Date.now() - cached.timestamp < 2000)) {
-      // console.log('⚡ Using cached data for request');
+    if (cached && (Date.now() - cached.timestamp < cacheExpiration)) {
       setData(cached.data.orders || []);
       setStats(cached.data.stats || null);
       setPagination(cached.data.pagination || null);
