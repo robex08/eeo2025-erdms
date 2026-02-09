@@ -856,7 +856,7 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Filtr pro objednávky s přílohami
         if (!empty($filters['s_prilohami']) && $filters['s_prilohami'] === true) {
-            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id AND p.aktivni = 1)";
+            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id)";
         }
         
         // Filtr pro objednávky s komentáři (všemi)
