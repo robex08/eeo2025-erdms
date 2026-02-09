@@ -20,6 +20,7 @@
 
 import React, { useContext, useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -36,6 +37,11 @@ import {
   faTimes,
   faEraser,
   faSync,
+  faLock,
+  faClock,
+  faEnvelope,
+  faPhone,
+  faUnlock,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -65,6 +71,7 @@ import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 import VirtualizedOrdersTable from '../components/ordersV3/VirtualizedOrdersTable';
 import { OrderContextMenu } from '../components/OrderContextMenu';
 import { SmartTooltip } from '../styles/SmartTooltip';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // Config
 import ORDERS_V3_CONFIG from '../constants/ordersV3Config';
@@ -361,6 +368,85 @@ const ErrorAlert = styled.div`
   gap: 1rem;
 `;
 
+// 🔒 Styled components for locked order dialog
+const InfoText = styled.p`
+  margin: 0.75rem 0;
+  color: #64748b;
+  line-height: 1.6;
+`;
+
+const UserInfo = styled.div`
+  padding: 1rem;
+  background: #f8fafc;
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+  margin: 1rem 0;
+  font-size: 1.1rem;
+`;
+
+const ContactInfo = styled.div`
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+`;
+
+const ContactItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  color: #1e40af;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #e0e7ff;
+  }
+
+  svg {
+    color: #3b82f6;
+    width: 18px;
+    height: 18px;
+  }
+
+  a {
+    color: #1e40af;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #1e3a8a;
+      text-decoration: underline;
+    }
+  }
+`;
+
+const ContactLabel = styled.span`
+  font-weight: 600;
+  min-width: 80px;
+  color: #64748b;
+`;
+
+const LockTimeInfo = styled.div`
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  svg {
+    color: #f59e0b;
+    width: 16px;
+    height: 16px;
+  }
+`;
+
 const ErrorIcon = styled.div`
   font-size: 2rem;
   color: #ef4444;
@@ -514,7 +600,7 @@ const COLUMN_LABELS = {
 
 function Orders25ListV3() {
   // Contexts
-  const { user_id, userDetail, token, username, hasPermission } = useContext(AuthContext);
+  const { user_id, userDetail, token, username, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast: progressShowToast, showProgress, hideProgress } = useContext(ProgressContext);
   const { showToast: toastShowToast } = useContext(ToastContext);
   const navigate = useNavigate();
@@ -526,6 +612,11 @@ function Orders25ListV3() {
   // 🐛 CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
   // Musíme konvertovat na number pro správné porovnání v permissions
   const currentUserId = useMemo(() => parseInt(user_id, 10), [user_id]);
+
+  // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
+  const isAdmin = useMemo(() => {
+    return hasAdminRole && hasAdminRole();
+  }, [hasAdminRole]);
 
   // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
   const {
@@ -670,6 +761,10 @@ function Orders25ListV3() {
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const [highlightAction, setHighlightAction] = useState(null); // 🎨 approve/reject/postpone pro barvu
   const [isSearchingForOrder, setIsSearchingForOrder] = useState(false);
+  
+  // 🔒 State pro locked order dialog
+  const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
+  const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
 
   // 🎯 Effect: Načtení číselníku stavů z API
   useEffect(() => {
@@ -945,6 +1040,42 @@ function Orders25ListV3() {
     window.location.reload(); // Reload pro aplikaci změn
   };
 
+  // 🔓 Handler pro force unlock (pouze admin)
+  const handleForceUnlock = useCallback(async () => {
+    if (!lockedOrderInfo) return;
+
+    try {
+      // Import lockOrderV2 s force parametrem
+      const { lockOrderV2 } = await import('../services/apiOrderV2');
+      
+      // Zavolej lock s force=true (admin může převzít zámek)
+      await lockOrderV2({ 
+        orderId: lockedOrderInfo.orderId, 
+        token, 
+        username, 
+        force: true 
+      });
+      
+      showToast('Objednávka byla převzata a odemčena', { type: 'success' });
+      
+      // Zavři dialog
+      setShowLockedOrderDialog(false);
+      setLockedOrderInfo(null);
+      
+      // Naviguj na formulář
+      navigate(`/order-form-25?edit=${lockedOrderInfo.orderId}`, { 
+        state: { 
+          returnTo: '/orders25-list-v3',
+          highlightOrderId: lockedOrderInfo.orderId
+        } 
+      });
+      
+    } catch (error) {
+      console.error('❌ Chyba při force unlock:', error);
+      showToast('Chyba při převzetí objednávky', { type: 'error' });
+    }
+  }, [lockedOrderInfo, token, username, navigate, showToast]);
+
   // Handler pro editaci objednávky
   const handleEditOrder = async (order) => {
     // 🔒 KONTROLA OPRÁVNĚNÍ - PRVNÍ VĚC!
@@ -975,10 +1106,17 @@ function Orders25ListV3() {
         const lockInfo = dbOrder.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
         
-        showToast(
-          `Objednávka je zamčená uživatelem ${lockedByUserName}. Nemůžete ji editovat.`,
-          { type: 'warning' }
-        );
+        // Zobraz dialog s informacemi o zamčení
+        setLockedOrderInfo({
+          orderId: order.id,
+          orderNumber: order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`,
+          lockedByUserName: lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes ? Math.round(lockInfo.lock_age_minutes) : null,
+          lockedAt: lockInfo.locked_at || null
+        });
+        setShowLockedOrderDialog(true);
         return;
       }
 
@@ -997,7 +1135,7 @@ function Orders25ListV3() {
   };
 
   // Handler pro evidování faktury
-  const handleCreateInvoice = (order) => {
+  const handleCreateInvoice = async (order) => {
     // ✅ Kontrola zda je objednávka ve správném stavu a má práva
     if (!canCreateInvoice(order)) {
       const hasInvoicePermission = hasPermission && (hasPermission('ADMINI') || 
@@ -1011,17 +1149,51 @@ function Orders25ListV3() {
       }
       return;
     }
+
+    try {
+      // 🔒 Kontrola zamčení před navigací na formulář faktur
+      // ✅ V2 API - načti aktuální data z DB pro kontrolu lock_info
+      const dbOrder = await getOrderV2(order.id, token, username, true);
+
+      if (!dbOrder) {
+        showToast('Nepodařilo se načíst objednávku z databáze', { type: 'error' });
+        return;
+      }
+
+      // 🔒 Kontrola zamčení jiným uživatelem
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
+        const lockInfo = dbOrder.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+        
+        // Zobraz dialog s informacemi o zamčení
+        setLockedOrderInfo({
+          orderId: order.id,
+          orderNumber: order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`,
+          lockedByUserName: lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes ? Math.round(lockInfo.lock_age_minutes) : null,
+          lockedAt: lockInfo.locked_at || null
+        });
+        setShowLockedOrderDialog(true);
+        return;
+      }
     
-    // 🎯 Získat číslo objednávky pro prefill v našeptávači
-    const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
-    
-    // Navigace do modulu faktur s číslem objednávky v searchTerm
-    navigate('/invoice-evidence', { 
-      state: { 
-        prefillSearchTerm: orderNumber,
-        orderIdForLoad: order.id
-      } 
-    });
+      // 🎯 Získat číslo objednávky pro prefill v našeptávači
+      const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
+      
+      // Navigace do modulu faktur s číslem objednávky v searchTerm
+      navigate('/invoice-evidence', { 
+        state: { 
+          prefillSearchTerm: orderNumber,
+          orderIdForLoad: order.id
+        } 
+      });
+      
+    } catch (error) {
+      console.error('❌ Chyba při kontrole dostupnosti objednávky:', error);
+      showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
+    }
   };
 
   // Handler pro export DOCX
@@ -1588,6 +1760,83 @@ function Orders25ListV3() {
             onClose={handleDocxModalClose}
           />
         </Suspense>
+      )}
+
+      {/* 🔒 Modal pro zamčenou objednávku - informační dialog */}
+      {lockedOrderInfo && createPortal(
+        <ConfirmDialog
+          isOpen={showLockedOrderDialog}
+          onClose={() => {
+            setShowLockedOrderDialog(false);
+            setLockedOrderInfo(null);
+          }}
+          onConfirm={() => {
+            setShowLockedOrderDialog(false);
+            setLockedOrderInfo(null);
+          }}
+          title="Objednávka není dostupná"
+          icon={faLock}
+          variant="warning"
+          confirmText="Zavřít"
+          showCancel={isAdmin}
+          cancelText={isAdmin ? "Převzít objednávku" : undefined}
+          onCancel={isAdmin ? handleForceUnlock : undefined}
+        >
+          <InfoText>
+            Objednávka <strong>{lockedOrderInfo.orderNumber}</strong> je aktuálně editována uživatelem:
+          </InfoText>
+          <UserInfo>
+            <strong>{lockedOrderInfo.lockedByUserName}</strong>
+          </UserInfo>
+
+          {/* Kontaktní údaje */}
+          {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
+            <ContactInfo>
+              {lockedOrderInfo.lockedByUserEmail && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  <ContactLabel>Email:</ContactLabel>
+                  <a href={`mailto:${lockedOrderInfo.lockedByUserEmail}`}>
+                    {lockedOrderInfo.lockedByUserEmail}
+                  </a>
+                </ContactItem>
+              )}
+              {lockedOrderInfo.lockedByUserTelefon && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faPhone} />
+                  <ContactLabel>Telefon:</ContactLabel>
+                  <a href={`tel:${lockedOrderInfo.lockedByUserTelefon}`}>
+                    {lockedOrderInfo.lockedByUserTelefon}
+                  </a>
+                </ContactItem>
+              )}
+            </ContactInfo>
+          )}
+
+          {/* Čas zamčení */}
+          {lockedOrderInfo.lockAgeMinutes !== null && lockedOrderInfo.lockAgeMinutes !== undefined && (
+            <LockTimeInfo>
+              <FontAwesomeIcon icon={faClock} />
+              Zamčeno před {lockedOrderInfo.lockAgeMinutes} {
+                lockedOrderInfo.lockAgeMinutes === 1 ? 'minutou' : 
+                lockedOrderInfo.lockAgeMinutes < 5 ? 'minutami' : 
+                'minutami'
+              }
+            </LockTimeInfo>
+          )}
+
+          <InfoText>
+            Objednávku nelze načíst, dokud ji má otevřenou jiný uživatel.
+            Prosím, kontaktujte uživatele výše a požádejte ho o uložení a zavření objednávky.
+          </InfoText>
+
+          {isAdmin && (
+            <InfoText style={{ marginTop: '1rem', color: '#dc2626', fontWeight: 600 }}>
+              <FontAwesomeIcon icon={faUnlock} /> Jako administrátor můžete objednávku převzít a násilně odemknout tlačítkem níže.
+            </InfoText>
+          )}
+        </ConfirmDialog>,
+        document.body
       )}
     </Container>
     </>
