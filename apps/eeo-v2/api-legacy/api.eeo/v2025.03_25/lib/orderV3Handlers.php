@@ -653,7 +653,6 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Status - filtr podle pole workflow kódů
         if (!empty($filters['stav']) && is_array($filters['stav'])) {
-            error_log("[OrderV3 STAV FILTER] Received stav array: " . json_encode($filters['stav']));
             
             // UNIVERZÁLNÍ MAPOVÁNÍ - podporuje jak UI klíče tak workflow kódy
             // ✅ Podporuje i lowercase varianty z Dashboard toggle
@@ -691,8 +690,6 @@ function handle_order_v3_list($input, $config, $queries) {
                 
                 $workflow_kod = $stav_map[$stav_key_upper] ?? $stav_key_upper; // Fallback na původní hodnotu
                 
-                error_log("[OrderV3 STAV FILTER] Processing: UI='$stav_key_upper' -> Workflow='$workflow_kod'");
-                
                 // ✅ LOGIKA: Filtruj podle POSLEDNÍHO prvku v workflow poli
                 // NOVA je vždy první, ostatní hledáme jako poslední
                 // Např. ["ODESLANA_KE_SCHVALENI"] - poslední je index 0
@@ -707,16 +704,11 @@ function handle_order_v3_list($input, $config, $queries) {
                     $where_params[] = $workflow_kod;
                 }
                 
-                error_log("[OrderV3 STAV FILTER] Added condition for workflow_kod='$workflow_kod'");
             }
             
             if (!empty($workflow_conditions)) {
                 $sql_condition = '(' . implode(' OR ', $workflow_conditions) . ')';
                 $where_conditions[] = $sql_condition;
-                error_log("[OrderV3 STAV FILTER] Final SQL condition: $sql_condition");
-                error_log("[OrderV3 STAV FILTER] Total workflow_conditions: " . count($workflow_conditions));
-            } else {
-                error_log("[OrderV3 STAV FILTER] ⚠️ No workflow conditions generated!");
             }
         }
         
@@ -1391,21 +1383,16 @@ function handle_order_v3_list($input, $config, $queries) {
         }
 
         // 13. Post-processing - parsování JSON polí a enrichment
-        error_log("[OrderV3 ENRICHMENT] Starting enrichment for " . count($orders) . " orders");
         
         foreach ($orders as &$order) {
-            error_log("[OrderV3 ENRICHMENT] Processing order ID: " . $order['id']);
-            
             // Parsovat financovani z TEXT/JSON do array
             if (isset($order['financovani'])) {
                 $order['financovani'] = parseFinancovani($order['financovani']);
-                error_log("[OrderV3 ENRICHMENT] - parseFinancovani OK");
             }
             
             // Parsovat stav_workflow_kod z JSON do array
             if (isset($order['stav_workflow_kod'])) {
                 $order['stav_workflow_kod'] = safeJsonDecode($order['stav_workflow_kod'], array());
-                error_log("[OrderV3 ENRICHMENT] - safeJsonDecode OK");
             }
             
             // ENRICHMENT - obohacení dat z dalších tabulek
