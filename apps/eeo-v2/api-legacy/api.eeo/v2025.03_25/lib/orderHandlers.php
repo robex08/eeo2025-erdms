@@ -5932,8 +5932,21 @@ function handle_order_v2_lock($input, $config, $queries, $order_id) {
         
         // Kontrola zda je už zamčená jiným uživatelem
         if ($order['zamek_uzivatel_id'] && $order['zamek_uzivatel_id'] != $current_user_id) {
-            // Už je zamčená jiným
-            if (!$force) {
+            // Kontrola času zamčení - pokud je starší než 15 minut, automaticky uvolnit
+            $lock_timeout_minutes = 15;
+            
+            // Použít TimezoneHelper pro správný český čas
+            $prague_tz = new DateTimeZone('Europe/Prague');
+            $lock_time = new DateTime($order['dt_zamek'], $prague_tz);
+            $current_time = new DateTime('now', $prague_tz);
+            $lock_age_seconds = $current_time->getTimestamp() - $lock_time->getTimestamp();
+            $lock_age_minutes = $lock_age_seconds / 60;
+            
+            // Kontrola vypršení zámku
+            $lock_expired = $lock_age_minutes > $lock_timeout_minutes;
+            
+            // Pokud zámek NEVYPRŠEL a není force, vrátit 423
+            if (!$lock_expired && !$force) {
                 // Získat jméno uživatele
                 $user_data = getUserDataForLockInfo($db, $order['zamek_uzivatel_id']);
                 
@@ -5947,14 +5960,15 @@ function handle_order_v2_lock($input, $config, $queries, $order_id) {
                         'locked_by_user_fullname' => $user_data['fullname'],
                         'locked_by_user_email' => $user_data['email'],
                         'locked_by_user_telefon' => $user_data['telefon'],
-                        'locked_at' => $order['dt_zamek']
+                        'locked_at' => $order['dt_zamek'],
+                        'lock_age_minutes' => round($lock_age_minutes, 1)
                     ]
                 ]);
                 return;
             }
             
-            // Force unlock - pouze pro SUPERADMIN/ADMINISTRATOR
-            if (!$token_data['is_admin']) {
+            // Force unlock - kontrola oprávnění pouze pokud zámek nevypršel
+            if (!$lock_expired && $force && !$token_data['is_admin']) {
                 http_response_code(403);
                 echo json_encode([
                     'status' => 'error',
@@ -5962,6 +5976,11 @@ function handle_order_v2_lock($input, $config, $queries, $order_id) {
                 ]);
                 return;
             }
+            
+            // Pokud sem dorazíme:
+            // - Buď zámek vypršel (automatické uvolnění)
+            // - Nebo je to force od admina
+            // V obou případech pokračujeme a zamkneme pro aktuálního uživatele
         }
         
         // Zamkni objednávku
