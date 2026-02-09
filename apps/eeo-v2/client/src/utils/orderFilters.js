@@ -209,8 +209,45 @@ export const filterByObjednatel = (order, filterValue, getUserDisplayName) => {
 export const filterByStatus = (order, filterValue, getOrderDisplayStatus) => {
   if (!filterValue) return true;
 
+  // Získej zobrazovaný stav (české názvy)
   const displayStatus = removeDiacritics(getOrderDisplayStatus(order));
-  return displayStatus.includes(removeDiacritics(filterValue));
+  const normalizedFilter = removeDiacritics(filterValue);
+  
+  // 1. Porovnej s českým názvem (pro textové vyhledávání)
+  if (displayStatus.includes(normalizedFilter)) {
+    return true;
+  }
+  
+  // 2. Porovnej i se systémovým kódem (pro filtry ze selectů)
+  // Mapování systémových kódů na české názvy
+  const systemCodeToCzech = {
+    'NOVA': 'Nová',
+    'ODESLANA_KE_SCHVALENI': 'Ke schválení',
+    'SCHVALENA': 'Schválená',
+    'ZAMITNUTA': 'Zamítnutá',
+    'CEKA_SE': 'Čeká se',
+    'ROZPRACOVANA': 'Rozpracovaná',
+    'ODESLANA': 'Odeslaná dodavateli',
+    'POTVRZENA': 'Potvrzená dodavatelem',
+    'K_UVEREJNENI_DO_REGISTRU': 'Ke zveřejnění',
+    'UVEREJNENA': 'Zveřejněno',
+    'FAKTURACE': 'Fakturace',
+    'CEKA_POTVRZENI': 'Čeká na potvrzení',
+    'VECNA_SPRAVNOST': 'Věcná správnost',
+    'DOKONCENA': 'Dokončená',
+    'VYRIZENA': 'Vyřízená',
+    'ZRUSENA': 'Zrušená',
+    'SMAZANA': 'Smazaná',
+    'ARCHIVOVANO': 'Archivováno'
+  };
+  
+  // Pokud je filterValue systémový kód, přelož na český název
+  const czechName = systemCodeToCzech[filterValue.toUpperCase()];
+  if (czechName) {
+    return removeDiacritics(displayStatus).includes(removeDiacritics(czechName));
+  }
+  
+  return false;
 };
 
 /**

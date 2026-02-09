@@ -230,10 +230,12 @@ export function useOrdersV3({
     if (filters.stav) {
       // ✅ Select filter posílá KÓD přímo (např. "FAKTURACE", "POTVRZENA")
       let stavArray = [];
-      if (typeof filters.stav === 'string') {
+      if (typeof filters.stav === 'string' && filters.stav.trim()) {
+        // ✅ Ignoruj prázdné stringy
         stavArray = [filters.stav.trim()];
       } else if (Array.isArray(filters.stav) && filters.stav.length > 0) {
-        stavArray = filters.stav.map(s => String(s).trim());
+        // ✅ Filtruj prázdné stringy z pole
+        stavArray = filters.stav.map(s => String(s).trim()).filter(s => s.length > 0);
       }
       
       if (stavArray.length > 0) {
@@ -372,25 +374,65 @@ export function useOrdersV3({
     // Převést filtry na backend formát - ✨ včetně globalFilter
     const activeFilters = convertFiltersForBackend(columnFilters, globalFilterValue);
     
-    // Přidat dashboard filtr z REF (aktuální hodnota)
+    // ========================================================================
+    // DASHBOARD FILTR - Mapování Dashboard toggle hodnot na backend formát
+    // ========================================================================
     const currentDashboard = currentDashboardFilters.current;
     if (currentDashboard.filter_status) {
-      if (currentDashboard.filter_status === 'moje_objednavky') {
+      const statusKey = currentDashboard.filter_status;
+      console.log('🎯 Dashboard Filter Active:', statusKey);
+      
+      // Special filtry (nemění stav)
+      if (statusKey === 'moje_objednavky') {
         activeFilters.moje_objednavky = true;
-      } else if (currentDashboard.filter_status === 'mimoradne_udalosti') {
+      } else if (statusKey === 'mimoradne_udalosti') {
         activeFilters.mimoradne_udalosti = true;
-      } else if (currentDashboard.filter_status === 's_fakturou') {
+      } else if (statusKey === 's_fakturou') {
         activeFilters.s_fakturou = true;
-      } else if (currentDashboard.filter_status === 's_prilohami') {
+      } else if (statusKey === 's_prilohami') {
         activeFilters.s_prilohami = true;
-      } else if (currentDashboard.filter_status === 's_komentari') {
+      } else if (statusKey === 's_komentari') {
         activeFilters.s_komentari = true;
-      } else if (currentDashboard.filter_status === 's_mymi_komentari') {
+      } else if (statusKey === 's_mymi_komentari') {
         activeFilters.s_mymi_komentari = true;
       } else {
-        activeFilters.stav_workflow = currentDashboard.filter_status;
+        // ✅ STAVOVÉ FILTRY - Mapování Dashboard klíčů na workflow kódy
+        // Dashboard posílá lowercase: 'nova', 'ke_schvaleni', 'schvalena', ...
+        // Backend očekává uppercase pole: ['NOVA'], ['KE_SCHVALENI'], ...
+        const dashboardStatusMap = {
+          'nova': 'NOVA',
+          'ke_schvaleni': 'KE_SCHVALENI',
+          'schvalena': 'SCHVALENA',
+          'zamitnuta': 'ZAMITNUTA',
+          'rozpracovana': 'ROZPRACOVANA',
+          'odeslana': 'ODESLANA',
+          'potvrzena': 'POTVRZENA',
+          'k_uverejneni': 'K_UVEREJNENI_DO_REGISTRU',
+          'uverejnena': 'UVEREJNENA',
+          'fakturace': 'FAKTURACE',
+          'vecna_spravnost': 'VECNA_SPRAVNOST',
+          'zkontrolovana': 'ZKONTROLOVANA',
+          'dokoncena': 'DOKONCENA',
+          'zrusena': 'ZRUSENA',
+          'smazana': 'SMAZANA',
+          // Skupinové filtry (vybere více stavů najednou)
+          'rozpracovane_stavy': ['ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'],
+        };
+        
+        const mappedStatus = dashboardStatusMap[statusKey];
+        if (mappedStatus) {
+          // ✅ Backend očekává filters.stav jako POLE (i když je jen 1 hodnota)
+          activeFilters.stav = Array.isArray(mappedStatus) ? mappedStatus : [mappedStatus];
+          console.log('✅ Mapped to backend:', activeFilters.stav);
+        } else {
+          // Fallback pro neznámé hodnoty
+          console.warn('⚠️ Unknown dashboard status:', statusKey);
+          activeFilters.stav = [statusKey.toUpperCase()];
+        }
       }
     }
+    
+    console.log('📤 Final filters sent to API:', activeFilters);
     
     // ✅ Volání optimalizované API funkce s cache a deduplication
     // console.log('📤 API Request payload:', {
@@ -706,6 +748,18 @@ export function useOrdersV3({
    * IncludeS globalFilter pro fulltext search!
    */
   useEffect(() => {
+    console.log('🔄 useEffect triggered - loading orders', {
+      token: !!token,
+      username: !!username,
+      currentPage,
+      itemsPerPage,
+      selectedPeriod,
+      columnFilters,
+      dashboardFilters,
+      globalFilter,
+      sorting
+    });
+    
     if (token && username) {
       loadOrders(globalFilter); // ✅ Používej globalFilter i v základním načtení
     }

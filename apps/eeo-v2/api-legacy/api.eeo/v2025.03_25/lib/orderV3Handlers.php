@@ -525,7 +525,6 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // 6. Filtry
         $filters = isset($input['filters']) ? $input['filters'] : array();
-        error_log("[OrderV3 FULLTEXT] Received filters: " . json_encode($filters));
         
         // 7. Třídění
         $sorting = isset($input['sorting']) ? $input['sorting'] : array();
@@ -654,9 +653,12 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // Status - filtr podle pole workflow kódů
         if (!empty($filters['stav']) && is_array($filters['stav'])) {
+            error_log("[OrderV3 STAV FILTER] Received stav array: " . json_encode($filters['stav']));
+            
             // UNIVERZÁLNÍ MAPOVÁNÍ - podporuje jak UI klíče tak workflow kódy
+            // ✅ Podporuje i lowercase varianty z Dashboard toggle
             $stav_map = array(
-                // ✅ UI klíče (z číselníku select)
+                // ✅ UI klíče UPPERCASE (z číselníku select / Advanced filtru)
                 'NOVA' => 'NOVA',
                 'KE_SCHVALENI' => 'ODESLANA_KE_SCHVALENI',
                 'SCHVALENA' => 'SCHVALENA',
@@ -674,23 +676,47 @@ function handle_order_v3_list($input, $config, $queries) {
                 'SMAZANA' => 'SMAZANA',
                 // ✅ Workflow kódy (identity mapping) - pro přímé API volání
                 'ODESLANA_KE_SCHVALENI' => 'ODESLANA_KE_SCHVALENI',
-                'UVEREJNIT' => 'UVEREJNIT'
+                'UVEREJNIT' => 'UVEREJNIT',
             );
             
             $workflow_conditions = array();
             foreach ($filters['stav'] as $stav_key) {
-                $workflow_kod = $stav_map[$stav_key] ?? $stav_key; // Fallback na původní hodnotu
+                // ✅ Normalizuj na UPPERCASE pro mapování (Dashboard posílá lowercase)
+                $stav_key_upper = strtoupper(trim($stav_key));
                 
-                if ($workflow_kod === 'NOVA') {
-                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
-                } else {
-                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
+                // Skip prázdné hodnoty
+                if (empty($stav_key_upper)) {
+                    continue;
                 }
-                $where_params[] = $workflow_kod;
+                
+                $workflow_kod = $stav_map[$stav_key_upper] ?? $stav_key_upper; // Fallback na původní hodnotu
+                
+                error_log("[OrderV3 STAV FILTER] Processing: UI='$stav_key_upper' -> Workflow='$workflow_kod'");
+                
+                // ✅ LOGIKA: Filtruj podle POSLEDNÍHO prvku v workflow poli
+                // NOVA je vždy první, ostatní hledáme jako poslední
+                // Např. ["ODESLANA_KE_SCHVALENI"] - poslední je index 0
+                // Např. ["SCHVALENA","ODESLANA"] - poslední je index 1
+                if ($workflow_kod === 'NOVA') {
+                    // NOVA je vždy na začátku workflow
+                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
+                    $where_params[] = $workflow_kod;
+                } else {
+                    // Všechny ostatní stavy - hledej jako poslední prvek
+                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
+                    $where_params[] = $workflow_kod;
+                }
+                
+                error_log("[OrderV3 STAV FILTER] Added condition for workflow_kod='$workflow_kod'");
             }
             
             if (!empty($workflow_conditions)) {
-                $where_conditions[] = '(' . implode(' OR ', $workflow_conditions) . ')';
+                $sql_condition = '(' . implode(' OR ', $workflow_conditions) . ')';
+                $where_conditions[] = $sql_condition;
+                error_log("[OrderV3 STAV FILTER] Final SQL condition: $sql_condition");
+                error_log("[OrderV3 STAV FILTER] Total workflow_conditions: " . count($workflow_conditions));
+            } else {
+                error_log("[OrderV3 STAV FILTER] ⚠️ No workflow conditions generated!");
             }
         }
         
@@ -815,42 +841,7 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_conditions[] = "(" . implode(" OR ", $financovani_conditions) . ")";
         }
         
-        // Filtr pro workflow stav
-        if (!empty($filters['stav_workflow'])) {
-            $stav = $filters['stav_workflow'];
-            
-            // Mapování frontend stavu na backend workflow kód
-            $stav_map = array(
-                'nova' => 'NOVA',
-                'ke_schvaleni' => 'ODESLANA_KE_SCHVALENI',
-                'schvalena' => 'SCHVALENA',
-                'zamitnuta' => 'ZAMITNUTA',
-                'rozpracovana' => 'ROZPRACOVANA',
-                'odeslana' => 'ODESLANA',
-                'potvrzena' => 'POTVRZENA',
-                'k_uverejneni_do_registru' => 'UVEREJNIT', // ✅ Fixed mapping
-                'uverejnena' => 'UVEREJNIT',
-                'fakturace' => 'FAKTURACE',
-                'vecna_spravnost' => 'VECNA_SPRAVNOST',
-                'zkontrolovana' => 'ZKONTROLOVANA',
-                'dokoncena' => 'DOKONCENA',
-                'zrusena' => 'ZRUSENA',
-                'smazana' => 'SMAZANA'
-            );
-            
-            if (isset($stav_map[$stav])) {
-                $workflow_kod = $stav_map[$stav];
-                
-                // Pro NOVA kontroluj první element pole (index 0)
-                if ($stav === 'nova') {
-                    $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
-                } else {
-                    // Pro ostatní kontroluj poslední element
-                    $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
-                }
-                $where_params[] = $workflow_kod;
-            }
-        }
+        // ✅ STARÝ FILTR ODSTRANĚN - viz řádek 663 pro správný filtr filters['stav'] jako pole
         
         // Filtr "moje objednávky" - kde jsem objednatel, garant, příkazce nebo schvalovatel
         if (!empty($filters['moje_objednavky']) && $filters['moje_objednavky'] === true) {
@@ -1249,10 +1240,8 @@ function handle_order_v3_list($input, $config, $queries) {
         $stmt_count = $db->prepare($sql_count);
         $stmt_count->execute($where_params);
         $total_count = (int)$stmt_count->fetchColumn();
+        $stmt_count->closeCursor();
         $total_pages = ceil($total_count / $per_page);
-        
-        // DEBUG: Log total calculation
-        error_log("[OrderV3] Total count: $total_count, per_page: $per_page, total_pages: $total_pages");
 
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;
@@ -1358,14 +1347,15 @@ function handle_order_v3_list($input, $config, $queries) {
                  FROM 25a_objednavky_komentare kom
                  WHERE kom.objednavka_id = o.id AND kom.smazano = 0
                  ORDER BY kom.dt_vytvoreni DESC
-                 LIMIT 1) as last_comment_date,
+                 LIMIT 1) as last_comment_date
                 
                 -- 🆕 Zjistit, zda aktuální uživatel reagoval na nějaký komentář
-                (SELECT COUNT(*) > 0
-                 FROM 25a_objednavky_komentare kom
-                 WHERE kom.objednavka_id = o.id 
-                   AND kom.user_id = ?
-                   AND kom.smazano = 0) as user_has_replied
+                -- ⚠️ DISABLED: Způsobovalo problém s PDO parametry
+                -- (SELECT COUNT(*) > 0
+                --  FROM 25a_objednavky_komentare kom
+                --  WHERE kom.objednavka_id = o.id 
+                --    AND kom.user_id = ?
+                --    AND kom.smazano = 0) as user_has_replied
                 
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
@@ -1379,20 +1369,13 @@ function handle_order_v3_list($input, $config, $queries) {
         ";
         
         
-        error_log("[OrderV3 SQL] Final WHERE: $where_sql");
-        error_log("[OrderV3 SQL] Param count: " . count($where_params));
-        error_log("[OrderV3 SQL] Params: " . json_encode($where_params));
-        error_log("[OrderV3 SQL] Admin status: " . ($is_admin_v2 ? 'ADMIN' : 'USER'));
-        error_log("[OrderV3 SQL] FULL QUERY: " . str_replace("\n", " ", substr($sql_orders, 0, 500)) . "...");
-        
         // Přidat user_id pro subselect user_has_replied
-        $final_params = array_merge($where_params, [$user_id]);
+        // ⚠️ DISABLED: user_has_replied subselect removed, no need for extra param
+        $final_params = $where_params;
         
         $stmt_orders = $db->prepare($sql_orders);
         $stmt_orders->execute($final_params);
         $orders = $stmt_orders->fetchAll(PDO::FETCH_ASSOC);
-        
-        error_log("[OrderV3 RESULT] Returned orders count: " . count($orders));
         if (count($orders) > 0) {
             $order_ids = array_column($orders, 'id');
             $order_nums = array_column($orders, 'cislo_objednavky');
@@ -1408,23 +1391,29 @@ function handle_order_v3_list($input, $config, $queries) {
         }
 
         // 13. Post-processing - parsování JSON polí a enrichment
+        error_log("[OrderV3 ENRICHMENT] Starting enrichment for " . count($orders) . " orders");
+        
         foreach ($orders as &$order) {
+            error_log("[OrderV3 ENRICHMENT] Processing order ID: " . $order['id']);
+            
             // Parsovat financovani z TEXT/JSON do array
             if (isset($order['financovani'])) {
                 $order['financovani'] = parseFinancovani($order['financovani']);
+                error_log("[OrderV3 ENRICHMENT] - parseFinancovani OK");
             }
             
             // Parsovat stav_workflow_kod z JSON do array
             if (isset($order['stav_workflow_kod'])) {
                 $order['stav_workflow_kod'] = safeJsonDecode($order['stav_workflow_kod'], array());
+                error_log("[OrderV3 ENRICHMENT] - safeJsonDecode OK");
             }
             
             // ENRICHMENT - obohacení dat z dalších tabulek
-            enrichFinancovaniV3($db, $order);           // LP názvy z 25_limitovane_prisliby
-            enrichDodavatelV3($db, $order);             // Dodavatel z 25_dodavatele
-            enrichRegistrZverejneniV3($db, $order);     // Registr zveřejnění z objednávky (ne smlouvy!)
+            enrichFinancovaniV3($db, $order);
+            enrichDodavatelV3($db, $order);
+            enrichRegistrZverejneniV3($db, $order);
         }
-        unset($order); // Break reference
+        unset($order);
 
         // 14. Úspěšná odpověď
         http_response_code(200);
