@@ -29,6 +29,7 @@ export function useOrderPermissions(hasPermission, userId) {
         canDelete: () => false,
         canHardDelete: () => false,
         canViewDetails: () => false,
+        canGenerateFinancialControl: () => false,
       };
     }
 
@@ -167,6 +168,18 @@ export function useOrderPermissions(hasPermission, userId) {
              hasPermission(PERMISSIONS.ORDER_MANAGE);
     };
 
+    /**
+     * 💰 Kontrola oprávnění ke generování finanční kontroly
+     * Pouze kontroloři, účetní a admin
+     */
+    const canGenerateFinancialControl = () => {
+      return hasPermission(PERMISSIONS.ADMINI) || 
+             hasPermission(PERMISSIONS.ORDER_MANAGE) ||
+             hasPermission('KONTROLOR') ||
+             hasPermission('UCETNI') ||
+             hasPermission('ORDER_FINANCIAL_CONTROL');
+    };
+
     return {
       canEdit,
       canCreateInvoice,
@@ -174,6 +187,7 @@ export function useOrderPermissions(hasPermission, userId) {
       canDelete,
       canHardDelete,
       canViewDetails,
+      canGenerateFinancialControl,
     };
   }, [hasPermission, userId]);
 
