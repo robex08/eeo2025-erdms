@@ -515,12 +515,13 @@ export function useOrdersV3({
       clearCache();
       
       // ✅ Standardní aplikace filtru bez rozdvojení
-      updatePreferences({
+      updatePreferences(prev => ({
+        ...prev,
         columnFilters: {
-          ...columnFilters,
+          ...(prev.columnFilters || {}),
           [filterName]: value,
         }
-      });
+      }));
       
       setCurrentPage(1); // Reset na první stránku
     };
@@ -538,7 +539,7 @@ export function useOrdersV3({
       // Pro select, checkbox, atd. aplikovat hned
       applyFilter();
     }
-  }, []);
+  }, [clearCache, updatePreferences]);
   
   /**
    * Změní dashboard filtr (status cards)

@@ -1746,7 +1746,7 @@ const OrdersTableV3 = ({
     filterTimers.current[columnId] = setTimeout(() => {
       // ✅ Volání parent callback pro API update - použij BACKEND column ID
       if (onColumnFiltersChange) {
-        onColumnFiltersChange(backendColumnId, value);
+        onColumnFiltersChange(backendColumnId, value, 0);
       }
     }, 300); // Sníženo z 1000ms na 300ms pro rychlejší response
   }, [onColumnFiltersChange]);

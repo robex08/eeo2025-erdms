@@ -19,6 +19,7 @@ import DatePicker from '../DatePicker';
 import { fetchAllUsers, fetchApprovers, fetchCiselniky } from '../../services/api2auth';
 import { fetchLPList } from '../../services/apiOrdersV3';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
+import ORDERS_V3_CONFIG from '../../constants/ordersV3Config';
 
 // ============================================================================
 // MULTISELECT KOMPONENTA
@@ -706,6 +707,11 @@ const OrdersFiltersV3Full = ({
   onToggleFilters,
   onHide
 }) => {
+  const extendedFiltersStorageKey = useMemo(() => {
+    const prefix = ORDERS_V3_CONFIG.STORAGE_PREFIX;
+    return userId ? `${prefix}_showExtendedFilters_${userId}` : `${prefix}_showExtendedFilters`;
+  }, [userId]);
+
   // State pro loaded data
   const [usersList, setUsersList] = useState([]);
   const [approversList, setApproversList] = useState([]);
@@ -714,24 +720,27 @@ const OrdersFiltersV3Full = ({
   const [loading, setLoading] = useState(true);
   
   // State pro zobrazování rozšířených filtrů (nezávislé na showFilters) - načíst z localStorage
-  const [showExtendedFilters, setShowExtendedFilters] = useState(() => {
+  const [showExtendedFilters, setShowExtendedFilters] = useState(true);
+
+  // Načíst stav rozšířených filtrů z localStorage při změně uživatele
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('ordersV3_showExtendedFilters');
-      return saved !== null ? JSON.parse(saved) : true; // Default: rozbaleno
+      const saved = localStorage.getItem(extendedFiltersStorageKey);
+      setShowExtendedFilters(saved !== null ? JSON.parse(saved) : true);
     } catch (err) {
       console.error('⚠️ Chyba při načítání stavu rozšířených filtrů:', err);
-      return true;
+      setShowExtendedFilters(true);
     }
-  });
+  }, [extendedFiltersStorageKey]);
 
   // Uložit stav rozšířených filtrů do localStorage při změně
   useEffect(() => {
     try {
-      localStorage.setItem('ordersV3_showExtendedFilters', JSON.stringify(showExtendedFilters));
+      localStorage.setItem(extendedFiltersStorageKey, JSON.stringify(showExtendedFilters));
     } catch (err) {
       console.error('⚠️ Chyba při ukládání stavu rozšířených filtrů:', err);
     }
-  }, [showExtendedFilters]);
+  }, [showExtendedFilters, extendedFiltersStorageKey]);
 
   // Load data from API při mountu
   useEffect(() => {
