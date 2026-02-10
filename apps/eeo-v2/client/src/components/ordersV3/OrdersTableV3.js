@@ -59,6 +59,7 @@ import {
   faComments,
   faCircle,
   faCheckSquare,
+  faSync,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -1537,6 +1538,9 @@ const OrdersTableV3 = ({
   canDelete = () => false,
   canHardDelete = () => false,
   canGenerateFinancialControl = true, // 🔒 Kontrola oprávnění pro finanční kontrolu
+  showApproveColumn = false,
+  canApproveOrder = null,
+  onRefreshOrders = null,
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
   highlightOrderId = null, // 🎯 ID objednávky k zvýraznění po návratu z editace
@@ -1944,16 +1948,18 @@ const OrdersTableV3 = ({
     try {
       const result = await onAddComment(commentsTooltip.orderId, text, parentCommentId);
       
-      // ✅ API vrací: {status, data: {comment}, message, comments_count}
-      const newComment = result.data?.comment || result.data;
-      const newCount = result.comments_count;
+      // ✅ API vrací: {comment, comments_count}
+      const newComment = result?.comment || result?.data?.comment || result?.data;
+      const newCount = result?.comments_count;
       
-      // ✅ Aktualizovat seznam komentářů v tooltipu
-      setCommentsTooltip(prev => ({
-        ...prev,
-        comments: [...prev.comments, newComment],
-        commentsCount: newCount || (prev.commentsCount + 1),
-      }));
+      // ✅ Aktualizovat seznam komentářů v tooltipu (fallback pro případ bez reloadu)
+      if (newComment) {
+        setCommentsTooltip(prev => ({
+          ...prev,
+          comments: [...prev.comments, newComment],
+          commentsCount: newCount || (prev.commentsCount + 1),
+        }));
+      }
       
       // ✅ OKAMŽITÁ aktualizace ikony v tabulce - mutace data pole
       if (newCount !== undefined) {
@@ -1961,6 +1967,17 @@ const OrdersTableV3 = ({
         if (orderInTable) {
           orderInTable.comments_count = newCount;
         }
+      }
+
+      // ✅ Pro odpovědi vždy refrešni komentáře, aby se parent_comment_id projevil v chatu
+      if (parentCommentId && onLoadComments) {
+        const reloadResult = await onLoadComments(commentsTooltip.orderId);
+        const commentsArray = reloadResult?.data || reloadResult?.comments || [];
+        setCommentsTooltip(prev => ({
+          ...prev,
+          comments: commentsArray,
+          commentsCount: reloadResult?.comments_count || prev.commentsCount,
+        }));
       }
       
       // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
@@ -1978,7 +1995,7 @@ const OrdersTableV3 = ({
       }
       throw err;
     }
-  }, [commentsTooltip.orderId, onAddComment, clearCache, data, showToast]);
+  }, [commentsTooltip.orderId, onAddComment, onLoadComments, clearCache, data, showToast]);
   
   // 🆕 Handler pro smazání komentáře
   const handleDeleteCommentInternal = useCallback(async (commentId) => {
@@ -2213,16 +2230,38 @@ const OrdersTableV3 = ({
           const anyExpanded = rows.some(row => isExpanded(row.original.id));
           
           return (
-            <ExpandButton
-              onClick={handleToggleAllRows}
-              title={anyExpanded ? 'Sbalit vše' : 'Rozbalit vše'}
-              disabled={isBulkExpanding}
-            >
-              <FontAwesomeIcon 
-                icon={isBulkExpanding ? faCircleNotch : (anyExpanded ? faMinus : faPlus)} 
-                spin={isBulkExpanding}
-              />
-            </ExpandButton>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
+              {onRefreshOrders && (
+                <SmartTooltip text="Načíst objednávky z databáze" icon="info" preferredPosition="top">
+                  <ExpandButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRefreshOrders();
+                    }}
+                    title="Obnovit objednávky"
+                    disabled={isLoading}
+                    style={{
+                      padding: '0.2rem 0.3rem',
+                      fontSize: '0.75rem',
+                      color: '#2563eb',
+                      borderColor: '#93c5fd'
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faSync} spin={isLoading} style={{ fontSize: '0.75rem', color: '#2563eb' }} />
+                  </ExpandButton>
+                </SmartTooltip>
+              )}
+              <ExpandButton
+                onClick={handleToggleAllRows}
+                title={anyExpanded ? 'Sbalit vše' : 'Rozbalit vše'}
+                disabled={isBulkExpanding}
+              >
+                <FontAwesomeIcon 
+                  icon={isBulkExpanding ? faCircleNotch : (anyExpanded ? faMinus : faPlus)} 
+                  spin={isBulkExpanding}
+                />
+              </ExpandButton>
+            </div>
           );
         },
         cell: ({ row }) => {
@@ -2241,7 +2280,7 @@ const OrdersTableV3 = ({
         size: 50,
         enableSorting: false,
       },
-      {
+      ...(showApproveColumn ? [{
         id: 'approve',
         enableSorting: false,
         header: () => (
@@ -2259,6 +2298,8 @@ const OrdersTableV3 = ({
         ),
         cell: ({ row }) => {
           const order = row.original;
+
+          const canApproveThisOrder = canApproveOrder ? canApproveOrder(order) : true;
           
           // Kontrola workflow stavu
           let workflowStates = [];
@@ -2316,16 +2357,27 @@ const OrdersTableV3 = ({
             hoverIconColor = '#4b5563';
           }
           
+          const tooltipText = canApproveThisOrder
+            ? (isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)")
+            : "Nemůžete schválit objednávku – je určena jinému příkazci.";
+
+          const tooltipIcon = canApproveThisOrder
+            ? (isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info"))
+            : "warning";
+
           return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <SmartTooltip 
-                text={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"} 
-                icon={isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info")} 
+                text={tooltipText} 
+                icon={tooltipIcon} 
                 preferredPosition="top"
               >
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
+                    if (!canApproveThisOrder) {
+                      return;
+                    }
                     try {
                       const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
                       // DEBUG: Order detail loaded with enriched data
@@ -2337,11 +2389,11 @@ const OrdersTableV3 = ({
                     }
                   }}
                   style={{
-                    background: 'transparent',
-                    border: '1px solid #d1d5db',
+                    background: canApproveThisOrder ? 'transparent' : '#f3f4f6',
+                    border: `1px solid ${canApproveThisOrder ? '#d1d5db' : '#e5e7eb'}`,
                     borderRadius: '4px',
-                    color: iconColor,
-                    cursor: 'pointer',
+                    color: canApproveThisOrder ? iconColor : '#9ca3af',
+                    cursor: canApproveThisOrder ? 'pointer' : 'not-allowed',
                     padding: '0.35rem 0.5rem',
                     fontSize: '1.1rem',
                     display: 'flex',
@@ -2350,11 +2402,13 @@ const OrdersTableV3 = ({
                     transition: 'all 0.15s ease'
                   }}
                   onMouseEnter={(e) => {
+                    if (!canApproveThisOrder) return;
                     e.currentTarget.style.background = hoverBgColor;
                     e.currentTarget.style.borderColor = hoverBorderColor;
                     e.currentTarget.style.color = hoverIconColor;
                   }}
                   onMouseLeave={(e) => {
+                    if (!canApproveThisOrder) return;
                     e.currentTarget.style.background = 'transparent';
                     e.currentTarget.style.borderColor = '#d1d5db';
                     e.currentTarget.style.color = iconColor;
@@ -2372,7 +2426,7 @@ const OrdersTableV3 = ({
           align: 'center',
           fixed: true,
         },
-      },
+      }] : []),
       // 🆕 KONTROLA & KOMENTÁŘE - Dual ikony ve svislo rozděleném sloupci
       {
         id: 'kontrola_komentare',
@@ -3392,7 +3446,7 @@ const OrdersTableV3 = ({
     }
     
     return filtered;
-  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded]);
+  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded, showApproveColumn, canApproveOrder, onRefreshOrders, isLoading]);
 
   // Filtrovat data podle columnFilters (lokální filtr v tabulce)
   // ⚠️ VYPNUTO - Filtrování se provádí na backendu v API
@@ -3769,6 +3823,7 @@ const OrdersTableV3 = ({
                       setOrderToApprove={setOrderToApprove}
                       setApprovalComment={setApprovalComment}
                       setShowApprovalDialog={setShowApprovalDialog}
+                      canApproveOrder={canApproveOrder}
                     />
                   )}
                 </React.Fragment>

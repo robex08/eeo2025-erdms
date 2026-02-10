@@ -27,6 +27,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
   
   // Ref pro zamezení duplicitních načítání
   const fetchingRef = useRef(new Set());
+  const lastFocusRefreshRef = useRef(0);
   
   const storageKey = `${STORAGE_KEY_PREFIX}${userId}`;
   const cacheKey = `${DETAILS_CACHE_KEY_PREFIX}${userId}`;
@@ -158,38 +159,6 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
     }
   }, [token, username, detailsCache]);
 
-  // 🔽 Toggle row expansion
-  const toggleRow = useCallback(async (orderId) => {
-    const isCurrentlyExpanded = expandedRows.has(orderId);
-
-    if (isCurrentlyExpanded) {
-      // Sbalit
-      setExpandedRows(prev => {
-        const next = new Set(prev);
-        next.delete(orderId);
-        return next;
-      });
-    } else {
-      // Rozbalit a načíst detail
-      setExpandedRows(prev => new Set([...prev, orderId]));
-      
-      // Načíst detail pokud není v cache
-      if (!detailsCache[orderId]) {
-        await loadOrderDetail(orderId);
-      }
-    }
-  }, [expandedRows, detailsCache, loadOrderDetail]);
-
-  // ❓ Check if row is expanded
-  const isExpanded = useCallback((orderId) => {
-    return expandedRows.has(orderId);
-  }, [expandedRows]);
-
-  // 📖 Get cached detail for order
-  const getRowDetail = useCallback((orderId) => {
-    return detailsCache[orderId] || null;
-  }, [detailsCache]);
-
   // 🔄 Refresh detail (force reload)
   const refreshDetail = useCallback(async (orderId) => {
     // console.log(`🔄 [REFRESH] Starting refresh for order ${orderId}`);
@@ -283,6 +252,79 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
       return null;
     }
   }, [token, username, cacheKey]);
+
+  // 🔽 Toggle row expansion
+  const toggleRow = useCallback(async (orderId) => {
+    const isCurrentlyExpanded = expandedRows.has(orderId);
+
+    if (isCurrentlyExpanded) {
+      // Sbalit
+      setExpandedRows(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+    } else {
+      // Rozbalit a načíst detail
+      setExpandedRows(prev => new Set([...prev, orderId]));
+      
+      // Načíst detail pokud není v cache
+      if (!detailsCache[orderId]) {
+        await loadOrderDetail(orderId);
+      } else {
+        // Tichý refresh při znovu-rozbalení
+        if (!fetchingRef.current.has(orderId)) {
+          refreshDetail(orderId);
+        }
+      }
+    }
+  }, [expandedRows, detailsCache, loadOrderDetail, refreshDetail]);
+
+  // ❓ Check if row is expanded
+  const isExpanded = useCallback((orderId) => {
+    return expandedRows.has(orderId);
+  }, [expandedRows]);
+
+  // 📖 Get cached detail for order
+  const getRowDetail = useCallback((orderId) => {
+    return detailsCache[orderId] || null;
+  }, [detailsCache]);
+
+  // 👀 Tichý refresh při návratu fokusu do okna
+  useEffect(() => {
+    const refreshExpandedOnFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusRefreshRef.current < 30000) {
+        return;
+      }
+
+      if (expandedRows.size === 0) {
+        return;
+      }
+
+      lastFocusRefreshRef.current = now;
+
+      expandedRows.forEach((orderId) => {
+        if (!fetchingRef.current.has(orderId)) {
+          refreshDetail(orderId);
+        }
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshExpandedOnFocus();
+      }
+    };
+
+    window.addEventListener('focus', refreshExpandedOnFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', refreshExpandedOnFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [expandedRows, refreshDetail]);
 
   // 🗑️ Clear cache
   const clearCache = useCallback(() => {
