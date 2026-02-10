@@ -261,6 +261,42 @@ function safeJsonDecode($json, $default = null) {
 }
 
 /**
+ * Normalizuje text pro diakritiku + lowercase (CZE)
+ * @param string|null $value
+ * @return string
+ */
+function normalizeSearchString($value) {
+    if ($value === null) {
+        return '';
+    }
+    $normalized = mb_strtolower((string)$value, 'UTF-8');
+    $map = array(
+        'á' => 'a', 'č' => 'c', 'ď' => 'd', 'é' => 'e', 'ě' => 'e',
+        'í' => 'i', 'ň' => 'n', 'ó' => 'o', 'ř' => 'r', 'š' => 's',
+        'ť' => 't', 'ú' => 'u', 'ů' => 'u', 'ý' => 'y', 'ž' => 'z'
+    );
+    return strtr($normalized, $map);
+}
+
+/**
+ * Vytvoří SQL výraz pro porovnání bez diakritiky (lowercase + replace)
+ * @param string $expression SQL výraz/sloupec
+ * @return string
+ */
+function sqlNormalizeExpression($expression) {
+    $normalized = "LOWER($expression)";
+    $map = array(
+        'á' => 'a', 'č' => 'c', 'ď' => 'd', 'é' => 'e', 'ě' => 'e',
+        'í' => 'i', 'ň' => 'n', 'ó' => 'o', 'ř' => 'r', 'š' => 's',
+        'ť' => 't', 'ú' => 'u', 'ů' => 'u', 'ý' => 'y', 'ž' => 'z'
+    );
+    foreach ($map as $from => $to) {
+        $normalized = "REPLACE($normalized, '$from', '$to')";
+    }
+    return $normalized;
+}
+
+/**
  * Parsuje pole financování z DB - vrací array nebo null
  * Stejná logika jako OrderV2Handler::transformRawData()
  * 
@@ -553,55 +589,63 @@ function handle_order_v3_list($input, $config, $queries) {
         // Dynamické filtry
         if (!empty($filters['cislo_objednavky'])) {
             // ⚠️ KOMBINOVANÝ SLOUPEC: Evidenční číslo zobrazuje cislo_objednavky + predmet
-            // Hledat v OBOU sloupcích + v položkách (case-insensitive)
+            // Hledat v OBOU sloupcích + v položkách (case-insensitive + bez diakritiky)
+            $filter_value = normalizeSearchString($filters['cislo_objednavky']);
+            $filter_pattern = '%' . $filter_value . '%';
             $where_conditions[] = "(
-                LOWER(o.cislo_objednavky) LIKE LOWER(?) 
-                OR LOWER(o.predmet) LIKE LOWER(?)
-                OR EXISTS(
-                    SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
-                    WHERE pol.objednavka_id = o.id 
-                    AND LOWER(pol.popis) LIKE LOWER(?)
-                )
+                " . sqlNormalizeExpression('o.cislo_objednavky') . " LIKE ?
+                OR " . sqlNormalizeExpression('o.predmet') . " LIKE ?
+                    OR EXISTS (
+                        SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                        WHERE pol.objednavka_id = o.id 
+                        AND " . sqlNormalizeExpression('pol.popis') . " LIKE ?
+                    )
             )";
-            $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
-            $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
-            $where_params[] = '%' . $filters['cislo_objednavky'] . '%';
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
         }
         
         if (!empty($filters['dodavatel_nazev'])) {
-            // ⚠️ DODAVATEL: Hledat v názvu + adrese + kontaktech (case-insensitive)
+            // ⚠️ DODAVATEL: Hledat v názvu + adrese + kontaktech (case-insensitive + bez diakritiky)
+            $filter_value = normalizeSearchString($filters['dodavatel_nazev']);
+            $filter_pattern = '%' . $filter_value . '%';
             $where_conditions[] = "(
-                LOWER(d.nazev) LIKE LOWER(?)
-                OR LOWER(o.dodavatel_nazev) LIKE LOWER(?)
-                OR LOWER(o.dodavatel_adresa) LIKE LOWER(?)
-                OR LOWER(o.dodavatel_kontakt_jmeno) LIKE LOWER(?)
-                OR LOWER(o.dodavatel_kontakt_email) LIKE LOWER(?)
+                " . sqlNormalizeExpression('d.nazev') . " LIKE ?
+                OR " . sqlNormalizeExpression('o.dodavatel_nazev') . " LIKE ?
+                OR " . sqlNormalizeExpression('o.dodavatel_adresa') . " LIKE ?
+                OR " . sqlNormalizeExpression('o.dodavatel_kontakt_jmeno') . " LIKE ?
+                OR " . sqlNormalizeExpression('o.dodavatel_kontakt_email') . " LIKE ?
             )";
-            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
-            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
-            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
-            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
-            $where_params[] = '%' . $filters['dodavatel_nazev'] . '%';
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
         }
         
         // ⚠️ KOMBINOVANÝ SLOUPEC: Objednatel / Garant (pouze jména, ne emaily)
         if (!empty($filters['objednatel_garant'])) {
+            $filter_value = normalizeSearchString($filters['objednatel_garant']);
+            $filter_pattern = '%' . $filter_value . '%';
             $where_conditions[] = "(
-                LOWER(CONCAT(u1.prijmeni, ' ', u1.jmeno)) LIKE LOWER(?)
-                OR LOWER(CONCAT(u2.prijmeni, ' ', u2.jmeno)) LIKE LOWER(?)
+                " . sqlNormalizeExpression("CONCAT(u1.prijmeni, ' ', u1.jmeno)") . " LIKE ?
+                OR " . sqlNormalizeExpression("CONCAT(u2.prijmeni, ' ', u2.jmeno)") . " LIKE ?
             )";
-            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
-            $where_params[] = '%' . $filters['objednatel_garant'] . '%';
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
         }
         
         // ⚠️ KOMBINOVANÝ SLOUPEC: Příkazce / Schvalovatel (pouze jména, ne emaily)
         if (!empty($filters['prikazce_schvalovatel'])) {
+            $filter_value = normalizeSearchString($filters['prikazce_schvalovatel']);
+            $filter_pattern = '%' . $filter_value . '%';
             $where_conditions[] = "(
-                LOWER(CONCAT(u3.prijmeni, ' ', u3.jmeno)) LIKE LOWER(?)
-                OR LOWER(CONCAT(u4.prijmeni, ' ', u4.jmeno)) LIKE LOWER(?)
+                " . sqlNormalizeExpression("CONCAT(u3.prijmeni, ' ', u3.jmeno)") . " LIKE ?
+                OR " . sqlNormalizeExpression("CONCAT(u4.prijmeni, ' ', u4.jmeno)") . " LIKE ?
             )";
-            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
-            $where_params[] = '%' . $filters['prikazce_schvalovatel'] . '%';
+            $where_params[] = $filter_pattern;
+            $where_params[] = $filter_pattern;
         }
         
         // 🔍 DEBUG: Log příchozích filtrů
@@ -666,7 +710,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 'ODESLANA' => 'ODESLANA',
                 'POTVRZENA' => 'POTVRZENA',
                 'K_UVEREJNENI_DO_REGISTRU' => 'UVEREJNIT',
-                'UVEREJNENA' => 'UVEREJNIT',
+                // UVEREJNENA je řešena speciálně přes registr, ne přes workflow
                 'FAKTURACE' => 'FAKTURACE',
                 'VECNA_SPRAVNOST' => 'VECNA_SPRAVNOST',
                 'ZKONTROLOVANA' => 'ZKONTROLOVANA',
@@ -678,7 +722,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 'UVEREJNIT' => 'UVEREJNIT',
             );
             
-            $workflow_conditions = array();
+            $status_conditions = array();
             foreach ($filters['stav'] as $stav_key) {
                 // ✅ Normalizuj na UPPERCASE pro mapování (Dashboard posílá lowercase)
                 $stav_key_upper = strtoupper(trim($stav_key));
@@ -688,6 +732,29 @@ function handle_order_v3_list($input, $config, $queries) {
                     continue;
                 }
                 
+                // Speciální logika pro registr (bez workflow)
+                if ($stav_key_upper === 'UVEREJNENA') {
+                    $status_conditions[] = "(
+                        (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                        OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+                    )";
+                    continue;
+                }
+                if ($stav_key_upper === 'K_UVEREJNENI_DO_REGISTRU') {
+                    $status_conditions[] = "(
+                        (
+                            JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT'
+                            OR " . sqlNormalizeExpression('o.zverejnit') . " = 'ano'
+                            OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'ke zverejneni'
+                        )
+                        AND NOT (
+                            (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                            OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+                        )
+                    )";
+                    continue;
+                }
+
                 $workflow_kod = $stav_map[$stav_key_upper] ?? $stav_key_upper; // Fallback na původní hodnotu
                 
                 // ✅ LOGIKA: Filtruj podle POSLEDNÍHO prvku v workflow poli
@@ -696,18 +763,18 @@ function handle_order_v3_list($input, $config, $queries) {
                 // Např. ["SCHVALENA","ODESLANA"] - poslední je index 1
                 if ($workflow_kod === 'NOVA') {
                     // NOVA je vždy na začátku workflow
-                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
+                    $status_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
                     $where_params[] = $workflow_kod;
                 } else {
                     // Všechny ostatní stavy - hledej jako poslední prvek
-                    $workflow_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
+                    $status_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
                     $where_params[] = $workflow_kod;
                 }
                 
             }
             
-            if (!empty($workflow_conditions)) {
-                $sql_condition = '(' . implode(' OR ', $workflow_conditions) . ')';
+            if (!empty($status_conditions)) {
+                $sql_condition = '(' . implode(' OR ', $status_conditions) . ')';
                 $where_conditions[] = $sql_condition;
             }
         }
@@ -736,50 +803,55 @@ function handle_order_v3_list($input, $config, $queries) {
         // ========================================================================
         
         // Filtr pro objednatele a garanta - pokud jsou stejné, použít OR logiku
-        $objednatel_filter = !empty($filters['objednatel_jmeno']) ? $filters['objednatel_jmeno'] : '';
-        $garant_filter = !empty($filters['garant_jmeno']) ? $filters['garant_jmeno'] : '';
+        $objednatel_filter_raw = !empty($filters['objednatel_jmeno']) ? $filters['objednatel_jmeno'] : '';
+        $garant_filter_raw = !empty($filters['garant_jmeno']) ? $filters['garant_jmeno'] : '';
+        $objednatel_filter = normalizeSearchString($objednatel_filter_raw);
+        $garant_filter = normalizeSearchString($garant_filter_raw);
         
         // Pokud jsou oba filtry stejné (kombinovaný sloupec z FE), použít OR
         if ($objednatel_filter && $garant_filter && $objednatel_filter === $garant_filter) {
-            $where_conditions[] = "(CONCAT(u1.jmeno, ' ', u1.prijmeni) LIKE ? OR CONCAT(u2.jmeno, ' ', u2.prijmeni) LIKE ?)";
+            $where_conditions[] = "(" . sqlNormalizeExpression("CONCAT(u1.jmeno, ' ', u1.prijmeni)") . " LIKE ? OR " . sqlNormalizeExpression("CONCAT(u2.jmeno, ' ', u2.prijmeni)") . " LIKE ?)";
             $where_params[] = '%' . $objednatel_filter . '%';
             $where_params[] = '%' . $objednatel_filter . '%';
         } else {
             // Jinak jsou to samostatné filtry, použít AND
             if ($objednatel_filter) {
-                $where_conditions[] = "CONCAT(u1.jmeno, ' ', u1.prijmeni) LIKE ?";
+                $where_conditions[] = sqlNormalizeExpression("CONCAT(u1.jmeno, ' ', u1.prijmeni)") . " LIKE ?";
                 $where_params[] = '%' . $objednatel_filter . '%';
             }
             if ($garant_filter) {
-                $where_conditions[] = "CONCAT(u2.jmeno, ' ', u2.prijmeni) LIKE ?";
+                $where_conditions[] = sqlNormalizeExpression("CONCAT(u2.jmeno, ' ', u2.prijmeni)") . " LIKE ?";
                 $where_params[] = '%' . $garant_filter . '%';
             }
         }
         
         // Filtr pro příkazce a schvalovatele - pokud jsou stejné, použít OR logiku
-        $prikazce_filter = !empty($filters['prikazce_jmeno']) ? $filters['prikazce_jmeno'] : '';
-        $schvalovatel_filter = !empty($filters['schvalovatel_jmeno']) ? $filters['schvalovatel_jmeno'] : '';
+        $prikazce_filter_raw = !empty($filters['prikazce_jmeno']) ? $filters['prikazce_jmeno'] : '';
+        $schvalovatel_filter_raw = !empty($filters['schvalovatel_jmeno']) ? $filters['schvalovatel_jmeno'] : '';
+        $prikazce_filter = normalizeSearchString($prikazce_filter_raw);
+        $schvalovatel_filter = normalizeSearchString($schvalovatel_filter_raw);
         
         // Pokud jsou oba filtry stejné (kombinovaný sloupec z FE), použít OR
         if ($prikazce_filter && $schvalovatel_filter && $prikazce_filter === $schvalovatel_filter) {
-            $where_conditions[] = "(CONCAT(u3.jmeno, ' ', u3.prijmeni) LIKE ? OR CONCAT(u4.jmeno, ' ', u4.prijmeni) LIKE ?)";
+            $where_conditions[] = "(" . sqlNormalizeExpression("CONCAT(u3.jmeno, ' ', u3.prijmeni)") . " LIKE ? OR " . sqlNormalizeExpression("CONCAT(u4.jmeno, ' ', u4.prijmeni)") . " LIKE ?)";
             $where_params[] = '%' . $prikazce_filter . '%';
             $where_params[] = '%' . $prikazce_filter . '%';
         } else {
             // Jinak jsou to samostatné filtry, použít AND
             if ($prikazce_filter) {
-                $where_conditions[] = "CONCAT(u3.jmeno, ' ', u3.prijmeni) LIKE ?";
+                $where_conditions[] = sqlNormalizeExpression("CONCAT(u3.jmeno, ' ', u3.prijmeni)") . " LIKE ?";
                 $where_params[] = '%' . $prikazce_filter . '%';
             }
             if ($schvalovatel_filter) {
-                $where_conditions[] = "CONCAT(u4.jmeno, ' ', u4.prijmeni) LIKE ?";
+                $where_conditions[] = sqlNormalizeExpression("CONCAT(u4.jmeno, ' ', u4.prijmeni)") . " LIKE ?";
                 $where_params[] = '%' . $schvalovatel_filter . '%';
             }
         }
         
         // Filtr pro financování - hledá v JSON poli dle typu, názvu, LP kódů, smlouvy, atd.
         if (!empty($filters['financovani'])) {
-            $financovani_search = $filters['financovani'];
+            $financovani_search_raw = trim($filters['financovani']);
+            $financovani_search = normalizeSearchString($financovani_search_raw);
             
             // Hledáme v:
             // 1. typ (LP) - při hledání "Limit", "Příslib" apod.
@@ -791,41 +863,27 @@ function handle_order_v3_list($input, $config, $queries) {
             $financovani_conditions = [];
             
             // Původní LIKE na celý JSON (najde "LP", čísla smluv, texty)
-            $financovani_conditions[] = "o.financovani LIKE ?";
+            $financovani_conditions[] = sqlNormalizeExpression("o.financovani") . " LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v čísle smlouvy
-            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) LIKE ?";
+            $financovani_conditions[] = sqlNormalizeExpression("JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy'))") . " LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v čísle pojistné události
-            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.pojistna_udalost_cislo')) LIKE ?";
+            $financovani_conditions[] = sqlNormalizeExpression("JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.pojistna_udalost_cislo'))") . " LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v poznámce pojistné události
-            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.poznamka')) LIKE ?";
+            $financovani_conditions[] = sqlNormalizeExpression("JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.poznamka'))") . " LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Hledání v individuálním schválení
-            $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni')) LIKE ?";
+            $financovani_conditions[] = sqlNormalizeExpression("JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.individualni_schvaleni'))") . " LIKE ?";
             $where_params[] = '%' . $financovani_search . '%';
             
             // Rozpoznání textů "Limit", "Příslib" -> hledat typ=LP
-            $search_lower = mb_strtolower($financovani_search, 'UTF-8');
-            $search_norm = $search_lower;
-            $search_norm = str_replace(['á','à','â','ä','ã','å','ā'], 'a', $search_norm);
-            $search_norm = str_replace(['é','è','ê','ë','ē','ė','ę'], 'e', $search_norm);
-            $search_norm = str_replace(['í','ì','î','ï','ī','į'], 'i', $search_norm);
-            $search_norm = str_replace(['ó','ò','ô','ö','õ','ø','ō'], 'o', $search_norm);
-            $search_norm = str_replace(['ú','ù','û','ü','ū','ů'], 'u', $search_norm);
-            $search_norm = str_replace(['ý','ÿ'], 'y', $search_norm);
-            $search_norm = str_replace(['č'], 'c', $search_norm);
-            $search_norm = str_replace(['ď'], 'd', $search_norm);
-            $search_norm = str_replace(['ň'], 'n', $search_norm);
-            $search_norm = str_replace(['ř'], 'r', $search_norm);
-            $search_norm = str_replace(['š'], 's', $search_norm);
-            $search_norm = str_replace(['ť'], 't', $search_norm);
-            $search_norm = str_replace(['ž'], 'z', $search_norm);
+            $search_norm = $financovani_search;
 
             $lp_hint = false;
             if (stripos($search_norm, 'limit') !== false ||
@@ -848,7 +906,7 @@ function handle_order_v3_list($input, $config, $queries) {
             // Hledání v LP kódech (LPIT1, LPKO1, ...)
             $financovani_conditions[] = "EXISTS (
                 SELECT 1 FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
-                WHERE LOWER(lp.cislo_lp) LIKE LOWER(?)
+                WHERE " . sqlNormalizeExpression('lp.cislo_lp') . " LIKE ?
                 AND JSON_SEARCH(
                     JSON_EXTRACT(o.financovani, '$.lp_kody'),
                     'one',
@@ -913,20 +971,7 @@ function handle_order_v3_list($input, $config, $queries) {
             $search_term = trim($filters['fulltext_search']);
             if ($search_term !== '') {
                 // Odstranění diakritiky z vyhledávaného textu
-                $search_term_no_diacritics = $search_term;
-                $search_term_no_diacritics = str_replace(['á','à','â','ä','ã','å','ā'], 'a', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['é','è','ê','ë','ē','ė','ę'], 'e', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['í','ì','î','ï','ī','į'], 'i', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ó','ò','ô','ö','õ','ø','ō'], 'o', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ú','ù','û','ü','ū','ů'], 'u', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ý','ÿ'], 'y', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['č'], 'c', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ď'], 'd', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ň'], 'n', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ř'], 'r', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['š'], 's', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ť'], 't', $search_term_no_diacritics);
-                $search_term_no_diacritics = str_replace(['ž'], 'z', $search_term_no_diacritics);
+                $search_term_normalized = normalizeSearchString($search_term);
                 
                 // Hledá v: číslo objednávky, předmět, dodavatel, jména uživatelů, poznámka
                 // + FAKTURY: číslo, poznámka, věcná správnost
@@ -937,32 +982,18 @@ function handle_order_v3_list($input, $config, $queries) {
                 // + LP KÓDY: číslo LP a název účtu z tabulky + kódy z JSON financování
                 // Case-insensitive pomocí LOWER() a bez diakritiky pomocí REPLACE()
                 $where_conditions[] = "(
-                    LOWER(o.cislo_objednavky) LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        o.predmet, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        o.poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        o.dodavatel_nazev, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u1.prijmeni, ' ', u1.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(u1.email) LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u2.prijmeni, ' ', u2.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(u2.email) LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u3.prijmeni, ' ', u3.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(u3.email) LIKE LOWER(?) OR
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        CONCAT(u4.prijmeni, ' ', u4.jmeno), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                        LIKE LOWER(?) OR
-                    LOWER(u4.email) LIKE LOWER(?) OR
+                    " . sqlNormalizeExpression('o.cislo_objednavky') . " LIKE ? OR
+                    " . sqlNormalizeExpression('o.predmet') . " LIKE ? OR
+                    " . sqlNormalizeExpression('o.poznamka') . " LIKE ? OR
+                    " . sqlNormalizeExpression('o.dodavatel_nazev') . " LIKE ? OR
+                    " . sqlNormalizeExpression("CONCAT(u1.prijmeni, ' ', u1.jmeno)") . " LIKE ? OR
+                    LOWER(u1.email) LIKE ? OR
+                    " . sqlNormalizeExpression("CONCAT(u2.prijmeni, ' ', u2.jmeno)") . " LIKE ? OR
+                    LOWER(u2.email) LIKE ? OR
+                    " . sqlNormalizeExpression("CONCAT(u3.prijmeni, ' ', u3.jmeno)") . " LIKE ? OR
+                    LOWER(u3.email) LIKE ? OR
+                    " . sqlNormalizeExpression("CONCAT(u4.prijmeni, ' ', u4.jmeno)") . " LIKE ? OR
+                    LOWER(u4.email) LIKE ? OR
                     -- Další uživatelé přes dodatečné EXISTS (nemůžeme dělat nekonečně JOINů)
                     EXISTS (
                         SELECT 1 FROM " . TBL_UZIVATELE . " ux 
@@ -971,77 +1002,64 @@ function handle_order_v3_list($input, $config, $queries) {
                             ux.id = o.dodavatel_potvrdil_id OR ux.id = o.zverejnil_id OR ux.id = o.fakturant_id OR 
                             ux.id = o.dokoncil_id OR ux.id = o.potvrdil_vecnou_spravnost_id OR ux.id = o.zamek_uzivatel_id
                         ) AND (
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                CONCAT(ux.jmeno, ' ', ux.prijmeni), 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?) OR
-                            LOWER(ux.email) LIKE LOWER(?)
+                            " . sqlNormalizeExpression("CONCAT(ux.jmeno, ' ', ux.prijmeni)") . " LIKE ? OR
+                            LOWER(ux.email) LIKE ?
                         )
                     ) OR
                     EXISTS (
                         SELECT 1 FROM " . TBL_FAKTURY . " f 
+                        LEFT JOIN " . TBL_CISELNIK_STAVY . " cs
+                          ON cs.kod_stavu = f.stav
+                         AND cs.typ_objektu IN ('FAKTURA_STAV', 'FAKTURA_STATUS')
                         WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (
-                            LOWER(f.fa_cislo_vema) LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                f.fa_poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                f.vecna_spravnost_poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                f.vecna_spravnost_umisteni_majetku, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?)
+                            " . sqlNormalizeExpression('f.fa_cislo_vema') . " LIKE ? OR
+                            " . sqlNormalizeExpression('f.fa_poznamka') . " LIKE ? OR
+                            " . sqlNormalizeExpression('f.vecna_spravnost_poznamka') . " LIKE ? OR
+                            " . sqlNormalizeExpression('f.vecna_spravnost_umisteni_majetku') . " LIKE ? OR
+                            " . sqlNormalizeExpression('f.stav') . " LIKE ? OR
+                            " . sqlNormalizeExpression('cs.nazev_stavu') . " LIKE ?
+                        )
+                    ) OR
+                    EXISTS (
+                        SELECT 1 FROM " . TBL_FAKTURY_PRILOHY . " fp
+                        INNER JOIN " . TBL_FAKTURY . " ff ON fp.faktura_id = ff.id
+                        WHERE ff.objednavka_id = o.id AND ff.aktivni = 1 AND (
+                            " . sqlNormalizeExpression('fp.originalni_nazev_souboru') . " LIKE ? OR
+                            " . sqlNormalizeExpression('fp.typ_prilohy') . " LIKE ?
                         )
                     ) OR
                     EXISTS (
                         SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr
                         WHERE pr.objednavka_id = o.id AND (
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                pr.originalni_nazev_souboru, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                pr.typ_prilohy, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?)
+                            " . sqlNormalizeExpression('pr.originalni_nazev_souboru') . " LIKE ? OR
+                            " . sqlNormalizeExpression('pr.typ_prilohy') . " LIKE ?
                         )
                     ) OR
                     EXISTS (
                         SELECT 1 FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol
                         WHERE pol.objednavka_id = o.id AND (
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                pol.popis, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?) OR
-                            LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                                pol.poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s'))
-                                LIKE LOWER(?)
+                            " . sqlNormalizeExpression('pol.popis') . " LIKE ? OR
+                            " . sqlNormalizeExpression('pol.poznamka') . " LIKE ?
                         )
                     )
                 )";
                 
-                $search_pattern = '%' . $search_term . '%';
-                $search_pattern_no_diacritics = '%' . strtolower($search_term_no_diacritics) . '%';
+                $search_pattern = '%' . $search_term_normalized . '%';
                 
-                // Přidáme parametry: první běžný pattern, zbytek bez diakritiky
-                $where_params[] = $search_pattern; // cislo_objednavky (číselné, bez diakritiky)
-                
-                // SPRÁVNÝ POČET PARAMETRŮ (celkem 22):
-                // - 3 základní (predmet, poznamka, dodavatel)
-                // - 8 uživatelé u1-u4 (4 jména + 4 emaily)
-                // - 2 dodatečni uživatelé EXISTS (jmeno+email)
-                // - 4 faktury (cislo, poznamka, vecna_spravnost, umisteni_majetku)
-                // - 2 přílohy (nazev_souboru, typ_prilohy)
-                // - 2 položky (popis, poznamka)
-                // ODSTRANĚNO: 3 smlouvy + 1 JSON individualni_schvaleni + 2 LP kódy (neměly vazbu na objednávku)
-                for ($i = 0; $i < 21; $i++) {
-                    $where_params[] = $search_pattern_no_diacritics; // textové sloupce
+                // Celkem 26 parametrů pro fulltext
+                for ($i = 0; $i < 26; $i++) {
+                    $where_params[] = $search_pattern;
                 }
                 
-                error_log("[OrderV3 FULLTEXT] Fulltext search applied: '$search_term' (normalized: '$search_term_no_diacritics')");
+                error_log("[OrderV3 FULLTEXT] Fulltext search applied: '$search_term' (normalized: '$search_term_normalized')");
             }
         }
         
         // Filtr pro dodavatele (mapování z dodavatel_nazev na dodavatel)
         if (!empty($filters['dodavatel'])) {
-            $where_conditions[] = "o.dodavatel_nazev LIKE ?";
-            $where_params[] = '%' . $filters['dodavatel'] . '%';
+            $filter_value = normalizeSearchString($filters['dodavatel']);
+            $where_conditions[] = sqlNormalizeExpression('o.dodavatel_nazev') . " LIKE ?";
+            $where_params[] = '%' . $filter_value . '%';
         }
         
         // Datumové filtry
@@ -1138,16 +1156,36 @@ function handle_order_v3_list($input, $config, $queries) {
             foreach ($filters['stav_registru'] as $stav) {
                 switch ($stav) {
                     case 'publikovano':
-                        // Bylo zveřejněno v registru (dt_zverejneni IS NOT NULL NEBO stav "Uveřejněna v registru smluv")
-                        $stav_conditions[] = "(o.dt_zverejneni IS NOT NULL OR o.stav_objednavky = 'Uveřejněna v registru smluv')";
+                        // Bylo zveřejněno v registru (musí mít DT + IDDT, případně explicitní stav)
+                        $stav_conditions[] = "(
+                            (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                            OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+                        )";
                         break;
                     case 'nepublikovano':
-                        // Má být zveřejněno = stav "Ke zveřejnění" (teprv bude), ale ještě nebylo (dt_zverejneni IS NULL)
-                        $stav_conditions[] = "(o.stav_objednavky = 'Ke zveřejnění' AND o.dt_zverejneni IS NULL)";
+                        // Má být zveřejněno, ale ještě nebylo
+                        $stav_conditions[] = "(
+                            (
+                                JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT'
+                                OR " . sqlNormalizeExpression('o.zverejnit') . " = 'ano'
+                                OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'ke zverejneni'
+                            )
+                            AND NOT (
+                                (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                                OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+                            )
+                        )";
                         break;
                     case 'nezverejnovat':
                         // Nemá být vůbec zveřejněno - stav "NEUVEREJNIT" nebo jiné neaktivní stavy
-                        $stav_conditions[] = "(o.stav_objednavky = 'NEUVEREJNIT' OR (o.stav_objednavky NOT IN ('Ke zveřejnění', 'Uveřejněna v registru smluv') AND o.dt_zverejneni IS NULL))";
+                        $stav_conditions[] = "(
+                            " . sqlNormalizeExpression('o.stav_objednavky') . " = 'neuverejnit'
+                            OR (
+                                " . sqlNormalizeExpression('o.stav_objednavky') . " NOT IN ('ke zverejneni', 'uverejnena v registru smluv')
+                                AND o.dt_zverejneni IS NULL
+                                AND o.registr_iddt IS NULL
+                            )
+                        )";
                         break;
                 }
             }
@@ -1559,16 +1597,29 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'POTVRZENA' THEN 1 
                 ELSE 0 
             END) as potvrzena,
-            -- K UVEŘEJNĚNÍ (UVEREJNIT v workflow)
+            -- K UVEŘEJNĚNÍ (stejná logika jako stav_registru=nepublikovano)
             SUM(CASE 
-                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT' THEN 1 
+                WHEN (
+                    (
+                        JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT'
+                        OR " . sqlNormalizeExpression('o.zverejnit') . " = 'ano'
+                        OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'ke zverejneni'
+                    )
+                    AND NOT (
+                        (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                        OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+                    )
+                ) THEN 1 
                 ELSE 0 
             END) as k_uverejneni_do_registru,
-            -- UVEŘEJNĚNÉ
+            -- UVEŘEJNĚNÉ (stejná logika jako stav_registru=publikovano)
             SUM(CASE 
-                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNENA' THEN 1 
+                WHEN (
+                    (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                    OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+                ) THEN 1 
                 ELSE 0 
-            END) as uverejnene,
+            END) as uverejnena,
             -- FAKTURACE
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'FAKTURACE' THEN 1 
@@ -1760,7 +1811,7 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNENA' THEN 1 
                 ELSE 0 
-            END) as uverejnene,
+            END) as uverejnena,
             -- FAKTURACE
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'FAKTURACE' THEN 1 
@@ -1965,7 +2016,7 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
     // Převést všechny countery na INT (MySQL SUM vrací string)
     $counter_fields = array(
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana', 
-        'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnene', 
+        'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
         'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena', 
         'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
         'withComments', 'withMyComments'
