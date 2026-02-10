@@ -1563,6 +1563,7 @@ const Invoices25List = () => {
   
   // 🔍 Globální vyhledávání (nový state)
   const [globalSearchTerm, setGlobalSearchTerm] = useState(savedState?.globalSearchTerm || '');
+  const [debouncedGlobalSearchTerm, setDebouncedGlobalSearchTerm] = useState(savedState?.globalSearchTerm || '');
   
   // � ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
   // Checkbox viditelný pouze pro role ADMINISTRATOR a SUPERADMIN
@@ -1609,10 +1610,19 @@ const Invoices25List = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSidebarSearch(sidebarSearch);
-    }, 300); // 300ms delay
+    }, 400); // 400ms delay
     
     return () => clearTimeout(timer);
   }, [sidebarSearch]);
+
+  // Debouncing pro globální vyhledávání
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedGlobalSearchTerm(globalSearchTerm);
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [globalSearchTerm]);
   
   // Helper funkce pro normalizaci textu (bez diakritiky + lowercase)
   const normalizeSearchText = useCallback((text) => {
@@ -2271,8 +2281,8 @@ const Invoices25List = () => {
       }
       
       // 🔍 Globální vyhledávání (search_term)
-      if (globalSearchTerm && globalSearchTerm.trim()) {
-        apiParams.search_term = globalSearchTerm.trim();
+      if (debouncedGlobalSearchTerm && debouncedGlobalSearchTerm.trim()) {
+        apiParams.search_term = debouncedGlobalSearchTerm.trim();
       }
       
       // ✅ Dashboard card filter - filter_status
@@ -2623,7 +2633,7 @@ const Invoices25List = () => {
       setLoading(false);
       hideProgress?.();
     }
-  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, globalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
+  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, debouncedGlobalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
   // Initial load
   useEffect(() => {
