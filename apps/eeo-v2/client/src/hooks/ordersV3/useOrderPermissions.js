@@ -54,6 +54,11 @@ export function useOrderPermissions(hasPermission, userId) {
         return true;
       }
 
+      // ✅ APPROVAL: Uživatelé s ORDER_APPROVE mohou editovat (dle viditelnosti z API)
+      if (hasPermission(PERMISSIONS.ORDER_APPROVE) || hasPermission('ORDER_APPROVE')) {
+        return true;
+      }
+
       // ✅ DEPARTMENT SUBORDINATE: Can edit subordinate orders
       if (hasPermission(PERMISSIONS.ORDER_EDIT_SUBORDINATE)) {
         return true;

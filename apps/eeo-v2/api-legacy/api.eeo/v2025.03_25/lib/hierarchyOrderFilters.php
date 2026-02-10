@@ -564,14 +564,20 @@ function canUserViewOrder($orderId, $userId, $db) {
         error_log("HIERARCHY: User $userId CAN view order $orderId (has ORDER_MANAGE)");
         return true;
     }
+
+    // 0a. Subordinate read/edit - má přístup k objednávkám podřízených
+    if (in_array('ORDER_READ_SUBORDINATE', $user_permissions) || in_array('ORDER_EDIT_SUBORDINATE', $user_permissions)) {
+        error_log("HIERARCHY: User $userId CAN view order $orderId (has ORDER_*_SUBORDINATE)");
+        return true;
+    }
     
-    // 0a. Check INVOICE_MANAGE permission - má přístup k objednávkám pro přiřazení faktur
+    // 0b. Check INVOICE_MANAGE permission - má přístup k objednávkám pro přiřazení faktur
     if (in_array('INVOICE_MANAGE', $user_permissions)) {
         error_log("HIERARCHY: User $userId CAN view order $orderId (has INVOICE_MANAGE)");
         return true;
     }
     
-    // 0b. Check if user has invoice assigned to them (fa_predana_zam_id) for this order
+    // 0c. Check if user has invoice assigned to them (fa_predana_zam_id) for this order
     try {
         $invoiceCheckSql = "
             SELECT COUNT(*) as cnt 
