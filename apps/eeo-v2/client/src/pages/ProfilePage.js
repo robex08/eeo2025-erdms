@@ -2288,8 +2288,11 @@ const ProfilePage = () => {
         // POUZE mazat cache klíče, NE autentizační data
         if (key && (key.includes('user') || key.includes('profile') || key.includes('organizace'))) {
           // ⚠️ SKIP autentizační klíče - NIKDY je nemazat!
-          if (key.startsWith('auth_')) {
-            continue; // Přeskočit všechny auth_ klíče
+          // V DEV má auth klíč prefix (např. dev_auth_*), proto kontrolujeme i substring.
+          const isAuthKey = key.startsWith('auth_') || key.includes('auth_');
+          const isCriticalUserKey = key === 'current_user_id' || key === 'username';
+          if (isAuthKey || isCriticalUserKey) {
+            continue; // Přeskočit všechny auth_* klíče a kritické identifikátory
           }
           keysToRemove.push(key);
         }

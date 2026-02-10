@@ -578,7 +578,7 @@ const getOrderSystemStatus = (order) => {
 
 const COLUMN_LABELS = {
   expander: '',
-  approve: '',
+  approve: 'Schválení',
   kontrola_komentare: 'Kontrola / Komentáře',
   dt_objednavky: 'Datum objednávky',
   cislo_objednavky: 'Evidenční číslo',
@@ -617,6 +617,10 @@ function Orders25ListV3() {
   const isAdmin = useMemo(() => {
     return hasAdminRole && hasAdminRole();
   }, [hasAdminRole]);
+
+  const hasApproveColumn = useMemo(() => {
+    return (hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('ORDER_APPROVE'));
+  }, [hasAdminRole, hasPermission]);
 
   // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
   const {
@@ -1107,6 +1111,12 @@ function Orders25ListV3() {
     }
     window.location.reload(); // Reload pro aplikaci změn
   };
+  
+  const handleRefreshOrders = useCallback(() => {
+    clearCache?.();
+    loadOrders();
+    showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
+  }, [clearCache, loadOrders, showToast]);
 
   // 🔓 Handler pro force unlock (pouze admin)
   const handleForceUnlock = useCallback(async () => {
@@ -1524,8 +1534,8 @@ function Orders25ListV3() {
   const canApprove = useCallback((order) => {
     if (!order) return false;
     
-    const isPrikazce = order.prikazce_id === currentUserId;
-    const isAdminRole = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+    const isAdminRole = hasAdminRole && hasAdminRole();
     
     const hasPermissionToApprove = isPrikazce || isAdminRole;
     
@@ -1554,7 +1564,7 @@ function Orders25ListV3() {
       : '';
     
     return allowedStates.includes(lastState);
-  }, [user_id, hasPermission]);
+  }, [currentUserId, hasAdminRole]);
 
   return (
     <>
@@ -1643,22 +1653,20 @@ function Orders25ListV3() {
           </SmartTooltip>
         )}
 
-        {/* Vymazat filtry - zobrazovat v ActionBar když JE skrytý panel filtrů A jsou aktivní filtry */}
-        {!showFilters && (Object.values(columnFilters || {}).some(v => v && (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')) || (globalFilter && globalFilter.trim() !== '')) && (
-          <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
-            <ToggleButton
-              onClick={handleClearFilters}
-              style={{
-                background: '#dc2626',
-                borderColor: '#dc2626', 
-                color: 'white'
-              }}
-            >
-              <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
-              Vymazat filtry
-            </ToggleButton>
-          </SmartTooltip>
-        )}
+        {/* Vymazat filtry - vždy v ActionBar */}
+        <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
+          <ToggleButton
+            onClick={handleClearFilters}
+            style={{
+              background: '#dc2626',
+              borderColor: '#dc2626',
+              color: 'white'
+            }}
+          >
+            <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
+            Vymazat filtry
+          </ToggleButton>
+        </SmartTooltip>
 
         {/* Toggle Podbarvení řádků */}
         <SmartTooltip text={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'} icon="info" preferredPosition="bottom">
@@ -1754,6 +1762,8 @@ function Orders25ListV3() {
         canDelete={canDelete}
         canHardDelete={canHardDelete}
         canGenerateFinancialControl={canGenerateFinancialControl()}
+        showApproveColumn={hasApproveColumn}
+        canApproveOrder={canApprove}
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
@@ -1765,6 +1775,7 @@ function Orders25ListV3() {
         }}
         showToast={showToast} // 🎯 Toast notifikace
         clearCache={clearCache} // ✅ Vyčistí cache po update operacích
+        onRefreshOrders={handleRefreshOrders}
         getOrderTotalPriceWithDPH={getOrderTotalPriceWithDPH}
         forceVirtualization={shouldUseVirtualization}
         showPerformanceInfo={process.env.NODE_ENV === 'development'}

@@ -6707,8 +6707,10 @@ function OrderForm25() {
   const hasOrderManagePermission = hasPermission && hasPermission('ORDER_MANAGE');
   const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission; // SUPER, ADMIN a ORDER_MANAGE mohou odemknout cokoliv
 
+  const isPrikazceOfOrder = formData.prikazce_id && parseInt(formData.prikazce_id, 10) === user_id;
+
   // 🆕 Rozšířená logika schvalování podle zadání - zahrnout role PRIKAZCE, SUPERADMIN, ADMINISTRATOR
-  const canViewApprovalSection = canApproveOrders || canManageOrders || isPrikazce || isSuperAdmin || isAdmin;
+  const canViewApprovalSection = isPrikazceOfOrder || isSuperAdmin || isAdmin;
 
   // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
   // MUSÍ být AŽ PO definici isSuperAdmin a approvers!
@@ -6946,7 +6948,7 @@ function OrderForm25() {
       // Speciální oprávnění POUZE VE FÁZI SCHVALOVÁNÍ (2-3) - mohou schvalovat i zamítnuté objednávky
       if (currentPhase === 2 || currentPhase === 3) {
         const hasGeneralRole = userDetail?.roles?.some(role => 
-          role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+          role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
         );
         const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
         const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder;
@@ -21478,6 +21480,22 @@ function OrderForm25() {
                   )}
                 </div>
                 </>
+              )}
+              {!!formData.id &&
+               !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
+               !canViewApprovalSection && (
+                <div style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem 1rem',
+                  background: '#fef3c7',
+                  border: '1px solid #f59e0b',
+                  borderRadius: '6px',
+                  color: '#92400e',
+                  fontSize: '0.9rem',
+                  fontWeight: 600
+                }}>
+                  Schválení není dostupné – objednávka je určena jinému příkazci.
+                </div>
               )}
 
               {/* 📊 INFO BOX PRO UŽIVATELE BEZ PRÁV SCHVALOVÁNÍ */}
