@@ -1738,7 +1738,7 @@ const OrdersTableV3 = ({
       [columnId]: value  // UI column název
     }));
     
-    // Debounce pro volání API (300ms pro rychlejší response)
+    // Debounce pro volání API (400ms pro rychlejší response)
     if (filterTimers.current[columnId]) {
       clearTimeout(filterTimers.current[columnId]);
     }
@@ -1748,7 +1748,7 @@ const OrdersTableV3 = ({
       if (onColumnFiltersChange) {
         onColumnFiltersChange(backendColumnId, value, 0);
       }
-    }, 300); // Sníženo z 1000ms na 300ms pro rychlejší response
+    }, 400); // Sníženo z 1000ms na 400ms pro rychlejší response
   }, [onColumnFiltersChange]);
   
   // Cleanup timers při unmount
