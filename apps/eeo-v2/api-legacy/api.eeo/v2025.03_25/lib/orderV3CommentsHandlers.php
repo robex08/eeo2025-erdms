@@ -509,6 +509,7 @@ function handle_order_v3_comments_add($input, $config) {
             SELECT 
                 k.id,
                 k.objednavka_id,
+                k.parent_comment_id,
                 k.user_id,
                 k.obsah,
                 k.dt_vytvoreni,

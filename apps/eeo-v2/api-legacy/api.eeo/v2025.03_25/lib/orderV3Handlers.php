@@ -829,8 +829,11 @@ function handle_order_v3_list($input, $config, $queries) {
 
             $lp_hint = false;
             if (stripos($search_norm, 'limit') !== false ||
+                stripos($search_norm, 'lim') !== false ||
                 stripos($search_norm, 'prislib') !== false ||
-                stripos($search_norm, 'prisli') !== false) {
+                stripos($search_norm, 'prisli') !== false ||
+                stripos($search_norm, 'prisl') !== false ||
+                stripos($search_norm, 'pris') !== false) {
                 $lp_hint = true;
             }
 
@@ -1263,7 +1266,9 @@ function handle_order_v3_list($input, $config, $queries) {
         $stats = null;
         $unfilteredStats = null;
         
-        if ($page === 1) {
+        $should_calculate_stats = ($page === 1) || ($business_filter_count > 2);
+
+        if ($should_calculate_stats) {
             // 🎯 unfilteredStats - Bez business filtrů, ale SE permissions!
             // Permissions se aplikují UVNITŘ getOrderStatsWithPeriod pomocí applyOrderV3UserPermissions
             $unfilteredStats = getOrderStatsWithPeriod($db, $period, $user_id, null, array());

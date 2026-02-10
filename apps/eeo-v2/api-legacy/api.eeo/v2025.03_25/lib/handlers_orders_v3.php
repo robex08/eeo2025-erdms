@@ -994,8 +994,11 @@ function handle_orders_v3_find_page($input, $config) {
 
             $lp_hint = false;
             if (stripos($search_norm, 'limit') !== false ||
+                stripos($search_norm, 'lim') !== false ||
                 stripos($search_norm, 'prislib') !== false ||
-                stripos($search_norm, 'prisli') !== false) {
+                stripos($search_norm, 'prisli') !== false ||
+                stripos($search_norm, 'prisl') !== false ||
+                stripos($search_norm, 'pris') !== false) {
                 $lp_hint = true;
             }
 

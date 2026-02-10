@@ -7583,7 +7583,7 @@ const Invoices25List = () => {
         onClose={handleCloseOrdersSidebar}
         width="700px"
       >
-          <div style={{ padding: '1.5rem' }}>
+          <div style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {loadingOrdersReady ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                 <FontAwesomeIcon icon={faSyncAlt} spin style={{ fontSize: '2rem', marginBottom: '1rem' }} />
@@ -7597,7 +7597,8 @@ const Invoices25List = () => {
               </div>
             ) : (
               <>
-                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                <div style={{ flexShrink: 0 }}>
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
                   <p style={{ margin: 0, color: '#0c4a6e', fontSize: '0.95rem' }}>
                     <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem' }} />
                     Nalezeno <strong>{ordersReadyForInvoice.filter(order => {
@@ -7685,8 +7686,9 @@ const Invoices25List = () => {
                     </button>
                   )}
                 </div>
+                </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', minHeight: 0, flex: 1, paddingRight: '0.25rem' }}>
                   {ordersReadyForInvoice.filter(order => {
                     if (!debouncedSidebarSearch.trim()) return true;
                     const searchTerm = normalizeSearchText(debouncedSidebarSearch);
