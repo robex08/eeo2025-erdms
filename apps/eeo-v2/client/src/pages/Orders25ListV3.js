@@ -640,13 +640,13 @@ function Orders25ListV3() {
     return saved || '';
   });
 
-  // ✅ DEBOUNCED globalFilter - zpoždění 400ms pro omezení API requestů
+  // ✅ DEBOUNCED globalFilter - zpoždění 500ms pro omezení API requestů
   const [debouncedGlobalFilter, setDebouncedGlobalFilter] = useState(globalFilter);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedGlobalFilter(globalFilter);
-    }, 400); // 400ms debounce - vhodné pro fulltext search
+    }, 500); // 500ms debounce - vhodné pro fulltext search
 
     return () => clearTimeout(timer);
   }, [globalFilter]);

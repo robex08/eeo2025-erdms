@@ -977,9 +977,33 @@ function handle_orders_v3_find_page($input, $config) {
             $where_params[] = '%' . $financovani_search . '%';
 
             $search_lower = mb_strtolower($financovani_search, 'UTF-8');
-            if (stripos($search_lower, 'limit') !== false ||
-                stripos($search_lower, 'příslib') !== false ||
-                stripos($search_lower, 'prislib') !== false) {
+            $search_norm = $search_lower;
+            $search_norm = str_replace(['á','à','â','ä','ã','å','ā'], 'a', $search_norm);
+            $search_norm = str_replace(['é','è','ê','ë','ē','ė','ę'], 'e', $search_norm);
+            $search_norm = str_replace(['í','ì','î','ï','ī','į'], 'i', $search_norm);
+            $search_norm = str_replace(['ó','ò','ô','ö','õ','ø','ō'], 'o', $search_norm);
+            $search_norm = str_replace(['ú','ù','û','ü','ū','ů'], 'u', $search_norm);
+            $search_norm = str_replace(['ý','ÿ'], 'y', $search_norm);
+            $search_norm = str_replace(['č'], 'c', $search_norm);
+            $search_norm = str_replace(['ď'], 'd', $search_norm);
+            $search_norm = str_replace(['ň'], 'n', $search_norm);
+            $search_norm = str_replace(['ř'], 'r', $search_norm);
+            $search_norm = str_replace(['š'], 's', $search_norm);
+            $search_norm = str_replace(['ť'], 't', $search_norm);
+            $search_norm = str_replace(['ž'], 'z', $search_norm);
+
+            $lp_hint = false;
+            if (stripos($search_norm, 'limit') !== false ||
+                stripos($search_norm, 'prislib') !== false ||
+                stripos($search_norm, 'prisli') !== false) {
+                $lp_hint = true;
+            }
+
+            if (!$lp_hint && preg_match('/\blp\b/u', $search_norm)) {
+                $lp_hint = true;
+            }
+
+            if ($lp_hint) {
                 $financovani_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.typ')) = 'LP'";
             }
 

@@ -1537,7 +1537,7 @@ function AnnualFeesPage() {
       return '';
     }
   });
-  const debouncedFulltext = useDebounce(fulltextSearch, 300);
+  const debouncedFulltext = useDebounce(fulltextSearch, 500);
   
   // Číselníky
   const [druhy, setDruhy] = useState([]);
@@ -1608,7 +1608,7 @@ function AnnualFeesPage() {
   const fakturySearchRef = useRef(null);
   const fakturyInputRef = useRef(null);
   const [shouldFocusFaktura, setShouldFocusFaktura] = useState(false);
-  const debouncedFakturySearch = useDebounce(fakturySearch, 300);
+  const debouncedFakturySearch = useDebounce(fakturySearch, 400);
   
   // Form data pro CREATE
   const [newFeeData, setNewFeeData] = useState({
@@ -1625,7 +1625,7 @@ function AnnualFeesPage() {
   });
   
   // Debounced search
-  const debouncedSmlouvySearch = useDebounce(smlouvySearch, 300);
+  const debouncedSmlouvySearch = useDebounce(smlouvySearch, 400);
   
   // 💰 Formátování částek
   const formatCurrency = (val) => {
