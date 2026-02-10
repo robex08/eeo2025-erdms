@@ -129,7 +129,9 @@ export function useOrdersV3State(userId) {
   // Optimalizovaný setter s batch updates
   const updatePreferences = useCallback((updates) => {
     setPreferences(prev => {
-      const newPreferences = { ...prev, ...updates };
+      const newPreferences = typeof updates === 'function'
+        ? updates(prev)
+        : { ...prev, ...updates };
       debouncedSave(newPreferences);
       return newPreferences;
     });

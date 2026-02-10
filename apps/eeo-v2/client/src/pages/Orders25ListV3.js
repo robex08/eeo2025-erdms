@@ -740,6 +740,17 @@ function Orders25ListV3() {
     showRowColoring,
     columnSizing,
   } = useOrdersV3State(user_id);
+
+  const showFiltersStorageKey = useMemo(() => {
+    return user_id ? `${ORDERS_V3_CONFIG.STORAGE_PREFIX}_showFilters_${user_id}` : null;
+  }, [user_id]);
+
+  const setShowFilters = useCallback((value) => {
+    updatePreferences({ showFilters: value });
+    if (showFiltersStorageKey) {
+      localStorage.setItem(showFiltersStorageKey, String(value));
+    }
+  }, [updatePreferences, showFiltersStorageKey]);
   
   // State pro inicializaci - skryje obsah až do načtení všech dat
   const [isInitialized, setIsInitialized] = useState(false);
@@ -843,6 +854,63 @@ function Orders25ListV3() {
     }
   }, [loading, orders.length, stats.total]);
 
+  // ✅ Převod filtrů pro find-page (shodně s backend mapováním v useOrdersV3)
+  const getFindPageFilters = useCallback(() => {
+    const filters = {
+      ...(columnFilters || {})
+    };
+
+    if (globalFilter && globalFilter.trim()) {
+      filters.fulltext_search = globalFilter.trim();
+    }
+
+    if (dashboardFilters?.filter_status) {
+      const statusKey = dashboardFilters.filter_status;
+
+      if (statusKey === 'moje_objednavky') {
+        filters.moje_objednavky = true;
+      } else if (statusKey === 'mimoradne_udalosti') {
+        filters.mimoradne_udalosti = true;
+      } else if (statusKey === 's_fakturou') {
+        filters.s_fakturou = true;
+      } else if (statusKey === 's_prilohami') {
+        filters.s_prilohami = true;
+      } else if (statusKey === 's_komentari') {
+        filters.s_komentari = true;
+      } else if (statusKey === 's_mymi_komentari') {
+        filters.s_mymi_komentari = true;
+      } else {
+        const dashboardStatusMap = {
+          'nova': 'NOVA',
+          'ke_schvaleni': 'KE_SCHVALENI',
+          'schvalena': 'SCHVALENA',
+          'zamitnuta': 'ZAMITNUTA',
+          'rozpracovana': 'ROZPRACOVANA',
+          'odeslana': 'ODESLANA',
+          'potvrzena': 'POTVRZENA',
+          'k_uverejneni': 'K_UVEREJNENI_DO_REGISTRU',
+          'uverejnena': 'UVEREJNENA',
+          'fakturace': 'FAKTURACE',
+          'vecna_spravnost': 'VECNA_SPRAVNOST',
+          'zkontrolovana': 'ZKONTROLOVANA',
+          'dokoncena': 'DOKONCENA',
+          'zrusena': 'ZRUSENA',
+          'smazana': 'SMAZANA',
+          'rozpracovane_stavy': ['ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'],
+        };
+
+        const mappedStatus = dashboardStatusMap[statusKey];
+        if (mappedStatus) {
+          filters.stav = Array.isArray(mappedStatus) ? mappedStatus : [mappedStatus];
+        } else {
+          filters.stav = [String(statusKey).toUpperCase()];
+        }
+      }
+    }
+
+    return filters;
+  }, [columnFilters, dashboardFilters, globalFilter]);
+
   // 🎯 Effect pro highlight a scroll na objednávku po návratu z editace
   useEffect(() => {
     const orderIdFromEdit = location.state?.highlightOrderId || location.state?.orderIdFromEdit;
@@ -874,7 +942,7 @@ function Orders25ListV3() {
           order_id: orderIdFromEdit,
           per_page: itemsPerPage,
           period: selectedPeriod,
-          filters: columnFilters,
+          filters: getFindPageFilters(),
           sorting: sorting
         });
         
@@ -938,7 +1006,7 @@ function Orders25ListV3() {
       findAndScrollToOrder();
     }
     
-  }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedPeriod, columnFilters, sorting, showToast, handlePageChange, isSearchingForOrder]);
+  }, [location.state, orders, currentPage, token, username, itemsPerPage, selectedPeriod, columnFilters, dashboardFilters, globalFilter, sorting, showToast, handlePageChange, isSearchingForOrder, getFindPageFilters]);
 
   // ✅ VLASTNÍ handleClearFilters která také vymaže globalFilter 
   const handleClearFilters = useCallback(() => {
@@ -1567,7 +1635,7 @@ function Orders25ListV3() {
           <SmartTooltip text="Zobrazit pokročilé filtry" icon="info" preferredPosition="bottom">
             <ToggleButton
               $active={false}
-              onClick={() => updatePreferences({ showFilters: true })}
+              onClick={() => setShowFilters(true)}
             >
               <FontAwesomeIcon icon={faFilter} />
               Filtry
@@ -1656,8 +1724,8 @@ function Orders25ListV3() {
           globalFilter={globalFilter}
           onGlobalFilterChange={setGlobalFilter}
           showFilters={showFilters}
-          onToggleFilters={() => updatePreferences({ showFilters: !showFilters })}
-          onHide={() => updatePreferences({ showFilters: false })}
+          onToggleFilters={() => setShowFilters(!showFilters)}
+          onHide={() => setShowFilters(false)}
         />
       )}
 
