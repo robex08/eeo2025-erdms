@@ -8301,7 +8301,7 @@ const Orders25List = () => {
         // Podpora pro porovnávací operátory: =10000, <10000, >10000
         if (filterTrimmed.match(/^[=<>]/)) {
           const operator = filterTrimmed[0];
-          // Odstranit mezery, čárky a další non-numeric znaky kromě tečky
+          // Odstranit mezery, carky a dalsi non-numeric znaky krome tecky
           const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
           const compareValue = parseFloat(valueStr);
 
@@ -9231,6 +9231,11 @@ const Orders25List = () => {
 
     // Uživatelé s ORDER_*_ALL oprávněními mohou editovat všechny objednávky
     if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE')) {
+      return true;
+    }
+
+    // ✅ Schvalovatelé mohou editovat (dle viditelnosti z API)
+    if (hasPermission('ORDER_APPROVE')) {
       return true;
     }
 

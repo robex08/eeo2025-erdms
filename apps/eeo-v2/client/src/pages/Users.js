@@ -1392,6 +1392,7 @@ const Users = () => {
   // Force refresh counter - změna vynutí re-fetch
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [silentRefresh, setSilentRefresh] = useState(false); // 🔇 Flag pro tiché načtení bez progress baru
+  const [isSilentLoading, setIsSilentLoading] = useState(false); // 🔇 Potlačí loading gate/overlay při tichém refreshi
 
   // 🎯 Callback refs pro scroll monitoring
   const tableContainerRef = useRef(null);
@@ -1470,7 +1471,11 @@ const Users = () => {
   const fetchUsers = useCallback(async (silent = false) => {
     try {
       setError(null);
-      setLoading(true);
+      if (silent) {
+        setIsSilentLoading(true);
+      } else {
+        setLoading(true);
+      }
 
       // 🔇 Pokud je silent=true, NEVOLAT startGlobalProgress
       if (!silent) {
@@ -1582,7 +1587,11 @@ const Users = () => {
         } catch(e) {}
       }
     } finally {
-      setTimeout(() => setLoading(false), 500);
+      if (!silent) {
+        setTimeout(() => setLoading(false), 500);
+      } else {
+        setIsSilentLoading(false);
+      }
     }
   }, [token, username, startGlobalProgress, setGlobalProgress, doneGlobalProgress, resetGlobalProgress, showToast, refreshTrigger]);
 
@@ -2573,13 +2582,8 @@ const Users = () => {
     // NEVYČIŠŤOVAT users[], aby uživatel viděl aktuální stav
     // Jen spustit fetch na pozadí - bez loader animací
 
-
-    // 🔇 Nastavit silentRefresh flag - fetchUsers se spustí bez progress baru
-    setSilentRefresh(true);
-
-    // Trigger force refresh změnou refreshTrigger
-    // Toto vyvolá useEffect, který načte data znovu (s silent=true)
-    setRefreshTrigger(prev => prev + 1);
+    // 🔇 Přímé tiché načtení bez spouštění loading gate
+    fetchUsers(true);
 
     // Pokud máme načítání počtů objednávek, obnovíme i je
     if (typeof fetchOrdersCounts === 'function') {
@@ -3036,7 +3040,7 @@ const Users = () => {
     return pages;
   };
 
-  if (loading && users.length === 0) {
+  if (loading && users.length === 0 && !isSilentLoading) {
     return (
       <LoadingOverlay $visible={true}>
         <LoadingSpinner $visible={true} />
@@ -3053,13 +3057,13 @@ const Users = () => {
   return (
     <>
     <Container>
-      <LoadingOverlay $visible={loading}>
-        <LoadingSpinner $visible={loading} />
-        <LoadingMessage $visible={loading}>Aktualizuji data...</LoadingMessage>
-        <LoadingSubtext $visible={loading}>Prosím čekejte</LoadingSubtext>
+      <LoadingOverlay $visible={loading && !isSilentLoading}>
+        <LoadingSpinner $visible={loading && !isSilentLoading} />
+        <LoadingMessage $visible={loading && !isSilentLoading}>Aktualizuji data...</LoadingMessage>
+        <LoadingSubtext $visible={loading && !isSilentLoading}>Prosím čekejte</LoadingSubtext>
       </LoadingOverlay>
 
-      <PageContent $blurred={loading}>
+      <PageContent $blurred={loading && !isSilentLoading}>
 
       <TitlePanel>
         <TitleLeft>

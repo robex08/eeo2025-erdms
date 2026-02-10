@@ -1753,6 +1753,15 @@ const Layout = ({ children }) => {
     return hasInvoices && hasOrders && hasAnnualFees;
   }, [hasPermission, userDetail]);
 
+  const hasAnalyticsPermission = useMemo(() => {
+    if (!hasPermission) return false;
+
+    return (
+      hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT') ||
+      hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')
+    );
+  }, [hasPermission]);
+
   // Notes recording state (pro floating button)
   const [notesRecording, setNotesRecording] = useState(false);
 
@@ -3206,12 +3215,15 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky (V3)
               </MenuLinkLeft>
             ) }
+
+            {!hasAnalyticsPermission && (
+              <MenuLinkLeft to="/cerpani" $active={isActive('/cerpani')}>
+                <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
+              </MenuLinkLeft>
+            )}
             
             {/* Manažerské analýzy - zobrazit pokud má právo k reportům nebo statistikám */}
-            { hasPermission && (
-                hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT') ||
-                hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')
-              ) && (
+            { hasAnalyticsPermission && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={analyticsButtonRef}
@@ -3243,6 +3255,12 @@ const Layout = ({ children }) => {
                       minWidth: `${dropdownPosition.width}px`
                     }}
                   >
+                    <MenuDropdownItem 
+                      to="/cerpani" 
+                      onClick={() => setAnalyticsMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
+                    </MenuDropdownItem>
                     {/* Reporty - zobrazit pokud má právo */}
                     {(hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')) && (
                       <MenuDropdownItem 
@@ -3320,6 +3338,14 @@ const Layout = ({ children }) => {
                       minWidth: `${betaDropdownPosition.width}px`
                     }}
                   >
+                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+                      <MenuDropdownItem 
+                        to="/majetek-overview" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                      <FontAwesomeIcon icon={faList} style={{color: '#6366f1'}} /> Přehled majetku
+                      </MenuDropdownItem>
+                    )}
                     {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_orders_v3_visible && (
                       <MenuDropdownItem 
                         to="/orders25-list-v3" 

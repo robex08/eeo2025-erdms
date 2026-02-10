@@ -727,7 +727,7 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog }) => {
+const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder }) => {
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
   
@@ -923,6 +923,8 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   {/* 🎯 Schvalovací tlačítko - stejná logika jako v hlavním řádku */}
                   {(() => {
+                    const canApproveThisOrder = canApproveOrder ? canApproveOrder(detail) : true;
+
                     // Zkontroluj workflow stav pro schvalovací ikonu
                     let workflowStates = [];
                     try {
@@ -979,15 +981,26 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                       hoverIconColor = '#4b5563';
                     }
                     
+                    const tooltipText = canApproveThisOrder
+                      ? (isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)")
+                      : "Nemůžete schválit objednávku – je určena jinému příkazci.";
+
+                    const tooltipIcon = canApproveThisOrder
+                      ? (isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info"))
+                      : "warning";
+
                     return (
                       <SmartTooltip 
-                        text={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"} 
-                        icon={isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info")} 
+                        text={tooltipText} 
+                        icon={tooltipIcon} 
                         preferredPosition="top"
                       >
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
+                            if (!canApproveThisOrder) {
+                              return;
+                            }
                             try {
                               // Použijeme již načtený detail
                               setOrderToApprove && setOrderToApprove(detail);
@@ -1003,15 +1016,16 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                             justifyContent: 'center',
                             width: '36px',
                             height: '36px',
-                            border: `2px solid ${iconColor}`,
+                            border: `2px solid ${canApproveThisOrder ? iconColor : '#e5e7eb'}`,
                             borderRadius: '6px',
-                            background: 'white',
-                            color: iconColor,
-                            cursor: 'pointer',
+                            background: canApproveThisOrder ? 'white' : '#f3f4f6',
+                            color: canApproveThisOrder ? iconColor : '#9ca3af',
+                            cursor: canApproveThisOrder ? 'pointer' : 'not-allowed',
                             transition: 'all 0.2s ease',
                             fontSize: '1rem'
                           }}
                           onMouseOver={(e) => {
+                            if (!canApproveThisOrder) return;
                             e.currentTarget.style.background = hoverBgColor;
                             e.currentTarget.style.borderColor = hoverBorderColor;
                             e.currentTarget.style.color = hoverIconColor;
@@ -1019,6 +1033,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                             e.currentTarget.style.boxShadow = `0 4px 12px ${hoverBgColor}`;
                           }}
                           onMouseOut={(e) => {
+                            if (!canApproveThisOrder) return;
                             e.currentTarget.style.background = 'white';
                             e.currentTarget.style.borderColor = iconColor;
                             e.currentTarget.style.color = iconColor;

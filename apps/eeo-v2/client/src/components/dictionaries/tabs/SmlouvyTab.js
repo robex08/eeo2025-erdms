@@ -547,27 +547,57 @@ const Badge = styled.span`
 
 const StatusBadge = Badge;
 
+const FirmaName = styled.div`
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  line-height: 1.2;
+`;
+
 const ProgressBar = styled.div`
   width: 100%;
-  max-width: 150px;
-  height: 8px;
-  background: #e2e8f0;
-  border-radius: 4px;
+  max-width: 160px;
+  min-width: 140px;
+  height: 24px;
+  background: #f3f4f6;
+  border-radius: 6px;
   overflow: hidden;
   position: relative;
+  border: 1px solid #e5e7eb;
 `;
 
 const ProgressFill = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
   background: ${props => {
     const percent = parseFloat(props.$percent) || 0;
-    if (percent >= 90) return '#ef4444';
-    if (percent >= 75) return '#f59e0b';
-    if (percent >= 50) return '#3b82f6';
-    return '#10b981';
+    if (percent >= 100) return 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)';
+    if (percent >= 80) return 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)';
+    return 'linear-gradient(90deg, #10b981 0%, #059669 100%)';
   }};
   width: ${props => Math.min(parseFloat(props.$percent) || 0, 100)}%;
-  transition: width 0.3s;
+  transition: width 0.3s ease;
+`;
+
+const ProgressText = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: ${props => (parseFloat(props.$percent) || 0) > 50 ? 'white' : '#374151'};
+  text-shadow: ${props => (parseFloat(props.$percent) || 0) > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none'};
+  z-index: 10;
+  pointer-events: none;
 `;
 
 const Pagination = styled.div`
@@ -767,7 +797,7 @@ const saveShowFiltersToStorage = (show) => {
 // KOMPONENTA
 // =============================================================================
 
-const SmlouvyTab = () => {
+const SmlouvyTab = ({ readOnly = false }) => {
   const { user, token } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
@@ -1059,11 +1089,13 @@ const SmlouvyTab = () => {
   // =============================================================================
 
   const handleCreate = () => {
+    if (readOnly) return;
     setEditingSmlouva(null);
     setFormModalOpen(true);
   };
 
   const handleEdit = (smlouva) => {
+    if (readOnly) return;
     setEditingSmlouva(smlouva);
     setFormModalOpen(true);
   };
@@ -1084,6 +1116,7 @@ const SmlouvyTab = () => {
   };
 
   const handleToggleStatus = async (smlouva) => {
+    if (readOnly) return;
     const isActive = smlouva.aktivni == 1 || smlouva.aktivni === true;
     const action = isActive ? 'deaktivovat' : 'aktivovat';
 
@@ -1128,6 +1161,7 @@ const SmlouvyTab = () => {
   };
 
   const handleDelete = async (smlouva) => {
+    if (readOnly) return;
     setConfirmDialog({
       isOpen: true,
       title: 'Smazání smlouvy',
@@ -1162,6 +1196,7 @@ const SmlouvyTab = () => {
   };
 
   const handlePrepocetCerpani = async () => {
+    if (readOnly) return;
     setConfirmDialog({
       isOpen: true,
       title: 'Přepočet čerpání smluv',
@@ -1224,7 +1259,7 @@ const SmlouvyTab = () => {
     }),
     columnHelper.accessor('nazev_firmy', {
       header: 'Firma',
-      cell: info => info.getValue(),
+      cell: info => <FirmaName>{info.getValue() || '---'}</FirmaName>,
       enableSorting: true
     }),
     columnHelper.accessor('ico', {
@@ -1285,8 +1320,8 @@ const SmlouvyTab = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <ProgressBar>
               <ProgressFill $percent={percent} />
+              <ProgressText $percent={percent}>{percent.toFixed(1)}%</ProgressText>
             </ProgressBar>
-            <small>{percent.toFixed(1)}%</small>
             <strong>{formatCurrency(cerpano)}</strong>
           </div>
         );
@@ -1365,28 +1400,32 @@ const SmlouvyTab = () => {
               <FontAwesomeIcon icon={faEye} />
             </IconButton>
           </SmartTooltip>
-          <SmartTooltip content="Upravit smlouvu">
-            <IconButton onClick={() => handleEdit(props.row.original)} className="edit">
-              <FontAwesomeIcon icon={faEdit} />
-            </IconButton>
-          </SmartTooltip>
-          <SmartTooltip content={props.row.original.aktivni ? "Deaktivovat" : "Aktivovat"}>
-            <IconButton 
-              onClick={() => handleToggleStatus(props.row.original)} 
-              className={props.row.original.aktivni ? "toggle-active" : "toggle-inactive"}
-            >
-              <FontAwesomeIcon icon={props.row.original.aktivni ? faToggleOn : faToggleOff} />
-            </IconButton>
-          </SmartTooltip>
-          <SmartTooltip content="Smazat smlouvu">
-            <IconButton onClick={() => handleDelete(props.row.original)} className="delete">
-              <FontAwesomeIcon icon={faTrash} />
-            </IconButton>
-          </SmartTooltip>
+          {!readOnly && (
+            <>
+              <SmartTooltip content="Upravit smlouvu">
+                <IconButton onClick={() => handleEdit(props.row.original)} className="edit">
+                  <FontAwesomeIcon icon={faEdit} />
+                </IconButton>
+              </SmartTooltip>
+              <SmartTooltip content={props.row.original.aktivni ? "Deaktivovat" : "Aktivovat"}>
+                <IconButton 
+                  onClick={() => handleToggleStatus(props.row.original)} 
+                  className={props.row.original.aktivni ? "toggle-active" : "toggle-inactive"}
+                >
+                  <FontAwesomeIcon icon={props.row.original.aktivni ? faToggleOn : faToggleOff} />
+                </IconButton>
+              </SmartTooltip>
+              <SmartTooltip content="Smazat smlouvu">
+                <IconButton onClick={() => handleDelete(props.row.original)} className="delete">
+                  <FontAwesomeIcon icon={faTrash} />
+                </IconButton>
+              </SmartTooltip>
+            </>
+          )}
         </ActionCell>
       )
     })
-  ], [handleView, handleEdit, handleToggleStatus, handleDelete]);
+  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly]);
 
   const table = useReactTable({
     data: filteredSmlouvy,
@@ -1503,18 +1542,22 @@ const SmlouvyTab = () => {
           {showFilters ? 'Skrýt filtry' : 'Rozšířený filtr'}
         </ActionButton>
 
-        <ActionButton $variant="primary" onClick={handleCreate}>
-          <FontAwesomeIcon icon={faPlus} />
-          Přidat smlouvu
-        </ActionButton>
-        <ActionButton $variant="success" onClick={() => setImportModalOpen(true)}>
-          <FontAwesomeIcon icon={faFileImport} />
-          Import z Excel
-        </ActionButton>
-        <ActionButton $variant="warning" onClick={handlePrepocetCerpani}>
-          <FontAwesomeIcon icon={faSyncAlt} />
-          Přepočítat čerpání
-        </ActionButton>
+        {!readOnly && (
+          <>
+            <ActionButton $variant="primary" onClick={handleCreate}>
+              <FontAwesomeIcon icon={faPlus} />
+              Přidat smlouvu
+            </ActionButton>
+            <ActionButton $variant="success" onClick={() => setImportModalOpen(true)}>
+              <FontAwesomeIcon icon={faFileImport} />
+              Import z Excel
+            </ActionButton>
+            <ActionButton $variant="warning" onClick={handlePrepocetCerpani}>
+              <FontAwesomeIcon icon={faSyncAlt} />
+              Přepočítat čerpání
+            </ActionButton>
+          </>
+        )}
       </ToolbarContainer>
 
       {/* Filters */}
@@ -1872,7 +1915,7 @@ const SmlouvyTab = () => {
         </TableContainer>
 
       {/* Modals */}
-      {formModalOpen && (
+      {!readOnly && formModalOpen && (
         <SmlouvyFormModal
           smlouva={editingSmlouva}
           useky={useky}
@@ -1884,14 +1927,18 @@ const SmlouvyTab = () => {
         <SmlouvyDetailModal
           smlouva={viewingSmlouva}
           onClose={handleDetailClose}
-          onEdit={() => {
-            handleDetailClose();
-            handleEdit(viewingSmlouva.smlouva);
-          }}
+          onEdit={
+            readOnly
+              ? undefined
+              : () => {
+                  handleDetailClose();
+                  handleEdit(viewingSmlouva.smlouva);
+                }
+          }
         />
       )}
 
-      {importModalOpen && (
+      {!readOnly && importModalOpen && (
         <SmlouvyImportModal
           useky={useky}
           onClose={handleImportClose}
@@ -1899,16 +1946,18 @@ const SmlouvyTab = () => {
       )}
 
       {/* Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        icon={faExclamationTriangle}
-        variant={confirmDialog.variant}
-        onConfirm={confirmDialog.onConfirm}
-        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
-      >
-        {confirmDialog.message}
-      </ConfirmDialog>
+      {!readOnly && (
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          icon={faExclamationTriangle}
+          variant={confirmDialog.variant}
+          onConfirm={confirmDialog.onConfirm}
+          onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        >
+          {confirmDialog.message}
+        </ConfirmDialog>
+      )}
     </Container>
   );
 };
