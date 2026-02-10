@@ -10,7 +10,7 @@
  * Datum: 8. 2. 2026
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -68,7 +68,7 @@ const TooltipContainer = styled.div`
     max-width: 100vw;
     max-height: 100vh;
   ` : `
-    width: 450px;
+    width: 520px;
     height: 66vh;
     max-width: calc(100vw - 40px);
     top: ${props.$top}px;
@@ -98,9 +98,11 @@ const TooltipContainer = styled.div`
 `;
 
 const TooltipHeader = styled.div`
+  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   padding: 1rem;
   border-bottom: 2px solid #e2e8f0;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -112,6 +114,29 @@ const TooltipTitle = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  width: 100%;
+  padding-right: 0;
+`;
+
+const CommentsSearchRow = styled.div`
+  margin-top: 6px;
+  width: 100%;
+`;
+
+const CommentsSearchInput = styled.input`
+  width: 100%;
+  height: 32px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d0d7e2;
+  font-size: 13px;
+  background: #fff;
+  outline: none;
+
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
 `;
 
 const TooltipTitleMain = styled.div`
@@ -131,7 +156,24 @@ const TooltipTitleSub = styled.div`
   font-size: 0.75rem;
   color: #64748b;
   font-weight: 400;
-  margin-left: 1.75rem;
+  margin-left: 0;
+  padding-left: 24px;
+`;
+
+const OrderNumberRow = styled.div`
+  margin-left: 0;
+  padding-left: 24px;
+`;
+
+const OrderNumberBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+  font-size: 0.8rem;
 `;
 
 const CloseButton = styled.button`
@@ -153,6 +195,9 @@ const CloseButton = styled.button`
 `;
 
 const HeaderButtons = styled.div`
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
   display: flex;
   gap: 0.5rem;
   align-items: center;
@@ -204,6 +249,11 @@ const CommentsTimeline = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+`;
+const HighlightedText = styled.span`
+  background: #fef9c3;
+  padding: 0 2px;
+  border-radius: 2px;
 `;
 
 const CommentItem = styled.div`
@@ -807,6 +857,7 @@ const OrderCommentsTooltip = ({
   const [replyToComment, setReplyToComment] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
   
   // ✅ State pro editaci komentářů
   const [editingComment, setEditingComment] = useState(null); // { id, originalText }
@@ -820,21 +871,67 @@ const OrderCommentsTooltip = ({
     }
   }, [replyToComment]);
   
+  const normalizedComments = useMemo(() => {
+    return (comments || []).map(comment => {
+      if (!comment) return comment;
+      const id = comment.id !== undefined && comment.id !== null ? Number(comment.id) : comment.id;
+      const parentIdRaw = comment.parent_comment_id;
+      const parentId = parentIdRaw !== undefined && parentIdRaw !== null ? Number(parentIdRaw) : parentIdRaw;
+      return {
+        ...comment,
+        id: Number.isNaN(id) ? comment.id : id,
+        parent_comment_id: Number.isNaN(parentId) ? comment.parent_comment_id : parentId
+      };
+    });
+  }, [comments]);
+
+  const normalizeForSearch = useCallback((value) => {
+    return (value || '')
+      .toString()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase();
+  }, []);
+
+  const filteredComments = useMemo(() => {
+    const query = normalizeForSearch(searchQuery).trim();
+    if (!query) return normalizedComments;
+
+    const matches = new Set();
+    const matchesComment = (comment) => {
+      if (!comment) return false;
+      const author = normalizeForSearch(`${comment.autor_jmeno || ''} ${comment.autor_username || ''}`);
+      const content = normalizeForSearch(`${comment.obsah || ''} ${comment.obsah_plain || ''}`);
+      return author.includes(query) || content.includes(query);
+    };
+
+    normalizedComments.forEach(comment => {
+      if (matchesComment(comment)) {
+        matches.add(comment.id);
+        if (comment.parent_comment_id) {
+          matches.add(comment.parent_comment_id);
+        }
+      }
+    });
+
+    return normalizedComments.filter(comment => matches.has(comment.id));
+  }, [normalizedComments, searchQuery, normalizeForSearch]);
+  
   // ✅ Automatické rozbalení všech odpovědí při načtení
   useEffect(() => {
-    if (comments && comments.length > 0) {
+    if (filteredComments && filteredComments.length > 0) {
       const newExpandedReplies = {};
-      const topLevel = comments.filter(c => c && !c.parent_comment_id);
+      const topLevel = filteredComments.filter(c => c && !c.parent_comment_id);
       
       topLevel.forEach(comment => {
-        const replies = comments.filter(c => c && c.parent_comment_id === comment.id);
+        const replies = filteredComments.filter(c => c && c.parent_comment_id === comment.id);
         if (replies.length > 0) {
           newExpandedReplies[comment.id] = true;
         }
       });
       setExpandedReplies(newExpandedReplies);
     }
-  }, [comments]);
+  }, [filteredComments]);
   
   // Výpočet pozice tooltipu
   useLayoutEffect(() => {
@@ -1036,16 +1133,73 @@ const OrderCommentsTooltip = ({
       minute: '2-digit'
     });
   };
+
+  const buildNormalizedMap = useCallback((value) => {
+    const text = (value || '').toString();
+    const normalizedChars = [];
+    const map = [];
+
+    for (let i = 0; i < text.length; i += 1) {
+      const normalized = text[i]
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase();
+      for (let j = 0; j < normalized.length; j += 1) {
+        normalizedChars.push(normalized[j]);
+        map.push(i);
+      }
+    }
+
+    return { text, normalized: normalizedChars.join(''), map };
+  }, []);
+
+  const highlightText = useCallback((value) => {
+    const query = normalizeForSearch(searchQuery).trim();
+    if (!query) return value || '';
+
+    const { text, normalized, map } = buildNormalizedMap(value);
+    if (!normalized) return value || '';
+
+    const ranges = [];
+    let startIndex = 0;
+    while (startIndex <= normalized.length - query.length) {
+      const matchIndex = normalized.indexOf(query, startIndex);
+      if (matchIndex === -1) break;
+      const startOrig = map[matchIndex];
+      const endOrig = map[matchIndex + query.length - 1];
+      if (startOrig !== undefined && endOrig !== undefined) {
+        ranges.push([startOrig, endOrig + 1]);
+      }
+      startIndex = matchIndex + query.length;
+    }
+
+    if (ranges.length === 0) return value || '';
+
+    const parts = [];
+    let lastIndex = 0;
+    ranges.forEach((range, idx) => {
+      const [start, end] = range;
+      if (start > lastIndex) {
+        parts.push(text.slice(lastIndex, start));
+      }
+      parts.push(<HighlightedText key={`hl-${idx}`}>{text.slice(start, end)}</HighlightedText>);
+      lastIndex = end;
+    });
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+    return parts;
+  }, [searchQuery, normalizeForSearch, buildNormalizedMap]);
   
   // Poslední komentář
-  const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
+  const lastComment = normalizedComments.length > 0 ? normalizedComments[normalizedComments.length - 1] : null;
   
   // Filtrování top-level komentářů a odpovědí (ošetření undefined/null)
-  const topLevelComments = (comments || []).filter(c => c && !c.parent_comment_id);
-  const getReplies = (commentId) => (comments || []).filter(c => c && c.parent_comment_id === commentId);
+  const topLevelComments = (filteredComments || []).filter(c => c && !c.parent_comment_id);
+  const getReplies = (commentId) => (filteredComments || []).filter(c => c && c.parent_comment_id === commentId);
   
   // Helper pro získání jména autora podle ID
-  const getCommentById = (commentId) => (comments || []).find(c => c && c.id === commentId);
+  const getCommentById = (commentId) => (filteredComments || []).find(c => c && c.id === commentId);
   
   // Helper pro získání top-level parent (pro single-level threading)
   const getTopLevelParent = (commentId) => {
@@ -1074,13 +1228,24 @@ const OrderCommentsTooltip = ({
           <TooltipTitle>
             <TooltipTitleMain>
               <FontAwesomeIcon icon={faComment} />
-              Komentáře k objednávce {orderNumber}
+              Komentáře k objednávce
             </TooltipTitleMain>
+            <OrderNumberRow>
+              <OrderNumberBadge>{orderNumber}</OrderNumberBadge>
+            </OrderNumberRow>
             {lastComment && (
               <TooltipTitleSub>
                 Poslední: {formatDate(lastComment.dt_vytvoreni)} od {lastComment.autor_jmeno || 'Neznámý'}
               </TooltipTitleSub>
             )}
+            <CommentsSearchRow>
+              <CommentsSearchInput
+                type="text"
+                placeholder="Hledat ve jménu autora nebo textu komentáře..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </CommentsSearchRow>
           </TooltipTitle>
           <HeaderButtons>
             <FullscreenButton 
@@ -1110,13 +1275,20 @@ const OrderCommentsTooltip = ({
             </ErrorState>
           )}
           
-          {!loading && !error && comments.length === 0 && (
+          {!loading && !error && comments.length === 0 && !searchQuery && (
             <EmptyState>
               <FontAwesomeIcon icon={faComment} />
               <p>Zatím žádné komentáře.</p>
               <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
                 Buďte první, kdo přidá komentář.
               </p>
+            </EmptyState>
+          )}
+
+          {!loading && !error && searchQuery && filteredComments.length === 0 && (
+            <EmptyState>
+              <FontAwesomeIcon icon={faComment} />
+              <p>Žádné výsledky pro zadané vyhledávání.</p>
             </EmptyState>
           )}
           
@@ -1130,7 +1302,7 @@ const OrderCommentsTooltip = ({
                 return (
                   <CommentItem key={comment.id} $isOwn={isOwn}>
                     <CommentHeader>
-                      <CommentAuthor>{comment.autor_jmeno || 'Neznámý'}</CommentAuthor>
+                      <CommentAuthor>{highlightText(comment.autor_jmeno || 'Neznámý')}</CommentAuthor>
                       <CommentDateWrapper>
                         <CommentDate>{formatDate(comment.dt_vytvoreni)}</CommentDate>
                         {isOwn && (
@@ -1178,7 +1350,7 @@ const OrderCommentsTooltip = ({
                         </EditActions>
                       </div>
                     ) : (
-                      <CommentText>{comment.obsah}</CommentText>
+                      <CommentText>{highlightText(comment.obsah)}</CommentText>
                     )}
                     
                     <CommentActions>
@@ -1205,7 +1377,7 @@ const OrderCommentsTooltip = ({
                           return (
                             <ReplyItem key={reply.id}>
                               <ReplyHeader>
-                                <ReplyAuthor>{reply.autor_jmeno || 'Neznámý'}</ReplyAuthor>
+                                <ReplyAuthor>{highlightText(reply.autor_jmeno || 'Neznámý')}</ReplyAuthor>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <ReplyDate>{formatDate(reply.dt_vytvoreni)}</ReplyDate>
                                   {isOwnReply && (
@@ -1234,7 +1406,7 @@ const OrderCommentsTooltip = ({
                                 </div>
                               </ReplyHeader>
                               <div style={{ fontSize: '0.7rem', color: '#2563eb', marginBottom: '0.3rem', fontStyle: 'italic' }}>
-                                Odpověď na {replyingToName}
+                                Odpověď na {highlightText(replyingToName)}
                               </div>
                               {editingComment?.id === reply.id ? (
                                 <div>
@@ -1258,7 +1430,7 @@ const OrderCommentsTooltip = ({
                                   </EditActions>
                                 </div>
                               ) : (
-                                <ReplyText>{reply.obsah}</ReplyText>
+                                <ReplyText>{highlightText(reply.obsah)}</ReplyText>
                               )}
                               <div style={{ marginTop: '0.5rem' }}>
                                 <ReplyButton 

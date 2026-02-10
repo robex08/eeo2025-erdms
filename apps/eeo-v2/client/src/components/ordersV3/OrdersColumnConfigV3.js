@@ -63,24 +63,27 @@ const ModalOverlay = styled.div`
 const ModalContent = styled.div`
   background: white;
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
   width: 100%;
   max-width: 600px;
-  max-height: 70vh;
+  max-height: 62vh;
   display: flex;
   flex-direction: column;
+  border: 1px solid #e2e8f0;
+  backdrop-filter: blur(4px);
 `;
 
 const ModalHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.5rem;
-  border-bottom: 2px solid #e2e8f0;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
 `;
 
 const ModalTitle = styled.h3`
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #1e293b;
   margin: 0;
@@ -97,8 +100,8 @@ const CloseButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: none;
   border-radius: 8px;
@@ -111,37 +114,64 @@ const CloseButton = styled.button`
     color: #1e293b;
   }
 
+  &:active {
+    transform: scale(0.98);
+  }
+
   svg {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
   }
 `;
 
 const ModalBody = styled.div`
-  padding: 1.5rem;
+  padding: 0.75rem 1.25rem 1rem;
   overflow-y: auto;
   flex: 1;
+  background: #ffffff;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 10px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 10px;
+    border: 2px solid #f1f5f9;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
 `;
 
 const ColumnList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 `;
 
 const ColumnItem = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1rem;
+  padding: 0.75rem 0.9rem;
   background: ${props => props.$locked ? '#f8fafc' : (props.$visible ? 'white' : '#f8fafc')};
-  border: 2px solid ${props => props.$locked ? '#cbd5e1' : (props.$visible ? '#e2e8f0' : '#e2e8f0')};
+  border: 1px solid ${props => props.$locked ? '#cbd5e1' : (props.$visible ? '#e2e8f0' : '#e2e8f0')};
   border-radius: 8px;
   transition: all 0.2s ease;
   opacity: ${props => props.$locked ? 0.6 : 1};
   cursor: ${props => props.$locked ? 'not-allowed' : 'default'};
+  box-shadow: ${props => props.$locked ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'};
 
   &:hover {
-    background: ${props => props.$locked ? '#f8fafc' : '#f8fafc'};
+    background: ${props => props.$locked ? '#f8fafc' : '#f9fafb'};
     border-color: ${props => props.$locked ? '#cbd5e1' : '#cbd5e1'};
   }
 `;
@@ -151,26 +181,33 @@ const DragHandle = styled.div`
   align-items: center;
   color: ${props => props.$locked ? '#cbd5e1' : '#94a3b8'};
   cursor: ${props => props.$locked ? 'not-allowed' : 'grab'};
-  font-size: 1.25rem;
+  font-size: 1.1rem;
 
   &:active {
     cursor: ${props => props.$locked ? 'not-allowed' : 'grabbing'};
+  }
+
+  &:hover {
+    color: ${props => props.$locked ? '#cbd5e1' : '#64748b'};
   }
 `;
 
 const ColumnLabel = styled.div`
   flex: 1;
-  font-size: 0.9375rem;
+  font-size: 0.9rem;
   font-weight: 500;
   color: ${props => props.$visible ? '#1e293b' : '#94a3b8'};
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 `;
 
 const VisibilityToggle = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   background: ${props => props.$locked ? '#cbd5e1' : (props.$visible ? '#10b981' : '#ef4444')};
   border: none;
   border-radius: 8px;
@@ -180,8 +217,7 @@ const VisibilityToggle = styled.button`
 
   &:hover {
     transform: ${props => props.$locked ? 'scale(1)' : 'scale(1.05)'};
-  }
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: ${props => props.$locked ? 'none' : '0 6px 12px rgba(0, 0, 0, 0.18)'};
   }
 
   svg {
@@ -193,21 +229,28 @@ const ModalFooter = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.5rem;
-  border-top: 2px solid #e2e8f0;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
   gap: 1rem;
+`;
+
+const ResetButtonsGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 `;
 
 const ResetButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.625rem 1rem;
+  padding: 0.5rem 0.9rem;
   background: white;
   color: #ef4444;
   border: 2px solid #ef4444;
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -215,6 +258,8 @@ const ResetButton = styled.button`
   &:hover {
     background: #ef4444;
     color: white;
+    transform: translateY(-0.5px);
+    box-shadow: 0 3px 6px rgba(239, 68, 68, 0.22);
   }
 `;
 
@@ -222,20 +267,20 @@ const SaveButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.625rem 1.5rem;
-  background: #3b82f6;
+  padding: 0.55rem 1.1rem;
+  background: #16a34a;
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    background: #2563eb;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+    background: #15803d;
+    transform: translateY(-0.5px);
+    box-shadow: 0 3px 6px rgba(22, 163, 74, 0.25);
   }
 `;
 
@@ -439,19 +484,20 @@ function OrdersColumnConfigV3({
             </ModalBody>
 
             <ModalFooter>
-              <ResetButton onClick={handleReset} title="Obnovit kompletně výchozí nastavení (smaže všechny preferences a šířky)">
-                <FontAwesomeIcon icon={faUndo} />
-                Reset vše
-              </ResetButton>
-              
-              <ResetButton 
-                onClick={handleResetColumnWidths}
-                title="Resetovat pouze šířky sloupců"
-                style={{ marginLeft: '8px' }}
-              >
-                <FontAwesomeIcon icon={faUndo} />
-                Reset šířek
-              </ResetButton>
+              <ResetButtonsGroup>
+                <ResetButton onClick={handleReset} title="Obnovit kompletně výchozí nastavení (smaže všechny preferences a šířky)">
+                  <FontAwesomeIcon icon={faUndo} />
+                  Reset vše
+                </ResetButton>
+                
+                <ResetButton 
+                  onClick={handleResetColumnWidths}
+                  title="Resetovat pouze šířky sloupců"
+                >
+                  <FontAwesomeIcon icon={faUndo} />
+                  Reset šířek
+                </ResetButton>
+              </ResetButtonsGroup>
 
               <SaveButton onClick={handleSave} title="Uložit nastavení">
                 Uložit

@@ -46,6 +46,8 @@ const About = lazy(() => import('./components/About'));
 const ReportsPlaceholder = lazy(() => import('./pages/ReportsPlaceholder'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
+const CerpaniPage = lazy(() => import('./pages/CerpaniPage'));
+const MajetekOverviewPage = lazy(() => import('./pages/MajetekOverviewPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
@@ -201,7 +203,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
   useEffect(() => {
     if (isLoggedIn && location.pathname !== '/login' && location.pathname !== '/') {
       // Whitelist of routes that should be saved for restoration
-      const validRoutes = ['/order-form-25', '/orders25-list', '/users', '/dictionaries', '/profile', '/address-book', '/change-password', '/statistics', '/orders', '/debug', '/cash-book'];
+      const validRoutes = ['/order-form-25', '/orders25-list', '/users', '/dictionaries', '/profile', '/address-book', '/change-password', '/statistics', '/orders', '/debug', '/cash-book', '/cerpani', '/majetek-overview'];
 
       if (validRoutes.includes(location.pathname) && userId) {
         // Per-user localStorage key
@@ -252,6 +254,9 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
               'orders-old': '/orders', // Staré objednávky před 2026
               'reports': '/reports',
               'statistics': '/statistics',
+              'cerpani': '/cerpani',
+              'material-overview': '/majetek-overview',
+              'majetek-overview': '/majetek-overview',
               'app-settings': '/app-settings',
               'organization-hierarchy': '/organization-hierarchy',
               'cash-book': '/cash-book',
@@ -815,8 +820,17 @@ function App() {
                     hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
                   ) && <Route path="/dictionaries" element={<DictionariesNew />} />}
                   {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/reports-old" element={<ReportsPlaceholder />} />}
+                  {isLoggedIn && <Route path="/cerpani" element={<CerpaniPage />} />}
                   {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
                   {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
+                  {isLoggedIn && (
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/majetek-overview" element={<MajetekOverviewPage />} />}
+                  {isLoggedIn && (
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/material-overview" element={<Navigate to="/majetek-overview" replace />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
                   {isLoggedIn && (
