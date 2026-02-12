@@ -2182,6 +2182,16 @@ switch ($endpoint) {
         }
         break;
 
+    // POST /api.eeo/order-v3/majetek-list - Přehled MAJETEK objednávek
+    case 'order-v3/majetek-list':
+        if ($request_method === 'POST') {
+            handle_order_v3_majetek_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // === LP (LIMITOVANÉ PŘÍSLÍBY) ===
     
     // POST /api.eeo/lp/list - Seznam aktivních LP

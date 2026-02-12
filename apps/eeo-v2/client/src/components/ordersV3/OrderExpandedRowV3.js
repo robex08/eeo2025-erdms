@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -27,6 +27,7 @@ import {
   faSync,
   faFilePen,
   faClock,
+  faCalendarDays,
   faShield,
   faFileContract,
   faTruck,
@@ -36,6 +37,12 @@ import {
   faEdit,
   faComment
 } from '@fortawesome/free-solid-svg-icons';
+
+// ✅ Obrysové (bez výplně) ikonky pro datum/čas
+import {
+  faClock as faClockRegular,
+  faCalendarDays as faCalendarDaysRegular
+} from '@fortawesome/free-regular-svg-icons';
 
 // =============================================================================
 // ANIMATIONS
@@ -188,6 +195,30 @@ const InfoValue = styled.div`
     font-weight: 600;
     color: #059669;
   }
+`;
+
+// Prefix ikonky pro datumové řádky (viz styl Workflow bloků)
+const InfoLabelWithIcon = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: #64748b;
+`;
+
+const InfoPrefixIcon = styled.div`
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 0.65rem;
+  flex-shrink: 0;
+  margin-top: 2px;
 `;
 
 const StatusBadge = styled.div`
@@ -574,6 +605,102 @@ const EmptyState = styled.div`
 `;
 
 // =============================================================================
+// INLINE COMMENTS (stejný vzhled jako OrderCommentsTooltip)
+// =============================================================================
+
+const InlineCommentsTimeline = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+`;
+
+const InlineCommentItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem;
+  background: ${props => props.$isOwn ? '#eff6ff' : '#f8fafc'};
+  border-left: 3px solid ${props => props.$isOwn ? '#3b82f6' : '#cbd5e1'};
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+`;
+
+const InlineCommentHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+`;
+
+const InlineCommentAuthor = styled.div`
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+`;
+
+const InlineCommentDate = styled.div`
+  font-size: 0.75rem;
+  color: #64748b;
+  flex-shrink: 0;
+`;
+
+const InlineCommentText = styled.div`
+  font-size: 0.9rem;
+  color: #334155;
+  line-height: 1.5;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+`;
+
+const InlineRepliesWrapper = styled.div`
+  margin-top: 0.75rem;
+  margin-left: 2rem;
+  padding-left: 1.25rem;
+  border-left: 3px solid #3b82f6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: linear-gradient(to right, rgba(59, 130, 246, 0.03), transparent);
+  padding-right: 0.5rem;
+  border-radius: 0 6px 6px 0;
+`;
+
+const InlineReplyItem = styled.div`
+  padding: 0.75rem;
+  background: white;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+  
+  &:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const PartnerBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #7c3aed;
+  background: #f3e8ff;
+  border: 1px solid #e9d5ff;
+  flex-shrink: 0;
+`;
+
+// =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 
@@ -659,6 +786,40 @@ const formatTimeOnly = (dateString) => {
   }
 };
 
+// Vrátí true, pokud vstup vypadá jako datum+čas (ne pouze datum)
+const hasTimePart = (dateString) => {
+  if (!dateString) return false;
+  if (typeof dateString !== 'string') return true; // Date objekt apod.
+  // MySQL: YYYY-MM-DD HH:MM:SS, ISO: YYYY-MM-DDTHH:MM:SS
+  return /[T\s]\d{2}:\d{2}/.test(dateString);
+};
+
+// Formát + ikonka podle toho, jestli obsahuje čas
+const formatSmartDate = (dateString) => (hasTimePart(dateString) ? formatDateTime(dateString) : formatDateOnly(dateString));
+const getSmartDateIcon = (dateString) => (hasTimePart(dateString) ? faClockRegular : faCalendarDaysRegular);
+
+// Ikona přesně jako ve workflow (šedá), přímo před datem/časem
+const renderSmartDateInline = (dateString) => {
+  if (!dateString) return '---';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+      <FontAwesomeIcon icon={getSmartDateIcon(dateString)} style={{ color: '#94a3b8' }} />
+      <span>{formatSmartDate(dateString)}</span>
+    </span>
+  );
+};
+
+// Vynuceně jen datum (bez času) + kalendář
+const renderDateOnlyInline = (dateString) => {
+  if (!dateString) return '---';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+      <FontAwesomeIcon icon={faCalendarDaysRegular} style={{ color: '#94a3b8' }} />
+      <span>{formatDateOnly(dateString)}</span>
+    </span>
+  );
+};
+
 // Získání lidsky čitelného stavu objednávky
 const getOrderDisplayStatus = (order) => {
   // Backend vrací sloupec 'stav_objednavky' který už obsahuje čitelný český název
@@ -727,9 +888,127 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder }) => {
+const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder, onLoadComments, onAddComment, onDeleteComment }) => {
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
+
+  // 💬 Inline komentáře v podřádku
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(null);
+  const [comments, setComments] = useState([]);
+
+  const loadInlineComments = useCallback(async () => {
+    if (!onLoadComments || !order?.id) return;
+    setCommentsLoading(true);
+    setCommentsError(null);
+    try {
+      const result = await onLoadComments(order.id, 200, 0);
+      setComments(Array.isArray(result?.comments) ? result.comments : []);
+    } catch (e) {
+      setCommentsError(e?.message || 'Chyba při načítání komentářů');
+      setComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [onLoadComments, order?.id]);
+
+  useEffect(() => {
+    // Načti komentáře při otevření podřádku (a při změně order.id)
+    if (!order?.id) return;
+    // Pokud backend říká, že komentáře jsou, načíst vždy. Jinak načíst jen když handler existuje.
+    if (onLoadComments) {
+      loadInlineComments();
+    }
+  }, [order?.id, onLoadComments, loadInlineComments]);
+
+  // --- Threading komentářů (parent_comment_id) ---
+  const normalizedComments = useMemo(() => {
+    return (comments || []).map((c) => {
+      if (!c) return c;
+      const idRaw = c.id;
+      const parentRaw = c.parent_comment_id;
+      const id = idRaw !== undefined && idRaw !== null ? Number(idRaw) : idRaw;
+      const parentId = parentRaw !== undefined && parentRaw !== null ? Number(parentRaw) : parentRaw;
+      return {
+        ...c,
+        id: Number.isNaN(id) ? c.id : id,
+        parent_comment_id: Number.isNaN(parentId) ? c.parent_comment_id : parentId,
+      };
+    });
+  }, [comments]);
+
+  const commentsById = useMemo(() => {
+    const map = new Map();
+    (normalizedComments || []).forEach((c) => {
+      if (c && c.id !== undefined && c.id !== null) map.set(c.id, c);
+    });
+    return map;
+  }, [normalizedComments]);
+
+  const childrenByParent = useMemo(() => {
+    const map = new Map();
+    (normalizedComments || []).forEach((c) => {
+      if (!c) return;
+      const parentId = c.parent_comment_id || null;
+      if (!map.has(parentId)) map.set(parentId, []);
+      map.get(parentId).push(c);
+    });
+
+    // seřadit děti podle dt_vytvoreni ASC (stabilně)
+    const toTs = (v) => {
+      const t = new Date(v || 0).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    for (const [k, arr] of map.entries()) {
+      arr.sort((a, b) => toTs(a?.dt_vytvoreni) - toTs(b?.dt_vytvoreni));
+      map.set(k, arr);
+    }
+
+    return map;
+  }, [normalizedComments]);
+
+  const getChildren = useCallback((parentId) => {
+    return childrenByParent.get(parentId || null) || [];
+  }, [childrenByParent]);
+
+  // Najdi kořen vlákna (multi-level). Pokud parent chybí v datech, ber jako root.
+  const getRootId = useCallback((comment) => {
+    if (!comment) return null;
+    let current = comment;
+    const seen = new Set();
+    while (current?.parent_comment_id) {
+      if (seen.has(current.id)) break; // cyklus
+      seen.add(current.id);
+      const parent = commentsById.get(current.parent_comment_id);
+      if (!parent) break;
+      current = parent;
+    }
+    return current?.id ?? null;
+  }, [commentsById]);
+
+  const rootThreads = useMemo(() => {
+    // root = parent_comment_id null/0 nebo parent nenalezen
+    const roots = [];
+    const rootIds = new Set();
+    (normalizedComments || []).forEach((c) => {
+      if (!c) return;
+      const rootId = getRootId(c);
+      if (rootId == null) return;
+      if (!rootIds.has(rootId)) {
+        rootIds.add(rootId);
+        const root = commentsById.get(rootId);
+        if (root) roots.push(root);
+      }
+    });
+
+    // seřadit rooty podle dt_vytvoreni ASC (chronologicky)
+    const toTs = (v) => {
+      const t = new Date(v || 0).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    roots.sort((a, b) => toTs(a?.dt_vytvoreni) - toTs(b?.dt_vytvoreni));
+    return roots;
+  }, [normalizedComments, getRootId, commentsById]);
   
   // 📥 Download/Preview handler pro přílohy - detekce typu a zobrazení ve vieweru
   const handleDownloadAttachment = async (attachment, orderId) => {
@@ -761,58 +1040,28 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
       // Detekce typu souboru z přípony
       const ext = fileName.toLowerCase().split('.').pop();
 
-      // Určit MIME type podle přípony
-      let mimeType = 'application/octet-stream';
-      if (ext === 'pdf') {
-        mimeType = 'application/pdf';
-      } else if (['jpg', 'jpeg'].includes(ext)) {
-        mimeType = 'image/jpeg';
-      } else if (ext === 'png') {
-        mimeType = 'image/png';
-      } else if (ext === 'gif') {
-        mimeType = 'image/gif';
-      } else if (ext === 'bmp') {
-        mimeType = 'image/bmp';
-      } else if (ext === 'webp') {
-        mimeType = 'image/webp';
-      } else if (ext === 'svg') {
-        mimeType = 'image/svg+xml';
-      }
-
-      // Vytvořit nový Blob se správným MIME typem
-      const typedBlob = new Blob([blob], { type: mimeType });
-      
-      // Vytvořit URL pro blob
-      const blobUrl = window.URL.createObjectURL(typedBlob);
-      
       // Typy podporované pro preview
       const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
-      const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
-      
-      if (previewableTypes.includes(ext)) {
-        // 🖼️ Otevřít ve vieweru pro podporované typy
-        setViewerAttachment({
-          ...attachment,
-          blobUrl: blobUrl,
-          filename: fileName,
-          nazev_souboru: fileName,
-          originalni_nazev_souboru: fileName,
-          fileType: ext === 'pdf' ? 'pdf' : 'image'
-        });
-      } else {
-        // 📥 Direct download pro ostatní typy
-        const downloadLink = document.createElement('a');
-        downloadLink.href = blobUrl;
-        downloadLink.download = fileName;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        // Cleanup blob URL
-        setTimeout(() => {
-          window.URL.revokeObjectURL(blobUrl);
-        }, 1000);
-      }
+      const isPreviewable = previewableTypes.includes(ext);
+      const isPdf = ext === 'pdf';
+
+      console.log('🔍 Attachment blob info:', {
+        fileName,
+        blobSize: blob.size,
+        blobType: blob.type,
+        first20Bytes: await blob.slice(0, 20).text()
+      });
+
+      // 🖼️ Otevřít ve vieweru
+      setViewerAttachment({
+        ...attachment,
+        blob: blob, // Poslat blob (AttachmentViewer vytvoří blob URL)
+        blobUrl: window.URL.createObjectURL(blob), // Přidat blob URL přímo
+        filename: fileName,
+        nazev_souboru: fileName,
+        originalni_nazev_souboru: fileName,
+        fileType: isPdf ? 'pdf' : (isPreviewable ? 'image' : 'other')
+      });
 
     } catch (error) {
       console.error('Chyba při otevírání přílohy:', error);
@@ -1148,40 +1397,40 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               <InfoRow>
                 <InfoLabel>Datum vytvoření:</InfoLabel>
-                <InfoValue>{formatDate(detail.dt_vytvoreni)}</InfoValue>
+                <InfoValue>{renderSmartDateInline(detail.dt_vytvoreni)}</InfoValue>
               </InfoRow>
 
               {detail.dt_schvaleni && (
                 <InfoRow>
                   <InfoLabel>Datum schválení:</InfoLabel>
-                  <InfoValue style={{ color: '#059669', fontWeight: 500 }}>{formatDate(detail.dt_schvaleni)}</InfoValue>
+                  <InfoValue style={{ color: '#059669', fontWeight: 500 }}>{renderSmartDateInline(detail.dt_schvaleni)}</InfoValue>
                 </InfoRow>
               )}
 
               {detail.dt_predpokladany_termin_dodani && (
                 <InfoRow>
                   <InfoLabel>Termín dodání:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 500 }}>{formatDate(detail.dt_predpokladany_termin_dodani)}</InfoValue>
+                  <InfoValue style={{ fontWeight: 500 }}>{renderSmartDateInline(detail.dt_predpokladany_termin_dodani)}</InfoValue>
                 </InfoRow>
               )}
 
               {detail.dt_potvrzeni_vecne_spravnosti && (
                 <InfoRow>
                   <InfoLabel>Potvrzení věc. správnosti:</InfoLabel>
-                  <InfoValue style={{ color: '#0891b2', fontWeight: 500 }}>{formatDate(detail.dt_potvrzeni_vecne_spravnosti)}</InfoValue>
+                  <InfoValue style={{ color: '#0891b2', fontWeight: 500 }}>{renderSmartDateInline(detail.dt_potvrzeni_vecne_spravnosti)}</InfoValue>
                 </InfoRow>
               )}
 
               {detail.dt_dokonceni && (
                 <InfoRow>
                   <InfoLabel>Datum dokončení:</InfoLabel>
-                  <InfoValue style={{ color: '#16a34a', fontWeight: 600 }}>{formatDate(detail.dt_dokonceni)}</InfoValue>
+                  <InfoValue style={{ color: '#16a34a', fontWeight: 600 }}>{renderSmartDateInline(detail.dt_dokonceni)}</InfoValue>
                 </InfoRow>
               )}
 
               <InfoRow>
                 <InfoLabel>Poslední změna:</InfoLabel>
-                <InfoValue>{formatDate(detail.dt_aktualizace)}</InfoValue>
+                <InfoValue>{renderSmartDateInline(detail.dt_aktualizace)}</InfoValue>
               </InfoRow>
 
               <div style={{ borderTop: '1px solid #d1d5db', margin: '0.75rem 0' }} />
@@ -1196,7 +1445,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               {detail.dt_zverejneni && (
                 <InfoRow>
                   <InfoLabel>Datum zveřejnění:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 500, color: '#059669' }}>{formatDate(detail.dt_zverejneni)}</InfoValue>
+                  <InfoValue style={{ fontWeight: 500, color: '#059669' }}>{renderSmartDateInline(detail.dt_zverejneni)}</InfoValue>
                 </InfoRow>
               )}
               {detail.registr_iddt && (
@@ -1651,7 +1900,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {/* Řádek 2: Datum */}
                     {detail.dt_vytvoreni && (
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        🕒 {formatDateTime(detail.dt_vytvoreni)}
+                        {renderSmartDateInline(detail.dt_vytvoreni)}
                       </div>
                     )}
                   </div>
@@ -1673,7 +1922,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {/* Řádek 2: Datum */}
                     {detail.dt_schvaleni && (
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        🕒 {formatDateTime(detail.dt_schvaleni)}
+                        {renderSmartDateInline(detail.dt_schvaleni)}
                       </div>
                     )}
                   </div>
@@ -1697,7 +1946,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {/* Řádek 2: Datum */}
                     {detail.dt_odeslani && (
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {formatDateOnly(detail.dt_odeslani)}
+                        {renderDateOnlyInline(detail.dt_odeslani)}
                       </div>
                     )}
                   </div>
@@ -1721,7 +1970,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {/* Řádek 2: Datum */}
                     {detail.dt_akceptace && (
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {formatDateOnly(detail.dt_akceptace)}
+                        {renderDateOnlyInline(detail.dt_akceptace)}
                       </div>
                     )}
                   </div>
@@ -1743,7 +1992,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {/* Řádek 2: Datum */}
                     {detail.dt_zverejneni && (
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        🕒 {formatDateTime(detail.dt_zverejneni)}
+                        {renderSmartDateInline(detail.dt_zverejneni)}
                       </div>
                     )}
                   </div>
@@ -1775,7 +2024,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                           </div>
                           
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            🕒 {formatDateTime(faktura.dt_vytvoreni)}
+                            {renderSmartDateInline(faktura.dt_vytvoreni)}
                           </div>
                           <div></div>
                         </div>
@@ -1797,7 +2046,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                               </div>
                               
                               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                🕒 {formatDateTime(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                {renderSmartDateInline(faktura.dt_potvrzeni_vecne_spravnosti)}
                               </div>
                               <div></div>
                             </div>
@@ -1823,7 +2072,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     {/* Řádek 2: Datum */}
                     {detail.dt_dokonceni && (
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        🕒 {formatDateTime(detail.dt_dokonceni)}
+                        {renderSmartDateInline(detail.dt_dokonceni)}
                       </div>
                     )}
                   </div>
@@ -2267,21 +2516,123 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
           </Card>
           </div>
 
-          {/* 🆕 KOMENTÁŘE K OBJEDNÁVCE (full width) */}
-          {order.comments_count > 0 && (
-            <Card style={{ marginTop: '0.75rem' }}>
-              <CardTitle>
-                <FontAwesomeIcon icon={faComment} />
-                Komentáře k objednávce ({order.comments_count})
-              </CardTitle>
+          {/* 💬 KOMENTÁŘE K OBJEDNÁVCE (full width) */}
+          <Card style={{ marginTop: '0.75rem' }}>
+            <CardTitle>
+              <FontAwesomeIcon icon={faComment} />
+              Komentáře k objednávce ({order.comments_count || comments.length || 0})
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                <SmartTooltip text="Obnovit komentáře z databáze" icon="info" preferredPosition="top">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      loadInlineComments();
+                    }}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      borderRadius: '6px',
+                      padding: '0.25rem 0.4rem',
+                      cursor: 'pointer',
+                      color: '#64748b'
+                    }}
+                    title="Refresh"
+                  >
+                    <FontAwesomeIcon icon={faSync} spin={commentsLoading} />
+                  </button>
+                </SmartTooltip>
+              </span>
+            </CardTitle>
+
+            {commentsLoading && (
+              <div style={{ padding: '1rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FontAwesomeIcon icon={faSpinner} spin />
+                Načítání komentářů...
+              </div>
+            )}
+
+            {!commentsLoading && commentsError && (
+              <div style={{ padding: '1rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                {commentsError}
+              </div>
+            )}
+
+            {!commentsLoading && !commentsError && rootThreads.length === 0 && (
               <EmptyState>
                 <div style={{ textAlign: 'center', color: '#64748b' }}>
                   <FontAwesomeIcon icon={faComment} style={{ fontSize: '2rem', marginBottom: '0.5rem', opacity: 0.5 }} />
-                  <div>Pro zobrazení komentářů klikněte na ikonu <FontAwesomeIcon icon={faComment} style={{ color: '#a855f7' }} /> v hlavní tabulce</div>
+                  <div>Zatím žádné komentáře.</div>
                 </div>
               </EmptyState>
-            </Card>
-          )}
+            )}
+
+            {!commentsLoading && !commentsError && rootThreads.length > 0 && (
+              <InlineCommentsTimeline>
+                {rootThreads.map((root) => {
+                  const renderNode = (node, depth = 0, visited = new Set()) => {
+                    if (!node) return null;
+                    if (visited.has(node.id)) return null;
+                    visited.add(node.id);
+
+                    const children = getChildren(node.id);
+                    const text = node.obsah_plain || node.obsah || '';
+                    const partnerId = node.partner_id || node.partnerId || null;
+                    const parent = node.parent_comment_id ? commentsById.get(node.parent_comment_id) : null;
+                    const replyingTo = parent?.autor_jmeno || parent?.autor_username || null;
+
+                    const isOwn = (() => {
+                      const a = (node.autor_username || '').toString().toLowerCase();
+                      const u = (username || '').toString().toLowerCase();
+                      return a && u && a === u;
+                    })();
+
+                    const isReply = depth > 0;
+
+                    const content = (
+                      <>
+                        <InlineCommentHeader>
+                          <InlineCommentAuthor title={node.autor_jmeno || node.autor_username || ''}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {node.autor_jmeno || node.autor_username || 'Neznámý'}
+                            </span>
+                            {partnerId && <PartnerBadge>Partner #{partnerId}</PartnerBadge>}
+                          </InlineCommentAuthor>
+                          <InlineCommentDate>{renderSmartDateInline(node.dt_vytvoreni)}</InlineCommentDate>
+                        </InlineCommentHeader>
+
+                        {replyingTo && (
+                          <div style={{ marginTop: '-0.25rem', marginBottom: '0.4rem', fontSize: '0.75rem', color: '#94a3b8' }}>
+                            Odpověď na: <span style={{ fontWeight: 700, color: '#64748b' }}>{replyingTo}</span>
+                          </div>
+                        )}
+
+                        <InlineCommentText>{text}</InlineCommentText>
+                      </>
+                    );
+
+                    return (
+                      <div key={node.id}>
+                        {isReply ? (
+                          <InlineReplyItem>{content}</InlineReplyItem>
+                        ) : (
+                          <InlineCommentItem $isOwn={isOwn}>{content}</InlineCommentItem>
+                        )}
+
+                        {children.length > 0 && (
+                          <InlineRepliesWrapper>
+                            {children.map((child) => renderNode(child, depth + 1, new Set(visited)))}
+                          </InlineRepliesWrapper>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  return renderNode(root, 0, new Set());
+                })}
+              </InlineCommentsTimeline>
+            )}
+          </Card>
 
           {/* Workflow (pokud existuje) */}
           {workflow && workflow.length > 0 && (
@@ -2318,7 +2669,12 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         </WorkflowTitle>
                         {step.schvalil_uzivatel && (
                           <WorkflowMeta>
-                            {step.schvalil_uzivatel} • {formatDate(step.datum_schvaleni)}
+                            {step.schvalil_uzivatel}{' '}
+                            <span style={{ color: '#cbd5e1' }}>•</span>{' '}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={getSmartDateIcon(step.datum_schvaleni)} style={{ color: '#94a3b8' }} />
+                              {formatSmartDate(step.datum_schvaleni)}
+                            </span>
                           </WorkflowMeta>
                         )}
                         {step.poznamka && (

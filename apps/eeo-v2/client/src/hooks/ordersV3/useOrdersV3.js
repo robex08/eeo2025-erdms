@@ -357,11 +357,15 @@ export function useOrdersV3({
   /**
    * ✅ OPTIMALIZACE: Načte objednávky přes deduplicated API handler
    */
-  const loadOrders = useCallback(async (globalFilterValue = '') => {
+  // ✅ Defaultně použij aktuální `globalFilter` z hook parametrů.
+  // Důvod: spousta míst volá `loadOrders()` bez parametru (refresh, checkbox, atd.)
+  // a tím se dříve neaplikoval fulltext filtr.
+  const loadOrders = useCallback(async (globalFilterValue = globalFilter, options = {}) => {
     if (!token || !username) {
       console.warn('⚠️ useOrdersV3: Missing token or username');
       return;
     }
+    const forceRefresh = Boolean(options?.forceRefresh);
     
     // console.log('🔄 useOrdersV3: loadOrders called', {
     //   currentPage,
@@ -400,7 +404,7 @@ export function useOrdersV3({
         // Backend očekává uppercase pole: ['NOVA'], ['KE_SCHVALENI'], ...
         const dashboardStatusMap = {
           'nova': 'NOVA',
-          'ke_schvaleni': 'KE_SCHVALENI',
+          'ke_schvaleni': 'ODESLANA_KE_SCHVALENI',
           'schvalena': 'SCHVALENA',
           'zamitnuta': 'ZAMITNUTA',
           'rozpracovana': 'ROZPRACOVANA',
@@ -448,6 +452,7 @@ export function useOrdersV3({
       period: selectedPeriod,
       filters: activeFilters,
       sorting: sorting,
+      forceRefresh,
     });
   }, [
     token,
@@ -458,8 +463,8 @@ export function useOrdersV3({
     columnFilters,
     sorting,
     convertFiltersForBackend,
+    globalFilter,
     fetchData,
-    // Note: globalFilter not in deps, passed as parameter
   ]);
   
   // ============================================================================

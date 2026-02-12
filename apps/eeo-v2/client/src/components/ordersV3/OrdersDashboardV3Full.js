@@ -363,6 +363,19 @@ const OrdersDashboardV3Full = ({
   const displayFilteredAmount = (filteredTotalAmount !== undefined && filteredTotalAmount !== null) ? filteredTotalAmount : totalAmount;
   const displayFilteredCount = (filteredCount !== undefined && filteredCount !== null) ? filteredCount : stats.total;
 
+  const rozpracovaneCount = (
+    Number(displayStats.rozpracovana || 0) +
+    Number(displayStats.odeslana || 0) +
+    Number(displayStats.potvrzena || 0) +
+    Number(displayStats.fakturace || 0) +
+    Number(displayStats.vecna_spravnost || 0) +
+    Number(displayStats.zkontrolovana || 0)
+  );
+
+  const rozpracovaneAmount = (displayStats.rozpracovaneAmount !== undefined && displayStats.rozpracovaneAmount !== null)
+    ? displayStats.rozpracovaneAmount
+    : (displayTotalForCalculations - (displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1))));
+
   // Určení, zda zobrazit dlaždici (pro dynamický režim)
   const shouldShowTile = (count) => {
     if (dashboardMode === 'full') return true;
@@ -458,18 +471,10 @@ const OrdersDashboardV3Full = ({
             >
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-                {/* Rozpracované částka = celková - dokončená */}
-                {Math.round((displayTotalForCalculations - (displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round(rozpracovaneAmount || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
-                {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
-                {(
-                  (displayStats.total || 0) -
-                  (displayStats.dokoncena || 0) -
-                  (displayStats.zrusena || 0) -
-                  (displayStats.smazana || 0) -
-                  (displayStats.archivovano || 0)
-                ).toLocaleString('cs-CZ')} obj
+                {rozpracovaneCount.toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
 
@@ -669,18 +674,10 @@ const OrdersDashboardV3Full = ({
             >
               <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
               <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-                {/* Rozpracované částka = celková - dokončená */}
-                {Math.round((displayTotalForCalculations - (displayStats.dokoncenaAmount || (displayTotalForCalculations * (displayStats.dokoncena || 0) / (displayStats.total || 1)))) || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+                {Math.round(rozpracovaneAmount || 0).toLocaleString('cs-CZ')}&nbsp;Kč
               </SummaryValue>
               <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
-                {/* Rozpracované = celkem - dokončené - zrušené - smazané - archivované */}
-                {(
-                  (displayStats.total || 0) -
-                  (displayStats.dokoncena || 0) -
-                  (displayStats.zrusena || 0) -
-                  (displayStats.smazana || 0) -
-                  (displayStats.archivovano || 0)
-                ).toLocaleString('cs-CZ')} obj
+                {rozpracovaneCount.toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
 

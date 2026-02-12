@@ -1114,9 +1114,10 @@ function Orders25ListV3() {
   
   const handleRefreshOrders = useCallback(() => {
     clearCache?.();
-    loadOrders();
+    // ✅ Manuální refresh musí vzít aktuální fulltext hned (nečekat na debounce)
+    loadOrders(globalFilter, { forceRefresh: true });
     showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
-  }, [clearCache, loadOrders, showToast]);
+  }, [clearCache, loadOrders, showToast, globalFilter]);
 
   // 🔓 Handler pro force unlock (pouze admin)
   const handleForceUnlock = useCallback(async () => {
@@ -1322,7 +1323,7 @@ function Orders25ListV3() {
         break;
       case 'refresh':
         // Refresh dat po schválení/zamítnutí objednávky
-        loadOrders();
+        loadOrders(globalFilter, { forceRefresh: true });
         break;
       default:
         console.warn('Neznámá akce:', action);
@@ -1613,7 +1614,8 @@ function Orders25ListV3() {
             <ReloadButton
               onClick={() => {
                 clearCache?.();
-                loadOrders();
+                // ✅ Manuální refresh musí vzít aktuální fulltext hned (nečekat na debounce)
+                loadOrders(globalFilter, { forceRefresh: true });
                 showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
               }}
               disabled={loading}

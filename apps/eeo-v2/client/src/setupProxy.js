@@ -14,10 +14,9 @@ module.exports = function(app) {
   app.use(
     '/api.eeo',
     createProxyMiddleware({
-      target: 'http://localhost',
-      pathRewrite: {
-        '^/api.eeo': '/dev/api.eeo', // localhost:3001/api.eeo -> localhost/dev/api.eeo
-      },
+      target: 'http://localhost/dev',
+      // Přepis cesty: /api.eeo/* -> /dev/api.eeo/*
+      pathRewrite: (path) => path.replace(/^\/api\.eeo/, '/api.eeo'),
       changeOrigin: false, // Zachová Host: localhost
       headers: {
         'Host': 'erdms.zachranka.cz' // Přinutí Apache použít správný virtual host
@@ -25,7 +24,7 @@ module.exports = function(app) {
       secure: false,
       logLevel: 'debug',
       onProxyReq: (proxyReq, req, res) => {
-        console.log(`[PROXY] ${req.method} ${req.path} -> http://localhost/dev/api.eeo${req.path.replace('/api.eeo', '')}`);
+        console.log(`[PROXY] ${req.method} ${req.path} -> http://localhost${req.path}`);
       },
       onError: (err, req, res) => {
         console.error(`[PROXY ERROR] ${req.method} ${req.path}:`, err.message);
