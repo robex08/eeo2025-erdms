@@ -177,6 +177,27 @@ const UnsupportedMessage = styled.div`
   }
 `;
 
+const DownloadButton = styled.button`
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+
+  &:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 /**
  * AttachmentViewer
  * Sdílený resizable viewer pro přílohy faktur s fullscreen režimem
@@ -190,6 +211,11 @@ const AttachmentViewer = ({
   onClose
 }) => {
   const [fullscreen, setFullscreen] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [imageFallbackTried, setImageFallbackTried] = useState(false);
+  const [imageSrc, setImageSrc] = useState(null);
+  const [internalBlobUrl, setInternalBlobUrl] = useState(null);
+  const internalUrlRef = useRef(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [size, setSize] = useState({ width: 1200, height: 800 });
   const [isDragging, setIsDragging] = useState(false);
@@ -242,16 +268,40 @@ const AttachmentViewer = ({
     }
   }, []);
 
-  if (!attachment || !attachment.blobUrl) return null;
+  useEffect(() => {
+    setImageError(false);
+    setImageFallbackTried(false);
+    setImageSrc(null);
+  }, [attachment?.blobUrl, attachment?.blob, internalBlobUrl]);
 
-  const filename = attachment.filename || 
-                  attachment.originalni_nazev_souboru || 
-                  attachment.original_filename || 
-                  attachment.nazev_souboru || 
+  useEffect(() => {
+    if (!attachment?.blob) {
+      setInternalBlobUrl(null);
+      return;
+    }
+
+    const url = window.URL.createObjectURL(attachment.blob);
+    const previousUrl = internalUrlRef.current;
+    internalUrlRef.current = url;
+    setInternalBlobUrl(url);
+
+    if (previousUrl) {
+      setTimeout(() => {
+        window.URL.revokeObjectURL(previousUrl);
+      }, 1000);
+    }
+  }, [attachment?.blob]);
+
+  const effectiveBlobUrl = internalBlobUrl || attachment?.blobUrl;
+
+  const filename = attachment?.filename || 
+                  attachment?.originalni_nazev_souboru || 
+                  attachment?.original_filename || 
+                  attachment?.nazev_souboru || 
                   'Příloha';
-                  
+
   // Auto-detect file type from extension if not provided
-  let fileType = attachment.fileType;
+  let fileType = attachment?.fileType;
   if (!fileType || fileType === 'other') {
     const ext = filename.toLowerCase().split('.').pop();
     if (ext === 'pdf') {
@@ -259,37 +309,151 @@ const AttachmentViewer = ({
     } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
       fileType = 'image';
     } else {
-      // For unsupported types (DOCX, XLS, etc.), auto-download instead of showing viewer
-      const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
-      if (downloadableTypes.includes(ext)) {
-        
-        // Create download link
-        const downloadLink = document.createElement('a');
-        downloadLink.href = attachment.blobUrl;
-        downloadLink.download = filename;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        // Close viewer and cleanup
-        setTimeout(() => {
-          onClose();
-        }, 100);
-        
-        return null; // Don't render viewer
-      }
       fileType = 'other';
     }
   }
+
+  useEffect(() => {
+    if (fileType !== 'image') {
+      setImageSrc(null);
+      return;
+    }
+
+    // ✅ PRIORITA 1: Pokud máme připravené imageSrc (data URL), použij to a hotovo
+    if (attachment?.imageSrc) {
+      console.log('🖼️ AttachmentViewer using provided imageSrc', {
+        filename,
+        dataUrlLength: attachment.imageSrc.length,
+        dataUrlPrefix: attachment.imageSrc.slice(0, 50)
+      });
+      setImageSrc(attachment.imageSrc);
+      setImageError(false);
+      setImageFallbackTried(true);
+      return;
+    }
+
+    // ✅ PRIORITA 2: Pokud máme blob, vytvoř z něj data URL
+    if (attachment?.blob) {
+      let isActive = true;
+      
+      const loadFromBlob = async () => {
+        try {
+          console.log('🖼️ AttachmentViewer creating data URL from blob', {
+            filename,
+            blobSize: attachment.blob.size,
+            blobType: attachment.blob.type
+          });
+          
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (isActive) {
+              console.log('🖼️ AttachmentViewer data URL created from blob', {
+                filename,
+                dataUrlLength: reader.result.length,
+                dataUrlPrefix: reader.result.slice(0, 50)
+              });
+              setImageSrc(reader.result);
+              setImageError(false);
+            }
+          };
+          reader.onerror = () => {
+            if (isActive) {
+              console.log('🖼️ AttachmentViewer FileReader error', filename);
+              setImageError(true);
+            }
+          };
+          reader.readAsDataURL(attachment.blob);
+        } catch (error) {
+          console.log('🖼️ AttachmentViewer blob load failed', {
+            filename,
+            error: error?.message || String(error)
+          });
+          if (isActive) {
+            setImageError(true);
+          }
+        }
+      };
+      
+      loadFromBlob();
+      
+      return () => {
+        isActive = false;
+      };
+    }
+
+    // ✅ PRIORITA 3: Fallback - zkusit blob URL (starý kód)
+    if (effectiveBlobUrl) {
+      console.log('🖼️ AttachmentViewer using blob URL fallback', effectiveBlobUrl);
+    }
+    
+  }, [fileType, attachment?.blob, attachment?.imageSrc, filename]);
+
+  const handleClose = () => {
+    if (internalUrlRef.current) {
+      window.URL.revokeObjectURL(internalUrlRef.current);
+      internalUrlRef.current = null;
+    }
+    onClose();
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleClose]);
 
   const toggleFullscreen = () => {
     setFullscreen(!fullscreen);
   };
 
   const handleOverlayClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (e.target === e.currentTarget) {
-      onClose();
+      handleClose();
     }
+  };
+
+  if (!attachment || !effectiveBlobUrl) return null;
+
+  const handleDownload = () => {
+    if (!attachment) return;
+
+    const existingUrl = internalBlobUrl || attachment?.blobUrl;
+    let tempUrl = null;
+    const downloadUrl = existingUrl || (() => {
+      if (!attachment.blob) return null;
+      tempUrl = window.URL.createObjectURL(attachment.blob);
+      return tempUrl;
+    })();
+
+    if (!downloadUrl) return;
+
+    const downloadLink = document.createElement('a');
+    downloadLink.href = downloadUrl;
+    downloadLink.download = filename;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+
+    if (tempUrl) {
+      setTimeout(() => window.URL.revokeObjectURL(tempUrl), 1000);
+    }
+  };
+
+  const handleImageError = () => {
+    if (!imageFallbackTried) {
+      setImageFallbackTried(true);
+      return;
+    }
+    setImageError(true);
   };
 
   return ReactDOM.createPortal(
@@ -313,93 +477,68 @@ const AttachmentViewer = ({
           <ViewerTitle title={filename}>{filename}</ViewerTitle>
           <HeaderButtons>
             <HeaderButton 
-              onClick={toggleFullscreen} 
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                toggleFullscreen();
+              }}
               title={fullscreen ? "Zmenšit" : "Celá obrazovka"}
             >
               <FontAwesomeIcon icon={fullscreen ? faCompress : faExpand} />
             </HeaderButton>
-            <HeaderButton onClick={onClose} title="Zavřít">
+            <HeaderButton onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              handleClose();
+            }} title="Zavřít">
               <FontAwesomeIcon icon={faTimes} />
             </HeaderButton>
           </HeaderButtons>
         </ViewerHeader>
         <ViewerContent>
           {fileType === 'pdf' && (
-            <iframe src={attachment.blobUrl} title={filename} />
+            <iframe src={effectiveBlobUrl} title={filename} />
           )}
           {fileType === 'image' && (
-            <img 
-              src={attachment.blobUrl} 
-              alt={filename}
-              crossOrigin="anonymous"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                objectFit: 'contain'
-              }}
-              onLoad={(e) => {
-                // Image loaded successfully
-              }}
-              onError={(e) => {
-                console.error('❌ Image failed to load:', filename);
-                console.error('❌ Blob URL:', attachment.blobUrl);
-                console.error('❌ Error event:', e);
-                console.error('❌ Image src:', e.target.src);
-                
-                // Advanced debugging - try to fetch the blob URL directly
-                fetch(attachment.blobUrl)
-                  .then(response => {
-                    // DEBUG: Direct blob fetch
-                    return response.blob();
-                  })
-                  .then(blob => {
-                    console.log('🔍 Direct blob data:', { size: blob.size, type: blob.type });
-                    
-                    // Try creating a new blob URL
-                    const newBlobUrl = window.URL.createObjectURL(blob);
-                    console.log('🔍 New blob URL:', newBlobUrl);
-                    
-                    // Try setting it as src again
-                    e.target.src = newBlobUrl;
-                    
-                    // Cleanup old URL
-                    if (attachment.blobUrl && attachment.blobUrl.startsWith('blob:')) {
-                      URL.revokeObjectURL(attachment.blobUrl);
-                    }
-                  })
-                  .catch(err => {
-                    console.error('🔍 Direct blob fetch failed:', err);
-                    
-                    // Show error message to user
-                    e.target.style.display = 'none';
-                    const errorDiv = document.createElement('div');
-                    errorDiv.innerHTML = `
-                      <div style="
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
-                        height: 200px;
-                        color: #ef4444;
-                        font-size: 14px;
-                        text-align: center;
-                        padding: 20px;
-                      ">
-                        <div style="font-size: 24px; margin-bottom: 10px;">❌</div>
-                        <div>Chyba při načítání obrázku</div>
-                        <div style="font-size: 12px; color: #6b7280; margin-top: 5px;">${filename}</div>
-                      </div>
-                    `;
-                    e.target.parentNode.appendChild(errorDiv);
-                  });
-              }}
-            />
+            imageError && !imageSrc ? (
+              <UnsupportedMessage>
+                <FontAwesomeIcon icon={faFileAlt} />
+                <h4>Přílohu nelze v interním prohlížeči zobrazit</h4>
+                <p>Stáhněte si soubor a otevřete ho lokálně.</p>
+                <DownloadButton onClick={(e) => { e.stopPropagation(); handleDownload(); }}>Stáhnout</DownloadButton>
+              </UnsupportedMessage>
+            ) : !imageSrc && !effectiveBlobUrl ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                Načítání obrázku...
+              </div>
+            ) : (
+              <img 
+                key={effectiveBlobUrl || imageSrc}
+                src={effectiveBlobUrl || imageSrc} 
+                alt={filename}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  display: 'block'
+                }}
+                onLoad={() => {
+                  console.log('🖼️ Image loaded successfully');
+                  setImageError(false);
+                }}
+                onError={(e) => {
+                  console.log('🖼️ Image error', { src: e.target.src });
+                  handleImageError();
+                }}
+              />
+            )
           )}
           {fileType === 'other' && (
             <UnsupportedMessage>
               <FontAwesomeIcon icon={faFileAlt} />
-              <h4>Automatické stažení</h4>
-              <p>Tento typ souboru se automaticky stahuje...</p>
+              <h4>Přílohu nelze v interním prohlížeči zobrazit</h4>
+              <p>Tento typ souboru nelze zobrazit. Stáhněte si jej a otevřete lokálně.</p>
+              <DownloadButton onClick={(e) => { e.stopPropagation(); handleDownload(); }}>Stáhnout</DownloadButton>
             </UnsupportedMessage>
           )}
         </ViewerContent>

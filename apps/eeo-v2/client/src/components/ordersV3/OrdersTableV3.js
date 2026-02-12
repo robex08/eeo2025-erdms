@@ -1566,6 +1566,7 @@ const OrdersTableV3 = ({
     errors,
     refreshDetail
   } = useExpandedRowsV3({ token, username, userId });
+
   
   // State pro column filters (lokální - zobrazení v UI)
   const [localColumnFilters, setLocalColumnFilters] = useState(() => {
@@ -3812,13 +3813,22 @@ const OrdersTableV3 = ({
                       loading={isLoadingDetail}
                       error={detailError}
                       onRetry={() => loadOrderDetail(order.id)}
-                      onForceRefresh={() => refreshDetail(order.id)}
+                      onForceRefresh={() => {
+                        // 🔄 1) Refresh detail z DB (ignoruj cache)
+                        refreshDetail(order.id);
+                        // 🔍 2) Refresh list, aby se znovu aplikovaly filtry a případné změny stavu
+                        onRefreshOrders?.();
+                      }}
                       colSpan={rowColSpan}
                       token={token}
                       username={username}
                       onActionClick={onActionClick}
                       canEdit={canEdit}
                       showToast={showToast}
+                      // 💬 Komentáře (inline v podřádku)
+                      onLoadComments={onLoadComments}
+                      onAddComment={onAddComment}
+                      onDeleteComment={onDeleteComment}
                       // 🎯 Schvalovací props
                       setOrderToApprove={setOrderToApprove}
                       setApprovalComment={setApprovalComment}
