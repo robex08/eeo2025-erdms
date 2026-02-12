@@ -37,6 +37,10 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
   const currentRequestRef = useRef(null);
   const lastRequestParamsRef = useRef(null);
   const cacheRef = useRef(new Map());
+  // ✅ Latest-wins: zabrání, aby starší request (např. bez fulltextu) přepsal novější filtrovaný výsledek
+  const requestIdRef = useRef(0);
+  // ✅ Skutečné zrušení fetch requestu (AbortController)
+  const abortControllerRef = useRef(null);
   
   /**
    * ✅ CACHE INVALIDATION: Vymaže cache při změně filtrů
@@ -50,11 +54,21 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
    * ✅ OPTIMALIZACE: Deduplikované API volání s cache
    */
   const fetchData = useCallback(async (params) => {
-    // Create request signature for deduplication
-    const requestSignature = JSON.stringify(params);
+    // Každé volání dostane vlastní ID; pouze nejnovější request smí měnit state
+    const myRequestId = ++requestIdRef.current;
+
+    // ✅ forceRefresh: manuální refresh z DB má obejít cache i deduplikaci
+    const forceRefresh = Boolean(params?.forceRefresh);
+
+    // Nevkládat do signature ani neposílat do API
+    const paramsForRequest = { ...(params || {}) };
+    delete paramsForRequest.forceRefresh;
+
+    // Create request signature for deduplication (bez interních flagů)
+    const requestSignature = JSON.stringify(paramsForRequest);
     
     // ✅ DEDUPLICATION: Pokud je stejný request již v běhu, počkej na něj
-    if (currentRequestRef.current && lastRequestParamsRef.current === requestSignature) {
+    if (!forceRefresh && currentRequestRef.current && lastRequestParamsRef.current === requestSignature) {
       // console.log('🔄 Request deduplication: waiting for existing request...');
       return currentRequestRef.current;
     }
@@ -65,15 +79,28 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     const cacheExpiration = hasFulltext ? 500 : 2000; // 500ms pro fulltext, 2s pro ostatní
     
     const cached = cacheRef.current.get(requestSignature);
-    if (cached && (Date.now() - cached.timestamp < cacheExpiration)) {
-      setData(cached.data.orders || []);
-      setStats(cached.data.stats || null);
-      setPagination(cached.data.pagination || null);
-      setError(null);
+    if (!forceRefresh && cached && (Date.now() - cached.timestamp < cacheExpiration)) {
+      // Použij pouze pokud je to stále nejnovější volání
+      if (myRequestId === requestIdRef.current) {
+        setData(cached.data.orders || []);
+        setStats(cached.data.stats || null);
+        setUnfilteredStats(cached.data.unfilteredStats || null);
+        setPagination(cached.data.pagination || null);
+        setError(null);
+      }
       return cached;
     }
     
     // ✅ NEW REQUEST: Start new API call
+    // Pokud běží předchozí request (s jiným podpisem), zruš ho.
+    // Pozn.: dedup pro stejný podpis je řešen výše.
+    try {
+      abortControllerRef.current?.abort();
+    } catch {
+      // ignore
+    }
+    abortControllerRef.current = new AbortController();
+
     setLoading(true);
     setError(null);
     showProgress?.();
@@ -83,7 +110,8 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     
     const requestPromise = (async () => {
       try {
-        const response = await apiFunction(params);
+        // Přidej AbortController signal do API params (pokud API funkce podporuje fetch)
+        const response = await apiFunction({ ...paramsForRequest, signal: abortControllerRef.current?.signal });
         
         // ✅ SUCCESS: Store data and cache result
         if (response.status === 'success' && response.data) {
@@ -102,12 +130,14 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
             cacheRef.current.delete(oldestKey);
           }
           
-          // Update state
-          setData(response.data.orders || []);
-          setStats(response.data.stats || null);
-          setUnfilteredStats(response.data.unfilteredStats || null);
-          setPagination(response.data.pagination || null);
-          setError(null);
+          // Update state (jen pokud je request stále aktuální)
+          if (myRequestId === requestIdRef.current) {
+            setData(response.data.orders || []);
+            setStats(response.data.stats || null);
+            setUnfilteredStats(response.data.unfilteredStats || null);
+            setPagination(response.data.pagination || null);
+            setError(null);
+          }
           
           return result;
         } else {
@@ -115,6 +145,14 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
         }
         
       } catch (err) {
+        // Fetch byl zrušen - nevypisuj jako chybu
+        if (err?.name === 'AbortError') {
+          return {
+            error: 'aborted',
+            timestamp: Date.now(),
+            status: REQUEST_STATUS.IDLE
+          };
+        }
         console.error('❌ API Error:', err);
         
         const errorResult = {
@@ -123,17 +161,22 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
           status: REQUEST_STATUS.ERROR
         };
         
-        setError(err.message || 'Chyba při načítání dat');
+        if (myRequestId === requestIdRef.current) {
+          setError(err.message || 'Chyba při načítání dat');
+        }
         // Keep previous data on error
         
         return errorResult;
         
       } finally {
-        setLoading(false);
-        hideProgress?.();
-        // Clear current request ref
-        currentRequestRef.current = null;
-        lastRequestParamsRef.current = null;
+        // Loading/progress a request refs uklízej jen pokud je to stále nejnovější request
+        if (myRequestId === requestIdRef.current) {
+          setLoading(false);
+          hideProgress?.();
+          currentRequestRef.current = null;
+          lastRequestParamsRef.current = null;
+          abortControllerRef.current = null;
+        }
       }
     })();
     
@@ -149,6 +192,14 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
   const cancelCurrentRequest = useCallback(() => {
     if (currentRequestRef.current) {
       // console.log('🚫 Cancelling current request...');
+      // Invalidate all in-flight requests (latest-wins gate)
+      requestIdRef.current++;
+      try {
+        abortControllerRef.current?.abort();
+      } catch {
+        // ignore
+      }
+      abortControllerRef.current = null;
       currentRequestRef.current = null;
       lastRequestParamsRef.current = null;
       setLoading(false);

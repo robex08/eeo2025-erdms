@@ -630,6 +630,11 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
         header('Pragma: public');
         
+        // ✅ Vyčistit output buffer před binárními daty (jinak se přidá \n před PNG header)
+        if (ob_get_level()) {
+            ob_clean();
+        }
+        
         // Výstup souboru (používáme sestavený $fullPath)
         readfile($fullPath);
         

@@ -57,13 +57,15 @@ export async function listOrdersV3({
   per_page = 50,
   period = 'all',
   filters = {},
-  sorting = []
+  sorting = [],
+  signal = undefined
 }) {
   const response = await fetch(`${API_BASE_URL}/order-v3/list`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
+    signal,
     body: JSON.stringify({
       token,
       username,
@@ -82,6 +84,48 @@ export async function listOrdersV3({
 
   const responseData = await response.json();
   return responseData;
+}
+
+/**
+ * Načte přehled majetkových objednávek (MAJETEK)
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.page - Číslo stránky
+ * @param {number} params.per_page - Záznamů na stránku
+ * @param {string} params.period - Období (all/current-month/last-month/last-quarter/all-months)
+ * @param {Object} params.filters - Filtry (stav, ...)
+ * @returns {Promise<Object>} Response s orders a pagination
+ */
+export async function listMajetekOrdersV3({
+  token,
+  username,
+  page = 1,
+  per_page = 50,
+  period = 'last-month',
+  filters = {}
+}) {
+  const response = await fetch(`${API_BASE_URL}/order-v3/majetek-list`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      page,
+      per_page,
+      period,
+      filters
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**

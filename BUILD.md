@@ -1,4 +1,53 @@
-# ERDMS Build & Deploy Guide
+# ERDMS – DEV build only (FE)
+
+> ⚠️ Tento dokument je záměrně **DEV-only** a **FE-only**.
+> - ✅ Buildujeme pouze frontend do DEV.
+> - ❌ ŽÁDNÝ deploy do produkce.
+> - ❌ ŽÁDNÉ změny API URL.
+> - ❌ ŽÁDNÉ změny DB – DEV DB musí zůstat **EEO-OSTRA-DEV**.
+
+
+## 1) EEO v2 (apps/eeo-v2) – DEV frontend build
+
+### Doporučený postup (skript)
+
+
+```bash
+cd /var/www/erdms-dev/docs/scripts-shell
+./build-eeo-v2.sh --dev --frontend --no-deploy
+```
+
+Výstup buildu zůstane v DEV:
+
+
+### Alternativa (přímo v client/)
+
+```bash
+cd /var/www/erdms-dev/apps/eeo-v2/client
+npm ci
+npm run build:dev:explicit
+```
+
+### Rychlé ověření
+
+```bash
+curl -s http://localhost/dev/eeo-v2/version.json
+```
+
+
+## 2) Co se NESMÍ dělat
+
+
+
+## 3) Poznámka k DB
+
+DB pro DEV je řízená backendem (API) a jeho `.env`. Frontend ji může pouze zobrazovat (např. přes system-info).
+---
+
+## ❌ DEPRECATED CONTENT BELOW – IGNORE
+
+Následující historický obsah je zastaralý a **nesmí se používat**.
+Platí pouze DEV FE postup uvedený nahoře.
 
 ## 📋 Overview
 

@@ -72,9 +72,10 @@ if [ "$COMPONENT" = "frontend" ] || [ "$COMPONENT" = "all" ]; then
     echo "🔨 Building React app..."
     if [ "$ENVIRONMENT" = "dev" ]; then
         # ⚠️ KRITICKÉ: DEV build MUSÍ používat build:dev:explicit!!!
-        # build:dev:explicit = REACT_APP_DB_NAME=eeo2025-dev + REACT_APP_API2_BASE_URL=/dev/api.eeo/
-        # NIKDY NEPOUŽÍVEJ build:dev pro DEV (používá ostrou DB eeo2025)!
-        echo "⚠️  Using build:dev:explicit (DB: eeo2025-dev, API: /dev/api.eeo/)"
+        # build:dev:explicit nastaví DEV API base URL (např. /dev/api.eeo/).
+        # DB se v DEV NEMĚNÍ buildem – musí zůstat EEO-OSTRA-DEV (řídí backend .env).
+        # NIKDY NEPOUŽÍVEJ build:dev pro DEV, pokud by vedl na produkční konfiguraci.
+        echo "⚠️  Using build:dev:explicit (DEV FE only; API: /dev/api.eeo/; DB: EEO-OSTRA-DEV)"
         npm run build:dev:explicit
         BUILD_DIR="build"
     else

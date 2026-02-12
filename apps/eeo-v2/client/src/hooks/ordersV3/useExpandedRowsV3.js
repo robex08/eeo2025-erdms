@@ -24,6 +24,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
   const [loadingDetails, setLoadingDetails] = useState(new Set());
   const [detailsCache, setDetailsCache] = useState({});
   const [errors, setErrors] = useState({});
+  const [storageLoaded, setStorageLoaded] = useState(false);
   
   // Ref pro zamezení duplicitních načítání
   const fetchingRef = useRef(new Set());
@@ -53,6 +54,8 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
       }
     } catch (error) {
       console.warn('⚠️ Chyba při načítání rozbalených řádků z localStorage:', error);
+    } finally {
+      setStorageLoaded(true);
     }
   }, [userId, storageKey, cacheKey]);
 
@@ -252,6 +255,24 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
       return null;
     }
   }, [token, username, cacheKey]);
+
+  // 🔄 Po reloadu stránky: pokud jsou uložené rozbalené řádky, načti je znovu Z DB.
+  // Fixuje stav „Načítám data…“ při F5 (expanded row byl restore, ale detail se nikdy nenačetl).
+  const didInitialExpandedReloadRef = useRef(false);
+  useEffect(() => {
+    if (didInitialExpandedReloadRef.current) return;
+    if (!storageLoaded) return;
+    if (!token || !username) return;
+
+    didInitialExpandedReloadRef.current = true;
+
+    if (expandedRows.size === 0) return;
+
+    // Vynutit refresh pro každý rozbalený řádek (ignorovat cache)
+    expandedRows.forEach((orderId) => {
+      refreshDetail(orderId);
+    });
+  }, [storageLoaded, token, username, expandedRows, refreshDetail]);
 
   // 🔽 Toggle row expansion
   const toggleRow = useCallback(async (orderId) => {

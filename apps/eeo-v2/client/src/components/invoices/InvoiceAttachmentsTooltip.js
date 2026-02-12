@@ -321,69 +321,33 @@ const InvoiceAttachmentsTooltip = ({
       const filename = getFileName(attachment);
       const ext = filename.toLowerCase().split('.').pop();
 
-      // Určit MIME type podle přípony
-      let mimeType = 'application/octet-stream';
-      if (ext === 'pdf') {
-        mimeType = 'application/pdf';
-      } else if (['jpg', 'jpeg'].includes(ext)) {
-        mimeType = 'image/jpeg';
-      } else if (ext === 'png') {
-        mimeType = 'image/png';
-      } else if (ext === 'gif') {
-        mimeType = 'image/gif';
-      } else if (ext === 'bmp') {
-        mimeType = 'image/bmp';
-      } else if (ext === 'webp') {
-        mimeType = 'image/webp';
-      } else if (ext === 'svg') {
-        mimeType = 'image/svg+xml';
-      }
-
-      // Vytvořit nový Blob se správným MIME typem
-      const blob = new Blob([blobData], { type: mimeType });
-      
-      // Vytvořit URL pro blob
-      const blobUrl = window.URL.createObjectURL(blob);
-      
       // Check if file type is supported for preview
       const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
-      const downloadableTypes = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
-      
-      if (previewableTypes.includes(ext)) {
-        // Zavolat onView s attachment + blobUrl pro podporované soubory
-        if (onView) {
-          onView({
-            ...attachment,
-            blobUrl: blobUrl,
-            filename: filename,
-            fileType: ext === 'pdf' ? 'pdf' : 'image'
-          });
-        }
-      } else if (downloadableTypes.includes(ext)) {
-        
-        const downloadLink = document.createElement('a');
-        downloadLink.href = blobUrl;
-        downloadLink.download = filename;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        // Cleanup blob URL
-        setTimeout(() => {
-          window.URL.revokeObjectURL(blobUrl);
-        }, 1000);
-      } else {
-        
-        const downloadLink = document.createElement('a');
-        downloadLink.href = blobUrl;
-        downloadLink.download = filename;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        setTimeout(() => {
-          window.URL.revokeObjectURL(blobUrl);
-        }, 1000);
+      const isPreviewable = previewableTypes.includes(ext);
+
+      // ✅ Použít blob přímo z API (už má správný MIME type z responseType: 'blob')
+      // ❌ NETVOŘIT nový Blob([blob]) - korumpuje binární data!
+      let imageSrc = null;
+      if (isPreviewable && ext !== 'pdf') {
+        imageSrc = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blobData); // ✅ Použít původní blob z API
+        });
+      }
+
+      // Otevřít ve vieweru (nepodporované typy zobrazí hlášku + download)
+      if (onView) {
+        onView({
+          ...attachment,
+          // ✅ Pokud máme imageSrc (data URL pro obrázky), NEPOSLAT blob (způsobuje problémy)
+          // Pro PDF poslat blob (potřebný pro iframe)
+          blob: (ext === 'pdf') ? blobData : null,
+          imageSrc: imageSrc || null,
+          filename: filename,
+          fileType: ext === 'pdf' ? 'pdf' : (isPreviewable ? 'image' : 'other')
+        });
       }
       
     } catch (error) {
