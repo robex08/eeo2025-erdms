@@ -187,6 +187,11 @@ define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
 define('TBL_UZIVATELE_PRAVA', '25_uzivatele_prava');
 define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
 
+// STICKY POZNÁMKY (nová funkce)
+define('TBL_STICKY_POZNAMKY', '25_sticky_poznamky');
+define('TBL_STICKY_POZNAMKY_SDILENI', '25_sticky_poznamky_sdileni');
+define('TBL_STICKY_POZNAMKY_KOMENTARE', '25_sticky_poznamky_komentare');
+
 // DATABASE TABLE NAMES - UŽIVATELÉ (EXTENDED)
 define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
 define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
@@ -1768,6 +1773,77 @@ switch ($endpoint) {
         require_once __DIR__ . '/' . VERSION . '/lib/notes_handlers.php';
         if ($request_method === 'POST') {
             handle_todonotes_stats($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    // === STICKY POZNÁMKY (nová funkce) ===
+    case 'sticky/list':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    case 'sticky/bulk-upsert':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_bulk_upsert($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    case 'sticky/delete':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_delete($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    case 'sticky/clear':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_clear($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    case 'sticky/share/grant':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_share_grant($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    case 'sticky/share/revoke':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_share_revoke($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+
+    case 'sticky/share/list':
+        require_once __DIR__ . '/' . VERSION . '/lib/stickyNotesHandlers.php';
+        if ($request_method === 'POST') {
+            handle_sticky_share_list($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));

@@ -41,6 +41,11 @@ if (!defined('TBL_USER_GROUPS_MEMBERS')) define('TBL_USER_GROUPS_MEMBERS', '25_u
 if (!defined('TBL_UZIVATELE_ZASTUPOVANI')) define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
 if (!defined('TBL_UZIVATELE_POZNAMKY')) define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
+// STICKY POZNÁMKY (nová funkce)
+if (!defined('TBL_STICKY_POZNAMKY')) define('TBL_STICKY_POZNAMKY', '25_sticky_poznamky');
+if (!defined('TBL_STICKY_POZNAMKY_SDILENI')) define('TBL_STICKY_POZNAMKY_SDILENI', '25_sticky_poznamky_sdileni');
+if (!defined('TBL_STICKY_POZNAMKY_KOMENTARE')) define('TBL_STICKY_POZNAMKY_KOMENTARE', '25_sticky_poznamky_komentare');
+
 // HIERARCHIE
 if (!defined('TBL_UZIVATELE_HIERARCHIE')) define('TBL_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
 if (!defined('TBL_HIERARCHIE_PROFILY')) define('TBL_HIERARCHIE_PROFILY', '25_hierarchie_profily');
@@ -865,6 +870,137 @@ $queries['uzivatele_poznamky_select_with_user_details'] = "
 
 // Search notes by content (full-text search v JSON obsahu)
 $queries['uzivatele_poznamky_search_content'] = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND obsah LIKE :search_term ORDER BY dt_aktualizace DESC";
+
+// ========== STICKY POZNÁMKY (nová funkce) ==========
+
+// Zjistit usek_id uživatele (pro sdílení per-úsek)
+$queries['sticky_user_usek_id'] = "SELECT usek_id FROM ".TBL_UZIVATELE." WHERE id = :user_id LIMIT 1";
+
+// Seznam sticky poznámek dostupných pro uživatele:
+// - vlastní (owner_user_id = :user_id)
+// - sdílené přes ALL / USEK / USER
+// Pozn.: V API se sdílení filtruje podle usek_id uživatele.
+$queries['sticky_notes_list_accessible'] = "
+    SELECT
+        n.id,
+        n.vlastnik_id AS owner_user_id,
+        n.klient_uid AS client_uid,
+        n.obsah_json AS data_json,
+        n.verze AS version,
+        n.dt_vytvoreni,
+        n.dt_aktualizace,
+        n.smazano AS is_deleted,
+        MAX(
+            CASE
+                WHEN n.vlastnik_id = :user_id THEN 7
+                WHEN s.cil_typ = 'VSICHNI' THEN s.prava_mask
+                WHEN s.cil_typ = 'USEK' AND s.cil_id = :usek_id THEN s.prava_mask
+                WHEN s.cil_typ = 'UZIVATEL' AND s.cil_id = :user_id THEN s.prava_mask
+                ELSE 0
+            END
+        ) AS prava_mask
+    FROM ".TBL_STICKY_POZNAMKY." n
+    LEFT JOIN ".TBL_STICKY_POZNAMKY_SDILENI." s ON s.poznamka_id = n.id
+    WHERE n.smazano = 0
+      AND (
+        n.vlastnik_id = :user_id
+        OR (s.cil_typ = 'VSICHNI')
+        OR (s.cil_typ = 'UZIVATEL' AND s.cil_id = :user_id)
+        OR (s.cil_typ = 'USEK' AND s.cil_id = :usek_id)
+      )
+    GROUP BY n.id
+    ORDER BY n.dt_aktualizace DESC
+";
+
+// Najít sticky podle owner + client_uid (pro migraci/upsert)
+// Pozn.: zachováváme aliasy (id, version) kvůli handlerům
+$queries['sticky_note_select_by_owner_client_uid'] = "
+        SELECT id, verze AS version
+        FROM ".TBL_STICKY_POZNAMKY."
+        WHERE vlastnik_id = :owner_user_id
+            AND klient_uid = :client_uid
+            AND smazano = 0
+        LIMIT 1
+";
+
+// Insert nové sticky
+$queries['sticky_note_insert'] = "
+    INSERT INTO ".TBL_STICKY_POZNAMKY." (vlastnik_id, klient_uid, obsah_json, verze, smazano, dt_vytvoreni, dt_aktualizace)
+    VALUES (:owner_user_id, :client_uid, :data_json, 1, 0, NOW(), NOW())
+";
+
+// Update sticky s optimistic locking (version)
+$queries['sticky_note_update_with_version'] = "
+    UPDATE ".TBL_STICKY_POZNAMKY."
+    SET obsah_json = :data_json,
+        verze = verze + 1,
+        dt_aktualizace = NOW()
+    WHERE id = :id
+      AND vlastnik_id = :owner_user_id
+      AND smazano = 0
+      AND verze = :version
+";
+
+// Update sticky bez optimistic locking (fallback / LWW)
+$queries['sticky_note_update_force'] = "
+    UPDATE ".TBL_STICKY_POZNAMKY."
+    SET obsah_json = :data_json,
+        verze = verze + 1,
+        dt_aktualizace = NOW()
+    WHERE id = :id
+      AND vlastnik_id = :owner_user_id
+      AND smazano = 0
+";
+
+// Soft delete sticky (jen owner)
+$queries['sticky_note_soft_delete'] = "
+    UPDATE ".TBL_STICKY_POZNAMKY."
+        SET smazano = 1,
+        dt_smazani = NOW(),
+        dt_aktualizace = NOW()
+    WHERE id = :id
+            AND vlastnik_id = :owner_user_id
+            AND smazano = 0
+";
+
+// Soft delete všech sticky poznámek ownera
+$queries['sticky_note_soft_delete_all_owner'] = "
+    UPDATE ".TBL_STICKY_POZNAMKY."
+        SET smazano = 1,
+        dt_smazani = NOW(),
+        dt_aktualizace = NOW()
+        WHERE vlastnik_id = :owner_user_id
+            AND smazano = 0
+";
+
+// Sdílení: UPSERT (unikát sticky_id + target_type + target_id)
+$queries['sticky_share_upsert'] = "
+    INSERT INTO ".TBL_STICKY_POZNAMKY_SDILENI." (poznamka_id, cil_typ, cil_id, prava_mask, vytvoril_user_id, dt_vytvoreni)
+    VALUES (:sticky_id, :target_type, :target_id, :prava_mask, :created_by_user_id, NOW())
+    ON DUPLICATE KEY UPDATE prava_mask = :prava_mask_update
+";
+
+// Sdílení: revoke
+$queries['sticky_share_delete'] = "
+    DELETE FROM ".TBL_STICKY_POZNAMKY_SDILENI."
+        WHERE poznamka_id = :sticky_id
+            AND cil_typ = :target_type
+            AND ((:target_id IS NULL AND cil_id IS NULL) OR (cil_id = :target_id))
+";
+
+// Sdílení: list (jen pro owner)
+$queries['sticky_share_list'] = "
+    SELECT id,
+           poznamka_id AS sticky_id,
+           cil_typ AS target_type,
+           cil_id AS target_id,
+           prava_mask,
+           vytvoril_user_id AS created_by_user_id,
+           dt_vytvoreni
+    FROM ".TBL_STICKY_POZNAMKY_SDILENI."
+    WHERE poznamka_id = :sticky_id
+    ORDER BY dt_vytvoreni DESC
+";
 
 // Admin queries - pro administrátory
 $queries['uzivatele_poznamky_admin_list_all'] = "
