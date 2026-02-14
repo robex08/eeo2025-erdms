@@ -1107,6 +1107,51 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
         try {
           const res = await bulkUpsertStickyNotes({ token: auth.token, username: auth.username, notes: payloadNotes });
 
+          // Pokud nastal konflikt verze, stáhnout aktuální verzi z DB a srovnat.
+          // (zabrání opakovanému konfliktu a uživatel uvidí poslední uložený stav)
+          const conflictClientUidsArr = res
+            .filter((r) => r && r.ok === false && r.status === 'conflict')
+            .map((r) => String(r.client_uid || ''));
+          const conflictClientUidsSet = new Set(conflictClientUidsArr);
+          if (conflictClientUidsSet.size > 0) {
+            try {
+              const rows = await listStickyNotes({ token: auth.token, username: auth.username });
+              const rowsArr = Array.isArray(rows) ? rows : [];
+
+              setNotes((prev) => (prev || []).map((n) => {
+                const cu = String(n?.clientUid || `n_${n?.id}`);
+                if (!conflictClientUidsSet.has(cu)) return n;
+
+                const dbIdNum = Number(n?.dbId);
+                const row = rowsArr.find((rr) => Number(rr?.id) === dbIdNum);
+                if (!row) return n;
+                const normalized = normalizeNoteFromDb(row);
+                if (!normalized) return n;
+
+                // nepřepisuj layout při refreshi; jen "server" data
+                return {
+                  ...n,
+                  version: normalized.version,
+                  ownerUserId: normalized.ownerUserId,
+                  pravaMask: normalized.pravaMask,
+                  content: normalized.content,
+                };
+              }));
+
+              // Konfliktní poznámky přestaň zkoušet ukládat dokola – už jsou syncnuté na DB verzi.
+              const nextDirty = new Set(dirtyIdsRef.current || []);
+              for (const n of dirtyNotes) {
+                const cu = String(n?.clientUid || `n_${n?.id}`);
+                if (conflictClientUidsSet.has(cu)) nextDirty.delete(n.id);
+              }
+              dirtyIdsRef.current = nextDirty;
+
+              setDbLastError('Konflikt synchronizace: načetl jsem novější verzi z databáze.');
+            } catch {
+              setDbLastError('Konflikt synchronizace: nepodařilo se načíst novější verzi z databáze.');
+            }
+          }
+
           // vyčistit dirty jen pro úspěšné
           const okClientUids = new Set(res.filter((r) => r?.ok).map((r) => String(r.client_uid || '')));
           const conflictClientUids = new Set(res.filter((r) => r && r.ok === false && r.status === 'conflict').map((r) => String(r.client_uid || '')));
@@ -1129,10 +1174,8 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           for (const n of dirtyNotes) {
             const cu = String(n.clientUid || `n_${n.id}`);
             if (okClientUids.has(cu)) nextDirty.delete(n.id);
-            // konflikt necháme dirty (ať se nestratí) + uložíme poslední chybu
-            if (conflictClientUids.has(cu)) {
-              setDbLastError('Konflikt synchronizace: některé poznámky byly změněny na jiném zařízení.');
-            }
+            // konflikt – řešíme refresh z DB výše, tady už jen jistota
+            if (conflictClientUids.has(cu)) nextDirty.delete(n.id);
           }
           dirtyIdsRef.current = nextDirty;
         } catch (e) {
@@ -1144,7 +1187,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     } catch {
       // ignore
     }
-  }, []);
+  }, [normalizeNoteFromDb]);
 
   const openShareDrawerFor = useCallback(async (noteId) => {
     const canUseDb = Boolean(apiAuth?.token && apiAuth?.username && apiAuth?.userId);
