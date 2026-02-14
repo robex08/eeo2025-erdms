@@ -13,6 +13,59 @@ if (!defined('STICKY_RIGHT_WRITE')) define('STICKY_RIGHT_WRITE', 2);
 if (!defined('STICKY_RIGHT_COMMENT')) define('STICKY_RIGHT_COMMENT', 4);
 
 /**
+ * Vrátí přístup k poznámce (owner + sdílecí maska) pro konkrétního uživatele.
+ * Používá stejné vyhodnocení masky jako sticky/list.
+ */
+function sticky_get_note_access_mask($db, $user_id, $sticky_id, $queries) {
+    try {
+        // usek_id uživatele (pro sdílení per-úsek)
+        $usek_id = 0;
+        if (isset($queries['sticky_user_usek_id'])) {
+            $stmt_usek = $db->prepare($queries['sticky_user_usek_id']);
+            $stmt_usek->bindValue(':user_id', (int)$user_id, PDO::PARAM_INT);
+            $stmt_usek->execute();
+            $row_usek = $stmt_usek->fetch(PDO::FETCH_ASSOC);
+            if ($row_usek && array_key_exists('usek_id', $row_usek) && $row_usek['usek_id'] !== null) {
+                $usek_id = (int)$row_usek['usek_id'];
+            }
+        }
+
+        $sql = "
+            SELECT
+                n.vlastnik_id AS owner_user_id,
+                MAX(
+                    CASE
+                        WHEN n.vlastnik_id = :user_id THEN 7
+                        WHEN s.cil_typ = 'VSICHNI' THEN s.prava_mask
+                        WHEN s.cil_typ = 'USEK' AND s.cil_id = :usek_id THEN s.prava_mask
+                        WHEN s.cil_typ = 'UZIVATEL' AND s.cil_id = :user_id THEN s.prava_mask
+                        ELSE 0
+                    END
+                ) AS prava_mask
+            FROM " . TBL_STICKY_POZNAMKY . " n
+            LEFT JOIN " . TBL_STICKY_POZNAMKY_SDILENI . " s ON s.poznamka_id = n.id
+            WHERE n.id = :id
+              AND n.smazano = 0
+            GROUP BY n.id
+            LIMIT 1
+        ";
+        $st = $db->prepare($sql);
+        $st->bindValue(':id', (int)$sticky_id, PDO::PARAM_INT);
+        $st->bindValue(':user_id', (int)$user_id, PDO::PARAM_INT);
+        $st->bindValue(':usek_id', (int)$usek_id, PDO::PARAM_INT);
+        $st->execute();
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        return [
+            'owner_user_id' => isset($row['owner_user_id']) ? (int)$row['owner_user_id'] : null,
+            'prava_mask' => isset($row['prava_mask']) ? (int)$row['prava_mask'] : 0,
+        ];
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+/**
  * Ověření oprávnění pro Sticky poznámky.
  * - SUPERADMIN má automaticky přístup.
  * - Jinak vyžaduje právo STICKY_MANAGE.
@@ -269,7 +322,49 @@ function handle_sticky_bulk_upsert($input, $config, $queries) {
                 $stmt_upd->execute();
 
                 if ($stmt_upd->rowCount() < 1) {
-                    // Konflikt nebo neexistuje / není owner
+                    // Buď konflikt verze, nebo uživatel není owner.
+                    // Pokud má sdílení s WRITE, povolíme update i pro sdílenou poznámku.
+                    $access = sticky_get_note_access_mask($db, $user_id, $db_id, $queries);
+                    if ($access && isset($access['owner_user_id']) && (int)$access['owner_user_id'] !== (int)$user_id) {
+                        $mask = (int)($access['prava_mask'] ?? 0);
+                        if (($mask & STICKY_RIGHT_WRITE) === STICKY_RIGHT_WRITE) {
+                            $stmt_upd2 = $db->prepare($queries['sticky_note_update_with_version_any_owner']);
+                            $stmt_upd2->bindValue(':id', $db_id, PDO::PARAM_INT);
+                            $stmt_upd2->bindValue(':data_json', $data_json, PDO::PARAM_STR);
+                            $stmt_upd2->bindValue(':version', $version, PDO::PARAM_INT);
+                            $stmt_upd2->execute();
+
+                            if ($stmt_upd2->rowCount() < 1) {
+                                $results[] = [
+                                    'client_uid' => $client_uid,
+                                    'ok' => false,
+                                    'status' => 'conflict',
+                                    'id' => $db_id,
+                                    'message' => 'Konflikt verze (sticky byla mezitím změněna)'
+                                ];
+                                continue;
+                            }
+
+                            $results[] = [
+                                'client_uid' => $client_uid,
+                                'ok' => true,
+                                'status' => 'updated',
+                                'id' => $db_id,
+                                'version' => $version + 1
+                            ];
+                            continue;
+                        }
+
+                        $results[] = [
+                            'client_uid' => $client_uid,
+                            'ok' => false,
+                            'status' => 'forbidden',
+                            'id' => $db_id,
+                            'message' => 'Poznámku nelze uložit (sdílená jen pro čtení)'
+                        ];
+                        continue;
+                    }
+
                     $results[] = [
                         'client_uid' => $client_uid,
                         'ok' => false,
@@ -298,6 +393,46 @@ function handle_sticky_bulk_upsert($input, $config, $queries) {
             $stmt_force->execute();
 
             if ($stmt_force->rowCount() < 1) {
+                $access = sticky_get_note_access_mask($db, $user_id, $db_id, $queries);
+                if ($access && isset($access['owner_user_id']) && (int)$access['owner_user_id'] !== (int)$user_id) {
+                    $mask = (int)($access['prava_mask'] ?? 0);
+                    if (($mask & STICKY_RIGHT_WRITE) === STICKY_RIGHT_WRITE) {
+                        $stmt_force2 = $db->prepare($queries['sticky_note_update_force_any_owner']);
+                        $stmt_force2->bindValue(':id', $db_id, PDO::PARAM_INT);
+                        $stmt_force2->bindValue(':data_json', $data_json, PDO::PARAM_STR);
+                        $stmt_force2->execute();
+
+                        if ($stmt_force2->rowCount() < 1) {
+                            $results[] = [
+                                'client_uid' => $client_uid,
+                                'ok' => false,
+                                'status' => 'forbidden',
+                                'id' => $db_id,
+                                'message' => 'Poznámku nelze uložit (neexistuje nebo nemáte oprávnění)'
+                            ];
+                            continue;
+                        }
+
+                        $results[] = [
+                            'client_uid' => $client_uid,
+                            'ok' => true,
+                            'status' => 'updated',
+                            'id' => $db_id,
+                            'version' => null
+                        ];
+                        continue;
+                    }
+
+                    $results[] = [
+                        'client_uid' => $client_uid,
+                        'ok' => false,
+                        'status' => 'forbidden',
+                        'id' => $db_id,
+                        'message' => 'Poznámku nelze uložit (sdílená jen pro čtení)'
+                    ];
+                    continue;
+                }
+
                 $results[] = [
                     'client_uid' => $client_uid,
                     'ok' => false,
