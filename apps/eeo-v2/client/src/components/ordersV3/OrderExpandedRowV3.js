@@ -3012,6 +3012,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     {viewerAttachment && (
       <AttachmentViewer
         attachment={viewerAttachment}
+        closeOnOverlayClick={false}
         onClose={() => {
           // Cleanup blob URL při zavření vieweru
           if (viewerAttachment.blobUrl && viewerAttachment.blobUrl.startsWith('blob:')) {
