@@ -34,21 +34,40 @@ function sticky_has_manage_permission($db, $user_id) {
         $st->execute();
         if ($st->fetchColumn()) return true;
 
-        // 2) Právo přes role → prava
-        $sql = "
-            SELECT 1
-            FROM " . TBL_UZIVATELE_ROLE . " ur
-            INNER JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id AND rp.aktivni = 1
-            INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id AND p.aktivni = 1
-            WHERE ur.uzivatel_id = :user_id
-              AND p.kod_prava = :kod_prava
-            LIMIT 1
-        ";
-        $st2 = $db->prepare($sql);
-        $st2->bindValue(':user_id', (int)$user_id, PDO::PARAM_INT);
-        $st2->bindValue(':kod_prava', 'STICKY_MANAGE', PDO::PARAM_STR);
-        $st2->execute();
-        return (bool)$st2->fetchColumn();
+                // 2) Právo STICKY_MANAGE – standardní model:
+                //    a) Přímé právo uživatele: 25_role_prava (user_id = :user_id, role_id = -1)
+                //    b) Právo z rolí: 25_role_prava (user_id = -1, role_id = ur.role_id)
+                // Pozn.: Stejná logika se používá i jinde (např. CashbookPermissions).
+                $sql = "
+                        SELECT 1
+                        FROM " . TBL_PRAVA . " p
+                        WHERE p.kod_prava = :kod_prava
+                            AND p.aktivni = 1
+                            AND (
+                                p.id IN (
+                                    SELECT rp.pravo_id
+                                    FROM " . TBL_ROLE_PRAVA . " rp
+                                    WHERE rp.user_id = :user_id
+                                        AND rp.role_id = -1
+                                        AND rp.aktivni = 1
+                                )
+                                OR p.id IN (
+                                    SELECT rp2.pravo_id
+                                    FROM " . TBL_UZIVATELE_ROLE . " ur
+                                    INNER JOIN " . TBL_ROLE_PRAVA . " rp2
+                                        ON rp2.role_id = ur.role_id
+                                     AND rp2.user_id = -1
+                                     AND rp2.aktivni = 1
+                                    WHERE ur.uzivatel_id = :user_id
+                                )
+                            )
+                        LIMIT 1
+                ";
+                $st2 = $db->prepare($sql);
+                $st2->bindValue(':user_id', (int)$user_id, PDO::PARAM_INT);
+                $st2->bindValue(':kod_prava', 'STICKY_MANAGE', PDO::PARAM_STR);
+                $st2->execute();
+                return (bool)$st2->fetchColumn();
     } catch (Exception $e) {
         // Pokud selže kontrola, raději nepovolovat.
         return false;
