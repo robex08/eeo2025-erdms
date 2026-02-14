@@ -12,6 +12,49 @@ if (!defined('STICKY_RIGHT_READ')) define('STICKY_RIGHT_READ', 1);
 if (!defined('STICKY_RIGHT_WRITE')) define('STICKY_RIGHT_WRITE', 2);
 if (!defined('STICKY_RIGHT_COMMENT')) define('STICKY_RIGHT_COMMENT', 4);
 
+/**
+ * Ověření oprávnění pro Sticky poznámky.
+ * - SUPERADMIN má automaticky přístup.
+ * - Jinak vyžaduje právo STICKY_MANAGE.
+ */
+function sticky_has_manage_permission($db, $user_id) {
+    try {
+        // 1) SUPERADMIN role bypass
+        $sqlRole = "
+            SELECT 1
+            FROM " . TBL_UZIVATELE_ROLE . " ur
+            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+            WHERE ur.uzivatel_id = :user_id
+              AND r.kod_role = 'SUPERADMIN'
+              AND r.aktivni = 1
+            LIMIT 1
+        ";
+        $st = $db->prepare($sqlRole);
+        $st->bindValue(':user_id', (int)$user_id, PDO::PARAM_INT);
+        $st->execute();
+        if ($st->fetchColumn()) return true;
+
+        // 2) Právo přes role → prava
+        $sql = "
+            SELECT 1
+            FROM " . TBL_UZIVATELE_ROLE . " ur
+            INNER JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id AND rp.aktivni = 1
+            INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id AND p.aktivni = 1
+            WHERE ur.uzivatel_id = :user_id
+              AND p.kod_prava = :kod_prava
+            LIMIT 1
+        ";
+        $st2 = $db->prepare($sql);
+        $st2->bindValue(':user_id', (int)$user_id, PDO::PARAM_INT);
+        $st2->bindValue(':kod_prava', 'STICKY_MANAGE', PDO::PARAM_STR);
+        $st2->execute();
+        return (bool)$st2->fetchColumn();
+    } catch (Exception $e) {
+        // Pokud selže kontrola, raději nepovolovat.
+        return false;
+    }
+}
+
 function sticky_require_auth($input, $config) {
     $required = ['username', 'token'];
     foreach ($required as $param) {
@@ -43,7 +86,15 @@ function sticky_require_auth($input, $config) {
         return null;
     }
 
-    return ['db' => $db, 'user_id' => (int)$token_data['id'], 'username' => $username];
+    $user_id = (int)$token_data['id'];
+
+    // Oprávnění pro sticky (feature gate)
+    if (!sticky_has_manage_permission($db, $user_id)) {
+        api_error(403, 'Nemáte oprávnění používat sticky poznámky', 'FORBIDDEN');
+        return null;
+    }
+
+    return ['db' => $db, 'user_id' => $user_id, 'username' => $username];
 }
 
 /**
