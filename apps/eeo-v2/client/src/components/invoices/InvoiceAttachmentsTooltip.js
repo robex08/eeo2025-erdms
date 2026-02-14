@@ -343,7 +343,8 @@ const InvoiceAttachmentsTooltip = ({
           ...attachment,
           // ✅ Pokud máme imageSrc (data URL pro obrázky), NEPOSLAT blob (způsobuje problémy)
           // Pro PDF poslat blob (potřebný pro iframe)
-          blob: (ext === 'pdf') ? blobData : null,
+          // Pro nepodporované typy poslat blob (aby šlo stáhnout ve vieweru)
+          blob: (ext === 'pdf') ? blobData : (isPreviewable ? null : blobData),
           imageSrc: imageSrc || null,
           filename: filename,
           fileType: ext === 'pdf' ? 'pdf' : (isPreviewable ? 'image' : 'other')
