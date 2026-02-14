@@ -38,3 +38,27 @@ Pozn.: produkční `.env` nebyl upraven (jen čten pro dump přihlašovacích ú
 - Změna: pouze `REACT_APP_VERSION=2.31` -> `REACT_APP_VERSION=2.32`
 - Soubor: `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env`
 - Záloha: `/var/www/__BCK_PRODUKCE/2026-02-14/eeo-v2-env-backup-20260214-160545/api-legacy.env`
+
+---
+
+## Deploy do PROD (FE only – sticky search/share UX)
+- Datum/čas: so 14. února 2026, 21:13 CET
+- Git commit (DEV): `49d1cd0` (feature/v3-development)
+- FE build-prod hash (nový): `4c21e0fe39a6`
+- FE build-prod hash (původní): `dbb8e42c914a`
+
+### Záloha pro rollback (před nasazením)
+- Adresář: `/var/www/__BCK_PRODUKCE/2026-02-14/211407/`
+- FE tarball: `fe-eeo-v2-prod_dbb8e42c914a.tgz`
+- Kopie souborů: `prod-index.html`, `prod-version.json`
+
+### Nasazení
+- Zdroj: `/var/www/erdms-dev/apps/eeo-v2/client/build-prod/`
+- Cíl: `/var/www/erdms-platform/apps/eeo-v2/`
+- Rsync: bez `--delete`, bez zásahu do `api/` a `api-legacy/` (FE-only)
+
+### Ověření
+- `/var/www/erdms-platform/apps/eeo-v2/version.json`: `buildHash=4c21e0fe39a6`
+- `index.html`: placeholder `__BUILD_HASH__` není přítomen (hash injektován)
+
+Pozn.: produkční `.env*` nebyl měněn.
