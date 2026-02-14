@@ -1040,7 +1040,7 @@ const getLPColor = (lp) => {
  * - LP Manager: spravovaná LP
  * - Basic User: pouze osobní čerpání
  */
-const LimitovanePrislibyManager = () => {
+const LimitovanePrislibyManager = ({ forceFullAccess = false }) => {
   const { user, token, username, userDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   
@@ -1121,7 +1121,7 @@ const LimitovanePrislibyManager = () => {
   // ===== DETEKCE ROLÍ podle nové dokumentace v3.0 =====
   
   // ADMIN / SUPERADMIN / ROZPOCTAR - vidí VŠE
-  const isAdmin = userDetail?.roles?.some(role => 
+  const isAdmin = forceFullAccess || userDetail?.roles?.some(role => 
     role.kod_role === 'ADMINISTRATOR' || 
     role.kod_role === 'SUPERADMIN' ||
     role.kod_role === 'ROZPOCTAR'
@@ -2482,7 +2482,8 @@ const LimitovanePrislibyManager = () => {
               spravce: '',
               usek_nazev: lp.usek_nazev || 'Jiný úsek',
               pocet_objednavek: parseInt(lp.pocet_objednavek || 0)
-            }));
+            }))
+              .sort((a, b) => String(a.cislo_lp || '').localeCompare(String(b.cislo_lp || ''), 'cs', { numeric: true, sensitivity: 'base' }));
             
             return (
               <div style={{ marginTop: '3rem' }}>

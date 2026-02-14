@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMoneyBill, faFileContract, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
@@ -142,25 +142,37 @@ const TabContent = ({ title, description, children }) => {
   );
 };
 
-export default function CerpaniPage() {
-  const tabs = useMemo(() => ([
-    {
-      id: 'contracts',
-      label: 'Čerpání smluv',
-      icon: faFileContract,
-      title: 'Čerpání smluv',
-      description: 'Sekce se připravuje.',
-      render: () => <SmlouvyTab readOnly />
-    },
-    {
-      id: 'limited-promises',
-      label: 'Čerpání limitovaných příslibů',
-      icon: faMoneyBill,
-      title: 'Čerpání limitovaných příslibů',
-      description: 'Sekce se připravuje.',
-      render: () => <LimitovanePrislibyManager />
+export default function CerpaniPage({ mode = 'all', contractsUnrestricted = false, lpUnrestricted = false }) {
+  const tabs = useMemo(() => {
+    const allTabs = [
+      {
+        id: 'contracts',
+        label: 'Čerpání smluv',
+        icon: faFileContract,
+        title: 'Čerpání smluv',
+        description: 'Sekce se připravuje.',
+        render: () => <SmlouvyTab readOnly forceUnrestrictedReadOnly={contractsUnrestricted} />
+      },
+      {
+        id: 'limited-promises',
+        label: 'Čerpání limitovaných příslibů',
+        icon: faMoneyBill,
+        title: 'Čerpání limitovaných příslibů',
+        description: 'Sekce se připravuje.',
+        render: () => <LimitovanePrislibyManager forceFullAccess={lpUnrestricted} />
+      }
+    ];
+
+    if (mode === 'contracts') {
+      return allTabs.filter((tab) => tab.id === 'contracts');
     }
-  ]), []);
+
+    if (mode === 'lp') {
+      return allTabs.filter((tab) => tab.id === 'limited-promises');
+    }
+
+    return allTabs;
+  }, [mode, contractsUnrestricted, lpUnrestricted]);
 
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -169,6 +181,13 @@ export default function CerpaniPage() {
       return tabs[0].id;
     }
   });
+
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(tabs[0]?.id || 'contracts');
+    }
+  }, [tabs, activeTab]);
+
   const active = tabs.find(tab => tab.id === activeTab) || tabs[0];
 
   return (
@@ -179,28 +198,36 @@ export default function CerpaniPage() {
             <PageTitle>
               <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
             </PageTitle>
-            <PageSubtitle>Nová sekce v přípravě.</PageSubtitle>
+            <PageSubtitle>
+              {mode === 'contracts'
+                ? 'Přístup pouze k čerpání smluv.'
+                : mode === 'lp'
+                  ? 'Přístup pouze k čerpání limitovaných příslibů.'
+                  : 'Přehled čerpání smluv a limitovaných příslibů.'}
+            </PageSubtitle>
           </TitleGroup>
         </PageHeader>
 
-        <TabsContainer>
-          {tabs.map(tab => (
-            <TabButton
-              key={tab.id}
-              type="button"
-              $active={activeTab === tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                try {
-                  localStorage.setItem('cerpani_active_tab', tab.id);
-                } catch {}
-              }}
-            >
-              <FontAwesomeIcon icon={tab.icon} />
-              {tab.label}
-            </TabButton>
-          ))}
-        </TabsContainer>
+        {tabs.length > 1 && (
+          <TabsContainer>
+            {tabs.map(tab => (
+              <TabButton
+                key={tab.id}
+                type="button"
+                $active={activeTab === tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  try {
+                    localStorage.setItem('cerpani_active_tab', tab.id);
+                  } catch {}
+                }}
+              >
+                <FontAwesomeIcon icon={tab.icon} />
+                {tab.label}
+              </TabButton>
+            ))}
+          </TabsContainer>
+        )}
 
         <TabContent title={active.title} description={active.description}>
           {active.render ? active.render() : null}

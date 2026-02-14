@@ -424,6 +424,15 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                       AND o.aktivni = 1
                       AND o.stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
                 ) AS pocet_objednavek
+                                ,
+                                (
+                                        SELECT COUNT(*)
+                                        FROM " . TBL_OBJEDNAVKY . " o
+                                        WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                            AND o.aktivni = 1
+                                            AND o.stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
+                                            AND o.objednatel_id = :current_user_id
+                                ) AS pocet_objednavek_uzivatel
             FROM " . TBL_SMLOUVY . " s
             LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
             $where_sql
@@ -435,6 +444,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
         }
+        $stmt->bindValue(':current_user_id', (int)$user_id, PDO::PARAM_INT);
         $stmt->execute();
         
         $data = array();
@@ -445,6 +455,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['aktivni'] = (int)$row['aktivni'];
             $row['pouzit_v_obj_formu'] = isset($row['pouzit_v_obj_formu']) ? (int)$row['pouzit_v_obj_formu'] : 0;
             $row['pocet_objednavek'] = (int)$row['pocet_objednavek'];
+            $row['pocet_objednavek_uzivatel'] = isset($row['pocet_objednavek_uzivatel']) ? (int)$row['pocet_objednavek_uzivatel'] : 0;
             $row['hodnota_bez_dph'] = (float)$row['hodnota_bez_dph'];
             $row['hodnota_s_dph'] = (float)$row['hodnota_s_dph'];
             $row['sazba_dph'] = (float)$row['sazba_dph'];
