@@ -14,7 +14,6 @@ import { getOrganizaceDetail } from '../services/apiv2Dictionaries';
 import { CustomSelect } from '../components/CustomSelect';
 import { getAvailableSections, isSectionAvailable, getFirstAvailableSection } from '../utils/availableSections';
 import ModernHelper from '../components/ModernHelper';
-import LimitovanePrislibyManager from '../components/LimitovanePrislibyManager';
 import ContactManagement from '../components/ContactManagement';
 
 const slideInUp = keyframes`
@@ -1763,11 +1762,19 @@ const ProfilePage = () => {
   const loadingRef = React.useRef(false); // Prevent multiple simultaneous loads
   const [activeTab, setActiveTab] = useState(() => {
     try {
-      return localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
+      const savedTab = localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
+      return savedTab === 'lp' ? 'info' : savedTab;
     } catch {
       return 'info';
     }
   }); // 'info', 'permissions', 'settings'
+
+  // Legacy fallback: pokud je v URL/state ještě starý tab LP, přepni na Info
+  useEffect(() => {
+    if (activeTab === 'lp') {
+      setActiveTab('info');
+    }
+  }, [activeTab]);
 
   // Uložit aktivní tab do localStorage
   useEffect(() => {
@@ -2986,13 +2993,6 @@ const ProfilePage = () => {
               <Shield size={20} />
               <span>Role a oprávnění</span>
             </TabButton>
-            <TabButton 
-              $active={activeTab === 'lp'} 
-              onClick={() => setActiveTab('lp')}
-            >
-              <Coins size={20} />
-              <span>Limitované přísliby</span>
-            </TabButton>
             {hasPermission && (hasPermission('SUPPLIER_VIEW') || hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_MANAGE')) && (
               <TabButton 
                 $active={activeTab === 'suppliers'} 
@@ -3191,21 +3191,6 @@ const ProfilePage = () => {
                 </InfoItem>
               )}
               
-              {/* Rychlý odkaz na Limitované příslušnosti */}
-              <InfoItem style={{ cursor: 'pointer', transition: 'background 0.2s ease' }} onClick={() => setActiveTab('lp')}>
-                <InfoIcon color="#10b981">
-                  <Coins size={16} />
-                </InfoIcon>
-                <InfoContent>
-                  <InfoLabel>Limitované příslušnosti</InfoLabel>
-                  <InfoValue style={{ color: '#10b981', fontWeight: 600 }}>
-                    Zobrazit moje LP →
-                  </InfoValue>
-                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>
-                    Klikněte pro zobrazení detailního přehledu čerpání
-                  </div>
-                </InfoContent>
-              </InfoItem>
             </InfoCard>
 
             {/* Sloupec 2: Aktivita účtu */}
@@ -3651,11 +3636,6 @@ const ProfilePage = () => {
               </SearchBoxWrapper>
             </PermissionsHeader>
             {renderPermissionsTable()}
-          </TabContent>
-
-          {/* Tab Content - Limitované přísliby */}
-          <TabContent $active={activeTab === 'lp'}>
-            <LimitovanePrislibyManager />
           </TabContent>
 
           {/* Tab Content - Adresář dodavatelů */}

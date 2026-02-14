@@ -5852,9 +5852,7 @@ switch ($endpoint) {
                     // Pokračuj s prázdným array - není to fatální chyba
                 }
                 
-                // KROK 1: Načíst LP objednávky
-                // ⚠️ OPRAVA: Nelze filtrovat podle vytvoril_uzivatel_id (sloupec NEEXISTUje v 25a_objednavky!)
-                // Místo toho načteme VŠECHNY LP objednávky a pak budeme agregovat jen ty, které má daný user
+                // KROK 1: Načíst LP objednávky POUZE tam, kde je uživatel objednatelem
                 // ⚠️ DISTINCT pro zamezení duplikátů
                 $sql_orders = "
                     SELECT DISTINCT
@@ -5868,21 +5866,22 @@ switch ($endpoint) {
                     WHERE obj.financovani IS NOT NULL
                     AND obj.financovani != ''
                     AND obj.financovani LIKE '%\"typ\":\"LP\"%'
+                    AND obj.objednatel_id = :objednatel_id
                     AND YEAR(obj.dt_vytvoreni) = :rok
                     AND obj.aktivni = 1
-                    AND obj.stav_workflow_kod LIKE '%FAKTURACE%'
                     ORDER BY obj.dt_vytvoreni DESC
                 ";
                 
                 try {
                     $stmt = $db->prepare($sql_orders);
                     $stmt->execute([
+                        'objednatel_id' => $vytvoril_user_id,
                         'rok' => $rok
                     ]);
                     $result_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     
                     // 🔍 DEBUG: Log počet načtených objednávek
-                    error_log("LP /moje-cerpani DEBUG: user_id=$vytvoril_user_id, rok=$rok, počet_všech_LP_objednávek=" . count($result_orders));
+                    error_log("LP /moje-cerpani DEBUG: user_id=$vytvoril_user_id, rok=$rok, počet_objednávek_objednatele=" . count($result_orders));
                     
                     // Pokud nejsou objednávky, je to OK - vrátíme prázdné pole
                 } catch (Exception $e) {
@@ -5955,29 +5954,27 @@ switch ($endpoint) {
                         }
                     }
                     
-                    // OPRAVA: Rezervace POUZE pro objednávky bez faktur A bez položek
+                    // Rezervace POUZE pro schválené objednávky bez faktur a bez položek
                     $rezervace_podil = 0;
                     if ($je_schvalena && $suma_faktur == 0 && $suma_polozek == 0) {
                         $rezervace_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
                     }
                     
-                    // UI logika: faktury -> položky -> max DPH
-                    $ui_cena = 0;
+                    // Skutečné čerpání = pouze faktury (pokud nejsou, skutečné je 0)
+                    $skutecne_podil = 0;
                     if ($suma_faktur > 0) {
-                        $ui_cena = $suma_faktur;
-                    } elseif ($suma_polozek > 0) {
-                        $ui_cena = $suma_polozek;
-                    } else {
-                        $ui_cena = (float)$order['max_cena_s_dph'];
+                        $skutecne_podil = $suma_faktur / $pocet_lp;
                     }
-                    
-                    $skutecne_podil = $ui_cena / $pocet_lp;
-                    
-                    // Načíst položky objednávky pro předpoklad (POUZE pokud není faktura)
+
+                    // Předpoklad: bez faktur z položek, případně fallback na max_cena_s_dph
+                    // DŮLEŽITÉ: počítat i pro objednávky před schválením, aby byly vidět v "Moje čerpání"
                     $predpoklad_podil = 0;
-                    if ($je_schvalena && $suma_faktur == 0) {
-                        // Použít už načtené položky místo nového dotazu
-                        $predpoklad_podil = $suma_polozek / $pocet_lp;
+                    if ($suma_faktur == 0) {
+                        if ($suma_polozek > 0) {
+                            $predpoklad_podil = $suma_polozek / $pocet_lp;
+                        } else {
+                            $predpoklad_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
+                        }
                     }
                     
                     // Přidat k objednávkám
@@ -6120,6 +6117,13 @@ switch ($endpoint) {
                     
                     $lp_list[] = $data;
                 }
+
+                // Stabilní řazení výstupu podle KÓDU LP (sloupec Kód LP)
+                usort($lp_list, function ($a, $b) {
+                    $a_lp = isset($a['cislo_lp']) ? (string)$a['cislo_lp'] : '';
+                    $b_lp = isset($b['cislo_lp']) ? (string)$b['cislo_lp'] : '';
+                    return strnatcasecmp($a_lp, $b_lp);
+                });
                 
                 // Response
                 echo json_encode(array(
