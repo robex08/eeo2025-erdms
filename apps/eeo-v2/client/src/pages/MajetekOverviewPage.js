@@ -764,10 +764,12 @@ export default function MajetekOverviewPage() {
                 </AggregationBox>
 
                 <div>
-                  <AggregationTitle>
-                    <FontAwesomeIcon icon={faLayerGroup} /> Připravená pole
-                  </AggregationTitle>
                   <AggregationBox>
+                    <AggregationTitle>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <FontAwesomeIcon icon={faLayerGroup} /> Připravená pole
+                      </span>
+                    </AggregationTitle>
                     {availableGroupOptions.map(option => (
                       <Chip
                         key={option.id}

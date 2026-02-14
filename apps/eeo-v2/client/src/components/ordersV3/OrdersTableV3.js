@@ -3813,9 +3813,9 @@ const OrdersTableV3 = ({
                       loading={isLoadingDetail}
                       error={detailError}
                       onRetry={() => loadOrderDetail(order.id)}
-                      onForceRefresh={() => {
+                      onForceRefresh={async () => {
                         // 🔄 1) Refresh detail z DB (ignoruj cache)
-                        refreshDetail(order.id);
+                        await refreshDetail(order.id);
                         // 🔍 2) Refresh list, aby se znovu aplikovaly filtry a případné změny stavu
                         onRefreshOrders?.();
                       }}
