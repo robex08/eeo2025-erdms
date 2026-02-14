@@ -1828,7 +1828,54 @@ const OrganizationHierarchy = () => {
   const filterOptions = useCallback((options, searchTerm, fieldName) => {
     if (!searchTerm) return options;
     const normalized = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // ✅ Speciální režim: seskupené event types (hlavičky + položky)
+    if (fieldName === 'templateEventTypes') {
+      const matches = [];
+      const matchedGroups = new Set();
+
+      for (const opt of options) {
+        if (!opt || opt.isGroupHeader) continue;
+        const label = opt.name || opt.label || opt.nazev || String(opt);
+        const normalizedLabel = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (normalizedLabel.includes(normalized)) {
+          matches.push(opt);
+          if (opt.groupKey) matchedGroups.add(opt.groupKey);
+        }
+      }
+
+      if (matches.length === 0) return [];
+
+      // Zachovat pořadí skupin podle původního seznamu
+      const result = [];
+      let currentGroup = null;
+
+      for (const opt of options) {
+        if (!opt) continue;
+
+        if (opt.isGroupHeader) {
+          currentGroup = opt.groupKey || null;
+          if (currentGroup && matchedGroups.has(currentGroup)) {
+            result.push(opt);
+          }
+          continue;
+        }
+
+        if (opt.groupKey && matchedGroups.has(opt.groupKey)) {
+          const label = opt.name || opt.label || opt.nazev || String(opt);
+          const normalizedLabel = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          if (normalizedLabel.includes(normalized)) {
+            result.push(opt);
+          }
+        }
+      }
+
+      return result;
+    }
+
+    // Default
     return options.filter(option => {
+      if (!option || option.isGroupHeader) return false;
       const label = option.name || option.label || option.nazev || String(option);
       const normalizedLabel = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       return normalizedLabel.includes(normalized);
@@ -1836,6 +1883,9 @@ const OrganizationHierarchy = () => {
   }, []);
   
   const getOptionLabel = useCallback((option, fieldName) => {
+    if (option?.isGroupHeader) {
+      return option.label || option.name || '';
+    }
     if (fieldName === 'extendedLocations' || fieldName === 'extendedDepartments') {
       return option.name + (option.code ? ` (${option.code})` : '');
     }
@@ -6167,15 +6217,82 @@ const OrganizationHierarchy = () => {
                         multiple
                         value={templateEventTypes}
                         onChange={(value) => setTemplateEventTypes(value)}
-                        options={(notificationEventTypes || []).map(eventType => {
-                          const code = eventType.kod || eventType.code;
-                          const czechLabel = getNotificationTypeLabel(code);
-                          return {
-                            id: code,
-                            value: code,
-                            label: `${czechLabel} (${code})`
-                          };
-                        })}
+                        options={(() => {
+                          const raw = (notificationEventTypes || []).map(eventType => {
+                            const code = eventType.kod || eventType.code;
+                            const category = eventType.kategorie || eventType.category || null;
+                            // ✅ Český popis ber primárně z backendu/DB (`nazev`),
+                            // fallback na FE helper mapping (pro starší/legacy případy)
+                            const czechLabel = (eventType.nazev || eventType.name || '').toString().trim() || getNotificationTypeLabel(code);
+
+                            // Skupina: primárně podle kategorie z BE, fallback podle prefixu
+                            let groupKey = 'other';
+                            let groupLabel = 'Ostatní';
+                            const cat = (category || '').toString().toLowerCase();
+
+                            if (cat === 'invoices' || code?.startsWith('INVOICE_')) {
+                              groupKey = 'invoices';
+                              groupLabel = 'Faktury';
+                            } else if (cat === 'orders' || code?.startsWith('ORDER_')) {
+                              groupKey = 'orders';
+                              groupLabel = 'Objednávky';
+                            } else if (cat === 'contracts' || code?.startsWith('CONTRACT_')) {
+                              groupKey = 'contracts';
+                              groupLabel = 'Smlouvy';
+                            } else if (cat === 'cashbook' || code?.startsWith('CASHBOOK_')) {
+                              groupKey = 'cashbook';
+                              groupLabel = 'Pokladna';
+                            }
+
+                            return {
+                              id: code,
+                              value: code,
+                              // ✅ Formát pro uživatele (2 řádky):
+                              // TRIGGER_CODE
+                              // (Český popis)
+                              // Hodnota = code (nemění se) → nerozbije uložené přiřazení v hierarchii
+                              label: `${code}\n(${czechLabel})`,
+                              groupKey,
+                              groupLabel
+                            };
+                          });
+
+                          // Seřadit uvnitř skupin podle labelu
+                          const groupsOrder = [
+                            { key: 'orders', label: 'Objednávky' },
+                            { key: 'invoices', label: 'Faktury' },
+                            { key: 'contracts', label: 'Smlouvy' },
+                            { key: 'cashbook', label: 'Pokladna' },
+                            { key: 'other', label: 'Ostatní' }
+                          ];
+
+                          const byGroup = raw.reduce((acc, opt) => {
+                            const k = opt.groupKey || 'other';
+                            if (!acc[k]) acc[k] = [];
+                            acc[k].push(opt);
+                            return acc;
+                          }, {});
+
+                          for (const k of Object.keys(byGroup)) {
+                            byGroup[k].sort((a, b) => (a.label || '').localeCompare((b.label || ''), 'cs'));
+                          }
+
+                          const finalOptions = [];
+                          for (const g of groupsOrder) {
+                            const items = byGroup[g.key] || [];
+                            if (items.length === 0) continue;
+                            finalOptions.push({
+                              id: `__group_${g.key}`,
+                              value: `__group_${g.key}`,
+                              label: g.label,
+                              isGroupHeader: true,
+                              groupKey: g.key
+                            });
+                            finalOptions.push(...items);
+                          }
+
+                          return finalOptions;
+                        })()}
                         placeholder="Vyberte event types..."
                         field="templateEventTypes"
                         selectStates={selectStates}
