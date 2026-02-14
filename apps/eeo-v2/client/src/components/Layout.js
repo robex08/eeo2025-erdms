@@ -33,6 +33,7 @@ import { ASSETS } from '../config/assets';
 import FinancialCalculator from './FinancialCalculator';
 import CurrencyTicker from './CurrencyTicker';
 import { ToastContext } from '../context/ToastContext';
+import StickyNotesOverlay from './StickyNotesOverlay';
 import { runAllEncryptionTests } from '../utils/encryptionUtils';
 import { isValidConcept, hasDraftChanges, getOrderPhaseFromDraft } from '../utils/draftUtils.js';
 import { onTabSyncMessage, BROADCAST_TYPES, initTabSync, closeTabSync } from '../utils/tabSync';
@@ -761,6 +762,61 @@ const MenuIconButton = styled.button(({theme}) => `
 
   &:active {
     background: linear-gradient(90deg, transparent 0 33.333%, rgba(32,45,101,0.18) 33.333% 100%);
+  }
+`);
+
+// Požadavek: padding 0px (jen ikona) – použito pro SUPERADMIN NOTES ikonu v menubaru
+const MenuIconButtonZeroPad = styled(MenuIconButton)(() => `
+  padding: 0px !important;
+  width: 2.6em;
+  height: 2.6em;
+`);
+
+// SUPERADMIN NOTES ikona úplně v levém rohu menubaru (mimo "pill" MenuLeft)
+const MenuCornerLeft = styled.div`
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 48px;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+`;
+
+const MenuCornerButton = styled.button(({ theme }) => `
+  width: 48px;
+  height: 48px;
+  padding: 0px !important;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #facc15; /* sytá žlutá */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.18s ease, filter 0.18s ease;
+
+  .svg-inline--fa, svg {
+    font-size: 1.25em !important;
+    margin: 0 !important;
+    color: inherit !important;
+    filter: drop-shadow(0 2px 4px rgba(32,45,101,0.10));
+    pointer-events: none;
+  }
+
+  &:hover, &:focus-visible {
+    background: rgba(32,45,101,0.08);
+    filter: drop-shadow(0 2px 6px rgba(32,45,101,0.20));
+    outline: none;
+  }
+
+  &:active {
+    background: rgba(32,45,101,0.14);
   }
 `);
 
@@ -1742,6 +1798,52 @@ const Layout = ({ children }) => {
     return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
   }, [userDetail]);
 
+  // SUPERADMIN (zatím jen tato role má sticky NOTES tabuli)
+  const isSuperAdmin = useMemo(() => {
+    return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN') || false;
+  }, [userDetail]);
+
+  // Fullscreen sticky NOTES overlay
+  const [stickyNotesOpen, setStickyNotesOpen] = useState(false);
+
+  // Hotkey: Win/Cmd + N → sticky NOTES (pouze SUPERADMIN)
+  useEffect(() => {
+    if (!isLoggedIn || !isSuperAdmin) return;
+
+    const onKeyDown = (e) => {
+      try {
+        // Nech psaní do formulářů (aby to nerušilo)
+        const t = e.target;
+        const tag = t?.tagName;
+        const isTypingTarget = (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          t?.isContentEditable
+        );
+        if (isTypingTarget) return;
+
+        // Meta/Win/Cmd + N
+        if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase?.() === 'n') {
+          e.preventDefault();
+          setStickyNotesOpen((v) => !v);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isLoggedIn, isSuperAdmin]);
+
+  // Pokud uživatel není SUPERADMIN / není přihlášen, overlay vždy zavřít
+  useEffect(() => {
+    if (!isLoggedIn || !isSuperAdmin) {
+      setStickyNotesOpen(false);
+    }
+  }, [isLoggedIn, isSuperAdmin]);
+
   // Check if user has all three permissions (Invoices + Orders + Annual Fees)
   // These users should also get dropdown menu to save space
   const hasAllThreePermissions = useMemo(() => {
@@ -2684,10 +2786,10 @@ const Layout = ({ children }) => {
   const engagedOpacity = 0.95;     // engaged/clicked (5% transparent)
 
   // Detekce SUPERADMIN a DEBUG route
-  const isSuperAdmin = hasPermission && hasPermission('SUPERADMIN');
+  const isSuperAdminPerm = hasPermission && hasPermission('SUPERADMIN');
   const isDebugRoute = location.pathname === '/debug';
   const debugGloballyDisabled = (() => { try { return (localStorage.getItem('debug_disable') || process.env.REACT_APP_DEBUG_OFF) === '1'; } catch { return true; } })();
-  const canDebug = !debugGloballyDisabled && isLoggedIn && isSuperAdmin && isDebugRoute;
+  const canDebug = !debugGloballyDisabled && isLoggedIn && isSuperAdminPerm && isDebugRoute;
 
   // Add userDetail JSON to debug log when debug is enabled and user is logged in
   useEffect(() => {
@@ -3079,6 +3181,24 @@ const Layout = ({ children }) => {
       </Header>
       {isLoggedIn && (
         <MenuBar>
+          {isSuperAdmin && (
+            <MenuCornerLeft>
+              <SmartTooltip
+                text={stickyNotesOpen ? 'Skrýt NOTES tabuli' : 'Otevřít NOTES tabuli'}
+                icon="info"
+                preferredPosition="bottom"
+              >
+                <MenuCornerButton
+                  type="button"
+                  onClick={() => setStickyNotesOpen((v) => !v)}
+                  title=""
+                  aria-label="Sticky NOTES"
+                >
+                  <FontAwesomeIcon icon={faStickyNote} />
+                </MenuCornerButton>
+              </SmartTooltip>
+            </MenuCornerLeft>
+          )}
           <MenuLeft ref={menuLeftRef}>
             { hasPermission && (
                 hasPermission('USER_MANAGE') || 
@@ -3674,6 +3794,15 @@ const Layout = ({ children }) => {
   <Content $formView={location.pathname === '/orders-new' || location.pathname === '/order-form-25'} $unauth={!isLoggedIn}>
         {children}
       </Content>
+
+      {/* Fullscreen sticky NOTES overlay – pouze SUPERADMIN, ukládání zatím do LocalStorage */}
+      {isLoggedIn && isSuperAdmin && (
+        <StickyNotesOverlay
+          open={stickyNotesOpen}
+          onClose={() => setStickyNotesOpen(false)}
+          storageKey={`eeo_v2_sticky_notes_overlay_v1_${user_id || 'anon'}`}
+        />
+      )}
       {isLoggedIn && (
         <FabGroup>
       {/* Shared change-password dialog from top menu */}
