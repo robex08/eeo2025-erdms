@@ -35,7 +35,9 @@ import {
   faCircleNotch,
   faHourglassHalf,
   faEdit,
-  faComment
+  faComment,
+  faChevronDown,
+  faChevronUp
 } from '@fortawesome/free-solid-svg-icons';
 
 // ✅ Obrysové (bez výplně) ikonky pro datum/čas
@@ -659,6 +661,53 @@ const InlineCommentText = styled.div`
   white-space: pre-wrap;
 `;
 
+const InlineCommentsSearchInput = styled.input`
+  width: 240px;
+  max-width: 38vw;
+  padding: 0.35rem 1.65rem 0.35rem 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  outline: none;
+  color: #0f172a;
+
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  }
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
+const InlineCommentsSearchWrapper = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+`;
+
+const InlineCommentsSearchClearButton = styled.button`
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    color: #64748b;
+    background: rgba(148, 163, 184, 0.15);
+  }
+`;
+
 const InlineRepliesWrapper = styled.div`
   margin-top: 0.75rem;
   margin-left: 2rem;
@@ -974,6 +1023,12 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   const [commentsError, setCommentsError] = useState(null);
   const [comments, setComments] = useState([]);
 
+  // 🧩 Rozbalit / sbalit blok komentářů (UI preference jen lokálně v rámci podřádku)
+  const [isCommentsBlockExpanded, setIsCommentsBlockExpanded] = useState(true);
+
+  // 🔎 Vyhledávání v inline komentářích (autor + text)
+  const [commentsSearchQuery, setCommentsSearchQuery] = useState('');
+
   const loadInlineComments = useCallback(async () => {
     if (!onLoadComments || !order?.id) return;
     setCommentsLoading(true);
@@ -1078,17 +1133,95 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     });
   }, [comments]);
 
+  // Filtrování vláken podle search dotazu.
+  // Chování: pokud matchne reply, zahrneme i jeho parenty pro kontext + potomky pro čitelné vlákno.
+  const threadComments = useMemo(() => {
+    const q = (commentsSearchQuery || '').trim();
+    if (!q) return normalizedComments;
+
+    const normalize = (s) => String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    const nq = normalize(q);
+    if (!nq) return normalizedComments;
+
+    const byId = new Map();
+    (normalizedComments || []).forEach((c) => {
+      if (c?.id != null) byId.set(c.id, c);
+    });
+
+    const includeIds = new Set();
+
+    // 1) Najdi přímé match
+    (normalizedComments || []).forEach((c) => {
+      if (!c) return;
+      const author = normalize(c.autor_jmeno || c.autor_username || '');
+      const text = normalize(c.obsah_plain || c.obsah || '');
+      if (author.includes(nq) || text.includes(nq)) {
+        if (c.id != null) includeIds.add(c.id);
+      }
+    });
+
+    if (includeIds.size === 0) {
+      return [];
+    }
+
+    // 2) Přidej parent chain pro kontext
+    const addParents = (id) => {
+      let cur = byId.get(id);
+      const seen = new Set();
+      while (cur && cur.parent_comment_id) {
+        if (seen.has(cur.id)) break;
+        seen.add(cur.id);
+        const parentId = cur.parent_comment_id;
+        const parent = byId.get(parentId);
+        if (!parent) break;
+        includeIds.add(parent.id);
+        cur = parent;
+      }
+    };
+    Array.from(includeIds).forEach(addParents);
+
+    // 3) Přidej potomky (reply chain), aby vlákno nebylo useknuté
+    // Build children index
+    const childrenByParent = new Map();
+    (normalizedComments || []).forEach((c) => {
+      if (!c) return;
+      const parentId = c.parent_comment_id || null;
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId).push(c);
+    });
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of Array.from(includeIds)) {
+        const kids = childrenByParent.get(id) || [];
+        kids.forEach((k) => {
+          if (k?.id != null && !includeIds.has(k.id)) {
+            includeIds.add(k.id);
+            changed = true;
+          }
+        });
+      }
+    }
+
+    return (normalizedComments || []).filter((c) => c?.id != null && includeIds.has(c.id));
+  }, [normalizedComments, commentsSearchQuery]);
+
   const commentsById = useMemo(() => {
     const map = new Map();
-    (normalizedComments || []).forEach((c) => {
+    (threadComments || []).forEach((c) => {
       if (c && c.id !== undefined && c.id !== null) map.set(c.id, c);
     });
     return map;
-  }, [normalizedComments]);
+  }, [threadComments]);
 
   const childrenByParent = useMemo(() => {
     const map = new Map();
-    (normalizedComments || []).forEach((c) => {
+    (threadComments || []).forEach((c) => {
       if (!c) return;
       const parentId = c.parent_comment_id || null;
       if (!map.has(parentId)) map.set(parentId, []);
@@ -1106,7 +1239,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     }
 
     return map;
-  }, [normalizedComments]);
+  }, [threadComments]);
 
   const getChildren = useCallback((parentId) => {
     return childrenByParent.get(parentId || null) || [];
@@ -1131,7 +1264,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     // root = parent_comment_id null/0 nebo parent nenalezen
     const roots = [];
     const rootIds = new Set();
-    (normalizedComments || []).forEach((c) => {
+    (threadComments || []).forEach((c) => {
       if (!c) return;
       const rootId = getRootId(c);
       if (rootId == null) return;
@@ -1149,7 +1282,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     };
     roots.sort((a, b) => toTs(a?.dt_vytvoreni) - toTs(b?.dt_vytvoreni));
     return roots;
-  }, [normalizedComments, getRootId, commentsById]);
+  }, [threadComments, getRootId, commentsById]);
   
   // 📥 Download/Preview handler pro přílohy - detekce typu a zobrazení ve vieweru
   const handleDownloadAttachment = async (attachment, orderId) => {
@@ -2656,8 +2789,31 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               <FontAwesomeIcon icon={faComment} />
               Komentáře k objednávce ({order.comments_count || comments.length || 0})
               <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                <InlineCommentsSearchWrapper>
+                  <InlineCommentsSearchInput
+                    value={commentsSearchQuery}
+                    onChange={(e) => setCommentsSearchQuery(e.target.value)}
+                    placeholder="Hledat v komentářích…"
+                    title="Hledat v komentářích (autor + text)"
+                  />
+                  {!!(commentsSearchQuery || '').trim() && (
+                    <InlineCommentsSearchClearButton
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCommentsSearchQuery('');
+                      }}
+                      title="Vymazat"
+                      aria-label="Vymazat hledání"
+                    >
+                      <FontAwesomeIcon icon={faXmark} />
+                    </InlineCommentsSearchClearButton>
+                  )}
+                </InlineCommentsSearchWrapper>
+
                 <SmartTooltip text="Obnovit komentáře z databáze" icon="info" preferredPosition="top">
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       loadInlineComments();
@@ -2675,33 +2831,58 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     <FontAwesomeIcon icon={faSync} spin={commentsLoading} />
                   </button>
                 </SmartTooltip>
+
+                <SmartTooltip text={isCommentsBlockExpanded ? 'Sbalit blok komentářů' : 'Rozbalit blok komentářů'} icon="info" preferredPosition="top">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsCommentsBlockExpanded((v) => !v);
+                    }}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      borderRadius: '6px',
+                      padding: '0.25rem 0.4rem',
+                      cursor: 'pointer',
+                      color: '#64748b'
+                    }}
+                    title={isCommentsBlockExpanded ? 'Sbalit' : 'Rozbalit'}
+                  >
+                    <FontAwesomeIcon icon={isCommentsBlockExpanded ? faChevronUp : faChevronDown} />
+                  </button>
+                </SmartTooltip>
               </span>
             </CardTitle>
 
-            {commentsLoading && (
+            {isCommentsBlockExpanded && commentsLoading && (
               <div style={{ padding: '1rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <FontAwesomeIcon icon={faSpinner} spin />
                 Načítání komentářů...
               </div>
             )}
 
-            {!commentsLoading && commentsError && (
+            {isCommentsBlockExpanded && !commentsLoading && commentsError && (
               <div style={{ padding: '1rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <FontAwesomeIcon icon={faExclamationTriangle} />
                 {commentsError}
               </div>
             )}
 
-            {!commentsLoading && !commentsError && rootThreads.length === 0 && (
+            {isCommentsBlockExpanded && !commentsLoading && !commentsError && rootThreads.length === 0 && (
               <EmptyState>
                 <div style={{ textAlign: 'center', color: '#64748b' }}>
                   <FontAwesomeIcon icon={faComment} style={{ fontSize: '2rem', marginBottom: '0.5rem', opacity: 0.5 }} />
-                  <div>Zatím žádné komentáře.</div>
+                  <div>
+                    {(commentsSearchQuery || '').trim()
+                      ? 'Žádné výsledky pro hledání.'
+                      : 'Zatím žádné komentáře.'}
+                  </div>
                 </div>
               </EmptyState>
             )}
 
-            {!commentsLoading && !commentsError && rootThreads.length > 0 && (
+            {isCommentsBlockExpanded && !commentsLoading && !commentsError && rootThreads.length > 0 && (
               <InlineCommentsTimeline>
                 {rootThreads.map((root) => {
                   const renderNode = (node, depth = 0, visited = new Set()) => {
