@@ -826,6 +826,77 @@ const getOrderDisplayStatus = (order) => {
   return order?.stav_objednavky || '---';
 };
 
+// Hardcoded mapování stavů faktur (FA) - záměrně bez číselníku
+// ⚠️ Pozn.: Stavy FA aktuálně nejsou v DB číselnících
+const INVOICE_STATUS_LABELS = {
+  // Nové workflow stavy
+  ZAEVIDOVANA: 'Zaevidovaná',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  V_RESENI: 'V řešení',
+  PREDANA_PO: 'Předaná PO',
+  K_ZAPLACENI: 'K zaplacení',
+  ZAPLACENO: 'Zaplaceno',
+  DOKONCENA: 'Dokončena',
+  STORNO: 'Storno',
+  // Starší kompatibilní stavy
+  NOVA: 'Nová',
+  NEZAPLACENA: 'Nezaplacena',
+  ZAPLACENA: 'Zaplacena',
+};
+
+const INVOICE_STATUS_ALIASES = {
+  'Věcná správnost': 'VECNA_SPRAVNOST',
+  'Nová': 'NOVA',
+  'Nezaplacena': 'NEZAPLACENA',
+  'Zaplacena': 'ZAPLACENA',
+  'Zaplaceno': 'ZAPLACENO',
+  'K zaplacení': 'K_ZAPLACENI',
+  'V řešení': 'V_RESENI',
+  'Předaná PO': 'PREDANA_PO',
+  'Dokončena': 'DOKONCENA',
+  'Storno': 'STORNO',
+};
+
+const normalizeInvoiceStatus = (status) => {
+  if (!status || typeof status !== 'string') return '';
+  if (INVOICE_STATUS_ALIASES[status]) return INVOICE_STATUS_ALIASES[status];
+  return status.trim().toUpperCase();
+};
+
+const getInvoiceStatusLabel = (status) => {
+  if (!status) return '';
+  const normalized = normalizeInvoiceStatus(status);
+  return INVOICE_STATUS_LABELS[normalized] || status;
+};
+
+const ATTACHMENT_TYPE_FALLBACK_LABELS = {
+  OBJ: 'Objednávka',
+  FAKTURA: 'Faktura',
+  FA: 'Faktura',
+  ISDOC: 'ISDOC',
+  DOPLNEK_FA: 'Doplněk FA',
+  DOKLAD: 'Doklad',
+  JINE: 'Jiné',
+  POTVRZENA_OBJEDNAVKA: 'Potvrzená objednávka',
+  KOSILKA: 'Košilka',
+};
+
+const prettifyAttachmentType = (value) => {
+  if (!value || typeof value !== 'string') return value;
+  if (value.includes(' - ')) return value;
+  if (!/^[A-Z0-9_]+$/.test(value)) return value;
+
+  const mapped = ATTACHMENT_TYPE_FALLBACK_LABELS[value];
+  if (mapped) return mapped;
+
+  const words = value
+    .split('_')
+    .filter(Boolean)
+    .map(w => w.charAt(0) + w.slice(1).toLowerCase());
+
+  return words.join(' ');
+};
+
 // Mapování lidského stavu na systémový kód pro barvy
 const mapUserStatusToSystemCode = (userStatus) => {
   if (userStatus && typeof userStatus === 'string') {
@@ -892,6 +963,12 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
 
+  // Číselníky typů příloh (OBJ + FA)
+  const [attachmentTypeLabels, setAttachmentTypeLabels] = useState({
+    obj: {},
+    fa: {}
+  });
+
   // 💬 Inline komentáře v podřádku
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState(null);
@@ -912,14 +989,78 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     }
   }, [onLoadComments, order?.id]);
 
+  const handleForceRefreshAll = useCallback(async () => {
+    if (onForceRefresh) {
+      await Promise.resolve(onForceRefresh());
+    }
+
+    if (onLoadComments && order?.id) {
+      await loadInlineComments();
+    }
+  }, [onForceRefresh, onLoadComments, order?.id, loadInlineComments]);
+
   useEffect(() => {
-    // Načti komentáře při otevření podřádku (a při změně order.id)
+    // Načti komentáře při otevření podřádku + po změně detailu/počtu komentářů
+    // (pokryje refresh tlačítko i obecné refresh scénáře)
     if (!order?.id) return;
-    // Pokud backend říká, že komentáře jsou, načíst vždy. Jinak načíst jen když handler existuje.
     if (onLoadComments) {
       loadInlineComments();
     }
-  }, [order?.id, onLoadComments, loadInlineComments]);
+  }, [order?.id, order?.comments_count, detail, onLoadComments, loadInlineComments]);
+
+  useEffect(() => {
+    if (!token || !username) return;
+
+    let isCancelled = false;
+
+    const loadAttachmentTypeLabels = async () => {
+      try {
+        const { getTypyPriloh25, getTypyFaktur25 } = await import('../../services/api25orders');
+
+        const [objTypes, faTypes] = await Promise.all([
+          getTypyPriloh25({ token, username, aktivni: 1 }),
+          getTypyFaktur25({ token, username, aktivni: 1 })
+        ]);
+
+        if (isCancelled) return;
+
+        const toMap = (list) => (Array.isArray(list) ? list.reduce((acc, item) => {
+          const key = (item?.kod || item?.value || '').toString().trim().toUpperCase();
+          const label = (item?.nazev || item?.label || '').toString().trim();
+          if (key && label) acc[key] = label;
+          return acc;
+        }, {}) : {});
+
+        setAttachmentTypeLabels({
+          obj: toMap(objTypes),
+          fa: toMap(faTypes)
+        });
+      } catch (e) {
+        // Bezpečný fallback - UI pojede dál přes hardcoded mapování
+        console.warn('⚠️ Nepodařilo se načíst číselníky typů příloh pro V3 detail:', e?.message || e);
+      }
+    };
+
+    loadAttachmentTypeLabels();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [token, username]);
+
+  const getAttachmentTypeLabel = useCallback((typeCode, source = 'obj') => {
+    if (!typeCode) return '';
+
+    const raw = String(typeCode).trim();
+    if (!raw) return '';
+
+    const normalized = raw.toUpperCase();
+    const fromDb = source === 'fa'
+      ? attachmentTypeLabels?.fa?.[normalized]
+      : attachmentTypeLabels?.obj?.[normalized];
+
+    return fromDb || prettifyAttachmentType(raw);
+  }, [attachmentTypeLabels]);
 
   // --- Threading komentářů (parent_comment_id) ---
   const normalizedComments = useMemo(() => {
@@ -1144,7 +1285,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   <FontAwesomeIcon 
                     icon={faSync} 
                     style={{ cursor: 'pointer', color: '#3b82f6' }}
-                    onClick={onForceRefresh}
+                    onClick={handleForceRefreshAll}
                     title="Znovu načíst data z databáze"
                   />
                 ) : (
@@ -2266,6 +2407,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 faktury.map((invoice, index) => {
                   // Přílohy této konkrétní faktury
                   const invoiceAttachments = invoice.prilohy || [];
+                  const invoiceStatus = normalizeInvoiceStatus(invoice.stav);
                   
                   return (
                   <InvoiceItem key={index}>
@@ -2279,21 +2421,13 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         </InvoiceAmount>
                         {invoice.stav && (
                           <InvoiceStatusBadge 
-                            $success={invoice.stav === 'ZAPLACENA'}
-                            $warning={invoice.stav === 'NEZAPLACENA' || invoice.stav === 'VECNA_SPRAVNOST' || invoice.stav === 'NOVA'}
+                            $success={['ZAPLACENA', 'ZAPLACENO', 'DOKONCENA'].includes(invoiceStatus)}
+                            $warning={['NEZAPLACENA', 'NOVA', 'ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI'].includes(invoiceStatus)}
                           >
-                            {invoice.stav === 'ZAPLACENA' && <FontAwesomeIcon icon={faCheckCircle} />}
-                            {(invoice.stav === 'NEZAPLACENA' || invoice.stav === 'VECNA_SPRAVNOST' || invoice.stav === 'NOVA') && <FontAwesomeIcon icon={faHourglassHalf} />}
-                            {(() => {
-                              const stavMap = {
-                                'VECNA_SPRAVNOST': 'Věcná správnost',
-                                'NOVA': 'Nová',
-                                'ZAPLACENA': 'Zaplacena',
-                                'NEZAPLACENA': 'Nezaplacena',
-                                'STORNO': 'Storno'
-                              };
-                              return stavMap[invoice.stav] || invoice.stav;
-                            })()}
+                            {['ZAPLACENA', 'ZAPLACENO', 'DOKONCENA'].includes(invoiceStatus) && <FontAwesomeIcon icon={faCheckCircle} />}
+                            {['NEZAPLACENA', 'NOVA', 'ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI'].includes(invoiceStatus) && <FontAwesomeIcon icon={faHourglassHalf} />}
+                            {invoiceStatus === 'STORNO' && <FontAwesomeIcon icon={faTimesCircle} />}
+                            {getInvoiceStatusLabel(invoice.stav)}
                           </InvoiceStatusBadge>
                         )}
                       </div>
@@ -2399,7 +2533,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                                     {fileName}
                                     {attachment.typ_prilohy && (
                                       <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
-                                        {attachment.typ_prilohy}
+                                        {getAttachmentTypeLabel(attachment.typ_prilohy, 'fa')}
                                       </AttachmentTypeBadge>
                                     )}
                                   </AttachmentName>
@@ -2482,7 +2616,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                           {fileName}
                           {attachment.typ_prilohy && (
                             <AttachmentTypeBadge style={{ marginLeft: '8px' }}>
-                              {attachment.typ_prilohy}
+                              {getAttachmentTypeLabel(attachment.typ_prilohy, 'obj')}
                             </AttachmentTypeBadge>
                           )}
                         </AttachmentName>
