@@ -3270,6 +3270,33 @@ const CashBookPage = () => {
     }
   };
 
+  // Formát čísla dokladu pro zobrazení/export podle globálního nastavení prefixu
+  const getDisplayDocumentNumber = useCallback((documentNumber) => {
+    if (!documentNumber) return '';
+
+    // Pokud je číslo už prefixované z DB (např. V591-001), ponechat beze změny
+    if (documentNumber.includes('-')) {
+      return documentNumber;
+    }
+
+    // Pokud je prefix vypnutý, vrátit původní číslo
+    if (!usePrefixedNumbers) {
+      return documentNumber;
+    }
+
+    const type = documentNumber.charAt(0); // P nebo V
+    const number = documentNumber.substring(1); // pořadové číslo
+
+    let prefix = '';
+    if (type === 'V' && organizationInfo.cashboxVpd) {
+      prefix = organizationInfo.cashboxVpd;
+    } else if (type === 'P' && organizationInfo.cashboxPpd) {
+      prefix = organizationInfo.cashboxPpd;
+    }
+
+    return prefix ? `${type}${prefix}-${number}` : documentNumber;
+  }, [usePrefixedNumbers, organizationInfo.cashboxVpd, organizationInfo.cashboxPpd]);
+
   // Export do CSV
   const exportToCSV = (filename) => {
     // Hlavička tabulky
@@ -3282,7 +3309,7 @@ const CashBookPage = () => {
     const rows = cashBookEntries.map((entry, index) => [
       index + 1,
       formatDate(entry.date),
-      entry.documentNumber || '',
+      getDisplayDocumentNumber(entry.documentNumber),
       `"${(entry.description || '').replace(/"/g, '""')}"`, // Escapování uvozovek
       `"${(entry.person || '').replace(/"/g, '""')}"`,
       entry.income ? entry.income.toFixed(2) : '',
@@ -3334,7 +3361,10 @@ const CashBookPage = () => {
           }}
           carryOverAmount={carryOverAmount}
           totals={totals}
-          entries={cashBookEntries}
+          entries={cashBookEntries.map((entry) => ({
+            ...entry,
+            documentNumber: getDisplayDocumentNumber(entry.documentNumber),
+          }))}
           generatedBy={generatedBy}
           bookStatus={{
             status: bookStatus,
@@ -3385,7 +3415,10 @@ const CashBookPage = () => {
           }}
           carryOverAmount={carryOverAmount}
           totals={totals}
-          entries={cashBookEntries}
+          entries={cashBookEntries.map((entry) => ({
+            ...entry,
+            documentNumber: getDisplayDocumentNumber(entry.documentNumber),
+          }))}
           generatedBy={generatedBy}
           bookStatus={{
             status: bookStatus,
@@ -4345,60 +4378,18 @@ const CashBookPage = () => {
                 </td>
 
                 <td className="document-cell">
-                  {/* 🆕 KROK 4: Zobrazit prefixované číslo pokud je zapnuto nastavení */}
-                  {(() => {
-                    if (!entry.documentNumber) {
-                      return '';
-                    }
-
-                    // 🔧 OPRAVA: Pokud číslo už obsahuje pomlčku, je už prefixované z DB → zobrazit jak je
-                    if (entry.documentNumber.includes('-')) {
-                      const type = entry.documentNumber.charAt(0); // P nebo V
-                      return (
-                        <span
-                          title={`Číslo dokladu: ${entry.documentNumber}`}
-                          style={{
-                            cursor: 'help',
-                            fontWeight: '500',
-                            color: type === 'P' ? '#059669' : '#dc2626'
-                          }}
-                        >
-                          {entry.documentNumber}
-                        </span>
-                      );
-                    }
-
-                    // Číslo nemá prefix (např. V012) → přidat prefix pokud je zapnuto
-                    if (!usePrefixedNumbers) {
-                      return entry.documentNumber;
-                    }
-
-                    const type = entry.documentNumber.charAt(0); // P nebo V
-                    const number = entry.documentNumber.substring(1); // 001
-
-                    // Určit číselnou řadu podle typu dokladu
-                    let prefix = '';
-                    if (type === 'V' && organizationInfo.cashboxVpd) {
-                      prefix = organizationInfo.cashboxVpd; // VPD = výdajový pokladní doklad
-                    } else if (type === 'P' && organizationInfo.cashboxPpd) {
-                      prefix = organizationInfo.cashboxPpd; // PPD = příjmový pokladní doklad
-                    }
-
-                    const prefixedNumber = prefix ? `${type}${prefix}-${number}` : entry.documentNumber;
-
-                    return (
-                      <span
-                        title={`Pořadové číslo dokladu v roce: ${entry.documentNumber}`}
-                        style={{
-                          cursor: 'help',
-                          fontWeight: '500',
-                          color: type === 'P' ? '#059669' : '#dc2626'
-                        }}
-                      >
-                        {prefixedNumber}
-                      </span>
-                    );
-                  })()}
+                  {entry.documentNumber ? (
+                    <span
+                      title={`Pořadové číslo dokladu v roce: ${entry.documentNumber}`}
+                      style={{
+                        cursor: 'help',
+                        fontWeight: '500',
+                        color: entry.documentNumber.charAt(0) === 'P' ? '#059669' : '#dc2626'
+                      }}
+                    >
+                      {getDisplayDocumentNumber(entry.documentNumber)}
+                    </span>
+                  ) : ''}
                 </td>
 
                 <td className="description-cell">

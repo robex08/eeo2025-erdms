@@ -182,6 +182,18 @@ const CustomSelectOption = styled.div`
   `}
 `;
 
+const CustomSelectGroupHeader = styled.div`
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #475569;
+  background: #f8fafc;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: default;
+`;
+
 const SearchBox = styled.div`
   position: sticky;
   top: 0;
@@ -222,6 +234,23 @@ const SelectedValue = styled.span`
   white-space: nowrap;
   color: ${props => props.isEmpty ? '#9ca3af' : '#1f2937'};
   font-weight: ${props => props.disabled ? '400' : (props.isEmpty ? '400' : '600')};
+`;
+
+const TwoLineLabel = styled.div`
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  gap: 2px;
+
+  .line1 {
+    font-weight: 600;
+  }
+
+  .line2 {
+    font-size: 0.78em;
+    color: #64748b;
+    font-weight: 500;
+  }
 `;
 
 const ClearButton = styled.span`
@@ -550,6 +579,9 @@ const CustomSelect = ({
   };
 
   const handleSelect = (option) => {
+    // Skupinové hlavičky jsou pouze vizuální – nelze je vybrat
+    if (!option || option.isGroupHeader) return;
+
     let optionValue;
 
     // Pro stav objednávky ukládej kod_stavu/kod
@@ -603,6 +635,9 @@ const CustomSelect = ({
   };
 
   const handleToggleOption = (option) => {
+    // Skupinové hlavičky jsou pouze vizuální – nelze je vybrat
+    if (!option || option.isGroupHeader) return;
+
     let optionValue;
 
     // Pro LP kódy ukládej ID LP záznamu
@@ -693,6 +728,8 @@ const CustomSelect = ({
                 e.preventDefault();
                 if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
                   const option = filteredOptions[highlightedIndex];
+                  // Přeskočit skupinové hlavičky
+                  if (option && option.isGroupHeader) return;
                   multiple ? handleToggleOption(option) : handleSelect(option);
                 }
                 break;
@@ -851,6 +888,8 @@ const CustomSelect = ({
                       e.stopPropagation();
                       if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
                         const option = filteredOptions[highlightedIndex];
+                        // Přeskočit skupinové hlavičky
+                        if (option && option.isGroupHeader) return;
                         multiple ? handleToggleOption(option) : handleSelect(option);
                       }
                       break;
@@ -904,6 +943,18 @@ const CustomSelect = ({
             <CustomSelectOption>{loadingText}</CustomSelectOption>
           ) : filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => {
+              // Skupinové hlavičky (neklikatelné)
+              if (option && option.isGroupHeader) {
+                return (
+                  <CustomSelectGroupHeader
+                    key={option.id || option.value || `group-${index}`}
+                    title={option.label || option.name || ''}
+                  >
+                    {option.label || option.name}
+                  </CustomSelectGroupHeader>
+                );
+              }
+
               const isSelected = multiple
                 ? (Array.isArray(value) ? value.includes(option.id || option.kod || option) : false)
                 : field === 'statusFilter'
@@ -926,6 +977,10 @@ const CustomSelect = ({
               // Pro všechny multiselect používej speciální komponentu s checkboxem
               if (multiple) {
                 const optionLabel = getOptionLabel(option, field);
+                const optionLabelForTitle = typeof optionLabel === 'string' ? optionLabel.replace(/\s*\n\s*/g, ' ') : String(optionLabel);
+                const isTwoLine = field === 'templateEventTypes' && typeof optionLabel === 'string' && optionLabel.includes('\n');
+                const [line1, ...rest] = isTwoLine ? optionLabel.split('\n') : [];
+                const line2 = isTwoLine ? rest.join('\n') : '';
                 return (
                   <MultiSelectOption
                     key={option.id || option.user_id || option.value || index}
@@ -938,7 +993,7 @@ const CustomSelect = ({
                       handleToggleOption(option);
                     }}
                     onMouseEnter={() => setHighlightedIndex(index)}
-                    title={optionLabel}
+                    title={optionLabelForTitle}
                   >
                     <input
                       type="checkbox"
@@ -946,7 +1001,14 @@ const CustomSelect = ({
                       readOnly
                     />
                     <span>
-                      {optionLabel}
+                      {isTwoLine ? (
+                        <TwoLineLabel>
+                          <span className="line1">{line1}</span>
+                          <span className="line2">{line2}</span>
+                        </TwoLineLabel>
+                      ) : (
+                        optionLabel
+                      )}
                     </span>
                   </MultiSelectOption>
                 );
@@ -954,6 +1016,10 @@ const CustomSelect = ({
 
               // Pro ostatní selecty používej CustomSelectOption
               const optionLabel = getOptionLabel(option, field);
+              const optionLabelForTitle = typeof optionLabel === 'string' ? optionLabel.replace(/\s*\n\s*/g, ' ') : String(optionLabel);
+              const isTwoLine = field === 'templateEventTypes' && typeof optionLabel === 'string' && optionLabel.includes('\n');
+              const [line1, ...rest] = isTwoLine ? optionLabel.split('\n') : [];
+              const line2 = isTwoLine ? rest.join('\n') : '';
               return (
                 <CustomSelectOption
                   key={option.id || option.user_id || option.uzivatel_id || option.kod_stavu || option.kod || option.value || index}
@@ -968,9 +1034,16 @@ const CustomSelect = ({
                     multiple ? handleToggleOption(option) : handleSelect(option);
                   }}
                   onMouseEnter={() => setHighlightedIndex(index)}
-                  title={optionLabel}
+                  title={optionLabelForTitle}
                 >
-                  {optionLabel}
+                  {isTwoLine ? (
+                    <TwoLineLabel>
+                      <span className="line1">{line1}</span>
+                      <span className="line2">{line2}</span>
+                    </TwoLineLabel>
+                  ) : (
+                    optionLabel
+                  )}
                 </CustomSelectOption>
               );
             })
