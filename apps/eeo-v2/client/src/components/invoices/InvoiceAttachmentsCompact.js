@@ -43,13 +43,6 @@ const Header = styled.div`
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
-`;
-
-const Title = styled.div`
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #374151;
-  display: flex;
   align-items: center;
   gap: 8px;
 
@@ -58,6 +51,15 @@ const Title = styled.div`
     height: 16px;
     color: #3b82f6;
   }
+`;
+
+const Title = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
 `;
 
 const Badge = styled.span`
@@ -433,6 +435,7 @@ const InvoiceAttachmentsCompact = ({
   isPokladna = false, // 🆕 Je to pokladní doklad? (bez validace povinných položek)
   onAttachmentUploaded, // 🆕 Callback po úspěšném uploadu jakékoliv přílohy (včetně ISDOC)
   onAttachmentRemoved, // 🆕 Callback při smazání přílohy (pro cleanup Spisovka metadata)
+  onOpenViewerAttachment, // 🆕 Volitelné: otevřít sdílený AttachmentViewer (např. v evidenci faktur)
   attachments: externalAttachments = [], // 🆕 Attachments z formData.faktury[].attachments (controlled)
   onAttachmentsChange, // 🆕 Callback pro aktualizaci attachments (controlled component pattern)
   onCreateInvoiceInDB, // 🆕 Callback pro vytvoření faktury v DB (temp → real ID)
@@ -441,6 +444,11 @@ const InvoiceAttachmentsCompact = ({
 }) => {
   const { username, token, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext); // ✅ OPRAVENO: showToast místo addToast
+
+  // 🔒 Normalizace stavu faktury (různé zdroje + whitespace/casing)
+  const invoiceStateRaw = faktura?.stav ?? formData?.stav ?? formData?.stav_faktury ?? formData?.faktura_stav;
+  const invoiceState = String(invoiceStateRaw || '').trim().toUpperCase();
+  const isInvoiceCompleted = invoiceState === 'DOKONCENA';
 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -671,10 +679,13 @@ const InvoiceAttachmentsCompact = ({
   // 🛡️ Kontrola oprávnění pro editaci/mazání přílohy
   const canEditAttachment = useCallback((attachment) => {
     if (!attachment) return false;
+
+    // Globální read-only režim UI
+    if (readOnly) return false;
     
     // 🔒 KRITICKÁ KONTROLA: Pokud je faktura ve stavu DOKONCENA, NIKDO nemůže mazat/editovat přílohy
     // (včetně SUPERADMIN, ADMINISTRATOR, UCETNI)
-    if (faktura?.stav === 'DOKONCENA') {
+    if (isInvoiceCompleted) {
       return false;
     }
     
@@ -732,7 +743,7 @@ const InvoiceAttachmentsCompact = ({
     }
     
     return false;
-  }, [allUsers, userDetail]);
+  }, [allUsers, userDetail, readOnly, isInvoiceCompleted]);
 
   // 🛡️ Helper funkce pro zobrazení důvodů oprávnění
   const getPermissionReasonText = useCallback((reason) => {
@@ -1909,6 +1920,10 @@ const InvoiceAttachmentsCompact = ({
 
   // Odstranění souboru (lokální před uploadem)
   const removeFile = (fileId) => {
+    if (isInvoiceCompleted) {
+      showToast&&showToast('Faktura je ve stavu DOKONCENA - přílohy nelze mazat', { type: 'warning' });
+      return;
+    }
     const file = attachments.find(f => f.id === fileId);
     if (!file) return;
 
@@ -1933,6 +1948,10 @@ const InvoiceAttachmentsCompact = ({
 
   // Smazání ze serveru
   const deleteFromServer = async (fileId) => {
+    if (isInvoiceCompleted) {
+      showToast&&showToast('Faktura je ve stavu DOKONCENA - přílohy nelze mazat', { type: 'warning' });
+      return;
+    }
     const file = attachments.find(f => f.id === fileId);
     if (!file || !file.serverId) {
       // Nemá serverId → lokální odstranění
@@ -2060,6 +2079,18 @@ const InvoiceAttachmentsCompact = ({
 
       // Pro PDF zobrazit v plovoucím okně
       if (ext === 'pdf' || ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
+        // ✅ Preferovat sdílený AttachmentViewer (má toolbar pro obrázky)
+        if (typeof onOpenViewerAttachment === 'function') {
+          onOpenViewerAttachment({
+            filename: filename,
+            fileType: ext === 'pdf' ? 'pdf' : 'image',
+            blob: blob,
+            mimeType: mimeType
+          });
+          return;
+        }
+
+        // Fallback: původní plovoucí okno
         const url = window.URL.createObjectURL(blob);
         setFileViewer({
           visible: true,
@@ -2286,7 +2317,7 @@ const InvoiceAttachmentsCompact = ({
 
   // ✅ NOVÁ LOGIKA: Dropzona je VŽDY aktivní (validace probíhá při uploadu)
   // Disabled pouze když: uploading, loading, readOnly NEBO faktura je DOKONCENA
-  const isDropzoneDisabled = uploading || loading || readOnly || faktura?.stav === 'DOKONCENA';
+  const isDropzoneDisabled = uploading || loading || readOnly || isInvoiceCompleted;
 
   // Drag & Drop handlers
   const handleDragOver = (e) => {
@@ -3012,7 +3043,7 @@ const InvoiceAttachmentsCompact = ({
                           fontSize: '12px',
                           flexShrink: 0
                         }}
-                        title="Otevřít v novém okně"
+                        title="Náhled / otevřít"
                       >
                         <ExternalLink size={14} />
                       </button>

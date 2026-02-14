@@ -75,6 +75,7 @@ import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../utils/
 import { markSpisovkaDocumentProcessed } from '../services/apiSpisovkaZpracovani';
 import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 import { useDictionaries } from '../forms/OrderForm25/hooks/useDictionaries';
+import AttachmentViewer from '../components/invoices/AttachmentViewer';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -1408,7 +1409,7 @@ const MultiSelectOption = styled.div`
 `;
 
 // Attachments bubble component
-const DuplicateAttachmentsLoader = ({ invoiceId, objednavkaId, splatnost, jmenoUzivatele, username, token, onOpenPdf, showToast }) => {
+const DuplicateAttachmentsLoader = ({ invoiceId, objednavkaId, splatnost, jmenoUzivatele, username, token, onOpenAttachment, showToast }) => {
   const [attachments, setAttachments] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -1447,12 +1448,32 @@ const DuplicateAttachmentsLoader = ({ invoiceId, objednavkaId, splatnost, jmenoU
         objednavka_id: objednavkaId || null
       });
 
-      // Vytvořit blob se správným MIME typem
-      const blob = new Blob([blobData], { type: 'application/pdf' });
-      const blobUrl = window.URL.createObjectURL(blob);
+      const filename = attachment.originalni_nazev_souboru || `priloha-${index + 1}`;
+      const ext = String(filename).toLowerCase().split('.').pop();
+      const previewableImages = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
 
-      // Otevřít v PDF vieweru
-      onOpenPdf(blobUrl, attachment.originalni_nazev_souboru || `priloha-${index + 1}.pdf`);
+      // Pro obrázky vytvořit data URL (AttachmentViewer umí toolbary + tisk + download)
+      let imageSrc = null;
+      if (previewableImages.includes(ext)) {
+        imageSrc = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blobData); // blobData je Blob
+        });
+      }
+
+      if (onOpenAttachment) {
+        onOpenAttachment({
+          ...attachment,
+          filename,
+          fileType: ext === 'pdf' ? 'pdf' : (previewableImages.includes(ext) ? 'image' : 'other'),
+          // PDF + nepodporované typy: poslat blob kvůli downloadu / iframe
+          blob: (ext === 'pdf') ? blobData : (previewableImages.includes(ext) ? null : blobData),
+          // Obrázky: poslat data URL
+          imageSrc: imageSrc || null
+        });
+      }
     } catch (err) {
       console.error('❌ Chyba při načítání přílohy:', err);
       showToast(err.message || 'Nepodařilo se načíst přílohu', 'error');
@@ -1624,84 +1645,6 @@ const DuplicateAttachmentsLoader = ({ invoiceId, objednavkaId, splatnost, jmenoU
     </>
   );
 };
-
-// PDF Viewer Modal Styles
-const PDFViewerOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-  padding: 2rem;
-`;
-
-const PDFViewerModal = styled.div`
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-width: 90vw;
-  max-height: 90vh;
-  width: 900px;
-  height: 800px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-`;
-
-const PDFViewerHeader = styled.div`
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1rem 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-radius: 12px 12px 0 0;
-`;
-
-const PDFViewerTitle = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 1rem;
-  font-weight: 600;
-`;
-
-const PDFViewerCloseButton = styled.button`
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: white;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: rotate(90deg);
-  }
-`;
-
-const PDFViewerContent = styled.div`
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  background: #f9fafb;
-`;
-
-const PDFViewerObject = styled.object`
-  width: 100%;
-  height: 100%;
-  border: none;
-`;
 
 // ===================================================================
 // MAIN COMPONENT
@@ -2031,17 +1974,8 @@ export default function InvoiceEvidencePage() {
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const duplicateCheckTimeoutRef = useRef(null);
   
-  // PDF Viewer state for duplicate invoice attachment preview
-  const [pdfViewer, setPdfViewer] = useState({ visible: false, url: '', filename: '' });
-  
-  // Cleanup blob URL when viewer closes
-  useEffect(() => {
-    return () => {
-      if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
-        window.URL.revokeObjectURL(pdfViewer.url);
-      }
-    };
-  }, [pdfViewer.url]);
+  // Attachment viewer state (PDF / obrázky / jiné typy)
+  const [viewerAttachment, setViewerAttachment] = useState(null);
 
   // 🆕 Detekce změny POUZE polí věcné správnosti (pro readonly uživatele)
   const hasChangedVecnaSpravnost = useMemo(() => {
@@ -6311,13 +6245,7 @@ export default function InvoiceEvidencePage() {
                               jmenoUzivatele={duplicateWarning.invoice.jmeno_uzivatele}
                               username={username}
                               token={token}
-                              onOpenPdf={(blobUrl, filename) => {
-                                setPdfViewer({
-                                  visible: true,
-                                  url: blobUrl,
-                                  filename: filename
-                                });
-                              }}
+                              onOpenAttachment={(att) => setViewerAttachment(att)}
                               showToast={showToast}
                             />
                           )}
@@ -6358,32 +6286,15 @@ export default function InvoiceEvidencePage() {
                     </button>
                   )}
                 </FieldLabel>
-                <CurrencyInput
-                  fieldName="fa_castka"
+                <Input
+                  type="text"
+                  name="fa_castka"
                   value={formData.fa_castka}
                   onChange={handleInputChange}
-                  onBlur={(e) => {
-                    // Validace čísla s desetinným oddělovačem
-                    const value = e.target.value;
-                    if (value) {
-                      const num = parseFloat(value);
-                      if (isNaN(num)) {
-                        setFieldErrors(prev => ({
-                          ...prev,
-                          fa_castka: 'Zadejte platnou částku'
-                        }));
-                      } else {
-                        // Vymazat chybu pokud je číslo v pořádku
-                        setFieldErrors(prev => {
-                          const { fa_castka, ...rest } = prev;
-                          return rest;
-                        });
-                      }
-                    }
-                  }}
                   disabled={!isInvoiceEditable || loading}
-                  hasError={!!fieldErrors.fa_castka}
-                  placeholder="25 000,50"
+                  placeholder="0"
+                  style={{ fontWeight: formData.fa_castka ? '600' : '400' }}
+                  $hasError={!!fieldErrors.fa_castka}
                 />
                 {fieldErrors.fa_castka && (
                   <FieldError>
@@ -6509,6 +6420,7 @@ export default function InvoiceEvidencePage() {
               onAttachmentRemoved={handleAttachmentRemoved}
               onCreateInvoiceInDB={handleCreateInvoiceInDB}
               onOCRDataExtracted={handleOCRDataExtracted}
+              onOpenViewerAttachment={(att) => setViewerAttachment(att)}
             />
 
             {/* ODDĚLUJÍCÍ ČÁRA */}
@@ -7994,67 +7906,12 @@ export default function InvoiceEvidencePage() {
         document.body
       )}
 
-      {/* PDF Viewer Modal */}
-      {pdfViewer.visible && ReactDOM.createPortal(
-        <PDFViewerOverlay onClick={() => {
-          // Cleanup blob URL
-          if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
-            window.URL.revokeObjectURL(pdfViewer.url);
-          }
-          setPdfViewer({ visible: false, url: '', filename: '' });
-        }}>
-          <PDFViewerModal onClick={(e) => e.stopPropagation()}>
-            <PDFViewerHeader>
-              <PDFViewerTitle>
-                <FontAwesomeIcon icon={faFileInvoice} />
-                {pdfViewer.filename}
-              </PDFViewerTitle>
-              <PDFViewerCloseButton onClick={() => {
-                // Cleanup blob URL
-                if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
-                  window.URL.revokeObjectURL(pdfViewer.url);
-                }
-                setPdfViewer({ visible: false, url: '', filename: '' });
-              }}>
-                <FontAwesomeIcon icon={faTimes} />
-              </PDFViewerCloseButton>
-            </PDFViewerHeader>
-            <PDFViewerContent>
-              <PDFViewerObject
-                data={pdfViewer.url}
-                type="application/pdf"
-                title={pdfViewer.filename}
-              >
-                <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
-                  <FontAwesomeIcon icon={faFileInvoice} size="3x" style={{ marginBottom: '1rem' }} />
-                  <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                    PDF nelze zobrazit v prohlížeči
-                  </div>
-                  <div style={{ fontSize: '0.9rem' }}>
-                    Váš prohlížeč nepodporuje zobrazení PDF souborů.
-                  </div>
-                  <a 
-                    href={pdfViewer.url} 
-                    download={pdfViewer.filename}
-                    style={{
-                      marginTop: '1.5rem',
-                      display: 'inline-block',
-                      padding: '0.75rem 1.5rem',
-                      background: '#667eea',
-                      color: 'white',
-                      borderRadius: '8px',
-                      textDecoration: 'none',
-                      fontWeight: 600
-                    }}
-                  >
-                    Stáhnout PDF
-                  </a>
-                </div>
-              </PDFViewerObject>
-            </PDFViewerContent>
-          </PDFViewerModal>
-        </PDFViewerOverlay>,
-        document.body
+      {/* Attachment Viewer (sdílený) */}
+      {viewerAttachment && (
+        <AttachmentViewer
+          attachment={viewerAttachment}
+          onClose={() => setViewerAttachment(null)}
+        />
       )}
     </>
   );
