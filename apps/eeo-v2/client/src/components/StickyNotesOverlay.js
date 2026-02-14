@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTimes, faGripLines, faStickyNote, faEye, faEyeSlash, faTrash, faBold, faItalic, faStrikethrough, faListUl, faExclamationTriangle, faShareNodes, faUsers, faUser, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTimes, faGripLines, faStickyNote, faEye, faEyeSlash, faTrash, faBold, faItalic, faStrikethrough, faListUl, faExclamationTriangle, faShareNodes, faUsers, faUser, faLayerGroup, faSearch } from '@fortawesome/free-solid-svg-icons';
 import { bulkUpsertStickyNotes, clearAllStickyNotes, deleteStickyNote, listStickyNotes, grantStickyShare, listStickyShares, revokeStickyShare } from '../services/StickyNotesAPI';
 import { fetchEmployees, fetchUseky } from '../services/api2auth';
 
@@ -79,6 +79,69 @@ const HeaderPill = styled.div`
   padding: 8px 12px;
   box-shadow: 0 12px 28px rgba(217, 119, 6, 0.28);
   opacity: 0.95;
+`;
+
+const HeaderSearch = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.10);
+  opacity: 0.98;
+
+  .icon {
+    color: rgba(30, 41, 59, 0.62);
+  }
+`;
+
+const HeaderSearchInput = styled.input`
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-weight: 900;
+  font-size: 13px;
+  color: rgba(15, 23, 42, 0.90);
+  width: min(320px, 46vw);
+
+  &::placeholder {
+    color: rgba(30, 41, 59, 0.55);
+    font-weight: 800;
+  }
+`;
+
+const HeaderSearchClear = styled.button`
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  color: rgba(30, 41, 59, 0.78);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.14s ease, transform 0.14s ease;
+
+  &:hover { background: rgba(15, 23, 42, 0.10); }
+  &:active { transform: scale(0.98); }
+`;
+
+const SearchCountPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: rgba(120, 53, 15, 0.92);
+  background: rgba(254, 243, 199, 0.78);
+  border: 1px solid rgba(180, 83, 9, 0.22);
+  border-radius: 999px;
+  padding: 8px 10px;
+  box-shadow: 0 12px 26px rgba(180, 83, 9, 0.10);
 `;
 
 const DbErrorPill = styled.div`
@@ -463,7 +526,8 @@ const NoteCard = styled.div`
   display: flex;
   flex-direction: column;
   border-radius: 10px;
-  border: 1px solid rgba(2, 6, 23, 0.08);
+  border: ${props => props.$searchMatch ? '2px solid rgba(245, 158, 11, 0.95)' : '1px solid rgba(2, 6, 23, 0.08)'};
+  box-shadow: ${props => props.$searchMatch ? '0 0 0 2px rgba(245, 158, 11, 0.25), 0 12px 26px rgba(2, 6, 23, 0.14)' : 'none'};
   will-change: transform;
   /* Pozor: pin je částečně mimo kartu (negativní top) → nesmí se ořezávat */
   overflow: visible;
@@ -860,10 +924,20 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+function getPlainTextFromHtml(html) {
+  try {
+    const s = String(html || '');
+    return s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  } catch {
+    return '';
+  }
+}
+
 export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth }) {
   const resolvedStorageKey = storageKey || 'eeo_v2_sticky_notes_overlay_v1';
   const prefsKey = `${resolvedStorageKey}__prefs`;
   const [notes, setNotes] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [dbHydratedOnce, setDbHydratedOnce] = useState(false);
   const [dbLastError, setDbLastError] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -887,6 +961,12 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
   useEffect(() => {
     apiAuthRef.current = apiAuth;
   }, [apiAuth]);
+
+  useEffect(() => {
+    if (!open) {
+      setSearchQuery('');
+    }
+  }, [open]);
 
   // Eye-friendly backdrop settings (persisted)
   const [blurEnabled, setBlurEnabled] = useState(true);
@@ -1777,6 +1857,17 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     : null;
   const notesCount = notes?.length || 0;
 
+  const searchMatches = useMemo(() => {
+    const q = String(searchQuery || '').trim().toLowerCase();
+    if (!q) return { ids: new Set(), count: 0 };
+    const ids = new Set();
+    for (const n of (notes || [])) {
+      const text = getPlainTextFromHtml(n?.content || '').toLowerCase();
+      if (text.includes(q)) ids.add(n.id);
+    }
+    return { ids, count: ids.size };
+  }, [notes, searchQuery]);
+
   return createPortal(
     <OverlayRoot role="dialog" aria-label="Sticky deska" aria-modal="true">
       <OverlayBackdrop
@@ -1805,9 +1896,29 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           >
             <FontAwesomeIcon icon={faTrash} /> Smazat vše
           </ClearAllBtn>
+
+          <HeaderSearch>
+            <FontAwesomeIcon className="icon" icon={faSearch} />
+            <HeaderSearchInput
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Hledat v poznámkách…"
+              aria-label="Hledat v poznámkách"
+            />
+            {!!String(searchQuery || '').trim() && (
+              <HeaderSearchClear type="button" onClick={() => setSearchQuery('')} title="Vymazat hledání">
+                <FontAwesomeIcon icon={faTimes} />
+              </HeaderSearchClear>
+            )}
+          </HeaderSearch>
         </HeaderLeft>
 
         <HeaderRight>
+          {!!String(searchQuery || '').trim() && (
+            <SearchCountPill title="Počet poznámek, kde se našel text">
+              Nalezeno: {searchMatches.count}
+            </SearchCountPill>
+          )}
           {!dbHydratedOnce && (
             <LoadingPill title="Načítám data z databáze">
               <span className="spinner" />
@@ -1852,9 +1963,11 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           const palette = NOTE_COLORS[note.colorIdx] || NOTE_COLORS[0];
           const isDragging = draggingId === note.id;
           const isFocused = focusedId === note.id;
+          const isMatch = searchMatches.ids.has(note.id);
           return (
             <NoteCard
               key={note.id}
+              $searchMatch={isMatch}
               onPointerDown={(e) => onPointerDown(e, note.id)}
               style={{
                 left: note.x,
@@ -1865,7 +1978,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                 background: palette.bg,
                 boxShadow: isDragging
                   ? `0 22px 44px rgba(2, 6, 23, 0.25)`
-                  : `0 10px 26px ${palette.shadow}`,
+                  : `${isMatch ? '0 0 0 2px rgba(245, 158, 11, 0.18), ' : ''}0 10px 26px ${palette.shadow}`,
                 // ⚠️ Workaround: caret kurzor může zmizet v transformovaných prvcích.
                 // Když je editor focusnutý, dočasně vypneme rotaci/transform.
                 transform: isFocused
