@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTimes, faGripLines, faStickyNote, faEye, faEyeSlash, faTrash, faBold, faItalic, faStrikethrough, faListUl } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTimes, faGripLines, faStickyNote, faEye, faEyeSlash, faTrash, faBold, faItalic, faStrikethrough, faListUl, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+import { bulkUpsertStickyNotes, clearAllStickyNotes, deleteStickyNote, listStickyNotes } from '../services/StickyNotesAPI';
 
 const DEFAULT_NOTE_SIZE = { w: 240, h: 240 };
 
@@ -79,6 +80,25 @@ const HeaderPill = styled.div`
   opacity: 0.95;
 `;
 
+const DbErrorPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 12px;
+  color: #ffffff;
+  background: rgba(220, 38, 38, 0.85);
+  border: 1px solid rgba(127, 29, 29, 0.55);
+  border-radius: 999px;
+  padding: 8px 10px;
+  box-shadow: 0 10px 22px rgba(220, 38, 38, 0.18);
+  opacity: 0.95;
+  max-width: min(520px, 70vw);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
 const HeaderBtn = styled.button`
   display: inline-flex;
   align-items: center;
@@ -153,6 +173,72 @@ const NotesArea = styled.div`
   inset: 0;
   z-index: 2;
   overflow: hidden;
+`;
+
+const EmptyState = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
+
+  .box {
+    max-width: 720px;
+    background: rgba(15, 23, 42, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 14px;
+    padding: 18px 18px;
+    box-shadow: 0 18px 42px rgba(2, 6, 23, 0.25);
+  }
+
+  .title {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+
+  .hint {
+    font-weight: 700;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.35;
+  }
+`;
+
+const LoadingPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(15, 23, 42, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 8px 10px;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.22);
+  opacity: 0.98;
+
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: rgba(255, 255, 255, 0.95);
+    animation: spin 0.85s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 `;
 
 const NoteCard = styled.div`
@@ -545,10 +631,12 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-export default function StickyNotesOverlay({ open, onClose, storageKey }) {
+export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth }) {
   const resolvedStorageKey = storageKey || 'eeo_v2_sticky_notes_overlay_v1';
   const prefsKey = `${resolvedStorageKey}__prefs`;
   const [notes, setNotes] = useState([]);
+  const [dbHydratedOnce, setDbHydratedOnce] = useState(false);
+  const [dbLastError, setDbLastError] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [focusedId, setFocusedId] = useState(null);
   const [resizingId, setResizingId] = useState(null);
@@ -560,6 +648,15 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
   const zRef = useRef(1);
   const notesRef = useRef(notes);
   const editorRefs = useRef(new Map());
+  const dirtyIdsRef = useRef(new Set());
+  const saveTimerRef = useRef(null);
+  const savingRef = useRef(false);
+
+  const apiAuthRef = useRef(apiAuth);
+
+  useEffect(() => {
+    apiAuthRef.current = apiAuth;
+  }, [apiAuth]);
 
   // Eye-friendly backdrop settings (persisted)
   const [blurEnabled, setBlurEnabled] = useState(true);
@@ -572,19 +669,15 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
     zRef.current = zIndexCounter;
   }, [zIndexCounter]);
 
-  const loadNotes = useCallback(() => {
+  const loadNotesFromLocalStorage = useCallback(() => {
     try {
       const saved = localStorage.getItem(resolvedStorageKey);
       if (!saved) {
-        setNotes([]);
-        setZIndexCounter(1);
-        return;
+        return [];
       }
       const parsed = safeParse(saved);
       if (!Array.isArray(parsed)) {
-        setNotes([]);
-        setZIndexCounter(1);
-        return;
+        return [];
       }
       // Migrace: doplnit createdAt pro staré záznamy
       const migrated = parsed.map((n) => {
@@ -595,18 +688,157 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
         return { ...n, createdAt };
       });
 
-      setNotes(migrated);
-      if (migrated.length > 0) {
-        const maxZ = Math.max(...migrated.map((n) => Number(n?.zIndex || 1)));
-        setZIndexCounter((Number.isFinite(maxZ) ? maxZ : 1) + 1);
-      } else {
-        setZIndexCounter(1);
-      }
+      return migrated;
     } catch {
-      setNotes([]);
-      setZIndexCounter(1);
+      return [];
     }
   }, [resolvedStorageKey]);
+
+  const normalizeNoteFromDb = useCallback((row) => {
+    try {
+      const vw = window.innerWidth || 1200;
+      const vh = window.innerHeight || 800;
+
+      const clientUid = String(row?.client_uid || row?.clientUid || '').trim();
+      const dbId = row?.id != null ? Number(row.id) : null;
+      const version = row?.version != null ? Number(row.version) : null;
+      const ownerUserId = row?.owner_user_id != null ? Number(row.owner_user_id) : null;
+      const pravaMask = row?.prava_mask != null ? Number(row.prava_mask) : 0;
+
+      const data = (row && typeof row.data === 'object' && row.data) ? row.data : {};
+
+      let internalId = null;
+      const m = /^n_(\d+)$/.exec(clientUid);
+      if (m && m[1]) internalId = Number(m[1]);
+      if (!internalId || !Number.isFinite(internalId)) internalId = Date.now() + Math.floor(Math.random() * 1000);
+
+      const baseW = Number(data?.viewport?.w || 0);
+      const baseH = Number(data?.viewport?.h || 0);
+      const sx = (baseW > 0) ? (vw / baseW) : 1;
+      const sy = (baseH > 0) ? (vh / baseH) : 1;
+
+      const x = Number(data?.x);
+      const y = Number(data?.y);
+      const width = Number(data?.width);
+      const height = Number(data?.height);
+
+      const finalW = clamp(Number.isFinite(width) ? width * sx : DEFAULT_NOTE_SIZE.w, 160, Math.max(160, vw - 20));
+      const finalH = clamp(Number.isFinite(height) ? height * sy : DEFAULT_NOTE_SIZE.h, 140, Math.max(140, vh - 80));
+      const finalX = clamp(Number.isFinite(x) ? x * sx : (vw / 2 - finalW / 2), 8, Math.max(8, vw - finalW - 8));
+      const finalY = clamp(Number.isFinite(y) ? y * sy : (vh / 3 - finalH / 2), 80, Math.max(80, vh - finalH - 64));
+
+      const createdAt = (typeof data?.createdAt === 'number' && Number.isFinite(data.createdAt)) ? data.createdAt : Date.now();
+
+      return {
+        id: internalId,
+        clientUid: clientUid || `n_${internalId}`,
+        dbId,
+        version,
+        ownerUserId,
+        pravaMask,
+        x: finalX,
+        y: finalY,
+        width: finalW,
+        height: finalH,
+        rotation: Number.isFinite(Number(data?.rotation)) ? Number(data.rotation) : 0,
+        colorIdx: Number.isFinite(Number(data?.colorIdx)) ? Number(data.colorIdx) : 0,
+        zIndex: Number.isFinite(Number(data?.zIndex)) ? Number(data.zIndex) : 1,
+        content: sanitizeNoteHtml(String(data?.content || '')),
+        createdAt,
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const markDirty = useCallback((id) => {
+    try { if (id != null) dirtyIdsRef.current.add(id); } catch {}
+  }, []);
+
+  const scheduleDbSave = useCallback(() => {
+    try {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(async () => {
+        if (savingRef.current) return;
+        const auth = apiAuthRef.current;
+        if (!auth?.token || !auth?.username || !auth?.userId) return;
+
+        const dirtyIds = Array.from(dirtyIdsRef.current || []);
+        if (dirtyIds.length === 0) return;
+
+        const currentNotes = notesRef.current || [];
+        const dirtyNotes = currentNotes.filter((n) => dirtyIds.includes(n.id) && n?.ownerUserId === auth.userId);
+        if (dirtyNotes.length === 0) {
+          dirtyIdsRef.current = new Set();
+          return;
+        }
+
+        savingRef.current = true;
+        setDbLastError(null);
+
+        const vw = window.innerWidth || 1200;
+        const vh = window.innerHeight || 800;
+
+        const payloadNotes = dirtyNotes.map((n) => ({
+          id: n.dbId || null,
+          client_uid: n.clientUid || `n_${n.id}`,
+          version: (n.version != null ? n.version : null),
+          data: {
+            x: n.x,
+            y: n.y,
+            width: n.width,
+            height: n.height,
+            rotation: n.rotation,
+            colorIdx: n.colorIdx,
+            zIndex: n.zIndex,
+            content: n.content,
+            createdAt: n.createdAt,
+            viewport: { w: vw, h: vh },
+            updatedAt: Date.now(),
+          }
+        }));
+
+        try {
+          const res = await bulkUpsertStickyNotes({ token: auth.token, username: auth.username, notes: payloadNotes });
+
+          // vyčistit dirty jen pro úspěšné
+          const okClientUids = new Set(res.filter((r) => r?.ok).map((r) => String(r.client_uid || '')));
+          const conflictClientUids = new Set(res.filter((r) => r && r.ok === false && r.status === 'conflict').map((r) => String(r.client_uid || '')));
+
+          setNotes((prev) => prev.map((n) => {
+            const cu = String(n.clientUid || `n_${n.id}`);
+            const r = res.find((x) => String(x?.client_uid || '') === cu);
+            if (!r) return n;
+            if (r.ok && r.id) {
+              const nextVersion = (typeof r.version === 'number' && Number.isFinite(r.version))
+                ? r.version
+                : (n.version != null ? (n.version + 1) : n.version);
+              return { ...n, dbId: r.id, version: nextVersion };
+            }
+            return n;
+          }));
+
+          // dirty set update
+          const nextDirty = new Set(dirtyIdsRef.current || []);
+          for (const n of dirtyNotes) {
+            const cu = String(n.clientUid || `n_${n.id}`);
+            if (okClientUids.has(cu)) nextDirty.delete(n.id);
+            // konflikt necháme dirty (ať se nestratí) + uložíme poslední chybu
+            if (conflictClientUids.has(cu)) {
+              setDbLastError('Konflikt synchronizace: některé poznámky byly změněny na jiném zařízení.');
+            }
+          }
+          dirtyIdsRef.current = nextDirty;
+        } catch (e) {
+          setDbLastError(e?.message || 'Synchronizace do databáze selhala');
+        } finally {
+          savingRef.current = false;
+        }
+      }, 900);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Načti prefs (blur)
   useEffect(() => {
@@ -632,10 +864,110 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
     }
   }, [prefsKey, blurEnabled]);
 
-  // Načti při mountu + při změně storageKey
+  // Načti data při otevření overlay (DB → fallback/migrace z LS)
   useEffect(() => {
-    loadNotes();
-  }, [loadNotes]);
+    if (!open) return;
+
+    // Loading gate pro DB hydraci
+    setDbHydratedOnce(false);
+    setDbLastError(null);
+
+    let cancelled = false;
+    const run = async () => {
+      const localRaw = loadNotesFromLocalStorage();
+      const local = (Array.isArray(localRaw) ? localRaw : []).map((n) => ({
+        ...n,
+        clientUid: n?.clientUid || `n_${n?.id}`,
+        ownerUserId: (n?.ownerUserId != null) ? n.ownerUserId : (apiAuth?.userId ?? null)
+      }));
+
+      const canUseDb = Boolean(apiAuth?.token && apiAuth?.username && apiAuth?.userId);
+
+      if (!canUseDb) {
+        if (cancelled) return;
+        setNotes(local);
+        if (local.length > 0) {
+          const maxZ = Math.max(...local.map((n) => Number(n?.zIndex || 1)));
+          setZIndexCounter((Number.isFinite(maxZ) ? maxZ : 1) + 1);
+        } else {
+          setZIndexCounter(1);
+        }
+        setDbHydratedOnce(true);
+        return;
+      }
+
+      try {
+        const rows = await listStickyNotes({ token: apiAuth.token, username: apiAuth.username });
+        if (cancelled) return;
+
+        const normalized = (rows || [])
+          .map(normalizeNoteFromDb)
+          .filter(Boolean);
+
+        if (normalized.length > 0) {
+          setNotes(normalized);
+          const maxZ = Math.max(...normalized.map((n) => Number(n?.zIndex || 1)));
+          setZIndexCounter((Number.isFinite(maxZ) ? maxZ : 1) + 1);
+          setDbHydratedOnce(true);
+          return;
+        }
+
+        // DB prázdná → zkus migraci z LS
+        if (Array.isArray(local) && local.length > 0) {
+          const vw = window.innerWidth || 1200;
+          const vh = window.innerHeight || 800;
+
+          const payloadNotes = local.map((n) => ({
+            id: null,
+            client_uid: n.clientUid || `n_${n.id}`,
+            version: null,
+            data: {
+              x: n.x,
+              y: n.y,
+              width: n.width,
+              height: n.height,
+              rotation: n.rotation,
+              colorIdx: n.colorIdx,
+              zIndex: n.zIndex,
+              content: n.content,
+              createdAt: n.createdAt,
+              viewport: { w: vw, h: vh },
+              updatedAt: Date.now(),
+            }
+          }));
+
+          await bulkUpsertStickyNotes({ token: apiAuth.token, username: apiAuth.username, notes: payloadNotes });
+          const rows2 = await listStickyNotes({ token: apiAuth.token, username: apiAuth.username });
+          if (cancelled) return;
+          const normalized2 = (rows2 || []).map(normalizeNoteFromDb).filter(Boolean);
+          setNotes(normalized2);
+          const maxZ = normalized2.length > 0 ? Math.max(...normalized2.map((n) => Number(n?.zIndex || 1))) : 1;
+          setZIndexCounter((Number.isFinite(maxZ) ? maxZ : 1) + 1);
+          setDbHydratedOnce(true);
+          return;
+        }
+
+        // nic v DB ani LS
+        setNotes([]);
+        setZIndexCounter(1);
+        setDbHydratedOnce(true);
+      } catch (e) {
+        setDbLastError(e?.message || 'Načtení sticky poznámek z databáze selhalo');
+        // fallback na LS
+        setNotes(local);
+        if (local.length > 0) {
+          const maxZ = Math.max(...local.map((n) => Number(n?.zIndex || 1)));
+          setZIndexCounter((Number.isFinite(maxZ) ? maxZ : 1) + 1);
+        } else {
+          setZIndexCounter(1);
+        }
+        setDbHydratedOnce(true);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [open, apiAuth, loadNotesFromLocalStorage, normalizeNoteFromDb]);
 
   // Persist do LS
   useEffect(() => {
@@ -693,6 +1025,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
     const id = Date.now() + Math.floor(Math.random() * 1000);
     const newNote = {
       id,
+      clientUid: `n_${id}`,
       x: clamp(finalX, 8, Math.max(8, vw - DEFAULT_NOTE_SIZE.w - 8)),
       y: clamp(finalY, 80, Math.max(80, vh - DEFAULT_NOTE_SIZE.h - 64)),
       content,
@@ -702,39 +1035,44 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
       width: DEFAULT_NOTE_SIZE.w,
       height: DEFAULT_NOTE_SIZE.h,
       createdAt: Date.now(),
+      ownerUserId: apiAuthRef.current?.userId ?? null,
     };
 
     setNotes((prev) => [...prev, newNote]);
+    markDirty(id);
+    scheduleDbSave();
     zRef.current = currentZ + 1;
     setZIndexCounter(zRef.current);
-  }, []);
+  }, [markDirty, scheduleDbSave]);
 
-  // Pokud uživatel nemá nic uloženého, přidat úvodní poznámku (jen jednou)
-  useEffect(() => {
-    if (!open) return;
-    if (notesRef.current.length > 0) return;
-    addNote(undefined, undefined, 'Poznámky (SUPERADMIN)\n\n• Přidej další lístečky tlačítkem „Nová“\n• Ukládá se zatím jen do LocalStorage');
-  }, [open, addNote]);
+  // Pozn.: dříve jsme sem dávali auto-úvodní poznámku, ale při DB loadu to problikávalo.
+  // Místo toho ukazujeme prázdný stav v UI.
 
   const bringToFront = useCallback((id) => {
     const currentZ = zRef.current || 1;
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, zIndex: currentZ } : n)));
+    markDirty(id);
+    scheduleDbSave();
     zRef.current = currentZ + 1;
     setZIndexCounter(zRef.current);
-  }, []);
+  }, [markDirty, scheduleDbSave]);
 
   const updateContent = useCallback((id, content) => {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, content } : n)));
-  }, []);
+    markDirty(id);
+    scheduleDbSave();
+  }, [markDirty, scheduleDbSave]);
 
   const removeNote = useCallback((id) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
+    try { dirtyIdsRef.current.delete(id); } catch {}
   }, []);
 
   const clearAllNotes = useCallback(() => {
     setNotes([]);
     zRef.current = 1;
     setZIndexCounter(1);
+    try { dirtyIdsRef.current = new Set(); } catch {}
   }, []);
 
   const requestDeleteNote = useCallback((id) => {
@@ -820,7 +1158,14 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
       }));
     };
 
-    const onUp = () => setDraggingId(null);
+    const onUp = () => {
+      const id = draggingId;
+      setDraggingId(null);
+      if (id != null) {
+        markDirty(id);
+        scheduleDbSave();
+      }
+    };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -828,7 +1173,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [open, draggingId, dragOffset]);
+  }, [open, draggingId, dragOffset, markDirty, scheduleDbSave]);
 
   useEffect(() => {
     if (!open) return;
@@ -857,7 +1202,14 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
       )));
     };
 
-    const onUp = () => setResizingId(null);
+    const onUp = () => {
+      const id = resizingId;
+      setResizingId(null);
+      if (id != null) {
+        markDirty(id);
+        scheduleDbSave();
+      }
+    };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -865,7 +1217,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [open, resizingId, resizeStart]);
+  }, [open, resizingId, resizeStart, markDirty, scheduleDbSave]);
 
   const portalNode = useMemo(() => {
     if (typeof document === 'undefined') return null;
@@ -921,6 +1273,18 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
         </HeaderLeft>
 
         <HeaderRight>
+          {!dbHydratedOnce && (
+            <LoadingPill title="Načítám data z databáze">
+              <span className="spinner" />
+              Načítám…
+            </LoadingPill>
+          )}
+          {!!dbLastError && (
+            <DbErrorPill title={dbLastError}>
+              <FontAwesomeIcon icon={faExclamationTriangle} />
+              {dbLastError}
+            </DbErrorPill>
+          )}
           <EffectBtn
             type="button"
             onClick={() => setBlurEnabled((v) => !v)}
@@ -936,6 +1300,19 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
       </OverlayHeader>
 
       <NotesArea>
+        {dbHydratedOnce && notesCount === 0 && (
+          <EmptyState>
+            <div className="box">
+              <div className="title">
+                <FontAwesomeIcon icon={faStickyNote} />
+                Tabule je prázdná
+              </div>
+              <div className="hint">
+                Klikni na <b>„Nová“</b> pro vytvoření lístečku. Ukládání probíhá do databáze (a zároveň se cacheuje do LocalStorage).
+              </div>
+            </div>
+          </EmptyState>
+        )}
         {notes.map((note) => {
           const palette = NOTE_COLORS[note.colorIdx] || NOTE_COLORS[0];
           const isDragging = draggingId === note.id;
@@ -1150,7 +1527,36 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
                 onClick={() => {
                   const id = confirmDelete.id;
                   setConfirmDelete({ open: false, id: null });
-                  if (id != null) removeNote(id);
+                  if (id == null) return;
+
+                  const note = notesRef.current?.find?.((n) => n.id === id);
+                  const canUseDb = Boolean(apiAuth?.token && apiAuth?.username && apiAuth?.userId);
+                  const isOwner = (note?.ownerUserId != null && apiAuth?.userId != null)
+                    ? (note.ownerUserId === apiAuth.userId)
+                    : true;
+
+                  // DB delete (jen vlastní poznámky). Sdílené se na UI zatím nemažou.
+                  if (canUseDb && !isOwner) {
+                    setDbLastError('Sdílenou poznámku nelze smazat (může ji smazat jen vlastník).');
+                    return;
+                  }
+
+                  if (canUseDb && isOwner && note?.dbId) {
+                    (async () => {
+                      try {
+                        await deleteStickyNote({ token: apiAuth.token, username: apiAuth.username, id: note.dbId });
+                        removeNote(id);
+                      } catch (e) {
+                        // fallback: nesmaž v UI, ať se neztratí
+                        console.error('Sticky DB delete failed:', e);
+                        setDbLastError(e?.message || 'Smazání poznámky v databázi selhalo');
+                      }
+                    })();
+                    return;
+                  }
+
+                  // Fallback: jen lokálně
+                  removeNote(id);
                 }}
               >
                 Smazat
@@ -1198,6 +1604,34 @@ export default function StickyNotesOverlay({ open, onClose, storageKey }) {
                 type="button"
                 onClick={() => {
                   setConfirmClearAll(false);
+
+                  const canUseDb = Boolean(apiAuth?.token && apiAuth?.username && apiAuth?.userId);
+                  if (canUseDb) {
+                    (async () => {
+                      try {
+                        await clearAllStickyNotes({ token: apiAuth.token, username: apiAuth.username });
+                        // DB clear maže jen vlastní poznámky → sdílené ponecháme
+                        setNotes((prev) => {
+                          const keepShared = (prev || []).filter((n) => n?.ownerUserId != null && n.ownerUserId !== apiAuth.userId);
+                          return keepShared;
+                        });
+                        // z-index counter přepočítat
+                        window.requestAnimationFrame(() => {
+                          try {
+                            const arr = notesRef.current || [];
+                            const maxZ = arr.length > 0 ? Math.max(...arr.map((n) => Number(n?.zIndex || 1))) : 1;
+                            zRef.current = (Number.isFinite(maxZ) ? maxZ : 1) + 1;
+                            setZIndexCounter(zRef.current);
+                          } catch {}
+                        });
+                      } catch (e) {
+                        console.error('Sticky DB clear failed:', e);
+                        setDbLastError(e?.message || 'Smazání všech poznámek v databázi selhalo');
+                      }
+                    })();
+                    return;
+                  }
+
                   clearAllNotes();
                 }}
               >
