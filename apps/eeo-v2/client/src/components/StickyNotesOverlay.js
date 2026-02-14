@@ -249,14 +249,31 @@ const ShareDrawer = styled.div`
   bottom: 0;
   width: min(420px, 92vw);
   z-index: 6;
-  background: rgba(255, 255, 255, 0.88);
-  border-left: 1px solid rgba(2, 6, 23, 0.10);
-  box-shadow: -22px 0 44px rgba(2, 6, 23, 0.22);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(254, 240, 138, 0.88); /* sticky paper */
+  border-left: 1px solid rgba(180, 83, 9, 0.22);
+  box-shadow: -18px 0 40px rgba(180, 83, 9, 0.14), -22px 0 44px rgba(2, 6, 23, 0.14);
+  backdrop-filter: blur(8px) saturate(1.06);
+  -webkit-backdrop-filter: blur(8px) saturate(1.06);
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    /* jemná „papírová“ textura (čáry) */
+    background:
+      repeating-linear-gradient(
+        180deg,
+        rgba(180, 83, 9, 0.00) 0px,
+        rgba(180, 83, 9, 0.00) 18px,
+        rgba(180, 83, 9, 0.06) 19px
+      );
+    opacity: 0.55;
+    mix-blend-mode: multiply;
+  }
 `;
 
 const ShareDrawerHeader = styled.div`
@@ -265,8 +282,10 @@ const ShareDrawerHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0 12px 0 14px;
-  border-bottom: 1px solid rgba(2, 6, 23, 0.08);
-  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid rgba(180, 83, 9, 0.18);
+  background: rgba(254, 243, 199, 0.78);
+  position: relative;
+  z-index: 1;
 `;
 
 const ShareDrawerTitle = styled.div`
@@ -274,12 +293,14 @@ const ShareDrawerTitle = styled.div`
   align-items: center;
   gap: 10px;
   font-weight: 900;
-  color: rgba(15, 23, 42, 0.92);
+  color: rgba(120, 53, 15, 0.92);
 `;
 
 const ShareDrawerBody = styled.div`
   padding: 14px;
   overflow: auto;
+  position: relative;
+  z-index: 1;
 `;
 
 const ShareSection = styled.div`
@@ -301,10 +322,15 @@ const ShareModeRow = styled.label`
   gap: 10px;
   padding: 10px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(2, 6, 23, 0.08);
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(180, 83, 9, 0.16);
+  background: rgba(255, 255, 255, 0.46);
   margin-bottom: 8px;
   cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.58);
+    border-color: rgba(180, 83, 9, 0.22);
+  }
 
   input {
     transform: translateY(0.5px);
@@ -312,7 +338,7 @@ const ShareModeRow = styled.label`
 
   .title {
     font-weight: 900;
-    color: rgba(15, 23, 42, 0.90);
+    color: rgba(120, 53, 15, 0.92);
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -322,7 +348,7 @@ const ShareModeRow = styled.label`
     margin-left: auto;
     font-weight: 800;
     font-size: 12px;
-    color: rgba(51, 65, 85, 0.72);
+    color: rgba(120, 53, 15, 0.68);
   }
 `;
 
@@ -331,10 +357,10 @@ const ShareSelect = styled.select`
   margin-top: 8px;
   padding: 10px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(2, 6, 23, 0.12);
-  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(180, 83, 9, 0.18);
+  background: rgba(255, 255, 255, 0.62);
   font-weight: 800;
-  color: rgba(15, 23, 42, 0.88);
+  color: rgba(120, 53, 15, 0.92);
 `;
 
 const ShareInput = styled.input`
@@ -342,15 +368,19 @@ const ShareInput = styled.input`
   margin-top: 8px;
   padding: 10px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(2, 6, 23, 0.12);
-  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(180, 83, 9, 0.18);
+  background: rgba(255, 255, 255, 0.62);
   font-weight: 800;
-  color: rgba(15, 23, 42, 0.90);
+  color: rgba(120, 53, 15, 0.92);
+
+  &::placeholder {
+    color: rgba(120, 53, 15, 0.55);
+  }
 `;
 
 const ShareCandidates = styled.div`
   margin-top: 8px;
-  border: 1px solid rgba(2, 6, 23, 0.08);
+  border: 1px solid rgba(180, 83, 9, 0.16);
   border-radius: 12px;
   overflow: hidden;
 `;
@@ -360,7 +390,7 @@ const ShareCandidate = styled.button`
   text-align: left;
   padding: 10px 10px;
   border: 0;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.52);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -368,12 +398,12 @@ const ShareCandidate = styled.button`
   gap: 10px;
 
   &:hover {
-    background: rgba(59, 130, 246, 0.10);
+    background: rgba(217, 119, 6, 0.14);
   }
 
   .name {
     font-weight: 900;
-    color: rgba(15, 23, 42, 0.92);
+    color: rgba(120, 53, 15, 0.92);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -382,7 +412,7 @@ const ShareCandidate = styled.button`
   .meta {
     font-weight: 800;
     font-size: 12px;
-    color: rgba(51, 65, 85, 0.70);
+    color: rgba(120, 53, 15, 0.60);
     white-space: nowrap;
   }
 `;
@@ -398,11 +428,11 @@ const ShareRightsRow = styled.div`
     gap: 8px;
     font-weight: 900;
     font-size: 12px;
-    color: rgba(15, 23, 42, 0.86);
+    color: rgba(120, 53, 15, 0.88);
     padding: 8px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(2, 6, 23, 0.10);
-    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(180, 83, 9, 0.16);
+    background: rgba(255, 255, 255, 0.46);
   }
 
   label[aria-disabled='true'] {
@@ -419,8 +449,8 @@ const ShareApplyBtn = styled.button`
   font-weight: 900;
   letter-spacing: 0.3px;
   color: #ffffff;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.20);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 16px 34px rgba(217, 119, 6, 0.24);
   transition: filter 0.14s ease, transform 0.14s ease;
 
   &:hover { filter: brightness(1.05); transform: translateY(-1px); }
@@ -1077,7 +1107,9 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
 
       const usekyArr = Array.isArray(usekyRes) ? usekyRes : (usekyRes?.data || []);
       setUseky(Array.isArray(usekyArr) ? usekyArr : []);
-      setEmployees(Array.isArray(empRes) ? empRes : []);
+      // Nabízet pouze aktivní uživatele při sdílení
+      const empArr = Array.isArray(empRes) ? empRes : [];
+      setEmployees(empArr.filter((u) => Number(u?.aktivni) === 1));
 
       const normalized = Array.isArray(sharesRes) ? sharesRes : [];
       setShareExisting(normalized);
@@ -1611,7 +1643,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
   const notesCount = notes?.length || 0;
 
   return createPortal(
-    <OverlayRoot role="dialog" aria-label="Sticky NOTES" aria-modal="true">
+    <OverlayRoot role="dialog" aria-label="Sticky deska" aria-modal="true">
       <OverlayBackdrop
         style={blurEnabled
           ? undefined
@@ -1626,7 +1658,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
       <OverlayHeader>
         <HeaderLeft>
           <HeaderPill>
-            <FontAwesomeIcon icon={faStickyNote} /> Tabule poznámek
+            <FontAwesomeIcon icon={faStickyNote} /> Sticky deska
           </HeaderPill>
           <AddBtn type="button" onClick={() => addNote()}>
             <FontAwesomeIcon icon={faPlus} /> Nová
@@ -1673,7 +1705,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
             <div className="box">
               <div className="title">
                 <FontAwesomeIcon icon={faStickyNote} />
-                Tabule je prázdná
+                Sticky deska je prázdná
               </div>
               <div className="hint">
                 Klikni na <b>„Nová“</b> pro vytvoření lístečku. Ukládání probíhá do databáze (a zároveň se cacheuje do LocalStorage).
@@ -1935,7 +1967,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                   />
 
                   {!!selectedUser && (
-                    <div style={{ marginTop: 8, fontWeight: 900, color: 'rgba(15,23,42,0.90)' }}>
+                    <div style={{ marginTop: 8, fontWeight: 900, color: 'rgba(120,53,15,0.92)' }}>
                       Vybráno: {selectedUser.full_name || `${selectedUser.jmeno || ''} ${selectedUser.prijmeni || ''}` || `Uživatel #${selectedUser.id}`}
                     </div>
                   )}
@@ -1944,6 +1976,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                     <ShareCandidates>
                       {(employees || [])
                         .filter((u) => {
+                          if (Number(u?.aktivni) !== 1) return false;
                           const q = String(userSearch || '').toLowerCase();
                           const name = String(u.full_name || '').toLowerCase();
                           const mail = String(u.email || '').toLowerCase();
