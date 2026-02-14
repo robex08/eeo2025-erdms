@@ -3192,7 +3192,7 @@ const Layout = ({ children }) => {
           {canUseStickyNotes && (
             <MenuCornerLeft>
               <SmartTooltip
-                text={stickyNotesOpen ? 'Skrýt NOTES tabuli' : 'Otevřít NOTES tabuli'}
+                text={stickyNotesOpen ? 'Skrýt Sticky desku (Esc)' : 'Otevřít Sticky desku (Win/Cmd + N)'}
                 icon="info"
                 preferredPosition="bottom"
               >
@@ -3200,7 +3200,7 @@ const Layout = ({ children }) => {
                   type="button"
                   onClick={() => setStickyNotesOpen((v) => !v)}
                   title=""
-                  aria-label="Sticky NOTES"
+                  aria-label="Sticky deska"
                 >
                   <FontAwesomeIcon icon={faStickyNote} />
                 </MenuCornerButton>
