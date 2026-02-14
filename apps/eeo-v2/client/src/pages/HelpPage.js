@@ -9,6 +9,7 @@ import {
   faEye, 
   faBook,
   faLifeRing,
+  faInfoCircle,
   faQuestionCircle,
   faChevronRight,
   faPhone,
@@ -46,6 +47,27 @@ const slideInUp = keyframes`
     opacity: 1;
     transform: translateY(0);
   }
+`;
+
+const infoCtaColorPulse = keyframes`
+  0% {
+    color: #ffffff;
+    text-shadow: 0 0 0 rgba(250, 204, 21, 0);
+  }
+  50% {
+    color: #facc15; /* sytě žlutá */
+    text-shadow: 0 0 12px rgba(250, 204, 21, 0.65);
+  }
+  100% {
+    color: #ffffff;
+    text-shadow: 0 0 0 rgba(250, 204, 21, 0);
+  }
+`;
+
+const infoCtaFloat = keyframes`
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+  100% { transform: translateY(0); }
 `;
 
 // =============================================================================
@@ -91,25 +113,26 @@ const ProfileCard = styled.div`
 const ProfileHeader = styled.div`
   color: #ffffff;
   position: relative;
-`;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 2rem;
+  row-gap: 1rem;
 
-const HeaderTop = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 2rem;
-  position: relative;
-  z-index: 1;
-  gap: 2rem;
-  flex-wrap: wrap;
-  
   @media (max-width: 768px) {
+    display: flex;
     flex-direction: column;
   }
 `;
 
+const HeaderTop = styled.div`
+  /* Wrapper v JSX; layout řídí grid v ProfileHeader */
+  display: contents;
+`;
+
 const HeaderTitle = styled.div`
-  flex: 1;
+  grid-column: 1;
+  grid-row: 1;
 `;
 
 const PageTitle = styled.h1`
@@ -128,7 +151,80 @@ const PageSubtitle = styled.p`
   color: rgba(255, 255, 255, 0.9);
 `;
 
+const HeaderActions = styled.div`
+  grid-column: 1;
+  grid-row: 2;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+`;
+
+const InfoDialogButton = styled.button`
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: rgba(255, 255, 255, 0.55);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Wrapper pro synchronní pohyb ikony + textu */
+  .cta-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    will-change: transform;
+    animation: ${infoCtaFloat} 1.8s ease-in-out infinite;
+  }
+
+  /* Jemné zvýraznění CTA – barva/text-shadow (bez pohybu) */
+  .cta-label,
+  .cta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    animation: ${infoCtaColorPulse} 1.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cta-wrap,
+    .cta-label,
+    .cta-icon {
+      animation: none;
+    }
+  }
+`;
+
 const ContactBox = styled.div`
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -768,6 +864,53 @@ const HelpPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [manualToDelete, setManualToDelete] = useState(null);
 
+  // Otevřít informační dialog (stejný jako post-login modal) z nápovědy
+  const handleOpenInfoDialog = async () => {
+    try {
+      if (!token || !username) {
+        showToast?.('Nejste přihlášen(a) - nelze načíst obsah dialogu.', { type: 'error' });
+        return;
+      }
+
+      const { getGlobalSettingsForDisplay } = await import('../services/globalSettingsApi');
+      const globalSettings = await getGlobalSettingsForDisplay(token, username);
+
+      // Kompatibilita: někde je hodnota přímo, někde jako objekt {hodnota}
+      const getSettingValue = (key, defaultValue = null) => {
+        const setting = globalSettings?.[key];
+        if (setting && typeof setting === 'object' && 'hodnota' in setting) {
+          return setting.hodnota;
+        }
+        return (setting ?? defaultValue);
+      };
+
+      const title = getSettingValue('post_login_modal_title', 'Informace') || 'Informace';
+      const htmlContent = getSettingValue('post_login_modal_content', '') || '';
+
+      if (!String(htmlContent || '').trim()) {
+        showToast?.('Informační dialog nemá nastavený obsah.', { type: 'warning' });
+        return;
+      }
+
+      const modalConfig = {
+        // Důležité: App.js otevírá modal jen když enabled=true
+        enabled: true,
+        title,
+        htmlContent,
+        validFrom: getSettingValue('post_login_modal_valid_from', null) || null,
+        validTo: getSettingValue('post_login_modal_valid_to', null) || null,
+        modalGuid: getSettingValue('post_login_modal_guid', null) || null,
+        messageId: getSettingValue('post_login_modal_message_id', null) || null,
+        openedFrom: 'help'
+      };
+
+      window.dispatchEvent(new CustomEvent('show-post-login-modal', { detail: modalConfig }));
+    } catch (e) {
+      console.error('Chyba při otevírání info dialogu z nápovědy:', e);
+      showToast?.('Nepodařilo se načíst informační dialog.', { type: 'error' });
+    }
+  };
+
   // Načtení seznamu manuálů (jako samostatná funkce pro re-použití)
   const loadManuals = async () => {
     try {
@@ -1019,6 +1162,20 @@ const HelpPage = () => {
                 </ContactPerson>
               </ContactBox>
             </HeaderTop>
+
+            {/* Akce v hlavičce – dole pod horním řádkem */}
+            <HeaderActions>
+              <InfoDialogButton
+                type="button"
+                onClick={handleOpenInfoDialog}
+                title="Otevře informační dialog (stejný jako po přihlášení)"
+              >
+                <span className="cta-wrap">
+                  <span className="cta-icon"><FontAwesomeIcon icon={faInfoCircle} /></span>
+                  <span className="cta-label">Zobrazit informační dialog</span>
+                </span>
+              </InfoDialogButton>
+            </HeaderActions>
           </ProfileHeader>
         </ProfileCard>
 

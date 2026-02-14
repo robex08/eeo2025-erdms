@@ -1843,6 +1843,54 @@ function handle_notifications_event_types_list($input, $config, $queries) {
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             array(
+                'code' => 'INVOICE_UPDATED',
+                'nazev' => 'Faktura upravena',
+                'kategorie' => 'invoices',
+                'description' => 'Došlo k úpravě faktury (bez specifické změny stavu)',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            array(
+                'code' => 'INVOICE_SUBMITTED',
+                'nazev' => 'Faktura předána / odeslána ke kontrole',
+                'kategorie' => 'invoices',
+                'description' => 'Faktura byla předána do další fáze zpracování',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            array(
+                'code' => 'INVOICE_RETURNED',
+                'nazev' => 'Faktura vrácena k doplnění',
+                'kategorie' => 'invoices',
+                'description' => 'Faktura byla vrácena k doplnění nebo opravě',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            array(
+                'code' => 'INVOICE_REGISTRY_PUBLISHED',
+                'nazev' => 'Faktura uveřejněna v registru',
+                'kategorie' => 'invoices',
+                'description' => 'Faktura byla uveřejněna v registru (pokud se používá)',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            array(
+                'code' => 'INVOICE_MATERIAL_CHECK_REQUESTED',
+                'nazev' => 'Faktura předána ke kontrole věcné správnosti',
+                'kategorie' => 'invoices',
+                'description' => 'Faktura čeká na kontrolu věcné správnosti (předáno ke kontrole / předáno komu)',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO', 'EXCEPTIONAL')
+            ),
+            array(
+                'code' => 'INVOICE_MATERIAL_CHECK_APPROVED',
+                'nazev' => 'Věcná správnost potvrzena',
+                'kategorie' => 'invoices',
+                'description' => 'Věcná správnost faktury byla potvrzena',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('INFO', 'APPROVAL')
+            ),
+            array(
                 'code' => 'INVOICE_DUE_SOON',
                 'nazev' => 'Faktura brzy po splatnosti',
                 'kategorie' => 'invoices',

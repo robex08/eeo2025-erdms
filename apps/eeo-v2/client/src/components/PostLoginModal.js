@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faInfoCircle, faEyeSlash, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faInfoCircle, faEyeSlash, faCheck, faChevronDown } from '@fortawesome/free-solid-svg-icons';
 
 /**
  * PostLoginModal - Modal dialog zobrazený po přihlášení
@@ -336,6 +336,17 @@ const Button = styled.button`
   &:active {
     transform: translateY(0);
   }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  &:disabled:hover {
+    transform: none;
+  }
 `;
 
 const DontShowAgainButton = styled(Button)`
@@ -348,6 +359,12 @@ const DontShowAgainButton = styled(Button)`
     background: #f9fafb;
     color: #4b5563;
   }
+
+  &:disabled {
+    background: #ffffff;
+    border-color: #e5e7eb;
+    color: #9ca3af;
+  }
 `;
 
 const OkButton = styled(Button)`
@@ -359,6 +376,12 @@ const OkButton = styled(Button)`
     background: #2563eb;
     border-color: #2563eb;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  }
+
+  &:disabled {
+    background: #93c5fd;
+    border-color: #93c5fd;
+    color: #ffffff;
   }
 `;
 
@@ -385,6 +408,74 @@ const PostLoginModal = ({
   validTo = null,
   modalGuid = null
 }) => {
+
+  const contentRef = useRef(null);
+  const [hasReachedEnd, setHasReachedEnd] = useState(false);
+
+  // Tolerance pro "doscrollováno na konec" (px)
+  const scrollBottomThreshold = 6;
+
+  const evaluateReachedEnd = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    // Pokud obsah není scrollovatelný, považovat za dočtené
+    if (el.scrollHeight <= el.clientHeight + 1) {
+      setHasReachedEnd(true);
+      return;
+    }
+
+    const isAtBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - scrollBottomThreshold);
+    if (isAtBottom) {
+      setHasReachedEnd(true);
+    }
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    evaluateReachedEnd();
+  }, [evaluateReachedEnd]);
+
+  // Reset stavu při otevření (každé nové zobrazení)
+  useEffect(() => {
+    if (!isOpen) return;
+    setHasReachedEnd(false);
+
+    // Po renderu zkontrolovat, jestli je potřeba scroll
+    const t = setTimeout(() => {
+      evaluateReachedEnd();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [isOpen, htmlContent, evaluateReachedEnd]);
+
+  const scrollOnePageDown = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    const page = Math.max(80, Math.floor(el.clientHeight * 0.92));
+    const nextTop = Math.min(el.scrollTop + page, el.scrollHeight - el.clientHeight);
+    el.scrollTo({ top: nextTop, behavior: 'smooth' });
+
+    // Po scrollu znovu vyhodnotit
+    setTimeout(() => {
+      evaluateReachedEnd();
+    }, 250);
+  }, [evaluateReachedEnd]);
+
+  const handlePrimaryAction = useCallback(() => {
+    if (hasReachedEnd) {
+      onClose?.();
+    } else {
+      scrollOnePageDown();
+    }
+  }, [hasReachedEnd, onClose, scrollOnePageDown]);
+
+  const primaryButtonLabel = useMemo(() => (
+    hasReachedEnd ? 'OK' : 'Číst dál'
+  ), [hasReachedEnd]);
+
+  const primaryButtonIcon = useMemo(() => (
+    hasReachedEnd ? faCheck : faChevronDown
+  ), [hasReachedEnd]);
   
   // Modal je resistentní - escape klávesa neuzavírá modal
   // Uživatel musí kliknout na tlačítko OK nebo "Příště nezobrazovat"
@@ -436,7 +527,7 @@ const PostLoginModal = ({
           <Title>{title}</Title>
         </Header>
         
-        <Content>
+        <Content ref={contentRef} onScroll={handleScroll}>
           {(validFrom || validTo) && (
             <ValidityInfo>
               <FontAwesomeIcon icon={faInfoCircle} />
@@ -460,13 +551,13 @@ const PostLoginModal = ({
         </Content>
         
         <Actions>
-          <DontShowAgainButton onClick={onDontShowAgain}>
+          <DontShowAgainButton onClick={onDontShowAgain} disabled={!hasReachedEnd}>
             <FontAwesomeIcon icon={faEyeSlash} />
             Příště nezobrazovat
           </DontShowAgainButton>
-          <OkButton onClick={onClose}>
-            <FontAwesomeIcon icon={faCheck} />
-            OK
+          <OkButton onClick={handlePrimaryAction}>
+            <FontAwesomeIcon icon={primaryButtonIcon} />
+            {primaryButtonLabel}
           </OkButton>
         </Actions>
       </Dialog>
