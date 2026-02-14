@@ -42,9 +42,9 @@ const OverlayHeader = styled.div`
   left: 0;
   right: 0;
   height: 64px;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   padding: 0 16px;
   z-index: 3;
   pointer-events: none;
@@ -56,6 +56,13 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 10px;
   pointer-events: auto;
+  justify-self: start;
+`;
+
+const HeaderCenter = styled.div`
+  pointer-events: auto;
+  justify-self: center;
+  min-width: 0;
 `;
 
 const HeaderRight = styled.div`
@@ -63,6 +70,7 @@ const HeaderRight = styled.div`
   align-items: center;
   gap: 10px;
   pointer-events: auto;
+  justify-self: end;
 `;
 
 const HeaderPill = styled.div`
@@ -107,8 +115,8 @@ const HeaderSearchInput = styled.input`
   width: min(320px, 46vw);
 
   &::placeholder {
-    color: rgba(30, 41, 59, 0.55);
-    font-weight: 800;
+    color: rgba(30, 41, 59, 0.42);
+    font-weight: 600;
   }
 `;
 
@@ -531,6 +539,41 @@ const NoteCard = styled.div`
   will-change: transform;
   /* Pozor: pin je částečně mimo kartu (negativní top) → nesmí se ořezávat */
   overflow: visible;
+
+  /* Pulsující "glow" při hledání (jen pár sekund) */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 12px;
+    pointer-events: none;
+    opacity: ${props => props.$searchMatch ? 1 : 0};
+    transition: opacity 0.16s ease;
+
+    border: 2px solid rgba(245, 158, 11, 0.65);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.22), 0 0 22px rgba(245, 158, 11, 0.18);
+
+    animation: ${props => (props.$searchMatch && props.$searchPulse) ? 'stickySearchPulse 1.15s ease-in-out 0s 3' : 'none'};
+  }
+
+  @keyframes stickySearchPulse {
+    0% {
+      opacity: 0.50;
+      filter: saturate(1.00);
+    }
+    50% {
+      opacity: 1.00;
+      filter: saturate(1.18);
+    }
+    100% {
+      opacity: 0.55;
+      filter: saturate(1.00);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &::after { animation: none; }
+  }
 `;
 
 const NotePin = styled.div`
@@ -737,6 +780,32 @@ const NoteFooter = styled.div`
   user-select: none;
 `;
 
+const NoteFooterLeft = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+`;
+
+const NoteSharedIndicator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 8px;
+  color: rgba(30, 64, 175, 0.75);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(30, 64, 175, 0.22);
+  cursor: default;
+  flex: 0 0 18px;
+
+  .svg-inline--fa {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
 const NoteFooterRight = styled.div`
   pointer-events: auto; /* allow resize handle */
   display: flex;
@@ -933,15 +1002,147 @@ function getPlainTextFromHtml(html) {
   }
 }
 
+function foldCzForSearch(s) {
+  try {
+    // NFD rozloží diakritiku do combining marks; ty odstraníme.
+    // Výsledek je case-insensitive a bez diakritiky.
+    return String(s || '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}+/gu, '')
+      .toLowerCase();
+  } catch {
+    // fallback (bez unicode property escapes)
+    return String(s || '')
+      .toLowerCase();
+  }
+}
+
+function findFoldedMatchRanges(originalText, query) {
+  try {
+    const qRaw = String(query || '').trim();
+    if (!qRaw) return [];
+
+    const foldedQuery = foldCzForSearch(qRaw);
+    if (!foldedQuery) return [];
+
+    const text = String(originalText || '');
+    if (!text) return [];
+
+    // postav "folded" string a mapování foldedIndex -> originalIndex
+    let folded = '';
+    const map = [];
+    for (let oi = 0; oi < text.length; oi += 1) {
+      const ch = text[oi];
+      const f = foldCzForSearch(ch);
+      if (!f) continue;
+      for (let k = 0; k < f.length; k += 1) {
+        folded += f[k];
+        map.push(oi);
+      }
+    }
+
+    if (!folded) return [];
+
+    const ranges = [];
+    let pos = 0;
+    while (pos < folded.length) {
+      const idx = folded.indexOf(foldedQuery, pos);
+      if (idx === -1) break;
+      const endFold = idx + foldedQuery.length;
+      const startOrig = map[idx];
+      const endOrig = (map[endFold - 1] ?? startOrig) + 1;
+
+      // ochrana: jen validní rozsahy
+      if (Number.isFinite(startOrig) && Number.isFinite(endOrig) && endOrig > startOrig) {
+        ranges.push([startOrig, endOrig]);
+      }
+      pos = endFold;
+    }
+
+    // merge překryvy / adjacency
+    if (ranges.length <= 1) return ranges;
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged = [ranges[0]];
+    for (let i = 1; i < ranges.length; i += 1) {
+      const last = merged[merged.length - 1];
+      const cur = ranges[i];
+      if (cur[0] <= last[1]) {
+        last[1] = Math.max(last[1], cur[1]);
+      } else {
+        merged.push(cur);
+      }
+    }
+    return merged;
+  } catch {
+    return [];
+  }
+}
+
+function applySearchHighlightHtml(html, query) {
+  try {
+    const qRaw = String(query || '').trim();
+    if (!qRaw) return String(html || '');
+
+    const doc = new DOMParser().parseFromString(`<div>${String(html || '')}</div>`, 'text/html');
+    const root = doc.body?.firstChild || doc.body;
+    if (!root) return String(html || '');
+
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let node = walker.nextNode();
+    while (node) {
+      const val = String(node.nodeValue || '');
+      if (val && foldCzForSearch(val).includes(foldCzForSearch(qRaw))) {
+        textNodes.push(node);
+      }
+      node = walker.nextNode();
+    }
+
+    for (const textNode of textNodes) {
+      const text = String(textNode.nodeValue || '');
+      const ranges = findFoldedMatchRanges(text, qRaw);
+      if (!ranges.length) continue;
+
+      const frag = doc.createDocumentFragment();
+      let cursor = 0;
+      for (const [a, b] of ranges) {
+        if (a > cursor) frag.appendChild(doc.createTextNode(text.slice(cursor, a)));
+
+        const span = doc.createElement('span');
+        span.textContent = text.slice(a, b);
+        // Podbarvení bez CSS tříd/atributů (sanitizace by je stejně odstranila)
+        span.style.background = 'rgba(254, 243, 199, 0.92)';
+        span.style.boxShadow = '0 0 0 1px rgba(180, 83, 9, 0.14)';
+        span.style.borderRadius = '4px';
+        span.style.padding = '0 1px';
+        span.style.margin = '0 -1px';
+        frag.appendChild(span);
+
+        cursor = b;
+      }
+      if (cursor < text.length) frag.appendChild(doc.createTextNode(text.slice(cursor)));
+
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
+
+    return root.innerHTML;
+  } catch {
+    return String(html || '');
+  }
+}
+
 export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth }) {
   const resolvedStorageKey = storageKey || 'eeo_v2_sticky_notes_overlay_v1';
   const prefsKey = `${resolvedStorageKey}__prefs`;
   const [notes, setNotes] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchPulseOn, setSearchPulseOn] = useState(false);
   const [dbHydratedOnce, setDbHydratedOnce] = useState(false);
   const [dbLastError, setDbLastError] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [focusedId, setFocusedId] = useState(null);
+  const focusedIdRef = useRef(focusedId);
+  const searchQueryRef = useRef(searchQuery);
   const [resizingId, setResizingId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null });
   const [confirmClearAll, setConfirmClearAll] = useState(false);
@@ -963,10 +1164,33 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
   }, [apiAuth]);
 
   useEffect(() => {
+    focusedIdRef.current = focusedId;
+  }, [focusedId]);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
     if (!open) {
       setSearchQuery('');
+      prefetchedShareIdsRef.current = new Set();
+      shareLookupsLoadedRef.current = false;
     }
   }, [open]);
+
+  // Po změně hledání krátce "pulzni" zvýraznění nalezených poznámek
+  useEffect(() => {
+    const q = String(searchQuery || '').trim();
+    if (!q) {
+      setSearchPulseOn(false);
+      return;
+    }
+
+    setSearchPulseOn(true);
+    const t = window.setTimeout(() => setSearchPulseOn(false), 3600);
+    return () => window.clearTimeout(t);
+  }, [searchQuery]);
 
   // Eye-friendly backdrop settings (persisted)
   const [blurEnabled, setBlurEnabled] = useState(true);
@@ -983,6 +1207,140 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
   const [userSearch, setUserSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [shareExisting, setShareExisting] = useState([]);
+
+  // cache sdílení per poznámka (dbId) – pro ikonu/tooltip u patičky
+  const [sharesByStickyId, setSharesByStickyId] = useState({});
+  const sharesByStickyIdRef = useRef(sharesByStickyId);
+  const prefetchedShareIdsRef = useRef(new Set());
+  const shareLookupsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    sharesByStickyIdRef.current = sharesByStickyId;
+  }, [sharesByStickyId]);
+
+  const ensureShareLookupsLoaded = useCallback(async () => {
+    try {
+      if (shareLookupsLoadedRef.current) return;
+      const auth = apiAuthRef.current;
+      if (!auth?.token || !auth?.username) return;
+
+      const [usekyRes, empRes] = await Promise.all([
+        fetchUseky({ token: auth.token, username: auth.username }).catch(() => []),
+        fetchEmployees({ token: auth.token, username: auth.username }).catch(() => []),
+      ]);
+
+      const usekyArr = Array.isArray(usekyRes) ? usekyRes : (usekyRes?.data || []);
+      setUseky(Array.isArray(usekyArr) ? usekyArr : []);
+
+      const empArr = Array.isArray(empRes) ? empRes : [];
+      setEmployees(empArr.filter((u) => Number(u?.aktivni) === 1));
+
+      shareLookupsLoadedRef.current = true;
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const rightsMaskToLabel = useCallback((mask) => {
+    const m = Number(mask || 0);
+    const parts = [];
+    if ((m & 1) === 1) parts.push('čtení');
+    if ((m & 2) === 2) parts.push('zápis');
+    if ((m & 4) === 4) parts.push('komentáře');
+    return parts.length ? parts.join(', ') : '—';
+  }, []);
+
+  const formatShareTargetsTooltip = useCallback((shares) => {
+    try {
+      const normalized = Array.isArray(shares) ? shares : [];
+      if (!normalized.length) return '';
+
+      const lines = ['Sdíleno:'];
+      for (const s of normalized) {
+        const t = String(s?.target_type || '').toUpperCase();
+        const tid = s?.target_id != null ? Number(s.target_id) : null;
+        const prava = rightsMaskToLabel(s?.prava_mask);
+
+        if (t === 'VSICHNI') {
+          lines.push(`• Všem (${prava})`);
+          continue;
+        }
+        if (t === 'USEK') {
+          const u = (useky || []).find((x) => Number(x?.id) === tid);
+          const label = u
+            ? `${u.usek_zkr ? `${u.usek_zkr} — ` : ''}${u.usek_nazev || `Úsek #${u.id}`}`
+            : `Úsek #${tid || '?'}`;
+          lines.push(`• Úsek: ${label} (${prava})`);
+          continue;
+        }
+        if (t === 'UZIVATEL') {
+          const emp = (employees || []).find((x) => Number(x?.id) === tid);
+          const label = emp
+            ? `${emp.full_name || `${emp.jmeno || ''} ${emp.prijmeni || ''}`.trim() || `Uživatel #${emp.id}`}${emp.email ? ` <${emp.email}>` : ''}`
+            : `Uživatel #${tid || '?'}`;
+          lines.push(`• Uživatel: ${label} (${prava})`);
+          continue;
+        }
+
+        lines.push(`• ${t || 'Cíl'}: ${tid != null ? tid : '?'} (${prava})`);
+      }
+
+      return lines.join('\n');
+    } catch {
+      return '';
+    }
+  }, [employees, rightsMaskToLabel, useky]);
+
+  const ensureSharesLoadedForStickyDbId = useCallback(async (stickyDbId) => {
+    const dbIdNum = Number(stickyDbId);
+    if (!Number.isFinite(dbIdNum) || dbIdNum <= 0) return;
+
+    const key = String(dbIdNum);
+    const current = sharesByStickyIdRef.current?.[key];
+    if (current?.loading || current?.loaded) return;
+
+    const auth = apiAuthRef.current;
+    if (!auth?.token || !auth?.username) return;
+
+    setSharesByStickyId((prev) => ({
+      ...prev,
+      [key]: { loading: true, loaded: false, entries: [], error: null },
+    }));
+
+    try {
+      const res = await listStickyShares({ token: auth.token, username: auth.username, sticky_id: dbIdNum });
+      const arr = Array.isArray(res) ? res : [];
+      setSharesByStickyId((prev) => ({
+        ...prev,
+        [key]: { loading: false, loaded: true, entries: arr, error: null },
+      }));
+    } catch (e) {
+      setSharesByStickyId((prev) => ({
+        ...prev,
+        [key]: { loading: false, loaded: true, entries: [], error: e?.message || 'Načtení sdílení selhalo' },
+      }));
+    }
+  }, []);
+
+  // Prefetch sdílení pro vlastní poznámky (aby se ikona zobrazila automaticky)
+  useEffect(() => {
+    if (!open) return;
+    if (!dbHydratedOnce) return;
+    if (!apiAuth?.token || !apiAuth?.username || !apiAuth?.userId) return;
+
+    ensureShareLookupsLoaded();
+
+    const owned = (notesRef.current || [])
+      .filter((n) => n?.dbId && n?.ownerUserId != null && n.ownerUserId === apiAuth.userId)
+      .map((n) => Number(n.dbId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    for (const id of owned.slice(0, 80)) {
+      if (prefetchedShareIdsRef.current.has(id)) continue;
+      prefetchedShareIdsRef.current.add(id);
+      ensureSharesLoadedForStickyDbId(id);
+    }
+  }, [open, dbHydratedOnce, apiAuth, ensureShareLookupsLoaded, ensureSharesLoadedForStickyDbId]);
 
   useEffect(() => {
     notesRef.current = notes;
@@ -1237,8 +1595,20 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                       for (const it of domSync) {
                         const el = editorRefs.current?.get?.(it.noteId);
                         if (!el) continue;
-                        if (typeof el.innerHTML === 'string' && el.innerHTML !== it.html) {
-                          el.innerHTML = it.html;
+                        try {
+                          const isFocusedNow = focusedIdRef.current === it.noteId;
+                          const q = String(searchQueryRef.current || '').trim();
+                          const useHighlight = Boolean(!isFocusedNow && q);
+                          const nextHtml = useHighlight
+                            ? applySearchHighlightHtml(it.html, q)
+                            : it.html;
+                          if (typeof el.innerHTML === 'string' && el.innerHTML !== nextHtml) {
+                            el.innerHTML = nextHtml;
+                          }
+                        } catch {
+                          if (typeof el.innerHTML === 'string' && el.innerHTML !== it.html) {
+                            el.innerHTML = it.html;
+                          }
                         }
                       }
                     } catch {}
@@ -1328,6 +1698,15 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
 
       const normalized = Array.isArray(sharesRes) ? sharesRes : [];
       setShareExisting(normalized);
+      try {
+        const key = String(Number(note.dbId));
+        if (key && key !== 'NaN') {
+          setSharesByStickyId((prev) => ({
+            ...prev,
+            [key]: { loading: false, loaded: true, entries: normalized, error: null },
+          }));
+        }
+      } catch {}
 
       const hasAll = normalized.some((s) => String(s?.target_type || '').toUpperCase() === 'VSICHNI');
       const usekEntry = normalized.find((s) => String(s?.target_type || '').toUpperCase() === 'USEK');
@@ -1399,6 +1778,15 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
 
       if (shareMode === 'PRIVATE') {
         setShareExisting([]);
+        try {
+          const key = String(Number(note.dbId));
+          if (key && key !== 'NaN') {
+            setSharesByStickyId((prev) => ({
+              ...prev,
+              [key]: { loading: false, loaded: true, entries: [], error: null },
+            }));
+          }
+        } catch {}
         return;
       }
 
@@ -1442,7 +1830,17 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
       }
 
       const shares = await listStickyShares({ token: apiAuth.token, username: apiAuth.username, sticky_id: note.dbId });
-      setShareExisting(Array.isArray(shares) ? shares : []);
+      const arr = Array.isArray(shares) ? shares : [];
+      setShareExisting(arr);
+      try {
+        const key = String(Number(note.dbId));
+        if (key && key !== 'NaN') {
+          setSharesByStickyId((prev) => ({
+            ...prev,
+            [key]: { loading: false, loaded: true, entries: arr, error: null },
+          }));
+        }
+      } catch {}
     } catch (e) {
       setDbLastError(e?.message || 'Uložení sdílení selhalo');
     } finally {
@@ -1839,6 +2237,18 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     return document.body;
   }, []);
 
+  const searchMatches = useMemo(() => {
+    const q = String(searchQuery || '').trim();
+    const qFold = foldCzForSearch(q);
+    if (!qFold) return { ids: new Set(), count: 0 };
+    const ids = new Set();
+    for (const n of (notes || [])) {
+      const text = foldCzForSearch(getPlainTextFromHtml(n?.content || ''));
+      if (text.includes(qFold)) ids.add(n.id);
+    }
+    return { ids, count: ids.size };
+  }, [notes, searchQuery]);
+
   if (!open || !portalNode) return null;
 
   const formatCreatedAt = (ts) => {
@@ -1856,17 +2266,6 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     ? notes.find((n) => n.id === confirmDelete.id)
     : null;
   const notesCount = notes?.length || 0;
-
-  const searchMatches = useMemo(() => {
-    const q = String(searchQuery || '').trim().toLowerCase();
-    if (!q) return { ids: new Set(), count: 0 };
-    const ids = new Set();
-    for (const n of (notes || [])) {
-      const text = getPlainTextFromHtml(n?.content || '').toLowerCase();
-      if (text.includes(q)) ids.add(n.id);
-    }
-    return { ids, count: ids.size };
-  }, [notes, searchQuery]);
 
   return createPortal(
     <OverlayRoot role="dialog" aria-label="Sticky deska" aria-modal="true">
@@ -1896,7 +2295,9 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           >
             <FontAwesomeIcon icon={faTrash} /> Smazat vše
           </ClearAllBtn>
+        </HeaderLeft>
 
+        <HeaderCenter>
           <HeaderSearch>
             <FontAwesomeIcon className="icon" icon={faSearch} />
             <HeaderSearchInput
@@ -1911,7 +2312,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
               </HeaderSearchClear>
             )}
           </HeaderSearch>
-        </HeaderLeft>
+        </HeaderCenter>
 
         <HeaderRight>
           {!!String(searchQuery || '').trim() && (
@@ -1968,6 +2369,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
             <NoteCard
               key={note.id}
               $searchMatch={isMatch}
+              $searchPulse={searchPulseOn}
               onPointerDown={(e) => onPointerDown(e, note.id)}
               style={{
                 left: note.x,
@@ -2096,7 +2498,11 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                     // initial sync (u focused poznámky DOM nepřepisuj)
                     if (focusedId !== note.id) {
                       const desired = sanitizeNoteHtml(note.content || '');
-                      if (el.innerHTML !== desired) el.innerHTML = desired;
+                      const q = String(searchQuery || '').trim();
+                      const desiredDisplay = (q && isMatch)
+                        ? applySearchHighlightHtml(desired, q)
+                        : desired;
+                      if (el.innerHTML !== desiredDisplay) el.innerHTML = desiredDisplay;
                     }
                   } else {
                     editorRefs.current.delete(note.id);
@@ -2122,7 +2528,13 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                   try {
                     const html = sanitizeNoteHtml(e.currentTarget.innerHTML);
                     updateContent(note.id, html);
-                    e.currentTarget.innerHTML = html;
+                    // Po blur (konec editace) vrať do DOM zvýraznění hledání (pokud je aktivní)
+                    const q = String(searchQuery || '').trim();
+                    if (q && searchMatches?.ids?.has?.(note.id)) {
+                      e.currentTarget.innerHTML = applySearchHighlightHtml(html, q);
+                    } else {
+                      e.currentTarget.innerHTML = html;
+                    }
                   } catch {}
                   setFocusedId((prev) => (prev === note.id ? null : prev));
                 }}
@@ -2144,7 +2556,43 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                 aria-label="Poznámka"
               />
               <NoteFooter>
-                <span>{formatCreatedAt(note.createdAt)}</span>
+                <NoteFooterLeft>
+                  <span>{formatCreatedAt(note.createdAt)}</span>
+                  {(() => {
+                    const isAuthed = Boolean(apiAuth?.userId);
+                    const isOwner = isAuthed && (note?.ownerUserId != null) && (note.ownerUserId === apiAuth.userId);
+                    const isSharedToMe = isAuthed && (note?.ownerUserId != null) && (note.ownerUserId !== apiAuth.userId);
+
+                    const dbIdNum = note?.dbId != null ? Number(note.dbId) : null;
+                    const key = (dbIdNum != null && Number.isFinite(dbIdNum)) ? String(dbIdNum) : null;
+                    const shareState = key ? sharesByStickyId?.[key] : null;
+                    const sharedOut = Boolean(isOwner && shareState?.loaded && Array.isArray(shareState?.entries) && shareState.entries.length > 0);
+
+                    if (!isSharedToMe && !sharedOut) return null;
+
+                    let title = 'Sdílená poznámka';
+                    if (isSharedToMe) {
+                      title = `Sdíleno vám\nPráva: ${rightsMaskToLabel(note?.pravaMask)}`;
+                    } else if (sharedOut) {
+                      title = formatShareTargetsTooltip(shareState?.entries);
+                    }
+
+                    return (
+                      <NoteSharedIndicator
+                        title={title}
+                        onMouseEnter={() => {
+                          // best-effort: když je poznámka vlastní a ještě nemáme data, dočti
+                          if (isOwner && dbIdNum != null && Number.isFinite(dbIdNum)) {
+                            ensureShareLookupsLoaded();
+                            ensureSharesLoadedForStickyDbId(dbIdNum);
+                          }
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faShareNodes} />
+                      </NoteSharedIndicator>
+                    );
+                  })()}
+                </NoteFooterLeft>
                 <NoteFooterRight>
                   <ResizeHandle
                     data-resize-handle
