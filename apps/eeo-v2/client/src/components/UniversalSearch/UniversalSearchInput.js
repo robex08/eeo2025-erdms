@@ -226,12 +226,12 @@ const UniversalSearchInput = () => {
   }, [user_id]);
   
   /**
-   * Globální keyboard shortcut: Win+G nebo Cmd+G = focus do search
+   * Globální keyboard shortcut: Win+U nebo Cmd+U = focus do search
    */
   useEffect(() => {
     const handleGlobalKeydown = (e) => {
-      // Win+G (Windows/Linux) nebo Cmd+G (Mac) - POUZE metaKey
-      if (e.metaKey && e.key.toLowerCase() === 'g') {
+      // Win+U (Windows/Linux) nebo Cmd+U (Mac) - POUZE metaKey
+      if (e.metaKey && e.key.toLowerCase() === 'u') {
         e.preventDefault();
         if (inputRef.current) {
           inputRef.current.focus();
@@ -540,7 +540,7 @@ const UniversalSearchInput = () => {
         
         {/* Shortcut hint - zobrazit pouze když není focus a není text */}
         {!inputFocused && !query && (
-          <ShortcutHint>Win+G</ShortcutHint>
+          <ShortcutHint>Win+U</ShortcutHint>
         )}
 
         <RightIcons>
