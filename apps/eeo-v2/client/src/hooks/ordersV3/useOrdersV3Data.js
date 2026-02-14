@@ -60,9 +60,13 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     // ✅ forceRefresh: manuální refresh z DB má obejít cache i deduplikaci
     const forceRefresh = Boolean(params?.forceRefresh);
 
+    // ✅ silent: background refresh nesmí rušit UI (žádný progress/loader/error panel)
+    const silent = Boolean(params?.silent);
+
     // Nevkládat do signature ani neposílat do API
     const paramsForRequest = { ...(params || {}) };
     delete paramsForRequest.forceRefresh;
+    delete paramsForRequest.silent;
 
     // Create request signature for deduplication (bez interních flagů)
     const requestSignature = JSON.stringify(paramsForRequest);
@@ -101,9 +105,11 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
     }
     abortControllerRef.current = new AbortController();
 
-    setLoading(true);
-    setError(null);
-    showProgress?.();
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      showProgress?.();
+    }
     
     // Store request info
     lastRequestParamsRef.current = requestSignature;
@@ -153,6 +159,7 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
             status: REQUEST_STATUS.IDLE
           };
         }
+        // V silent režimu nechceme rušit UI, ale log je užitečný pro debugging
         console.error('❌ API Error:', err);
         
         const errorResult = {
@@ -161,7 +168,7 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
           status: REQUEST_STATUS.ERROR
         };
         
-        if (myRequestId === requestIdRef.current) {
+        if (!silent && myRequestId === requestIdRef.current) {
           setError(err.message || 'Chyba při načítání dat');
         }
         // Keep previous data on error
@@ -171,8 +178,10 @@ export function useOrdersV3Data(apiFunction, showProgress, hideProgress) {
       } finally {
         // Loading/progress a request refs uklízej jen pokud je to stále nejnovější request
         if (myRequestId === requestIdRef.current) {
-          setLoading(false);
-          hideProgress?.();
+          if (!silent) {
+            setLoading(false);
+            hideProgress?.();
+          }
           currentRequestRef.current = null;
           lastRequestParamsRef.current = null;
           abortControllerRef.current = null;

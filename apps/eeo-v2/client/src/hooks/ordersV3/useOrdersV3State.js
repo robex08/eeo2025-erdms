@@ -76,14 +76,26 @@ export function useOrdersV3State(userId) {
         'itemsPerPage', 'selectedPeriod', 'columnFilters', 'dashboardFilters',
         'expandedRows', 'columnVisibility', 'columnOrder', 'columnSizing'
       ];
+
+      // Boolean keys jsou v localStorage uloženy jako stringy "true"/"false"
+      // a MUSÍ se zpět převést na boolean, jinak je např. "false" truthy.
+      const booleanKeys = new Set([
+        'showDashboard',
+        'showFilters',
+        'showRowColoring',
+      ]);
       
       const localStoragePrefs = {};
       keys.forEach(key => {
         const value = localStorage.getItem(`${STORAGE_PREFIX}_${key}_${userId}`);
         if (value !== null) {
-          const parsedValue = key.includes('Filters') || key.includes('expanded') || key.includes('column') 
-            ? JSON.parse(value) 
-            : (key === 'itemsPerPage' ? parseInt(value, 10) : value);
+          const parsedValue = key.includes('Filters') || key.includes('expanded') || key.includes('column')
+            ? JSON.parse(value)
+            : (key === 'itemsPerPage'
+              ? parseInt(value, 10)
+              : (booleanKeys.has(key)
+                ? (String(value).toLowerCase() === 'true')
+                : value));
           localStoragePrefs[key] = parsedValue;
         }
       });

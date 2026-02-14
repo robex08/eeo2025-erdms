@@ -651,12 +651,69 @@ function App() {
       return;
     }
 
-    // 🚫 CRITICAL: Zamezení infinite loop - registrovat pouze jednou
+    const bgTasksInstance = bgTasksRef.current;
+
+    // 🚫 CRITICAL: Zamezení infinite loop
+    // Původně se tasky registrovaly pouze jednou. To ale znamená, že v dlouhé session
+    // (bez logout/login) se nově přidaný task nemusí zaregistrovat.
+    // Řešení: když už jsou tasky registrované, ověř, že existuje i nový task a případně ho doplň.
     if (tasksRegisteredRef.current) {
+      try {
+        const existing = bgTasksInstance?.service?.getTasksInfo?.() || [];
+        const hasOrdersV3 = existing.some(t => t?.name === 'autoRefreshOrdersV3');
+        if (!hasOrdersV3) {
+          const tasks = createStandardTasks({
+            onOrdersRefreshed: (ordersData) => {
+              const ctx = bgTasksContextRef.current;
+              if (ctx?.triggerOrdersRefresh) {
+                ctx.triggerOrdersRefresh(ordersData);
+              }
+            },
+            onOrdersV3AutoRefresh: async () => {
+              const ctx = bgTasksContextRef.current;
+              if (ctx?.triggerOrdersV3Refresh) {
+                return await ctx.triggerOrdersV3Refresh();
+              }
+              return undefined;
+            },
+            getCurrentFilters: () => {
+              const ctx = bgTasksContextRef.current;
+              if (ctx?.getCurrentFilters) {
+                return ctx.getCurrentFilters();
+              }
+              return {};
+            },
+            onUnreadCountChange: (count, badgeColor) => {
+              const ctx = bgTasksContextRef.current;
+              if (ctx?.handleUnreadCountChange) {
+                ctx.handleUnreadCountChange(count, badgeColor);
+              }
+            },
+            onNewNotifications: (notifications, unreadCount) => {
+              const ctx = bgTasksContextRef.current;
+              if (ctx?.handleNewNotifications) {
+                ctx.handleNewNotifications(notifications, unreadCount);
+              }
+            },
+            onExchangeRatesUpdated: (rates) => {
+              if (exchangeRatesContext?.updateRates) {
+                exchangeRatesContext.updateRates(rates);
+              }
+            }
+          });
+
+          // Zaregistruj pouze chybějící tasky (BackgroundTaskService deduplikuje podle jména)
+          tasks.forEach(taskConfig => {
+            if (taskConfig?.name === 'autoRefreshOrdersV3') {
+              bgTasksInstance.register(taskConfig);
+            }
+          });
+        }
+      } catch (_) {
+        // Tichá ochrana
+      }
       return;
     }
-
-    const bgTasksInstance = bgTasksRef.current;
 
     // Vytvoření standardních tasků s callbacky
     const tasks = createStandardTasks({
@@ -666,6 +723,15 @@ function App() {
         if (ctx?.triggerOrdersRefresh) {
           ctx.triggerOrdersRefresh(ordersData);
         }
+      },
+
+      // Callback pro Orders V3 auto-refresh (tichý refresh v komponentě)
+      onOrdersV3AutoRefresh: async () => {
+        const ctx = bgTasksContextRef.current;
+        if (ctx?.triggerOrdersV3Refresh) {
+          return await ctx.triggerOrdersV3Refresh();
+        }
+        return undefined;
       },
 
       // Callback pro získání aktuálních filtrů (ROK, OBDOBÍ, ARCHIV)

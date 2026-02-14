@@ -991,13 +991,14 @@ const OrderCommentsTooltip = ({
     try {
       await onAddComment(newCommentText.trim());
       setNewCommentText('');
-      onLoadComments(); // ✅ Reload comments po přidání
+      // ✅ TICHÉ: Nepřenačítat komentáře znovu.
+      // Parent (OrdersTableV3) už vloží nový komentář do lokálního seznamu.
     } catch (err) {
       console.error('Chyba při přidávání komentáře:', err);
     } finally {
       setIsSubmitting(false);
     }
-  }, [newCommentText, onAddComment, onLoadComments]);
+  }, [newCommentText, onAddComment]);
   
   // Handler pro reply
   const handleSubmitReply = useCallback(async () => {
@@ -1008,13 +1009,13 @@ const OrderCommentsTooltip = ({
       await onAddComment(replyText.trim(), replyToComment.id);
       setReplyText('');
       setReplyToComment(null);
-      onLoadComments(); // Reload comments
+      // ✅ TICHÉ: Reload (pokud je potřeba kvůli parent_comment_id) řeší parent handler.
     } catch (err) {
       console.error('Chyba při přidávání odpovědi:', err);
     } finally {
       setIsSubmitting(false);
     }
-  }, [replyText, replyToComment, onAddComment, onLoadComments]);
+  }, [replyText, replyToComment, onAddComment]);
   
   // Handler pro zobrazení delete confirm
   const handleDeleteClick = useCallback((commentId, event) => {
@@ -1249,12 +1250,13 @@ const OrderCommentsTooltip = ({
           </TooltipTitle>
           <HeaderButtons>
             <FullscreenButton 
+              type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
               title={isFullscreen ? 'Zmenšit' : 'Zvětšit na celé okno'}
             >
               <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
             </FullscreenButton>
-            <CloseButton onClick={onClose}>
+            <CloseButton type="button" onClick={onClose}>
               <FontAwesomeIcon icon={faTimes} />
             </CloseButton>
           </HeaderButtons>
@@ -1308,6 +1310,7 @@ const OrderCommentsTooltip = ({
                         {isOwn && (
                           <>
                             <EditIconButton
+                              type="button"
                               onClick={() => handleStartEdit(comment)}
                               disabled={editingComment?.id === comment.id}
                               title="Upravit komentář"
@@ -1315,6 +1318,7 @@ const OrderCommentsTooltip = ({
                               <FontAwesomeIcon icon={faEdit} />
                             </EditIconButton>
                             <DeleteIconButton
+                              type="button"
                               onClick={(e) => handleDeleteClick(comment.id, e)}
                               disabled={isDeleting === comment.id}
                               title="Smazat komentář"
@@ -1360,7 +1364,7 @@ const OrderCommentsTooltip = ({
                       </ReplyButton>
                       
                       {replies.length > 0 && (
-                        <ShowRepliesButton onClick={() => setExpandedReplies(prev => ({ ...prev, [comment.id]: !isExpanded }))}>
+                        <ShowRepliesButton type="button" onClick={() => setExpandedReplies(prev => ({ ...prev, [comment.id]: !isExpanded }))}>
                           <FontAwesomeIcon icon={isExpanded ? faChevronUp : faChevronDown} />
                           {replies.length} {replies.length === 1 ? 'odpověď' : replies.length < 5 ? 'odpovědi' : 'odpovědí'}
                         </ShowRepliesButton>
@@ -1383,6 +1387,7 @@ const OrderCommentsTooltip = ({
                                   {isOwnReply && (
                                     <>
                                       <EditIconButton
+                                        type="button"
                                         onClick={() => handleStartEdit(reply)}
                                         disabled={editingComment?.id === reply.id}
                                         title="Upravit odpověď"
@@ -1391,6 +1396,7 @@ const OrderCommentsTooltip = ({
                                         <FontAwesomeIcon icon={faEdit} />
                                       </EditIconButton>
                                       <DeleteIconButton
+                                        type="button"
                                         onClick={(e) => handleDeleteClick(reply.id, e)}
                                         disabled={isDeleting === reply.id}
                                         title="Smazat odpověď"
@@ -1443,6 +1449,7 @@ const OrderCommentsTooltip = ({
                                   <FontAwesomeIcon icon={faReply} />
                                   Odpovědět
                                 </ReplyButton>
+                                  type="button"
                               </div>
                             </ReplyItem>
                           );
@@ -1466,6 +1473,7 @@ const OrderCommentsTooltip = ({
                           disabled={isSubmitting}
                         />
                         <SendReplyButton
+                            type="button"
                           onClick={handleSubmitReply}
                           disabled={isSubmitting || !replyText.trim()}
                         >
@@ -1504,6 +1512,7 @@ const OrderCommentsTooltip = ({
               }}
             />
             <SendButton
+              type="button"
               onClick={handleSubmit}
               disabled={isSubmitting || !newCommentText.trim()}
             >
@@ -1538,7 +1547,7 @@ const OrderCommentsTooltip = ({
             <CancelButton onClick={() => setDeleteConfirm({ id: null, position: null })}>
               Ne
             </CancelButton>
-            <ConfirmButton onClick={() => handleConfirmedDelete(deleteConfirm.id)}>
+            <ConfirmButton type="button" onClick={() => handleConfirmedDelete(deleteConfirm.id)}>
               Ano, smazat
             </ConfirmButton>
           </DeleteConfirmButtons>

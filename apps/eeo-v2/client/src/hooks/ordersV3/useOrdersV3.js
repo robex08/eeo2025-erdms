@@ -366,6 +366,7 @@ export function useOrdersV3({
       return;
     }
     const forceRefresh = Boolean(options?.forceRefresh);
+    const silent = Boolean(options?.silent);
     
     // console.log('🔄 useOrdersV3: loadOrders called', {
     //   currentPage,
@@ -453,6 +454,7 @@ export function useOrdersV3({
       filters: activeFilters,
       sorting: sorting,
       forceRefresh,
+      silent,
     });
   }, [
     token,

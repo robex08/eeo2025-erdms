@@ -30,6 +30,7 @@ export const BackgroundTasksProvider = ({ children }) => {
 
   // Reference na callbacky pro jednotlivé úlohy
   const ordersRefreshCallbackRef = useRef(null);
+  const ordersV3RefreshCallbackRef = useRef(null);
   const notificationsCallbackRef = useRef(null);
   const newNotificationsCallbackRef = useRef(null);
   const getCurrentFiltersCallbackRef = useRef(null);  // ← Nový ref pro getCurrentFilters
@@ -40,6 +41,14 @@ export const BackgroundTasksProvider = ({ children }) => {
    */
   const registerOrdersRefreshCallback = useCallback((callback) => {
     ordersRefreshCallbackRef.current = callback;
+  }, []);
+
+  /**
+   * Registrace callback pro refresh objednávek V3 (Order25ListV3)
+   * Volá Orders25ListV3 při mount
+   */
+  const registerOrdersV3RefreshCallback = useCallback((callback) => {
+    ordersV3RefreshCallbackRef.current = callback;
   }, []);
 
   /**
@@ -55,6 +64,13 @@ export const BackgroundTasksProvider = ({ children }) => {
    */
   const unregisterOrdersRefreshCallback = useCallback(() => {
     ordersRefreshCallbackRef.current = null;
+  }, []);
+
+  /**
+   * Odregistrace callback pro Orders V3
+   */
+  const unregisterOrdersV3RefreshCallback = useCallback(() => {
+    ordersV3RefreshCallbackRef.current = null;
   }, []);
 
   /**
@@ -78,10 +94,25 @@ export const BackgroundTasksProvider = ({ children }) => {
   const triggerOrdersRefresh = useCallback((ordersData) => {
     if (ordersRefreshCallbackRef.current) {
       try {
-        ordersRefreshCallbackRef.current(ordersData);
+        return ordersRefreshCallbackRef.current(ordersData);
       } catch (error) {
       }
     }
+    return undefined;
+  }, []);
+
+  /**
+   * Spustí tichý refresh Orders V3 (callback obvykle volá loadOrders({silent:true}))
+   */
+  const triggerOrdersV3Refresh = useCallback(() => {
+    if (ordersV3RefreshCallbackRef.current) {
+      try {
+        return ordersV3RefreshCallbackRef.current();
+      } catch (error) {
+        return undefined;
+      }
+    }
+    return undefined;
   }, []);
 
   /**
@@ -148,6 +179,8 @@ export const BackgroundTasksProvider = ({ children }) => {
     // Registrace callbacků
     registerOrdersRefreshCallback,
     unregisterOrdersRefreshCallback,
+    registerOrdersV3RefreshCallback,
+    unregisterOrdersV3RefreshCallback,
     registerGetCurrentFiltersCallback,  // ← Nová registrace pro getCurrentFilters
     registerNotificationsCallback,
     registerNewNotificationsCallback,
@@ -157,6 +190,7 @@ export const BackgroundTasksProvider = ({ children }) => {
 
     // Triggery
     triggerOrdersRefresh,
+    triggerOrdersV3Refresh,
     handleUnreadCountChange,
     handleNewNotifications,
     triggerNotificationsRefresh  // NOVÁ funkce pro manuální refresh
