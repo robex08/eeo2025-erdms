@@ -1118,6 +1118,10 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
               const rows = await listStickyNotes({ token: auth.token, username: auth.username });
               const rowsArr = Array.isArray(rows) ? rows : [];
 
+              // Připravit mapu pro okamžitý DOM sync (contentEditable) –
+              // jinak u fokusované poznámky zůstane na obrazovce lokální kopie.
+              const domSync = [];
+
               setNotes((prev) => (prev || []).map((n) => {
                 const cu = String(n?.clientUid || `n_${n?.id}`);
                 if (!conflictClientUidsSet.has(cu)) return n;
@@ -1128,6 +1132,13 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                 const normalized = normalizeNoteFromDb(row);
                 if (!normalized) return n;
 
+                try {
+                  domSync.push({
+                    noteId: n.id,
+                    html: sanitizeNoteHtml(normalized.content || '')
+                  });
+                } catch {}
+
                 // nepřepisuj layout při refreshi; jen "server" data
                 return {
                   ...n,
@@ -1137,6 +1148,23 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                   content: normalized.content,
                 };
               }));
+
+              // Okamžitě přepiš DOM (včetně fokusované poznámky)
+              try {
+                if (domSync.length > 0) {
+                  window.requestAnimationFrame(() => {
+                    try {
+                      for (const it of domSync) {
+                        const el = editorRefs.current?.get?.(it.noteId);
+                        if (!el) continue;
+                        if (typeof el.innerHTML === 'string' && el.innerHTML !== it.html) {
+                          el.innerHTML = it.html;
+                        }
+                      }
+                    } catch {}
+                  });
+                }
+              } catch {}
 
               // Konfliktní poznámky přestaň zkoušet ukládat dokola – už jsou syncnuté na DB verzi.
               const nextDirty = new Set(dirtyIdsRef.current || []);
