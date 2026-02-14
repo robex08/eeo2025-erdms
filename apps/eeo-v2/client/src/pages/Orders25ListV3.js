@@ -1846,8 +1846,9 @@ function Orders25ListV3() {
 
       {/* Action Bar - toggles a konfigurace */}
       <ActionBar>
-        {/* 🔎 Default: jen fulltext (bez rozšířených filtrů) */}
-        {!showFilters && (
+        {/* 🔎 Fulltext nahoře NEukazovat jako výchozí, pokud uživatel skryl filtry.
+            Zobrazí se jen když je fulltext opravdu zadaný (user-defined). */}
+        {!showFilters && !!globalFilter?.trim?.() && (
           <QuickSearch>
             <FontAwesomeIcon icon={faSearch} style={{ color: '#64748b' }} />
             <QuickSearchInput
