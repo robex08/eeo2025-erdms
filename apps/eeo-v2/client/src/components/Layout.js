@@ -3795,12 +3795,13 @@ const Layout = ({ children }) => {
         {children}
       </Content>
 
-      {/* Fullscreen sticky NOTES overlay – pouze SUPERADMIN, ukládání zatím do LocalStorage */}
+      {/* Fullscreen sticky NOTES overlay – pouze SUPERADMIN (DB + fallback LocalStorage) */}
       {isLoggedIn && isSuperAdmin && (
         <StickyNotesOverlay
           open={stickyNotesOpen}
           onClose={() => setStickyNotesOpen(false)}
           storageKey={`eeo_v2_sticky_notes_overlay_v1_${user_id || 'anon'}`}
+          apiAuth={{ token, username, userId: user_id }}
         />
       )}
       {isLoggedIn && (
