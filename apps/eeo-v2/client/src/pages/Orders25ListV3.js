@@ -18,7 +18,7 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useContext, useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
@@ -31,6 +31,7 @@ import {
   faCog,
   faChartBar,
   faFilter,
+  faSearch,
   faEye,
   faEyeSlash,
   faPalette,
@@ -53,6 +54,7 @@ import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
 import { ToastContext } from '../context/ToastContext';
+import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 
 // API Services
 import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
@@ -173,6 +175,50 @@ const ActionBar = styled.div`
   padding-bottom: 1rem;
   margin-bottom: 1.5rem;
   border-bottom: 3px solid #e5e7eb;
+`;
+
+// Minimal fulltext search (fallback když jsou rozšířené filtry skryté)
+const QuickSearch = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 260px;
+  max-width: 520px;
+  margin-right: auto;
+`;
+
+const QuickSearchInput = styled.input`
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
+`;
+
+const QuickSearchClear = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.7rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #f1f5f9;
+    border-color: #3b82f6;
+  }
 `;
 
 const ToggleButton = styled.button`
@@ -614,6 +660,12 @@ function Orders25ListV3() {
   // Prefer ToastContext, fallback to ProgressContext
   const showToast = toastShowToast || progressShowToast;
 
+  // Background tasks (auto-refresh)
+  const bgTasksContext = useBackgroundTasks();
+
+  // 🔄 BT: čas posledního tichého auto-refresh (zobrazuje se vedle ikony refresh)
+  const [lastBtAutoRefreshTime, setLastBtAutoRefreshTime] = useState(null);
+
   // 🐛 CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
   // Musíme konvertovat na number pro správné porovnání v permissions
   const currentUserId = useMemo(() => parseInt(user_id, 10), [user_id]);
@@ -648,6 +700,12 @@ function Orders25ListV3() {
     const saved = localStorage.getItem(`ordersV3_globalFilter_${user_id}`);
     return saved || '';
   });
+
+  // Ref na aktuální globalFilter (aby BT callback nemusel být re-registrán při každém psaní)
+  const globalFilterRef = useRef(globalFilter);
+  useEffect(() => {
+    globalFilterRef.current = globalFilter;
+  }, [globalFilter]);
 
   // ✅ DEBOUNCED globalFilter - zpoždění 500ms pro omezení API requestů
   const [debouncedGlobalFilter, setDebouncedGlobalFilter] = useState(globalFilter);
@@ -1126,6 +1184,44 @@ function Orders25ListV3() {
     loadOrders(globalFilter, { forceRefresh: true });
     showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
   }, [clearCache, loadOrders, showToast, globalFilter]);
+
+  // ✅ BT AUTO-REFRESH: registrace callbacku pro background task (každých 5 min)
+  // - volá V3 endpointy přes `loadOrders`
+  // - probíhá tiše (silent)
+  // - nastaví čas posledního auto-refreshu pro zobrazení v headeru
+  useEffect(() => {
+    if (!bgTasksContext?.registerOrdersV3RefreshCallback) {
+      return;
+    }
+
+    const btRefreshCallback = async () => {
+      try {
+        const gf = globalFilterRef.current;
+        const result = await loadOrders(gf, { forceRefresh: false, silent: true });
+        if (result?.status === 'success') {
+          setLastBtAutoRefreshTime(new Date());
+          if (process.env.NODE_ENV === 'development') {
+            console.log('✅ [Orders25ListV3] BT auto-refresh OK');
+          }
+        }
+        return result;
+      } catch (_) {
+        // Tiché selhání - background refresh nesmí rušit UI
+        return undefined;
+      }
+    };
+
+    bgTasksContext.registerOrdersV3RefreshCallback(btRefreshCallback);
+
+    return () => {
+      if (bgTasksContext.unregisterOrdersV3RefreshCallback) {
+        bgTasksContext.unregisterOrdersV3RefreshCallback();
+      } else {
+        // Backward compat fallback
+        bgTasksContext.registerOrdersV3RefreshCallback?.(null);
+      }
+    };
+  }, [bgTasksContext, loadOrders]);
 
   // 🆕 Handler pro export aktuálně zobrazených dat (Orders V3)
   const handleExportList = useCallback(() => {
@@ -1715,24 +1811,63 @@ function Orders25ListV3() {
 
           {/* ✨ Reload tlačítko */}
           <SmartTooltip text="Načíst objednávky z databáze (vyčistit cache)" icon="info" preferredPosition="bottom">
-            <ReloadButton
-              onClick={() => {
-                clearCache?.();
-                // ✅ Manuální refresh musí vzít aktuální fulltext hned (nečekat na debounce)
-                loadOrders(globalFilter, { forceRefresh: true });
-                showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
-              }}
-              disabled={loading}
-              $loading={loading}
-            >
-              <FontAwesomeIcon icon={faSync} />
-            </ReloadButton>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <ReloadButton
+                onClick={() => {
+                  clearCache?.();
+                  // ✅ Manuální refresh musí vzít aktuální fulltext hned (nečekat na debounce)
+                  loadOrders(globalFilter, { forceRefresh: true });
+                  showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
+                }}
+                disabled={loading}
+                $loading={loading}
+              >
+                <FontAwesomeIcon icon={faSync} />
+              </ReloadButton>
+
+              {lastBtAutoRefreshTime && (
+                <span
+                  style={{
+                    color: '#fde68a', // světle žlutá (amber-200)
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    textShadow: '0 1px 1px rgba(0,0,0,0.25)'
+                  }}
+                  title="Čas posledního automatického refresh (BT)"
+                >
+                  LAST:{lastBtAutoRefreshTime.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
           </SmartTooltip>
         </HeaderActions>
       </Header>
 
       {/* Action Bar - toggles a konfigurace */}
       <ActionBar>
+        {/* 🔎 Default: jen fulltext (bez rozšířených filtrů) */}
+        {!showFilters && (
+          <QuickSearch>
+            <FontAwesomeIcon icon={faSearch} style={{ color: '#64748b' }} />
+            <QuickSearchInput
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              placeholder="Fulltext (vyhledávání v objednávkách)"
+              aria-label="Fulltext vyhledávání"
+            />
+            {globalFilter?.trim() && (
+              <QuickSearchClear
+                type="button"
+                onClick={() => setGlobalFilter('')}
+                title="Vymazat fulltext"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </QuickSearchClear>
+            )}
+          </QuickSearch>
+        )}
+
         <SmartTooltip text="Vytvořit novou objednávku" icon="success" preferredPosition="bottom">
           <ToggleButton
             onClick={handleCreateNewOrder}

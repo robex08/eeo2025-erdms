@@ -34,6 +34,26 @@ import { getUnreadCount, getNotificationsList } from './notificationsUnified';
 import { loadAuthData, getStoredUserId } from '../utils/authStorage';
 import ordersCacheService from './ordersCacheService';
 
+// ==========================================================================
+// MODULE SETTINGS HELPERS
+// ==========================================================================
+
+/**
+ * Načte globální viditelnost modulů z localStorage.
+ * Používá se v background taskech, protože App.js tasky registruje jen jednou
+ * a potřebujeme reagovat i na změnu nastavení bez restartu.
+ */
+const getModuleSettingsSafe = () => {
+  try {
+    const raw = localStorage.getItem('app_moduleSettings');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+};
+
 /**
  * Task handler pro kontrolu notifikací
  * Spouští se každých 60 sekund
@@ -177,18 +197,27 @@ export const createOrdersRefreshTask = (onOrdersRefreshed, getCurrentFilters) =>
   immediate: false, // Nespouštět hned, počkat první interval
   enabled: true,
 
-  condition: async () => {
+  condition: () => {
     try {
-      const token = await loadAuthData.token();
+      const token = loadAuthData.token();
 
       // Kontroluj, zda je uživatel na stránce se seznamem objednávek
       const currentPath = window.location.pathname;
 
-      const isOnOrdersPage = currentPath.includes('/orders25-list') ||
-                             currentPath.includes('/orders') ||
-                             currentPath === '/';
+      // ✅ Vypnout ÚPLNĚ pokud je modul Orders25List globálně vypnutý
+      // (i kdyby se na route dostal admin/BETA tester)
+      const moduleSettings = getModuleSettingsSafe();
+      if (moduleSettings && moduleSettings.module_orders_visible === false) {
+        return false;
+      }
 
-      return !!token && isOnOrdersPage;
+      // ✅ Spouštět POUZE na Order25List (V2) a Order25ListV3.
+      // DŮLEŽITÉ: nepoužívat `/orders`, protože to je stará stránka (Orders.js) a BG refresh by tam dělal zbytečné dotazy.
+      // Zároveň to zamezí načítání i v případě, že je modul v globálním nastavení vypnutý.
+      // 🔒 V2 task spouštět jen na V2 stránce.
+      const isOnOrdersListPage = /\/orders25-list(?:\/|$)/.test(currentPath);
+
+      return !!token && isOnOrdersListPage;
     } catch (error) {
       return false;
     }
@@ -242,6 +271,78 @@ export const createOrdersRefreshTask = (onOrdersRefreshed, getCurrentFilters) =>
 
   onError: (error) => {
     // Tiše selhat - background refresh by neměl rušit uživatele
+  }
+});
+
+/**
+ * Task handler pro automatické obnovení Orders V3 (Order25ListV3)
+ * Spouští se každých 5 minut
+ * DŮLEŽITÉ:
+ * - Pouze pokud je modul Orders V3 globálně zapnutý
+ * - Pouze pokud je uživatel na route /orders25-list-v3
+ * - Tichý refresh řeší samotná stránka přes callback (loadOrders({silent:true}))
+ */
+export const createOrdersV3RefreshTask = (onOrdersV3AutoRefresh) => ({
+  name: 'autoRefreshOrdersV3',
+  interval: 5 * 60 * 1000, // 5 minut
+  immediate: false,
+  enabled: true,
+
+  condition: () => {
+    try {
+      const token = loadAuthData.token();
+      const currentPath = window.location.pathname;
+
+      const moduleSettings = getModuleSettingsSafe();
+      if (moduleSettings && moduleSettings.module_orders_v3_visible === false) {
+        return false;
+      }
+
+      // Spouštět jen na V3 route
+      const isOnOrdersV3Page = /\/orders25-list-v3(?:\/|$)/.test(currentPath);
+      return !!token && isOnOrdersV3Page;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  callback: async () => {
+    try {
+      // 🔒 Hard guard (i kdyby condition nebyla respektována v budoucnu)
+      const currentPath = window.location.pathname;
+      if (!/\/orders25-list-v3(?:\/|$)/.test(currentPath)) {
+        return { skipped: true, reason: 'not_on_orders_v3_route', timestamp: new Date().toISOString() };
+      }
+
+      const moduleSettings = getModuleSettingsSafe();
+      if (moduleSettings && moduleSettings.module_orders_v3_visible === false) {
+        return { skipped: true, reason: 'module_orders_v3_visible=false', timestamp: new Date().toISOString() };
+      }
+
+      // Načti autentizační data (jen pro validaci přihlášení)
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+
+      if (!token || !user?.username) {
+        throw new Error('Missing authentication data for Orders V3 background refresh');
+      }
+
+      // V3 refresh probíhá přes callback z komponenty (kvůli správným filtrům/paginaci/statistikám)
+      if (typeof onOrdersV3AutoRefresh === 'function') {
+        await onOrdersV3AutoRefresh();
+      }
+
+      return {
+        timestamp: new Date().toISOString(),
+        note: 'Orders V3 auto-refresh executed (silent)'
+      };
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  onError: (_error) => {
+    // Tiché selhání
   }
 });
 
@@ -342,6 +443,9 @@ export const createStandardTasks = (callbacks = {}) => {
     createOrdersRefreshTask(
       callbacks.onOrdersRefreshed,
       callbacks.getCurrentFilters  // ← Přidán callback pro získání filtrů
+    ),
+    createOrdersV3RefreshTask(
+      callbacks.onOrdersV3AutoRefresh
     ),
     createExchangeRatesTask(callbacks.onExchangeRatesUpdated), // ← Nový task pro směnné kurzy
     createPostOrderActionTask({
@@ -458,6 +562,7 @@ export default {
   createNotificationCheckTask,
   createChatCheckTask,
   createOrdersRefreshTask,
+  createOrdersV3RefreshTask,
   createExchangeRatesTask,
   createPostOrderActionTask,
   createStandardTasks,

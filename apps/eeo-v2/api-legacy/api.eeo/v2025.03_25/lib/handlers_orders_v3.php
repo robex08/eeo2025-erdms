@@ -1268,6 +1268,21 @@ function handle_orders_v3_find_page($input, $config) {
                     'faktury_celkova_castka_s_dph' => 'faktury_celkova_castka_s_dph',
                     'objednatel_garant' => 'u1.prijmeni',
                     'prikazce_schvalovatel' => 'u3.prijmeni',
+
+                    // Financování (UI umožňuje sort)
+                    'financovani' => 'o.financovani',
+
+                    // REGISTR (UI sloupec `stav_registru`)
+                    'stav_registru' => "(
+                        CASE
+                            WHEN (o.dt_zverejneni IS NOT NULL OR o.registr_iddt IS NOT NULL) THEN 2
+                            WHEN (
+                                o.zverejnit = 1
+                                OR UPPER(TRIM(COALESCE(o.zverejnit, ''))) IN ('ANO','YES','TRUE')
+                            ) THEN 1
+                            ELSE 0
+                        END
+                    )",
                 ];
 
                 if (isset($column_mapping[$col])) {

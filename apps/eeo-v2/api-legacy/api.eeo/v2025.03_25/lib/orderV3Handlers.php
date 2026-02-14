@@ -1232,6 +1232,10 @@ function handle_order_v3_list($input, $config, $queries) {
                         // Základní info
                         'cislo_objednavky' => 'o.cislo_objednavky',
                         'predmet' => 'o.predmet',
+
+                        // Financování (UI umožňuje sort)
+                        // Pozn.: `o.financovani` je ukládáno jako text/JSON - řadíme lexikograficky.
+                        'financovani' => 'o.financovani',
                         
                         // Dodavatel
                         'dodavatel_nazev' => 'COALESCE(o.dodavatel_nazev, d.nazev)',
@@ -1255,6 +1259,22 @@ function handle_order_v3_list($input, $config, $queries) {
                         // Stavy
                         'stav_objednavky' => 'o.stav_objednavky',
                         'mimoradna_udalost' => 'o.mimoradna_udalost',
+
+                        // REGISTR (UI sloupec `stav_registru`)
+                        // Řazení podle stavu registru:
+                        // 2 = zveřejněno (má dt_zverejneni nebo registr_iddt)
+                        // 1 = má být zveřejněno (zverejnit=1 / "ANO")
+                        // 0 = prázdné/ostatní
+                        'stav_registru' => "(
+                            CASE
+                                WHEN (o.dt_zverejneni IS NOT NULL OR o.registr_iddt IS NOT NULL) THEN 2
+                                WHEN (
+                                    o.zverejnit = 1
+                                    OR UPPER(TRIM(COALESCE(o.zverejnit, ''))) IN ('ANO','YES','TRUE')
+                                ) THEN 1
+                                ELSE 0
+                            END
+                        )",
                         
                         // Počty
                         'pocet_polozek' => 'pocet_polozek',

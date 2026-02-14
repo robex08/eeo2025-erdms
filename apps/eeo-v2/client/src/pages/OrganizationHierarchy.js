@@ -369,7 +369,7 @@ const MainContent = styled.div`
 `;
 
 const Sidebar = styled.div`
-  width: 400px;
+  width: 480px; /* +20% oproti původním 400px */
   background: white;
   border-right: 1px solid #e0e6ed;
   display: flex;
@@ -661,7 +661,7 @@ const CanvasArea = styled.div`
 `;
 
 const DetailPanel = styled.div`
-  width: 380px;
+  width: 456px; /* +20% oproti původním 380px (panel nastavení node/edge) */
   background: white;
   border-left: 1px solid #e0e6ed;
   display: flex;
