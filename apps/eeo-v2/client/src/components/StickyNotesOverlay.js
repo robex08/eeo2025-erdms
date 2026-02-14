@@ -880,6 +880,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
   const dirtyIdsRef = useRef(new Set());
   const saveTimerRef = useRef(null);
   const savingRef = useRef(false);
+  const refreshCooldownRef = useRef(new Map()); // dbId -> last refresh ts
 
   const apiAuthRef = useRef(apiAuth);
 
@@ -992,6 +993,61 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
       return null;
     }
   }, []);
+
+  // Načíst aktuální verzi poznámky z DB (použije existující sticky/list) –
+  // spouštět jen když poznámka není lokálně změněná (dirty), aby se nepřepisoval obsah.
+  const refreshSingleNoteFromDb = useCallback(async (noteId, editorEl) => {
+    try {
+      if (!open) return;
+      const auth = apiAuthRef.current;
+      if (!auth?.token || !auth?.username || !auth?.userId) return;
+
+      const note = notesRef.current?.find?.((n) => n?.id === noteId);
+      if (!note?.dbId) return;
+
+      // nepřepisuj lokální změny
+      if (dirtyIdsRef.current?.has?.(noteId)) return;
+
+      const dbIdNum = Number(note.dbId);
+      if (!Number.isFinite(dbIdNum) || dbIdNum <= 0) return;
+
+      const lastTs = Number(refreshCooldownRef.current?.get?.(dbIdNum) || 0);
+      if (lastTs && (Date.now() - lastTs) < 15000) return; // max 1× za 15s
+      refreshCooldownRef.current.set(dbIdNum, Date.now());
+
+      const rows = await listStickyNotes({ token: auth.token, username: auth.username });
+      const row = (Array.isArray(rows) ? rows : []).find((r) => Number(r?.id) === dbIdNum);
+      if (!row) return;
+
+      const normalized = normalizeNoteFromDb(row);
+      if (!normalized) return;
+
+      // Aktualizuj jen „serverové“ věci – nepolohuj/přeměřuj během práce.
+      setNotes((prev) => (prev || []).map((n) => {
+        if (n?.id !== noteId) return n;
+        return {
+          ...n,
+          dbId: normalized.dbId,
+          version: normalized.version,
+          ownerUserId: normalized.ownerUserId,
+          pravaMask: normalized.pravaMask,
+          content: normalized.content,
+        };
+      }));
+
+      // Pokud máme přímo DOM editor (na focusu), jemně ho srovnejme s DB.
+      try {
+        if (editorEl && typeof editorEl.innerHTML === 'string') {
+          const desired = sanitizeNoteHtml(normalized.content || '');
+          if (editorEl.innerHTML !== desired) {
+            editorEl.innerHTML = desired;
+          }
+        }
+      } catch {}
+    } catch {
+      // tichý fail – jde jen o "best effort" refresh
+    }
+  }, [open, normalizeNoteFromDb]);
 
   const markDirty = useCallback((id) => {
     try { if (id != null) dirtyIdsRef.current.add(id); } catch {}
@@ -1868,8 +1924,15 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                   // při focusu ještě projdi sanitize (ale nech caret)
                   try {
                     const html = sanitizeNoteHtml(e.currentTarget.innerHTML);
-                    updateContent(note.id, html);
+                    // Neoznačuj jako dirty jen při focusu, pokud se nic nezměnilo.
+                    if (html !== String(note.content || '')) {
+                      updateContent(note.id, html);
+                    }
                   } catch {}
+
+                  // "Soft" reload z DB – pomůže při práci na více PC / sdílení.
+                  // Provede se jen když poznámka není dirty.
+                  refreshSingleNoteFromDb(note.id, e.currentTarget);
                 }}
                 onBlur={(e) => {
                   try {
