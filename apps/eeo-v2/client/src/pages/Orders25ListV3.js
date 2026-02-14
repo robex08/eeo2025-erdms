@@ -42,6 +42,8 @@ import {
   faEnvelope,
   faPhone,
   faUnlock,
+  faPlus,
+  faFileExport,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -72,6 +74,9 @@ import VirtualizedOrdersTable from '../components/ordersV3/VirtualizedOrdersTabl
 import { OrderContextMenu } from '../components/OrderContextMenu';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { exportCsv } from '../utils/format';
+import { isValidConcept, hasDraftChanges } from '../utils/draftUtils.js';
+import draftManager from '../services/DraftManager';
 
 // Config
 import ORDERS_V3_CONFIG from '../constants/ordersV3Config';
@@ -781,6 +786,9 @@ function Orders25ListV3() {
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
 
+  // 🆕 State pro potvrzení zavření rozpracované objednávky při vytváření nové
+  const [showNewOrderConfirmDialog, setShowNewOrderConfirmDialog] = useState(false);
+
   // 🎯 Effect: Načtení číselníku stavů z API
   useEffect(() => {
     const loadStates = async () => {
@@ -1118,6 +1126,102 @@ function Orders25ListV3() {
     loadOrders(globalFilter, { forceRefresh: true });
     showToast?.('🔄 Objednávky se načítají z databáze...', { type: 'info' });
   }, [clearCache, loadOrders, showToast, globalFilter]);
+
+  // 🆕 Handler pro export aktuálně zobrazených dat (Orders V3)
+  const handleExportList = useCallback(() => {
+    try {
+      if (!Array.isArray(orders) || orders.length === 0) {
+        showToast?.('Není co exportovat', { type: 'warning' });
+        return;
+      }
+
+      const visibleColumns = Array.isArray(columnOrder)
+        ? columnOrder.filter((col) => columnVisibility?.[col])
+        : Object.keys(columnVisibility || {}).filter((col) => columnVisibility?.[col]);
+
+      const columnsToExport = visibleColumns.length > 0
+        ? visibleColumns
+        : ['cislo_objednavky', 'dt_objednavky', 'dodavatel_nazev', 'stav_objednavky', 'max_cena_s_dph'];
+
+      const toText = (value) => {
+        if (value === null || value === undefined) return '';
+        if (Array.isArray(value)) return value.map((v) => toText(v)).join(' | ');
+        if (typeof value === 'object') {
+          if (value.nazev_stavu) return value.nazev_stavu;
+          if (value.nazev) return value.nazev;
+          if (value.kod_stavu) return value.kod_stavu;
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        }
+        return String(value);
+      };
+
+      const rows = orders.map((order) => {
+        const row = {};
+        columnsToExport.forEach((col) => {
+          const label = COLUMN_LABELS[col] || col;
+          row[label] = toText(order?.[col]);
+        });
+        return row;
+      });
+
+      exportCsv(rows, 'objednavky_v3', { separator: ';', includeBOM: true });
+      showToast?.('✅ Export byl vygenerován', { type: 'success' });
+    } catch (error) {
+      console.error('❌ Chyba při exportu objednávek V3:', error);
+      showToast?.('❌ Export se nepodařilo dokončit', { type: 'error' });
+    }
+  }, [orders, columnOrder, columnVisibility, showToast]);
+
+  // 🆕 Handler pro vytvoření nové objednávky (s kontrolou rozpracovaného draftu)
+  const handleCreateNewOrder = useCallback(async () => {
+    try {
+      draftManager.setCurrentUser(user_id);
+      const hasDraft = await draftManager.hasDraft();
+
+      if (!hasDraft) {
+        navigate('/order-form-25');
+        return;
+      }
+
+      const draftData = await draftManager.loadDraft();
+      const hasNewConcept = isValidConcept(draftData);
+      const hasDbChanges = hasDraftChanges(draftData);
+
+      if (hasNewConcept || hasDbChanges) {
+        setShowNewOrderConfirmDialog(true);
+        return;
+      }
+
+      navigate('/order-form-25');
+    } catch (error) {
+      console.warn('⚠️ [Orders25ListV3] Kontrola draftu selhala, pokračuji na nový formulář:', error);
+      navigate('/order-form-25');
+    }
+  }, [user_id, navigate]);
+
+  // 🆕 Potvrzení: smazat draft a otevřít nový formulář
+  const handleConfirmCreateNewOrder = useCallback(async () => {
+    try {
+      draftManager.setCurrentUser(user_id);
+      await draftManager.deleteDraft();
+    } catch (error) {
+      console.warn('⚠️ [Orders25ListV3] Nepodařilo se smazat draft:', error);
+    }
+
+    localStorage.removeItem(`activeOrderEditId_${user_id}`);
+    setShowNewOrderConfirmDialog(false);
+
+    if (window.location.pathname === '/order-form-25') {
+      window.location.href = '/order-form-25';
+      return;
+    }
+
+    navigate('/order-form-25');
+  }, [user_id, navigate]);
 
   // 🔓 Handler pro force unlock (pouze admin)
   const handleForceUnlock = useCallback(async () => {
@@ -1629,6 +1733,21 @@ function Orders25ListV3() {
 
       {/* Action Bar - toggles a konfigurace */}
       <ActionBar>
+        <SmartTooltip text="Vytvořit novou objednávku" icon="success" preferredPosition="bottom">
+          <ToggleButton
+            onClick={handleCreateNewOrder}
+            style={{
+              background: '#166534',
+              borderColor: '#166534',
+              color: 'white',
+              fontWeight: 700
+            }}
+          >
+            <FontAwesomeIcon icon={faPlus} />
+            Nová objednávka
+          </ToggleButton>
+        </SmartTooltip>
+
         {/* Toggle Dashboard - zobrazit POUZE když je skrytý */}
         {!showDashboard && (
           <SmartTooltip text="Zobrazit dashboard s přehledem statistik" icon="info" preferredPosition="bottom">
@@ -1681,6 +1800,13 @@ function Orders25ListV3() {
         </SmartTooltip>
 
         {/* Konfigurace sloupců */}
+        <SmartTooltip text="Export aktuálně načtených objednávek do CSV" icon="success" preferredPosition="bottom">
+          <ToggleButton onClick={handleExportList}>
+            <FontAwesomeIcon icon={faFileExport} />
+            Export
+          </ToggleButton>
+        </SmartTooltip>
+
         <SmartTooltip text="Nastavit viditelnost a pořadí sloupců tabulky" icon="info" preferredPosition="bottom">
           <OrdersColumnConfigV3
             columnVisibility={columnVisibility}
@@ -1916,6 +2042,26 @@ function Orders25ListV3() {
               <FontAwesomeIcon icon={faUnlock} /> Jako administrátor můžete objednávku převzít a násilně odemknout tlačítkem níže.
             </InfoText>
           )}
+        </ConfirmDialog>,
+        document.body
+      )}
+
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showNewOrderConfirmDialog}
+          onClose={() => setShowNewOrderConfirmDialog(false)}
+          onConfirm={handleConfirmCreateNewOrder}
+          title="Rozpracovaná objednávka"
+          icon={faExclamationTriangle}
+          variant="warning"
+          confirmText="Ano, zavřít a vytvořit novou"
+          showCancel={true}
+          cancelText="Zrušit"
+          onCancel={() => setShowNewOrderConfirmDialog(false)}
+        >
+          Máte rozpracovanou objednávku v Order formuláři.
+          <br />
+          Pokud budete pokračovat, rozpracovaná data se zavřou a otevře se nová objednávka.
         </ConfirmDialog>,
         document.body
       )}

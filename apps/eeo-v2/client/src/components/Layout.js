@@ -42,6 +42,7 @@ import UniversalSearchInput from './UniversalSearch/UniversalSearchInput';
 import { checkMaintenanceMode } from '../services/globalSettingsApi';
 import { getGlobalSettings } from '../services/globalSettingsApi';
 import { getDefaultHomepageSync } from '../utils/homepageHelper';
+import cashbookAPI from '../services/cashbookService';
 
 // Inject small CSS for bell pulse if missing
 if (typeof document !== 'undefined' && !document.getElementById('bell-pulse-styles')) {
@@ -1693,7 +1694,7 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
@@ -1761,6 +1762,130 @@ const Layout = ({ children }) => {
       hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')
     );
   }, [hasPermission]);
+
+  const hasAnalyticsManagePermission = useMemo(() => {
+    if (!hasPermission) return false;
+
+    return (
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      hasPermission('REPORT_MANAGE') ||
+      hasPermission('STATISTICS_MANAGE')
+    );
+  }, [hasPermission, hasAdminRole]);
+
+  const [hasAssignedCashbook, setHasAssignedCashbook] = useState(false);
+
+  const isCashBookAdminOrManage = useMemo(() => {
+    return (
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      (typeof hasPermission === 'function' && hasPermission('CASH_BOOK_MANAGE'))
+    );
+  }, [hasAdminRole, hasPermission]);
+
+  const hasAnyCashBookPermission = useMemo(() => {
+    if (typeof hasPermission !== 'function') return false;
+
+    return (
+      hasPermission('CASH_BOOK_MANAGE') ||
+      hasPermission('CASH_BOOK_READ_ALL') ||
+      hasPermission('CASH_BOOK_READ_OWN') ||
+      hasPermission('CASH_BOOK_EDIT_ALL') ||
+      hasPermission('CASH_BOOK_EDIT_OWN') ||
+      hasPermission('CASH_BOOK_DELETE_ALL') ||
+      hasPermission('CASH_BOOK_DELETE_OWN') ||
+      hasPermission('CASH_BOOK_EXPORT_ALL') ||
+      hasPermission('CASH_BOOK_EXPORT_OWN') ||
+      hasPermission('CASH_BOOK_CREATE')
+    );
+  }, [hasPermission]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCashbookAssignment = async () => {
+      if (!isLoggedIn || !user_id || !hasAnyCashBookPermission) {
+        if (!cancelled) setHasAssignedCashbook(false);
+        return;
+      }
+
+      // Admin/MANAGE se neomezují přiřazením pokladny
+      if (isCashBookAdminOrManage) {
+        if (!cancelled) setHasAssignedCashbook(true);
+        return;
+      }
+
+      try {
+        const response = await cashbookAPI.listAssignments(user_id, true);
+        const assignments = Array.isArray(response?.data?.assignments)
+          ? response.data.assignments
+          : Array.isArray(response?.assignments)
+            ? response.assignments
+            : [];
+
+        const hasAnyActiveAssignment = assignments.some((a) => String(a?.aktivni ?? '1') === '1');
+        if (!cancelled) setHasAssignedCashbook(hasAnyActiveAssignment);
+      } catch (e) {
+        if (!cancelled) setHasAssignedCashbook(false);
+      }
+    };
+
+    loadCashbookAssignment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, user_id, hasAnyCashBookPermission, isCashBookAdminOrManage]);
+
+  const showCashBookButton = isCashBookAdminOrManage || (hasAnyCashBookPermission && hasAssignedCashbook);
+
+  const canAccessCerpani = useMemo(() => {
+    if (!isLoggedIn) return false;
+
+    const perms = Array.isArray(expandedPermissions)
+      ? expandedPermissions.map((p) => String(p || '').toUpperCase())
+      : [];
+
+    const hasLpToken = (perm) => /(^|_)LP(_|$)/.test(perm);
+
+    const isAdminOrManage =
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      (typeof hasPermission === 'function' && (
+        hasPermission('SPEDNIG_MANAGE') ||
+        hasPermission('SPNDING_MANAGE') ||
+        hasPermission('SPENDING_MANAGE') ||
+        hasPermission('LP_MANAGE') ||
+        hasPermission('CONTRACT_MANAGE')
+      ));
+
+    if (isAdminOrManage) return true;
+
+    return perms.some((perm) => {
+      const isViewScope = perm.endsWith('_VIEW_ALL') || perm.endsWith('_VIEW_OWN') || perm.endsWith('_VIEW');
+      if (!isViewScope) return false;
+      return (
+        perm === 'SPEDNIG_VIEW_ALL' ||
+        perm === 'SPNDING_VIEW_ALL' ||
+        perm === 'SPEDNING_VIEW_ALL' ||
+        perm === 'SPENDING_VIEW_ALL' ||
+        perm === 'SPEDNIG_VIEW_OWN' ||
+        perm === 'SPNDING_VIEW_OWN' ||
+        perm === 'SPEDNING_VIEW_OWN' ||
+        perm === 'SPENDING_VIEW_OWN' ||
+        perm === 'SPEDNIG_VIEW' ||
+        perm === 'SPNDING_VIEW' ||
+        perm === 'SPEDNING_VIEW' ||
+        perm === 'SPENDING_VIEW' ||
+        perm === 'CERPANI_VIEW_ALL' ||
+        perm === 'CERPANI_VIEW_OWN' ||
+        perm === 'CERPANI_VIEW' ||
+        perm.includes('SMLOUV') ||
+        perm.includes('CONTRACT') ||
+        hasLpToken(perm) ||
+        perm.includes('LIMIT') ||
+        perm.includes('PRISLIB')
+      );
+    });
+  }, [isLoggedIn, expandedPermissions, hasAdminRole, hasPermission]);
 
   // Notes recording state (pro floating button)
   const [notesRecording, setNotesRecording] = useState(false);
@@ -3216,14 +3341,14 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) }
 
-            {!hasAnalyticsPermission && (
+            {!hasAnalyticsManagePermission && canAccessCerpani && (
               <MenuLinkLeft to="/cerpani" $active={isActive('/cerpani')}>
                 <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
               </MenuLinkLeft>
             )}
             
             {/* Manažerské analýzy - zobrazit pokud má právo k reportům nebo statistikám */}
-            { hasAnalyticsPermission && (
+            { hasAnalyticsManagePermission && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={analyticsButtonRef}
@@ -3255,12 +3380,14 @@ const Layout = ({ children }) => {
                       minWidth: `${dropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/cerpani" 
-                      onClick={() => setAnalyticsMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
-                    </MenuDropdownItem>
+                    {canAccessCerpani && (
+                      <MenuDropdownItem 
+                        to="/cerpani" 
+                        onClick={() => setAnalyticsMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
+                      </MenuDropdownItem>
+                    )}
                     {/* Reporty - zobrazit pokud má právo */}
                     {(hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')) && (
                       <MenuDropdownItem 
@@ -3413,21 +3540,7 @@ const Layout = ({ children }) => {
           <MenuRight>
             {/* Pokladna - Cash Book */}
             {/* Zobrazit pokud: Admin/SuperAdmin NEBO má jakékoliv CASH_BOOK oprávnění */}
-            { (
-                (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) ||
-                (hasPermission && (
-                  hasPermission('CASH_BOOK_MANAGE') ||
-                  hasPermission('CASH_BOOK_READ_ALL') ||
-                  hasPermission('CASH_BOOK_READ_OWN') ||
-                  hasPermission('CASH_BOOK_EDIT_ALL') ||
-                  hasPermission('CASH_BOOK_EDIT_OWN') ||
-                  hasPermission('CASH_BOOK_DELETE_ALL') ||
-                  hasPermission('CASH_BOOK_DELETE_OWN') ||
-                  hasPermission('CASH_BOOK_EXPORT_ALL') ||
-                  hasPermission('CASH_BOOK_EXPORT_OWN') ||
-                  hasPermission('CASH_BOOK_CREATE')
-                ))
-              ) && (
+            { showCashBookButton && (
               <SmartTooltip text="Správa pokladní knihy" icon="info" preferredPosition="bottom">
                 <CashBookLink to="/cash-book">
                   <FontAwesomeIcon icon={faCalculator} style={{ fontSize:'1em' }} />

@@ -797,9 +797,17 @@ const saveShowFiltersToStorage = (show) => {
 // KOMPONENTA
 // =============================================================================
 
-const SmlouvyTab = ({ readOnly = false }) => {
-  const { user, token } = useContext(AuthContext);
+const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => {
+  const { user, token, userDetail, expandedPermissions, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+
+  // Režim omezení pouze pro menubar "Čerpání smluv" (readOnly varianta)
+  const userUsekId = user?.usek_id || userDetail?.usek_id || null;
+  const userUsekZkr = String(user?.usek_zkr || userDetail?.usek_zkr || '').trim().toUpperCase();
+  const hasAnyManagePermission = Array.isArray(expandedPermissions) &&
+    expandedPermissions.some((p) => /_MANAGE$/i.test(String(p || '')));
+  const isAdminUser = typeof hasAdminRole === 'function' ? hasAdminRole() : false;
+  const isRestrictedCerpaniUser = readOnly && !forceUnrestrictedReadOnly && !isAdminUser && !hasAnyManagePermission;
 
   // State
   const [smlouvy, setSmlouvy] = useState([]);
@@ -920,7 +928,29 @@ const SmlouvyTab = ({ readOnly = false }) => {
   // =============================================================================
 
   const filteredSmlouvy = useMemo(() => {
-    return smlouvy.filter(smlouva => {
+    const result = smlouvy.filter(smlouva => {
+      // 🎯 OMEZENÍ POUZE PRO MENUBAR "ČERPÁNÍ":
+      // Běžný uživatel bez *_MANAGE a bez admin role vidí jen:
+      // 1) smlouvy z jeho úseku + klasifikované jako "Použití v OBJ"
+      // 2) případně i jiné smlouvy, pokud z nich uživatel osobně čerpal
+      if (isRestrictedCerpaniUser) {
+        const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
+        const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
+
+        const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
+        const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
+        const jeMujUsek = matchByZkr || matchById;
+        const jePouzitiVObj = Number(smlouva.pouzit_v_obj_formu || 0) === 1;
+        const cerpalUzivatel = Number(smlouva.pocet_objednavek_uzivatel || 0) > 0;
+
+        const splnujeSkupinu1 = jeMujUsek && jePouzitiVObj;
+        const splnujeSkupinu2 = cerpalUzivatel;
+
+        if (!splnujeSkupinu1 && !splnujeSkupinu2) {
+          return false;
+        }
+      }
+
       // Aktivní/neaktivní
       if (!filters.show_inactive && smlouva.aktivni !== 1) {
         return false;
@@ -1004,7 +1034,39 @@ const SmlouvyTab = ({ readOnly = false }) => {
 
       return true;
     });
-  }, [smlouvy, filters, columnFilters]);
+
+    if (!isRestrictedCerpaniUser) {
+      return result;
+    }
+
+    // Pořadí pro menubar Čerpání smluv:
+    // 1) Můj úsek + Použití v OBJ
+    // 2) Ostatní, kde uživatel čerpal
+    return [...result].sort((a, b) => {
+      const getPriority = (smlouva) => {
+        const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
+        const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
+        const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
+        const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
+        const jeMujUsek = matchByZkr || matchById;
+        const jePouzitiVObj = Number(smlouva.pouzit_v_obj_formu || 0) === 1;
+        const cerpalUzivatel = Number(smlouva.pocet_objednavek_uzivatel || 0) > 0;
+
+        if (jeMujUsek && jePouzitiVObj) return 1;
+        if (cerpalUzivatel) return 2;
+        return 3;
+      };
+
+      const pa = getPriority(a);
+      const pb = getPriority(b);
+      if (pa !== pb) return pa - pb;
+
+      return String(a.cislo_smlouvy || '').localeCompare(String(b.cislo_smlouvy || ''), 'cs', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
+  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
 
   // =============================================================================
   // PAGINATION - useEffects (před table)

@@ -359,7 +359,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
 
 function App() {
   const { isMobile } = useDevice();
-  const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, user_id, user, setIsRefreshingToken } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, user_id, user, setIsRefreshingToken from AuthContext
+  const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, user_id, user, expandedPermissions, setIsRefreshingToken } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, user_id, user, setIsRefreshingToken from AuthContext
   const { showToast } = useContext(ToastContext) || {};
   const bgTasksContext = useBgTasksContext();
   const exchangeRatesContext = useExchangeRates(); // ← Nový context pro směnné kurzy
@@ -412,6 +412,87 @@ function App() {
     // Hard reload
     window.location.reload(true);
   };
+
+  // 🔐 ČERPÁNÍ: Přístupová matice + scope (all/own) pro jednotlivá ouška
+  const cerpaniAccessMode = React.useMemo(() => {
+    if (!isLoggedIn) return null;
+
+    const perms = Array.isArray(expandedPermissions)
+      ? expandedPermissions.map((p) => String(p || '').toUpperCase())
+      : [];
+
+    const hasPerm = (code) =>
+      perms.includes(String(code || '').toUpperCase()) ||
+      (typeof hasPermission === 'function' && hasPermission(code));
+
+    const hasLpToken = (perm) => /(^|_)LP(_|$)/.test(perm);
+
+    const hasAnyPermLike = (matcher) => perms.some((perm) => matcher(perm));
+
+    const isAdminOrManage =
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      hasPerm('SPEDNIG_MANAGE') ||
+      hasPerm('SPNDING_MANAGE') ||
+      hasPerm('SPENDING_MANAGE') ||
+      hasPerm('LP_MANAGE') ||
+      hasPerm('CONTRACT_MANAGE');
+
+    if (isAdminOrManage) {
+      return {
+        mode: 'all',
+        contractsUnrestricted: true,
+        lpUnrestricted: true,
+      };
+    }
+
+    const hasGlobalViewAll =
+      hasPerm('SPEDNIG_VIEW_ALL') || hasPerm('SPNDING_VIEW_ALL') || hasPerm('SPEDNING_VIEW_ALL') || hasPerm('SPENDING_VIEW_ALL') || hasPerm('CERPANI_VIEW_ALL');
+    const hasGlobalViewOwn =
+      hasPerm('SPEDNIG_VIEW_OWN') || hasPerm('SPNDING_VIEW_OWN') || hasPerm('SPEDNING_VIEW_OWN') || hasPerm('SPENDING_VIEW_OWN') || hasPerm('CERPANI_VIEW_OWN');
+
+    const hasContractViewAll =
+      hasPerm('CONTRACT_VIEW_ALL') ||
+      hasAnyPermLike((perm) => perm.endsWith('_VIEW_ALL') && (perm.includes('SMLOUV') || perm.includes('CONTRACT')));
+
+    const hasContractViewOwn =
+      hasPerm('CONTRACT_VIEW_OWN') || hasPerm('CONTRACT_VIEW') ||
+      hasAnyPermLike((perm) => {
+        const isViewScope = perm.endsWith('_VIEW_OWN') || perm.endsWith('_VIEW');
+        return isViewScope && (perm.includes('SMLOUV') || perm.includes('CONTRACT'));
+      });
+
+    const hasLpViewAll =
+      hasPerm('LP_VIEW_ALL') ||
+      hasAnyPermLike((perm) => perm.endsWith('_VIEW_ALL') && (
+        hasLpToken(perm) ||
+        perm.includes('LIMIT') ||
+        perm.includes('PRISLIB')
+      ));
+
+    const hasLpViewOwn =
+      hasPerm('LP_VIEW_OWN') || hasPerm('LP_VIEW') ||
+      hasAnyPermLike((perm) => {
+        const isViewScope = perm.endsWith('_VIEW_OWN') || perm.endsWith('_VIEW');
+        return isViewScope && (
+          hasLpToken(perm) ||
+          perm.includes('LIMIT') ||
+          perm.includes('PRISLIB')
+        );
+      });
+
+    const canContracts = hasGlobalViewAll || hasGlobalViewOwn || hasContractViewAll || hasContractViewOwn;
+    const canLp = hasGlobalViewAll || hasGlobalViewOwn || hasLpViewAll || hasLpViewOwn;
+
+    if (!canContracts && !canLp) {
+      return null;
+    }
+
+    return {
+      mode: canContracts && canLp ? 'all' : (canContracts ? 'contracts' : 'lp'),
+      contractsUnrestricted: hasGlobalViewAll || hasContractViewAll,
+      lpUnrestricted: hasGlobalViewAll || hasLpViewAll,
+    };
+  }, [isLoggedIn, expandedPermissions, hasAdminRole, hasPermission]);
 
   // ✅ KRITICKÉ: Stabilní reference na bgTasks - vytvoří se POUZE JEDNOU
   const bgTasksConfigRef = useRef({ trackState: false });
@@ -820,7 +901,15 @@ function App() {
                     hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
                   ) && <Route path="/dictionaries" element={<DictionariesNew />} />}
                   {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/reports-old" element={<ReportsPlaceholder />} />}
-                  {isLoggedIn && <Route path="/cerpani" element={<CerpaniPage />} />}
+                  {isLoggedIn && <Route path="/cerpani" element={
+                    cerpaniAccessMode
+                      ? <CerpaniPage
+                          mode={cerpaniAccessMode.mode}
+                          contractsUnrestricted={cerpaniAccessMode.contractsUnrestricted}
+                          lpUnrestricted={cerpaniAccessMode.lpUnrestricted}
+                        />
+                      : <Navigate to="/access-denied" replace />
+                  } />}
                   {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
                   {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
                   {isLoggedIn && (
