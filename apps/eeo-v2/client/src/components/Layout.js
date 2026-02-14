@@ -1798,17 +1798,25 @@ const Layout = ({ children }) => {
     return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
   }, [userDetail]);
 
-  // SUPERADMIN (zatím jen tato role má sticky NOTES tabuli)
+  // SUPERADMIN (má automaticky sticky NOTES tabuli)
   const isSuperAdmin = useMemo(() => {
     return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN') || false;
   }, [userDetail]);
 
+  // Sticky NOTES právo (SUPERADMIN nebo explicitní STICKY_MANAGE)
+  const canUseStickyNotes = useMemo(() => {
+    if (!isLoggedIn) return false;
+    if (isSuperAdmin) return true;
+    if (typeof hasPermission === 'function') return !!hasPermission('STICKY_MANAGE');
+    return false;
+  }, [isLoggedIn, isSuperAdmin, hasPermission]);
+
   // Fullscreen sticky NOTES overlay
   const [stickyNotesOpen, setStickyNotesOpen] = useState(false);
 
-  // Hotkey: Win/Cmd + N → sticky NOTES (pouze SUPERADMIN)
+  // Hotkey: Win/Cmd + N → sticky NOTES (dle oprávnění)
   useEffect(() => {
-    if (!isLoggedIn || !isSuperAdmin) return;
+    if (!isLoggedIn || !canUseStickyNotes) return;
 
     const onKeyDown = (e) => {
       try {
@@ -1835,14 +1843,14 @@ const Layout = ({ children }) => {
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isLoggedIn, isSuperAdmin]);
+  }, [isLoggedIn, canUseStickyNotes]);
 
-  // Pokud uživatel není SUPERADMIN / není přihlášen, overlay vždy zavřít
+  // Pokud uživatel nemá oprávnění / není přihlášen, overlay vždy zavřít
   useEffect(() => {
-    if (!isLoggedIn || !isSuperAdmin) {
+    if (!isLoggedIn || !canUseStickyNotes) {
       setStickyNotesOpen(false);
     }
-  }, [isLoggedIn, isSuperAdmin]);
+  }, [isLoggedIn, canUseStickyNotes]);
 
   // Check if user has all three permissions (Invoices + Orders + Annual Fees)
   // These users should also get dropdown menu to save space
@@ -3181,7 +3189,7 @@ const Layout = ({ children }) => {
       </Header>
       {isLoggedIn && (
         <MenuBar>
-          {isSuperAdmin && (
+          {canUseStickyNotes && (
             <MenuCornerLeft>
               <SmartTooltip
                 text={stickyNotesOpen ? 'Skrýt NOTES tabuli' : 'Otevřít NOTES tabuli'}
@@ -3795,8 +3803,8 @@ const Layout = ({ children }) => {
         {children}
       </Content>
 
-      {/* Fullscreen sticky NOTES overlay – pouze SUPERADMIN (DB + fallback LocalStorage) */}
-      {isLoggedIn && isSuperAdmin && (
+      {/* Fullscreen sticky NOTES overlay – dle oprávnění (DB + fallback LocalStorage) */}
+      {isLoggedIn && canUseStickyNotes && (
         <StickyNotesOverlay
           open={stickyNotesOpen}
           onClose={() => setStickyNotesOpen(false)}

@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTimes, faGripLines, faStickyNote, faEye, faEyeSlash, faTrash, faBold, faItalic, faStrikethrough, faListUl, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
-import { bulkUpsertStickyNotes, clearAllStickyNotes, deleteStickyNote, listStickyNotes } from '../services/StickyNotesAPI';
+import { faPlus, faTimes, faGripLines, faStickyNote, faEye, faEyeSlash, faTrash, faBold, faItalic, faStrikethrough, faListUl, faExclamationTriangle, faShareNodes, faUsers, faUser, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
+import { bulkUpsertStickyNotes, clearAllStickyNotes, deleteStickyNote, listStickyNotes, grantStickyShare, listStickyShares, revokeStickyShare } from '../services/StickyNotesAPI';
+import { fetchEmployees, fetchUseky } from '../services/api2auth';
 
 const DEFAULT_NOTE_SIZE = { w: 240, h: 240 };
 
@@ -241,6 +242,192 @@ const LoadingPill = styled.div`
   }
 `;
 
+const ShareDrawer = styled.div`
+  position: absolute;
+  top: 64px;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  z-index: 6;
+  background: rgba(255, 255, 255, 0.88);
+  border-left: 1px solid rgba(2, 6, 23, 0.10);
+  box-shadow: -22px 0 44px rgba(2, 6, 23, 0.22);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+`;
+
+const ShareDrawerHeader = styled.div`
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid rgba(2, 6, 23, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+`;
+
+const ShareDrawerTitle = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.92);
+`;
+
+const ShareDrawerBody = styled.div`
+  padding: 14px;
+  overflow: auto;
+`;
+
+const ShareSection = styled.div`
+  margin-bottom: 14px;
+
+  .label {
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    color: rgba(15, 23, 42, 0.72);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+`;
+
+const ShareModeRow = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(2, 6, 23, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  margin-bottom: 8px;
+  cursor: pointer;
+
+  input {
+    transform: translateY(0.5px);
+  }
+
+  .title {
+    font-weight: 900;
+    color: rgba(15, 23, 42, 0.90);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .desc {
+    margin-left: auto;
+    font-weight: 800;
+    font-size: 12px;
+    color: rgba(51, 65, 85, 0.72);
+  }
+`;
+
+const ShareSelect = styled.select`
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(2, 6, 23, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.88);
+`;
+
+const ShareInput = styled.input`
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(2, 6, 23, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.90);
+`;
+
+const ShareCandidates = styled.div`
+  margin-top: 8px;
+  border: 1px solid rgba(2, 6, 23, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+`;
+
+const ShareCandidate = styled.button`
+  width: 100%;
+  text-align: left;
+  padding: 10px 10px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.96);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.10);
+  }
+
+  .name {
+    font-weight: 900;
+    color: rgba(15, 23, 42, 0.92);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .meta {
+    font-weight: 800;
+    font-size: 12px;
+    color: rgba(51, 65, 85, 0.70);
+    white-space: nowrap;
+  }
+`;
+
+const ShareRightsRow = styled.div`
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 900;
+    font-size: 12px;
+    color: rgba(15, 23, 42, 0.86);
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(2, 6, 23, 0.10);
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  label[aria-disabled='true'] {
+    opacity: 0.55;
+  }
+`;
+
+const ShareApplyBtn = styled.button`
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 12px 12px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.20);
+  transition: filter 0.14s ease, transform 0.14s ease;
+
+  &:hover { filter: brightness(1.05); transform: translateY(-1px); }
+  &:active { transform: scale(0.99); }
+  &:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+`;
+
 const NoteCard = styled.div`
   position: absolute;
   display: flex;
@@ -315,6 +502,18 @@ const NoteDeleteBtn = styled.button`
   &:hover {
     background: rgba(2, 6, 23, 0.05);
     color: #dc2626;
+  }
+`;
+
+const NoteShareBtn = styled(NoteDeleteBtn)`
+  &:hover {
+    background: rgba(2, 6, 23, 0.05);
+    color: rgba(30, 64, 175, 0.95);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 `;
 
@@ -661,6 +860,19 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
   // Eye-friendly backdrop settings (persisted)
   const [blurEnabled, setBlurEnabled] = useState(true);
 
+  // Sdílení - drawer (varianta B)
+  const [shareDrawerOpen, setShareDrawerOpen] = useState(false);
+  const [shareNoteId, setShareNoteId] = useState(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareMode, setShareMode] = useState('PRIVATE'); // PRIVATE | VSICHNI | USEK | UZIVATEL
+  const [shareRights, setShareRights] = useState({ read: true, write: true, comment: false });
+  const [useky, setUseky] = useState([]);
+  const [selectedUsekId, setSelectedUsekId] = useState('');
+  const [employees, setEmployees] = useState([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [shareExisting, setShareExisting] = useState([]);
+
   useEffect(() => {
     notesRef.current = notes;
   }, [notes]);
@@ -840,6 +1052,157 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     }
   }, []);
 
+  const openShareDrawerFor = useCallback(async (noteId) => {
+    const canUseDb = Boolean(apiAuth?.token && apiAuth?.username && apiAuth?.userId);
+    const note = notesRef.current?.find?.((n) => n.id === noteId);
+    if (!note) return;
+
+    // sdílení jen pro vlastní poznámky
+    if (!canUseDb || note?.ownerUserId !== apiAuth.userId || !note?.dbId) {
+      setDbLastError('Sdílení je dostupné jen pro vlastní poznámky uložené v databázi.');
+      return;
+    }
+
+    setShareDrawerOpen(true);
+    setShareNoteId(noteId);
+    setShareLoading(true);
+    setDbLastError(null);
+
+    try {
+      const [usekyRes, empRes, sharesRes] = await Promise.all([
+        fetchUseky({ token: apiAuth.token, username: apiAuth.username }).catch(() => []),
+        fetchEmployees({ token: apiAuth.token, username: apiAuth.username }).catch(() => []),
+        listStickyShares({ token: apiAuth.token, username: apiAuth.username, sticky_id: note.dbId }).catch(() => [])
+      ]);
+
+      const usekyArr = Array.isArray(usekyRes) ? usekyRes : (usekyRes?.data || []);
+      setUseky(Array.isArray(usekyArr) ? usekyArr : []);
+      setEmployees(Array.isArray(empRes) ? empRes : []);
+
+      const normalized = Array.isArray(sharesRes) ? sharesRes : [];
+      setShareExisting(normalized);
+
+      const hasAll = normalized.some((s) => String(s?.target_type || '').toUpperCase() === 'VSICHNI');
+      const usekEntry = normalized.find((s) => String(s?.target_type || '').toUpperCase() === 'USEK');
+      const userEntry = normalized.find((s) => String(s?.target_type || '').toUpperCase() === 'UZIVATEL');
+
+      if (hasAll) {
+        setShareMode('VSICHNI');
+      } else if (usekEntry?.target_id) {
+        setShareMode('USEK');
+        setSelectedUsekId(String(usekEntry.target_id));
+      } else if (userEntry?.target_id) {
+        setShareMode('UZIVATEL');
+        const uid = Number(userEntry.target_id);
+        const found = (Array.isArray(empRes) ? empRes : []).find((u) => Number(u?.id) === uid);
+        setSelectedUser(found || { id: uid, full_name: `Uživatel #${uid}` });
+      } else {
+        setShareMode('PRIVATE');
+      }
+
+      const firstMask = normalized.length > 0 ? Number(normalized[0]?.prava_mask || 0) : 3;
+      const mask = Number.isFinite(firstMask) && firstMask > 0 ? firstMask : 3;
+      setShareRights({
+        read: (mask & 1) === 1,
+        write: (mask & 2) === 2,
+        comment: (mask & 4) === 4,
+      });
+    } catch (e) {
+      setDbLastError(e?.message || 'Načtení sdílení selhalo');
+      setShareDrawerOpen(false);
+      setShareNoteId(null);
+    } finally {
+      setShareLoading(false);
+    }
+  }, [apiAuth]);
+
+  const applySharePreset = useCallback(async () => {
+    if (!shareNoteId) return;
+    const note = notesRef.current?.find?.((n) => n.id === shareNoteId);
+    const canUseDb = Boolean(apiAuth?.token && apiAuth?.username && apiAuth?.userId);
+    if (!note || !canUseDb || note?.ownerUserId !== apiAuth.userId || !note?.dbId) {
+      setDbLastError('Sdílení lze upravit jen u vlastní poznámky.');
+      return;
+    }
+
+    const prava_mask =
+      (shareRights.read ? 1 : 0) |
+      (shareRights.write ? 2 : 0) |
+      (shareRights.comment ? 4 : 0);
+
+    if (prava_mask < 1) {
+      setDbLastError('Musí být povoleno alespoň právo Čtení.');
+      return;
+    }
+
+    setShareLoading(true);
+    setDbLastError(null);
+
+    try {
+      // Nejprve zrušit existující sdílení (preset = 1 režim)
+      for (const s of (shareExisting || [])) {
+        await revokeStickyShare({
+          token: apiAuth.token,
+          username: apiAuth.username,
+          sticky_id: note.dbId,
+          target_type: s.target_type,
+          target_id: s.target_id ?? null,
+        });
+      }
+
+      if (shareMode === 'PRIVATE') {
+        setShareExisting([]);
+        return;
+      }
+
+      if (shareMode === 'VSICHNI') {
+        await grantStickyShare({
+          token: apiAuth.token,
+          username: apiAuth.username,
+          sticky_id: note.dbId,
+          target_type: 'VSICHNI',
+          target_id: null,
+          prava_mask,
+        });
+      } else if (shareMode === 'USEK') {
+        const uid = Number(selectedUsekId);
+        if (!uid) {
+          setDbLastError('Vyberte úsek.');
+          return;
+        }
+        await grantStickyShare({
+          token: apiAuth.token,
+          username: apiAuth.username,
+          sticky_id: note.dbId,
+          target_type: 'USEK',
+          target_id: uid,
+          prava_mask,
+        });
+      } else if (shareMode === 'UZIVATEL') {
+        const uid = Number(selectedUser?.id);
+        if (!uid) {
+          setDbLastError('Vyberte uživatele.');
+          return;
+        }
+        await grantStickyShare({
+          token: apiAuth.token,
+          username: apiAuth.username,
+          sticky_id: note.dbId,
+          target_type: 'UZIVATEL',
+          target_id: uid,
+          prava_mask,
+        });
+      }
+
+      const shares = await listStickyShares({ token: apiAuth.token, username: apiAuth.username, sticky_id: note.dbId });
+      setShareExisting(Array.isArray(shares) ? shares : []);
+    } catch (e) {
+      setDbLastError(e?.message || 'Uložení sdílení selhalo');
+    } finally {
+      setShareLoading(false);
+    }
+  }, [apiAuth, shareExisting, shareMode, shareNoteId, shareRights, selectedUsekId, selectedUser]);
+
   // Načti prefs (blur)
   useEffect(() => {
     try {
@@ -994,6 +1357,11 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (shareDrawerOpen) {
+          setShareDrawerOpen(false);
+          setShareNoteId(null);
+          return;
+        }
         // Pokud je otevřený potvrzovací dialog, zavři jen dialog
         if (confirmDelete?.open) {
           setConfirmDelete({ open: false, id: null });
@@ -1008,7 +1376,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose, confirmDelete?.open, confirmClearAll]);
+  }, [open, onClose, confirmDelete?.open, confirmClearAll, shareDrawerOpen]);
 
   const addNote = useCallback((x, y, content = '') => {
     const randomRotation = Math.random() * 4 - 2;
@@ -1405,6 +1773,22 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                   >
                     <FontAwesomeIcon icon={faListUl} />
                   </NoteFormatBtn>
+                  <NoteShareBtn
+                    type="button"
+                    title="Sdílet"
+                    disabled={!(apiAuth?.token && apiAuth?.username && apiAuth?.userId) || note?.ownerUserId !== apiAuth?.userId || !note?.dbId}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openShareDrawerFor(note.id);
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faShareNodes} />
+                  </NoteShareBtn>
                   <NoteDeleteBtn
                     type="button"
                     onClick={(e) => {
@@ -1487,6 +1871,134 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           );
         })}
       </NotesArea>
+
+      {/* Sdílení poznámky (pravý drawer) */}
+      {shareDrawerOpen && (
+        <ShareDrawer role="complementary" aria-label="Sdílení poznámky">
+          <ShareDrawerHeader>
+            <ShareDrawerTitle>
+              <FontAwesomeIcon icon={faLayerGroup} /> Sdílení poznámky
+            </ShareDrawerTitle>
+            <CloseBtn
+              type="button"
+              onClick={() => { setShareDrawerOpen(false); setShareNoteId(null); }}
+              title="Zavřít"
+              style={{ width: 40, height: 40 }}
+            >
+              <FontAwesomeIcon icon={faTimes} />
+            </CloseBtn>
+          </ShareDrawerHeader>
+
+          <ShareDrawerBody>
+            <ShareSection>
+              <div className="label">Komu</div>
+
+              <ShareModeRow>
+                <input type="radio" name="share_mode" checked={shareMode === 'PRIVATE'} onChange={() => setShareMode('PRIVATE')} />
+                <div className="title"><FontAwesomeIcon icon={faUser} /> Soukromé</div>
+                <div className="desc">jen vy</div>
+              </ShareModeRow>
+
+              <ShareModeRow>
+                <input type="radio" name="share_mode" checked={shareMode === 'VSICHNI'} onChange={() => setShareMode('VSICHNI')} />
+                <div className="title"><FontAwesomeIcon icon={faUsers} /> Všem</div>
+                <div className="desc">všichni uživatelé</div>
+              </ShareModeRow>
+
+              <ShareModeRow>
+                <input type="radio" name="share_mode" checked={shareMode === 'USEK'} onChange={() => setShareMode('USEK')} />
+                <div className="title"><FontAwesomeIcon icon={faLayerGroup} /> Úsek</div>
+                <div className="desc">vybraný úsek</div>
+              </ShareModeRow>
+              {shareMode === 'USEK' && (
+                <ShareSelect value={selectedUsekId} onChange={(e) => setSelectedUsekId(e.target.value)}>
+                  <option value="">— vyber úsek —</option>
+                  {(useky || []).map((u) => (
+                    <option key={u.id} value={String(u.id)}>
+                      {u.usek_zkr ? `${u.usek_zkr} — ` : ''}{u.usek_nazev || `Úsek #${u.id}`}
+                    </option>
+                  ))}
+                </ShareSelect>
+              )}
+
+              <ShareModeRow>
+                <input type="radio" name="share_mode" checked={shareMode === 'UZIVATEL'} onChange={() => setShareMode('UZIVATEL')} />
+                <div className="title"><FontAwesomeIcon icon={faUser} /> Uživatel</div>
+                <div className="desc">konkrétní osoba</div>
+              </ShareModeRow>
+              {shareMode === 'UZIVATEL' && (
+                <>
+                  <ShareInput
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Hledej jméno / e-mail…"
+                  />
+
+                  {!!selectedUser && (
+                    <div style={{ marginTop: 8, fontWeight: 900, color: 'rgba(15,23,42,0.90)' }}>
+                      Vybráno: {selectedUser.full_name || `${selectedUser.jmeno || ''} ${selectedUser.prijmeni || ''}` || `Uživatel #${selectedUser.id}`}
+                    </div>
+                  )}
+
+                  {String(userSearch || '').trim().length >= 2 && (
+                    <ShareCandidates>
+                      {(employees || [])
+                        .filter((u) => {
+                          const q = String(userSearch || '').toLowerCase();
+                          const name = String(u.full_name || '').toLowerCase();
+                          const mail = String(u.email || '').toLowerCase();
+                          return name.includes(q) || mail.includes(q);
+                        })
+                        .slice(0, 8)
+                        .map((u) => (
+                          <ShareCandidate key={u.id} type="button" onClick={() => { setSelectedUser(u); }}>
+                            <span className="name">{u.full_name || `${u.jmeno || ''} ${u.prijmeni || ''}`}</span>
+                            <span className="meta">{u.usek_zkr || ''}</span>
+                          </ShareCandidate>
+                        ))}
+                    </ShareCandidates>
+                  )}
+                </>
+              )}
+            </ShareSection>
+
+            <ShareSection>
+              <div className="label">Oprávnění</div>
+              <ShareRightsRow>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={shareRights.read}
+                    onChange={(e) => setShareRights((p) => ({ ...p, read: e.target.checked }))}
+                  />
+                  Čtení
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={shareRights.write}
+                    onChange={(e) => setShareRights((p) => ({ ...p, write: e.target.checked }))}
+                  />
+                  Zápis
+                </label>
+                <label aria-disabled="true" title="Komentáře jsou připravené v DB/API, UI doděláme později.">
+                  <input type="checkbox" checked={shareRights.comment} disabled />
+                  Komentář
+                </label>
+              </ShareRightsRow>
+            </ShareSection>
+
+            <ShareApplyBtn
+              type="button"
+              onClick={applySharePreset}
+              disabled={shareLoading || !shareNoteId}
+              title="Uložit sdílení"
+            >
+              {shareLoading ? 'Ukládám…' : 'Použít sdílení'}
+            </ShareApplyBtn>
+          </ShareDrawerBody>
+        </ShareDrawer>
+      )}
 
       {/* Confirm delete (portál) */}
       {confirmDelete?.open && createPortal(
