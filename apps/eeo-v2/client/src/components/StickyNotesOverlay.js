@@ -1009,7 +1009,15 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
         if (dirtyIds.length === 0) return;
 
         const currentNotes = notesRef.current || [];
-        const dirtyNotes = currentNotes.filter((n) => dirtyIds.includes(n.id) && n?.ownerUserId === auth.userId);
+        const dirtyNotes = currentNotes.filter((n) => {
+          if (!dirtyIds.includes(n.id)) return false;
+          // owner vždy může zapisovat
+          if (n?.ownerUserId === auth.userId) return true;
+          // sdílené: zapisovat jen pokud práva obsahují WRITE
+          const mask = Number(n?.pravaMask || 0);
+          const canWriteShared = Number.isFinite(mask) && (mask & 2) === 2;
+          return canWriteShared && !!n?.dbId;
+        });
         if (dirtyNotes.length === 0) {
           dirtyIdsRef.current = new Set();
           return;

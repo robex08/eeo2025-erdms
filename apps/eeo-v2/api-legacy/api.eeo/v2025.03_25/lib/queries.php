@@ -941,6 +941,18 @@ $queries['sticky_note_update_with_version'] = "
       AND verze = :version
 ";
 
+// Update sticky s optimistic locking (version) – bez omezení na vlastníka
+// Použít pouze po ověření sdílení s právem WRITE.
+$queries['sticky_note_update_with_version_any_owner'] = "
+    UPDATE ".TBL_STICKY_POZNAMKY."
+    SET obsah_json = :data_json,
+        verze = verze + 1,
+        dt_aktualizace = NOW()
+    WHERE id = :id
+      AND smazano = 0
+      AND verze = :version
+";
+
 // Update sticky bez optimistic locking (fallback / LWW)
 $queries['sticky_note_update_force'] = "
     UPDATE ".TBL_STICKY_POZNAMKY."
@@ -949,6 +961,17 @@ $queries['sticky_note_update_force'] = "
         dt_aktualizace = NOW()
     WHERE id = :id
       AND vlastnik_id = :owner_user_id
+      AND smazano = 0
+";
+
+// Update sticky bez optimistic locking (fallback / LWW) – bez omezení na vlastníka
+// Použít pouze po ověření sdílení s právem WRITE.
+$queries['sticky_note_update_force_any_owner'] = "
+    UPDATE ".TBL_STICKY_POZNAMKY."
+    SET obsah_json = :data_json,
+        verze = verze + 1,
+        dt_aktualizace = NOW()
+    WHERE id = :id
       AND smazano = 0
 ";
 
