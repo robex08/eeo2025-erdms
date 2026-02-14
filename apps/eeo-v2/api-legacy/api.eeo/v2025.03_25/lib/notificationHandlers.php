@@ -1704,6 +1704,60 @@ function handle_notifications_event_types_list($input, $config, $queries) {
     }
 
     try {
+        // ✅ Primární zdroj: DB tabulka event typů
+        // Důvod: musí odpovídat tomu, co hierarchie resolver reálně hledá podle `kod`.
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Database connection failed');
+        }
+
+        $stmt = $db->prepare("SELECT id, kod, nazev, aktivni FROM " . TBL_NOTIFIKACE_TYPY_UDALOSTI . " WHERE aktivni = 1 ORDER BY kod ASC");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $eventTypes = array();
+        foreach ($rows as $row) {
+            $kod = $row['kod'];
+            $nazev = $row['nazev'];
+
+            // Kategorie pro UI – odvozená z prefixu
+            $kategorie = 'other';
+            if (strpos($kod, 'ORDER_') === 0) $kategorie = 'orders';
+            else if (strpos($kod, 'INVOICE_') === 0) $kategorie = 'invoices';
+            else if (strpos($kod, 'CONTRACT_') === 0) $kategorie = 'contracts';
+            else if (strpos($kod, 'CASHBOOK_') === 0) $kategorie = 'cashbook';
+
+            // Zpětná kompatibilita: UI někde čte `kod`, jinde `code`
+            $eventTypes[] = array(
+                'id' => (int)$row['id'],
+                'kod' => $kod,
+                'code' => $kod,
+                'nazev' => $nazev,
+                'name' => $nazev,
+                'kategorie' => $kategorie,
+                'category' => $kategorie
+            );
+        }
+
+        // Filtrování podle kategorie (volitelné)
+        $kategorieFilter = isset($input['kategorie']) ? $input['kategorie'] : null;
+        if ($kategorieFilter) {
+            $eventTypes = array_values(array_filter($eventTypes, function($event) use ($kategorieFilter) {
+                return isset($event['kategorie']) && $event['kategorie'] === $kategorieFilter;
+            }));
+        }
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $eventTypes,
+            'total' => count($eventTypes)
+        ));
+
+        return;
+
+        // -----------------------------------------------------------------
+        // Legacy fallback (už by se neměl používat)
+        // -----------------------------------------------------------------
         // Definice event types podle dokumentace
         $eventTypes = array(
             // OBJEDNÁVKY - Fáze 1: Vytvoření
