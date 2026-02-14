@@ -233,7 +233,7 @@ const SelectedValue = styled.span`
   text-overflow: ellipsis;
   white-space: nowrap;
   color: ${props => props.isEmpty ? '#9ca3af' : '#1f2937'};
-  font-weight: ${props => props.disabled ? '400' : (props.isEmpty ? '400' : '600')};
+  font-weight: ${props => props.disabled ? '400' : (props.isEmpty ? '400' : '700')};
 `;
 
 const TwoLineLabel = styled.div`
@@ -243,7 +243,8 @@ const TwoLineLabel = styled.div`
   gap: 2px;
 
   .line1 {
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 0.9em; /* menší písmo pro KÓD triggeru */
   }
 
   .line2 {
@@ -468,8 +469,9 @@ const CustomSelect = ({
     ? (Array.isArray(value) && value.length > 0
         ? value.map(val => {
             const option = options.find(opt => (opt.id || opt.kod) === val);
-            // OPRAVA: Použij label místo jen cislo_lp, aby se zobrazil celý název včetně popisu
-            return option ? (option.label || option.cislo_lp || option.nazev || val) : val;
+            // Pro zobrazení v zavřeném selectu nechceme nové řádky → nahradit za mezeru
+            const rawLabel = option ? (option.label || option.cislo_lp || option.nazev || val) : val;
+            return typeof rawLabel === 'string' ? rawLabel.replace(/\s*\n\s*/g, ' ') : String(rawLabel);
           }).join(', ')
         : placeholder)
     : (selectedOption ? getOptionLabel(selectedOption, field) : placeholder);
@@ -689,8 +691,8 @@ const CustomSelect = ({
         }}
         disabled={disabled}
         hasError={shouldShowError}
-        placeholder={!selectedOption ? "true" : "false"}
-        value={selectedOption ? value : ''}
+        placeholder={(multiple ? !hasValue : !selectedOption) ? "true" : "false"}
+        value={(multiple ? (hasValue ? 'selected' : '') : (selectedOption ? value : ''))}
         isOpen={isOpen}
         data-field={field}
         tabIndex={disabled ? -1 : 0}
@@ -808,7 +810,9 @@ const CustomSelect = ({
         }}>
           {React.cloneElement(icon, { size: 16 })}
         </span>}
-        <SelectedValue isEmpty={!selectedOption} disabled={disabled}>{displayValue}</SelectedValue>
+        <SelectedValue isEmpty={multiple ? !hasValue : !selectedOption} disabled={disabled}>
+          {displayValue}
+        </SelectedValue>
         {isClearable && !disabled && hasValue && (
           <ClearButton
             role="button"

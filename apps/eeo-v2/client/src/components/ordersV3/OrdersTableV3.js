@@ -1980,9 +1980,9 @@ const OrdersTableV3 = ({
           commentsCount: reloadResult?.comments_count || prev.commentsCount,
         }));
       }
-      
-      // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
-      if (clearCache) clearCache();
+
+      // ✅ TICHÝ REŽIM: Po přidání komentáře NEinvalidovat cache ani nerefreshovat tabulku.
+      // Tooltip si upraví lokální seznam a ikona/count se upraví mutací řádku výše.
       
       // ✅ Toast notifikace
       if (showToast) {
@@ -2020,9 +2020,8 @@ const OrdersTableV3 = ({
           orderInTable.comments_count = newCount;
         }
       }
-      
-      // ✅ Vyčistit cache - tabulka se refreshne automaticky (ikona s počtem se aktualizuje!)
-      if (clearCache) clearCache();
+      // ✅ TICHÝ REŽIM: Po smazání komentáře NErefreshovat tabulku ani neinvalidovat cache.
+      // Tooltip si upraví lokální seznam a ikona/count se upraví mutací řádku výše.
       
       // ✅ Toast notifikace
       if (showToast) {
