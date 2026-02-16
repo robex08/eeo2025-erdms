@@ -209,16 +209,43 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
             ? dbOrder.stav_workflow_kod
             : JSON.parse(dbOrder.stav_workflow_kod || '[]');
           const maOdeslanu = Array.isArray(stavyArray) && stavyArray.includes('ODESLANA');
+          const maZrusenou = Array.isArray(stavyArray) && stavyArray.includes('ZRUSENA');
           const maDatum = !!dbOrder.dt_odeslani;
           const maOdesilatele = !!dbOrder.odesilatel_id;
-          return maOdeslanu && maDatum && maOdesilatele;
+          // Pokud je objednávka zrušená (ZRUSENA), checkbox „Odesláno“ musí být false
+          return !maZrusenou && maOdeslanu && maDatum && maOdesilatele;
         } catch (e) {
           return false;
         }
       })(),
 
-      // 🛑 ODSTRANĚNO: stav_stornovano neexistuje v DB - používá se workflow stav ZRUSENA
-      // Frontend by měl používat hasWorkflowState(stav_workflow_kod, 'ZRUSENA')
+      // ✅ UI HELPER: Storno checkbox (neexistuje v DB jako sloupec)
+      // Odvozujeme z workflow stavu ZRUSENA.
+      stav_stornovano: (() => {
+        try {
+          const stavyArray = Array.isArray(dbOrder.stav_workflow_kod)
+            ? dbOrder.stav_workflow_kod
+            : JSON.parse(dbOrder.stav_workflow_kod || '[]');
+          return Array.isArray(stavyArray) && stavyArray.includes('ZRUSENA');
+        } catch (e) {
+          return false;
+        }
+      })(),
+
+      // UI-only datum storna (mapuje se z dt_odeslani, které DB používá pro odeslání i storno)
+      datum_storna: (() => {
+        try {
+          const stavyArray = Array.isArray(dbOrder.stav_workflow_kod)
+            ? dbOrder.stav_workflow_kod
+            : JSON.parse(dbOrder.stav_workflow_kod || '[]');
+          const isZrusena = Array.isArray(stavyArray) && stavyArray.includes('ZRUSENA');
+          if (!isZrusena) return '';
+          if (!dbOrder.dt_odeslani) return '';
+          return String(dbOrder.dt_odeslani).split(' ')[0];
+        } catch (e) {
+          return '';
+        }
+      })(),
 
       // 🎯 FÁZE 1: Stav schválení (UI helper odvozený ze workflow stavů)
       // ✅ Checkbox se zobrazuje pro všechny stavy KROMĚ "NOVA"

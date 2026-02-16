@@ -503,11 +503,6 @@ const AttachmentViewer = ({
 
     // ✅ PRIORITA 1: Pokud máme připravené imageSrc (data URL), použij to a hotovo
     if (attachment?.imageSrc) {
-      console.log('🖼️ AttachmentViewer using provided imageSrc', {
-        filename,
-        dataUrlLength: attachment.imageSrc.length,
-        dataUrlPrefix: attachment.imageSrc.slice(0, 50)
-      });
       setImageSrc(attachment.imageSrc);
       setImageError(false);
       setImageFallbackTried(true);
@@ -520,36 +515,20 @@ const AttachmentViewer = ({
       
       const loadFromBlob = async () => {
         try {
-          console.log('🖼️ AttachmentViewer creating data URL from blob', {
-            filename,
-            blobSize: attachment.blob.size,
-            blobType: attachment.blob.type
-          });
-          
           const reader = new FileReader();
           reader.onload = () => {
             if (isActive) {
-              console.log('🖼️ AttachmentViewer data URL created from blob', {
-                filename,
-                dataUrlLength: reader.result.length,
-                dataUrlPrefix: reader.result.slice(0, 50)
-              });
               setImageSrc(reader.result);
               setImageError(false);
             }
           };
           reader.onerror = () => {
             if (isActive) {
-              console.log('🖼️ AttachmentViewer FileReader error', filename);
               setImageError(true);
             }
           };
           reader.readAsDataURL(attachment.blob);
         } catch (error) {
-          console.log('🖼️ AttachmentViewer blob load failed', {
-            filename,
-            error: error?.message || String(error)
-          });
           if (isActive) {
             setImageError(true);
           }
@@ -564,9 +543,7 @@ const AttachmentViewer = ({
     }
 
     // ✅ PRIORITA 3: Fallback - zkusit blob URL (starý kód)
-    if (effectiveBlobUrl) {
-      console.log('🖼️ AttachmentViewer using blob URL fallback', effectiveBlobUrl);
-    }
+    // (bez logování)
     
   }, [fileType, attachment?.blob, attachment?.imageSrc, filename]);
 
@@ -1136,7 +1113,6 @@ const AttachmentViewer = ({
                   flexShrink: 0
                 }}
                 onLoad={(e) => {
-                  console.log('🖼️ Image loaded successfully');
                   setImageError(false);
                   const w = e?.currentTarget?.naturalWidth;
                   const h = e?.currentTarget?.naturalHeight;
@@ -1145,7 +1121,6 @@ const AttachmentViewer = ({
                   }
                 }}
                 onError={(e) => {
-                  console.log('🖼️ Image error', { src: e.target.src });
                   handleImageError();
                 }}
               />

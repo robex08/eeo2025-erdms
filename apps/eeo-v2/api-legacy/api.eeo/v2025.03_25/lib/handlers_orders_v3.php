@@ -1310,10 +1310,12 @@ function handle_orders_v3_find_page($input, $config) {
             LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
             WHERE $where_clause
         ) ranked
-        WHERE id = :order_id";
+        WHERE id = ?";
 
         $stmt = $db->prepare($sql);
-        $stmt->execute(array_merge($where_params, ['order_id' => $order_id]));
+        // ⚠️ PDO nepovoluje míchat pojmenované a poziční parametry v jednom statementu.
+        // where_clause používá '?', proto i order_id posíláme jako poziční parametr.
+        $stmt->execute(array_merge($where_params, [$order_id]));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$result) {

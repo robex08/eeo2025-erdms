@@ -796,6 +796,11 @@ export const handleSendToSupplier = (currentWorkflow) => {
  */
 export const handleSupplierConfirmation = (currentWorkflow, isConfirmed) => {
   let states = parseWorkflowStates(currentWorkflow);
+
+  // Pokud je objednávka stornovaná, vyšší workflow už nesmí vznikat
+  if (states.includes('ZRUSENA')) {
+    return states;
+  }
   
   if (isConfirmed) {
     states = addWorkflowState(states, 'POTVRZENA');
@@ -812,6 +817,11 @@ export const handleSupplierConfirmation = (currentWorkflow, isConfirmed) => {
  */
 export const handlePublishDecision = (currentWorkflow, shouldPublish) => {
   let states = parseWorkflowStates(currentWorkflow);
+
+  // Pokud je objednávka stornovaná, vyšší workflow už nesmí vznikat
+  if (states.includes('ZRUSENA')) {
+    return states;
+  }
   
   // Odstranit předchozí rozhodnutí
   states = states.filter(s => s !== 'UVEREJNIT' && s !== 'NEUVEREJNIT' && s !== 'UVEREJNENA');
@@ -832,6 +842,11 @@ export const handlePublishDecision = (currentWorkflow, shouldPublish) => {
  */
 export const handlePublishing = (currentWorkflow, hasDatum, hasIddt) => {
   let states = parseWorkflowStates(currentWorkflow);
+
+  // Pokud je objednávka stornovaná, vyšší workflow už nesmí vznikat
+  if (states.includes('ZRUSENA')) {
+    return states;
+  }
   
   if (hasDatum && hasIddt) {
     // Vyplněno → přejít na UVEREJNENA
@@ -856,6 +871,11 @@ export const handlePublishing = (currentWorkflow, hasDatum, hasIddt) => {
  */
 export const handleInvoiceChange = (currentWorkflow, hasInvoices, isPokladna = false) => {
   let states = parseWorkflowStates(currentWorkflow);
+
+  // Pokud je objednávka stornovaná, vyšší workflow už nesmí vznikat
+  if (states.includes('ZRUSENA')) {
+    return states;
+  }
   
   // ❌ POKLADNA režim byl DEPRECATED - již se nepoužívá
   
@@ -889,6 +909,11 @@ export const handleInvoiceChange = (currentWorkflow, hasInvoices, isPokladna = f
  */
 export const handleQualityConfirmation = (currentWorkflow, allInvoicesConfirmed) => {
   let states = parseWorkflowStates(currentWorkflow);
+
+  // Pokud je objednávka stornovaná, vyšší workflow už nesmí vznikat
+  if (states.includes('ZRUSENA')) {
+    return states;
+  }
   
   if (allInvoicesConfirmed) {
     // Všechny faktury potvrzeny → ZKONTROLOVANA
@@ -906,6 +931,11 @@ export const handleQualityConfirmation = (currentWorkflow, allInvoicesConfirmed)
  */
 export const handleCompletion = (currentWorkflow, isCompleted) => {
   let states = parseWorkflowStates(currentWorkflow);
+
+  // Pokud je objednávka stornovaná, vyšší workflow už nesmí vznikat
+  if (states.includes('ZRUSENA')) {
+    return states;
+  }
   
   if (isCompleted) {
     states = addWorkflowState(states, 'DOKONCENA');
@@ -923,7 +953,23 @@ export const handleCancellation = (currentWorkflow, isCancelled) => {
   let states = parseWorkflowStates(currentWorkflow);
   
   if (isCancelled) {
-    states = addWorkflowState(states, 'ZRUSENA');
+    // Pokud se objednávka stornuje, musí být ZRUSENA finální (aktuální) stav.
+    // ✅ Odstranit všechny vyšší fáze (jinak by poslední stav mohl zůstat např. DOKONCENA)
+    states = states.filter(s => ![
+      'POTVRZENA',
+      'UVEREJNIT',
+      'NEUVEREJNIT',
+      'UVEREJNENA',
+      'FAKTURACE',
+      'VECNA_SPRAVNOST',
+      'ZKONTROLOVANA',
+      'DOKONCENA',
+      'K_DOKONCENI'
+    ].includes(s));
+
+    // Odebrat případné existující ZRUSENA a přidat ji nakonec (aktuální stav)
+    states = states.filter(s => s !== 'ZRUSENA');
+    states.push('ZRUSENA');
   } else {
     states = removeWorkflowState(states, 'ZRUSENA');
   }
