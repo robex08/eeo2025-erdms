@@ -1,6 +1,6 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "2.32.0",
+  "version": "2.33.0",
   "private": true,
   "homepage": "/dev/eeo-v2",
   "dependencies": {
@@ -51,7 +51,7 @@
     "start": "NODE_OPTIONS=--max_old_space_size=2048 react-app-rewired start",
     "build": "NODE_OPTIONS=--max_old_space_size=8192 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
     "build:dev": "NODE_ENV=development BUILD_PATH=build PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
-    "build:dev:explicit": "REACT_APP_VERSION=2.32-DEV REACT_APP_API_BASE_URL=/api REACT_APP_API2_BASE_URL=/dev/api.eeo/ REACT_APP_OLD_ATTACHMENTS_URL=/prilohy/ PUBLIC_URL=/dev/eeo-v2 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
+    "build:dev:explicit": "REACT_APP_VERSION=2.33-DEV REACT_APP_API_BASE_URL=/api REACT_APP_API2_BASE_URL=/dev/api.eeo/ REACT_APP_OLD_ATTACHMENTS_URL=/prilohy/ PUBLIC_URL=/dev/eeo-v2 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
     "build:prod": "NODE_ENV=production BUILD_PATH=build-prod PUBLIC_URL=/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build-prod",
     "deploy-maintenance": "npm run deploy-maintenance:prepare && npm run deploy-maintenance:build && npm run deploy-maintenance:finalize",
     "deploy-maintenance:prepare": "shx rm -rf build && shx mkdir -p build && shx cp maintenance.html build/index.html",

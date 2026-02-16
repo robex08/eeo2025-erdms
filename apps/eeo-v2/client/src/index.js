@@ -20,13 +20,27 @@ window.addEventListener('error', e => {
 
 // Suppress React DevTools console message in development
 if (process.env.NODE_ENV === 'development') {
+  const shouldSkipDevToolsMessage = (args) => {
+    const message = args?.[0];
+    return typeof message === 'string' && message.includes('Download the React DevTools');
+  };
+
   const originalConsoleLog = console.log;
   console.log = (...args) => {
-    const message = args[0];
-    if (typeof message === 'string' && message.includes('Download the React DevTools')) {
-      return; // Skip React DevTools message
-    }
+    if (shouldSkipDevToolsMessage(args)) return;
     originalConsoleLog.apply(console, args);
+  };
+
+  const originalConsoleInfo = console.info;
+  console.info = (...args) => {
+    if (shouldSkipDevToolsMessage(args)) return;
+    originalConsoleInfo.apply(console, args);
+  };
+
+  const originalConsoleWarn = console.warn;
+  console.warn = (...args) => {
+    if (shouldSkipDevToolsMessage(args)) return;
+    originalConsoleWarn.apply(console, args);
   };
 }
 

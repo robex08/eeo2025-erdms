@@ -1686,16 +1686,29 @@ export default function InvoiceEvidencePage() {
 
   // Helper: získání finálního stavu objednávky
   const getCurrentWorkflowState = useCallback((order) => {
-    if (!order || !order.stav_workflow_kod) {
+    if (!order) {
       return null;
     }
 
+    // UniversalSearch může vracet historii pod různými klíči.
+    // - standard order detail: stav_workflow_kod
+    // - některé search výsledky: stav_kod
+    const rawStates =
+      order.stav_workflow_kod ??
+      order.stav_kod ??
+      order.workflow_states ??
+      null;
+
+    if (!rawStates) return null;
+
     let stavKody = [];
     try {
-      if (typeof order.stav_workflow_kod === 'string') {
-        stavKody = JSON.parse(order.stav_workflow_kod);
-      } else if (Array.isArray(order.stav_workflow_kod)) {
-        stavKody = order.stav_workflow_kod;
+      if (typeof rawStates === 'string') {
+        stavKody = JSON.parse(rawStates);
+      } else if (Array.isArray(rawStates)) {
+        stavKody = rawStates;
+      } else {
+        return null;
       }
     } catch (e) {
       return null;
@@ -1706,17 +1719,30 @@ export default function InvoiceEvidencePage() {
 
   // Helper: kontrola zda lze přidat fakturu k objednávce (musí být ve stavu FAKTURACE, VECNA_SPRAVNOST nebo ZKONTROLOVANA)
   const canAddInvoiceToOrder = useCallback((order) => {
-    if (!order || !order.stav_workflow_kod) {
+    if (!order) {
       return { allowed: false, reason: 'Objednávka nemá definovaný stav' };
     }
 
     // stav_workflow_kod je JSON array stringů - obsahuje celou historii workflow
+    // UniversalSearch může vracet historii i pod `stav_kod`.
+    const rawStates =
+      order.stav_workflow_kod ??
+      order.stav_kod ??
+      order.workflow_states ??
+      null;
+
+    if (!rawStates) {
+      return { allowed: false, reason: 'Objednávka nemá definovaný stav' };
+    }
+
     let stavKody = [];
     try {
-      if (typeof order.stav_workflow_kod === 'string') {
-        stavKody = JSON.parse(order.stav_workflow_kod);
-      } else if (Array.isArray(order.stav_workflow_kod)) {
-        stavKody = order.stav_workflow_kod;
+      if (typeof rawStates === 'string') {
+        stavKody = JSON.parse(rawStates);
+      } else if (Array.isArray(rawStates)) {
+        stavKody = rawStates;
+      } else {
+        return { allowed: false, reason: 'Objednávka nemá definovaný stav' };
       }
     } catch (e) {
       return { allowed: false, reason: 'Chyba při parsování stavu objednávky' };
@@ -1821,6 +1847,22 @@ export default function InvoiceEvidencePage() {
   
   // State pro sledování editace faktury (localStorage se načte v useEffect)
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+
+  // 📎 Temp ID pro novou fakturu (pro přílohy)
+  // DŮVOD: InvoiceAttachmentsCompact udržuje lokální/merge state příloh.
+  // Když po úspěšné evidenci resetujeme pouze `attachments` v parentu, komponenta může
+  // ještě držet „pendingLocal“ a UI pak nechá „viset“ staré přílohy.
+  // Řešení: pro každou novou evidenci mít nové temp ID a vynutit remount komponenty.
+  const generateTempInvoiceId = useCallback(() => {
+    const uid = user_id ? String(user_id) : 'anon';
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `temp-${uid}-${Date.now()}-${rand}`;
+  }, [user_id]);
+  const [tempInvoiceId, setTempInvoiceId] = useState(() => {
+    const uid = user_id ? String(user_id) : 'anon';
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `temp-${uid}-${Date.now()}-${rand}`;
+  });
   
   // 🆕 Flag: Je to PŮVODNÍ EDITACE faktury (načtená z location.state, localStorage)?
   // Rozlišuje původní editaci od nové faktury, kde se ID vytvoří jen pro upload příloh
@@ -1973,6 +2015,7 @@ export default function InvoiceEvidencePage() {
   // Duplicate invoice number warning
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const duplicateCheckTimeoutRef = useRef(null);
+  const duplicateCheckAbortRef = useRef(null);
   
   // Attachment viewer state (PDF / obrázky / jiné typy)
   const [viewerAttachment, setViewerAttachment] = useState(null);
@@ -2305,6 +2348,16 @@ export default function InvoiceEvidencePage() {
     if (duplicateCheckTimeoutRef.current) {
       clearTimeout(duplicateCheckTimeoutRef.current);
     }
+
+    // Zrušit případný běžící request z předchozího kola (už není relevantní)
+    if (duplicateCheckAbortRef.current) {
+      try {
+        duplicateCheckAbortRef.current.abort();
+      } catch (e) {
+        // noop
+      }
+      duplicateCheckAbortRef.current = null;
+    }
     
     // Vyčistit warning pokud není zadáno číslo
     if (!formData.fa_cislo_vema || formData.fa_cislo_vema.trim() === '') {
@@ -2326,11 +2379,15 @@ export default function InvoiceEvidencePage() {
     // Nastavit nový timeout (debouncing - 800ms)
     duplicateCheckTimeoutRef.current = setTimeout(async () => {
       try {
+        const controller = new AbortController();
+        duplicateCheckAbortRef.current = controller;
+
         const result = await checkInvoiceDuplicate(
           username,
           token,
           formData.fa_cislo_vema.trim(),
-          editingInvoiceId || null // Při editaci exclude_invoice_id je ID aktuální faktury
+          editingInvoiceId || null, // Při editaci exclude_invoice_id je ID aktuální faktury
+          { signal: controller.signal }
         );
         
         if (result.exists && result.invoice) {
@@ -2344,6 +2401,10 @@ export default function InvoiceEvidencePage() {
           setDuplicateWarning(null);
         }
       } catch (err) {
+        // Abort je očekávaný (uživatel píše dál) -> nezatěžovat konzoli
+        if (err?.name === 'CanceledError' || err?.name === 'AbortError') {
+          return;
+        }
         console.warn('⚠️ Chyba při kontrole duplicity čísla faktury:', err);
         // Při chybě nevypisovat varování, pouze logovat
       }
@@ -2353,6 +2414,15 @@ export default function InvoiceEvidencePage() {
     return () => {
       if (duplicateCheckTimeoutRef.current) {
         clearTimeout(duplicateCheckTimeoutRef.current);
+      }
+
+      if (duplicateCheckAbortRef.current) {
+        try {
+          duplicateCheckAbortRef.current.abort();
+        } catch (e) {
+          // noop
+        }
+        duplicateCheckAbortRef.current = null;
       }
     };
   }, [formData.fa_cislo_vema, token, username, editingInvoiceId]);
@@ -2933,41 +3003,17 @@ export default function InvoiceEvidencePage() {
       const orders = response?.categories?.orders_2025?.results || [];
       const contracts = response?.categories?.contracts?.results || [];
 
-      // Filtruj objednávky - zobraz VŠECHNY odeslané/aktivní objednávky
+      // Filtruj objednávky - pouze ty, ke kterým lze přidat fakturu (dle AKTUÁLNÍHO workflow stavu)
+      // DŮLEŽITÉ: `stav_workflow_kod` obsahuje historii; rozhoduje poslední (aktuální) stav.
       const sentOrders = orders.filter(order => {
-        let stavKody = [];
-        try {
-          if (order.stav_kod) {
-            stavKody = JSON.parse(order.stav_kod);
-          }
-        } catch (e) {
-          // Ignorovat chyby parsování
-        }
-        
-        const invalidStates = ['STORNOVANA', 'ZAMITNUTA'];
-        const hasInvalidState = stavKody.some(stav => invalidStates.includes(stav));
-        
-        if (hasInvalidState) {
-          return false;
-        }
-        
-        // ✅ FAKTURA SE MŮŽE PŘIDAT V TĚCHTO STAVECH (po potvrzení dodavatelem)
-        // NEUVEREJNIT - objednávka NEBUDE zveřejněna (nezáznamná)
-        // UVEREJNENA - objednávka zveřejněna v registru
-        // FAKTURACE - první faktura přidána
-        // VECNA_SPRAVNOST - věcná kontrola
-        // ZKONTROLOVANA - zkontrolována
-        // ❌ KE_ZVEREJNENI - čeká na zveřejnění (Úvodní), faktury NELZE přidávat
-        // ❌ POTVRZENA - přejde automaticky na NEUVEREJNIT/UVEREJNENA
-        // ❌ DOKONCENA - konečný stav
-        const validStates = ['NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'];
-        const hasValidState = stavKody.some(stav => validStates.includes(stav));
-        
-        if (!hasValidState) {
-          return false;
-        }
+        const currentState = getCurrentWorkflowState(order);
+        if (!currentState) return false;
 
-        return canViewAllOrders || true;
+        // explicitní blokace i pro historické/invalidní stavy
+        const invalidStates = ['STORNOVANA', 'ZAMITNUTA'];
+        if (invalidStates.includes(currentState)) return false;
+
+        return canAddInvoiceToOrder(order).allowed;
       });
 
       // Filtruj smlouvy - pouze aktivní
@@ -2986,7 +3032,7 @@ export default function InvoiceEvidencePage() {
     } finally {
       setIsSearching(false);
     }
-  }, [canViewAllOrders]);
+  }, [canViewAllOrders, canAddInvoiceToOrder, getCurrentWorkflowState]);
 
   // Debounced search při psaní (jen když jsou suggestions otevřené)
   useEffect(() => {
@@ -4939,6 +4985,7 @@ export default function InvoiceEvidencePage() {
         fa_datum_vraceni_zam: ''
       });
       setAttachments([]);
+      setTempInvoiceId(generateTempInvoiceId());
       setOrderData(null);
       setSmlouvaData(null);
       setLpCerpani([]);
@@ -5116,6 +5163,7 @@ export default function InvoiceEvidencePage() {
         
         // Vyčistit attachments state
         setAttachments([]);
+        setTempInvoiceId(generateTempInvoiceId());
         
         // 💾 Vymazat localStorage při zrušení
         try {
@@ -5602,6 +5650,7 @@ export default function InvoiceEvidencePage() {
                       setInvoiceUserConfirmed(false);
                       setIsOriginalEdit(false);
                       setAttachments([]);
+                      setTempInvoiceId(generateTempInvoiceId());
                       setOriginalFormData(null);
                       setHasChangedCriticalField(false);
                       setIsEntityUnlocked(false);
@@ -6398,7 +6447,8 @@ export default function InvoiceEvidencePage() {
 
             {/* 📎 PŘÍLOHY FAKTURY - Nová komponenta podle vzoru OrderForm25 */}
             <InvoiceAttachmentsCompact
-              fakturaId={editingInvoiceId || 'temp-new-invoice'}
+              key={`invoice-attachments-${editingInvoiceId || tempInvoiceId}`}
+              fakturaId={editingInvoiceId || tempInvoiceId}
               objednavkaId={formData.order_id || null}
               fakturaTypyPrilohOptions={typyFakturOptions}
               readOnly={!areAttachmentsEditable}
@@ -7798,6 +7848,7 @@ export default function InvoiceEvidencePage() {
                     
                     // 🎯 KROK 1: RESET příloh a editingInvoiceId NEJDŘÍV (aby useEffect nereloadoval)
                     setAttachments([]);
+                    setTempInvoiceId(generateTempInvoiceId());
                     setEditingInvoiceId(null);
                     setHadOriginalEntity(false);
                     
@@ -7812,22 +7863,30 @@ export default function InvoiceEvidencePage() {
                       localStorage.removeItem(`invoiceAttach_${user_id}`);
                       localStorage.removeItem(`invoiceEdit_${user_id}`);
                       localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
+                      localStorage.removeItem(`invoiceSections_${user_id}`);
                       localStorage.removeItem('spisovka_active_dokument');
+                      sessionStorage.removeItem('invoice_fresh_navigation');
                     } catch (err) {
                       console.warn('Chyba při mazání localStorage:', err);
                     }
+
+                    // 🗑️ Vyčistit DraftManager (aby se po návratu/refreshi nevrátily staré přílohy)
+                    try {
+                      if (user_id) {
+                        draftManager.setCurrentUser(user_id);
+                        await draftManager.deleteDraft();
+                      }
+                    } catch (e) {
+                      console.warn('Draft cleanup error:', e);
+                    }
                     
                     // 🎯 KROK 2: RESET FORMULÁŘE
-                    const resetData = progressModal.resetData || {};
-                    const { wasEditing, wasReadOnlyMode, currentOrderId, currentSmlouvaId } = resetData;
-                    
-                    // ✅ VŽDY smazat všechno včetně objednávky/smlouvy
-                    const shouldResetEntity = true;
+                    // (resetData už nepotřebujeme – po úspěchu vždy resetujeme i OBJ/SML)
                     
                     // Reset formData
                     setFormData({
-                      order_id: shouldResetEntity ? '' : currentOrderId,
-                      smlouva_id: shouldResetEntity ? null : currentSmlouvaId,
+                      order_id: '',
+                      smlouva_id: null,
                       fa_cislo_vema: '',
                       fa_typ: 'BEZNA',
                       fa_datum_doruceni: formatDateForPicker(new Date()),
@@ -7875,14 +7934,9 @@ export default function InvoiceEvidencePage() {
                     // Zavřít progress dialog
                     setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
                     
-                    // 🔄 PŘESMĚROVÁNÍ: 
-                    // - Pokud byl READONLY mode (věcná správnost) → přejít na seznam faktur
-                    // - Pokud byla EDITACE FAKTURY → přejít na seznam faktur 
-                    // - Pokud byla NOVÁ EVIDEJCE faktury → zůstat na formuláři pro další fakturu
-                    if (wasReadOnlyMode || wasEditing) {
-                      navigate('/invoices25-list');
-                    }
-                    // Jinak zůstat na stránce s prázdným formulářem pro další fakturu
+                    // 🔄 PŘESMĚROVÁNÍ:
+                    // ✅ Po zaevidování/aktualizaci faktury (OBJ/SML i nezatříděné) vždy přejít na seznam faktur.
+                    navigate('/invoices25-list');
                   }}
                 >
                   Pokračovat
