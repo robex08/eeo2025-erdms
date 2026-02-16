@@ -1319,13 +1319,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
       const isPreviewable = previewableTypes.includes(ext);
       const isPdf = ext === 'pdf';
 
-      console.log('🔍 Attachment blob info:', {
-        fileName,
-        blobSize: blob.size,
-        blobType: blob.type,
-        first20Bytes: await blob.slice(0, 20).text()
-      });
-
       // 🖼️ Otevřít ve vieweru
       setViewerAttachment({
         ...attachment,
@@ -1658,14 +1651,46 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 </InfoValue>
               </InfoRow>
 
-              {(detail.schvaleni_komentar || detail.odeslani_storno_duvod) && (
-                <InfoRow>
-                  <InfoLabel>Stav komentář:</InfoLabel>
-                  <InfoValue style={{ color: '#64748b' }}>
-                    {[detail.schvaleni_komentar, detail.odeslani_storno_duvod].filter(Boolean).join(', ')}
-                  </InfoValue>
-                </InfoRow>
-              )}
+              {(() => {
+                const statusCode = mapUserStatusToSystemCode(getOrderDisplayStatus(detail));
+
+                // ✅ Speciální zobrazení pro STORNO: nejdřív důvod storna, pak komentář schválení
+                if (statusCode === 'ZRUSENA') {
+                  const storno = (detail.odeslani_storno_duvod || '').trim();
+                  const schvaleni = (detail.schvaleni_komentar || '').trim();
+
+                  return (
+                    <>
+                      <InfoRow>
+                        <InfoLabel>Důvod storna:</InfoLabel>
+                        <InfoValue className={!storno ? 'empty' : ''} style={{ color: '#991b1b', fontWeight: storno ? 600 : 400 }}>
+                          {storno || '---'}
+                        </InfoValue>
+                      </InfoRow>
+                      <InfoRow>
+                        <InfoLabel>Komentář schválení:</InfoLabel>
+                        <InfoValue className={!schvaleni ? 'empty' : ''} style={{ color: '#64748b' }}>
+                          {schvaleni || '---'}
+                        </InfoValue>
+                      </InfoRow>
+                    </>
+                  );
+                }
+
+                // Ostatní stavy: zachovat původní zobrazení v jednom řádku
+                if (detail.schvaleni_komentar || detail.odeslani_storno_duvod) {
+                  return (
+                    <InfoRow>
+                      <InfoLabel>Stav komentář:</InfoLabel>
+                      <InfoValue style={{ color: '#64748b' }}>
+                        {[detail.schvaleni_komentar, detail.odeslani_storno_duvod].filter(Boolean).join(', ')}
+                      </InfoValue>
+                    </InfoRow>
+                  );
+                }
+
+                return null;
+              })()}
 
               <div style={{ borderBottom: '1px solid #e5e7eb', margin: '0.75rem 0' }} />
 

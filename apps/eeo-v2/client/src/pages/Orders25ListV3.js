@@ -839,6 +839,9 @@ function Orders25ListV3() {
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const [highlightAction, setHighlightAction] = useState(null); // 🎨 approve/reject/postpone pro barvu
   const [isSearchingForOrder, setIsSearchingForOrder] = useState(false);
+  // Ref pro dvoufázový scroll po návratu z editace:
+  // 1) zjistit page (API) 2) počkat na načtení orders pro tu page a teprve pak scrollovat
+  const pendingScrollToOrderRef = useRef(null); // { orderId, page }
   
   // 🔒 State pro locked order dialog
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
@@ -986,20 +989,61 @@ function Orders25ListV3() {
     const orderIdFromEdit = location.state?.highlightOrderId || location.state?.orderIdFromEdit;
     
     if (!orderIdFromEdit || isSearchingForOrder) return;
+
+    // ✅ KRITICKÉ: location.state se NEMAŽE přes window.history.replaceState.
+    // Musíme použít react-router navigate(..., { replace: true, state: ... }), jinak efekt poběží dokola.
+    const clearHighlightState = () => {
+      try {
+        const currentState = location.state;
+        if (!currentState) return;
+
+        const { highlightOrderId, orderIdFromEdit: _orderIdFromEdit, ...rest } = currentState;
+        const newState = Object.keys(rest || {}).length > 0 ? rest : null;
+
+        navigate(`${location.pathname}${location.search || ''}`, {
+          replace: true,
+          state: newState
+        });
+      } catch (e) {
+        // Fallback - neblokovat UX
+      }
+    };
     
     // Async funkce pro vyhledání a scroll na objednávku
     const findAndScrollToOrder = async () => {
       setIsSearchingForOrder(true);
       
       try {
+        // Pokud už máme uložený pending cíl pro tenhle orderId, NEVOLEJ API znovu.
+        // Jen čekej na načtení správné stránky a přítomnost objednávky v `orders`.
+        if (pendingScrollToOrderRef.current?.orderId === orderIdFromEdit) {
+          const pendingPage = pendingScrollToOrderRef.current?.page;
+
+          // Čekáme až se přepne stránka
+          if (pendingPage && pendingPage !== currentPage) {
+            return;
+          }
+
+          // Jsme na cílové stránce → jakmile se objednávka objeví v orders, scrollni
+          const orderOnCurrentPage = orders.find(order => order.id === orderIdFromEdit);
+          if (orderOnCurrentPage) {
+            performScrollAndHighlight(orderIdFromEdit);
+            pendingScrollToOrderRef.current = null;
+            clearHighlightState();
+          }
+          return;
+        } else {
+          // Nový orderId (nebo první průchod) → vyčistit pending
+          pendingScrollToOrderRef.current = null;
+        }
+
         // Nejprve zkontrolovat zda je objednávka již na aktuální stránce
         const orderOnCurrentPage = orders.find(order => order.id === orderIdFromEdit);
         
         if (orderOnCurrentPage) {
           // Objednávka JE na aktuální stránce - okamžitě highlight a scroll
           performScrollAndHighlight(orderIdFromEdit);
-          window.history.replaceState({}, document.title);
-          setIsSearchingForOrder(false);
+          clearHighlightState();
           return;
         }
         
@@ -1018,6 +1062,9 @@ function Orders25ListV3() {
         
         if (result.found && result.page) {
           console.log(`✅ Objednávka nalezena na stránce ${result.page}`);
+
+          // Uložit pending cíl - zabrání opakovaným voláním find-page během přepínání stránky
+          pendingScrollToOrderRef.current = { orderId: orderIdFromEdit, page: result.page };
           
           // Přepnout na správnou stránku
           if (result.page !== currentPage) {
@@ -1034,8 +1081,8 @@ function Orders25ListV3() {
             result.message || `Objednávka #${orderIdFromEdit} nenalezena v aktuálních filtrech nebo období.`, 
             { type: 'info' }
           );
-          window.history.replaceState({}, document.title);
-          setIsSearchingForOrder(false);
+          pendingScrollToOrderRef.current = null;
+          clearHighlightState();
         }
         
       } catch (error) {
@@ -1044,7 +1091,9 @@ function Orders25ListV3() {
           `Chyba při hledání objednávky: ${error.message}`, 
           { type: 'error' }
         );
-        window.history.replaceState({}, document.title);
+        pendingScrollToOrderRef.current = null;
+        clearHighlightState();
+      } finally {
         setIsSearchingForOrder(false);
       }
     };

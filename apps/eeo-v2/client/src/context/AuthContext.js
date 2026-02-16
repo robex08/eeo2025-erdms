@@ -540,7 +540,7 @@ export const AuthProvider = ({ children }) => {
             }
             // Token je validní lokálně, pokračuj s API validací
             if (process.env.NODE_ENV === 'development') {
-              console.log('✅ Token nalezen v localStorage → pokračuji s API validací');
+              // (bez logování)
             }
           } catch (tokenCheckError) {
             console.warn('⚠️ Chyba při kontrole lokální expirace tokenu:', tokenCheckError);
