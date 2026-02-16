@@ -30,6 +30,7 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
   const keepaliveIntervalRef = useRef(null);
   const lastActivityRef = useRef(null);
   const lastKeepaliveRef = useRef(null);
+  const lastKeepaliveWarnRef = useRef(0);
 
   // Funkce pro update aktivity (s token refresh)
   const updateActivity = useCallback(async () => {
@@ -75,7 +76,7 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
         username,
         timestamp: new Date().toISOString()
       }, { 
-        timeout: 5000, // Krátký timeout pro keepalive
+        timeout: 10000, // Keepalive je non-critical; 5s často timeoutuje při pomalém BE/SSH
         // Suppress všechny errory - keepalive není kritický
         validateStatus: () => true
       });
@@ -86,7 +87,12 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
     } catch (error) {
       // Úplně tichá chyba - keepalive není kritický
       if (process.env.NODE_ENV === 'development') {
-        console.warn('⚠️ Keepalive ping failed (non-critical):', error.message);
+        // Throttle: nezahlcovat konzoli (např. při dočasném výpadku BE)
+        const nowTs = Date.now();
+        if (!lastKeepaliveWarnRef.current || (nowTs - lastKeepaliveWarnRef.current) > 60000) {
+          lastKeepaliveWarnRef.current = nowTs;
+          console.warn('⚠️ Keepalive ping failed (non-critical):', error.message);
+        }
       }
     }
   }, [token, username]);

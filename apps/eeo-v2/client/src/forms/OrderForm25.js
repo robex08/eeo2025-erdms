@@ -3989,7 +3989,8 @@ const transformBackendDataToFrontend = (backendData) => {
   if (backendData.stav_odeslano !== undefined) {
     transformed.stav_odeslano = Boolean(backendData.stav_odeslano);
   }
-  // stav_stornovano NEEXISTUJE v DB - používáme pouze workflow stav ZRUSENA
+  // ℹ️ `stav_stornovano` není DB sloupec.
+  // Je to UI helper pro checkbox a odvozuje se z workflow (ZRUSENA).
 
   // ℹ️  INDIVIDUÁLNÍ SCHVÁLENÍ a POJISTNÁ UDÁLOST: Načítají se z root objektu (krok 3.5)
   //     stejně jako cislo_smlouvy - NEJSOU vnořené ve financovani objektu
@@ -3999,11 +4000,12 @@ const transformBackendDataToFrontend = (backendData) => {
     'odeslani_storno_duvod',
     'identifikator',
     'dt_odeslani'
-    // 🛑 NEEXISTUJÍ v DB: datum_storna, storno_provedl, stav_stornovano
+    // 🛑 NEEXISTUJÍ v DB: storno_provedl, stav_stornovano (UI helper)
   ];
 
   // 🛑 VYČISTIT DEPRECATED POLE (pokud jsou v localStorage draftu nebo starých datech)
-  const deprecatedFields = ['storno_provedl', 'datum_storna', 'stav_stornovano', 'storno_uzivatel_id'];
+  // Pozn.: `stav_stornovano` nemažeme - používá se v UI.
+  const deprecatedFields = ['storno_provedl', 'storno_uzivatel_id'];
   deprecatedFields.forEach(field => {
     if (backendData[field] !== undefined) {
       delete transformed[field]; // Odstranit z výstupu
@@ -4015,6 +4017,49 @@ const transformBackendDataToFrontend = (backendData) => {
       transformed[field] = backendData[field];
     }
   });
+
+  // 5.9. ✅ STORNO UI HELPER: odvodit z workflow (ZRUSENA)
+  const workflowForStornoDetection = transformed.stav_workflow_kod ?? backendData.stav_workflow_kod;
+  const isZrusenaByWorkflow = (() => {
+    try {
+      const wf = workflowForStornoDetection;
+      let states = [];
+
+      if (Array.isArray(wf)) {
+        states = wf;
+      } else if (typeof wf === 'string') {
+        const trimmed = wf.trim();
+        if (!trimmed) return false;
+
+        // JSON array string
+        if (trimmed.startsWith('[')) {
+          const parsed = JSON.parse(trimmed);
+          states = Array.isArray(parsed) ? parsed : [];
+        } else {
+          // Fallback: starý formát "A,B,C"
+          states = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      } else {
+        states = [];
+      }
+
+      return Array.isArray(states) && states.includes('ZRUSENA');
+    } catch (e) {
+      return false;
+    }
+  })();
+  transformed.stav_stornovano = Boolean(isZrusenaByWorkflow);
+
+  // ✅ Jednotné datum pro odeslání i storno: pokud backend má dt_odeslani, naplň datum_odeslani
+  // (UI DatePicker používá vždy datum_odeslani)
+  if (backendData.dt_odeslani && (!transformed.datum_odeslani || String(transformed.datum_odeslani).trim() === '')) {
+    transformed.datum_odeslani = String(backendData.dt_odeslani).split(' ')[0];
+  }
+
+  // Mutual exclusive checkboxy: pokud je storno, „Odesláno“ musí být vypnuté
+  if (transformed.stav_stornovano) {
+    transformed.stav_odeslano = false;
+  }
 
   // 6. POZNÁMKA: Backend vrací 'poznamka', FE používá 'poznamka_objednavky'
   if (backendData.poznamka) {
@@ -4745,8 +4790,11 @@ function OrderForm25() {
     // Stav odeslání objednávky
     stav_odeslano: false, // FÁZE 3: checkbox "Odesláno"
     datum_odeslani: '',
-    // 🛑 ODSTRANĚNO: stav_stornovano, datum_storna, storno_provedl - neexistují v DB
-    // Storno se řeší přes workflow stav ZRUSENA
+    // 🆕 UI helper pole (neexistují v DB):
+    // - `stav_stornovano` je stav checkboxu „Stornováno“ (odvozený z workflow ZRUSENA při loadu)
+    // - Datum je vždy `datum_odeslani` (společné pro odeslání i storno)
+    stav_stornovano: false,
+    // Storno se v DB řeší přes workflow stav ZRUSENA
     // odesilatel_id (v DB) ukládá ID uživatele pro OBOJÍ (odeslání i storno)
     // Rozlišení: odeslani_storno_duvod prázdný = odeslání, vyplněný = storno
     odeslani_storno_duvod: '', // DB pole pro důvod storna
@@ -7332,8 +7380,11 @@ function OrderForm25() {
               uzivatel_id: user_id,
               ev_cislo: dbOrder.cislo_objednavky || dbOrder.ev_cislo || 'CHYBA: Chybí číslo v DB!',
               stav_schvaleni: stavSchvaleni,
-              stav_odeslano: isOdeslana,
-              // stav_stornovano NEEXISTUJE - storno se řeší přes workflow ZRUSENA
+              // ✅ Checkboxy konečného stavu jsou mutual-exclusive
+              stav_stornovano: isZrusena,
+              stav_odeslano: isOdeslana && !isZrusena,
+              // ✅ Jednotné datum odeslání/storna
+              datum_odeslani: dbOrder.dt_odeslani ? String(dbOrder.dt_odeslani).split(' ')[0] : (transformedDbOrder.datum_odeslani || ''),
               // 🔧 FÁZE 7: Explicitní parsování věcné správnosti z DB
               // ❌ ODSTRANĚNO: Věcná správnost global fields - refaktorováno na per-invoice
               // vecna_spravnost_potvrzeno: 0,
@@ -10576,8 +10627,8 @@ function OrderForm25() {
           else if (formData.stav_stornovano) {
             // ✅ Datum storna nastavit POUZE pokud ještě neexistuje (při prvním stornování)
             if (!formData.dt_odeslani) {
-              // datum_storna pole neexistuje - použít aktuální datum
-              orderData.dt_odeslani = getMySQLDate();
+              // ✅ Jednotné datum pro odeslání i storno (datum_odeslani)
+              orderData.dt_odeslani = formData.datum_odeslani || getMySQLDate();
               addDebugLog('info', 'SAVE', 'storno-datum-new', `Nastaveno NOVÉ dt_odeslani pro STORNO: ${orderData.dt_odeslani}`);
             } else {
               // Datum již existuje - ZACHOVAT původní hodnotu
@@ -22627,10 +22678,8 @@ function OrderForm25() {
                               stav_odeslano: true,
                               datum_odeslani: prev.datum_odeslani || getCurrentDateFormatted(),
                               stav_stornovano: false,
-                              datum_storna: '',
                               odeslani_storno_duvod: '',
-                              storno_uzivatel_id: '',
-                              storno_provedl: ''
+                              // storno metadata pole v DB neexistují - důvod storna se ukládá do odeslani_storno_duvod
                             }));
                           } else {
                             handleInputChange('stav_odeslano', false);
@@ -22656,8 +22705,8 @@ function OrderForm25() {
                       )}
                     </label>
 
-                    {/* Datum odeslání vedle checkboxu */}
-                    {(formData.stav_odeslano || formData.dt_odeslani) && (
+                    {/* Datum (společné pro odeslání i storno) */}
+                    {(formData.stav_odeslano || formData.stav_stornovano || formData.dt_odeslani) && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -22713,16 +22762,18 @@ function OrderForm25() {
                             setFormData(prev => ({
                               ...prev,
                               stav_stornovano: true,
-                              datum_storna: prev.datum_storna || getCurrentDateFormatted(),
+                              // ✅ Jednotné datum pro odeslání i storno
+                              // dt_odeslani v DB se používá pro obojí, proto používáme stejný DatePicker
+                              datum_odeslani: prev.datum_odeslani || getCurrentDateFormatted(),
                               stav_odeslano: false,
-                              datum_odeslani: ''
+                              // datum_odeslani ponecháváme (je společné pro obě akce)
                             }));
                           } else {
                             // Při odškrtnutí vymazat datum a důvod
                             setFormData(prev => ({
                               ...prev,
                               stav_stornovano: false,
-                              datum_storna: '',
+                              datum_odeslani: '',
                               odeslani_storno_duvod: ''
                             }));
                           }
@@ -22747,28 +22798,7 @@ function OrderForm25() {
                       )}
                     </label>
 
-                    {/* Datum storna vedle checkboxu */}
-                    {(formData.stav_stornovano || formData.datum_storna) && (
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        marginLeft: 'auto'
-                      }}>
-                        <Label style={{ margin: 0, fontSize: '0.875rem' }}>DATUM:</Label>
-                        <div style={{ width: '280px' }}>
-                          <DatePicker
-                            fieldName="datum_storna"
-                            value={formData.datum_storna}
-                            onChange={(value) => handleInputChange('datum_storna', value)}
-                            onBlur={(value) => handleFieldBlur('datum_storna', value)}
-                            disabled={shouldLockPhase3Sections}
-                            hasError={!!validationErrors.datum_storna}
-                            placeholder="Vyberte datum..."
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {/* DatePicker je jen jeden (nahoře u "Odesláno") - záměrně zde nic */}
                   </div>
 
                   {/* Důvod stornování - zobrazí se pouze když je stornováno zaškrtnuto */}
@@ -22782,12 +22812,14 @@ function OrderForm25() {
                         name="odeslani_storno_duvod"
                         placeholder="Uveďte důvod stornování objednávky..."
                         value={formData.odeslani_storno_duvod || ''}
+                        disabled={shouldLockPhase3Sections || showSaveProgress || isSaving}
                         onChange={(e) => handleInputChange('odeslani_storno_duvod', e.target.value)}
                         onBlur={(e) => handleFieldBlur('odeslani_storno_duvod', e.target.value)}
                         rows={3}
                         style={{
                           border: '1px solid #fca5a5',
-                          backgroundColor: '#fef2f2'
+                          backgroundColor: (shouldLockPhase3Sections || showSaveProgress || isSaving) ? '#f3f4f6' : '#fef2f2',
+                          cursor: (shouldLockPhase3Sections || showSaveProgress || isSaving) ? 'not-allowed' : 'text'
                         }}
                       />
                       {validationErrors.odeslani_storno_duvod && (
@@ -22845,12 +22877,12 @@ function OrderForm25() {
                       fontSize: '0.875rem'
                     }}>
                       <div style={{ fontWeight: '600' }}>
-                        {formData.dt_odeslani && formData.odesilatel_id && hasWorkflowState(formData.stav_workflow_kod, 'STORNOVANA') ? (
-                          // Data existují + stav STORNOVANA = byla již stornována
+                        {formData.dt_odeslani && formData.odesilatel_id && hasWorkflowState(formData.stav_workflow_kod, 'ZRUSENA') ? (
+                          // Data existují + stav ZRUSENA = byla již stornována
                           <>
                             ❌ Objednávka byla stornována
                             <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', fontWeight: 'normal' }}>
-                              <strong>Datum stornování:</strong> {formData.dt_odeslani}
+                              <strong>Datum stornování:</strong> {String(formData.dt_odeslani).split(' ')[0]}
                               {' • '}
                               <strong>Stornoval:</strong> {getUserNameById(formData.odesilatel_id)}
                             </div>

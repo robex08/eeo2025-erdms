@@ -277,7 +277,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
             
             if (targetRoute && isSectionAvailable(targetSection, hasPermission, userDetail)) {
               // ✅ User settings sekce JE dostupná → použij ji (NEJVYŠŠÍ PRIORITA)
-              console.log('✅ PRIORITA 1: Použita user settings sekce:', targetSection);
+              // (bez logování)
               navigate(targetRoute, { replace: true });
               return;
             } else {

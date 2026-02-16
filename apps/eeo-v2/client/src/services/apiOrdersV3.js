@@ -211,6 +211,7 @@ export async function findOrderPageV3({
   username,
   order_id,
   per_page = 50,
+  period = null,
   year = new Date().getFullYear(),
   filters = {},
   sorting = []
@@ -225,6 +226,7 @@ export async function findOrderPageV3({
       username,
       order_id,
       per_page,
+      period,
       year,
       filters,
       sorting

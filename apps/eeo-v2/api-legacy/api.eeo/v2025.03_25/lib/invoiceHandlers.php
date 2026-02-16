@@ -27,6 +27,93 @@
 require_once 'orderQueries.php';
 
 /**
+ * 💰 Normalizace peněžní částky pro DB (fa_castka) - legacy invoices25
+ *
+ * Pozn.: Tento soubor je deprecated, ale endpointy mohou být ještě volané.
+ * Cíl: zabránit SQL warning 1265 "Data truncated for column fa_castka".
+ *
+ * Výstup: string "12345.67" nebo null (a nastaví $error)
+ */
+if (!function_exists('invoices25_normalize_money_to_decimal_string')) {
+    function invoices25_normalize_money_to_decimal_string($raw, &$error) {
+        $error = null;
+
+        if ($raw === null) {
+            $error = 'Částka faktury je prázdná';
+            return null;
+        }
+
+        // Převod na string
+        $value = is_string($raw) ? $raw : strval($raw);
+
+        // NBSP -> space, trim
+        $value = str_replace("\xC2\xA0", ' ', $value);
+        $value = trim($value);
+
+        if ($value === '') {
+            $error = 'Částka faktury je prázdná';
+            return null;
+        }
+
+        // Odstranit měnu a všechny znaky kromě číslic, tečky, čárky, mínusu a mezer
+        $value = preg_replace('/[^0-9,\.\-\s]/u', '', $value);
+        $value = trim($value);
+
+        // Odstranit mezery (thousand separators)
+        $value = preg_replace('/\s+/', '', $value);
+
+        if ($value === '' || $value === '-' || $value === ',' || $value === '.') {
+            $error = 'Částka faktury není validní';
+            return null;
+        }
+
+        $hasComma = (strpos($value, ',') !== false);
+        $hasDot = (strpos($value, '.') !== false);
+
+        // Pokud obsahuje obojí, rozhodni podle posledního výskytu
+        if ($hasComma && $hasDot) {
+            $lastComma = strrpos($value, ',');
+            $lastDot = strrpos($value, '.');
+
+            if ($lastComma > $lastDot) {
+                // desetinná je čárka -> tečky jsou tisíce
+                $value = str_replace('.', '', $value);
+                $value = str_replace(',', '.', $value);
+            } else {
+                // desetinná je tečka -> čárky jsou tisíce
+                $value = str_replace(',', '', $value);
+            }
+        } elseif ($hasComma && !$hasDot) {
+            // pouze čárka -> desetinná
+            $value = str_replace(',', '.', $value);
+        }
+
+        // Validace finálního tvaru
+        if (!preg_match('/^-?\d+(\.\d+)?$/', $value)) {
+            $error = 'Částka faktury není validní';
+            return null;
+        }
+
+        // Finální formát na 2 desetinná místa (DB očekává decimal)
+        $num = (float)$value;
+
+        // Bezpečnost: NaN / INF
+        if (!is_finite($num)) {
+            $error = 'Částka faktury není validní';
+            return null;
+        }
+
+        // DECIMAL guard (typicky DECIMAL(10,2) -> max 99999999.99)
+        if (abs($num) > 99999999.99) {
+            $error = 'Částka faktury je příliš vysoká';
+            return null;
+        }
+
+        return number_format($num, 2, '.', '');
+    }
+}
+
+/**
  * POST - Načte faktury pro konkrétní objednávku
  * Endpoint: invoices25/by-order
  * POST: {token, username, objednavka_id}
@@ -137,11 +224,23 @@ function handle_invoices25_create($input, $config, $queries) {
     $fa_cislo_vema = isset($input['fa_cislo_vema']) ? trim($input['fa_cislo_vema']) : '';
 
     // ✅ objednavka_id je nyní NEPOVINNÉ (může být NULL)
-    if (!$fa_castka || empty($fa_cislo_vema)) {
+    // ⚠️ Pozor: empty('0') === true, takže pro částky nepoužívat empty() ani !$fa_castka
+    $fa_castka_str = ($fa_castka === null) ? '' : (is_string($fa_castka) ? trim($fa_castka) : trim(strval($fa_castka)));
+    if ($fa_castka_str === '' || empty($fa_cislo_vema)) {
         http_response_code(400);
         echo json_encode(['err' => 'Chybí povinná pole: fa_castka, fa_cislo_vema']);
         return;
     }
+
+    // ✅ Normalizace částky - zabrání SQL warning 1265 "Data truncated"
+    $moneyError = null;
+    $normalizedAmount = invoices25_normalize_money_to_decimal_string($fa_castka, $moneyError);
+    if ($normalizedAmount === null) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatná částka faktury (fa_castka): ' . $moneyError]);
+        return;
+    }
+    $fa_castka = $normalizedAmount;
 
     try {
         $db = get_db($config);
@@ -391,8 +490,24 @@ function handle_invoices25_update($input, $config, $queries) {
             $values[] = (int)$input['fa_zaplacena'];
         }
         if (isset($input['fa_castka'])) {
+            $rawAmount = $input['fa_castka'];
+            $rawAmountStr = is_string($rawAmount) ? trim($rawAmount) : trim(strval($rawAmount));
+            if ($rawAmountStr === '') {
+                http_response_code(400);
+                echo json_encode(['err' => 'Neplatná částka faktury (fa_castka): prázdná hodnota']);
+                return;
+            }
+
+            $moneyError = null;
+            $normalizedAmount = invoices25_normalize_money_to_decimal_string($rawAmount, $moneyError);
+            if ($normalizedAmount === null) {
+                http_response_code(400);
+                echo json_encode(['err' => 'Neplatná částka faktury (fa_castka): ' . $moneyError]);
+                return;
+            }
+
             $fields[] = 'fa_castka = ?';
-            $values[] = $input['fa_castka'];
+            $values[] = $normalizedAmount;
         }
         if (isset($input['fa_cislo_vema'])) {
             $fields[] = 'fa_cislo_vema = ?';
@@ -990,11 +1105,23 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
     $typ_prilohy = isset($_POST['typ_prilohy']) ? $_POST['typ_prilohy'] : 'ISDOC';
     
     // ✅ objednavka_id je nyní NEPOVINNÉ (může být NULL)
-    if (!$token || !$request_username || !$fa_castka || empty($fa_cislo_vema)) {
+    // ⚠️ Pozor: empty('0') === true, takže pro částky nepoužívat empty() ani !$fa_castka
+    $fa_castka_str = ($fa_castka === null) ? '' : (is_string($fa_castka) ? trim($fa_castka) : trim(strval($fa_castka)));
+    if (!$token || !$request_username || $fa_castka_str === '' || empty($fa_cislo_vema)) {
         http_response_code(400);
         echo json_encode(['err' => 'Chybí povinné parametry: token, username, fa_castka, fa_cislo_vema']);
         return;
     }
+
+    // ✅ Normalizace částky - zabrání SQL warning 1265 "Data truncated"
+    $moneyError = null;
+    $normalizedAmount = invoices25_normalize_money_to_decimal_string($fa_castka, $moneyError);
+    if ($normalizedAmount === null) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatná částka faktury (fa_castka): ' . $moneyError]);
+        return;
+    }
+    $fa_castka = $normalizedAmount;
 
     $token_data = verify_token($token);
     if (!$token_data) {
