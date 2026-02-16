@@ -614,8 +614,6 @@ const InvoiceAttachmentsCompact = ({
             if (lastCallbackDataRef.current !== newDataStr) {
               lastCallbackDataRef.current = newDataStr;
               onAttachmentsChange(updated);
-            } else {
-              console.log('⏭️ Skip duplicate onAttachmentsChange call');
             }
           }
           callbackTimeoutRef.current = null;
@@ -641,8 +639,6 @@ const InvoiceAttachmentsCompact = ({
           if (lastCallbackDataRef.current !== newDataStr) {
             lastCallbackDataRef.current = newDataStr;
             onAttachmentsChange(updater);
-          } else {
-            console.log('⏭️ Skip duplicate onAttachmentsChange call');
           }
         }
         callbackTimeoutRef.current = null;
@@ -1223,9 +1219,6 @@ const InvoiceAttachmentsCompact = ({
     }).filter(Boolean);
 
     if (newFiles.length > 0) {
-      console.log('📤 PŘIDÁVÁM', newFiles.length, 'nových souborů do UI s optimistic update');
-      console.log('📋 Soubory:', newFiles.map(f => ({ name: f.name, klasifikace: f.klasifikace, status: f.status })));
-      
       // 🎯 TRACKING: Pokud je příloha ze Spisovky, nastavit aktivní dokument do LS
       const firstFile = newFiles[0];
       if (firstFile?.spisovka_dokument_id) {
@@ -1255,7 +1248,6 @@ const InvoiceAttachmentsCompact = ({
           // Sekvenční upload (jako u objednávek) - zabraňuje race conditions
           for (const file of newFiles) {
             try {
-              console.log(`🚀 Spouštím upload souboru ${file.name} (${file.id})`);
               await uploadFileToServer(file.id, file.klasifikace, file);
             } catch (err) {
               console.error(`❌ Chyba při uploadu souboru ${file.name}:`, err);
@@ -1504,22 +1496,6 @@ const InvoiceAttachmentsCompact = ({
         // Najdi název typu přílohy pro zobrazení
         const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === klasifikace);
 
-        // 🔍 DEBUG: Payload před uploadem přílohy
-        const attachmentPayload = {
-          token: token,
-          username: username,
-          faktura_id: realFakturaId,
-          objednavka_id: objednavkaId,
-          typ_prilohy: klasifikace,
-          file: {
-            name: file.file.name,
-            size: file.file.size,
-            type: file.file.type
-          }
-        };
-        console.group('🔍 DEBUG: Upload přílohy faktury');
-        // REQUEST Payload
-
         // Teď nahrajeme přílohu s reálným ID faktury
         const response = await uploadInvoiceAttachment25({
           token: token,
@@ -1529,10 +1505,6 @@ const InvoiceAttachmentsCompact = ({
           typ_prilohy: klasifikace,
           file: file.file
         });
-
-        // 🔍 DEBUG: Response z backendu
-        // RESPONSE
-        console.groupEnd();
         
         // ✅ KRITICKÁ VALIDACE: Zkontrolovat že upload byl skutečně úspěšný
         if (!response || response.status === 'error' || response.error) {
@@ -1589,7 +1561,6 @@ const InvoiceAttachmentsCompact = ({
               ...(f.spisovka_file_id && { spisovka_file_id: f.spisovka_file_id })
             } : f
           );
-          console.log('📎 Nalezena příloha s ID:', attachmentId, 'pro soubor:', file.file.name);
           
           // ✅ Zavolat onAttachmentsChange pro propagaci změn do OrderForm25
           if (onAttachmentsChange) {
@@ -1676,7 +1647,6 @@ const InvoiceAttachmentsCompact = ({
               objednavka_id: objednavkaId,
               hard_delete: 1
             });
-            console.log('✅ Rollback úspěšný - neplatný záznam smazán');
           } catch (rollbackErr) {
             console.error('❌ Rollback selhal:', rollbackErr);
             // Informovat uživatele o problému
@@ -1811,11 +1781,6 @@ const InvoiceAttachmentsCompact = ({
             ...(f.spisovka_file_id && { spisovka_file_id: f.spisovka_file_id })
           } : f
         );
-        console.log('✅ Upload dokončen - změna status → uploaded:', {
-          fileId,
-          attachmentId,
-          fileName: file?.file?.name
-        });
         return updated;
       });
 
@@ -1892,7 +1857,6 @@ const InvoiceAttachmentsCompact = ({
             objednavka_id: objednavkaId,
             hard_delete: 1
           });
-          console.log('✅ Rollback úspěšný - neplatný záznam smazán');
         } catch (rollbackErr) {
           console.error('❌ Rollback selhal:', rollbackErr);
           // Informovat uživatele o problému
@@ -2198,8 +2162,7 @@ const InvoiceAttachmentsCompact = ({
       
       // Vytěžíme data faktury z textu
       const extractedData = extractInvoiceData(extractedText);
-      
-      console.log('📄 OCR Extracted Data:', extractedData);
+
 
       // Zavřeme progress toast
       if (currentToastId) {

@@ -976,7 +976,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   // 🔄 Refresh panelu při změně refreshCounter (po označení dokumentu jako zpracovaný)
   useEffect(() => {
     if (refreshCounter > 0) {
-      console.log('📋 Refreshing Spisovka panel after document processed...');
       fetchZpracovaneDokumenty();
       // Následně se odložený fetch faktur provede automaticky
     }
