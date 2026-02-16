@@ -1947,7 +1947,7 @@ export async function getInvoiceById25({ token, username, id }) {
  * @param {number|null} excludeInvoiceId - ID faktury k vynechání (při editaci)
  * @returns {Promise<{exists: boolean, invoice?: object}>}
  */
-export async function checkInvoiceDuplicate(username, token, faCisloVema, excludeInvoiceId = null) {
+export async function checkInvoiceDuplicate(username, token, faCisloVema, excludeInvoiceId = null, options = {}) {
   try {
     const payload = {
       username,
@@ -1960,7 +1960,11 @@ export async function checkInvoiceDuplicate(username, token, faCisloVema, exclud
     }
 
     const response = await api25invoices.post('order-v2/invoices/check-duplicate', payload, {
-      timeout: 5000
+      // 5s je v praxi často málo při krátkých síťových špičkách (VPN/router queueing).
+      // Default zvedáme, ale ponecháme možnost přepsat.
+      timeout: typeof options.timeout === 'number' ? options.timeout : 15000,
+      // Axios v1 podporuje AbortController (zabrání paralelním “zastaralým” requestům při psaní)
+      signal: options.signal
     });
 
     if (response.status !== 200) {

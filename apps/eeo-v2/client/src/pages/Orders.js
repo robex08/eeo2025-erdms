@@ -1719,7 +1719,7 @@ const Orders = () => {
       
       // Zobraz počet načtených záznamů
       if (Array.isArray(data) && data.length > 0) {
-        console.log(`📊 Načteno ${data.length} objednávek z období ${yearFrom} - ${yearTo}`);
+        // (záměrně bez console.log – zbytečný spam v konzoli)
       }
 
       setGlobalProgress(70);
@@ -2121,7 +2121,7 @@ const Orders = () => {
       
       // Zobraz počet načtených záznamů
       if (Array.isArray(data) && data.length > 0) {
-        console.log(`📊 Načteno ${data.length} objednávek z období ${yearFrom} - ${yearTo}`);
+        // (záměrně bez console.log – zbytečný spam v konzoli)
       }
 
       setGlobalProgress(70);
@@ -2321,8 +2321,11 @@ const Orders = () => {
     try {
       setAttachmentsLoading((prev) => ({ ...prev, [orderId]: true })); // Set loading state for the specific order ID
 
-  // New API2-auth wrapper to call old_endpoints.php with action 'react-attachment-id'
-  const data = await fetchOrderAttachmentsOld({ id: orderId, token, username });
+      // Tabulka příloh odpovídá zvolenému DB source (objednavkyXXXX -> pripojene_odokumentyXXXX)
+      const attachmentTable = getAttachmentTableName(selectedDbSource);
+
+      // New API2-auth wrapper to call old/react with action 'react-attachment-id'
+      const data = await fetchOrderAttachmentsOld({ id: orderId, token, username, tabulkaOpriloh: attachmentTable });
 
       if (Array.isArray(data)) {
         setAttachments((prev) => ({ ...prev, [orderId]: data })); // Update the attachments state
@@ -2336,8 +2339,9 @@ const Orders = () => {
     }
   };
 
-  // Pro staré objednávky před 2026 používáme původní eeo.zachranka.cz URL
-  const attachmentBaseUrl = process.env.REACT_APP_LEGACY_ATTACHMENTS_BASE_URL || 'https://eeo.zachranka.cz/prilohy/';
+  // Pro staré objednávky před 2026 používáme base URL ze .env (bez hardcode)
+  const attachmentBaseUrlRaw = process.env.REACT_APP_LEGACY_ATTACHMENTS_BASE_URL;
+  const attachmentBaseUrl = attachmentBaseUrlRaw ? attachmentBaseUrlRaw.replace(/\/+$/, '') + '/' : '';
 
   const handleOrderUpdated = () => {
     // Force reload z aktuální databáze po update objednávky
@@ -2669,15 +2673,21 @@ const renderSubRows = (row) => {
                     return (
                       <InfoRow key={index}>
                         <InfoValue style={{ textAlign: 'left', width: '100%' }}>
-                          <a
-                            href={`${attachmentBaseUrl}${attachment.soubor}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            {...(!shouldPreview && { download: fileName })}
-                            style={{ color: '#3b82f6', textDecoration: 'underline', fontWeight: 600 }}
-                          >
-                            {attachment.soubor}
-                          </a>
+                          {attachmentBaseUrl ? (
+                            <a
+                              href={`${attachmentBaseUrl}${attachment.soubor}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              {...(!shouldPreview && { download: fileName })}
+                              style={{ color: '#3b82f6', textDecoration: 'underline', fontWeight: 600 }}
+                            >
+                              {attachment.soubor}
+                            </a>
+                          ) : (
+                            <span style={{ color: '#ef4444', fontWeight: 600 }}>
+                              {attachment.soubor} (chybí REACT_APP_LEGACY_ATTACHMENTS_BASE_URL)
+                            </span>
+                          )}
                           {attachment.popis && <span style={{ color: '#64748b', marginLeft: '0.5rem' }}>: {attachment.popis}</span>}
                         </InfoValue>
                       </InfoRow>

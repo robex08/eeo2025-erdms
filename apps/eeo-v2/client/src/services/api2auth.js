@@ -536,7 +536,7 @@ export async function fetchAllLps({ token, username }) {
  * Sends: { action: 'react-attachment-id', id_obj, token, username, tabulka_opriloh }
  * Returns: Array of attachments [{ soubor, popis, ... }]
  */
-export async function fetchOrderAttachmentsOld({ token, username, id }) {
+export async function fetchOrderAttachmentsOld({ token, username, id, tabulkaOpriloh = null }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
   }
@@ -549,9 +549,16 @@ export async function fetchOrderAttachmentsOld({ token, username, id }) {
     id,
     token,
     username,
-    // legacy DB/table reference from .env for old attachments table
-    tabulka_opriloh: process.env.REACT_APP_DB_ATTACHMENT_KEY,
   };
+
+  // Optional: explicit legacy attachments table (e.g. pripojene_odokumenty0123)
+  // If not provided, backend uses its default query/table.
+  if (tabulkaOpriloh && typeof tabulkaOpriloh === 'string') {
+    const tbl = tabulkaOpriloh.trim();
+    if (/^[A-Za-z0-9_]+$/.test(tbl)) {
+      payload.tabulka_opriloh = tbl;
+    }
+  }
   try {
     // New API2-auth path for legacy actions
     const response = await api2.post('old/react', payload);

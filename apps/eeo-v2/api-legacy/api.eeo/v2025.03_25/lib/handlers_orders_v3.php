@@ -272,7 +272,7 @@ function handle_orders_v3_detail($input, $config) {
             } else {
                 // UNIVERZÁLNÍ: Vždy použít jen název souboru (basename) + aktuální upload root
                 // Funguje pro staré záznamy s plnou cestou i nové s jen názvem
-                // Příklad: /var/www/erdms-platform/.../fa-xxx.pdf -> fa-xxx.pdf -> /var/www/erdms-dev/.../fa-xxx.pdf
+                // Příklad: /stary/upload/root/.../fa-xxx.pdf -> fa-xxx.pdf -> <UPLOAD_ROOT_PATH>/fa-xxx.pdf
                 $filename = basename($systemova_cesta);
                 $file_path = rtrim($upload_root, '/') . '/' . $filename;
             }
