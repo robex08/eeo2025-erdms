@@ -1354,9 +1354,35 @@ const getOrderTotalPriceWithDPH = (order) => {
 // MULTISELECT PRO STAV (separátní komponenta kvůli hooks)
 // ============================================================================
 
+// ✅ Dropdown menu (portal) se custom scrollbarem
+const StavDropdownMenu = styled.div`
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(100, 116, 139, 0.65) rgba(226, 232, 240, 0.85);
+
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(226, 232, 240, 0.85);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.65);
+    border-radius: 999px;
+    border: 2px solid rgba(226, 232, 240, 0.85);
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(71, 85, 105, 0.85);
+  }
+`;
+
 const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, orderStatesList }) => {
   const [stavDropdownOpen, setStavDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const menuRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 280 });
   
   // Hodnota jako pole (synchronizace s filter panelem)
   const currentValue = Array.isArray(localColumnFilters[columnId]) 
@@ -1366,7 +1392,9 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
   // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      const inTrigger = dropdownRef.current && dropdownRef.current.contains(event.target);
+      const inMenu = menuRef.current && menuRef.current.contains(event.target);
+      if (!inTrigger && !inMenu) {
         setStavDropdownOpen(false);
       }
     };
@@ -1376,6 +1404,42 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [stavDropdownOpen]);
+
+  const updateMenuPosition = useCallback(() => {
+    try {
+      const el = dropdownRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+
+      // Šířka: drž se header inputu, ale dej rozumné minimum/maximum
+      const desiredWidth = Math.min(460, Math.max(320, Math.round(rect.width || 0)));
+      let left = Math.round(rect.left || 0);
+      const top = Math.round((rect.bottom || 0) + 2);
+
+      const margin = 8;
+      const vw = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1200;
+      if (left + desiredWidth > (vw - margin)) left = Math.max(margin, vw - desiredWidth - margin);
+      if (left < margin) left = margin;
+
+      setMenuPos({ top, left, width: desiredWidth });
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Při otevření: dopočítej pozici a udrž ji při scroll/resize (menu je v portálu)
+  useEffect(() => {
+    if (!stavDropdownOpen) return;
+    updateMenuPosition();
+
+    const onScrollOrResize = () => updateMenuPosition();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [stavDropdownOpen, updateMenuPosition]);
   
   const handleToggleStav = useCallback((kod) => {
     const newValue = currentValue.includes(kod)
@@ -1395,6 +1459,9 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
       <div
         onClick={(e) => {
           e.stopPropagation();
+          if (!stavDropdownOpen) {
+            updateMenuPosition();
+          }
           setStavDropdownOpen(!stavDropdownOpen);
         }}
         style={{
@@ -1429,30 +1496,30 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
         </svg>
       </div>
       
-      {stavDropdownOpen && (
-        <div
+      {stavDropdownOpen && ReactDOM.createPortal(
+        <StavDropdownMenu
+          ref={menuRef}
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            minWidth: '280px', // ✅ Minimální šířka aby se vešly dlouhé názvy
-            marginTop: '2px',
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            minWidth: 280,
+            marginTop: 0,
             background: 'white',
             border: '1px solid #d1d5db',
             borderRadius: '6px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            zIndex: 1000,
+            boxShadow: '0 10px 28px rgba(0, 0, 0, 0.22)',
+            zIndex: 2147483647, // musí být NAD pagingem/overlay
             maxHeight: '300px',
-            overflowY: 'auto',
-            whiteSpace: 'nowrap' // ✅ Zabrání zalomení textu
+            // scrollbars řeší StavDropdownMenu
           }}
         >
           {orderStatesList && orderStatesList.length > 0 && orderStatesList.map((status, idx) => {
             const kod = status.kod_stavu || status.kod || '';
-            // ✅ STEJNÉ jako OrdersFiltersV3Full - MultiSelectLocal řádek 275
             const nazev = status.label || status.displayName || status.nazev_stavu || status.nazev || 'Bez názvu';
             const isSelected = currentValue.includes(kod);
-            
+
             return (
               <div
                 key={status.id || idx}
@@ -1484,17 +1551,23 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
                   onChange={() => {}}
                   style={{ cursor: 'pointer' }}
                 />
-                <span style={{ 
+                <span style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                   fontWeight: isSelected ? '500' : '400',
                   color: isSelected ? '#2563eb' : '#1f2937',
-                  textTransform: 'none' // ✅ Vypnout uppercase z parent CSS
+                  textTransform: 'none'
                 }}>
                   {nazev}
                 </span>
               </div>
             );
           })}
-        </div>
+        </StavDropdownMenu>,
+        document.body
       )}
     </div>
   );
