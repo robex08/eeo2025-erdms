@@ -968,7 +968,9 @@ function Orders25ListV3() {
           'dokoncena': 'DOKONCENA',
           'zrusena': 'ZRUSENA',
           'smazana': 'SMAZANA',
-          'rozpracovane_stavy': ['ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'],
+          // „ROZPRACOVANÉ“ = vše co už je po schválení a běží procesem
+          // (včetně registru smluv)
+          'rozpracovane_stavy': ['SCHVALENA', 'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'K_UVEREJNENI_DO_REGISTRU', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'CEKA_SE', 'NEUVEREJNIT'],
         };
 
         const mappedStatus = dashboardStatusMap[statusKey];
@@ -1134,25 +1136,30 @@ function Orders25ListV3() {
 
   // Helper pro detekci jakýchkoliv aktivních filtrů (column filters nebo dashboard filter)
   const hasAnyActiveFilters = useMemo(() => {
-    const hasFilters = !!(
-      dashboardFilters?.filter_status ||
-      (columnFilters?.objednatel?.length > 0) ||
-      (columnFilters?.garant?.length > 0) ||
-      (columnFilters?.prikazce?.length > 0) ||
-      (columnFilters?.schvalovatel?.length > 0) ||
-      (columnFilters?.stav?.length > 0) ||
-      (columnFilters?.lp_kody?.length > 0) ||
-      columnFilters?.dateFrom ||
-      columnFilters?.dateTo ||
-      columnFilters?.amountFrom ||
-      columnFilters?.amountTo ||
-      columnFilters?.maBytZverejneno ||
-      columnFilters?.byloZverejneno ||
-      columnFilters?.mimoradneObjednavky ||
-      (globalFilter && globalFilter.trim())
-    );
-    
-    return hasFilters;
+    const isActiveFilterValue = (v) => {
+      if (v == null) return false;
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === 'string') return v.trim().length > 0;
+      if (typeof v === 'boolean') return v === true;
+      if (typeof v === 'number') return Number.isFinite(v); // 0 je validní hodnota
+      if (typeof v === 'object') {
+        // rekurzivně projdi vnořené struktury (kdyby přibyly)
+        return Object.values(v).some(isActiveFilterValue);
+      }
+      return false;
+    };
+
+    // Dashboard filtry
+    if (isActiveFilterValue(dashboardFilters?.filter_status)) return true;
+    if (isActiveFilterValue(dashboardFilters?.filter_my_orders)) return true;
+    if (isActiveFilterValue(dashboardFilters?.filter_archivovano)) return true;
+
+    // Fulltext
+    if (isActiveFilterValue(globalFilter)) return true;
+
+    // Sloupcové filtry (včetně stringových – např. stav_objednavky)
+    const cf = columnFilters || {};
+    return Object.values(cf).some(isActiveFilterValue);
   }, [columnFilters, dashboardFilters, globalFilter]);
 
   // ✅ OPTIMALIZACE: localStorage efekty nahrazeny debounced save v useOrdersV3State

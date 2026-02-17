@@ -363,14 +363,21 @@ const OrdersDashboardV3Full = ({
   const displayFilteredAmount = (filteredTotalAmount !== undefined && filteredTotalAmount !== null) ? filteredTotalAmount : totalAmount;
   const displayFilteredCount = (filteredCount !== undefined && filteredCount !== null) ? filteredCount : stats.total;
 
-  const rozpracovaneCount = (
-    Number(displayStats.rozpracovana || 0) +
-    Number(displayStats.odeslana || 0) +
-    Number(displayStats.potvrzena || 0) +
-    Number(displayStats.fakturace || 0) +
-    Number(displayStats.vecna_spravnost || 0) +
-    Number(displayStats.zkontrolovana || 0)
+  // ✅ Rozpracované (počet) = zbytek po odečtení stavů, které nechceme do „v běhu“ počítat.
+  // Důvod: některé počitadla (např. uveřejnění/registr) nejsou čistě workflow a mohou se překrývat
+  // s workflow stavy → prosté sčítání by dělalo nesoulad (přesně ten, co hlásíš na DEV).
+  const excludedFromInProgressCount = (
+    Number(displayStats.nove || 0) +
+    Number(displayStats.ke_schvaleni || 0) +
+    Number(displayStats.zamitnuta || 0) +
+    Number(displayStats.zrusena || 0) +
+    Number(displayStats.smazana || 0)
   );
+
+  const totalCount = Number(displayStats.total || 0);
+  const dokoncenaCount = Number(displayStats.dokoncena || 0);
+  const inProgressOrDoneCount = Math.max(0, totalCount - excludedFromInProgressCount);
+  const rozpracovaneCount = Math.max(0, inProgressOrDoneCount - dokoncenaCount);
 
   const rozpracovaneAmount = (displayStats.rozpracovaneAmount !== undefined && displayStats.rozpracovaneAmount !== null)
     ? displayStats.rozpracovaneAmount
