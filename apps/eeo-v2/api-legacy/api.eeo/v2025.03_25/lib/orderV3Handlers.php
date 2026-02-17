@@ -1736,26 +1736,63 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
     
     error_log("[OrderV3 STATS] Basic stats: total={$stats['total']}, nove={$stats['nove']}");
     
-    // Celková cena s DPH
-    $sql_total_amount = "
-        SELECT 
+    // Částky (s DPH) – musí odpovídat STEJNÉ množině jako COUNTS (tj. stejný WHERE + permissions + filtry)
+    // Priorita pro částku objednávky: faktury > položky > max_cena_s_dph
+    $sql_amounts = "
+        SELECT
             COALESCE(SUM(
                 CASE
-                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
-                          FROM " . TBL_FAKTURY . " f 
-                          WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0 
-                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
-                          FROM " . TBL_FAKTURY . " f 
+                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0)
+                          FROM " . TBL_FAKTURY . " f
+                          WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0)
+                          FROM " . TBL_FAKTURY . " f
                           WHERE f.objednavka_id = o.id AND f.aktivni = 1)
-                    WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) 
-                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " p 
-                          WHERE p.objednavka_id = o.id) > 0 
-                    THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) 
-                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " p 
+
+                    WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0)
+                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
+                          WHERE p.objednavka_id = o.id) > 0
+                    THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0)
+                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
                           WHERE p.objednavka_id = o.id)
-                    ELSE o.max_cena_s_dph
+
+                    ELSE COALESCE(o.max_cena_s_dph, 0)
                 END
-            ), 0) as total_amount
+            ), 0) AS totalAmount,
+
+            -- Skupina „ROZPRACOVANÉ“ = více workflow stavů (musí sedět s FE počítáním)
+            -- Pozn.: SCHVALENA se bere jako „rozpracovaná“ (tj. není NOVA ani KE_SCHVALENI)
+            COALESCE(SUM(
+                CASE
+                    WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                         IN ('SCHVALENA', 'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA')
+                    THEN
+                        CASE
+                            WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                            THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                            WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " p WHERE p.objednavka_id = o.id) > 0
+                            THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " p WHERE p.objednavka_id = o.id)
+                            ELSE COALESCE(o.max_cena_s_dph, 0)
+                        END
+                    ELSE 0
+                END
+            ), 0) AS rozpracovaneAmount,
+
+            -- Dokončené
+            COALESCE(SUM(
+                CASE
+                    WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'DOKONCENA'
+                    THEN
+                        CASE
+                            WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                            THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                            WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " p WHERE p.objednavka_id = o.id) > 0
+                            THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " p WHERE p.objednavka_id = o.id)
+                            ELSE COALESCE(o.max_cena_s_dph, 0)
+                        END
+                    ELSE 0
+                END
+            ), 0) AS dokoncenaAmount
         FROM " . TBL_OBJEDNAVKY . " o
         LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
         LEFT JOIN " . TBL_UZIVATELE . " u1 ON o.objednatel_id = u1.id
@@ -1764,16 +1801,38 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
         LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
         WHERE $where_clause
     ";
-    
-    $stmt_amount = $db->prepare($sql_total_amount);
+
+    $stmt_amount = $db->prepare($sql_amounts);
     $stmt_amount->execute($where_params);
     $amount_result = $stmt_amount->fetch(PDO::FETCH_ASSOC);
-    
-    $stats['total_amount'] = floatval($amount_result['total_amount']);
-    error_log("[OrderV3 STATS] Total amount calculated: {$stats['total_amount']}");
-    
-    // ⚠️ FRONTEND COMPATIBILITY: Duplicates for camelCase
-    $stats['totalAmount'] = $stats['total_amount'];
+
+    $stats['totalAmount'] = isset($amount_result['totalAmount']) ? floatval($amount_result['totalAmount']) : 0.0;
+    $stats['rozpracovaneAmount'] = isset($amount_result['rozpracovaneAmount']) ? floatval($amount_result['rozpracovaneAmount']) : 0.0;
+    $stats['dokoncenaAmount'] = isset($amount_result['dokoncenaAmount']) ? floatval($amount_result['dokoncenaAmount']) : 0.0;
+
+    // Kompatibilita (někde se ještě používá snake_case)
+    $stats['total_amount'] = $stats['totalAmount'];
+
+    // „filteredTotalAmount“ je pro současnou sadu (už obsahuje filtry, pokud byly předány)
+    // - unfilteredStats call: je to unfiltered množina
+    // - filtered stats call: je to filtered množina
+    $stats['filteredTotalAmount'] = $stats['totalAmount'];
+
+    // Převést všechny countery na INT (MySQL SUM/COUNT vrací string)
+    $counter_fields = array(
+        'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana',
+        'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
+        'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena',
+        'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
+        'withComments', 'withMyComments'
+    );
+    foreach ($counter_fields as $field) {
+        if (isset($stats[$field])) {
+            $stats[$field] = intval($stats[$field]);
+        }
+    }
+
+    error_log("[OrderV3 STATS] Amounts: total={$stats['totalAmount']}, rozpracovane={$stats['rozpracovaneAmount']}, dokoncena={$stats['dokoncenaAmount']}");
     
     return $stats;
 }
