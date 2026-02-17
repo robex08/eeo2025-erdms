@@ -1765,7 +1765,7 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
             COALESCE(SUM(
                 CASE
                     WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
-                         IN ('SCHVALENA', 'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA')
+                        IN ('SCHVALENA', 'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'UVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'CEKA_SE', 'NEUVEREJNIT')
                     THEN
                         CASE
                             WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
