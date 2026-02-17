@@ -217,6 +217,7 @@ function handle_sticky_list($input, $config, $queries) {
                 'data' => $data,
                 'version' => isset($r['version']) ? (int)$r['version'] : 1,
                 'prava_mask' => isset($r['prava_mask']) ? (int)$r['prava_mask'] : 0,
+                'dt_sdileni' => $r['dt_sdileni'] ?? null,
                 'dt_vytvoreni' => $r['dt_vytvoreni'] ?? null,
                 'dt_aktualizace' => $r['dt_aktualizace'] ?? null,
             ];
