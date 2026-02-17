@@ -892,6 +892,15 @@ $queries['sticky_notes_list_accessible'] = "
         n.smazano AS is_deleted,
         MAX(
             CASE
+                WHEN n.vlastnik_id = :user_id THEN NULL
+                WHEN s.cil_typ = 'VSICHNI' THEN s.dt_vytvoreni
+                WHEN s.cil_typ = 'USEK' AND s.cil_id = :usek_id THEN s.dt_vytvoreni
+                WHEN s.cil_typ = 'UZIVATEL' AND s.cil_id = :user_id THEN s.dt_vytvoreni
+                ELSE NULL
+            END
+        ) AS dt_sdileni,
+        MAX(
+            CASE
                 WHEN n.vlastnik_id = :user_id THEN 7
                 WHEN s.cil_typ = 'VSICHNI' THEN s.prava_mask
                 WHEN s.cil_typ = 'USEK' AND s.cil_id = :usek_id THEN s.prava_mask
