@@ -3924,6 +3924,12 @@ const transformBackendDataToFrontend = (backendData) => {
       ? backendData.polozky.map(item => {
           return {
             ...item,
+            // 💰 LP na položce: zajistit number (jinak select po prvním SAVE může zobrazit jen ID)
+            lp_id: item.lp_id !== undefined && item.lp_id !== null && String(item.lp_id).trim() !== ''
+              ? parseInt(item.lp_id, 10)
+              : (item.polozka_lp_id !== undefined && item.polozka_lp_id !== null && String(item.polozka_lp_id).trim() !== ''
+                  ? parseInt(item.polozka_lp_id, 10)
+                  : null),
             cena_bez_dph: typeof item.cena_bez_dph === 'number' 
               ? item.cena_bez_dph.toFixed(2) 
               : (parseFloat((item.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
@@ -3936,6 +3942,18 @@ const transformBackendDataToFrontend = (backendData) => {
         })
       : [];
     delete transformed.polozky; // Vyčistit BE pole
+  }
+
+  // 🔧 LP na položce: sjednotit typ `lp_id` na number i pokud backend vrátí `polozky_objednavky` přímo
+  if (Array.isArray(transformed.polozky_objednavky) && transformed.polozky_objednavky.length > 0) {
+    transformed.polozky_objednavky = transformed.polozky_objednavky.map(item => {
+      const raw = item?.lp_id ?? item?.polozka_lp_id;
+      const lp_id = raw !== undefined && raw !== null && String(raw).trim() !== '' ? parseInt(raw, 10) : null;
+      return {
+        ...item,
+        lp_id
+      };
+    });
   }
 
   // 2. ✅ STŘEDISKA: Normalizovat do array stringů
@@ -5528,7 +5546,14 @@ function OrderForm25() {
   
   // LP State Aliases
   const lpOptionsForItems = lpState.options;
-  const setLpOptionsForItems = (val) => setLpState(s => ({...s, options: val}));
+  const setLpOptionsForItems = (val) => setLpState(s => ({
+    ...s,
+    // ✅ Podpora funkčního updateru: setLpOptionsForItems(prev => next)
+    options: (() => {
+      const next = typeof val === 'function' ? val(s.options) : val;
+      return Array.isArray(next) ? next : [];
+    })()
+  }));
   const lpOptionsLoading = lpState.loading;
   const setLpOptionsLoading = (val) => setLpState(s => ({...s, loading: val}));
   const lpStavy = lpState.financovani;
@@ -5539,7 +5564,7 @@ function OrderForm25() {
   
   // 💰 Načíst aktuální stavy LP z API když se změní lpOptionsForItems
   useEffect(() => {
-    if (!lpOptionsForItems || lpOptionsForItems.length === 0 || !token || !username) return;
+    if (!Array.isArray(lpOptionsForItems) || lpOptionsForItems.length === 0 || !token || !username) return;
     
     const loadLPStavy = async () => {
       const stavy = {};
@@ -6352,8 +6377,67 @@ function OrderForm25() {
   const approvers = useMemo(() => {
     const needsSystemUser = formData.prikazce_id === '0' || formData.schvalovatel_id === '0';
 
+    // ✅ Rozšíření: Zahrnout i uživatele s rolí PRIKAZCE (i když nejsou v approversBase)
+    // a zároveň vždy doplnit aktuálně vybraného příkazce/schvalovatele z allUsers,
+    // aby filtrace LP měla k dispozici usek_id a nezobrazoval se fallback log.
+    const getUserId = (u) => {
+      const id = u?.id ?? u?.user_id;
+      const n = typeof id === 'string' ? parseInt(id, 10) : id;
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const normalizeUser = (u) => {
+      if (!u) return null;
+      const id = getUserId(u);
+      if (id === null || id === undefined) return null;
+      return {
+        ...u,
+        // ⚠️ DŮLEŽITÉ: `id` musí být number (ne string).
+        // filteredLpKodyOptions hledá: (user.id || user.user_id) === parseInt(formData.prikazce_id)
+        // a používá strict ===, takže string by nikdy neshodoval.
+        id,
+        user_id: id
+      };
+    };
+
+    const prikazciByRole = (allUsers || [])
+      .filter(u => {
+        const roles = u?.roles;
+        return Array.isArray(roles) && roles.some(r => r?.kod_role === 'PRIKAZCE');
+      })
+      // preferujeme aktivní, ale necháme je projít – starší objednávky mohou mít neaktivního příkazce
+      .map(normalizeUser)
+      .filter(Boolean);
+
+    const selectedIds = [formData.prikazce_id, formData.schvalovatel_id]
+      .map(v => (v === null || v === undefined) ? null : parseInt(String(v), 10))
+      .filter(v => Number.isFinite(v) && v > 0);
+
+    const selectedUsers = selectedIds
+      .map(id => normalizeUser((allUsers || []).find(u => getUserId(u) === id)))
+      .filter(Boolean);
+
+    // Merge: zachovat pořadí approversBase jako primární (má často displayName/usek_id z API)
+    // + doplnit PRIKAZCE role a vybrané uživatele
+    const merged = [
+      ...(approversBase || []).map(normalizeUser).filter(Boolean),
+      ...prikazciByRole,
+      ...selectedUsers
+    ];
+
+    // Deduplikace dle user_id
+    const unique = [];
+    const seen = new Set();
+    for (const u of merged) {
+      const uid = getUserId(u);
+      if (!uid || uid === 0) continue;
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      unique.push(u);
+    }
+
     if (!needsSystemUser) {
-      return approversBase; // Běžné objednávky - bez SYSTEM
+      return unique; // Běžné objednávky - bez SYSTEM
     }
 
     // Archivovaná objednávka s SYSTEM uživatelem
@@ -6366,9 +6450,9 @@ function OrderForm25() {
         aktivni: 1,
         deaktivovan: 0
       },
-      ...approversBase
+      ...unique
     ];
-  }, [approversBase, formData.prikazce_id, formData.schvalovatel_id]);
+  }, [approversBase, allUsers, formData.prikazce_id, formData.schvalovatel_id]);
 
   // Přejmenování pro zpětnou kompatibilitu (různé části kódu používají různé názvy)
   const fakturaTypyPrilohOptions = typyFakturOptions; // Alias
@@ -6759,6 +6843,33 @@ function OrderForm25() {
 
   // 🆕 Rozšířená logika schvalování podle zadání - zahrnout role PRIKAZCE, SUPERADMIN, ADMINISTRATOR
   const canViewApprovalSection = isPrikazceOfOrder || isSuperAdmin || isAdmin;
+
+  // 💰 Helper: Jednotná detekce LP financování (primárně dle KÓDU, fallback dle názvu v číselníku)
+  // DŮVOD: detekce dle názvu je citlivá na timing (financovaniOptions nemusí být ready) a na změny textů.
+  // Tento helper se používá pro:
+  // - zobrazení LP sekcí
+  // - validace (Save i silent)
+  // - LP logiku u položek
+  const isLPFinancing = useCallback(() => {
+    try {
+      const raw = formData.zpusob_financovani;
+      const code = (raw === null || raw === undefined) ? '' : String(raw).trim().toUpperCase();
+      if (code === 'LP' || code === 'LIMITOVANY_PRISLIB' || code === 'LIMITOVANÝ_PŘÍSLIB') {
+        return true;
+      }
+
+      // Fallback: dohledat option a zkontrolovat název (kvůli historickým/nekonzistentním hodnotám)
+      const selected = financovaniOptions.find(opt =>
+        opt.kod === raw ||
+        opt.kod_stavu === raw ||
+        opt.value === raw
+      );
+      const nazev = (selected?.nazev_stavu || selected?.nazev || '').toLowerCase();
+      return nazev.includes('limitovan') && (nazev.includes('prislib') || nazev.includes('příslib'));
+    } catch {
+      return false;
+    }
+  }, [formData.zpusob_financovani, financovaniOptions]);
 
   // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
   // MUSÍ být AŽ PO definici isSuperAdmin a approvers!
@@ -10000,6 +10111,14 @@ function OrderForm25() {
       return;
     }
 
+    // ✅ EXTRA GUARD: LP financování nesmí projít bez vybraných LP kódů
+    // (pojistka proti race/lock edge-case)
+    if (isLPFinancing() && (!Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0)) {
+      showToast && showToast('❌ Nelze uložit objednávku - financování je Limitovaný příslib, ale chybí LP kód.', { type: 'error' });
+      setIsSaving(false);
+      return;
+    }
+
     // VALIDACE NADLIMITU - nepovol uložení pokud je překročen limit
     const totalPrice = (formData.polozky_objednavky || []).reduce((sum, item) =>
       sum + (parseFloat(item.cena_s_dph) || 0), 0
@@ -11222,6 +11341,45 @@ function OrderForm25() {
           
           setLpOptionsForItems(lpOptions);
           addDebugLog('success', 'INSERT', 'lp-options-loaded', `LP options načteny z financovani.lp_nazvy: ${lpOptions.length}`);
+        } else {
+          // ✅ OPRAVA: INSERT response často NEobsahuje enriched data.
+          // Pro LP financování ale potřebujeme `lpOptionsForItems` hned po prvním SAVE,
+          // jinak select u položek krátce zobrazí jen ID (např. 2377) místo labelu.
+          try {
+            const hasSelectedLpCodes = Array.isArray(parsedInsertData.lp_kod) && parsedInsertData.lp_kod.length > 0;
+            if (orderId && token && username && isLPFinancing() && hasSelectedLpCodes) {
+              const freshOrderDataRaw = await getOrderV2(orderId, token, username, true);
+              const freshOrderData = transformBackendDataToFrontend(freshOrderDataRaw);
+
+              if (freshOrderData?.financovani?.lp_nazvy && Array.isArray(freshOrderData.financovani.lp_nazvy)) {
+                const lpOptions = freshOrderData.financovani.lp_nazvy
+                  .map(lp => {
+                    const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+                    return {
+                      id: lp.id,
+                      kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                      nazev: lp.nazev || lp.nazev_uctu || 'Bez názvu',
+                      kategorie: lp.kategorie,
+                      limit: lp.limit || lp.celkovy_limit,
+                      cerpano: lp.cerpano || lp.skutecne_cerpano,
+                      zbyva: lp.zbyva || lp.zbyva_skutecne,
+                      rok: lp.rok,
+                      platne_od: lp.platne_od,
+                      platne_do: lp.platne_do,
+                      label: `${lpKodWithYear} - ${(lp.nazev || lp.nazev_uctu || 'Bez názvu')}`
+                    };
+                  })
+                  .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+
+                setLpOptionsForItems(lpOptions);
+                addDebugLog('success', 'INSERT', 'lp-options-loaded-reload', `LP options načteny z enriched reloadu: ${lpOptions.length}`);
+              } else {
+                addDebugLog('warning', 'INSERT', 'lp-options-missing', 'Enriched reload neobsahuje financovani.lp_nazvy');
+              }
+            }
+          } catch (e) {
+            addDebugLog('warning', 'INSERT', 'lp-options-reload-failed', `Načtení LP options po INSERT selhalo: ${e.message}`);
+          }
         }
 
         // 🔄 FORCE REFRESH workflowManager hned po setFormData
@@ -13516,6 +13674,59 @@ function OrderForm25() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.lp_kod]);
+
+  // 💰 Fallback: Zajistit, že `lpOptionsForItems` obsahuje alespoň labely pro vybrané LP kódy
+  // DŮVOD: Krátce po prvním SAVE se může stát, že enriched `financovani.lp_nazvy` ještě nejsou k dispozici
+  // a select u položek dočasně zobrazí jen ID. Tento fallback použije lokální číselník `lpKodyOptions`.
+  useEffect(() => {
+    try {
+      if (!isLPFinancing()) return;
+      if (!Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) return;
+      if (!Array.isArray(lpKodyOptions) || lpKodyOptions.length === 0) return;
+
+      const selectedIds = formData.lp_kod
+        .map(v => parseInt(String(v), 10))
+        .filter(v => Number.isFinite(v) && v > 0);
+      if (selectedIds.length === 0) return;
+
+      const existingIds = new Set((lpOptionsForItems || []).map(o => parseInt(String(o?.id), 10)).filter(v => Number.isFinite(v) && v > 0));
+      const missingIds = selectedIds.filter(id => !existingIds.has(id));
+      if (missingIds.length === 0) return;
+
+      const derived = missingIds
+        .map(id => {
+          const src = lpKodyOptions.find(opt => parseInt(String(opt?.id ?? opt?.kod), 10) === id);
+          if (!src) return null;
+          const kod = src.cislo_lp || src.kod || `LP${id}`;
+          const nazev = src.nazev_uctu || src.nazev || 'Bez názvu';
+          return {
+            id: src.id ?? id,
+            kod,
+            nazev,
+            kategorie: src.kategorie,
+            platne_od: src.platne_od,
+            platne_do: src.platne_do,
+            label: `${kod} - ${nazev}`
+          };
+        })
+        .filter(Boolean);
+
+      if (derived.length === 0) return;
+
+      setLpOptionsForItems(prev => {
+        const prevArr = Array.isArray(prev) ? prev : [];
+        const map = new Map(prevArr.map(o => [parseInt(String(o?.id), 10), o]));
+        derived.forEach(o => {
+          const key = parseInt(String(o.id), 10);
+          if (!map.has(key)) map.set(key, o);
+        });
+        return Array.from(map.values());
+      });
+    } catch {
+      // silent
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.lp_kod, lpKodyOptions, isLPFinancing]);
 
   // 📄 Načtení seznamu smluv při mount (pro autocomplete)
   useEffect(() => {
@@ -17426,11 +17637,53 @@ function OrderForm25() {
       const workflowErrors = validateWorkflowData(formData, validationWorkflowCode, sectionStates);
       errors = { ...errors, ...workflowErrors };
 
+      // 💰 HARD RULE: LP financování nesmí být nikdy uloženo bez LP kódů
+      // Nezávislé na financovaniOptions/viditelnosti sekce (řeší race conditions a historické stavy)
+      if (currentPhase >= 1 && isLPFinancing()) {
+        if (!Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) {
+          errors.lp_kod = 'LP kód je povinný při financování z Limitovaného příslibu';
+        }
+
+        // Ve fázi 3+ musí mít položky vyplněné LP (položky se řeší v sekci FÁZE 3)
+        if (currentPhase >= 3 && Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) {
+          // Validuj pouze pokud je sekce položek viditelná a odemčená (uživatel to může opravit)
+          if (sectionStates.phase3.visible && !sectionStates.phase3.locked) {
+            formData.polozky_objednavky.forEach((polozka, index) => {
+              if (!polozka.lp_id && !polozka.polozka_lp_id) {
+                errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné při financování z Limitovaného příslibu`;
+              }
+            });
+          }
+        }
+      }
+
       // 💰 VALIDACE DYNAMICKÝCH POLÍ PODLE ZDROJE FINANCOVÁNÍ
       // ✅ Kontrola povinných dynamických polí od FÁZE 1+ (pokud je financování vyplněno)
       // ✅ Validovat POUZE pokud je sekce financování viditelná A odemčená
       const shouldValidateFinancovani = sectionStates.financovani.visible && !sectionStates.financovani.locked;
+
+      // ✅ KRITICKÉ: LP integrita se validuje VŽDY pokud je financování LP (bez ohledu na lock)
+      // DŮVOD: i zamčená sekce může obsahovat nekompletní data (historicky/race) a nesmí projít DB save.
+      if (currentPhase >= 1 && isLPFinancing()) {
+        if (!Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) {
+          errors.lp_kod = 'LP kód je povinný při financování z Limitovaného příslibu';
+        }
+
+        if (currentPhase >= 3 && Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) {
+          formData.polozky_objednavky.forEach((polozka, index) => {
+            if (!polozka.lp_id && !polozka.polozka_lp_id) {
+              errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné při financování z Limitovaného příslibu`;
+            }
+          });
+        }
+      }
+
       if (currentPhase >= 1 && formData.zpusob_financovani && shouldValidateFinancovani) {
+        // ✅ KRITICKÉ: Detekce LP podle KÓDU (nezávisle na číselnících)
+        // (LP validace je výše jako ALWAYS pravidlo)
+
+        // Ostatní typy financování (SMLOUVA / INDIVIDUÁLNÍ / POJISTNÁ) zatím validujeme přes název v číselníku
+        // (kódy nejsou jednotně standardizované ve všech datech)
         const selectedFinancovani = financovaniOptions.find(opt =>
           opt.kod === formData.zpusob_financovani ||
           opt.kod_stavu === formData.zpusob_financovani ||
@@ -17440,35 +17693,17 @@ function OrderForm25() {
         if (selectedFinancovani) {
           const nazev = selectedFinancovani.nazev_stavu || selectedFinancovani.nazev || '';
 
-          // Limitovaný příslib - LP kód je POVINNÝ
-          if (nazev.includes('Limitovan') || nazev.includes('příslib')) {
-            if (!formData.lp_kod ||
-                (Array.isArray(formData.lp_kod) && formData.lp_kod.length === 0)) {
-              errors.lp_kod = "LP kód je povinný při financování z Limitovaného příslibu";
-            }
-            
-            // 🆕 VALIDACE LP U POLOŽEK: Pokud je financování LP, všechny položky MUSÍ mít vyplněné LP
-            // ✅ VALIDOVAT POUZE VE FÁZI 3+ (položky jsou dostupné až od fáze 3)
-            if (currentPhase >= 3 && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
-              formData.polozky_objednavky.forEach((polozka, index) => {
-                if (!polozka.polozka_lp_id && !polozka.lp_id) {
-                  errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné při financování z Limitovaného příslibu`;
-                }
-              });
-            }
-          }
-
           // Smlouva - Číslo smlouvy je POVINNÉ a musí existovat v seznamu aktivních smluv
           if (nazev.includes('Smlouva')) {
             if (!formData.cislo_smlouvy?.trim()) {
               errors.cislo_smlouvy = 'Číslo smlouvy je povinné při financování ze Smlouvy';
             } else {
               // 🔒 PŘÍSNÁ VALIDACE: Ověřit, že číslo smlouvy existuje v seznamu aktivních smluv
-              const existujeSmlouva = smlouvyList.some(s => 
+              const existujeSmlouva = smlouvyList.some(s =>
                 (s.aktivni !== 0 && s.aktivni !== false) &&
                 (s.cislo_smlouvy === formData.cislo_smlouvy || s.evidencni_cislo === formData.cislo_smlouvy)
               );
-              
+
               if (!existujeSmlouva) {
                 errors.cislo_smlouvy = 'Zadané číslo smlouvy neexistuje v seznamu aktivních smluv. Vyberte prosím platnou smlouvu.';
               }
@@ -17764,11 +17999,46 @@ function OrderForm25() {
       const workflowErrors = validateWorkflowData(formData, validationWorkflowCode, sectionStates);
       errors = { ...errors, ...workflowErrors };
 
+      // 💰 HARD RULE (silent): LP financování nesmí být bez LP kódů
+      if (currentPhase >= 1 && isLPFinancing()) {
+        if (!Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) {
+          errors.lp_kod = 'LP kód je povinný';
+        }
+
+        if (currentPhase >= 3 && Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) {
+          if (sectionStates.phase3.visible && !sectionStates.phase3.locked) {
+            formData.polozky_objednavky.forEach((polozka, index) => {
+              if (!polozka.lp_id && !polozka.polozka_lp_id) {
+                errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné`;
+              }
+            });
+          }
+        }
+      }
+
       // 💰 VALIDACE DYNAMICKÝCH POLÍ PODLE ZDROJE FINANCOVÁNÍ (tichá validace)
       // ✅ Financování je součástí FÁZE 1-2 (validuje se hned od začátku!)
       // ✅ Validovat POUZE pokud je sekce financování viditelná A odemčená
       const shouldValidateFinancovani = financovaniState.visible && financovaniState.enabled;
+
+      // ✅ KRITICKÉ: LP integrita se validuje VŽDY pokud je financování LP (bez ohledu na lock)
+      if (currentPhase >= 1 && isLPFinancing()) {
+        if (!Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) {
+          errors.lp_kod = 'LP kód je povinný';
+        }
+        if (currentPhase >= 3 && Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) {
+          formData.polozky_objednavky.forEach((polozka, index) => {
+            if (!polozka.lp_id && !polozka.polozka_lp_id) {
+              errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné`;
+            }
+          });
+        }
+      }
+
       if (currentPhase >= 1 && formData.zpusob_financovani && shouldValidateFinancovani) {
+        // ✅ KRITICKÉ: Detekce LP podle KÓDU (nezávisle na číselnících)
+        // (LP validace je výše jako ALWAYS pravidlo)
+
         const selectedFinancovani = financovaniOptions.find(opt =>
           opt.kod === formData.zpusob_financovani ||
           opt.kod_stavu === formData.zpusob_financovani ||
@@ -17778,35 +18048,17 @@ function OrderForm25() {
         if (selectedFinancovani) {
           const nazev = selectedFinancovani.nazev_stavu || selectedFinancovani.nazev || '';
 
-          // Limitovaný příslib - LP kód je POVINNÝ
-          if (nazev.includes('Limitovan') || nazev.includes('příslib')) {
-            if (!formData.lp_kod ||
-                (Array.isArray(formData.lp_kod) && formData.lp_kod.length === 0)) {
-              errors.lp_kod = 'LP kód je povinný';
-            }
-            
-            // 🆕 VALIDACE LP U POLOŽEK: Pokud je financování LP, všechny položky MUSÍ mít vyplněné LP
-            // ✅ VALIDOVAT POUZE VE FÁZI 3+ (položky jsou dostupné až od fáze 3)
-            if (currentPhase >= 3 && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
-              formData.polozky_objednavky.forEach((polozka, index) => {
-                if (!polozka.polozka_lp_id && !polozka.lp_id) {
-                  errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné`;
-                }
-              });
-            }
-          }
-
           // Smlouva - Číslo smlouvy je POVINNÉ a musí existovat v seznamu aktivních smluv
           if (nazev.includes('Smlouva')) {
             if (!formData.cislo_smlouvy?.trim()) {
               errors.cislo_smlouvy = 'Číslo smlouvy je povinné';
             } else {
               // 🔒 PŘÍSNÁ VALIDACE: Ověřit, že číslo smlouvy existuje v seznamu aktivních smluv
-              const existujeSmlouva = smlouvyList.some(s => 
+              const existujeSmlouva = smlouvyList.some(s =>
                 (s.aktivni !== 0 && s.aktivni !== false) &&
                 (s.cislo_smlouvy === formData.cislo_smlouvy || s.evidencni_cislo === formData.cislo_smlouvy)
               );
-              
+
               if (!existujeSmlouva) {
                 errors.cislo_smlouvy = 'Zadané číslo smlouvy není platné';
               }
@@ -19786,12 +20038,9 @@ function OrderForm25() {
 
             {/* 🎯 ČERPÁNÍ LP - zobrazit v hlavičce nad fází */}
             {(() => {
-              // Zobrazit když máme LP financování
-              const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
-              const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
-              const hasLPFinancing = (nazev.includes('Limitovan') || nazev.includes('příslib')) && Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0;
-              
-              if (!hasLPFinancing) return null;
+              // Zobrazit když máme LP financování a jsou vybrané LP kódy
+              const hasSelectedLpCodes = Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0;
+              if (!isLPFinancing() || !hasSelectedLpCodes) return null;
               
               return (
                 <div style={{
@@ -20803,12 +21052,7 @@ function OrderForm25() {
               </FormRow>
 
               {/* LP KÓD - zobrazit pouze když je vybraný Limitovaný příslib */}
-              {(() => {
-                const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
-                const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
-                // Kontrola s i bez diakritiky pro spolehlivost
-                return nazev.includes('Limitovan') || nazev.includes('příslib') || nazev.includes('prislib');
-              })() && (
+              {isLPFinancing() && (
                 <>
                   <FormRow>
                     <FormGroup style={{gridColumn: '1 / -1'}}>
@@ -22177,12 +22421,10 @@ function OrderForm25() {
                         
                         {/* 🎯 LP Select - POUZE ve fázi 3+ s LP financováním */}
                         {currentPhase >= 3 && (() => {
-                          // Zkontrolovat LP financování
-                          const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
-                          const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
-                          const hasLPFinancing = (nazev.includes('Limitovan') || nazev.includes('příslib')) && Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0;
-                          
+                          const hasLPFinancing = isLPFinancing();
                           if (!hasLPFinancing) return null;
+
+                          const hasSelectedLpCodes = Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0;
                           
                           return (
                             <div style={{flex: 1, marginRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem'}} data-custom-select>
@@ -22191,11 +22433,13 @@ function OrderForm25() {
                                 onChange={(selectedValue) => updatePolozka(polozka.id, 'lp_id', selectedValue)}
                                 options={lpOptionsForItems}
                                 placeholder={
-                                  !formData.id 
-                                    ? 'Uložte objednávku...' 
-                                    : lpOptionsForItems.length === 0 
-                                      ? 'Žádné LP dostupné' 
-                                      : '-- Vybrat LP --'
+                                  !formData.id
+                                    ? 'Uložte objednávku...'
+                                    : !hasSelectedLpCodes
+                                      ? 'Nejprve vyberte LP kódy ve financování'
+                                      : lpOptionsForItems.length === 0
+                                        ? 'Žádné LP dostupné'
+                                        : '-- Vybrat LP --'
                                 }
                                 field={`polozka_${polozka.id}_lp`}
                                 disabled={shouldLockPhase3Sections || !formData.id}
