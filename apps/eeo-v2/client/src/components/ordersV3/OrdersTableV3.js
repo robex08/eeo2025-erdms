@@ -1686,6 +1686,43 @@ const OrdersTableV3 = ({
   const [orderToApprove, setOrderToApprove] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
   const [approvalCommentError, setApprovalCommentError] = useState('');
+
+  // ============================================================================
+  // PROGRAMMATIC OPEN: Approval dialog (e.g. context menu)
+  // ============================================================================
+
+  const openApprovalDialogForOrderId = useCallback(async (orderId) => {
+    if (!token || !username || !orderId) {
+      if (showToast) {
+        showToast('Chybí přihlašovací údaje nebo ID objednávky – obnovte stránku a zkuste to znovu.', { type: 'error' });
+      }
+      return;
+    }
+
+    try {
+      const orderDetail = await getOrderDetailV3({ token, username, orderId });
+      setOrderToApprove(orderDetail);
+      setApprovalComment(orderDetail?.schvaleni_komentar || '');
+      setApprovalCommentError('');
+      setShowApprovalDialog(true);
+    } catch (error) {
+      console.error('Chyba při načítání detailu objednávky:', error);
+      if (showToast) {
+        showToast(`Chyba při načítání detailu: ${error?.message || 'Neznámá chyba'}`, { type: 'error' });
+      }
+    }
+  }, [token, username, showToast]);
+
+  useEffect(() => {
+    const handler = (event) => {
+      const orderId = event?.detail?.orderId;
+      if (!orderId) return;
+      openApprovalDialogForOrderId(orderId);
+    };
+
+    window.addEventListener('ordersV3:openApprovalDialog', handler);
+    return () => window.removeEventListener('ordersV3:openApprovalDialog', handler);
+  }, [openApprovalDialogForOrderId]);
   
   // 🆕 State pro komentáře tooltip
   const [commentsTooltip, setCommentsTooltip] = useState({
