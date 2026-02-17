@@ -59,7 +59,6 @@ import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 // API Services
 import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
 import { findOrderPageV3 } from '../services/apiOrdersV3';
-import { getOrderDetailV3 } from '../services/apiOrderV3';
 import { fetchCiselniky } from '../services/api2auth';
 
 // Custom hooks
@@ -1697,22 +1696,18 @@ function Orders25ListV3() {
 
   const handleApproveFromContextMenu = useCallback(async (order) => {
     handleCloseContextMenu();
+    // 🔁 Otevři stejný dialog jako přes ikonu v tabulce (řeší OrdersTableV3 interně)
     try {
-      showProgress?.('Načítání detailu objednávky...');
-      
-      // Načti detail objednávky pro schválení
-      const detailData = await getOrderDetailV3(order.id, { token, username });
-      
-      hideProgress?.();
-      
-      // TODO: Otevřít dialog pro schválení (podobně jako v OrdersTableV3)
-      showToast?.(`Schvalování objednávky: ${order.cislo_objednavky}`, { type: 'info' });
-      console.log('✅ Schválení:', detailData);
+      window.dispatchEvent(new CustomEvent('ordersV3:openApprovalDialog', {
+        detail: {
+          orderId: order?.id,
+          source: 'context-menu'
+        }
+      }));
     } catch (error) {
-      hideProgress?.();
-      showToast?.(`Chyba při načítání detailu: ${error.message}`, { type: 'error' });
+      showToast?.(`Chyba při otevření schvalování: ${error?.message || 'Neznámá chyba'}`, { type: 'error' });
     }
-  }, [handleCloseContextMenu, token, username, showProgress, hideProgress, showToast]);
+  }, [handleCloseContextMenu, showToast]);
 
   // 🆕 V3: Handler pro přidání komentáře z context menu
   const handleContextMenuAddComment = useCallback((order) => {
