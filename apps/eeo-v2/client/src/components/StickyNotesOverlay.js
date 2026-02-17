@@ -1250,19 +1250,90 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
     return parts.length ? parts.join(', ') : '—';
   }, []);
 
+  const formatMysqlDatetime = useCallback((dt) => {
+    try {
+      const s = String(dt || '').trim();
+      if (!s) return '';
+
+      // MySQL typicky vrací: YYYY-MM-DD HH:MM:SS
+      const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+      if (m) {
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        const hh = Number(m[4] || '0');
+        const mm = Number(m[5] || '0');
+        const ss = Number(m[6] || '0');
+        const date = new Date(y, Math.max(0, mo - 1), d, hh, mm, ss);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleString('cs-CZ', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        });
+      }
+
+      // Fallback (ISO atp.)
+      const d2 = new Date(s);
+      if (Number.isNaN(d2.getTime())) return '';
+      return d2.toLocaleString('cs-CZ', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const formatEmployeeLabelById = useCallback((userId) => {
+    const tid = userId != null ? Number(userId) : null;
+    if (tid == null || !Number.isFinite(tid) || tid <= 0) return '—';
+
+    const emp = (employees || []).find((x) => Number(x?.id) === tid);
+    if (!emp) return `Uživatel #${tid}`;
+
+    const name = (emp.full_name || `${emp.jmeno || ''} ${emp.prijmeni || ''}`.trim() || `Uživatel #${emp.id}`);
+    const email = emp.email ? String(emp.email) : '';
+    return email ? `${name} <${email}>` : name;
+  }, [employees]);
+
   const formatShareTargetsTooltip = useCallback((shares) => {
     try {
       const normalized = Array.isArray(shares) ? shares : [];
       if (!normalized.length) return '';
+
+      // UX: pro jeden cíl vypiš stručně, pro více cílů seznam
+      if (normalized.length === 1) {
+        const s = normalized[0];
+        const t = String(s?.target_type || '').toUpperCase();
+        const tid = s?.target_id != null ? Number(s.target_id) : null;
+        const prava = rightsMaskToLabel(s?.prava_mask);
+        const kdy = formatMysqlDatetime(s?.dt_vytvoreni);
+
+        if (t === 'VSICHNI') return `Sdíleno: všem\n${kdy ? `Nastaveno: ${kdy}\n` : ''}Práva: ${prava}`;
+        if (t === 'USEK') {
+          const u = (useky || []).find((x) => Number(x?.id) === tid);
+          const label = u
+            ? `${u.usek_zkr ? `${u.usek_zkr} — ` : ''}${u.usek_nazev || `Úsek #${u.id}`}`
+            : `Úsek #${tid || '?'}`;
+          return `Sdíleno s úsekem: ${label}\n${kdy ? `Nastaveno: ${kdy}\n` : ''}Práva: ${prava}`;
+        }
+        if (t === 'UZIVATEL') {
+          const label = formatEmployeeLabelById(tid);
+          return `Sdíleno s uživatelem: ${label}\n${kdy ? `Nastaveno: ${kdy}\n` : ''}Práva: ${prava}`;
+        }
+
+        return `Sdíleno: ${t || 'cíl'}${tid != null ? ` (${tid})` : ''}\n${kdy ? `Nastaveno: ${kdy}\n` : ''}Práva: ${prava}`;
+      }
 
       const lines = ['Sdíleno:'];
       for (const s of normalized) {
         const t = String(s?.target_type || '').toUpperCase();
         const tid = s?.target_id != null ? Number(s.target_id) : null;
         const prava = rightsMaskToLabel(s?.prava_mask);
+        const kdy = formatMysqlDatetime(s?.dt_vytvoreni);
 
         if (t === 'VSICHNI') {
-          lines.push(`• Všem (${prava})`);
+          lines.push(`• Všem (${prava})${kdy ? ` — ${kdy}` : ''}`);
           continue;
         }
         if (t === 'USEK') {
@@ -1270,26 +1341,23 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           const label = u
             ? `${u.usek_zkr ? `${u.usek_zkr} — ` : ''}${u.usek_nazev || `Úsek #${u.id}`}`
             : `Úsek #${tid || '?'}`;
-          lines.push(`• Úsek: ${label} (${prava})`);
+          lines.push(`• Úsek: ${label} (${prava})${kdy ? ` — ${kdy}` : ''}`);
           continue;
         }
         if (t === 'UZIVATEL') {
-          const emp = (employees || []).find((x) => Number(x?.id) === tid);
-          const label = emp
-            ? `${emp.full_name || `${emp.jmeno || ''} ${emp.prijmeni || ''}`.trim() || `Uživatel #${emp.id}`}${emp.email ? ` <${emp.email}>` : ''}`
-            : `Uživatel #${tid || '?'}`;
-          lines.push(`• Uživatel: ${label} (${prava})`);
+          const label = formatEmployeeLabelById(tid != null ? tid : null);
+          lines.push(`• Uživatel: ${label} (${prava})${kdy ? ` — ${kdy}` : ''}`);
           continue;
         }
 
-        lines.push(`• ${t || 'Cíl'}: ${tid != null ? tid : '?'} (${prava})`);
+        lines.push(`• ${t || 'Cíl'}: ${tid != null ? tid : '?'} (${prava})${kdy ? ` — ${kdy}` : ''}`);
       }
 
       return lines.join('\n');
     } catch {
       return '';
     }
-  }, [employees, rightsMaskToLabel, useky]);
+  }, [formatEmployeeLabelById, formatMysqlDatetime, rightsMaskToLabel, useky]);
 
   const ensureSharesLoadedForStickyDbId = useCallback(async (stickyDbId) => {
     const dbIdNum = Number(stickyDbId);
@@ -1330,7 +1398,10 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
 
     ensureShareLookupsLoaded();
 
-    const owned = (notesRef.current || [])
+    // Pozor: nepoužívej notesRef.current – ref se aktualizuje až v jiném effectu
+    // a při prvním načtení desky může být ještě prázdný, takže by se sdílení
+    // nenačetlo a ikona sdílení by se nezobrazila.
+    const owned = (notes || [])
       .filter((n) => n?.dbId && n?.ownerUserId != null && n.ownerUserId === apiAuth.userId)
       .map((n) => Number(n.dbId))
       .filter((id) => Number.isFinite(id) && id > 0);
@@ -1340,7 +1411,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
       prefetchedShareIdsRef.current.add(id);
       ensureSharesLoadedForStickyDbId(id);
     }
-  }, [open, dbHydratedOnce, apiAuth, ensureShareLookupsLoaded, ensureSharesLoadedForStickyDbId]);
+  }, [open, dbHydratedOnce, apiAuth, notes, ensureShareLookupsLoaded, ensureSharesLoadedForStickyDbId]);
 
   useEffect(() => {
     notesRef.current = notes;
@@ -1385,6 +1456,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
       const version = row?.version != null ? Number(row.version) : null;
       const ownerUserId = row?.owner_user_id != null ? Number(row.owner_user_id) : null;
       const pravaMask = row?.prava_mask != null ? Number(row.prava_mask) : 0;
+      const sharedAt = row?.dt_sdileni != null ? String(row.dt_sdileni) : null;
 
       const data = (row && typeof row.data === 'object' && row.data) ? row.data : {};
 
@@ -1417,6 +1489,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
         version,
         ownerUserId,
         pravaMask,
+        sharedAt,
         x: finalX,
         y: finalY,
         width: finalW,
@@ -1469,6 +1542,7 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
           version: normalized.version,
           ownerUserId: normalized.ownerUserId,
           pravaMask: normalized.pravaMask,
+          sharedAt: normalized.sharedAt,
           content: normalized.content,
         };
       }));
@@ -2572,7 +2646,9 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
 
                     let title = 'Sdílená poznámka';
                     if (isSharedToMe) {
-                      title = `Sdíleno vám\nPráva: ${rightsMaskToLabel(note?.pravaMask)}`;
+                      const ownerLabel = formatEmployeeLabelById(note?.ownerUserId);
+                      const kdy = formatMysqlDatetime(note?.sharedAt);
+                      title = `Sdíleno s vámi\nOd uživatele: ${ownerLabel}\n${kdy ? `Nastaveno: ${kdy}\n` : ''}Práva: ${rightsMaskToLabel(note?.pravaMask)}`;
                     } else if (sharedOut) {
                       title = formatShareTargetsTooltip(shareState?.entries);
                     }
@@ -2581,9 +2657,10 @@ export default function StickyNotesOverlay({ open, onClose, storageKey, apiAuth 
                       <NoteSharedIndicator
                         title={title}
                         onMouseEnter={() => {
+                          // best-effort: dočti lookupy (jména/emaily) pro tooltip
+                          ensureShareLookupsLoaded();
                           // best-effort: když je poznámka vlastní a ještě nemáme data, dočti
                           if (isOwner && dbIdNum != null && Number.isFinite(dbIdNum)) {
-                            ensureShareLookupsLoaded();
                             ensureSharesLoadedForStickyDbId(dbIdNum);
                           }
                         }}
