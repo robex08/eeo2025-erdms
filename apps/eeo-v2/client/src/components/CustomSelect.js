@@ -232,7 +232,10 @@ const SelectedValue = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: ${props => props.isEmpty ? '#9ca3af' : '#1f2937'};
+  color: ${props => {
+    if (props.disabled) return '#6b7280';
+    return props.isEmpty ? '#9ca3af' : '#1f2937';
+  }};
   font-weight: ${props => props.disabled ? '400' : (props.isEmpty ? '400' : '700')};
 `;
 
@@ -1026,6 +1029,7 @@ const CustomSelect = ({
               const line2 = isTwoLine ? rest.join('\n') : '';
               return (
                 <CustomSelectOption
+                  className={disabled ? 'custom-select-disabled' : ''}
                   key={option.id || option.user_id || option.uzivatel_id || option.kod_stavu || option.kod || option.value || index}
                   selected={isSelected}
                   highlighted={isHighlighted}

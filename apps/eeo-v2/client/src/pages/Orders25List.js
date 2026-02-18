@@ -7081,6 +7081,29 @@ const Orders25List = () => {
                 e.stopPropagation();
                 try {
                   const orderDetail = await getOrderV2(order.id, token, username, true, 0);
+
+                  // 🔒 LOCK CHECK: rychlé schválení nesmí pokračovat, pokud je objednávka zamčena jiným uživatelem
+                  if (orderDetail?.lock_info?.locked === true && !orderDetail.lock_info?.is_owned_by_me && !orderDetail.lock_info?.is_expired) {
+                    const lockInfo = orderDetail.lock_info;
+                    const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+                    // Pro schvalování NEumožňujeme force unlock (bezpečné výchozí chování)
+                    setLockedOrderInfo({
+                      lockedByUserName,
+                      lockedByUserEmail: lockInfo.locked_by_user_email || null,
+                      lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+                      lockedAt: lockInfo.locked_at || null,
+                      lockAgeMinutes: lockInfo.lock_age_minutes || null,
+                      canForceUnlock: false,
+                      orderId: order.id,
+                      userRoleName: 'administrátor',
+                      blockedAction: 'approve'
+                    });
+                    setOrderToEdit(null);
+                    setShowLockedOrderDialog(true);
+                    return;
+                  }
+
                   setOrderToApprove(orderDetail);
                   setApprovalComment(orderDetail.schvaleni_komentar || '');
                   setShowApprovalDialog(true);
@@ -9623,7 +9646,8 @@ const Orders25List = () => {
           lockAgeMinutes: lockInfo.lock_age_minutes || null,
           canForceUnlock,
           orderId: orderIdToCheck,
-          userRoleName: userDetail?.roles?.find(r => r.kod_role === 'SUPERADMIN' || r.kod_role === 'ADMINISTRATOR')?.nazev_role || 'administrátor'
+          userRoleName: userDetail?.roles?.find(r => r.kod_role === 'SUPERADMIN' || r.kod_role === 'ADMINISTRATOR')?.nazev_role || 'administrátor',
+          blockedAction: 'edit'
         });
         setOrderToEdit(order); // Ulož pro pozdější použití
         setShowLockedOrderDialog(true);
@@ -10303,6 +10327,29 @@ const Orders25List = () => {
     try {
       // Načti detail objednávky s enriched daty (LP budget, smlouva, střediska)
       const orderDetail = await getOrderV2(order.id, token, username, true, 0);
+
+      // 🔒 LOCK CHECK: schvalování z kontextového menu nesmí pokračovat, pokud je objednávka zamčena jiným uživatelem
+      if (orderDetail?.lock_info?.locked === true && !orderDetail.lock_info?.is_owned_by_me && !orderDetail.lock_info?.is_expired) {
+        const lockInfo = orderDetail.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+        // Pro schvalování NEumožňujeme force unlock (bezpečné výchozí chování)
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockedAt: lockInfo.locked_at || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes || null,
+          canForceUnlock: false,
+          orderId: order.id,
+          userRoleName: 'administrátor',
+          blockedAction: 'approve'
+        });
+        setOrderToEdit(null);
+        setShowLockedOrderDialog(true);
+        return;
+      }
+
       setOrderToApprove(orderDetail);
       // Načti existující komentář ke schválení z DB (pokud existuje)
       setApprovalComment(orderDetail.schvaleni_komentar || '');
@@ -18429,7 +18476,9 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               )}
 
               <InfoText>
-                Nelze ji načíst pro editaci. Počkejte, až bude uživatel s editací hotový, nebo ho kontaktujte.
+                {((lockedOrderInfo.blockedAction || 'edit') === 'approve')
+                  ? 'Nelze objednávku schválit, protože je aktuálně v editaci. Počkejte, až bude uživatel s editací hotový, nebo ho kontaktujte.'
+                  : 'Nelze ji načíst pro editaci. Počkejte, až bude uživatel s editací hotový, nebo ho kontaktujte.'}
               </InfoText>
             </>
           )}
