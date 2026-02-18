@@ -1225,9 +1225,12 @@ const Input = styled.input`
   background: #ffffff;
 
   /* Zvýrazněné vyplněné hodnoty vs. placeholder - sladěno s CustomSelect */
-  color: ${props => props.value && props.value !== '' ? '#1f2937' : '#6b7280'};
+  /* ⚠️ READONLY: hodnoty v readonly režimu nemají být „tučné a černé“ */
+  color: ${props => (props.disabled || props.readOnly)
+    ? '#6b7280'
+    : (props.value && props.value !== '' ? '#1f2937' : '#6b7280')};
   font-weight: ${props => {
-    if (props.disabled) return '400'; // Disabled elementy mají normální font-weight
+    if (props.disabled || props.readOnly) return '400'; // Disabled/readonly elementy mají normální font-weight
     return props.value && props.value !== '' ? '600' : '400'; // Sladěno s CustomSelect
   }};
 
@@ -1245,6 +1248,12 @@ const Input = styled.input`
     background: #f9fafb;
     color: #6b7280;
     cursor: not-allowed;
+  }
+
+  &[readonly] {
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: default;
   }
 
   /* Sjednocení placeholder barvy se selecty */
@@ -1292,9 +1301,12 @@ const TextArea = styled.textarea`
   min-height: 80px;
 
   /* Zvýrazněné vyplněné hodnoty vs. placeholder - sladěno s CustomSelect */
-  color: ${props => props.value && props.value !== '' ? '#1f2937' : '#6b7280'};
+  /* ⚠️ READONLY: hodnoty v readonly režimu nemají být „tučné a černé“ */
+  color: ${props => (props.disabled || props.readOnly)
+    ? '#6b7280'
+    : (props.value && props.value !== '' ? '#1f2937' : '#6b7280')};
   font-weight: ${props => {
-    if (props.disabled) return '400'; // Disabled elementy mají normální font-weight
+    if (props.disabled || props.readOnly) return '400'; // Disabled/readonly elementy mají normální font-weight
     return props.value && props.value !== '' ? '600' : '400'; // Sladěno s CustomSelect
   }};
 
@@ -1308,6 +1320,12 @@ const TextArea = styled.textarea`
     background: #f9fafb;
     color: #6b7280;
     cursor: not-allowed;
+  }
+
+  &[readonly] {
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: default;
   }
 
   &::placeholder {
@@ -4625,113 +4643,6 @@ function OrderForm25() {
     return JSON.stringify(filtered);
   };
 
-  // Helper funkce pro získání textu stavu objednávky z DB
-  const getOrderStatusInfo = () => {
-    // Mapování stavů na české texty a detaily
-    const statusMapping = {
-      'NOVA': {
-        text: isChanged ? 'Koncept' : 'Nová objednávka',
-        icon: '📝',
-        type: 'info',
-        description: 'Objednávka je v přípravě'
-      },
-      'ODESLANA_KE_SCHVALENI': {
-        text: 'Odesláno ke schválení',
-        icon: '📤',
-        type: 'warning',
-        description: 'Objednávka čeká na schválení příslušným schvalovatelem'
-      },
-      'SCHVALENA': {
-        text: 'Schválená objednávka',
-        icon: '✅',
-        type: 'success',
-        description: 'Objednávka byla schválena a je připravena k dalším krokům'
-      },
-      'ZAMITNUTA': {
-        text: 'Zamítnutá objednávka',
-        icon: '❌',
-        type: 'error',
-        description: 'Objednávka byla zamítnuta'
-      },
-      'NESCHVALENA': {
-        text: 'Neschválená objednávka',
-        icon: '❌',
-        type: 'error',
-        description: 'Objednávka nebyla schválena'
-      },
-      'CEKA_SE': {
-        text: 'Čeká se na rozhodnutí',
-        icon: '⏳',
-        type: 'warning',
-        description: 'Čeká se na další kroky'
-      },
-      'ROZPRACOVANA': {
-        text: 'Rozpracovaná objednávka',
-        icon: '🔄',
-        type: 'info',
-        description: 'Objednávka se zpracovává'
-      },
-      'ODESLANA': {
-        text: 'Odesláno dodavateli',
-        icon: '📩',
-        type: 'info',
-        description: 'Objednávka byla odeslána dodavateli'
-      },
-      'POTVRZENA': {
-        text: 'Potvrzeno dodavatelem',
-        icon: '✓',
-        type: 'success',
-        description: 'Dodavatel potvrdil objednávku'
-      },
-      'DOKONCENA': {
-        text: 'Dokončení objednávky',
-        icon: '🏁',
-        type: 'success',
-        description: 'Objednávka byla úspěšně dokončena'
-      },
-      'ZRUSENA': {
-        text: 'Stornovaná objednávka',
-        icon: '🚫',
-        type: 'error',
-        description: 'Objednávka byla stornována'
-      }
-    };
-
-    // Získej aktuální stav z workflow
-    const currentStates = parseWorkflowStates(formData.stav_workflow_kod);
-    const latestState = currentStates[currentStates.length - 1];
-
-    // Pokud existuje stav_objednavky, preferuj ho
-    if (formData.stav_objednavky) {
-      // Najdi stav podle názvu
-      const foundState = Object.entries(statusMapping).find(([key, info]) =>
-        info.text === formData.stav_objednavky ||
-        key === formData.stav_objednavky
-      );
-
-      if (foundState) {
-        return {
-          ...foundState[1],
-          code: foundState[0],
-          hasReason: !!formData.schvaleni_komentar,
-          reason: formData.schvaleni_komentar,
-          dateApproved: formData.dt_schvaleni
-        };
-      }
-    }
-
-    // Fallback na workflow stav
-    const statusInfo = statusMapping[latestState] || statusMapping['NOVA'];
-
-    return {
-      ...statusInfo,
-      code: latestState,
-      hasReason: !!formData.schvaleni_komentar,
-      reason: formData.schvaleni_komentar,
-      dateApproved: formData.dt_schvaleni
-    };
-  };
-
   // ✅ Fázování objednávky (8 fází podle workflow)
   // FÁZE 1/8: NOVA - Vytvoření konceptu
   // FÁZE 2/8: ODESLANA_KE_SCHVALENI - Čeká na schválení
@@ -5092,6 +5003,141 @@ function OrderForm25() {
   
   // 🎯 Sleduje zda už proběhlo načtení draftu
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+
+  // Helper funkce pro získání textu stavu objednávky z DB
+  const getOrderStatusInfo = () => {
+    // Mapování stavů na české texty a detaily
+    const statusMapping = {
+      'NOVA': {
+        text: isChanged ? 'Koncept' : 'Nová objednávka',
+        icon: '📝',
+        type: 'info',
+        description: 'Objednávka je v přípravě'
+      },
+      'ODESLANA_KE_SCHVALENI': {
+        text: 'Odesláno ke schválení',
+        icon: '📤',
+        type: 'warning',
+        description: 'Objednávka čeká na schválení příslušným schvalovatelem'
+      },
+      'SCHVALENA': {
+        text: 'Schválená objednávka',
+        icon: '✅',
+        type: 'success',
+        description: 'Objednávka byla schválena a je připravena k dalším krokům'
+      },
+      'ZAMITNUTA': {
+        text: 'Zamítnutá objednávka',
+        icon: '❌',
+        type: 'error',
+        description: 'Objednávka byla zamítnuta'
+      },
+      'NESCHVALENA': {
+        text: 'Neschválená objednávka',
+        icon: '❌',
+        type: 'error',
+        description: 'Objednávka nebyla schválena'
+      },
+      'CEKA_SE': {
+        text: 'Čeká se na rozhodnutí',
+        icon: '⏳',
+        type: 'warning',
+        description: 'Čeká se na další kroky'
+      },
+      'ROZPRACOVANA': {
+        text: 'Rozpracovaná objednávka',
+        icon: '🔄',
+        type: 'info',
+        description: 'Objednávka se zpracovává'
+      },
+      'ODESLANA': {
+        text: 'Odesláno dodavateli',
+        icon: '📩',
+        type: 'info',
+        description: 'Objednávka byla odeslána dodavateli'
+      },
+      'POTVRZENA': {
+        text: 'Potvrzeno dodavatelem',
+        icon: '✓',
+        type: 'success',
+        description: 'Dodavatel potvrdil objednávku'
+      },
+      'FAKTURACE': {
+        text: 'Fakturace',
+        icon: '💰',
+        type: 'info',
+        description: 'Probíhá fakturace'
+      },
+      'VECNA_SPRAVNOST': {
+        text: 'Věcná správnost',
+        icon: '🧾',
+        type: 'warning',
+        description: 'Probíhá věcná správnost'
+      },
+      'ZKONTROLOVANA': {
+        text: 'Zkontrolovaná',
+        icon: '✅',
+        type: 'success',
+        description: 'Objednávka je zkontrolovaná'
+      },
+      'DOKONCENA': {
+        text: 'Dokončení objednávky',
+        icon: '🏁',
+        type: 'success',
+        description: 'Objednávka byla úspěšně dokončena'
+      },
+      'ZRUSENA': {
+        text: 'Stornovaná objednávka',
+        icon: '🚫',
+        type: 'error',
+        description: 'Objednávka byla stornována'
+      }
+    };
+
+    // Získej aktuální stav z workflow (seřaď dle definovaného pořadí)
+    const currentStates = parseWorkflowStates(formData.stav_workflow_kod);
+    const workflowOrder = [
+      'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA',
+      'ROZPRACOVANA', 'ODESLANA', 'ZRUSENA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT',
+      'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
+    ];
+    const orderedStates = [...currentStates].sort((a, b) => {
+      const indexA = workflowOrder.indexOf(a);
+      const indexB = workflowOrder.indexOf(b);
+      return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+    });
+    const latestState = orderedStates[orderedStates.length - 1];
+
+    // Pokud existuje stav_objednavky, preferuj ho
+    if (formData.stav_objednavky) {
+      // Najdi stav podle názvu
+      const foundState = Object.entries(statusMapping).find(([key, info]) =>
+        info.text === formData.stav_objednavky ||
+        key === formData.stav_objednavky
+      );
+
+      if (foundState) {
+        return {
+          ...foundState[1],
+          code: foundState[0],
+          hasReason: !!formData.schvaleni_komentar,
+          reason: formData.schvaleni_komentar,
+          dateApproved: formData.dt_schvaleni
+        };
+      }
+    }
+
+    // Fallback na workflow stav
+    const statusInfo = statusMapping[latestState] || statusMapping['NOVA'];
+
+    return {
+      ...statusInfo,
+      code: latestState,
+      hasReason: !!formData.schvaleni_komentar,
+      reason: formData.schvaleni_komentar,
+      dateApproved: formData.dt_schvaleni
+    };
+  };
 
   // 🎯 [CENTRÁLNÍ SPRÁVCE STAVU MENUBARU]
   // Jedno místo pro inicializaci, update a deinicializaci - HOTOVO, KONEC!
@@ -5956,6 +6002,16 @@ function OrderForm25() {
       if (Object.keys(finalData).length > 0) {
         setFormData(finalData);
 
+        // 🐛 DEBUG: Log workflow stav při otevření objednávky O-0151
+        if (finalData?.cislo_objednavky && String(finalData.cislo_objednavky).includes('O-0151')) {
+          console.log('🧾 [OrderForm25] O-0151 loaded', {
+            cislo_objednavky: finalData.cislo_objednavky,
+            stav_objednavky: finalData.stav_objednavky,
+            stav_workflow_kod: finalData.stav_workflow_kod,
+            parsed_workflow: parseWorkflowStates(finalData.stav_workflow_kod)
+          });
+        }
+
         // 🎯 EXTRAHOVAT LP OPTIONS z enriched order response
         // LP options jsou v loadedData.financovani.lp_nazvy (ne v lp_options!)
         
@@ -6207,6 +6263,59 @@ function OrderForm25() {
   const prilohyTypyOptions = dictionaries.data?.prilohyTypyOptions || [];
   const typyFakturOptions = dictionaries.data?.typyFakturOptions || []; // Typy faktur z reduceru
   const stavyWorkflowMap = dictionaries.data?.stavyWorkflowMap || {}; // 🆕 Mapa workflow stavů z DB číselníku
+
+  // 💰 Helper: Vytvořit LP řádky s 0 Kč z vybraných LP kódů (pro faktury 0 Kč)
+  const buildZeroLpRowsFromSelection = React.useCallback((selectedLpValues) => {
+    if (!Array.isArray(selectedLpValues) || selectedLpValues.length === 0) return [];
+
+    const resolveLpRef = (value) => {
+      let lp_id = null;
+      let lp_cislo = '';
+
+      if (value && typeof value === 'object') {
+        lp_id = value.id ?? value.lp_id ?? null;
+        lp_cislo = value.cislo_lp || value.kod || value.lp_cislo || '';
+
+        if (!lp_cislo && lp_id !== null && lp_id !== undefined) {
+          const opt = lpKodyOptions.find(o => String(o.id) === String(lp_id));
+          lp_cislo = opt?.cislo_lp || opt?.kod || '';
+        }
+      } else {
+        const raw = String(value ?? '').trim();
+        if (raw) {
+          if (/^\d+$/.test(raw)) {
+            lp_id = parseInt(raw, 10);
+            const opt = lpKodyOptions.find(o => String(o.id) === raw);
+            lp_cislo = opt?.cislo_lp || opt?.kod || '';
+          } else {
+            lp_cislo = raw;
+            const opt = lpKodyOptions.find(o => String(o.kod) === raw || String(o.cislo_lp) === raw);
+            lp_id = opt?.id ?? null;
+          }
+        }
+      }
+
+      return {
+        lp_id: lp_id ?? null,
+        lp_cislo: String(lp_cislo || '').trim()
+      };
+    };
+
+    return selectedLpValues
+      .map((value, index) => {
+        const { lp_id, lp_cislo } = resolveLpRef(value);
+        if (!lp_id && !lp_cislo) return null;
+
+        return {
+          id: `auto-lp-${index}`,
+          lp_id,
+          lp_cislo,
+          castka: 0,
+          poznamka: ''
+        };
+      })
+      .filter(Boolean);
+  }, [lpKodyOptions]);
 
   // 🆕 Memoizovaná hodnota: Je druh objednávky majetek (atribut_objektu = 1)?
   const isMaterialOrder = React.useMemo(() => {
@@ -6830,7 +6939,7 @@ function OrderForm25() {
   const canEditApprovedSections = canApproveOrders || canManageOrders;
   const canPublishRegistry = hasPermission && hasPermission('ORDER_PUBLISH_REGISTRY'); // 🆕 Pro editaci polí registru smluv
   const canManageInvoices = hasPermission && hasPermission('INVOICE_MANAGE'); // 🆕 Pro editaci faktur ve Fázi 7
-  const canSaveOrder = hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL')); // Pro ukládání objednávek
+  const canSaveOrder = hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_APPROVE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL')); // Pro ukládání objednávek (včetně schválení)
 
   // Kontrola rolí pro speciální oprávnění - MUSÍ BÝT PŘED použitím!
   const isSuperAdmin = userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
@@ -6841,8 +6950,75 @@ function OrderForm25() {
 
   const isPrikazceOfOrder = formData.prikazce_id && parseInt(formData.prikazce_id, 10) === user_id;
 
-  // 🆕 Rozšířená logika schvalování podle zadání - zahrnout role PRIKAZCE, SUPERADMIN, ADMINISTRATOR
-  const canViewApprovalSection = isPrikazceOfOrder || isSuperAdmin || isAdmin;
+  // 🆕 Schválení kolegou: jiný příkazce ze STEJNÉHO úseku může schválit objednávku
+  // (příklad: úsek PTU – objednávku s příkazcem Fajka může schválit i Sulgan)
+  const canApproveAsSameUsekPrikazce = useMemo(() => {
+    try {
+      if (!isPrikazce) return false;
+      const prikazceIdRaw = formData.prikazce_id;
+      const prikazceId = prikazceIdRaw ? parseInt(String(prikazceIdRaw), 10) : null;
+      if (!prikazceId || !Number.isFinite(prikazceId)) return false;
+      if (!user_id || !Number.isFinite(user_id)) return false;
+      if (prikazceId === user_id) return true; // je to přímo příkazce objednávky
+
+      const getUid = (u) => {
+        const id = u?.id ?? u?.user_id;
+        const n = typeof id === 'string' ? parseInt(id, 10) : id;
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const normalizeUsekZkr = (val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val.filter(Boolean).map(v => String(v).trim()).filter(Boolean);
+        if (typeof val === 'string') {
+          const t = val.trim();
+          if (!t || t === 'null' || t === '[]') return [];
+          if (t.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(t);
+              if (Array.isArray(parsed)) return parsed.filter(Boolean).map(v => String(v).trim()).filter(Boolean);
+            } catch {
+              // ignore
+            }
+          }
+          return [t];
+        }
+        return [String(val).trim()].filter(Boolean);
+      };
+
+      const me = (allUsers || []).find(u => getUid(u) === user_id);
+      const prikazce = (approvers || []).find(u => getUid(u) === prikazceId)
+        || (allUsers || []).find(u => getUid(u) === prikazceId);
+
+      const myUsekId = me?.usek_id ?? me?.usek;
+      const prikazceUsekId = prikazce?.usek_id ?? prikazce?.usek;
+
+      // Primárně dle usek_id (spolehlivější)
+      if (myUsekId && prikazceUsekId) {
+        return String(myUsekId) === String(prikazceUsekId);
+      }
+
+      // Fallback dle usek_zkr (může být string / JSON string / array)
+      const myUsekyZkr = normalizeUsekZkr(me?.usek_zkr);
+      const prikazceUsekyZkr = normalizeUsekZkr(prikazce?.usek_zkr);
+      if (myUsekyZkr.length === 0 || prikazceUsekyZkr.length === 0) return false;
+      return myUsekyZkr.some(zkr => prikazceUsekyZkr.includes(zkr));
+    } catch {
+      return false;
+    }
+  }, [allUsers, approvers, formData.prikazce_id, isPrikazce, user_id]);
+
+  // 🆕 Rozšířená logika schvalování podle zadání:
+  // - příkazce objednávky
+  // - jiný příkazce ze stejného úseku
+  // - SUPERADMIN / ADMINISTRATOR
+  // - uživatel s právy ORDER_APPROVE / ORDER_MANAGE
+  const canViewApprovalSection = isPrikazceOfOrder || canApproveAsSameUsekPrikazce || isSuperAdmin || isAdmin || canApproveOrders || canManageOrders;
+
+  // 🔒 EDITACE VE FÁZI 2 (KE SCHVÁLENÍ)
+  // Běžný uživatel po znovu-otevření nesmí upravovat sekce Objednatel/Schválení/Financování.
+  // Výjimka: role/permission pro schvalování nebo správu (ORDER_APPROVE/ORDER_MANAGE), příkazce objednávky, admin.
+  const canEditDuringApprovalPhase = canManageOrders || canApproveOrders || isPrikazceOfOrder || isSuperAdmin || isAdmin;
 
   // 💰 Helper: Jednotná detekce LP financování (primárně dle KÓDU, fallback dle názvu v číselníku)
   // DŮVOD: detekce dle názvu je citlivá na timing (financovaniOptions nemusí být ready) a na změny textů.
@@ -6975,8 +7151,10 @@ function OrderForm25() {
   // ✅ WorkflowManager vrací { visible, enabled } pro každou sekci (bez unlock states parametru)
   // � FIX: Stable section states - pouze závislost na klíčových hodnotách, ne na celém workflowManager
   const allSectionStates = useMemo(() => {
-    return workflowManager.getAllSectionStates();
-  }, [currentPhase, formData.id, isArchived, formData.stav_workflow_kod, formData.potvrzeni_dokonceni_objednavky, workflowManager]); // ✅ Kompletní dependencies pro refresh
+    return workflowManager.getAllSectionStates({
+      canEditDuringApprovalPhase
+    });
+  }, [currentPhase, formData.id, isArchived, formData.stav_workflow_kod, formData.potvrzeni_dokonceni_objednavky, workflowManager, canEditDuringApprovalPhase]); // ✅ Kompletní dependencies pro refresh
 
   // 🐛 FIX: Memoize formData for FloatingNavigator to prevent re-renders
   // 🎯 Include faktury for věcná správnost validation badge
@@ -7110,7 +7288,7 @@ function OrderForm25() {
           role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
         );
         const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
-        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder;
+        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder || canApproveAsSameUsekPrikazce;
         const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
         
         // Pokud má uživatel speciální oprávnění a objednávka je zamítnuta VE FÁZI SCHVALOVÁNÍ, nechej checkboxy aktivní
@@ -8459,16 +8637,40 @@ function OrderForm25() {
       return false;
     }
 
+    // Zjistit částku faktury (pro pravidla: 0 Kč dovolí i LP řádky s 0 Kč)
+    const fakturaCastka = (() => {
+      const faktury = Array.isArray(formData?.faktury) ? formData.faktury : [];
+      const faktura = faktury.find(f => String(f.id) === String(fakturaId));
+      return parseFloat(faktura?.fa_castka) || 0;
+    })();
+    const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+
     // Filtrovat jen kompletní řádky
     const validRows = lpCerpaniData.filter(row => {
-      const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
-      const hasCastka = row.castka && parseFloat(row.castka) > 0;
-      return hasLpId && hasCastka;
+      const hasLpId = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== '';
+      const hasLpCislo = row.lp_cislo !== null && row.lp_cislo !== undefined && String(row.lp_cislo).trim() !== '';
+      const hasLpRef = hasLpCislo || hasLpId;
+      const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
+      if (!hasLpRef || !hasCastka) return false;
+
+      const castkaNum = parseFloat(row.castka);
+      if (castkaNum < 0) return false;
+
+      return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
     }).map(row => ({
-      // 🔥 KRITICKÉ: Backend validuje lp_cislo podle financovani.lp_kody, které jsou LP ID (čísla)!
-      // lp_cislo MUSÍ být LP ID (ne textový kód), backend to porovnává s allowed_lp_kody
-      lp_cislo: String(row.lp_id).trim(), // ✅ Poslat LP ID jako string (backend parsuje)
-      lp_id: parseInt(row.lp_id, 10),
+      // Backend validuje lp_cislo (string) vůči financovani.lp_kody.
+      // lp_id je volitelný int (pokud je k dispozici a je číselný).
+      lp_cislo: (() => {
+        const lpIdValue = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== ''
+          ? String(row.lp_id).trim()
+          : '';
+        const lpCisloValue = String(row.lp_cislo || '').trim();
+        return lpIdValue || lpCisloValue;
+      })(),
+      lp_id: (() => {
+        const n = parseInt(row.lp_id, 10);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      })(),
       castka: parseFloat(row.castka),
       poznamka: row.poznamka || ''
     }));
@@ -8516,7 +8718,11 @@ function OrderForm25() {
     }
 
     const results = { success: 0, failed: 0, skipped: 0 };
-    const fakturyIds = Object.keys(fakturyLPCerpani);
+    const fakturyList = Array.isArray(formData?.faktury) ? formData.faktury : [];
+    const fakturyIds = new Set([
+      ...Object.keys(fakturyLPCerpani),
+      ...fakturyList.map(f => f?.id).filter(Boolean).map(id => String(id))
+    ]);
 
     for (const fakturaId of fakturyIds) {
       // Skip temp faktury
@@ -8526,13 +8732,27 @@ function OrderForm25() {
       }
 
       const lpData = fakturyLPCerpani[fakturaId];
-      if (!lpData || !lpData.lpCerpani) {
+      let lpRows = lpData?.lpCerpani;
+
+      if (!Array.isArray(lpRows) || lpRows.length === 0) {
+        const faktura = fakturyList.find(f => String(f?.id) === String(fakturaId));
+        const fakturaCastka = parseFloat(faktura?.fa_castka) || 0;
+        const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+        const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
+        const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
+
+        if (autoLpRows.length > 0) {
+          lpRows = autoLpRows;
+        }
+      }
+
+      if (!Array.isArray(lpRows) || lpRows.length === 0) {
         results.skipped++;
         continue;
       }
 
       try {
-        const saved = await saveFakturaLPCerpaniData(fakturaId, lpData.lpCerpani);
+        const saved = await saveFakturaLPCerpaniData(fakturaId, lpRows);
         if (saved) {
           results.success++;
         } else {
@@ -8545,7 +8765,7 @@ function OrderForm25() {
     }
 
     return results;
-  }, [fakturyLPCerpani, saveFakturaLPCerpaniData, token, username, formData?.financovani?.typ, formData?.zpusob_financovani]);
+  }, [fakturyLPCerpani, saveFakturaLPCerpaniData, token, username, formData?.financovani?.typ, formData?.zpusob_financovani, formData?.faktury, formData?.lp_kod, buildZeroLpRowsFromSelection]);
 
   const handleUpdateFaktura = async () => {
     if (!editingFaktura) return;
@@ -13545,8 +13765,8 @@ function OrderForm25() {
 
     try {
       // Najít smlouvu podle čísla v načteném seznamu
-      const smlouva = smlouvyList.find(s => 
-        s.cislo_smlouvy === cislo_smlouvy || 
+      const smlouva = smlouvyList.find(s =>
+        s.cislo_smlouvy === cislo_smlouvy ||
         s.evidencni_cislo === cislo_smlouvy
       );
 
@@ -17847,28 +18067,66 @@ function OrderForm25() {
           const isLPFinancing = formData.zpusob_financovani?.toUpperCase() === 'LP' || 
                                 formData.zpusob_financovani?.toUpperCase() === 'LIMITOVANY_PRISLIB';
           
-          if (isLPFinancing && lpData && lpData.lpCerpani && lpData.lpCerpani.length > 0) {
-            const lpRows = lpData.lpCerpani;
-            
+          if (isLPFinancing) {
+            const lpRows = (lpData && Array.isArray(lpData.lpCerpani)) ? lpData.lpCerpani : [];
+            const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+            const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
+            const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
+            const effectiveLpRows = lpRows.length > 0 ? lpRows : autoLpRows;
+
+            // Pokud uživatel vůbec nevyplnil LP čerpání, je to chyba (LP financování)
+            if (effectiveLpRows.length === 0) {
+              errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód`;
+              return;
+            }
+
+            const hasCastkaValue = (v) => {
+              if (v === null || v === undefined) return false;
+              if (v === '') return false;
+              if (typeof v === 'string' && v.trim() === '') return false;
+              return !isNaN(parseFloat(v));
+            };
+
             // Prázdné řádky (kompletně prázdné - bez LP i částky)
-            const emptyRows = lpRows.filter(r => r.id && !r.lp_id && (!r.castka || r.castka <= 0));
+            // ✅ 0 Kč není prázdné pole.
+            const emptyRows = effectiveLpRows.filter(r => {
+              const hasLp = (r.lp_cislo !== null && r.lp_cislo !== undefined && String(r.lp_cislo).trim() !== '') ||
+                            (r.lp_id !== null && r.lp_id !== undefined && String(r.lp_id).trim() !== '');
+              const hasCastka = hasCastkaValue(r.castka);
+              return r.id && !hasLp && !hasCastka;
+            });
             if (emptyRows.length > 0) {
               errors[`vecna_lp_faktura_${index + 1}_empty`] = `Faktura ${index + 1}: Máte ${emptyRows.length} prázdný řádek LP. Vyplňte LP kód a částku nebo jej smažte.`;
             }
-            
+
             // Neúplné řádky (má LP ale chybí částka NEBO má částku ale chybí LP)
-            const incompleteRows = lpRows.filter(r => 
-              (r.lp_id && r.castka === null || r.castka === undefined) || 
-              (!r.lp_id && r.castka !== null && r.castka !== undefined)
-            );
+            const incompleteRows = effectiveLpRows.filter(r => {
+              const hasLp = (r.lp_cislo !== null && r.lp_cislo !== undefined && String(r.lp_cislo).trim() !== '') ||
+                            (r.lp_id !== null && r.lp_id !== undefined && String(r.lp_id).trim() !== '');
+              const hasCastka = hasCastkaValue(r.castka);
+              return (hasLp && !hasCastka) || (!hasLp && hasCastka);
+            });
             if (incompleteRows.length > 0) {
-              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku (může být i 0 Kč)`;
+              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku (0 Kč je povoleno pouze u faktury 0 Kč)`;
             }
-            
-            // Kontrola alespoň jednoho LP řádku (částka může být i 0)
-            const validRows = lpRows.filter(r => r.lp_id && r.lp_cislo && (r.castka !== null && r.castka !== undefined));
+
+            // Kontrola alespoň jednoho LP řádku dle částky faktury
+            const validRows = effectiveLpRows.filter(r => {
+              const hasLp = (r.lp_cislo !== null && r.lp_cislo !== undefined && String(r.lp_cislo).trim() !== '') ||
+                            (r.lp_id !== null && r.lp_id !== undefined && String(r.lp_id).trim() !== '');
+              const hasCastka = hasCastkaValue(r.castka);
+              if (!hasLp || !hasCastka) return false;
+
+              const castkaNum = parseFloat(r.castka);
+              if (castkaNum < 0) return false;
+
+              return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+            });
+
             if (validRows.length === 0) {
-              errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód`;
+              errors[`vecna_lp_faktura_${index + 1}_missing`] = allowZeroLpAmount
+                ? `Faktura ${index + 1}: Objednávka je financována z LP - musíte mít alespoň jeden LP kód (u faktury 0 Kč může být částka 0 Kč)`
+                : `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód s částkou > 0 Kč`;
             }
           }
         });
@@ -21785,18 +22043,80 @@ function OrderForm25() {
               )}
               {!!formData.id &&
                !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
-               !canViewApprovalSection && (
+               !canViewApprovalSection &&
+               // Zobrazit jen když objednávka JE aktuálně v procesu schválení (Ke schválení / Čeká se).
+               // Pokud už je SCHVÁLENA/ZAMÍTNUTA, běžný uživatel má níže zelený/červený box a tento text je zbytečný.
+               (
+                 // ✅ Zobrazit POUZE pro stav "Ke schválení".
+                 // Pro "Čeká se" (vráceno k doplnění) už máme níže plnohodnotný statusový infobox.
+                 currentPhase === 2 ||
+                 hasWorkflowState(formData.stav_workflow_kod, 'ODESLANA_KE_SCHVALENI')
+               ) &&
+               !hasWorkflowState(formData.stav_workflow_kod, 'CEKA_SE') && (
                 <div style={{
                   marginTop: '1rem',
-                  padding: '0.75rem 1rem',
-                  background: '#fef3c7',
+                  padding: '1rem',
+                  backgroundColor: '#fef3c7',
                   border: '1px solid #f59e0b',
-                  borderRadius: '6px',
-                  color: '#92400e',
-                  fontSize: '0.9rem',
-                  fontWeight: 600
+                  borderRadius: '8px',
+                  color: '#92400e'
                 }}>
-                  Schválení není dostupné – objednávka je určena jinému příkazci.
+                  {(() => {
+                    const prikazceName = formData.prikazce_id
+                      ? getUserNameById(formData.prikazce_id)
+                      : 'příkazce';
+
+                    const isKeSchvaleni =
+                      currentPhase === 2 ||
+                      hasWorkflowState(formData.stav_workflow_kod, 'ODESLANA_KE_SCHVALENI');
+
+                    const raw = String(
+                      formData.dt_vytvoreni_full ||
+                      formData.dt_vytvoreni ||
+                      formData.datum_vytvoreni ||
+                      ''
+                    ).trim();
+
+                    // Formát: YYYY-MM-DD HH:MM:SS -> DD.MM.YYYY HH:MM (bez Date() kvůli timezone posunům)
+                    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+                    const safeDate = m
+                      ? `${m[3]}.${m[2]}.${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ''}`
+                      : raw.split(' ')[0];
+
+                    return (
+                      <>
+                        <div style={{
+                          fontSize: '1rem',
+                          fontWeight: '600',
+                          marginBottom: '0.75rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          <span style={{ fontSize: '1.25rem' }}>⏳</span>
+                          Objednávka je odeslána ke schválení
+                        </div>
+
+                        <div style={{ fontSize: '0.875rem', lineHeight: '1.6' }}>
+                          <div style={{ marginBottom: '0.5rem', fontWeight: 600 }}>
+                            Schválení může provést příkazce této objednávky{prikazceName ? `: ${prikazceName}` : ''} nebo jiný příkazce ze stejného úseku.
+                          </div>
+
+                          {isKeSchvaleni && safeDate && (
+                            <div style={{ marginBottom: '0.5rem', fontWeight: 500, opacity: 0.95 }}>
+                              Odesláno ke schválení: <strong>{safeDate}</strong>
+                            </div>
+                          )}
+
+                          {!isPrilohyLocked && (
+                            <div style={{ fontWeight: 500, opacity: 0.9 }}>
+                              Přílohy lze případně doplnit v sekci <strong>Přílohy k objednávce</strong>.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -25076,15 +25396,46 @@ function OrderForm25() {
                                                   const lpData = fakturyLPCerpani[fakturaId];
                                                   const lpCerpani = lpData?.lpCerpani || [];
                                                   
+                                                  const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+                                                  const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+
+                                                  const hasCastkaValue = (v) => {
+                                                    if (v === null || v === undefined) return false;
+                                                    if (v === '') return false;
+                                                    if (typeof v === 'string' && v.trim() === '') return false;
+                                                    return !isNaN(parseFloat(v));
+                                                  };
+
+                                                  const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
+                                                  const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
+                                                  const effectiveLpRows = lpCerpani.length > 0 ? lpCerpani : autoLpRows;
+
                                                   // Validace: MUSÍ být přiřazen minimálně 1 LP kód
-                                                  if (!lpCerpani || lpCerpani.length === 0 || lpCerpani.every(lp => !lp.lp_cislo || lp.castka <= 0)) {
-                                                    showToast && showToast('Pro LP financování je povinné rozdělit fakturu mezi LP kódy', 'error');
+                                                  const validLpRows = (effectiveLpRows || []).filter(lp => {
+                                                    const hasLpId = lp.lp_id !== null && lp.lp_id !== undefined && String(lp.lp_id).trim() !== '';
+                                                    const hasLpCislo = lp.lp_cislo !== null && lp.lp_cislo !== undefined && String(lp.lp_cislo).trim() !== '';
+                                                    const hasLp = hasLpId || hasLpCislo;
+                                                    const hasCastka = hasCastkaValue(lp.castka);
+                                                    if (!hasLp || !hasCastka) return false;
+
+                                                    const castkaNum = parseFloat(lp.castka);
+                                                    if (castkaNum < 0) return false;
+
+                                                    return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+                                                  });
+
+                                                  if (!validLpRows || validLpRows.length === 0) {
+                                                    showToast && showToast(
+                                                      allowZeroLpAmount
+                                                        ? 'Pro LP financování je povinné přiřadit alespoň jeden LP kód (u faktury 0 Kč může být částka 0 Kč)'
+                                                        : 'Pro LP financování je povinné rozdělit fakturu mezi LP kódy (alespoň jeden řádek musí mít částku > 0 Kč)',
+                                                      'error'
+                                                    );
                                                     return; // Nepovolí zaškrtnutí
                                                   }
                                                   
                                                   // Validace: Součet nesmí překročit fa_castka
-                                                  const totalLP = lpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
-                                                  const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+                                                  const totalLP = effectiveLpRows.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
                                                   
                                                   if (totalLP > fakturaCastka) {
                                                     showToast && showToast(`Součet LP čerpání (${totalLP.toLocaleString('cs-CZ')} Kč) překračuje částku faktury (${fakturaCastka.toLocaleString('cs-CZ')} Kč)`, 'error');
@@ -25717,8 +26068,13 @@ function OrderForm25() {
                 );
               })()}
 
-              {/* INFORMAČNÍ BLOK - FÁZE 7: VĚCNÁ SPRÁVNOST - zobrazí se pouze když workflow obsahuje ZKONTROLOVANA a ještě není potvrzena */}
-              {hasWorkflowState(formData.stav_workflow_kod, 'ZKONTROLOVANA') && !formData.potvrdil_vecnou_spravnost_id && (
+              {/* INFORMAČNÍ BLOK - FÁZE 7: VĚCNÁ SPRÁVNOST - pouze když je co potvrzovat */}
+              {(() => {
+                const fakturyList = Array.isArray(formData.faktury) ? formData.faktury : [];
+                const pendingVecna = fakturyList.filter(f => !(f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true));
+                const shouldShowVecnaInfo = currentPhase === 7 && pendingVecna.length > 0;
+
+                return shouldShowVecnaInfo && (
                 <div style={{
                   margin: '2rem 0',
                   padding: '1rem 1.25rem',
@@ -25732,14 +26088,15 @@ function OrderForm25() {
                   </div>
                   <div style={{ fontSize: '0.875rem' }}>
                     Zkontrolujte věcnou správnost objednávky včetně všech faktur a údajů. Po kontrole potvrďte věcnou správnost v příslušné sekci níže.
-                    {formData.faktury && formData.faktury.length > 0 && (
+                    {pendingVecna.length > 0 && (
                       <div style={{ marginTop: '0.5rem' }}>
-                        <strong>Faktury ke kontrole:</strong> {formData.faktury.length}
+                        <strong>Faktury ke kontrole:</strong> {pendingVecna.length}
                       </div>
                     )}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* INFORMAČNÍ BLOK - FÁZE 8: ČEKÁ NA DOKONČENÍ - pro běžné uživatele (bez ORDER_MANAGE) */}
               {!canUnlockAnything && 
@@ -28165,6 +28522,10 @@ const StableSelectButton = styled.button`
     cursor: not-allowed;
   }
 
+  &:disabled::after {
+    border-top-color: #9ca3af;
+  }
+
   /* Chevron ikona */
   &::after {
     content: '';
@@ -28299,8 +28660,15 @@ const StableSelectValue = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: ${props => props.$hasValue ? '#1f2937' : '#9ca3af'};
-  font-weight: ${props => props.$hasValue ? '600' : '400'};
+  /* 🔒 Disabled/readonly vzhled - hodnoty mají být vyšedivělé a netučné */
+  color: ${props => {
+    if (props.$disabled) return '#6b7280';
+    return props.$hasValue ? '#1f2937' : '#9ca3af';
+  }};
+  font-weight: ${props => {
+    if (props.$disabled) return '400';
+    return props.$hasValue ? '600' : '400';
+  }};
 `;
 
 // Helper funkce pro normalizaci textu (odstranění diakritiky pro vyhledávání)
@@ -28635,7 +29003,7 @@ const StableCustomSelect = React.memo(({
             {React.cloneElement(icon, { size: 16 })}
           </span>
         )}
-        <StableSelectValue title={displayValue} $hasValue={hasValue}>
+        <StableSelectValue title={displayValue} $hasValue={hasValue} $disabled={disabled}>
           {(() => {
             // 🏷️ Check if selected option is majetek for druh_objednavky_kod
             if (field === 'druh_objednavky_kod' && normalizedValue) {
@@ -28651,12 +29019,12 @@ const StableCustomSelect = React.memo(({
                     <span style={{
                       marginLeft: '8px',
                       fontSize: '0.75rem',
-                      color: '#dc2626',
-                      fontWeight: '500',
+                      color: disabled ? '#6b7280' : '#dc2626',
+                      fontWeight: disabled ? '400' : '500',
                       padding: '2px 6px',
-                      backgroundColor: '#fee2e2',
+                      backgroundColor: disabled ? '#f3f4f6' : '#fee2e2',
                       borderRadius: '4px',
-                      border: '1px solid #fca5a5'
+                      border: disabled ? '1px solid #e5e7eb' : '1px solid #fca5a5'
                     }}>
                       (majetek)
                     </span>

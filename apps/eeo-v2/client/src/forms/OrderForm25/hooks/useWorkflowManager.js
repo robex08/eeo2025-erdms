@@ -106,6 +106,12 @@ const SECTION_DEFINITIONS = {
         return false; // ODEMČENO adminorem (resetoval na FÁZI 2, objednatel musí být odemčený)
       }
 
+      // 🔒 FÁZE 2 (ODESLANA_KE_SCHVALENI / CEKA_SE): po znovu-otevření má být sekce pro běžné uživatele READONLY.
+      // Výjimka: uživatel s oprávněním upravovat během schvalování (např. ORDER_APPROVE/ORDER_MANAGE, příkazce objednávky, admin).
+      if (context.currentPhase === 2 && !!context.formData?.id && !context.canEditDuringApprovalPhase) {
+        return true; // ZAMČENO během schvalování
+      }
+
       // ✅ Zamknout POUZE pokud jsme PŘEŠLI fázi 2 (currentPhase > 2)
       // FÁZE 2 = ODESLANA_KE_SCHVALENI - sekce Objednatel musí být odemčená
       if (context.currentPhase > 2) {
@@ -136,6 +142,12 @@ const SECTION_DEFINITIONS = {
         return false; // ODEMČENO adminorem (resetoval na FÁZI 2, takže PO sekce musí být odemčená)
       }
 
+      // 🔒 FÁZE 2 (ODESLANA_KE_SCHVALENI / CEKA_SE): po znovu-otevření má být sekce pro běžné uživatele READONLY.
+      // Výjimka: uživatel s oprávněním upravovat během schvalování (např. ORDER_APPROVE/ORDER_MANAGE, příkazce objednávky, admin).
+      if (context.currentPhase === 2 && !!context.formData?.id && !context.canEditDuringApprovalPhase) {
+        return true; // ZAMČENO během schvalování
+      }
+
       // ✅ Zamknout POUZE pokud jsme PŘEŠLI fázi 2 (currentPhase > 2)
       // FÁZE 2 = ODESLANA_KE_SCHVALENI - PO sekce (schválení) musí být odemčená
       if (context.currentPhase > 2) {
@@ -152,9 +164,15 @@ const SECTION_DEFINITIONS = {
     phase: 1, // ✅ Fáze 1-2 (viditelné a editovatelné od začátku)
     visibilityLogic: (context) => context.currentPhase >= 1, // ✅ Viditelné od fáze 1
     lockLogic: (context) => {
-      // ✅ FÁZE 1-2: Odemčeno pro vyplnění (povinné ve FÁZI 1 a 2)
-      if (context.currentPhase >= 1 && context.currentPhase <= 2) {
+      // ✅ FÁZE 1: Odemčeno pro vyplnění
+      if (context.currentPhase === 1) {
         return false; // ODEMČENO
+      }
+
+      // 🔒 FÁZE 2 (ODESLANA_KE_SCHVALENI / CEKA_SE): běžný uživatel po znovu-otevření nesmí měnit financování.
+      // Výjimka: uživatel s oprávněním upravovat během schvalování (ORDER_APPROVE/ORDER_MANAGE, příkazce, admin).
+      if (context.currentPhase === 2) {
+        return !!context.formData?.id && !context.canEditDuringApprovalPhase;
       }
 
       // ✅ FÁZE 3+: Zamčeno (financování se už nemění po schválení)
@@ -364,6 +382,9 @@ const calculateSectionState = (sectionKey, formData, unlockStates = {}, context 
     formData,
     currentPhase: context.currentPhase || calculateCurrentPhase(formData),
     isArchived, // 🏛️ Přidán flag pro archivované objednávky
+
+    // 🔒 Permission/role gating pro editace ve fázi 2 (ke schválení)
+    canEditDuringApprovalPhase: context.canEditDuringApprovalPhase || false,
 
     // Unlock stavy (pro přístup v lockLogic funkcích)
     // ✅ FIX: Použít správné klíče z OrderForm25.js (phase1, phase2, phase3, ...)
