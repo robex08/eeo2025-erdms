@@ -1442,8 +1442,8 @@ function Orders25ListV3() {
         
         // Zobraz dialog s informacemi o zamčení
         setLockedOrderInfo({
-          orderId: order.id,
-          orderNumber: order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`,
+          orderId: orderIdToCheck,
+          orderNumber: order.cislo_objednavky || order.evidencni_cislo || `#${orderIdToCheck}`,
           lockedByUserName: lockedByUserName,
           lockedByUserEmail: lockInfo.locked_by_user_email || null,
           lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
@@ -1452,6 +1452,36 @@ function Orders25ListV3() {
         });
         setShowLockedOrderDialog(true);
         return;
+      }
+
+      // 🔒 DŮLEŽITÉ: Pro V3 list provést reálné zamčení před navigací.
+      // Důvod: OrderForm25 umí načíst existující draft a vrátit se dřív, než zavolá lock.
+      // Tím pádem by se v DB nepropsal zámek (dt_zamek/zamek_uzivatel_id) i když je uživatel v editaci.
+      if (dbOrder.lock_info?.is_owned_by_me !== true) {
+        try {
+          const { lockOrderV2 } = await import('../services/apiOrderV2');
+          await lockOrderV2({ orderId: orderIdToCheck, token, username });
+        } catch (lockError) {
+          // Pokud lock endpoint vrátí lock_info, je zamčeno jiným uživatelem (race condition)
+          if (lockError?.lock_info) {
+            const lockInfo = lockError.lock_info;
+            const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+            setLockedOrderInfo({
+              orderId: orderIdToCheck,
+              orderNumber: order.cislo_objednavky || order.evidencni_cislo || `#${orderIdToCheck}`,
+              lockedByUserName: lockedByUserName,
+              lockedByUserEmail: lockInfo.locked_by_user_email || null,
+              lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+              lockAgeMinutes: lockInfo.lock_age_minutes ? Math.round(lockInfo.lock_age_minutes) : null,
+              lockedAt: lockInfo.locked_at || null
+            });
+            setShowLockedOrderDialog(true);
+            return;
+          }
+
+          console.warn('⚠️ [Orders25ListV3] Nepodařilo se zamknout objednávku před navigací:', lockError);
+        }
       }
 
       // ✅ Objednávka je dostupná - naviguj na formulář

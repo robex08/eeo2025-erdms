@@ -27,6 +27,7 @@ import OrderCommentsTooltip from './OrderCommentsTooltip';
 import ConfirmDialog from '../ConfirmDialog';
 import { updateOrderV3 } from '../../services/apiOrdersV3';
 import { getOrderDetailV3 } from '../../services/apiOrderV3';
+import { getOrderV2 } from '../../services/apiOrderV2';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 import {
   faPlus,
@@ -60,6 +61,7 @@ import {
   faCircle,
   faCheckSquare,
   faSync,
+  faLock,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -1760,6 +1762,49 @@ const OrdersTableV3 = ({
   const [approvalComment, setApprovalComment] = useState('');
   const [approvalCommentError, setApprovalCommentError] = useState('');
 
+  // 🔒 State pro LOCK dialog (pro schvalování)
+  const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
+  const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
+
+  const handleCloseLockedOrderDialog = useCallback(() => {
+    setShowLockedOrderDialog(false);
+    setLockedOrderInfo(null);
+  }, []);
+
+  // 🔒 Lock-check před otevřením schvalovacího dialogu
+  const ensureOrderNotLockedForApproval = useCallback(async (orderId) => {
+    if (!token || !username || !orderId) return false;
+
+    try {
+      // V3 detail endpoint nemusí vracet lock_info → použij V2 endpoint, který lock_info vrací
+      const dbOrder = await getOrderV2(orderId, token, username, true, 0);
+      const lockInfo = dbOrder?.lock_info;
+
+      // BE sémantika: locked=true pouze když drží JINÝ uživatel
+      if (lockInfo?.locked === true && !lockInfo?.is_owned_by_me && !lockInfo?.is_expired) {
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes ?? null,
+          lockedAt: lockInfo.locked_at || null,
+          orderId
+        });
+        setShowLockedOrderDialog(true);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ [OrdersTableV3] Chyba při kontrole zamčení pro schvalování:', error);
+      if (showToast) {
+        showToast('Chyba při kontrole zamčení objednávky – zkuste to prosím znovu.', { type: 'error' });
+      }
+      return false;
+    }
+  }, [token, username, showToast]);
+
   // ============================================================================
   // PROGRAMMATIC OPEN: Approval dialog (e.g. context menu)
   // ============================================================================
@@ -1773,6 +1818,9 @@ const OrdersTableV3 = ({
     }
 
     try {
+      const okToOpen = await ensureOrderNotLockedForApproval(orderId);
+      if (!okToOpen) return;
+
       const orderDetail = await getOrderDetailV3({ token, username, orderId });
       setOrderToApprove(orderDetail);
       setApprovalComment(orderDetail?.schvaleni_komentar || '');
@@ -1784,7 +1832,7 @@ const OrdersTableV3 = ({
         showToast(`Chyba při načítání detailu: ${error?.message || 'Neznámá chyba'}`, { type: 'error' });
       }
     }
-  }, [token, username, showToast]);
+  }, [token, username, showToast, ensureOrderNotLockedForApproval]);
 
   useEffect(() => {
     const handler = (event) => {
@@ -2489,6 +2537,9 @@ const OrdersTableV3 = ({
                       return;
                     }
                     try {
+                      const okToOpen = await ensureOrderNotLockedForApproval(order.id);
+                      if (!okToOpen) return;
+
                       const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
                       // DEBUG: Order detail loaded with enriched data
                       setOrderToApprove(orderDetail);
@@ -3591,6 +3642,80 @@ const OrdersTableV3 = ({
 
   return (
     <>
+    {/* 🔒 Locked dialog pro schvalování (V3 quick approve) */}
+    {lockedOrderInfo && (
+      <ConfirmDialog
+        isOpen={showLockedOrderDialog}
+        onClose={handleCloseLockedOrderDialog}
+        onConfirm={handleCloseLockedOrderDialog}
+        title="Objednávka je zamčená"
+        icon={faLock}
+        variant="warning"
+        confirmText="Zavřít"
+        showCancel={false}
+      >
+        <p style={{ margin: '0.75rem 0', color: '#64748b', lineHeight: 1.6 }}>
+          Nelze objednávku schválit, protože je aktuálně v editaci uživatelem:
+        </p>
+        <div
+          style={{
+            padding: '1rem',
+            background: '#f8fafc',
+            borderLeft: '4px solid #f59e0b',
+            borderRadius: '6px',
+            margin: '0.75rem 0',
+            fontWeight: 700
+          }}
+        >
+          {lockedOrderInfo.lockedByUserName}
+        </div>
+
+        {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
+          <div
+            style={{
+              margin: '0.75rem 0',
+              padding: '0.75rem',
+              background: '#fff7ed',
+              border: '1px solid #fdba74',
+              borderRadius: '8px',
+              fontSize: '0.9rem'
+            }}
+          >
+            {lockedOrderInfo.lockedByUserEmail && (
+              <div style={{ marginBottom: lockedOrderInfo.lockedByUserTelefon ? '0.5rem' : 0 }}>
+                Email: <a href={`mailto:${lockedOrderInfo.lockedByUserEmail}`}>{lockedOrderInfo.lockedByUserEmail}</a>
+              </div>
+            )}
+            {lockedOrderInfo.lockedByUserTelefon && (
+              <div>
+                Telefon: <a href={`tel:${lockedOrderInfo.lockedByUserTelefon}`}>{lockedOrderInfo.lockedByUserTelefon}</a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {lockedOrderInfo.lockAgeMinutes !== null && lockedOrderInfo.lockAgeMinutes !== undefined && (
+          <div
+            style={{
+              margin: '0.75rem 0',
+              padding: '0.75rem',
+              background: '#fef3c7',
+              borderLeft: '4px solid #f59e0b',
+              borderRadius: '6px',
+              color: '#92400e',
+              fontSize: '0.9rem'
+            }}
+          >
+            Zamčeno před {lockedOrderInfo.lockAgeMinutes} min
+          </div>
+        )}
+
+        <p style={{ margin: '0.75rem 0', color: '#64748b', lineHeight: 1.6 }}>
+          Počkejte, až bude editace dokončena, nebo uživatele kontaktujte.
+        </p>
+      </ConfirmDialog>
+    )}
+
     <TableWrapper>
     <TableContainer ref={tableContainerRef}>
       <Table>

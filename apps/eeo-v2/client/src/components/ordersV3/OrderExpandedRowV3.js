@@ -1518,12 +1518,25 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                               return;
                             }
                             try {
-                              // Použijeme již načtený detail
-                              setOrderToApprove && setOrderToApprove(detail);
-                              setApprovalComment && setApprovalComment(detail.schvaleni_komentar || '');
-                              setShowApprovalDialog && setShowApprovalDialog(true);
+                              // 🔒 DŮLEŽITÉ: Schvalovací dialog otevírat přes centralizovaný event,
+                              // aby se před otevřením vždy provedl lock-check (řeší OrdersTableV3).
+                              window.dispatchEvent(new CustomEvent('ordersV3:openApprovalDialog', {
+                                detail: {
+                                  orderId: order?.id,
+                                  source: 'expanded-row'
+                                }
+                              }));
                             } catch (error) {
                               console.error('Chyba při otevírání schvalovacího dialogu:', error);
+
+                              // Fallback (bez lock-checku) – jen pokud by event selhal
+                              try {
+                                setOrderToApprove && setOrderToApprove(detail);
+                                setApprovalComment && setApprovalComment(detail.schvaleni_komentar || '');
+                                setShowApprovalDialog && setShowApprovalDialog(true);
+                              } catch {
+                                // noop
+                              }
                             }
                           }}
                           style={{
@@ -1567,7 +1580,10 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   {canEdit && canEdit(order) && (
                     <SmartTooltip text="Editovat objednávku" icon="info" preferredPosition="top">
                       <button
-                        onClick={() => onActionClick?.('edit', order)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onActionClick?.('edit', order);
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',

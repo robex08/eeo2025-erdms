@@ -279,6 +279,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       datum_odeslani: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslani).split(' ')[0] : '',
       // 🛑 ODSTRANĚNO: datum_storna - používá se dt_odeslani pro obojí (odeslání i storno)
       dt_akceptace: dbOrder.dt_akceptace ? dbOrder.dt_akceptace.split(' ')[0] : '',
+      // ✅ Zachovat i plný timestamp (bez převodu přes Date() kvůli timezone posunům v UI)
+      dt_vytvoreni_full: dbOrder.dt_vytvoreni || '',
       datum_vytvoreni: dbOrder.dt_vytvoreni ? dbOrder.dt_vytvoreni.split(' ')[0] : '',
       datum_splatnosti: dbOrder.dt_splatnost ? dbOrder.dt_splatnost.split(' ')[0] : '',
       temp_datum_objednavky: dbOrder.datum_objednavky ? dbOrder.datum_objednavky.split(' ')[0] : (dbOrder.dt_objednavky ? dbOrder.dt_objednavky.split(' ')[0] : ''),

@@ -147,48 +147,28 @@ export const SmartTooltip = ({
     visible: false
   });
 
-  // Clone child element s přidáním event handlerů a ref
+  // Obal pro bezpečné získání refu bez přidávání ref na funkční komponenty
   const childElement = React.Children.only(children);
-
-  // Zachovej VŠECHNY původní props a přidej pouze naše handlery
-  const enhancedChild = React.cloneElement(childElement, {
-    ref: childRef,
-    onMouseEnter: (e) => {
-      if (!isClicked) { // ✅ Zobraz tooltip pouze pokud nebylo kliknuto
-        setIsHovered(true);
-      }
-      // Zavolej původní handler POKUD EXISTUJE
-      if (childElement.props.onMouseEnter) {
-        childElement.props.onMouseEnter(e);
-      }
-    },
-    onMouseLeave: (e) => {
-      setIsHovered(false);
-      setIsClicked(false); // ✅ Reset clicked state po opuštění myši
-      // Zavolej původní handler POKUD EXISTUJE
-      if (childElement.props.onMouseLeave) {
-        childElement.props.onMouseLeave(e);
-      }
-    },
-    onMouseDown: (e) => {
-      // ✅ OKAMŽITĚ SKRYJ tooltip při stisknutí myši (ještě PŘED onClick)
-      setIsHovered(false);
-      setIsClicked(true); // ✅ Označ že bylo kliknuto
-      // Zavolej původní handler POKUD EXISTUJE
-      if (childElement.props.onMouseDown) {
-        childElement.props.onMouseDown(e);
-      }
-    },
-    onClick: (e) => {
-      // ✅ ZAJISTI že tooltip zůstane skrytý při kliknutí
-      setIsHovered(false);
-      setIsClicked(true);
-      // Zavolej původní handler POKUD EXISTUJE
-      if (childElement.props.onClick) {
-        childElement.props.onClick(e);
-      }
+  const handleMouseEnter = (e) => {
+    if (!isClicked) {
+      setIsHovered(true);
     }
-  });
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    setIsClicked(false);
+  };
+
+  const handleMouseDown = () => {
+    setIsHovered(false);
+    setIsClicked(true);
+  };
+
+  const handleClick = () => {
+    setIsHovered(false);
+    setIsClicked(true);
+  };
 
   useEffect(() => {
     // ✅ Skryj tooltip pokud není hovered NEBO bylo kliknuto NEBO je disabled
@@ -352,7 +332,16 @@ export const SmartTooltip = ({
 
   return (
     <>
-      {enhancedChild}
+      <span
+        ref={childRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onMouseDown={handleMouseDown}
+        onClick={handleClick}
+        style={{ display: 'inline-flex' }}
+      >
+        {childElement}
+      </span>
       {(isHovered && !isClicked) && createPortal( // ✅ Zobraz tooltip pouze pokud je hovered A nebylo kliknuto
         <TooltipBubble
           ref={tooltipRef}
