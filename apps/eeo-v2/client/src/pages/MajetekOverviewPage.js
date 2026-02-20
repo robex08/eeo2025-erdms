@@ -693,6 +693,7 @@ export default function MajetekOverviewPage() {
 
   useEffect(() => {
     setUserStorage('majetek_global_search', globalSearch);
+    setPagination(prev => ({ ...prev, page: 1 }));
   }, [globalSearch, setUserStorage]);
 
   useEffect(() => {
@@ -799,36 +800,6 @@ export default function MajetekOverviewPage() {
   };
 
   const tableData = useMemo(() => {
-    const normalized = orders.map(order => ({
-      ...order,
-      workflow_last: getWorkflowLabel(getWorkflowLast(order.stav_workflow_kod)),
-      umisteni_summary: getLocationSummary(order.umisteni_polozky),
-      usek_kod: getUniqueCode(order.umisteni_polozky, 'usek_kod'),
-      budova_kod: getUniqueCode(order.umisteni_polozky, 'budova_kod'),
-      mistnost_kod: getUniqueCode(order.umisteni_polozky, 'mistnost_kod'),
-      rok: order.dt_objednavky ? new Date(order.dt_objednavky).getFullYear() : ''
-    }));
-
-    if (!globalSearch) return normalized;
-    const needle = globalSearch.toLowerCase();
-    return normalized.filter(row => {
-      return [
-        row.cislo_objednavky,
-        row.predmet,
-        row.dodavatel_nazev,
-        row.workflow_last,
-        row.strediska_nazvy,
-        row.umisteni_summary,
-        row.usek_kod,
-        row.budova_kod,
-        row.mistnost_kod
-      ]
-        .filter(Boolean)
-        .some(value => String(value).toLowerCase().includes(needle));
-    });
-  }, [orders, globalSearch]);
-
-  const aggregationData = useMemo(() => {
     const normalized = aggregationSource.map(order => ({
       ...order,
       workflow_last: getWorkflowLabel(getWorkflowLast(order.stav_workflow_kod)),
@@ -857,6 +828,14 @@ export default function MajetekOverviewPage() {
         .some(value => String(value).toLowerCase().includes(needle));
     });
   }, [aggregationSource, globalSearch]);
+
+  const aggregationData = tableData;
+
+  const pagedTableData = useMemo(() => {
+    const start = (pagination.page - 1) * pagination.per_page;
+    const end = start + pagination.per_page;
+    return tableData.slice(start, end);
+  }, [tableData, pagination.page, pagination.per_page]);
 
   const columnHelper = useMemo(() => createColumnHelper(), []);
 
@@ -985,7 +964,7 @@ export default function MajetekOverviewPage() {
   ], [columnHelper]);
 
   const table = useReactTable({
-    data: tableData,
+    data: pagedTableData,
     columns,
     state: {
       grouping: groupFields,
@@ -1172,6 +1151,49 @@ export default function MajetekOverviewPage() {
       }
     }
   }), [hasMultipleStacks]);
+
+  const totalItems = tableData.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / Math.max(1, pagination.per_page)));
+
+  const normalizeGroupLabel = useCallback((value) => {
+    if (Array.isArray(value)) return value.length ? value.join(', ') : 'Neurčeno';
+    if (value == null || value === '') return 'Neurčeno';
+    return String(value);
+  }, []);
+
+  const getGroupedCount = useCallback((row) => {
+    if (!chartInfo || !groupFields.length) return row.subRows.length;
+
+    if (row.depth === 0 && groupFields[0]) {
+      const label = normalizeGroupLabel(row.getValue(groupFields[0]));
+      const inner = chartInfo.buckets.get(label);
+      if (!inner) return row.subRows.length;
+      let total = 0;
+      inner.forEach(value => { total += value.items; });
+      return total;
+    }
+
+    if (row.depth === 1 && groupFields[0] && groupFields[1]) {
+      const parent = row.getParentRow?.();
+      const primaryLabel = normalizeGroupLabel(parent?.getValue(groupFields[0]));
+      const secondaryLabel = normalizeGroupLabel(row.getValue(groupFields[1]));
+      const inner = chartInfo.buckets.get(primaryLabel);
+      const entry = inner?.get(secondaryLabel);
+      if (entry) return entry.items;
+    }
+
+    return row.subRows.length;
+  }, [chartInfo, groupFields, normalizeGroupLabel]);
+
+  useEffect(() => {
+    if (pagination.page > totalPages) {
+      setPagination(prev => ({ ...prev, page: 1 }));
+    }
+  }, [pagination.page, totalPages]);
+
+  const handlePageChange = useCallback((nextPage) => {
+    setPagination(prev => ({ ...prev, page: nextPage }));
+  }, []);
 
   return (
     <PageWrapper>
@@ -1414,7 +1436,7 @@ export default function MajetekOverviewPage() {
                                 >
                                   <FontAwesomeIcon icon={row.getIsExpanded() ? faMinus : faPlus} />
                                 </button>
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())} ({row.subRows.length})
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())} ({getGroupedCount(row)})
                               </span>
                             ) : cell.getIsAggregated() ? (
                               flexRender(cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell, cell.getContext())
@@ -1429,13 +1451,13 @@ export default function MajetekOverviewPage() {
                 </Table>
               </TableWrapper>
 
-              {pagination.total > 0 && (
+              {totalItems > 0 && (
                 <OrdersPaginationV3
                   currentPage={pagination.page}
-                  totalPages={pagination.total_pages || 1}
-                  totalItems={pagination.total}
+                  totalPages={totalPages}
+                  totalItems={totalItems}
                   itemsPerPage={pagination.per_page}
-                  onPageChange={fetchData}
+                  onPageChange={handlePageChange}
                   onItemsPerPageChange={handleItemsPerPageChange}
                   loading={loading}
                 />
