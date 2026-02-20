@@ -1359,6 +1359,30 @@ const Badge = styled.span`
   color: ${props => props.$textColor || '#475569'};
 `;
 
+const NumberTypeTag = styled.sup`
+  margin-left: 2px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: calc(0.54em + 2px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  vertical-align: super;
+  position: relative;
+  top: -2px;
+  background: ${props => {
+    if (props.$variant === 'sml') return '#dbeafe';
+    if (props.$variant === 'none') return '#e2e8f0';
+    return '#ecfdf3';
+  }};
+  color: ${props => {
+    if (props.$variant === 'sml') return '#1e40af';
+    if (props.$variant === 'none') return '#64748b';
+    return '#047857';
+  }};
+`;
+
 const ClickableValue = styled.span`
   cursor: pointer;
   color: #3b82f6;
@@ -4602,6 +4626,7 @@ const Invoices25List = () => {
                                 <span style={{ color: '#3b82f6' }}>
                                   <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem' }} />
                                   {invoice.cislo_smlouvy}
+                                  <NumberTypeTag $variant="sml">SML</NumberTypeTag>
                                 </span>
                                 {/* Ikona pro faktury ke smlouvě */}
                                 <FontAwesomeIcon 
@@ -4627,8 +4652,6 @@ const Invoices25List = () => {
                                 {/* Číslo objednávky - KLIKATELNÉ pro editaci */}
                                 <span
                                   style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
                                     cursor: invoiceTypesLoading ? 'wait' : 'pointer',
                                     opacity: invoiceTypesLoading ? 0.7 : 1,
                                     color: invoice.objednavka_je_dokoncena ? '#059669' : (invoice.objednavka_je_zkontrolovana ? '#ea580c' : '#3b82f6'),
@@ -4647,6 +4670,7 @@ const Invoices25List = () => {
                                     }} 
                                   />
                                   {invoice.cislo_objednavky}
+                                  <NumberTypeTag $variant="obj">OBJ</NumberTypeTag>
                                 </span>
                                 {/* Ikona pro faktury k objednávce */}
                                 <FontAwesomeIcon 
@@ -4689,7 +4713,27 @@ const Invoices25List = () => {
                             )}
                           </div>
                         ) : (
-                          <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
+                          <span style={{ color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                            Nepřiřazena
+                            {canManageInvoices && (
+                              <FontAwesomeIcon
+                                icon={faEdit}
+                                style={{
+                                  color: '#64748b',
+                                  cursor: 'pointer',
+                                  transition: 'opacity 0.2s, color 0.2s',
+                                  fontSize: '0.875rem'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditInvoice(invoice);
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = '#3b82f6')}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+                                title="Editovat fakturu"
+                              />
+                            )}
+                          </span>
                         )}
                       </span>
                     </TableCell>
