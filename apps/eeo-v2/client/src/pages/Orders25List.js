@@ -267,6 +267,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
     if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
     if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+    if (userStatus.startsWith('Zkontrolovan')) return 'ZKONTROLOVANA';
   }
   
   const mapping = {
@@ -275,12 +276,15 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Rozpracovaná': 'ROZPRACOVANA',
     'Odeslaná dodavateli': 'ODESLANA',
     'Potvrzená dodavatelem': 'POTVRZENA',
+    'Ke zveřejnění': 'K_UVEREJNENI_DO_REGISTRU',
     'Má být zveřejněna': 'K_UVEREJNENI_DO_REGISTRU',
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
     'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Zkontrolovaná': 'ZKONTROLOVANA',
+    'Zkontrolována': 'ZKONTROLOVANA',
     'Smazaná': 'SMAZANA',
     'Koncept': 'NOVA' // Koncepty se mapují jako nové objednávky
   };
@@ -8145,6 +8149,9 @@ const Orders25List = () => {
                   statusCode === 'KE_SCHVALENI' ? faClock :
                   statusCode === 'SCHVALENA' ? faShield :
                   statusCode === 'POTVRZENA' ? faCheckCircle :
+                  statusCode === 'ZKONTROLOVANA' ? faCheckCircle :
+                  statusCode === 'CEKA_SE' ? faHourglassHalf :
+                  statusCode === 'K_UVEREJNENI_DO_REGISTRU' ? faFileContract :
                   statusCode === 'UVEREJNENA' ? faFileContract :
                   statusCode === 'DOKONCENA' ? faTruck :
                   statusCode === 'ZRUSENA' ? faXmark :
