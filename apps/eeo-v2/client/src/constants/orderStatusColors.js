@@ -37,8 +37,8 @@ export const STATUS_COLORS = {
     light: '#a5f3fc' // světle cyan - koresponduje
   },
   K_UVEREJNENI_DO_REGISTRU: {
-    dark: '#8b5cf6', // fialová - má být zveřejněna v registru smluv
-    light: '#ede9fe' // světle fialová - koresponduje
+    dark: '#0f766e', // zelenkavá - ke zveřejnění v registru smluv (odlišná od dokončené)
+    light: '#ccfbf1' // světle zelenkavá - koresponduje
   },
   UVEREJNENA: {
     dark: '#7c2d12', // hnědá - zveřejněná v registru smluv
@@ -55,6 +55,10 @@ export const STATUS_COLORS = {
   VECNA_SPRAVNOST: {
     dark: '#10b981', // zelená - věcná správnost/kontrola
     light: '#d1fae5' // světle zelená - koresponduje
+  },
+  ZKONTROLOVANA: {
+    dark: '#64748b', // šedá - zkontrolovaná
+    light: '#e2e8f0' // světle šedá - koresponduje
   },
   FAKTURACE: {
     dark: '#06b6d4', // tyrkysová - fakturace workflow
