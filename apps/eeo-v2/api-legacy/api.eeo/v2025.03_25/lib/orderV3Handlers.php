@@ -1525,6 +1525,303 @@ function handle_order_v3_list($input, $config, $queries) {
 }
 
 /**
+ * Načte přehled majetkových objednávek (MAJETEK) pro přehled majetku
+ * POST /order-v3/majetek-list
+ *
+ * Podporuje period + filtr stav[] (workflow) a vrací rozšířená data:
+ * - polozky_celkova_cena_s_dph
+ * - umisteni_polozky (usek/budova/mistnost)
+ * - strediska_nazvy
+ * - druh_objednavky_nazev
+ */
+function handle_order_v3_majetek_list($input, $config, $queries) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        return;
+    }
+
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        return;
+    }
+
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+
+    $user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
+
+    try {
+        error_log('[OrderV3 MAJETEK] Start, input=' . json_encode($input));
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
+        $per_page = isset($input['per_page']) ? max(1, min(500, (int)$input['per_page'])) : 50;
+        $offset = ($page - 1) * $per_page;
+
+        $period = isset($input['period']) ? $input['period'] : 'last-month';
+        $filters = isset($input['filters']) ? $input['filters'] : array();
+
+        $where_conditions = array();
+        $where_params = array();
+
+        $where_conditions[] = "o.aktivni = 1";
+        $where_conditions[] = "o.id != 1";
+
+        $period_range = calculatePeriodRange($period);
+        if ($period_range !== null) {
+            $where_conditions[] = "o.dt_objednavky BETWEEN ? AND ?";
+            $where_params[] = $period_range['date_from'];
+            $where_params[] = $period_range['date_to'];
+        }
+
+        // Filtr: pouze MAJETEK druhy (atribut_objektu = 1)
+        $sql_majetek_codes = "SELECT kod_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND atribut_objektu = 1";
+        $stmt_majetek = $db->prepare($sql_majetek_codes);
+        $stmt_majetek->execute();
+        $majetek_codes = $stmt_majetek->fetchAll(PDO::FETCH_COLUMN);
+        error_log('[OrderV3 MAJETEK] Majetek codes count=' . count($majetek_codes));
+
+        if (empty($majetek_codes)) {
+            http_response_code(200);
+            echo json_encode(array(
+                'status' => 'success',
+                'data' => array(
+                    'orders' => array(),
+                    'pagination' => array(
+                        'page' => $page,
+                        'per_page' => $per_page,
+                        'total' => 0,
+                        'total_pages' => 0
+                    )
+                ),
+                'message' => 'Data načtena úspěšně'
+            ));
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($majetek_codes), '?'));
+        $where_conditions[] = "(CASE 
+            WHEN o.druh_objednavky_kod LIKE '{%' THEN JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu'))
+            ELSE o.druh_objednavky_kod
+        END) IN ($placeholders)";
+        $where_params = array_merge($where_params, $majetek_codes);
+
+        // Filtr: stav workflow (poslední stav)
+        if (!empty($filters['stav']) && is_array($filters['stav'])) {
+            $stav_map = array(
+                'NOVA' => 'NOVA',
+                'KE_SCHVALENI' => 'ODESLANA_KE_SCHVALENI',
+                'SCHVALENA' => 'SCHVALENA',
+                'ZAMITNUTA' => 'ZAMITNUTA',
+                'ROZPRACOVANA' => 'ROZPRACOVANA',
+                'ODESLANA' => 'ODESLANA',
+                'POTVRZENA' => 'POTVRZENA',
+                'K_UVEREJNENI_DO_REGISTRU' => 'UVEREJNIT',
+                'FAKTURACE' => 'FAKTURACE',
+                'VECNA_SPRAVNOST' => 'VECNA_SPRAVNOST',
+                'ZKONTROLOVANA' => 'ZKONTROLOVANA',
+                'DOKONCENA' => 'DOKONCENA',
+                'ZRUSENA' => 'ZRUSENA',
+                'SMAZANA' => 'SMAZANA'
+            );
+
+            $workflow_codes = array();
+            foreach ($filters['stav'] as $stav_value) {
+                $key = strtoupper(trim($stav_value));
+                $workflow_codes[] = isset($stav_map[$key]) ? $stav_map[$key] : $key;
+            }
+
+            $workflow_codes = array_values(array_unique(array_filter($workflow_codes)));
+            if (!empty($workflow_codes)) {
+                $wf_placeholders = implode(',', array_fill(0, count($workflow_codes), '?'));
+                $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) IN ($wf_placeholders)";
+                $where_params = array_merge($where_params, $workflow_codes);
+            }
+        }
+
+        // Permissions
+        applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+
+        $where_sql = implode(' AND ', $where_conditions);
+
+        $sql_count = "
+            SELECT COUNT(DISTINCT o.id) as total
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+            WHERE $where_sql
+        ";
+        $stmt_count = $db->prepare($sql_count);
+        $stmt_count->execute($where_params);
+        $total_count = (int)$stmt_count->fetchColumn();
+        $total_pages = $total_count > 0 ? ceil($total_count / $per_page) : 0;
+        error_log('[OrderV3 MAJETEK] Count=' . $total_count . ', pages=' . $total_pages);
+
+        $sql_orders = "
+            SELECT 
+                o.id,
+                o.cislo_objednavky,
+                o.predmet,
+                o.dt_objednavky,
+                o.stav_workflow_kod,
+                o.max_cena_s_dph,
+                o.druh_objednavky_kod,
+                o.strediska_kod,
+                COALESCE(o.dodavatel_nazev, d.nazev) as dodavatel_nazev,
+                (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as polozky_celkova_cena_s_dph,
+                (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as pocet_faktur,
+                (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+            WHERE $where_sql
+            ORDER BY o.dt_objednavky DESC
+            LIMIT $per_page OFFSET $offset
+        ";
+
+        $stmt_orders = $db->prepare($sql_orders);
+        $stmt_orders->execute($where_params);
+        $orders = $stmt_orders->fetchAll(PDO::FETCH_ASSOC);
+        error_log('[OrderV3 MAJETEK] Orders loaded=' . count($orders));
+
+        if (!empty($orders)) {
+            $order_ids = array_column($orders, 'id');
+            $order_placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+
+            // Načíst umístění položek pro všechny objednávky v dávce
+            $sql_items = "
+                SELECT objednavka_id, usek_kod, budova_kod, mistnost_kod, poznamka
+                FROM " . TBL_OBJEDNAVKY_POLOZKY . "
+                WHERE objednavka_id IN ($order_placeholders)
+                ORDER BY id ASC
+            ";
+            $stmt_items = $db->prepare($sql_items);
+            $stmt_items->execute($order_ids);
+            $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+
+            $items_by_order = array();
+            foreach ($items as $item) {
+                $oid = (int)$item['objednavka_id'];
+                if (!isset($items_by_order[$oid])) {
+                    $items_by_order[$oid] = array();
+                }
+                $items_by_order[$oid][] = array(
+                    'usek_kod' => $item['usek_kod'],
+                    'budova_kod' => $item['budova_kod'],
+                    'mistnost_kod' => $item['mistnost_kod'],
+                    'poznamka' => $item['poznamka']
+                );
+            }
+
+            // Přednačíst druhy objednávek (kod -> nazev)
+            $druh_kody = array();
+            foreach ($orders as $order) {
+                $druh_kod = $order['druh_objednavky_kod'] ?? null;
+                if (!$druh_kod) continue;
+                $decoded = json_decode($druh_kod, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded) && isset($decoded['kod_stavu'])) {
+                    $druh_kod = $decoded['kod_stavu'];
+                }
+                if ($druh_kod) {
+                    $druh_kody[] = $druh_kod;
+                }
+            }
+            $druh_kody = array_values(array_unique(array_filter($druh_kody)));
+            $druh_map = array();
+            if (!empty($druh_kody)) {
+                $druh_placeholders = implode(',', array_fill(0, count($druh_kody), '?'));
+                $sql_druhy = "SELECT kod_stavu, nazev_stavu, atribut_objektu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu IN ($druh_placeholders)";
+                $stmt_druhy = $db->prepare($sql_druhy);
+                $stmt_druhy->execute($druh_kody);
+                $druhy = $stmt_druhy->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($druhy as $druh) {
+                    $druh_map[$druh['kod_stavu']] = $druh;
+                }
+            }
+
+            $strediska_cache = array();
+
+            foreach ($orders as &$order) {
+                $order_id = (int)$order['id'];
+
+                // workflow JSON -> array
+                if (isset($order['stav_workflow_kod'])) {
+                    $order['stav_workflow_kod'] = safeJsonDecode($order['stav_workflow_kod'], array());
+                }
+
+                // Umístění položek
+                $order['umisteni_polozky'] = isset($items_by_order[$order_id]) ? $items_by_order[$order_id] : array();
+
+                // Střediska - názvy
+                if (!empty($order['strediska_kod'])) {
+                    $cache_key = $order['strediska_kod'];
+                    if (isset($strediska_cache[$cache_key])) {
+                        $order['strediska_nazvy'] = $strediska_cache[$cache_key];
+                    } else {
+                        $strediska_array = json_decode($order['strediska_kod'], true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($strediska_array)) {
+                            $strediska_enriched = loadStrediskaByKod($db, $strediska_array);
+                            $strediska_nazvy = array_column($strediska_enriched, 'nazev');
+                            $strediska_cache[$cache_key] = implode(', ', $strediska_nazvy);
+                            $order['strediska_nazvy'] = $strediska_cache[$cache_key];
+                        }
+                    }
+                }
+
+                // Druh objednávky - název
+                if (!empty($order['druh_objednavky_kod'])) {
+                    $druh_kod = $order['druh_objednavky_kod'];
+                    $decoded = json_decode($druh_kod, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded) && isset($decoded['kod_stavu'])) {
+                        $druh_kod = $decoded['kod_stavu'];
+                    }
+                    if ($druh_kod && isset($druh_map[$druh_kod])) {
+                        $order['druh_objednavky_nazev'] = $druh_map[$druh_kod]['nazev_stavu'];
+                        $order['druh_objednavky_atribut'] = isset($druh_map[$druh_kod]['atribut_objektu']) ? (int)$druh_map[$druh_kod]['atribut_objektu'] : 0;
+                    }
+                }
+            }
+            unset($order);
+        }
+
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => array(
+                'orders' => $orders,
+                'pagination' => array(
+                    'page' => $page,
+                    'per_page' => $per_page,
+                    'total' => $total_count,
+                    'total_pages' => $total_pages
+                )
+            ),
+            'message' => 'Data načtena úspěšně'
+        ));
+
+    } catch (Exception $e) {
+        error_log('[OrderV3 MAJETEK] ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání majetku: ' . $e->getMessage()
+        ));
+    }
+}
+
+/**
  * Načte statistiky objednávek pro daný rok
  * @param PDO $db Database connection
  * @param int $year Rok pro filtrování

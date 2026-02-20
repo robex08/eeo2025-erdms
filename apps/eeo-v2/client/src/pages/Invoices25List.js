@@ -1642,9 +1642,13 @@ const Invoices25List = () => {
     }
   }, [LS_KEY]);
   
-  // Kontrola oprávnění
+  // Kontrola oprávnění (dlaždice "Moje faktury")
   const canViewAllInvoices = React.useMemo(() => {
-    return hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('ORDER_MANAGE'));
+    return hasPermission && (
+      hasPermission('INVOICE_MANAGE') ||
+      hasPermission('ORDER_MANAGE') ||
+      hasPermission('INVOICE_VIEW')
+    );
   }, [hasPermission]);
   
   const canManageInvoices = React.useMemo(() => {

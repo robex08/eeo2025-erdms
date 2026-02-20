@@ -645,9 +645,10 @@ const StatusBadge = styled.div`
       ROZPRACOVANA: 'rgba(254, 243, 199, 0.4)',
       ODESLANA: 'rgba(224, 231, 255, 0.4)',
       POTVRZENA: 'rgba(221, 214, 254, 0.4)',
-      K_UVEREJNENI_DO_REGISTRU: 'rgba(204, 251, 241, 0.4)',
+      K_UVEREJNENI_DO_REGISTRU: 'rgba(204, 251, 241, 0.6)',
       UVEREJNENA: 'rgba(209, 250, 229, 0.4)',
       DOKONCENA: 'rgba(209, 250, 229, 0.4)',
+      ZKONTROLOVANA: 'rgba(226, 232, 240, 0.6)',
       ZRUSENA: 'rgba(254, 202, 202, 0.4)',
       CANCELLED: 'rgba(254, 202, 202, 0.4)',
       EMPTY: 'transparent',
@@ -663,9 +664,10 @@ const StatusBadge = styled.div`
       ROZPRACOVANA: '#d97706',
       ODESLANA: '#4f46e5',
       POTVRZENA: '#6d28d9',
-      K_UVEREJNENI_DO_REGISTRU: '#0d9488',
+      K_UVEREJNENI_DO_REGISTRU: '#0f766e',
       UVEREJNENA: '#059669',
       DOKONCENA: '#059669',
+      ZKONTROLOVANA: '#64748b',
       ZRUSENA: '#dc2626',
       CANCELLED: '#dc2626',
       EMPTY: '#64748b',
@@ -681,9 +683,10 @@ const StatusBadge = styled.div`
       ROZPRACOVANA: '#d97706',
       ODESLANA: '#4f46e5',
       POTVRZENA: '#6d28d9',
-      K_UVEREJNENI_DO_REGISTRU: '#0d9488',
+      K_UVEREJNENI_DO_REGISTRU: '#0f766e',
       UVEREJNENA: '#059669',
       DOKONCENA: '#059669',
+      ZKONTROLOVANA: '#94a3b8',
       ZRUSENA: '#dc2626',
       CANCELLED: '#dc2626',
       EMPTY: 'transparent',
@@ -1213,6 +1216,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
     if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
     if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+    if (userStatus.startsWith('Zkontrolovan')) return 'ZKONTROLOVANA';
   }
   
   const mapping = {
@@ -1221,12 +1225,14 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Rozpracovaná': 'ROZPRACOVANA',
     'Odeslaná dodavateli': 'ODESLANA',
     'Potvrzená dodavatelem': 'POTVRZENA',
+    'Ke zveřejnění': 'K_UVEREJNENI_DO_REGISTRU',
     'Má být zveřejněna': 'K_UVEREJNENI_DO_REGISTRU',
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
     'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Zkontrolovaná': 'ZKONTROLOVANA',
     'Zkontrolována': 'ZKONTROLOVANA',
     'Smazaná': 'SMAZANA',
     'Koncept': 'NOVA',
@@ -3185,7 +3191,8 @@ const OrdersTableV3 = ({
             VECNA_SPRAVNOST: faCheckCircle,
             ZKONTROLOVANA: faCheckCircle,
             CEKA_POTVRZENI: faClock,
-            K_UVEREJNENI_DO_REGISTRU: faClock,
+            K_UVEREJNENI_DO_REGISTRU: faFileContract,
+            CEKA_SE: faHourglassHalf,
           };
           
           return (
