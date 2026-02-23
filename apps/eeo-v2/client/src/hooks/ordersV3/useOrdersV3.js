@@ -395,6 +395,8 @@ export function useOrdersV3({
         activeFilters.s_fakturou = true;
       } else if (statusKey === 's_prilohami') {
         activeFilters.s_prilohami = true;
+      } else if (statusKey === 'bez_obj_priloh') {
+        activeFilters.bez_obj_priloh = true;
       } else if (statusKey === 's_komentari') {
         activeFilters.s_komentari = true;
       } else if (statusKey === 's_mymi_komentari') {

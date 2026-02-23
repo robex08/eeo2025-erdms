@@ -939,8 +939,15 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)";
         }
         
-        // Filtr pro objednávky s přílohami
-        if (!empty($filters['s_prilohami']) && $filters['s_prilohami'] === true) {
+        // Filtr pro objednávky s přílohami / bez příloh (vzájemně se vylučují)
+        // Priorita: bez_obj_priloh > s_prilohami
+        if (!empty($filters['bez_obj_priloh']) && $filters['bez_obj_priloh'] === true) {
+            error_log("[OrderV3 FILTER] ✅ Aplikuji filtr BEZ_OBJ_PRILOH (negace s_prilohami)");
+            error_log("[OrderV3 FILTER] Filters state: " . json_encode($filters));
+            $where_conditions[] = "NOT EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id)";
+        } elseif (!empty($filters['s_prilohami']) && $filters['s_prilohami'] === true) {
+            error_log("[OrderV3 FILTER] ✅ Aplikuji filtr S_PRILOHAMI");
+            error_log("[OrderV3 FILTER] Filters state: " . json_encode($filters));
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id)";
         }
         
@@ -1975,7 +1982,7 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 ) THEN 1 
                 ELSE 0 
             END) as withInvoices,
-            -- S PŘÍLOHAMI
+            -- S PŘÍLOHAMI (všechny typy příloh)
             SUM(CASE 
                 WHEN EXISTS (
                     SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p 
@@ -1983,6 +1990,14 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 ) THEN 1 
                 ELSE 0 
             END) as withAttachments,
+            -- BEZ PŘÍLOH (objednávky bez jakýchkoliv příloh v tabulce objednavky_prilohy)
+            SUM(CASE 
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p 
+                    WHERE p.objednavka_id = o.id
+                ) THEN 1 
+                ELSE 0 
+            END) as withoutObjAttachments,
             -- MIMOŘÁDNÉ UDÁLOSTI
             SUM(CASE 
                 WHEN o.mimoradna_udalost = 1 THEN 1 
@@ -2120,7 +2135,7 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana',
         'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
         'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena',
-        'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
+        'smazana', 'withInvoices', 'withAttachments', 'withoutObjAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
         'withComments', 'withMyComments'
     );
     foreach ($counter_fields as $field) {
@@ -2234,6 +2249,14 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
                 ) THEN 1 
                 ELSE 0 
             END) as withAttachments,
+            -- BEZ PŘÍLOH (objednávky bez jakýchkoliv příloh v tabulce objednavky_prilohy)
+            SUM(CASE 
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p 
+                    WHERE p.objednavka_id = o.id
+                ) THEN 1 
+                ELSE 0 
+            END) as withoutObjAttachments,
             -- MIMOŘÁDNÉ UDÁLOSTI
             SUM(CASE 
                 WHEN o.mimoradna_udalost = 1 THEN 1 
@@ -2394,7 +2417,7 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana', 
         'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
         'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena', 
-        'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
+        'smazana', 'withInvoices', 'withAttachments', 'withoutObjAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
         'withComments', 'withMyComments'
     );
     
