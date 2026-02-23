@@ -301,6 +301,7 @@ const STATUS_COLORS = {
   ARCHIVOVANO: { light: '#e5e7eb', dark: '#6b7280', bg: '#f9fafb' },
   WITH_INVOICES: { light: '#e0e7ff', dark: '#6366f1', bg: '#eef2ff' },
   WITH_ATTACHMENTS: { light: '#ddd6fe', dark: '#8b5cf6', bg: '#f5f3ff' },
+  WITHOUT_OBJ_ATTACHMENTS: { light: '#fef3c7', dark: '#f59e0b', bg: '#fffbeb' },
   WITH_COMMENTS: { light: '#bfdbfe', dark: '#3b82f6', bg: '#dbeafe' },
   WITH_MY_COMMENTS: { light: '#a5b4fc', dark: '#6366f1', bg: '#e0e7ff' },
 };
@@ -1037,6 +1038,23 @@ const OrdersDashboardV3Full = ({
               </StatIcon>
             </StatHeader>
             <StatLabel>S přílohami</StatLabel>
+          </StatCard>
+        )}
+
+        {shouldShowTile(stats.withoutObjAttachments || 0) && (
+          <StatCard
+            $color={STATUS_COLORS.WITHOUT_OBJ_ATTACHMENTS.dark}
+            $clickable
+            $isActive={activeStatus === 'bez_obj_priloh'}
+            onClick={() => onStatusClick?.('bez_obj_priloh')}
+          >
+            <StatHeader>
+              <StatValue>{stats.withoutObjAttachments || 0}</StatValue>
+              <StatIcon $color={STATUS_COLORS.WITHOUT_OBJ_ATTACHMENTS.dark}>
+                <FontAwesomeIcon icon={faPaperclip} style={{ opacity: 0.3 }} />
+              </StatIcon>
+            </StatHeader>
+            <StatLabel>Bez příloh</StatLabel>
           </StatCard>
         )}
 

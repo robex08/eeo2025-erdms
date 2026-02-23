@@ -5,7 +5,7 @@ import { faTimes, faBackspace, faEquals } from '@fortawesome/free-solid-svg-icon
 
 const CalculatorPanel = styled.div`
   position: fixed;
-  width: 350px;
+  width: 330px;
   background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 12px;
@@ -56,36 +56,21 @@ const CloseButton = styled.button`
 `;
 
 const Display = styled.div`
-  padding: 16px;
+  padding: 12px;
   background: rgba(0, 0, 0, 0.4);
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-  max-height: 200px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #475569 rgba(0, 0, 0, 0.1);
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.1);
-  }
-  &::-webkit-scrollbar-thumb {
-    background: #475569;
-    border-radius: 3px;
-  }
 `;
 
 const DisplayValue = styled.div`
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 300;
   color: #ffffff;
   text-align: right;
-  min-height: 35px;
+  min-height: 30px;
   word-break: break-all;
   line-height: 1.2;
-  margin-bottom: 8px;
-  padding: 8px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   border: ${props => props.$selected ? '2px solid #3b82f6' : '1px solid rgba(148, 163, 184, 0.2)'};
@@ -101,24 +86,42 @@ const DisplayValue = styled.div`
 `;
 
 const DisplayOperation = styled.div`
-  font-size: 14px;
+  font-size: 12px;
   color: #94a3b8;
   text-align: right;
-  min-height: 20px;
-  margin-bottom: 8px;
+  min-height: 16px;
+  margin-bottom: 6px;
 `;
 
 const HistoryList = styled.div`
-  max-height: 120px;
+  max-height: 80px;
   overflow-y: auto;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.2);
+  scrollbar-width: thin;
+  scrollbar-color: #475569 rgba(0, 0, 0, 0.3);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+    
+    &:hover {
+      background: #5a6a7f;
+    }
+  }
 `;
 
 const HistoryItem = styled.div`
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
   color: #cbd5e1;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
   cursor: pointer;
@@ -150,17 +153,17 @@ const HistoryResult = styled.span`
 const ButtonGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 16px;
+  gap: 6px;
+  padding: 12px;
   background: rgba(0, 0, 0, 0.1);
   border-radius: 0 0 12px 12px;
 `;
 
 const CalcButton = styled.button`
-  height: 50px;
+  height: 45px;
   border: none;
   border-radius: 8px;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -228,7 +231,7 @@ const FinancialCalculator = ({ isOpen, onClose, position, onPositionChange, isAc
   // Oznámit změnu posledního výsledku pro tooltip
   useEffect(() => {
     if (onLastResultChange && calculationHistory.length > 0) {
-      const lastResult = calculationHistory[calculationHistory.length - 1];
+      const lastResult = calculationHistory[0]; // První prvek je nejnovější (přidává se na začátek)
       onLastResultChange(lastResult.result, lastResult.expression);
     } else if (onLastResultChange && calculationHistory.length === 0) {
       onLastResultChange(null, null);

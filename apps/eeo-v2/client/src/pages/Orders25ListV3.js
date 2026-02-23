@@ -950,6 +950,12 @@ function Orders25ListV3() {
         filters.s_fakturou = true;
       } else if (statusKey === 's_prilohami') {
         filters.s_prilohami = true;
+        // Vzájemně se vylučující filtr
+        delete filters.bez_obj_priloh;
+      } else if (statusKey === 'bez_obj_priloh') {
+        filters.bez_obj_priloh = true;
+        // Vzájemně se vylučující filtr
+        delete filters.s_prilohami;
       } else if (statusKey === 's_komentari') {
         filters.s_komentari = true;
       } else if (statusKey === 's_mymi_komentari') {
