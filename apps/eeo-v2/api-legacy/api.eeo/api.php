@@ -3456,6 +3456,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
+
+    case 'sablona_docx/remove-file':
+        if ($request_method === 'POST') {
+            handle_sablona_docx_remove_file($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
         
     case 'sablona_docx/delete':
         if ($request_method === 'POST') {

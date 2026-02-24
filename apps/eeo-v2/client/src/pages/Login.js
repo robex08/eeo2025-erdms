@@ -1,5 +1,5 @@
 
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
@@ -230,19 +230,71 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { login, error, needsPasswordChange } = useContext(AuthContext);
+  const usernameRef = useRef(null);
+  const passwordRef = useRef(null);
+
+  // Autofill detection: some browsers don't fire onChange for saved credentials
+  useEffect(() => {
+    const syncAutofill = () => {
+      const currentUsername = usernameRef.current?.value || '';
+      const currentPassword = passwordRef.current?.value || '';
+
+      if (!username && currentUsername) {
+        setUsername(currentUsername);
+      }
+      if (!password && currentPassword) {
+        setPassword(currentPassword);
+      }
+    };
+
+    const rafId = requestAnimationFrame(syncAutofill);
+    const timeoutId = setTimeout(syncAutofill, 300);
+
+    // Short polling window to catch late autofill
+    let attempts = 0;
+    const intervalId = setInterval(() => {
+      attempts += 1;
+      syncAutofill();
+      if ((usernameRef.current?.value && passwordRef.current?.value) || attempts >= 20) {
+        clearInterval(intervalId);
+      }
+    }, 100);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    };
+  }, [username, password]);
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
 
     try {
+      const currentUsername = usernameRef.current?.value || username;
+      const currentPassword = passwordRef.current?.value || password;
+
+      if (!currentUsername || !currentPassword) {
+        return;
+      }
+
+      if (currentUsername !== username) {
+        setUsername(currentUsername);
+      }
+      if (currentPassword !== password) {
+        setPassword(currentPassword);
+      }
+
       setLoading(true);
-      await login(username, password); // Nové API2 očekává raw password, hashování řeší backend
+      await login(currentUsername, currentPassword); // Nové API2 očekává raw password, hashování řeší backend
     } catch (err) {
       // Error was normalized and set in AuthContext; no raw message logging here to avoid showing English/technical text to user.
     } finally {
       setLoading(false);
     }
   };
+
+  const canSubmit = !loading && (username || usernameRef.current?.value) && (password || passwordRef.current?.value);
   return (
     <Wrapper>
       <Container>
@@ -262,11 +314,19 @@ const Login = () => {
                 <Input
                   type="text"
                   placeholder="Zadejte uživatelské jméno"
-                  value={username}
+                  defaultValue={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  onInput={(e) => setUsername(e.target.value)}
+                  onFocus={() => {
+                    const currentUsername = usernameRef.current?.value || '';
+                    if (currentUsername && currentUsername !== username) {
+                      setUsername(currentUsername);
+                    }
+                  }}
                   required
                   disabled={loading}
                   autoComplete="username"
+                  ref={usernameRef}
                 />
               </InputWrapper>
             </InputGroup>
@@ -280,11 +340,19 @@ const Login = () => {
                 <PasswordInput
                   type={showPassword ? "text" : "password"}
                   placeholder="Zadejte heslo"
-                  value={password}
+                  defaultValue={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onInput={(e) => setPassword(e.target.value)}
+                  onFocus={() => {
+                    const currentPassword = passwordRef.current?.value || '';
+                    if (currentPassword && currentPassword !== password) {
+                      setPassword(currentPassword);
+                    }
+                  }}
                   autoComplete="current-password"
                   required
                   disabled={loading}
+                  ref={passwordRef}
                 />
                 <PasswordToggle
                   type="button"
@@ -297,7 +365,7 @@ const Login = () => {
               </InputWrapper>
             </InputGroup>
 
-            <Button type="submit" disabled={loading || !username || !password}>
+            <Button type="submit" disabled={!canSubmit}>
               {loading ? (
                 <>
                   <LoadingSpinner />
