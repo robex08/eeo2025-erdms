@@ -1101,27 +1101,21 @@ const DocxMappingExpandableSection = ({
     return orderFields.every(group => !expandedGroups[group.group]);
   };
 
+  // ✅ Stabilní analýza při změně souboru (zabrání prázdnému panelu po přepnutí)
   useEffect(() => {
-    if (file && expanded && !analysisResult) {
-      analyzeDocxFile(file);
-    }
-  }, [file, expanded]);
-
-  // ✅ AUTOMATICKÁ ANALÝZA při načtení souboru (i když je sekce sbalená) - pro validaci
-  useEffect(() => {
-    if (file && !analysisResult && !analyzing) {
-      // Spusť analýzu i když je sekce sbalená - potřebujeme validaci
-      analyzeDocxFile(file);
-    }
-  }, [file]);
-
-  // Reset analýzy při změně souboru
-  useEffect(() => {
-    if (file) {
+    if (!file) {
       setAnalysisResult(null);
       setAnalyzing(false);
       setMultiMapping({});
+      return;
     }
+
+    setAnalysisResult(null);
+    setAnalyzing(false);
+    setMultiMapping({});
+
+    // Spusť analýzu vždy po změně souboru
+    analyzeDocxFile(file);
   }, [file]);
 
   const analyzeDocxFile = async (docxFile) => {

@@ -19,6 +19,202 @@ function format_cz_currency($value) {
 }
 
 /**
+ * Načte data smlouvy pro DOCX (podle smlouva_id nebo cislo_smlouvy z financovani)
+ * @param PDO $db
+ * @param mixed $financovani_raw
+ * @return array|null
+ */
+function load_docx_smlouva_data($db, $financovani_raw) {
+    $financovani = null;
+
+    if (is_string($financovani_raw) && $financovani_raw !== '') {
+        $decoded = json_decode($financovani_raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $financovani = $decoded;
+        }
+    } elseif (is_array($financovani_raw)) {
+        $financovani = $financovani_raw;
+    }
+
+    if (!$financovani) {
+        return null;
+    }
+
+    $smlouva_id = null;
+    $cislo_smlouvy = null;
+
+    if (isset($financovani['smlouva_id']) && $financovani['smlouva_id'] !== '') {
+        $smlouva_id = (int)$financovani['smlouva_id'];
+    }
+    if (isset($financovani['cislo_smlouvy']) && $financovani['cislo_smlouvy'] !== '') {
+        $cislo_smlouvy = $financovani['cislo_smlouvy'];
+    }
+
+    if (!$smlouva_id && !$cislo_smlouvy) {
+        return null;
+    }
+
+    $sql = "
+        SELECT
+            id,
+            cislo_smlouvy,
+            usek_id,
+            usek_zkr,
+            druh_smlouvy,
+            nazev_firmy,
+            ico,
+            dic,
+            nazev_smlouvy,
+            popis_smlouvy,
+            platnost_od,
+            platnost_do,
+            hodnota_bez_dph,
+            hodnota_s_dph,
+            sazba_dph,
+            hodnota_plneni_bez_dph,
+            hodnota_plneni_s_dph,
+            aktivni,
+            pouzit_v_obj_formu,
+            stav,
+            poznamka,
+            cislo_dms,
+            kategorie,
+            cerpano_celkem,
+            zbyva,
+            procento_cerpani
+        FROM " . TBL_SMLOUVY . "
+        WHERE " . ($smlouva_id ? "id = :smlouva_id" : "cislo_smlouvy = :cislo_smlouvy") . "
+        LIMIT 1
+    ";
+
+    $stmt = $db->prepare($sql);
+    if ($smlouva_id) {
+        $stmt->bindValue(':smlouva_id', $smlouva_id, PDO::PARAM_INT);
+    } else {
+        $stmt->bindValue(':cislo_smlouvy', $cislo_smlouvy, PDO::PARAM_STR);
+    }
+    $stmt->execute();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        return null;
+    }
+
+    return array(
+        'id' => $row['id'] ? (int)$row['id'] : '',
+        'cislo_smlouvy' => $row['cislo_smlouvy'] ? $row['cislo_smlouvy'] : '',
+        'usek_id' => $row['usek_id'] ? (int)$row['usek_id'] : '',
+        'usek_zkr' => $row['usek_zkr'] ? $row['usek_zkr'] : '',
+        'druh_smlouvy' => $row['druh_smlouvy'] ? $row['druh_smlouvy'] : '',
+        'nazev_firmy' => $row['nazev_firmy'] ? $row['nazev_firmy'] : '',
+        'ico' => $row['ico'] ? $row['ico'] : '',
+        'dic' => $row['dic'] ? $row['dic'] : '',
+        'nazev_smlouvy' => $row['nazev_smlouvy'] ? $row['nazev_smlouvy'] : '',
+        'popis_smlouvy' => $row['popis_smlouvy'] ? $row['popis_smlouvy'] : '',
+        'platnost_od' => $row['platnost_od'] ? $row['platnost_od'] : '',
+        'platnost_do' => $row['platnost_do'] ? $row['platnost_do'] : '',
+        'hodnota_bez_dph' => $row['hodnota_bez_dph'] !== null ? (float)$row['hodnota_bez_dph'] : '',
+        'hodnota_s_dph' => $row['hodnota_s_dph'] !== null ? (float)$row['hodnota_s_dph'] : '',
+        'sazba_dph' => $row['sazba_dph'] !== null ? (float)$row['sazba_dph'] : '',
+        'hodnota_plneni_bez_dph' => $row['hodnota_plneni_bez_dph'] !== null ? (float)$row['hodnota_plneni_bez_dph'] : '',
+        'hodnota_plneni_s_dph' => $row['hodnota_plneni_s_dph'] !== null ? (float)$row['hodnota_plneni_s_dph'] : '',
+        'aktivni' => $row['aktivni'] !== null ? (int)$row['aktivni'] : '',
+        'pouzit_v_obj_formu' => $row['pouzit_v_obj_formu'] !== null ? (int)$row['pouzit_v_obj_formu'] : '',
+        'stav' => $row['stav'] ? $row['stav'] : '',
+        'poznamka' => $row['poznamka'] ? $row['poznamka'] : '',
+        'cislo_dms' => $row['cislo_dms'] ? $row['cislo_dms'] : '',
+        'kategorie' => $row['kategorie'] ? $row['kategorie'] : '',
+        'cerpano_celkem' => $row['cerpano_celkem'] !== null ? (float)$row['cerpano_celkem'] : '',
+        'zbyva' => $row['zbyva'] !== null ? (float)$row['zbyva'] : '',
+        'procento_cerpani' => $row['procento_cerpani'] !== null ? (float)$row['procento_cerpani'] : ''
+    );
+}
+
+/**
+ * Normalize strediska codes from mixed formats to array of strings
+ * @param mixed $strediska_raw
+ * @return array
+ */
+function normalize_strediska_codes($strediska_raw) {
+    if (!$strediska_raw) {
+        return array();
+    }
+
+    if (is_array($strediska_raw)) {
+        $normalized = array();
+        foreach ($strediska_raw as $item) {
+            if (is_array($item)) {
+                if (isset($item['kod_stavu'])) {
+                    $normalized[] = $item['kod_stavu'];
+                } elseif (isset($item['kod'])) {
+                    $normalized[] = $item['kod'];
+                } elseif (isset($item['nazev_stavu'])) {
+                    $normalized[] = $item['nazev_stavu'];
+                } elseif (isset($item['nazev'])) {
+                    $normalized[] = $item['nazev'];
+                }
+            } else {
+                $normalized[] = $item;
+            }
+        }
+
+        return array_values(array_unique(array_filter($normalized)));
+    }
+
+    if (is_string($strediska_raw)) {
+        $trimmed = trim($strediska_raw);
+
+        if ($trimmed === '') {
+            return array();
+        }
+
+        if ($trimmed[0] === '[') {
+            $decoded = json_decode($trimmed, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return normalize_strediska_codes($decoded);
+            }
+        }
+
+        if (strpos($trimmed, ',') !== false) {
+            $parts = array_map('trim', explode(',', $trimmed));
+            return array_values(array_unique(array_filter($parts)));
+        }
+
+        return array($trimmed);
+    }
+
+    return array();
+}
+
+/**
+ * Build comma-separated strediska names from codes
+ * @param PDO $db
+ * @param mixed $strediska_raw
+ * @return string
+ */
+function build_strediska_nazvy($db, $strediska_raw) {
+    $strediska = loadStrediskaByKod($db, $strediska_raw);
+    $nazvy = array();
+
+    if (!empty($strediska)) {
+        foreach ($strediska as $item) {
+            if (!empty($item['nazev'])) {
+                $nazvy[] = $item['nazev'];
+            } elseif (!empty($item['kod'])) {
+                $nazvy[] = $item['kod'];
+            }
+        }
+    }
+
+    if (!empty($nazvy)) {
+        return implode(', ', array_values(array_unique($nazvy)));
+    }
+
+    $fallback_codes = normalize_strediska_codes($strediska_raw);
+    return !empty($fallback_codes) ? implode(', ', $fallback_codes) : '';
+}
+
+/**
  * Získání kompletních dat objednávky pro DOCX generování
  * POST /sablona_docx/order-data
  */
@@ -191,6 +387,19 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
             api_error(404, 'Objednávka nenalezena');
             return;
         }
+
+        // === SMLOUVA + STREDISKA (pro DOCX) ===
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
+
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
+
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
+
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
         
         // Načtení vybraného uživatele (pouze pokud je ID > 0)
         $vybrany_uzivatel_cele_jmeno = '';
@@ -267,6 +476,55 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
         $stmt = $db->prepare($attachments_sql);
         $stmt->execute(array(':objednavka_id' => $objednavka_id));
         $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // === SMLOUVA + STREDISKA (pro DOCX) ===
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
+
+        // === NAČTENÍ FAKTUR ===
+        $faktury = loadOrderInvoices($db, $objednavka_id);
+        if (!is_array($faktury)) {
+            $faktury = array();
+        }
+        foreach ($faktury as &$faktura) {
+            $faktura['fa_strediska_nazvy'] = build_strediska_nazvy($db, $faktura['fa_strediska_kod'] ?? null);
+        }
+        unset($faktura);
+
+        // === SMLOUVA + STREDISKA (pro DOCX) ===
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
+
+        // === NAČTENÍ FAKTUR ===
+        $faktury = loadOrderInvoices($db, $objednavka_id);
+        if (!is_array($faktury)) {
+            $faktury = array();
+        }
+        foreach ($faktury as &$faktura) {
+            $faktura['fa_strediska_nazvy'] = build_strediska_nazvy($db, $faktura['fa_strediska_kod'] ?? null);
+        }
+        unset($faktura);
+
+        // === NAČTENÍ FAKTUR ===
+        $faktury = loadOrderInvoices($db, $objednavka_id);
+        foreach ($faktury as &$faktura) {
+            $faktura['fa_strediska_nazvy'] = build_strediska_nazvy($db, $faktura['fa_strediska_kod'] ?? null);
+        }
+        unset($faktura);
+
+        // === NAČTENÍ FAKTUR ===
+        $faktury = loadOrderInvoices($db, $objednavka_id);
+        foreach ($faktury as &$faktura) {
+            $faktura['fa_strediska_nazvy'] = build_strediska_nazvy($db, $faktura['fa_strediska_kod'] ?? null);
+        }
+        unset($faktura);
+
+        // === NAČTENÍ FAKTUR ===
+        $faktury = loadOrderInvoices($db, $objednavka_id);
+        foreach ($faktury as &$faktura) {
+            $faktura['fa_strediska_nazvy'] = build_strediska_nazvy($db, $faktura['fa_strediska_kod'] ?? null);
+        }
+        unset($faktura);
         
         // Vytvoření kompletní struktury podle přesných DB polí 25a_objednavky
         $result = array(
@@ -275,6 +533,7 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
             'dt_objednavky' => $order['dt_objednavky'] ? $order['dt_objednavky'] : "",
             'predmet' => $order['predmet'] ? $order['predmet'] : "",
             'strediska_kod' => $order['strediska_kod'] ? $order['strediska_kod'] : "",
+            'strediska_nazvy' => $strediska_nazvy,
             'max_cena_s_dph' => $order['max_cena_s_dph'] ? (float)$order['max_cena_s_dph'] : "",
             'financovani' => $order['financovani'] ? $order['financovani'] : "",
             'druh_objednavky_kod' => $order['druh_objednavky_kod'] ? $order['druh_objednavky_kod'] : "",
@@ -303,6 +562,9 @@ function handle_sablona_docx_order_data($input, $config, $queries) {
             'dodavatel_kontakt_jmeno' => $order['dodavatel_kontakt_jmeno'] ? $order['dodavatel_kontakt_jmeno'] : "",
             'dodavatel_kontakt_email' => $order['dodavatel_kontakt_email'] ? $order['dodavatel_kontakt_email'] : "",
             'dodavatel_kontakt_telefon' => $order['dodavatel_kontakt_telefon'] ? $order['dodavatel_kontakt_telefon'] : "",
+
+            // === SMLOUVA (pokud objednávka navazuje na smlouvu) ===
+            'smlouva' => $smlouva ? $smlouva : null,
             
             // Rozvinuté objekty uživatelů bez ID polí
             'objednatel' => array(
@@ -847,6 +1109,20 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
         $stmt->execute(array(':objednavka_id' => $objednavka_id));
         $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
+        // === SMLOUVA + STREDISKA (pro DOCX) ===
+        $smlouva = load_docx_smlouva_data($db, $order['financovani']);
+        $strediska_nazvy = build_strediska_nazvy($db, $order['strediska_kod']);
+
+        // === NAČTENÍ FAKTUR ===
+        $faktury = loadOrderInvoices($db, $objednavka_id);
+        if (!is_array($faktury)) {
+            $faktury = array();
+        }
+        foreach ($faktury as &$faktura) {
+            $faktura['fa_strediska_nazvy'] = build_strediska_nazvy($db, $faktura['fa_strediska_kod'] ?? null);
+        }
+        unset($faktura);
+
         // === SESTAVENÍ ENRICHED UŽIVATELŮ ===
         $garant_uzivatel = build_enriched_user($order, 'garant_', 'garant_id');
         $prikazce_uzivatel = build_enriched_user($order, 'prikazce_', 'prikazce_user_id');
@@ -1005,6 +1281,7 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
             'max_cena_s_dph' => $order['max_cena_s_dph'] ? $order['max_cena_s_dph'] : '',
             'poznamka' => $order['poznamka'] ? $order['poznamka'] : '',
             'strediska_kod' => $order['strediska_kod'] ? json_decode($order['strediska_kod'], true) : array(),
+            'strediska_nazvy' => $strediska_nazvy,
             'financovani' => $order['financovani'] ? json_decode($order['financovani'], true) : null,
             'druh_objednavky_kod' => $order['druh_objednavky_kod'] ? $order['druh_objednavky_kod'] : '',
             'stav_workflow_kod' => $order['stav_workflow_kod'] ? $order['stav_workflow_kod'] : '',
@@ -1050,10 +1327,17 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
             'dodavatel_kontakt_jmeno' => $order['dodavatel_kontakt_jmeno'] ? $order['dodavatel_kontakt_jmeno'] : '',
             'dodavatel_kontakt_email' => $order['dodavatel_kontakt_email'] ? $order['dodavatel_kontakt_email'] : '',
             'dodavatel_kontakt_telefon' => $order['dodavatel_kontakt_telefon'] ? $order['dodavatel_kontakt_telefon'] : '',
+
+            // SMLOUVA (pokud objednávka navazuje na smlouvu)
+            'smlouva' => $smlouva ? $smlouva : null,
             
             // POLOŽKY
             'polozky' => $items,
             'polozky_count' => count($items),
+
+            // FAKTURY
+            'faktury' => $faktury,
+            'faktury_count' => count($faktury),
             
             // PŘÍLOHY
             'prilohy' => $attachments,

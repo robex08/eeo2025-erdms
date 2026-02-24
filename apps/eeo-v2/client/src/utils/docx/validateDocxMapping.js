@@ -17,6 +17,7 @@ const ENRICHED_API_STRUCTURE = {
     'max_cena_s_dph',
     'poznamka',
     'strediska_kod',
+    'strediska_nazvy',
     'druh_objednavky_kod',
     'stav_workflow_kod',
     'dt_predpokladany_termin_dodani',
@@ -24,6 +25,7 @@ const ENRICHED_API_STRUCTURE = {
     'zaruka',
     'polozky_count',
     'prilohy_count',
+    'faktury_count',
     // Datumová pole workflow
     'dt_vytvoreni',
     'dt_aktualizace',
@@ -67,6 +69,7 @@ const ENRICHED_API_STRUCTURE = {
     'email',
     'telefon',
     'username',
+    'lokalita',
     'lokalita.id',
     'lokalita.nazev',
     'lokalita.kod'
@@ -173,6 +176,44 @@ const ENRICHED_API_STRUCTURE = {
     'fakturant_prijmeni',
     'fakturant_email',
     'fakturant_telefon'
+  ],
+
+  // Smlouva (vnořený objekt v enriched datech)
+  smlouva: [
+    'id',
+    'cislo_smlouvy',
+    'usek_id',
+    'usek_zkr',
+    'druh_smlouvy',
+    'nazev_firmy',
+    'ico',
+    'dic',
+    'nazev_smlouvy',
+    'popis_smlouvy',
+    'platnost_od',
+    'platnost_do',
+    'hodnota_bez_dph',
+    'hodnota_s_dph',
+    'sazba_dph',
+    'hodnota_plneni_bez_dph',
+    'hodnota_plneni_s_dph',
+    'aktivni',
+    'pouzit_v_obj_formu',
+    'stav',
+    'poznamka',
+    'cislo_dms',
+    'kategorie',
+    'cerpano_celkem',
+    'zbyva',
+    'procento_cerpani'
+  ],
+
+  // Seznam dostupnych uzivatelu pro podpis (array)
+  dostupniUzivateleProPodpis: [
+    'id',
+    'cele_jmeno',
+    'role',
+    'lokalita_nazev'
   ]
 };
 
@@ -241,45 +282,68 @@ const DEPRECATED_FIELDS_MAP = {
 function isValidPath(path) {
   // Normalizuj cestu - odeber array indexy jako [0], [1] atd.
   // např. dostupni_uzivatele_pro_podpis[0].cele_jmeno -> dostupni_uzivatele_pro_podpis.cele_jmeno
-  const normalizedPath = path.replace(/\[\d+\]/g, '');
+  const normalizedPath = path
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\[\d+\]/g, '');
+  const normalizedLower = normalizedPath.toLowerCase();
   
   // Top level pole
-  if (ENRICHED_API_STRUCTURE.topLevel.includes(normalizedPath)) {
+  if (ENRICHED_API_STRUCTURE.topLevel.includes(normalizedLower)) {
     return true;
   }
   
   // Dodavatel pole
-  if (ENRICHED_API_STRUCTURE.dodavatel.includes(normalizedPath)) {
+  if (ENRICHED_API_STRUCTURE.dodavatel.includes(normalizedLower)) {
     return true;
   }
   
   // Vypočítané hodnoty
-  if (normalizedPath.startsWith('vypocitane.')) {
-    const fieldName = normalizedPath.substring('vypocitane.'.length);
+  if (normalizedLower.startsWith('vypocitane.')) {
+    const fieldName = normalizedLower.substring('vypocitane.'.length);
     return ENRICHED_API_STRUCTURE.vypocitane.includes(fieldName);
   }
   
+  // Smlouva (vnořený objekt)
+  if (normalizedLower === 'smlouva') {
+    return true;
+  }
+  if (normalizedLower.startsWith('smlouva.')) {
+    const fieldName = normalizedLower.substring('smlouva.'.length);
+    return ENRICHED_API_STRUCTURE.smlouva.includes(fieldName);
+  }
+
+  // Dostupni uzivatele pro podpis (array)
+  if (normalizedLower === 'dostupni_uzivatele_pro_podpis') {
+    return true;
+  }
+  if (normalizedLower.startsWith('dostupni_uzivatele_pro_podpis.')) {
+    const fieldName = normalizedLower.substring('dostupni_uzivatele_pro_podpis.'.length);
+    return ENRICHED_API_STRUCTURE.dostupniUzivateleProPodpis.includes(fieldName);
+  }
+
   // Enriched uživatelé
   for (const prefix of ENRICHED_API_STRUCTURE.enrichedUserPrefixes) {
-    if (normalizedPath.startsWith(prefix + '.')) {
-      const fieldName = normalizedPath.substring(prefix.length + 1);
+    if (normalizedLower.startsWith(prefix + '.')) {
+      const fieldName = normalizedLower.substring(prefix.length + 1);
       return ENRICHED_API_STRUCTURE.enrichedUserFields.includes(fieldName);
     }
   }
   
   // Vnořené objekty
   // Financování
-  if (normalizedPath.startsWith('financovani.')) {
-    return ['typ', 'nazev', 'nazev_stavu', 'kod', 'kod_stavu'].includes(normalizedPath.substring('financovani.'.length));
+  if (normalizedLower.startsWith('financovani.')) {
+    return ['typ', 'nazev', 'nazev_stavu', 'kod', 'kod_stavu'].includes(normalizedLower.substring('financovani.'.length));
   }
   
   // Střediska (může být array)
-  if (normalizedPath.startsWith('strediska_kod.') || normalizedPath === 'strediska_kod') {
+  if (normalizedLower.startsWith('strediska_kod.') || normalizedLower === 'strediska_kod') {
     return true;
   }
   
   // Pole v arrays (polozky, prilohy, faktury) - nevalidujeme detailně
-  if (normalizedPath.startsWith('polozky.') || normalizedPath.startsWith('prilohy.') || normalizedPath.startsWith('faktury.')) {
+  if (normalizedLower.startsWith('polozky.') || normalizedLower.startsWith('prilohy.') || normalizedLower.startsWith('faktury.')) {
     return true;
   }
   
@@ -394,6 +458,18 @@ export function getAllAvailableFields() {
     ENRICHED_API_STRUCTURE.enrichedUserFields.forEach(field => {
       fields.push(`${prefix}.${field}`);
     });
+  });
+
+  // Smlouva
+  fields.push('smlouva');
+  ENRICHED_API_STRUCTURE.smlouva.forEach(field => {
+    fields.push(`smlouva.${field}`);
+  });
+
+  // Dostupni uzivatele pro podpis
+  fields.push('dostupni_uzivatele_pro_podpis');
+  ENRICHED_API_STRUCTURE.dostupniUzivateleProPodpis.forEach(field => {
+    fields.push(`dostupni_uzivatele_pro_podpis.${field}`);
   });
   
   return fields.sort();

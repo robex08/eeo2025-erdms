@@ -56,8 +56,11 @@ export const LOGOUT_CLEANUP_CONFIG = {
     'userDetail',
     'userPermissions',
     'auth_*',
+    'dev_auth_*',
     'user_permissions_*', // Stará per-user permission keys
     'auth_migration_completed', // Reset migrace pro čisté přihlášení
+    'username',
+    'current_user_id',
 
     // 🔒 KRITICKÉ: Uživatelský obsah (TODO, poznámky, chat, notifikace)
     'layout_tasks_*',

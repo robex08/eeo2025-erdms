@@ -22,6 +22,15 @@ export const extractDocxFields = async (file) => {
       throw new Error('Neplatný DOCX soubor - chybí document.xml');
     }
 
+    // Získáme header/footer XML pro pole v hlavicce/patce
+    const xmlFiles = Object.keys(zipContent.files).filter(path =>
+      /^word\/(header|footer)\d+\.xml$/i.test(path)
+    );
+    const extraXmlParts = await Promise.all(
+      xmlFiles.map(path => zipContent.file(path)?.async('text'))
+    );
+    const combinedXml = [documentXml, ...extraXmlParts.filter(Boolean)].join('\n');
+
     // Získáme app.xml (metadata aplikace)
     const appXml = await zipContent.file('docProps/app.xml')?.async('text');
 
@@ -29,7 +38,7 @@ export const extractDocxFields = async (file) => {
     const coreXml = await zipContent.file('docProps/core.xml')?.async('text');
 
     // Extrakce programových polí
-    const fields = extractFieldsFromXml(documentXml);
+    const fields = extractFieldsFromXml(combinedXml);
 
     // Extrakce metadat
     const metadata = extractMetadata(appXml, coreXml);
@@ -38,7 +47,7 @@ export const extractDocxFields = async (file) => {
       success: true,
       fields,
       metadata,
-      documentXml,
+      documentXml: combinedXml,
       fileName: file.name,
       fileSize: file.size,
       lastModified: new Date(file.lastModified)
@@ -154,6 +163,20 @@ const extractFieldsFromXml = (documentXml) => {
         fullMatch: match[0],
         position: match.index
       });
+    }
+
+    // 2b. Přímé textové placeholdery |DOCX.NAZEV
+    const docxPlaceholderRegex = /\|DOCX\.([A-Z0-9_|.\-/]+)/gi;
+    while ((match = docxPlaceholderRegex.exec(documentXml)) !== null) {
+      const fieldName = match[1];
+      if (fieldName && !fields.some(f => f.name === fieldName)) {
+        fields.push({
+          type: 'docx_text',
+          name: fieldName,
+          fullMatch: match[0],
+          position: match.index
+        });
+      }
     }
 
     // 3. Bookmarks (záložky)
@@ -325,6 +348,7 @@ export const getOrderFieldsForMapping = () => {
         { key: 'cislo_objednavky', label: 'Číslo objednávky\n{cislo_objednavky}', type: 'string', example: '2025-123' },
         { key: 'predmet', label: 'Předmět objednávky\n{predmet}', type: 'string', example: 'Předmět objednávky' },
         { key: 'strediska_kod', label: 'Kódy středisek\n{strediska_kod}', type: 'string', example: 'IT001,FIN002,ADM003' },
+        { key: 'strediska_nazvy', label: 'Střediska (názvy)\n{strediska_nazvy}', type: 'string', example: 'Kladno, Benešov' },
         { key: 'max_cena_s_dph', label: 'Max. cena s DPH\n{max_cena_s_dph}', type: 'currency', example: '250000.50' },
         { key: 'financovani', label: 'Financování (text)\n{financovani}', type: 'string', example: 'Rozpočet 2025' },
         { key: 'druh_objednavky_kod', label: 'Druh objednávky (kód)\n{druh_objednavky_kod}', type: 'string', example: 'STANDARD' },
@@ -347,6 +371,39 @@ export const getOrderFieldsForMapping = () => {
       ]
     },
 
+    // Smlouva (navázání z financování)
+    {
+      group: 'Smlouva',
+      fields: [
+        { key: 'smlouva.id', label: 'ID smlouvy\n{smlouva.id}', type: 'number', example: '123' },
+        { key: 'smlouva.cislo_smlouvy', label: 'Číslo smlouvy\n{smlouva.cislo_smlouvy}', type: 'string', example: 'SM-2025-001' },
+        { key: 'smlouva.nazev_smlouvy', label: 'Název smlouvy\n{smlouva.nazev_smlouvy}', type: 'string', example: 'Servisní smlouva' },
+        { key: 'smlouva.druh_smlouvy', label: 'Druh smlouvy\n{smlouva.druh_smlouvy}', type: 'string', example: 'RÁMCOVÁ' },
+        { key: 'smlouva.nazev_firmy', label: 'Název firmy\n{smlouva.nazev_firmy}', type: 'string', example: 'DODAVATEL s.r.o.' },
+        { key: 'smlouva.ico', label: 'IČO firmy\n{smlouva.ico}', type: 'string', example: '12345678' },
+        { key: 'smlouva.dic', label: 'DIČ firmy\n{smlouva.dic}', type: 'string', example: 'CZ12345678' },
+        { key: 'smlouva.popis_smlouvy', label: 'Popis smlouvy\n{smlouva.popis_smlouvy}', type: 'text', example: 'Rámcová servisní smlouva' },
+        { key: 'smlouva.platnost_od', label: 'Platnost od\n{smlouva.platnost_od}', type: 'date', example: '2025-01-01' },
+        { key: 'smlouva.platnost_do', label: 'Platnost do\n{smlouva.platnost_do}', type: 'date', example: '2025-12-31' },
+        { key: 'smlouva.hodnota_bez_dph', label: 'Hodnota bez DPH\n{smlouva.hodnota_bez_dph}', type: 'currency', example: '100000' },
+        { key: 'smlouva.hodnota_s_dph', label: 'Hodnota s DPH\n{smlouva.hodnota_s_dph}', type: 'currency', example: '121000' },
+        { key: 'smlouva.sazba_dph', label: 'Sazba DPH\n{smlouva.sazba_dph}', type: 'number', example: '21' },
+        { key: 'smlouva.hodnota_plneni_bez_dph', label: 'Hodnota plnění bez DPH\n{smlouva.hodnota_plneni_bez_dph}', type: 'currency', example: '50000' },
+        { key: 'smlouva.hodnota_plneni_s_dph', label: 'Hodnota plnění s DPH\n{smlouva.hodnota_plneni_s_dph}', type: 'currency', example: '60500' },
+        { key: 'smlouva.aktivni', label: 'Aktivní\n{smlouva.aktivni}', type: 'number', example: '1' },
+        { key: 'smlouva.pouzit_v_obj_formu', label: 'Použít v objednávce\n{smlouva.pouzit_v_obj_formu}', type: 'number', example: '1' },
+        { key: 'smlouva.stav', label: 'Stav smlouvy\n{smlouva.stav}', type: 'string', example: 'AKTIVNI' },
+        { key: 'smlouva.poznamka', label: 'Poznámka\n{smlouva.poznamka}', type: 'text', example: 'Poznámka ke smlouvě' },
+        { key: 'smlouva.cislo_dms', label: 'Číslo DMS\n{smlouva.cislo_dms}', type: 'string', example: 'DMS-2025-001' },
+        { key: 'smlouva.kategorie', label: 'Kategorie\n{smlouva.kategorie}', type: 'string', example: 'SERVIS' },
+        { key: 'smlouva.cerpano_celkem', label: 'Čerpáno celkem\n{smlouva.cerpano_celkem}', type: 'currency', example: '25000' },
+        { key: 'smlouva.zbyva', label: 'Zbývá\n{smlouva.zbyva}', type: 'currency', example: '75000' },
+        { key: 'smlouva.procento_cerpani', label: 'Procento čerpání\n{smlouva.procento_cerpani}', type: 'number', example: '25' },
+        { key: 'smlouva.usek_id', label: 'Úsek ID\n{smlouva.usek_id}', type: 'number', example: '10' },
+        { key: 'smlouva.usek_zkr', label: 'Úsek zkr.\n{smlouva.usek_zkr}', type: 'string', example: 'IT' }
+      ]
+    },
+
     // Objednávka - rozšířené informace (přesné DB názvy z 25a_objednavky)
     {
       group: 'Objednávka - detail',
@@ -355,6 +412,7 @@ export const getOrderFieldsForMapping = () => {
         { key: 'dt_objednavky', label: 'Datum objednávky\n{dt_objednavky}', type: 'datetime', example: '2025-01-15 10:30:00' },
         { key: 'predmet', label: 'Předmět objednávky\n{predmet}', type: 'string', example: 'Předmět objednávky' },
         { key: 'strediska_kod', label: 'Kódy středisek\n{strediska_kod}', type: 'string', example: 'IT001,FIN002,ADM003' },
+        { key: 'strediska_nazvy', label: 'Střediska (názvy)\n{strediska_nazvy}', type: 'string', example: 'Kladno, Benešov' },
         { key: 'max_cena_s_dph', label: 'Max. cena s DPH\n{max_cena_s_dph}', type: 'currency', example: '250000.50' },
         { key: 'financovani', label: 'Financování\n{financovani}', type: 'string', example: 'Rozpočet 2025' },
         { key: 'druh_objednavky_kod', label: 'Druh objednávky (kód)\n{druh_objednavky_kod}', type: 'string', example: 'STANDARD' },
@@ -468,6 +526,14 @@ export const getOrderFieldsForMapping = () => {
       ]
     },
 
+    // Podpisy
+    {
+      group: 'Podpisy',
+      fields: [
+        { key: 'dostupni_uzivatele_pro_podpis[0].cele_jmeno', label: 'Podpis - vybraný uživatel (jméno)\n{dostupni_uzivatele_pro_podpis[0].cele_jmeno}', type: 'string', example: 'Ing. Jan Novák Ph.D.' }
+      ]
+    },
+
     // Vypočítané hodnoty (z vypocitane objektu)
     {
       group: '🧮 Vypočítané hodnoty',
@@ -547,6 +613,7 @@ export const getOrderFieldsForMapping = () => {
         { key: 'faktury[0].fa_dorucena', label: 'První faktura - doručena (0/1)\n{faktury[0].fa_dorucena}', type: 'number', example: '1' },
         { key: 'faktury[0].fa_castka', label: 'První faktura - částka\n{faktury[0].fa_castka}', type: 'currency', example: '10000.00' },
         { key: 'faktury[0].fa_strediska_kod', label: 'První faktura - střediska\n{faktury[0].fa_strediska_kod}', type: 'string', example: 'IT001,FIN002' },
+        { key: 'faktury[0].fa_strediska_nazvy', label: 'První faktura - střediska (názvy)\n{faktury[0].fa_strediska_nazvy}', type: 'string', example: 'Kladno, Benešov' },
         { key: 'faktury[0].fa_poznamka', label: 'První faktura - poznámka\n{faktury[0].fa_poznamka}', type: 'text', example: 'Poznámka k faktuře' },
         { key: 'faktury[0].vytvoril_uzivatel_id', label: 'První faktura - vytvořil (user ID)\n{faktury[0].vytvoril_uzivatel_id}', type: 'number', example: '5' },
         { key: 'faktury[0].dt_vytvoreni', label: 'První faktura - datum vytvoření\n{faktury[0].dt_vytvoreni}', type: 'datetime', example: '2025-02-01 10:00:00' },
@@ -640,6 +707,7 @@ export const mapOrderToDocxFields = (orderData) => {
   mappedData['dt_objednavky'] = orderData.dt_objednavky || '';
   mappedData['predmet'] = orderData.predmet || '';
   mappedData['strediska_kod'] = orderData.strediska_kod || '';
+  mappedData['strediska_nazvy'] = orderData.strediska_nazvy || '';
   mappedData['max_cena_s_dph'] = orderData.max_cena_s_dph || '';
   
   // Financování - může být string nebo objekt
@@ -1200,9 +1268,25 @@ const getNestedValue = (obj, path) => {
     return '';
   }
 
-  // Standardní tečková notace
-  return path.split('.').reduce((current, key) => {
-    return current && current[key] !== undefined ? current[key] : undefined;
+  // Standardní tečková notace + array indexy (např. foo[0].bar)
+  const parts = path
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .filter(part => part !== '');
+
+  return parts.reduce((current, key) => {
+    if (current === undefined || current === null) {
+      return undefined;
+    }
+
+    if (/^\d+$/.test(key)) {
+      const index = parseInt(key, 10);
+      return Array.isArray(current) && current[index] !== undefined
+        ? current[index]
+        : undefined;
+    }
+
+    return current[key] !== undefined ? current[key] : undefined;
   }, obj);
 };
 
@@ -1340,7 +1424,7 @@ export const generateFieldsFromApiData = (apiData) => {
   const orderKeyFields = [
     'cislo_objednavky', 'dt_objednavky', 'dt_vytvoreni', 'dt_aktualizace',
     'dt_schvaleni', 'dt_odeslani', 'dt_akceptace', 'dt_zverejneni',
-    'predmet', 'strediska_kod', 'max_cena_s_dph', 'financovani',
+    'predmet', 'strediska_kod', 'strediska_nazvy', 'max_cena_s_dph', 'financovani',
     'druh_objednavky_kod', 'schvaleni_komentar', 'dt_predpokladany_termin_dodani',
     'misto_dodani', 'zaruka', 'poznamka', 'stav_workflow_kod', 'stav_objednavky',
     'dodavatel_zpusob_potvrzeni', 'registr_iddt'
@@ -1418,7 +1502,7 @@ export const generateFieldsFromApiData = (apiData) => {
 
     // Základní údaje - klíčová pole BEZ datumů
     const keyFieldsWithoutDates = [
-      'cislo_objednavky', 'predmet', 'strediska_kod', 'max_cena_s_dph', 'financovani',
+      'cislo_objednavky', 'predmet', 'strediska_kod', 'strediska_nazvy', 'max_cena_s_dph', 'financovani',
       'druh_objednavky_kod', 'schvaleni_komentar', 'misto_dodani', 'zaruka', 'poznamka',
       'stav_workflow_kod', 'stav_objednavky', 'dodavatel_zpusob_potvrzeni', 'registr_iddt'
     ];
@@ -1517,7 +1601,24 @@ export const generateFieldsFromApiData = (apiData) => {
     }
   });
 
-  // 9. ✅ FINÁLNÍ DEDUPLIKACE - odstraň duplicitní skupiny (ponech první výskyt)
+  // 9. ✅ POJISTKA: VŽDY PŘIDEJ SMLOUVA POLE (bez duplikace)
+  const smlouvaGroup = staticFields.find(g => g.group === 'Smlouva');
+  if (smlouvaGroup) {
+    const existingSmlouvaGroup = groups.find(g => g.group === 'Smlouva');
+
+    if (existingSmlouvaGroup) {
+      const existingKeys = existingSmlouvaGroup.fields.map(f => f.key);
+      const missingFields = smlouvaGroup.fields.filter(f => !existingKeys.includes(f.key));
+
+      if (missingFields.length > 0) {
+        existingSmlouvaGroup.fields.push(...missingFields);
+      }
+    } else {
+      groups.push(smlouvaGroup);
+    }
+  }
+
+  // 10. ✅ FINÁLNÍ DEDUPLIKACE - odstraň duplicitní skupiny (ponech první výskyt)
   const uniqueGroups = [];
   const seenGroupNames = new Set();
   

@@ -106,11 +106,19 @@ export const previewDocxFields = async (templateFile) => {
       throw new Error('Neplatná DOCX šablona');
     }
 
+    const xmlFiles = Object.keys(zip.files).filter(path =>
+      /^word\/(header|footer)\d+\.xml$/i.test(path)
+    );
+    const extraXmlParts = await Promise.all(
+      xmlFiles.map(path => zip.file(path)?.async('text'))
+    );
+    const combinedXml = [documentXml, ...extraXmlParts.filter(Boolean)].join('\n');
+
     const fields = [];
 
 
     // Najdi pole ve formátu {FIELD_NAME}
-    const curlyFieldMatches = documentXml.match(/\{[A-Z_0-9]+\}/g);
+    const curlyFieldMatches = combinedXml.match(/\{[A-Z_0-9]+\}/g);
     if (curlyFieldMatches) {
       curlyFieldMatches.forEach(match => {
         const fieldName = match.replace(/[{}]/g, '');
@@ -121,7 +129,7 @@ export const previewDocxFields = async (templateFile) => {
     }
 
     // Najdi DOCVARIABLE pole
-    const docVarMatches = documentXml.match(/DOCVARIABLE\s+([A-Z_0-9]+)/gi);
+    const docVarMatches = combinedXml.match(/DOCVARIABLE\s+([A-Z_0-9]+)/gi);
     if (docVarMatches) {
       docVarMatches.forEach(match => {
         const fieldName = match.replace(/DOCVARIABLE\s+/i, '');
@@ -132,7 +140,7 @@ export const previewDocxFields = async (templateFile) => {
     }
 
     // Najdi |DOCX. pole
-    const docxFieldMatches = documentXml.match(/\|DOCX\.([A-Z_0-9]+)/gi);
+    const docxFieldMatches = combinedXml.match(/\|DOCX\.([A-Z_0-9]+)/gi);
     if (docxFieldMatches) {
       docxFieldMatches.forEach(match => {
         const fieldName = match.replace(/\|DOCX\./i, '');
@@ -143,7 +151,7 @@ export const previewDocxFields = async (templateFile) => {
     }
 
     // Najdi MERGEFIELD pole
-    const mergeFieldMatches = documentXml.match(/MERGEFIELD\s+([A-Z_0-9]+)/gi);
+    const mergeFieldMatches = combinedXml.match(/MERGEFIELD\s+([A-Z_0-9]+)/gi);
     if (mergeFieldMatches) {
       mergeFieldMatches.forEach(match => {
         const fieldName = match.replace(/MERGEFIELD\s+/i, '');

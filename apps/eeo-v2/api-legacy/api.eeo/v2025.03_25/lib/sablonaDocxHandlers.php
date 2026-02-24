@@ -1211,6 +1211,90 @@ function handle_sablona_docx_deactivate($input, $config, $queries) {
     }
 }
 
+/**
+ * Odstranění pouze souboru šablony (zachová záznam v DB)
+ * POST /sablona_docx/remove-file
+ */
+function handle_sablona_docx_remove_file($input, $config, $queries) {
+    try {
+        // Ověření tokenu a username
+        $token = isset($input['token']) ? $input['token'] : '';
+        $username = isset($input['username']) ? $input['username'] : '';
+
+        if (empty($token)) {
+            api_error(400, 'Chybí token');
+        }
+        if (empty($username)) {
+            api_error(400, 'Chybí username');
+        }
+
+        $db = get_db($config);
+        $user = verify_token($token, $db);
+        if (!$user) {
+            api_error(401, 'Neplatný token');
+        }
+
+        // Ověření username
+        if ($user['username'] !== $username) {
+            api_error(401, 'Neplatný username pro token');
+        }
+
+        if (!isset($input['id'])) {
+            api_error(400, 'Chybí parametr ID');
+        }
+
+        $id = intval($input['id']);
+
+        // Načíst info o šabloně
+        $stmt = $db->prepare("SELECT nazev, nazev_souboru_ulozeny, cesta_souboru FROM " . TBL_SABLONY_DOCX . " WHERE id = :id");
+        $stmt->execute(array(':id' => $id));
+        $sablona = $stmt->fetch();
+
+        if (!$sablona) {
+            api_error(404, 'Šablona nenalezena');
+        }
+
+        // Načtení upload konfigurace pro správnou cestu
+        $_config = require __DIR__ . '/dbconfig.php';
+        $upload_config = $_config['upload'];
+
+        $file_deleted = false;
+        if (!empty($sablona['cesta_souboru'])) {
+            $file_path = $upload_config['docx_templates_path'] . $sablona['cesta_souboru'];
+            if (file_exists($file_path)) {
+                $file_deleted = unlink($file_path);
+            }
+        }
+
+        // Vymazat informace o souboru v DB (záznam zůstává)
+        $stmt = $db->prepare("
+            UPDATE " . TBL_SABLONY_DOCX . "
+            SET nazev_souboru = NULL,
+                nazev_souboru_ulozeny = NULL,
+                cesta_souboru = NULL,
+                velikost_souboru = NULL,
+                md5_hash = NULL,
+                aktualizoval_uzivatel_id = :uzivatel_id,
+                dt_aktualizace = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute(array(':uzivatel_id' => $user['id'], ':id' => $id));
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Soubor šablony byl odstraněn',
+            'data' => array(
+                'id' => $id,
+                'nazev' => $sablona['nazev'],
+                'file_deleted' => $file_deleted
+            )
+        ));
+
+    } catch (Exception $e) {
+        api_error(500, 'Chyba při odstraňování souboru: ' . $e->getMessage());
+    }
+}
+
 // ============================================================================
 // DOWNLOAD - Stažení šablony
 // ============================================================================
