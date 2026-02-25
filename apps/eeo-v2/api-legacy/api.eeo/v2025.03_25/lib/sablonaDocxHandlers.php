@@ -209,7 +209,10 @@ function handle_sablona_docx_create($input, $config, $queries) {
         
         // Přesunout soubor
         if (!move_uploaded_file($file['tmp_name'], $cesta_plna)) {
-            api_error(500, 'Chyba při ukládání souboru');
+            $perms = is_dir($upload_dir) ? substr(sprintf('%o', fileperms($upload_dir)), -4) : 'N/A';
+            $owner = is_dir($upload_dir) ? posix_getpwuid(filestat($upload_dir)['uid'])['name'] ?? 'unknown' : 'N/A';
+            error_log("DOCX upload failed: dir=$upload_dir, perms=$perms, owner=$owner, writable=" . (is_writable($upload_dir) ? 'yes' : 'no') . ", php_user=" . get_current_user());
+            api_error(500, 'Chyba při ukládání souboru - adresář není zapisovatelný');
         }
         
         // Příprava dat pro databázi z $_POST

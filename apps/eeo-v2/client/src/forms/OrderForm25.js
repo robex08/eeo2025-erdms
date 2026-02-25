@@ -7303,6 +7303,9 @@ function OrderForm25() {
     return false; // ODEMČENO - standardní behavior ve fázi 2
   })();
 
+  // ✅ Poznámka/Důvod schválení se po fázi 2 vždy zamyká (i pro adminy)
+  const shouldLockSchvaleniComment = isArchived || shouldLockPhase2Sections || currentPhase >= 3;
+
   // ✅ Financování je FÁZE 1-2 (samostatná sekce)
   const financovaniState = allSectionStates.financovani;
   const shouldLockFinancovaniSection = isFieldDisabled(financovaniState);
@@ -13606,22 +13609,20 @@ function OrderForm25() {
       }
     };
 
-    // Aktualizovat OKAMŽITĚ při mount
-    updateHeaderHeight();
-    
-    // Opakovat několikrát po mount pro jistotu (dynamický obsah se může renderovat postupně)
-    const timeouts = [
-      setTimeout(updateHeaderHeight, 50),
-      setTimeout(updateHeaderHeight, 100),
-      setTimeout(updateHeaderHeight, 200),
-      setTimeout(updateHeaderHeight, 500)
-    ];
+    let rafId = 0;
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updateHeaderHeight);
+    };
 
-    window.addEventListener('resize', updateHeaderHeight);
+    // Aktualizovat po prvnim paintu
+    scheduleUpdate();
+
+    window.addEventListener('resize', scheduleUpdate);
 
     // Aktualizovat také při změnách obsahu headeru (ResizeObserver)
     const observer = new ResizeObserver(() => {
-      updateHeaderHeight();
+      scheduleUpdate();
     });
 
     if (fixedHeaderRef.current) {
@@ -13629,8 +13630,8 @@ function OrderForm25() {
     }
 
     return () => {
-      timeouts.forEach(t => clearTimeout(t));
-      window.removeEventListener('resize', updateHeaderHeight);
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', scheduleUpdate);
       observer.disconnect();
     };
   }, []);
@@ -21968,6 +21969,7 @@ function OrderForm25() {
                               value={formData.schvaleni_komentar || ''}
                               onChange={(e) => handleInputChange('schvaleni_komentar', e.target.value)}
                               onBlur={() => handleFieldBlur('schvaleni_komentar', formData.schvaleni_komentar)}
+                              disabled={shouldLockSchvaleniComment}
                               placeholder={
                                 formData.stav_schvaleni === 'schvaleno'
                                   ? "Volitelná poznámka ke schválení..."
@@ -28330,39 +28332,22 @@ function OrderForm25() {
         
         addDebugLog('info', 'UNLOCK', 'cancelled', `🔓 Odemykám stornovanou objednávku ID: ${formData.id}`);
         
-        // Odebrat ZRUSENA stav z workflow
-        const currentWorkflow = formData.stav_workflow_kod;
-        let updatedWorkflow;
-        
-        if (Array.isArray(currentWorkflow)) {
-          // Už je to array
-          updatedWorkflow = currentWorkflow.filter(s => s !== 'ZRUSENA');
-        } else if (typeof currentWorkflow === 'string') {
-          // Je to string nebo JSON string
-          try {
-            const parsed = JSON.parse(currentWorkflow);
-            updatedWorkflow = Array.isArray(parsed) ? parsed.filter(s => s !== 'ZRUSENA') : [currentWorkflow].filter(s => s !== 'ZRUSENA');
-          } catch {
-            updatedWorkflow = currentWorkflow.split(',').filter(s => s.trim() !== 'ZRUSENA');
-          }
-        } else {
-          updatedWorkflow = [];
-        }
-        
-        // Vymazat storno data
+        const currentWorkflow = parseWorkflowStates(formData.stav_workflow_kod);
+        const workflowWithoutStorno = currentWorkflow.filter(state => state !== 'ZRUSENA' && state !== 'ROZPRACOVANA');
+        const updatedWorkflow = [...workflowWithoutStorno, 'ROZPRACOVANA'];
+
         const clearedData = {
           ...formData,
           stav_workflow_kod: updatedWorkflow,
-          storno_duvod: null,
-          storno_user_id: null,
-          dt_storno: null,
-          // 🛑 ODSTRANĚNO: stav_stornovano - pole neexistuje v DB
+          stav_objednavky: 'Rozpracovaná',
+          stav_stornovano: false,
+          odeslani_storno_duvod: '',
+          stav_odeslano: false,
+          odesilatel_id: null,
+          dt_odeslani: '',
+          datum_odeslani: ''
         };
-        
-        // Uložit do DB přes useWorkflowManager
-        await workflowManager.unlockSection('storno');
-        
-        // Force update form data
+
         setFormData(clearedData);
         workflowForceRefresh();
         

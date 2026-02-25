@@ -1,11 +1,12 @@
 /** @jsxImportSource @emotion/react */
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useContext } from 'react';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../../services/apiOrderV2';
 import AttachmentViewer from '../invoices/AttachmentViewer';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
+import { AuthContext } from '../../context/AuthContext';
 import {
   faInfoCircle,
   faBox,
@@ -869,6 +870,19 @@ const renderDateOnlyInline = (dateString) => {
   );
 };
 
+const parseWorkflowStates = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return raw.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+};
+
 // Získání lidsky čitelného stavu objednávky
 const getOrderDisplayStatus = (order) => {
   // Backend vrací sloupec 'stav_objednavky' který už obsahuje čitelný český název
@@ -1009,6 +1023,16 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 // =============================================================================
 
 const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder, onLoadComments, onAddComment, onDeleteComment }) => {
+  const { userDetail, hasAdminRole } = useContext(AuthContext);
+  const canSeeWorkflowDebug = useMemo(() => {
+    if (typeof hasAdminRole === 'function' && hasAdminRole()) return true;
+    return userDetail?.roles?.some(role => {
+      const roleCode = String(
+        role?.kod_role || role?.code || role?.role_code || role?.nazev_role || role?.name || ''
+      ).toUpperCase().trim();
+      return roleCode === 'SUPERADMIN' || roleCode === 'ADMINISTRATOR' || roleCode === 'ADMIN' || roleCode.includes('ADMIN');
+    });
+  }, [hasAdminRole, userDetail]);
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
 
@@ -1283,6 +1307,19 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     roots.sort((a, b) => toTs(a?.dt_vytvoreni) - toTs(b?.dt_vytvoreni));
     return roots;
   }, [threadComments, getRootId, commentsById]);
+
+  const workflowStates = useMemo(() => {
+    const states = parseWorkflowStates(detail?.stav_workflow_kod);
+    return states
+      .map((state) => {
+        if (typeof state === 'string') return state.toUpperCase().trim();
+        return String(state?.kod_stavu || state?.nazev_stavu || '').toUpperCase().trim();
+      })
+      .filter(Boolean);
+  }, [detail?.stav_workflow_kod]);
+
+  const hasWorkflowState = useCallback((code) => workflowStates.includes(code), [workflowStates]);
+  const isCancelled = hasWorkflowState('ZRUSENA');
   
   // 📥 Download/Preview handler pro přílohy - detekce typu a zobrazení ve vieweru
   const handleDownloadAttachment = async (attachment, orderId) => {
@@ -1382,7 +1419,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   const polozky = detail.polozky || [];
   const faktury = detail.faktury || [];
   const prilohy = detail.prilohy || [];
-  const workflow = detail.workflow_kroky || [];
 
   // 📎 AGREGACE: Přílohy faktur ze všech faktur do jednoho pole
   const fakturyPrilohy = faktury.reduce((acc, faktura) => {
@@ -1405,7 +1441,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
         <ExpandedContent>
           <Grid>
             {/* 1⃣ ZÁKLADNÍ ÚDAJE OBJEDNÁVKY */}
-            <Card>
+            <Card style={{ display: 'flex', flexDirection: 'column' }}>
               <CardTitle>
                 {onForceRefresh ? (
                   <FontAwesomeIcon 
@@ -1667,11 +1703,20 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 </InfoValue>
               </InfoRow>
 
-              {(detail.schvaleni_komentar || detail.odeslani_storno_duvod) && (
+              {detail.schvaleni_komentar && (
                 <InfoRow>
                   <InfoLabel>Stav komentář:</InfoLabel>
                   <InfoValue style={{ color: '#64748b' }}>
-                    {[detail.schvaleni_komentar, detail.odeslani_storno_duvod].filter(Boolean).join(', ')}
+                    {detail.schvaleni_komentar}
+                  </InfoValue>
+                </InfoRow>
+              )}
+
+              {isCancelled && detail.odeslani_storno_duvod && (
+                <InfoRow>
+                  <InfoLabel>Důvod storna:</InfoLabel>
+                  <InfoValue style={{ color: '#64748b' }}>
+                    {detail.odeslani_storno_duvod}
                   </InfoValue>
                 </InfoRow>
               )}
@@ -1687,6 +1732,15 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 <InfoRow>
                   <InfoLabel>Datum schválení:</InfoLabel>
                   <InfoValue style={{ color: '#059669', fontWeight: 500 }}>{renderSmartDateInline(detail.dt_schvaleni)}</InfoValue>
+                </InfoRow>
+              )}
+
+              {isCancelled && (
+                <InfoRow>
+                  <InfoLabel style={{ color: '#dc2626' }}>Datum stornování:</InfoLabel>
+                  <InfoValue style={{ color: '#dc2626', fontWeight: 500 }}>
+                    {renderDateOnlyInline(detail.dt_odeslani)}
+                  </InfoValue>
                 </InfoRow>
               )}
 
@@ -2212,13 +2266,14 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 </div>
               )}
 
-              {/* 3. Odeslal dodavateli */}
-              {(detail.odesilatel_jmeno || detail.odesilatel_prijmeni || detail.dt_odeslani) && (
+              {(() => {
+                const shouldShow = isCancelled || hasWorkflowState('ODESLANA');
+                return shouldShow ? (
                 <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
-                    <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#0891b2' }}>
-                      3. Odeslal dodavateli
+                    <div style={{ fontWeight: 600, fontSize: '0.8rem', color: isCancelled ? '#dc2626' : '#0891b2' }}>
+                      {isCancelled ? '3. Storno' : '3. Odeslal dodavateli'}
                     </div>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                       {(detail.odesilatel_jmeno || detail.odesilatel_prijmeni) 
@@ -2234,10 +2289,11 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     )}
                   </div>
                 </div>
-              )}
+                ) : null;
+              })()}
 
               {/* 4. Dodavatel potvrdil */}
-              {(detail.dodavatel_potvrdil_jmeno || detail.dodavatel_potvrdil_prijmeni || detail.dt_akceptace) && (
+              {hasWorkflowState('POTVRZENA') && (
                 <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
@@ -2380,6 +2436,38 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'right' }}>
                       {formatTimeOnly(detail.dt_aktualizace)}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {canSeeWorkflowDebug && (
+                <div style={{ marginTop: 'auto', fontSize: '0.85rem', color: '#0f172a', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.5rem 0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700 }}>DB:</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {workflowStates.length > 0 ? (
+                        workflowStates.map((state, index) => (
+                          <span
+                            key={`${state}-${index}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '0.1rem 0.45rem',
+                              borderRadius: '999px',
+                              background: '#e2e8f0',
+                              border: '1px solid #cbd5e1',
+                              color: '#0f172a',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              letterSpacing: '0.02em'
+                            }}
+                          >
+                            {state}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ color: '#94a3b8' }}>---</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2958,61 +3046,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
             )}
           </Card>
 
-          {/* Workflow (pokud existuje) */}
-          {workflow && workflow.length > 0 && (
-            <Card style={{ marginTop: '0.75rem' }}>
-              <CardTitle>
-                <FontAwesomeIcon icon={faProjectDiagram} />
-                Průběh workflow ({workflow.length} kroků)
-              </CardTitle>
-              <WorkflowSteps>
-                {workflow.map((step, index) => {
-                  const status = step.stav === 'schvaleno' 
-                    ? 'completed' 
-                    : step.stav === 'zamitnuto' 
-                    ? 'rejected' 
-                    : step.je_aktualni 
-                    ? 'current' 
-                    : 'pending';
-                  
-                  return (
-                    <WorkflowStep key={index} $status={status}>
-                      <WorkflowIcon $status={status}>
-                        <FontAwesomeIcon 
-                          icon={
-                            status === 'completed' ? faCheckCircle :
-                            status === 'rejected' ? faTimesCircle :
-                            status === 'current' ? faSpinner :
-                            faInfoCircle
-                          }
-                        />
-                      </WorkflowIcon>
-                      <WorkflowContent>
-                        <WorkflowTitle>
-                          {step.nazev_kroku || `Krok ${index + 1}`}
-                        </WorkflowTitle>
-                        {step.schvalil_uzivatel && (
-                          <WorkflowMeta>
-                            {step.schvalil_uzivatel}{' '}
-                            <span style={{ color: '#cbd5e1' }}>•</span>{' '}
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <FontAwesomeIcon icon={getSmartDateIcon(step.datum_schvaleni)} style={{ color: '#94a3b8' }} />
-                              {formatSmartDate(step.datum_schvaleni)}
-                            </span>
-                          </WorkflowMeta>
-                        )}
-                        {step.poznamka && (
-                          <WorkflowMeta style={{ marginTop: '0.25rem' }}>
-                            {step.poznamka}
-                          </WorkflowMeta>
-                        )}
-                      </WorkflowContent>
-                    </WorkflowStep>
-                  );
-                })}
-              </WorkflowSteps>
-            </Card>
-          )}
         </ExpandedContent>
       </ExpandedCell>
     </ExpandedRow>

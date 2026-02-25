@@ -48,7 +48,8 @@ import {
   faEnvelope,
   faPhone,
   faClock,
-  faExternalLinkAlt
+  faExternalLinkAlt,
+  faCalculator
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -778,6 +779,61 @@ const Select = styled.select`
   option {
     padding: 0.5rem;
   }
+`;
+
+const InlineIconButton = styled.button`
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #1f2937;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+`;
+
+const VatCalcPopover = styled.div`
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 10;
+  width: 280px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.15);
+  padding: 0.75rem;
+`;
+
+const VatCalcRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+`;
+
+const VatCalcLabel = styled.div`
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
 `;
 
 const ErrorMessage = styled.div`
@@ -1878,6 +1934,28 @@ export default function InvoiceEvidencePage() {
   const [showSpisovkaTooltip, setShowSpisovkaTooltip] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
   const tooltipButtonRef = useRef(null);
+
+  // 🧮 Rychlý výpočet DPH pro částku faktury
+  const [showVatCalc, setShowVatCalc] = useState(false);
+  const [vatBaseAmount, setVatBaseAmount] = useState('');
+  const [vatRate, setVatRate] = useState(21);
+
+  const parseAmountValue = useCallback((value) => {
+    if (value === null || value === undefined) return null;
+    const normalized = String(value).replace(/\s+/g, '').replace(',', '.');
+    if (!normalized) return null;
+    const num = Number(normalized);
+    if (!Number.isFinite(num)) return null;
+    return num;
+  }, []);
+
+  const vatCalculatedAmount = useMemo(() => {
+    const base = parseAmountValue(vatBaseAmount);
+    if (base === null) return '';
+    const rate = Number(vatRate);
+    if (!Number.isFinite(rate)) return '';
+    return (base * (1 + rate / 100)).toFixed(2);
+  }, [vatBaseAmount, vatRate, parseAmountValue]);
   
   // 📋 Callback pro refresh Spisovka panelu po označení dokumentu
   const [spisovkaRefreshCounter, setSpisovkaRefreshCounter] = useState(0);
@@ -1937,7 +2015,6 @@ export default function InvoiceEvidencePage() {
   // 🔥 LP čerpání (Limitované přísliby) - např. [{lp_cislo: '6', lp_id: 6, castka: 50000, poznamka: ''}]
   const [lpCerpani, setLpCerpani] = useState([]);
   const [lpCerpaniLoaded, setLpCerpaniLoaded] = useState(false);
-  const lpCerpaniAutoInitRef = useRef(false);
   // ✅ Flag pro kontrolu zda POVOLIT auto-save do localStorage
   // Když uživatel klikne "Zrušit úpravu", nastaví se na false aby se data znovu neuložila
   const [allowLSSave, setAllowLSSave] = useState(true);
@@ -1996,62 +2073,6 @@ export default function InvoiceEvidencePage() {
       return original !== current;
     });
   }, [formData, originalFormData, editingInvoiceId]);
-
-  // ✅ Auto‑init LP čerpání při jediné LP volbě (včetně 0 Kč faktury)
-  useEffect(() => {
-    if (lpCerpaniAutoInitRef.current) return;
-    if (lpCerpani && lpCerpani.length > 0) return;
-    if (!orderData || !orderData.financovani) return;
-
-    let fin = null;
-    try {
-      fin = typeof orderData.financovani === 'string'
-        ? JSON.parse(orderData.financovani)
-        : orderData.financovani;
-    } catch (e) {
-      return;
-    }
-
-    if (!fin || fin.typ !== 'LP') return;
-    if (!Array.isArray(fin.lp_kody) || fin.lp_kody.length !== 1) return;
-
-    const faCastkaNum = parseFloat(formData.fa_castka);
-    if (isNaN(faCastkaNum)) return;
-
-    const onlyLp = fin.lp_kody[0];
-    const lpOptions = dictionaries?.data?.lpKodyOptions || [];
-    const matched = lpOptions.find(lp =>
-      lp.id === onlyLp ||
-      lp.cislo_lp === onlyLp ||
-      lp.kod === onlyLp
-    );
-
-    const lpId = matched?.id !== undefined && matched?.id !== null
-      ? matched.id
-      : (!isNaN(parseInt(onlyLp, 10)) && String(onlyLp).trim() !== '' ? parseInt(onlyLp, 10) : null);
-
-    const lpCislo = matched?.cislo_lp || matched?.kod || String(onlyLp);
-
-    const autoRow = {
-      id: `row_auto_${Date.now()}`,
-      lp_cislo: lpCislo,
-      lp_id: lpId,
-      castka: isNaN(faCastkaNum) ? 0 : faCastkaNum,
-      poznamka: '',
-      lp_data: matched || null
-    };
-
-    lpCerpaniAutoInitRef.current = true;
-    setLpCerpani([autoRow]);
-
-    if (fieldErrors?.lp_cerpani) {
-      setFieldErrors(prev => {
-        const updated = { ...(prev || {}) };
-        delete updated.lp_cerpani;
-        return updated;
-      });
-    }
-  }, [orderData, formData.fa_castka, lpCerpani, dictionaries, fieldErrors]);
 
   // 🔒 Zjistit, zda je objednávka ve stavu DOKONČENA (již nelze provádět věcnou kontrolu)
   const isOrderCompleted = useMemo(() => {
@@ -2178,6 +2199,36 @@ export default function InvoiceEvidencePage() {
     // Jinak ODEMČENO
     return true;
   }, [originalFormData, isOrderCompleted, hasPermission, hasOnlyViewPermission]);
+
+  // 🧾 Upozornění pro věcnou správnost: faktura je předána jinému zaměstnanci
+  const vecnaSpravnostAssignedEmployee = useMemo(() => {
+    const assignedId = formData?.fa_predana_zam_id;
+    if (!assignedId) return null;
+
+    const idStr = String(assignedId);
+    const employee = (zamestnanci || []).find((opt) => {
+      const optId = opt?.id ?? opt?.ID ?? opt?.user_id ?? opt?.uzivatel_id;
+      if (optId === null || optId === undefined) return false;
+      return String(optId) === idStr;
+    });
+
+    if (!employee) {
+      return { id: assignedId, name: null };
+    }
+
+    const titulPred = employee.titul_pred ? `${employee.titul_pred} ` : '';
+    const titulZa = employee.titul_za ? `, ${employee.titul_za}` : '';
+    const fullName = `${titulPred}${employee.jmeno || ''} ${employee.prijmeni || ''}${titulZa}`.trim();
+
+    return { id: assignedId, name: fullName || null };
+  }, [formData?.fa_predana_zam_id, zamestnanci]);
+
+  const isVecnaSpravnostAssignedToOtherEmployee = useMemo(() => {
+    if (!user_id) return false;
+    const assignedId = formData?.fa_predana_zam_id;
+    if (!assignedId) return false;
+    return String(assignedId) !== String(user_id);
+  }, [formData?.fa_predana_zam_id, user_id]);
 
   // � Načítání LP číselníků při mount
   useEffect(() => {
@@ -4015,14 +4066,6 @@ export default function InvoiceEvidencePage() {
       return;
     }
 
-    console.debug('[VecnaSpravnost] klik Aktualizovat', {
-      editingInvoiceId,
-      fa_castka: formData.fa_castka,
-      lpCerpani,
-      lpCerpaniLength: Array.isArray(lpCerpani) ? lpCerpani.length : null,
-      vecna_spravnost_potvrzeno: formData.vecna_spravnost_potvrzeno
-    });
-
     setLoading(true);
     setError(null);
 
@@ -4042,33 +4085,21 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin.typ === 'LP') {
-            const faCastka = parseFloat(formData.fa_castka) || 0;
-            const allowZeroLpAmount = Math.abs(faCastka) < 0.00001;
-
-            // 🔥 FIX: Filtrovat jen validní řádky (LP ID + částka)
-            // ✅ 0 Kč akceptujeme jen pokud je faktura 0 Kč.
+            // 🔥 FIX: Filtrovat jen validní řádky (s LP kódem a částkou >= 0, akceptovat i 0 pro zálohové faktury)
             const validLpCerpani = (lpCerpani || []).filter(lp => {
-              // LP ID nemusí být nutně číslo (např. může být kód typu "LPE2").
-              // Backend validuje primárně lp_cislo (string), lp_id je volitelný int.
-              const hasLpId = lp.lp_id !== null && lp.lp_id !== undefined && String(lp.lp_id).trim() !== '';
-              const hasLpCislo = lp.lp_cislo !== null && lp.lp_cislo !== undefined && String(lp.lp_cislo).trim() !== '';
-              const hasLpRef = hasLpCislo || hasLpId;
-              const hasCastka = lp.castka !== null && lp.castka !== undefined && lp.castka !== '' && !isNaN(parseFloat(lp.castka));
-              if (!hasLpRef || !hasCastka) return false;
-
-              const castkaNum = parseFloat(lp.castka);
-              if (castkaNum < 0) return false;
-
-              return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+              return lp.lp_id && lp.lp_cislo && 
+                     lp.castka !== null && lp.castka !== undefined && lp.castka !== '' && 
+                     !isNaN(parseFloat(lp.castka)) && parseFloat(lp.castka) >= 0;
             });
             
             if (validLpCerpani.length === 0) {
-              showToast && showToast('Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!', 'error');
+              showToast && showToast('⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!', 'error');
               setLoading(false);
               return;
             }
 
             const totalLP = validLpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
+            const faCastka = parseFloat(formData.fa_castka) || 0;
             if (totalLP > faCastka) {
               showToast && showToast(`❌ Součet LP čerpání překračuje částku faktury`, 'error');
               setLoading(false);
@@ -4175,28 +4206,16 @@ export default function InvoiceEvidencePage() {
           let validLpCerpani = [];
           try {
             // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
-            const faCastka = parseFloat(formData.fa_castka) || 0;
-            const allowZeroLpAmount = Math.abs(faCastka) < 0.00001;
-
-            validLpCerpani = (lpCerpani || []).filter(row => {
-              const hasLpId = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== '';
-              const hasLpCislo = row.lp_cislo !== null && row.lp_cislo !== undefined && String(row.lp_cislo).trim() !== '';
-              const hasLpRef = hasLpCislo || hasLpId;
+            validLpCerpani = lpCerpani.filter(row => {
+              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
+              // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
               const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
-              if (!hasLpRef || !hasCastka) return false;
-
-              const castkaNum = parseFloat(row.castka);
-              if (castkaNum < 0) return false;
-
-              return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+              return hasLpId && hasLpCislo && hasCastka;
             }).map(row => ({
-              // 🔥 DŮLEŽITÉ: Backend validuje lp_cislo (string) vůči financovani.lp_kody.
-              // lp_id je volitelný int (pokud je k dispozici a je číselný).
-              lp_cislo: String((row.lp_cislo ?? row.lp_id) || '').trim(),
-              lp_id: (() => {
-                const n = parseInt(row.lp_id, 10);
-                return Number.isFinite(n) && n > 0 ? n : null;
-              })(),
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být skutečný LP kód (např. "3401-01")
+              lp_cislo: String(row.lp_cislo).trim(),
+              lp_id: parseInt(row.lp_id, 10),
               castka: parseFloat(row.castka),
               poznamka: row.poznamka || ''
             }));
@@ -4340,14 +4359,6 @@ export default function InvoiceEvidencePage() {
   const handleSubmit = async () => {
     setError(null);
     setFieldErrors({});
-
-    // 🔎 DEBUG: Stav před submit validací
-    console.warn('[VecnaSpravnost] handleSubmit start', {
-      editingInvoiceId,
-      fa_castka: formData.fa_castka,
-      lpCerpani,
-      lpCerpaniLength: Array.isArray(lpCerpani) ? lpCerpani.length : null
-    });
     
     // 🆕 Uživatel klikl na Zaevidovat/Aktualizovat - nastavit flag
     setInvoiceUserConfirmed(true);
@@ -4377,62 +4388,6 @@ export default function InvoiceEvidencePage() {
 
     // ✅ Validace povinných polí - PŘESKOČIT pro readonly uživatele ukládající pouze věcnou správnost
     const errors = {};
-
-    // 🔧 Auto‑init LP čerpání při jediné LP volbě (včetně 0 Kč) – přímo pro validaci
-    let lpCerpaniForValidation = lpCerpani;
-    try {
-      if (orderData && orderData.financovani) {
-        const fin = typeof orderData.financovani === 'string'
-          ? JSON.parse(orderData.financovani)
-          : orderData.financovani;
-
-        console.warn('[VecnaSpravnost] auto-init check', {
-          fin_typ: fin?.typ,
-          lp_kody: fin?.lp_kody,
-          lp_kody_len: Array.isArray(fin?.lp_kody) ? fin.lp_kody.length : null,
-          dict_lp_count: dictionaries?.data?.lpKodyOptions?.length || 0
-        });
-
-        if (fin?.typ === 'LP' && Array.isArray(fin.lp_kody) && fin.lp_kody.length === 1) {
-          const faCastkaNum = parseFloat(formData.fa_castka);
-          if (!isNaN(faCastkaNum) && (!lpCerpaniForValidation || lpCerpaniForValidation.length === 0)) {
-            const onlyLp = fin.lp_kody[0];
-            const lpOptions = dictionaries?.data?.lpKodyOptions || [];
-            const matched = lpOptions.find(lp =>
-              lp.id === onlyLp ||
-              lp.cislo_lp === onlyLp ||
-              lp.kod === onlyLp
-            );
-
-            const lpId = matched?.id !== undefined && matched?.id !== null
-              ? matched.id
-              : (!isNaN(parseInt(onlyLp, 10)) && String(onlyLp).trim() !== '' ? parseInt(onlyLp, 10) : null);
-
-            const lpCislo = matched?.cislo_lp || matched?.kod || String(onlyLp);
-
-            const autoRow = {
-              id: `row_auto_${Date.now()}`,
-              lp_cislo: lpCislo,
-              lp_id: lpId,
-              castka: faCastkaNum,
-              poznamka: '',
-              lp_data: matched || null
-            };
-
-            console.warn('[VecnaSpravnost] auto-init created', autoRow);
-
-            lpCerpaniForValidation = [autoRow];
-            setLpCerpani([autoRow]);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[VecnaSpravnost] auto-init LP selhalo:', e);
-    }
-
-    console.warn('[VecnaSpravnost] auto-init result', {
-      lpCerpaniForValidationLength: Array.isArray(lpCerpaniForValidation) ? lpCerpaniForValidation.length : null
-    });
     
     if (!isReadOnlyMode) {
       // Běžná validace pro uživatele s INVOICE_MANAGE
@@ -4491,28 +4446,16 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin?.typ === 'LP') {
-            // Kontrola LP čerpání - musí být alespoň jeden validní řádek
-            // ✅ Pokud je faktura 0 Kč, akceptujeme i LP řádky s částkou 0.
-            // ✅ Pokud je faktura > 0 Kč, vyžadujeme alespoň jeden LP řádek s částkou > 0.
-            const faCastka = parseFloat(formData.fa_castka) || 0;
-            const allowZeroLpAmount = Math.abs(faCastka) < 0.00001;
-
-            const validLpRows = (lpCerpaniForValidation || []).filter(row => {
-              const hasLpId = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== '';
-              const hasLpCislo = row.lp_cislo !== null && row.lp_cislo !== undefined && String(row.lp_cislo).trim() !== '';
-              const hasLpRef = hasLpCislo || hasLpId;
-              const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
-              if (!hasLpRef || !hasCastka) return false;
-
-              const castkaNum = parseFloat(row.castka);
-              if (castkaNum < 0) return false; // backend vyžaduje >= 0
-
-              return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
-            });
+            // Kontrola LP čerpání - musí být alespoň jeden validní řádek (akceptovat i 0 pro zálohové faktury)
+            const validLpRows = lpCerpani?.filter(row => 
+              row.lp_id && 
+              row.lp_cislo && 
+              row.castka !== null && row.castka !== undefined && row.castka !== '' &&
+              !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0
+            ) || [];
             
             if (validLpRows.length === 0) {
-              // Bez emoji ⚠️ – v UI se zobrazuje vlastní červená ikonka (trojúhelník)
-              errors.lp_cerpani = 'Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód s částkou!';
+              errors.lp_cerpani = '⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód s částkou!';
             }
           }
         } catch (e) {
@@ -4693,27 +4636,16 @@ export default function InvoiceEvidencePage() {
         if (newInvoiceId && lpCerpani && lpCerpani.length > 0) {
           try {
             // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
-            const faCastka = parseFloat(formData.fa_castka) || 0;
-            const allowZeroLpAmount = Math.abs(faCastka) < 0.00001;
-
-            const validLpCerpani = (lpCerpani || []).filter(row => {
-              const hasLpId = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== '';
-              const hasLpCislo = row.lp_cislo !== null && row.lp_cislo !== undefined && String(row.lp_cislo).trim() !== '';
-              const hasLpRef = hasLpCislo || hasLpId;
+            const validLpCerpani = lpCerpani.filter(row => {
+              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
+              // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
               const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
-              if (!hasLpRef || !hasCastka) return false;
-
-              const castkaNum = parseFloat(row.castka);
-              if (castkaNum < 0) return false;
-
-              return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+              return hasLpId && hasLpCislo && hasCastka;
             }).map(row => ({
-              // lp_cislo musí sedět na financovani.lp_kody (může to být číselné ID i kód typu "LPE2")
-              lp_cislo: String((row.lp_cislo ?? row.lp_id) || '').trim(),
-              lp_id: (() => {
-                const n = parseInt(row.lp_id, 10);
-                return Number.isFinite(n) && n > 0 ? n : null;
-              })(),
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být skutečný LP kód (např. "3401-01")
+              lp_cislo: String(row.lp_cislo).trim(),
+              lp_id: parseInt(row.lp_id, 10),
               castka: parseFloat(row.castka),
               poznamka: row.poznamka || ''
             }));
@@ -4751,27 +4683,8 @@ export default function InvoiceEvidencePage() {
             stavKody = [];
           }
 
-          // Získej aktuální (poslední) stav podle pořadí workflow (ne podle uložení v DB)
-          const workflowOrder = [
-            'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA',
-            'ROZPRACOVANA', 'ODESLANA', 'ZRUSENA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT',
-            'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
-          ];
-          const sortByWorkflowOrder = (kody) => [...kody].sort((a, b) => {
-            const indexA = workflowOrder.indexOf(a);
-            const indexB = workflowOrder.indexOf(b);
-            return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
-          });
-          const normalizeWorkflowKody = (kody) => {
-            let result = [...kody];
-            if (result.includes('VECNA_SPRAVNOST') && !result.includes('FAKTURACE')) {
-              result.push('FAKTURACE');
-            }
-            result = [...new Set(result)];
-            return sortByWorkflowOrder(result);
-          };
-          const orderedStates = sortByWorkflowOrder(stavKody);
-          const currentState = orderedStates.length > 0 ? orderedStates[orderedStates.length - 1] : null;
+          // Získej aktuální (poslední) stav
+          const currentState = stavKody.length > 0 ? stavKody[stavKody.length - 1] : null;
 
           // ✅ DŮLEŽITÉ: Pokud editujeme fakturu která PŮVODNĚ NEMĚLA objednávku a TEĎ JI PŘIŘAZUJEME,
           // musíme se chovat jako NOVÁ faktura pro tuto objednávku (ne jako editace)
@@ -4801,41 +4714,30 @@ export default function InvoiceEvidencePage() {
                   stavKody.pop(); // Odstraň i ZKONTROLOVANA pokud tam je
                 }
               }
-              // Ujisti se že je FAKTURACE před VECNA_SPRAVNOST
-              if (!stavKody.includes('FAKTURACE')) {
-                stavKody.push('FAKTURACE');
-              }
-              if (!stavKody.includes('VECNA_SPRAVNOST')) {
+              // Ujisti se že má VECNA_SPRAVNOST
+              if (stavKody[stavKody.length - 1] !== 'VECNA_SPRAVNOST') {
                 stavKody.push('VECNA_SPRAVNOST');
               }
-              // Seřadit podle workflow pořadí
-              stavKody = normalizeWorkflowKody(stavKody);
               needsUpdate = true;
             }
             // Pokud je už ve VECNA_SPRAVNOST a nebyly změny, necháme beze změny
           } else {
             // NOVÁ FAKTURA nebo PŘIŘAZENÍ FAKTURY K OBJEDNÁVCE
-            if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA' || currentState === 'FAKTURACE' || currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
-              // Vždy udržet FAKTURACE před VECNA_SPRAVNOST
-              stavKody = stavKody.filter(s => !['ZKONTROLOVANA', 'DOKONCENA'].includes(s));
-              if (!stavKody.includes('FAKTURACE')) {
-                stavKody.push('FAKTURACE');
-              }
-              if (!stavKody.includes('VECNA_SPRAVNOST')) {
-                stavKody.push('VECNA_SPRAVNOST');
-              }
-              stavKody = normalizeWorkflowKody(stavKody);
+            if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA') {
+              // První faktura → přidat FAKTURACE a pak VECNA_SPRAVNOST
+              stavKody.push('FAKTURACE');
+              stavKody.push('VECNA_SPRAVNOST');
+              needsUpdate = true;
+            } else if (currentState === 'FAKTURACE') {
+              // Už má FAKTURACE → jen přidat VECNA_SPRAVNOST
+              stavKody.push('VECNA_SPRAVNOST');
+              needsUpdate = true;
+            } else if (currentState === 'ZKONTROLOVANA') {
+              // Vrátit zpět na VECNA_SPRAVNOST (faktury byly upraveny)
+              stavKody.pop(); // Odstraň ZKONTROLOVANA
               needsUpdate = true;
             }
             // Pokud je currentState === 'VECNA_SPRAVNOST', necháme beze změny (needsUpdate = false)
-          }
-
-          if (!needsUpdate && currentState === 'VECNA_SPRAVNOST') {
-            const normalized = normalizeWorkflowKody(stavKody);
-            if (JSON.stringify(normalized) !== JSON.stringify(stavKody)) {
-              stavKody = normalized;
-              needsUpdate = true;
-            }
           }
 
           if (needsUpdate) {
@@ -6520,16 +6422,146 @@ export default function InvoiceEvidencePage() {
                     </button>
                   )}
                 </FieldLabel>
-                <Input
-                  type="text"
-                  name="fa_castka"
-                  value={formData.fa_castka}
-                  onChange={handleInputChange}
-                  disabled={!isInvoiceEditable || loading}
-                  placeholder="0"
-                  style={{ fontWeight: formData.fa_castka ? '600' : '400' }}
-                  $hasError={!!fieldErrors.fa_castka}
-                />
+                <div style={{ position: 'relative' }}>
+                  <Input
+                    type="text"
+                    name="fa_castka"
+                    value={formData.fa_castka}
+                    onChange={handleInputChange}
+                    disabled={!isInvoiceEditable || loading}
+                    placeholder="0"
+                    style={{ fontWeight: formData.fa_castka ? '600' : '400', paddingRight: '3rem' }}
+                    $hasError={!!fieldErrors.fa_castka}
+                  />
+                  <InlineIconButton
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!showVatCalc) {
+                        const grossAmount = parseAmountValue(formData.fa_castka);
+                        const rateValue = Number(vatRate);
+                        if (grossAmount !== null && Number.isFinite(rateValue)) {
+                          const divisor = 1 + rateValue / 100;
+                          const baseAmount = divisor > 0 ? (grossAmount / divisor).toFixed(2) : '';
+                          setVatBaseAmount(baseAmount);
+                        } else {
+                          setVatBaseAmount('');
+                        }
+                      }
+                      setShowVatCalc(prev => !prev);
+                    }}
+                    disabled={!isInvoiceEditable || loading}
+                    title="Rychlý přepočet DPH"
+                  >
+                    <FontAwesomeIcon icon={faCalculator} />
+                  </InlineIconButton>
+
+                  {showVatCalc && (
+                    <VatCalcPopover>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '0.9rem' }}>
+                          Přepočet DPH
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowVatCalc(false)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          title="Zavřít"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      </div>
+
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <VatCalcLabel>Částka bez DPH</VatCalcLabel>
+                        <Input
+                          type="text"
+                          value={vatBaseAmount}
+                          onChange={(e) => setVatBaseAmount(e.target.value)}
+                          placeholder="0.00"
+                          disabled={!isInvoiceEditable || loading}
+                        />
+                      </div>
+
+                      <VatCalcRow>
+                        <div style={{ flex: 1 }}>
+                          <VatCalcLabel>Sazba DPH</VatCalcLabel>
+                          <Select
+                            value={vatRate}
+                            onChange={(e) => setVatRate(Number(e.target.value))}
+                            disabled={!isInvoiceEditable || loading}
+                          >
+                            <option value={0}>0 %</option>
+                            <option value={12}>12 %</option>
+                            <option value={21}>21 %</option>
+                          </Select>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <VatCalcLabel>Částka s DPH</VatCalcLabel>
+                          <Input
+                            type="text"
+                            value={vatCalculatedAmount}
+                            disabled={true}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </VatCalcRow>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowVatCalc(false)}
+                          style={{
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '6px',
+                            border: '1px solid #e2e8f0',
+                            background: '#f8fafc',
+                            color: '#475569',
+                            fontSize: '0.85rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Zavřít
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!vatCalculatedAmount) return;
+                            setFormData(prev => ({ ...prev, fa_castka: vatCalculatedAmount }));
+                            setFieldErrors(prev => {
+                              const updated = { ...prev };
+                              delete updated.fa_castka;
+                              return updated;
+                            });
+                            setShowVatCalc(false);
+                          }}
+                          disabled={!vatCalculatedAmount}
+                          style={{
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: vatCalculatedAmount ? '#16a34a' : '#cbd5e1',
+                            color: 'white',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            cursor: vatCalculatedAmount ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          Použít částku s DPH
+                        </button>
+                      </div>
+                    </VatCalcPopover>
+                  )}
+                </div>
                 {fieldErrors.fa_castka && (
                   <FieldError>
                     <FontAwesomeIcon icon={faExclamationTriangle} />
@@ -7284,18 +7316,7 @@ export default function InvoiceEvidencePage() {
                             orderData={orderData}
                             lpCerpani={lpCerpani}
                             availableLPCodes={dictionaries.data?.lpKodyOptions || []}
-                            onChange={(newLpCerpani) => {
-                              setLpCerpani(newLpCerpani);
-                              // Pokud uživatel (nebo auto-fill) doplní LP řádky,
-                              // smaž starou validační hlášku, aby zůstala jen aktuální validace.
-                              if (fieldErrors?.lp_cerpani) {
-                                setFieldErrors(prev => {
-                                  const updated = { ...(prev || {}) };
-                                  delete updated.lp_cerpani;
-                                  return updated;
-                                });
-                              }
-                            }}
+                            onChange={(newLpCerpani) => setLpCerpani(newLpCerpani)}
                             disabled={!isVecnaSpravnostEditable || loading}
                           />
                           {/* Chybová zpráva pro LP čerpání */}
@@ -7324,6 +7345,24 @@ export default function InvoiceEvidencePage() {
                   border: (fieldErrors && fieldErrors.vecna_spravnost_potvrzeno) ? '2px solid #fca5a5' : '1px solid #d1d5db',
                   borderRadius: '6px'
                 }}>
+                  {isVecnaSpravnostAssignedToOtherEmployee && (
+                    <div style={{
+                      marginBottom: '0.75rem',
+                      padding: '0.75rem',
+                      background: '#fef2f2',
+                      border: '2px solid #ef4444',
+                      borderRadius: '8px',
+                      color: '#991b1b',
+                      fontSize: '0.9rem',
+                      fontWeight: 600
+                    }}>
+                      ⚠️ Faktura byla předána k potvrzení věcné správnosti jinému zaměstnanci:{' '}
+                      <strong>
+                        {vecnaSpravnostAssignedEmployee?.name || `ID ${vecnaSpravnostAssignedEmployee?.id}`}
+                      </strong>
+                      . Přesto můžete věcnou správnost k faktuře potvrdit i vy.
+                    </div>
+                  )}
                   <label style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -7339,14 +7378,6 @@ export default function InvoiceEvidencePage() {
                       disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => {
                         const newValue = e.target.checked ? 1 : 0;
-
-                        console.debug('[VecnaSpravnost] toggle checkbox', {
-                          newValue,
-                          editingInvoiceId,
-                          fa_castka: formData.fa_castka,
-                          lpCerpani,
-                          lpCerpaniLength: Array.isArray(lpCerpani) ? lpCerpani.length : null
-                        });
                         
                         let updatedFields = { vecna_spravnost_potvrzeno: newValue };
                         if (newValue === 1 && user_id && !formData.potvrdil_vecnou_spravnost_id) {
@@ -8049,8 +8080,7 @@ export default function InvoiceEvidencePage() {
                       return;
                     }
                     
-                    // 🎯 KROK 1: Zablokovat auto-save do LS a reset příloh/ID (aby useEffect nereloadoval)
-                    setAllowLSSave(false);
+                    // 🎯 KROK 1: RESET příloh a editingInvoiceId NEJDŘÍV (aby useEffect nereloadoval)
                     setAttachments([]);
                     setEditingInvoiceId(null);
                     setHadOriginalEntity(false);
@@ -8123,14 +8153,20 @@ export default function InvoiceEvidencePage() {
                     setInvoiceUserConfirmed(false);
                     setIsOriginalEdit(false);
                     
-                    // 🚫 Blokovat načítání z LS během resetu
-                    setJustCompletedOperation(true);
+                    // 🚫 Reset flag pro localStorage (umožní načítání při F5)
+                    setJustCompletedOperation(false);
                     
                     // Zavřít progress dialog
                     setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
                     
-                    // 🔄 PŘESMĚROVÁNÍ: Po úspěšném uložení vždy zpět na seznam faktur
-                    navigate('/invoices25-list');
+                    // 🔄 PŘESMĚROVÁNÍ: 
+                    // - Pokud byl READONLY mode (věcná správnost) → přejít na seznam faktur
+                    // - Pokud byla EDITACE FAKTURY → přejít na seznam faktur 
+                    // - Pokud byla NOVÁ EVIDEJCE faktury → zůstat na formuláři pro další fakturu
+                    if (wasReadOnlyMode || wasEditing) {
+                      navigate('/invoices25-list');
+                    }
+                    // Jinak zůstat na stránce s prázdným formulářem pro další fakturu
                   }}
                 >
                   Pokračovat

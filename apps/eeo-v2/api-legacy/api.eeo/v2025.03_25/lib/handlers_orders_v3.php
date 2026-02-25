@@ -1394,17 +1394,32 @@ function handle_orders_v3_update($input, $config) {
             'stav_workflow_kod',
             'schvaleni_komentar',
             'schvalovatel_id',
-            'mimoradna_udalost'
+            'mimoradna_udalost',
+            'odeslani_storno_duvod',
+            'odesilatel_id',
+            'dt_odeslani'
         ];
 
         $update_parts = [];
         $params = [];
 
         foreach ($allowed_fields as $field) {
-            if (array_key_exists($field, $payload)) {
-                $update_parts[] = "`$field` = ?";
-                $params[] = $payload[$field];
+            if (!array_key_exists($field, $payload)) {
+                continue;
             }
+
+            $value = $payload[$field];
+
+            if ($field === 'dt_odeslani') {
+                if ($value === null || $value === '') {
+                    $value = TimezoneHelper::getCzechDateTime();
+                } else {
+                    $value = TimezoneHelper::convertUtcToCzech($value);
+                }
+            }
+
+            $update_parts[] = "`$field` = ?";
+            $params[] = $value;
         }
 
         // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu

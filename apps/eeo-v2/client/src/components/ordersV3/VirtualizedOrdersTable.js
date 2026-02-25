@@ -161,4 +161,4 @@ const VirtualizedOrdersTable = ({
   );
 };
 
-export default VirtualizedOrdersTable;
+export default React.memo(VirtualizedOrdersTable);

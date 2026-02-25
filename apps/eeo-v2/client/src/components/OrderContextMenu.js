@@ -130,7 +130,8 @@ export const OrderContextMenu = ({
   canAddComment = false,
   canToggleCheck = false,
   canGenerateFinancialControl: canGenerateFinancialControlProp = false, // ✅ Default false - vyžaduje explicitní právo
-  selectedData = null
+  selectedData = null,
+  selectedText = ''
 }) => {
   const menuRef = useRef(null);
   const [hasClipboardData, setHasClipboardData] = useState(false);
@@ -339,18 +340,12 @@ export const OrderContextMenu = ({
 
   // Funkce pro kopírování do schránky
   const handleCopy = async () => {
-    let dataToCopy;
-    let description = '';
-
-    if (selectedData && selectedData.value) {
-      // Kopírujeme obsah buňky
-      dataToCopy = selectedData.value;
-      description = `buňka: "${dataToCopy.substring(0, 50)}${dataToCopy.length > 50 ? '...' : ''}"`;
-    } else {
-      // Kopírujeme celý řádek objednávky jako JSON
-      dataToCopy = JSON.stringify(order, null, 2);
-      description = `objednávka ${order.cislo_objednavky || order.id}`;
+    if (!selectedText) {
+      return;
     }
+
+    const dataToCopy = selectedText;
+    const description = `vybrany text: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`;
 
     try {
       const textToCopy = typeof dataToCopy === 'string' ? dataToCopy : JSON.stringify(dataToCopy);
@@ -456,15 +451,11 @@ export const OrderContextMenu = ({
         switch (e.key) {
           case 'c':
           case 'C':
-            e.preventDefault();
-            handleCopy();
-            onClose();
-            break;
-          case 'x':
-          case 'X':
-            e.preventDefault();
-            handleCut();
-            onClose();
+            if (selectedText) {
+              e.preventDefault();
+              handleCopy();
+              onClose();
+            }
             break;
           case 'v':
           case 'V':
@@ -488,7 +479,7 @@ export const OrderContextMenu = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, handleCopy, handlePaste, hasClipboardData, selectedText]);
 
   return ReactDOM.createPortal(
     <MenuContainer
@@ -517,16 +508,22 @@ export const OrderContextMenu = ({
       )}
 
       <MenuItem
-        onClick={() => { handleCut(); onClose(); }}
-        title={`Vystrihnout ${selectedData ? 'obsah buňky' : 'celý řádek'} (Ctrl+X)`}
+        disabled
+        onClick={() => {}}
+        title="Vystrihnout neni dostupne - data jsou pouze pro cteni"
       >
         <FontAwesomeIcon icon={faCut} />
         <MenuLabel>Vystrihnout</MenuLabel>
       </MenuItem>
 
       <MenuItem
-        onClick={() => { handleCopy(); onClose(); }}
-        title={`Kopírovat ${selectedData ? 'obsah buňky' : 'celý řádek'} (Ctrl+C)`}
+        disabled={!selectedText}
+        onClick={() => { if (selectedText) { handleCopy(); onClose(); } }}
+        title={
+          selectedText
+            ? 'Kopirovat vybrany text (Ctrl+C)'
+            : 'Nejprve vyberte text v tabulce'
+        }
       >
         <FontAwesomeIcon icon={faCopy} />
         <MenuLabel>Kopírovat</MenuLabel>
