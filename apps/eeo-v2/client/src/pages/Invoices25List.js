@@ -97,6 +97,56 @@ const ContactItem = styled.div`
   }
 `;
 
+const NotePreview = ({ text }) => {
+  const textRef = useRef(null);
+  const [isOverflow, setIsOverflow] = useState(false);
+
+  useEffect(() => {
+    const updateOverflow = () => {
+      if (!textRef.current) return;
+      setIsOverflow(textRef.current.scrollWidth > textRef.current.clientWidth);
+    };
+
+    updateOverflow();
+    window.addEventListener('resize', updateOverflow);
+    return () => window.removeEventListener('resize', updateOverflow);
+  }, [text]);
+
+  return (
+    <div style={{
+      position: 'relative',
+      marginTop: '0.25rem',
+      maxWidth: '180px'
+    }}>
+      <div
+        ref={textRef}
+        style={{
+          fontSize: '0.75rem',
+          color: '#64748b',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          paddingRight: '12px'
+        }}
+      >
+        {text}
+      </div>
+      {isOverflow && (
+        <span style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          background: '#ffffff',
+          paddingLeft: '4px',
+          fontSize: '0.75rem',
+          color: '#64748b'
+        }}>
+          ...
+        </span>
+      )}
+    </div>
+  );
+};
+
 // 💰 Roční poplatky badge
 const InfoIconBadge = styled.span`
   display: inline-flex;
@@ -1579,7 +1629,7 @@ const Invoices25List = () => {
   
   // Filters state pro dashboard cards
   const [filters, setFilters] = useState(savedState?.filters || {
-    filter_status: '' // 'paid', 'unpaid', 'overdue', 'without_order', 'my_invoices'
+    filter_status: '' // 'paid', 'unpaid', 'overdue', 'without_order', 'my_invoices', 'with_note'
   });
   
   // Active filter status pro vizuální označení aktivní dlaždice
@@ -1623,7 +1673,8 @@ const Invoices25List = () => {
     withinDueAmount: 0, // Částka ve splatnosti
     withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
     myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
-    kontrolovano: 0     // Zkontrolované faktury (kontrola_radku)
+    kontrolovano: 0,    // Zkontrolované faktury (kontrola_radku)
+    withNote: 0         // Faktury s poznámkou
   });
   
   // 🔍 Sidebar search pro objednávky bez faktury
@@ -2484,6 +2535,7 @@ const Invoices25List = () => {
         datum_splatnosti: invoice.fa_datum_splatnosti,
         datum_doruceni: invoice.fa_datum_doruceni,
         fa_typ: invoice.fa_typ || 'BEZNA', // ✅ Typ faktury
+        fa_poznamka: invoice.fa_poznamka || '',
         
         // Status (BE vrací int: 0/1)
         dorucena: invoice.fa_dorucena === 1 || invoice.fa_dorucena === true,
@@ -2589,7 +2641,8 @@ const Invoices25List = () => {
           withContract: response.statistiky.pocet_s_smlouvou || 0,
           withoutOrder: response.statistiky.pocet_bez_prirazeni || 0,
           fromSpisovka: response.statistiky.pocet_ze_spisovky || 0,
-          kontrolovano: response.statistiky.pocet_zkontrolovano || 0
+          kontrolovano: response.statistiky.pocet_zkontrolovano || 0,
+          withNote: response.statistiky.pocet_s_poznamkou || 0
         });
       } else {
         // Fallback: pokud BE nevrátilo statistiky, spočítej lokálně (jen aktuální stránka!)
@@ -2633,9 +2686,14 @@ const Invoices25List = () => {
           if (user_id && inv.vytvoril_uzivatel_id === user_id) {
             acc.myInvoices++;
           }
+
+          // S poznámkou
+          if (inv.fa_poznamka && inv.fa_poznamka.toString().trim()) {
+            acc.withNote++;
+          }
           
           return acc;
-        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0 });
+        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0, withNote: 0 });
         
         localStats.total = response.pagination?.total || transformedInvoices.length;
         setStats(localStats);
@@ -3730,6 +3788,22 @@ const Invoices25List = () => {
               <StatLabel>Import ze Spisovky</StatLabel>
             </DashboardCard>
 
+            {/* S poznámkou */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('with_note')}
+              $isActive={activeFilterStatus === 'with_note'}
+              $color="#f97316"
+            >
+              <StatHeader>
+                <StatLabel>S poznámkou</StatLabel>
+                <StatIcon $color="#f97316">
+                  <FontAwesomeIcon icon={faFileAlt} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withNote}</StatValue>
+              <StatLabel>Faktury s poznámkou</StatLabel>
+            </DashboardCard>
+
             {/* Kontrola faktur */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('kontrolovano')}
@@ -3853,7 +3927,7 @@ const Invoices25List = () => {
                     onClick={() => handleSort('cislo_faktury')}
                     style={{ textAlign: 'center' }}
                   >
-                    Faktura VS
+                    Faktura VS/pozn.
                     {sortField === 'cislo_faktury' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -4554,7 +4628,31 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell className="center">
                       <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
-                        <strong>{invoice.cislo_faktury}</strong>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <strong>{invoice.cislo_faktury}</strong>
+                          {(invoice.fa_poznamka || invoice.poznamka) && (() => {
+                            const fullNote = invoice.fa_poznamka || invoice.poznamka;
+                            return (
+                              <TooltipWrapper
+                                content={
+                                  <div style={{
+                                    whiteSpace: 'pre-wrap',
+                                    maxWidth: '320px',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {fullNote}
+                                  </div>
+                                }
+                                position="top"
+                                showDelay={200}
+                              >
+                                <span style={{ display: 'inline-flex' }}>
+                                  <NotePreview text={fullNote} />
+                                </span>
+                              </TooltipWrapper>
+                            );
+                          })()}
+                        </div>
                         {invoice.rozsirujici_data?.rocni_poplatek && (
                           <TooltipWrapper
                             content={
@@ -5871,6 +5969,7 @@ const Invoices25List = () => {
                       </InfoContent>
                     </InfoRow>
                   )}
+
                 </InfoGrid>
 
                 <InfoGrid>
@@ -5919,6 +6018,22 @@ const Invoices25List = () => {
                     </InfoContent>
                   </InfoRowFullWidth>
                 </InfoGrid>
+
+                {(slidePanelInvoice.fa_poznamka || slidePanelInvoice.poznamka) && (
+                  <InfoGrid>
+                    <InfoRowFullWidth>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faFileAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Poznámka k faktuře</InfoLabel>
+                        <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
+                          {slidePanelInvoice.fa_poznamka || slidePanelInvoice.poznamka}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRowFullWidth>
+                  </InfoGrid>
+                )}
 
                 <InfoGrid>
                   {slidePanelInvoice.fa_cislo_faktury_dodavatele && (
@@ -6708,26 +6823,6 @@ const Invoices25List = () => {
                 </InfoGrid>
               </DetailSection>
 
-              {/* Poznámka */}
-              {slidePanelInvoice.fa_poznamka && (
-                <DetailSection>
-                  <SectionTitle>Poznámka</SectionTitle>
-                  <InfoGrid>
-                    <InfoRowFullWidth>
-                      <InfoIcon>
-                        <FontAwesomeIcon icon={faFileAlt} />
-                      </InfoIcon>
-                      <InfoContent>
-                        <InfoLabel>Poznámka k faktuře</InfoLabel>
-                        <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
-                          {slidePanelInvoice.fa_poznamka}
-                        </InfoValue>
-                      </InfoContent>
-                    </InfoRowFullWidth>
-                  </InfoGrid>
-                </DetailSection>
-              )}
-
               {/* Přílohy */}
               {slidePanelAttachments.length > 0 && (
                 <DetailSection>
@@ -7126,7 +7221,7 @@ const Invoices25List = () => {
                     className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_faktury')}
                   >
-                    Faktura VS
+                    Faktura VS/pozn.
                     {sortField === 'cislo_faktury' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />

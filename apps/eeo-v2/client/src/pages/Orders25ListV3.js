@@ -631,7 +631,7 @@ const getOrderSystemStatus = (order) => {
 
 const COLUMN_LABELS = {
   expander: '',
-  approve: 'Schválení',
+  approve: 'Schválení / Storno',
   kontrola_komentare: 'Kontrola / Komentáře',
   dt_objednavky: 'Datum objednávky',
   cislo_objednavky: 'Evidenční číslo',
@@ -678,7 +678,13 @@ function Orders25ListV3() {
   }, [hasAdminRole]);
 
   const hasApproveColumn = useMemo(() => {
-    return (hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('ORDER_APPROVE'));
+    if (!hasPermission) return false;
+    return (hasAdminRole && hasAdminRole()) ||
+      hasPermission('ORDER_APPROVE') ||
+      hasPermission('ORDER_EDIT_ALL') ||
+      hasPermission('ORDER_EDIT_OWN') ||
+      hasPermission('ORDER_EDIT_SUBORDINATE') ||
+      hasPermission('ORDER_MANAGE');
   }, [hasAdminRole, hasPermission]);
 
   // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
@@ -835,7 +841,9 @@ function Orders25ListV3() {
   const [docxModalOrder, setDocxModalOrder] = useState(null);
   
   // 🆕 State pro kontextové menu
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, order, selectedData }
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, order, selectedData, selectedText }
+  const lastSelectedTextRef = useRef('');
+  const lastSelectionRangeRef = useRef(null);
   
   // State pro highlight objednávky po návratu z editace
   const [highlightOrderId, setHighlightOrderId] = useState(null);
@@ -851,6 +859,63 @@ function Orders25ListV3() {
 
   // 🆕 State pro potvrzení zavření rozpracované objednávky při vytváření nové
   const [showNewOrderConfirmDialog, setShowNewOrderConfirmDialog] = useState(false);
+
+  const isSelectionInsideOrdersTable = useCallback((selection) => {
+    const tableElement = document.querySelector('[data-orders-v3-table="true"]');
+    if (!tableElement || !selection) return false;
+
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+
+    const anchorElement = anchorNode?.nodeType === Node.TEXT_NODE
+      ? anchorNode.parentElement
+      : anchorNode instanceof Element
+        ? anchorNode
+        : null;
+    const focusElement = focusNode?.nodeType === Node.TEXT_NODE
+      ? focusNode.parentElement
+      : focusNode instanceof Element
+        ? focusNode
+        : null;
+
+    return !!(
+      (anchorElement && tableElement.contains(anchorElement)) ||
+      (focusElement && tableElement.contains(focusElement))
+    );
+  }, []);
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const selection = window.getSelection?.();
+      const text = selection?.toString().trim() || '';
+      if (text) {
+        lastSelectedTextRef.current = text;
+        if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+          try {
+            lastSelectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+          } catch {
+            lastSelectionRangeRef.current = null;
+          }
+        }
+      }
+    };
+
+    const handleMouseDownCapture = (e) => {
+      if (e.button !== 2) return;
+      const selection = window.getSelection?.();
+      if (!selection || selection.isCollapsed) return;
+      if (isSelectionInsideOrdersTable(selection)) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('mousedown', handleMouseDownCapture, true);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('mousedown', handleMouseDownCapture, true);
+    };
+  }, [isSelectionInsideOrdersTable]);
 
   // 🎯 Effect: Načtení číselníku stavů z API
   useEffect(() => {
@@ -1649,11 +1714,30 @@ function Orders25ListV3() {
     handleToggleRow(order.id);
   };
 
+  const handleHighlightOrder = useCallback((orderId, action) => {
+    setHighlightOrderId(orderId);
+    setHighlightAction(action); // approve/reject/postpone
+    // Highlight zůstane dokud uživatel sám nerefreshne stránku
+  }, []);
+
   // 🆕 CONTEXT MENU HANDLERS
   
   // Handler pro otevření kontextového menu
   const handleContextMenu = useCallback((e, order, cellData = null) => {
     e.preventDefault(); // Zabraň výchozímu kontextovému menu
+
+    const selection = window.getSelection?.();
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+      try {
+        lastSelectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+      } catch {
+        lastSelectionRangeRef.current = null;
+      }
+    }
+
+    const selectedText = window.getSelection?.().toString().trim()
+      || lastSelectedTextRef.current
+      || '';
 
     // Zjisti na jakou buňku se kliklo
     let selectedData = null;
@@ -1674,8 +1758,24 @@ function Orders25ListV3() {
       x: e.clientX,
       y: e.clientY,
       order: order,
-      selectedData: selectedData
+      selectedData: selectedData,
+      selectedText: selectedText
     });
+
+    if (lastSelectionRangeRef.current) {
+      const restoreSelection = () => {
+        const currentSelection = window.getSelection?.();
+        if (!currentSelection) return;
+        try {
+          currentSelection.removeAllRanges();
+          currentSelection.addRange(lastSelectionRangeRef.current);
+        } catch {
+          // Ignore failures when range is no longer valid.
+        }
+      };
+
+      window.requestAnimationFrame(restoreSelection);
+    }
   }, []);
 
   // Handler pro event delegation (klik na tabulku)
@@ -1783,19 +1883,9 @@ function Orders25ListV3() {
   // 🆕 V3: Permissions pro kontextové menu
   
   // canAddComment - kontrola zda je uživatel účastník objednávky (12 rolí) nebo admin
-  const canAddComment = useCallback((order) => {
+  const isUserInOrderRole = useCallback((order) => {
     if (!order || !currentUserId || isNaN(currentUserId)) return false;
-    
-    // Admin role
-    const isAdmin = hasPermission('SUPERADMIN') || 
-                    hasPermission('ADMINISTRATOR') || 
-                    hasPermission('ORDER_MANAGE');
-    
-    if (isAdmin) return true;
-    
-    // 12 rolí účastníků objednávky
-    // ⚠️ POZOR: Backend API vrací některá pole s jiným názvem!
-    // - garant_uzivatel_id (DB) → garant_id (API)
+
     const participantRoles = [
       order.uzivatel_id,                        // 1. Autor
       order.objednatel_id,                      // 2. Objednatel
@@ -1810,9 +1900,39 @@ function Orders25ListV3() {
       order.dokoncil_id,                        // 11. Dokončil
       order.potvrdil_vecnou_spravnost_id,       // 12. Potvrdil věcnou správnost
     ];
-    
+
     return participantRoles.some(roleId => roleId === currentUserId);
-  }, [currentUserId, hasPermission]);
+  }, [currentUserId]);
+
+  const canAddComment = useCallback((order) => {
+    if (!order || !currentUserId || isNaN(currentUserId)) return false;
+    
+    // Admin role
+    const isAdmin = hasPermission('SUPERADMIN') || 
+                    hasPermission('ADMINISTRATOR') || 
+                    hasPermission('ORDER_MANAGE');
+    
+    if (isAdmin) return true;
+    
+    // 12 rolí účastníků objednávky
+    // ⚠️ POZOR: Backend API vrací některá pole s jiným názvem!
+    // - garant_uzivatel_id (DB) → garant_id (API)
+    return isUserInOrderRole(order);
+  }, [currentUserId, hasPermission, isUserInOrderRole]);
+
+  const canCancelOrder = useCallback((order) => {
+    if (!order || !currentUserId || isNaN(currentUserId) || !hasPermission) return false;
+
+    if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE') || hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      return true;
+    }
+
+    if (hasPermission('ORDER_EDIT_OWN')) {
+      return isUserInOrderRole(order);
+    }
+
+    return false;
+  }, [currentUserId, hasPermission, isUserInOrderRole]);
 
   // canToggleCheck - pouze SUPERADMIN, ADMINISTRATOR, KONTROLOR_OBJEDNAVEK
   const canToggleCheck = useCallback(() => {
@@ -2118,15 +2238,12 @@ function Orders25ListV3() {
         canGenerateFinancialControl={canGenerateFinancialControl()}
         showApproveColumn={hasApproveColumn}
         canApproveOrder={canApprove}
+        canCancelOrder={canCancelOrder}
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
         highlightAction={highlightAction} // 🎨 Akce pro určení barvy
-        onHighlightOrder={(orderId, action) => {
-          setHighlightOrderId(orderId);
-          setHighlightAction(action); // approve/reject/postpone
-          // Highlight zůstane dokud uživatel sám nerefreshne stránku
-        }}
+        onHighlightOrder={handleHighlightOrder}
         showToast={showToast} // 🎯 Toast notifikace
         clearCache={clearCache} // ✅ Vyčistí cache po update operacích
         onRefreshOrders={handleRefreshOrders}
@@ -2148,6 +2265,7 @@ function Orders25ListV3() {
           y={contextMenu.y}
           order={contextMenu.order}
           selectedData={contextMenu.selectedData}
+          selectedText={contextMenu.selectedText}
           onClose={handleCloseContextMenu}
           onAddToTodo={handleAddToTodo}
           onAddAlarm={handleAddAlarm}

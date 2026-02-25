@@ -38,10 +38,12 @@ import {
   faShield,
   faFileContract,
   faClock,
+  faFlag,
   faFilePen,
   faCircleNotch,
   faTruck,
   faXmark,
+  faBan,
   faEdit,
   faFileInvoice,
   faFileWord,
@@ -102,6 +104,36 @@ const highlightPulse = keyframes`
   }
 `;
 
+const parseWorkflowStates = (workflowCode) => {
+  if (!workflowCode) return [];
+  try {
+    if (Array.isArray(workflowCode)) return workflowCode;
+    if (typeof workflowCode === 'string') {
+      const parsed = JSON.parse(workflowCode);
+      return Array.isArray(parsed) ? parsed : [workflowCode];
+    }
+    return [workflowCode];
+  } catch {
+    return [workflowCode];
+  }
+};
+
+const getLastWorkflowState = (workflowCode) => {
+  const states = parseWorkflowStates(workflowCode);
+  if (!states.length) return '';
+  const lastState = states[states.length - 1];
+  if (typeof lastState === 'object' && (lastState.kod_stavu || lastState.nazev_stavu)) {
+    return String(lastState.kod_stavu || lastState.nazev_stavu).toUpperCase().trim();
+  }
+  return String(lastState || '').toUpperCase().trim();
+};
+
+const getMySQLDate = () => {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
 // ============================================================================
 // STYLED COMPONENTS
 // ============================================================================
@@ -128,7 +160,6 @@ const TableContainer = styled.div`
   @media (min-width: 2560px) {
     font-size: 1rem;
   }
-
   /* Skrýt normální scrollbar */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
@@ -859,8 +890,8 @@ const ApprovalDialogOverlay = styled.div`
 const ApprovalDialog = styled.div`
   background: white;
   border-radius: 12px;
-  max-width: 1200px;
-  width: 95%;
+  max-width: ${props => props.$narrow ? '90vw' : '1200px'};
+  width: ${props => props.$narrow ? '520px' : '95%'};
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
@@ -1621,6 +1652,7 @@ const OrdersTableV3 = ({
   canGenerateFinancialControl = true, // 🔒 Kontrola oprávnění pro finanční kontrolu
   showApproveColumn = false,
   canApproveOrder = null,
+  canCancelOrder = null,
   onRefreshOrders = null,
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
@@ -1754,6 +1786,15 @@ const OrdersTableV3 = ({
   const tableContainerRef = useRef(null);
   const fixedScrollbarRef = useRef(null);
   const [showFixedScrollbar, setShowFixedScrollbar] = useState(false);
+
+  const handleTableMouseDownCapture = useCallback((e) => {
+    if (e.button === 2) {
+      const selection = window.getSelection?.();
+      if (selection && !selection.isCollapsed) {
+        e.preventDefault();
+      }
+    }
+  }, []);
   
   // State pro drag & drop
   const [draggedColumn, setDraggedColumn] = useState(null);
@@ -1767,6 +1808,11 @@ const OrdersTableV3 = ({
   const [orderToApprove, setOrderToApprove] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
   const [approvalCommentError, setApprovalCommentError] = useState('');
+
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonError, setCancelReasonError] = useState('');
 
   // 🔒 State pro LOCK dialog (pro schvalování)
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
@@ -2350,6 +2396,104 @@ const OrdersTableV3 = ({
       setApprovalCommentError('Chyba při ukládání schválení. Zkuste to znovu.');
     }
   }, [orderToApprove, approvalComment, token, username, userId, onActionClick, showToast, onHighlightOrder]);
+
+  const handleCancelOrder = useCallback(async () => {
+    if (!orderToCancel) return;
+
+    if (!cancelReason.trim()) {
+      setCancelReasonError('Důvod storna je povinný');
+      return;
+    }
+
+    setCancelReasonError('');
+
+    let workflowStates = parseWorkflowStates(orderToCancel.stav_workflow_kod);
+    workflowStates = workflowStates.filter(state => {
+      const code = typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)
+        ? String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim()
+        : String(state || '').toUpperCase().trim();
+      return ![
+        'ROZPRACOVANA',
+        'POTVRZENA',
+        'UVEREJNIT',
+        'NEUVEREJNIT',
+        'UVEREJNENA',
+        'FAKTURACE',
+        'VECNA_SPRAVNOST',
+        'ZKONTROLOVANA',
+        'DOKONCENA',
+        'K_DOKONCENI',
+        'ZRUSENA'
+      ].includes(code);
+    });
+
+    workflowStates.push('ZRUSENA');
+
+    const orderUpdate = {
+      id: orderToCancel.id,
+      stav_workflow_kod: JSON.stringify(workflowStates),
+      stav_objednavky: 'Zrušena',
+      odeslani_storno_duvod: cancelReason.trim(),
+      odesilatel_id: orderToCancel.odesilatel_id || userId,
+      dt_odeslani: orderToCancel.dt_odeslani || getMySQLDate(),
+      mimoradna_udalost: orderToCancel.mimoradna_udalost
+    };
+
+    setShowCancelDialog(false);
+    setOrderToCancel(null);
+    setCancelReason('');
+
+    if (showToast) {
+      showToast(`🛑 Objednávka ${orderToCancel.ev_cislo || orderToCancel.cislo_objednavky} byla stornována`, { type: 'success' });
+    }
+
+    if (onHighlightOrder) {
+      onHighlightOrder(orderToCancel.id, 'cancel');
+    }
+
+    updateOrderV3({ token, username, payload: orderUpdate })
+      .then(() => {
+        if (clearCache) {
+          clearCache();
+        }
+        if (onActionClick) {
+          onActionClick('refresh');
+        }
+        if (isExpanded(orderToCancel.id)) {
+          refreshDetail(orderToCancel.id);
+        }
+      })
+      .catch((apiError) => {
+        console.error('API update failed:', apiError);
+        if (showToast) {
+          showToast('Storno bylo zobrazeno, ale mohlo dojít k chybě na serveru. Obnovte stránku.', { type: 'warning' });
+        }
+        if (clearCache) {
+          clearCache();
+        }
+        if (onActionClick) {
+          onActionClick('refresh');
+        }
+      });
+
+    try {
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+      fetch(`${baseURL}notifications/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          username,
+          event_type: 'ORDER_CANCELLED',
+          object_id: orderToCancel.id,
+          trigger_user_id: userId,
+          debug: false
+        })
+      }).catch(err => console.error('Notification error:', err));
+    } catch (notifError) {
+      console.error('❌ Failed to trigger notification:', notifError);
+    }
+  }, [orderToCancel, cancelReason, token, username, userId, onActionClick, onHighlightOrder, showToast, clearCache, isExpanded, refreshDetail]);
   
   // Handler pro globální expand/collapse všech řádků na stránce
   // MUSÍ být před useMemo pro columns, protože se v něm používá
@@ -2452,42 +2596,40 @@ const OrdersTableV3 = ({
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
-            gap: '0.3rem',
             width: '100%',
             height: '100%',
             padding: '0.25rem 0'
           }}>
-            <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
+            <FontAwesomeIcon icon={faFlag} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
           </div>
         ),
         cell: ({ row }) => {
           const order = row.original;
 
           const canApproveThisOrder = canApproveOrder ? canApproveOrder(order) : true;
-          
-          // Kontrola workflow stavu
-          let workflowStates = [];
-          try {
-            if (Array.isArray(order.stav_workflow_kod)) {
-              workflowStates = order.stav_workflow_kod;
-            } else if (typeof order.stav_workflow_kod === 'string') {
-              workflowStates = JSON.parse(order.stav_workflow_kod);
-            }
-          } catch (e) {
-            workflowStates = [];
-          }
-          
-          const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
-          const lastState = workflowStates.length > 0 
-            ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
-                ? workflowStates[workflowStates.length - 1] 
-                : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
-              ).toUpperCase()
-            : '';
-          
-          const isAllowedState = allowedStates.includes(lastState);
-          
-          if (!isAllowedState) return null;
+          const canCancelThisOrder = canCancelOrder ? canCancelOrder(order) : true;
+
+          const workflowStates = parseWorkflowStates(order.stav_workflow_kod);
+          const lastState = getLastWorkflowState(order.stav_workflow_kod);
+
+          const allowedApproveStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+          const allowedCancelStates = [
+            'ROZPRACOVANA',
+            'ODESLANA',
+            'POTVRZENA',
+            'K_UVEREJNENI_DO_REGISTRU',
+            'UVEREJNENA',
+            'FAKTURACE',
+            'VECNA_SPRAVNOST',
+            'ZKONTROLOVANA',
+            'CEKA_SE',
+            'NEUVEREJNIT'
+          ];
+
+          const isAllowedApproveState = allowedApproveStates.includes(lastState);
+          const isAllowedCancelState = allowedCancelStates.includes(lastState);
+
+          if (!isAllowedApproveState && !isAllowedCancelState) return null;
           
           // Určení ikony podle stavu
           const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
@@ -2521,73 +2663,128 @@ const OrdersTableV3 = ({
             hoverIconColor = '#4b5563';
           }
           
-          const tooltipText = canApproveThisOrder
-            ? (isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)")
-            : "Nemůžete schválit objednávku – je určena jinému příkazci.";
+          const approvalTooltipText = canApproveThisOrder
+            ? (isPending ? 'Schválit objednávku (ke schválení)' : 'Zobrazit schválení (vyřízeno)')
+            : 'Nemůžete schválit objednávku – je určena jinému příkazci.';
 
-          const tooltipIcon = canApproveThisOrder
-            ? (isPending ? "warning" : (lastState === 'SCHVALENA' ? "success" : "info"))
-            : "warning";
+          const approvalTooltipIcon = canApproveThisOrder
+            ? (isPending ? 'warning' : (lastState === 'SCHVALENA' ? 'success' : 'info'))
+            : 'warning';
+
+          const cancelTooltipText = canCancelThisOrder
+            ? 'Stornovat objednávku'
+            : 'Nemáte oprávnění ke stornu';
+
+          const cancelTooltipIcon = canCancelThisOrder ? 'warning' : 'warning';
 
           return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <SmartTooltip 
-                text={tooltipText} 
-                icon={tooltipIcon} 
-                preferredPosition="top"
-              >
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!canApproveThisOrder) {
-                      return;
-                    }
-                    try {
-                      const okToOpen = await ensureOrderNotLockedForApproval(order.id);
-                      if (!okToOpen) return;
-
-                      const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
-                      // DEBUG: Order detail loaded with enriched data
-                      setOrderToApprove(orderDetail);
-                      setApprovalComment(orderDetail.schvaleni_komentar || '');
-                      setShowApprovalDialog(true);
-                    } catch (error) {
-                      console.error('Chyba při načítání detailu objednávky:', error);
-                    }
-                  }}
-                  style={{
-                    background: canApproveThisOrder ? 'transparent' : '#f3f4f6',
-                    border: `1px solid ${canApproveThisOrder ? '#d1d5db' : '#e5e7eb'}`,
-                    borderRadius: '4px',
-                    color: canApproveThisOrder ? iconColor : '#9ca3af',
-                    cursor: canApproveThisOrder ? 'pointer' : 'not-allowed',
-                    padding: '0.35rem 0.5rem',
-                    fontSize: '1.1rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!canApproveThisOrder) return;
-                    e.currentTarget.style.background = hoverBgColor;
-                    e.currentTarget.style.borderColor = hoverBorderColor;
-                    e.currentTarget.style.color = hoverIconColor;
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!canApproveThisOrder) return;
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.color = iconColor;
-                  }}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '0.3rem' }}>
+              {isAllowedApproveState && (
+                <SmartTooltip 
+                  text={approvalTooltipText} 
+                  icon={approvalTooltipIcon} 
+                  preferredPosition="top"
                 >
-                  <FontAwesomeIcon icon={icon} />
-                </button>
-              </SmartTooltip>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!canApproveThisOrder) {
+                        return;
+                      }
+                      try {
+                        const okToOpen = await ensureOrderNotLockedForApproval(order.id);
+                        if (!okToOpen) return;
+
+                        const orderDetail = await getOrderDetailV3({ token, username, orderId: order.id });
+                        setOrderToApprove(orderDetail);
+                        setApprovalComment(orderDetail.schvaleni_komentar || '');
+                        setShowApprovalDialog(true);
+                      } catch (error) {
+                        console.error('Chyba při načítání detailu objednávky:', error);
+                      }
+                    }}
+                    style={{
+                      background: canApproveThisOrder ? 'transparent' : '#f3f4f6',
+                      border: `1px solid ${canApproveThisOrder ? '#d1d5db' : '#e5e7eb'}`,
+                      borderRadius: '4px',
+                      color: canApproveThisOrder ? iconColor : '#9ca3af',
+                      cursor: canApproveThisOrder ? 'pointer' : 'not-allowed',
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '1.1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!canApproveThisOrder) return;
+                      e.currentTarget.style.background = hoverBgColor;
+                      e.currentTarget.style.borderColor = hoverBorderColor;
+                      e.currentTarget.style.color = hoverIconColor;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!canApproveThisOrder) return;
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.color = iconColor;
+                    }}
+                  >
+                    <FontAwesomeIcon icon={icon} />
+                  </button>
+                </SmartTooltip>
+              )}
+
+              {isAllowedCancelState && (
+                <SmartTooltip
+                  text={cancelTooltipText}
+                  icon={cancelTooltipIcon}
+                  preferredPosition="top"
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canCancelThisOrder) {
+                        return;
+                      }
+                      setOrderToCancel(order);
+                      setCancelReason(order.odeslani_storno_duvod || '');
+                      setCancelReasonError('');
+                      setShowCancelDialog(true);
+                    }}
+                    style={{
+                      background: canCancelThisOrder ? 'transparent' : '#f3f4f6',
+                      border: `1px solid ${canCancelThisOrder ? '#fecaca' : '#e5e7eb'}`,
+                      borderRadius: '4px',
+                      color: canCancelThisOrder ? '#dc2626' : '#9ca3af',
+                      cursor: canCancelThisOrder ? 'pointer' : 'not-allowed',
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '1.05rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!canCancelThisOrder) return;
+                      e.currentTarget.style.background = '#fee2e2';
+                      e.currentTarget.style.borderColor = '#dc2626';
+                      e.currentTarget.style.color = '#991b1b';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!canCancelThisOrder) return;
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = '#fecaca';
+                      e.currentTarget.style.color = '#dc2626';
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faBan} />
+                  </button>
+                </SmartTooltip>
+              )}
             </div>
           );
         },
-        size: 45,
+        size: 60,
         enableSorting: false,
         meta: {
           align: 'center',
@@ -3614,7 +3811,7 @@ const OrdersTableV3 = ({
     }
     
     return filtered;
-  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded, showApproveColumn, canApproveOrder, onRefreshOrders, isLoading]);
+  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded, showApproveColumn, canApproveOrder, canCancelOrder, onRefreshOrders, isLoading]);
 
   // Filtrovat data podle columnFilters (lokální filtr v tabulce)
   // ⚠️ VYPNUTO - Filtrování se provádí na backendu v API
@@ -3724,7 +3921,11 @@ const OrdersTableV3 = ({
     )}
 
     <TableWrapper>
-    <TableContainer ref={tableContainerRef}>
+    <TableContainer
+      ref={tableContainerRef}
+      data-orders-v3-table="true"
+      onMouseDownCapture={handleTableMouseDownCapture}
+    >
       <Table>
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
@@ -4010,6 +4211,11 @@ const OrdersTableV3 = ({
                   rowStyle.border = '3px solid #f59e0b'; // Tmavě oranžová
                   rowStyle.borderLeft = '6px solid #d97706'; // Ještě tmavší
                   rowStyle.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.2)';
+                } else if (highlightAction === 'cancel') {
+                  rowStyle.background = 'rgba(254, 226, 226, 0.9)';
+                  rowStyle.border = '3px solid #ef4444';
+                  rowStyle.borderLeft = '6px solid #b91c1c';
+                  rowStyle.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.2)';
                 } else {
                   // 🔵 DEFAULT - Zelená (fallback)
                   rowStyle.background = 'rgba(220, 252, 231, 0.9)';
@@ -4035,6 +4241,11 @@ const OrdersTableV3 = ({
                     style={rowStyle}
                     data-order-id={order.id} // 🎯 Pro scroll targeting
                     data-order-index={table.getRowModel().rows.indexOf(row)} // 🆕 Pro context menu
+                    onMouseDown={(e) => {
+                      if (e.button === 2) {
+                        e.preventDefault();
+                      }
+                    }}
                     onContextMenu={onTableContextMenu} // 🆕 Kontextové menu
                     onDoubleClick={() => onActionClick?.('edit', order)} // 🎯 Double-click pro editaci
                   >
@@ -4097,7 +4308,7 @@ const OrdersTableV3 = ({
       {/* 🎯 Schvalovací dialog */}
       {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
         <ApprovalDialogOverlay>
-          <ApprovalDialog onClick={(e) => e.stopPropagation()}>
+          <ApprovalDialog $narrow onClick={(e) => e.stopPropagation()}>
             <ApprovalDialogHeader>
               <ApprovalDialogIcon>✅</ApprovalDialogIcon>
               <ApprovalDialogTitle>
@@ -4589,6 +4800,69 @@ const OrdersTableV3 = ({
                   onClick={() => handleApprovalAction('approve')}
                 >
                   ✅ Schválit
+                </ApprovalDialogButton>
+              </ApprovalDialogActions>
+            </ApprovalDialogContent>
+          </ApprovalDialog>
+        </ApprovalDialogOverlay>,
+        document.body
+      )}
+
+      {showCancelDialog && orderToCancel && ReactDOM.createPortal(
+        <ApprovalDialogOverlay>
+          <ApprovalDialog
+            $narrow
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '525px', maxWidth: '90vw' }}
+          >
+            <ApprovalDialogHeader>
+              <ApprovalDialogIcon $reject>
+                <FontAwesomeIcon icon={faBan} />
+              </ApprovalDialogIcon>
+              <ApprovalDialogTitle>
+                <span style={{ display: 'block' }}>Storno objednávky</span>
+                <span style={{
+                  display: 'block',
+                  marginTop: '0.2rem',
+                  fontSize: '0.9em',
+                  fontWeight: 600,
+                  color: '#d1fae5'
+                }}>
+                  Ev. č.: {orderToCancel.ev_cislo || orderToCancel.cislo_objednavky || orderToCancel.id || '---'}
+                  <span style={{
+                    marginLeft: '0.5rem',
+                    color: '#bbf7d0'
+                  }}>
+                    ({orderToCancel.stav_objednavky || '---'})
+                  </span>
+                </span>
+              </ApprovalDialogTitle>
+            </ApprovalDialogHeader>
+            <ApprovalDialogContent>
+              <ApprovalDialogSection>
+                <ApprovalSectionTitle>Důvod stornování</ApprovalSectionTitle>
+                <ApprovalDialogTextarea
+                  placeholder="Důvod stornování"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+                {cancelReasonError && (
+                  <ApprovalDialogError>{cancelReasonError}</ApprovalDialogError>
+                )}
+              </ApprovalDialogSection>
+
+              <ApprovalDialogActions>
+                <ApprovalDialogButton onClick={() => {
+                  setShowCancelDialog(false);
+                  setOrderToCancel(null);
+                  setCancelReason('');
+                  setCancelReasonError('');
+                }}>
+                  Zrušit
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton $reject onClick={handleCancelOrder}>
+                  Storno objednávky
                 </ApprovalDialogButton>
               </ApprovalDialogActions>
             </ApprovalDialogContent>

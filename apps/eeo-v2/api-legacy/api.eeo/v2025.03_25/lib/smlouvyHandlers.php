@@ -462,8 +462,10 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['hodnota_plneni_bez_dph'] = isset($row['hodnota_plneni_bez_dph']) ? (float)$row['hodnota_plneni_bez_dph'] : null;
             $row['hodnota_plneni_s_dph'] = isset($row['hodnota_plneni_s_dph']) ? (float)$row['hodnota_plneni_s_dph'] : null;
             $row['cerpano_celkem'] = (float)$row['cerpano_celkem'];
-            $row['zbyva'] = (float)$row['zbyva'];
-            $row['procento_cerpani'] = (float)$row['procento_cerpani'];
+            // ⚠️ Smlouvy bez stropu (hodnota_s_dph=0) mají v DB zbyva/procento = NULL.
+            // Nechceme to castovat na 0.0, protože UI pak ukazuje „0 Kč“ a „0%“ místo „bez stropu“.
+            $row['zbyva'] = ($row['zbyva'] !== null) ? (float)$row['zbyva'] : null;
+            $row['procento_cerpani'] = ($row['procento_cerpani'] !== null) ? (float)$row['procento_cerpani'] : null;
             
             $data[] = $row;
         }
@@ -541,8 +543,9 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
         $smlouva['hodnota_plneni_bez_dph'] = isset($smlouva['hodnota_plneni_bez_dph']) ? (float)$smlouva['hodnota_plneni_bez_dph'] : null;
         $smlouva['hodnota_plneni_s_dph'] = isset($smlouva['hodnota_plneni_s_dph']) ? (float)$smlouva['hodnota_plneni_s_dph'] : null;
         $smlouva['cerpano_celkem'] = (float)$smlouva['cerpano_celkem'];
-        $smlouva['zbyva'] = (float)$smlouva['zbyva'];
-        $smlouva['procento_cerpani'] = (float)$smlouva['procento_cerpani'];
+        // Zachovat NULL pro smlouvy bez stropu (hodnota_s_dph=0)
+        $smlouva['zbyva'] = ($smlouva['zbyva'] !== null) ? (float)$smlouva['zbyva'] : null;
+        $smlouva['procento_cerpani'] = ($smlouva['procento_cerpani'] !== null) ? (float)$smlouva['procento_cerpani'] : null;
         
         // Get related orders
         // financovani obsahuje JSON: {"typ":"SMLOUVA","cislo_smlouvy":"XXX",...}

@@ -1112,10 +1112,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     // ✅ CELKEM ČERPÁNO: Podle pravidla výše
     const celkemCerpano = smlouvyProStatistiku.reduce((sum, s) => sum + (parseFloat(s.cerpano_celkem) || 0), 0);
     
-    // ✅ CELKOVÝ LIMIT: Sečíst hodnota_s_dph (počáteční stav)
-    const celkemLimit = smlouvyProStatistiku.reduce((sum, s) => sum + (parseFloat(s.hodnota_s_dph) || 0), 0);
-    // ✅ ZBÝVÁ: Počáteční stav - čerpáno
-    const celkemZbyva = celkemLimit - celkemCerpano;
+    // ✅ CELKOVÝ LIMIT: sečíst jen smlouvy se stropem (hodnota_s_dph > 0)
+    // Smlouvy bez stropu (hodnota_s_dph = 0) mají podle pravidel zbyva/procento = NULL.
+    const smlouvySeStropem = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) > 0);
+    const celkemLimit = smlouvySeStropem.reduce((sum, s) => sum + (parseFloat(s.hodnota_s_dph) || 0), 0);
+    // ✅ ZBÝVÁ: jen pro smlouvy se stropem; pro smlouvy bez stropu je to nedefinované
+    const celkemZbyva = smlouvySeStropem.length > 0
+      ? smlouvySeStropem.reduce((sum, s) => sum + (s.zbyva === null || s.zbyva === undefined ? 0 : (parseFloat(s.zbyva) || 0)), 0)
+      : null;
     
     // ℹ️ CELKOVÉ PLNĚNÍ VŠECH aktivních smluv (včetně vypršených)
     const celkemPlneniVsech = aktivniSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
@@ -1123,14 +1127,15 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     // ℹ️ PLNĚNÍ JEN PLATNÝCH smluv (bez vypršených)
     const plneniPlatnychSmluv = platneSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
     
-    // ✅ PRŮMĚRNÉ ČERPÁNÍ: Počítáme vůči hodnota_s_dph
-    const prumerneCerpani = aktivniSmlouvy.length > 0 
-      ? aktivniSmlouvy.reduce((sum, s) => {
+    // ✅ PRŮMĚRNÉ ČERPÁNÍ: jen smlouvy se stropem (jinak by to vycházelo jako 0%)
+    const aktivniSeStropem = aktivniSmlouvy.filter(s => (parseFloat(s.hodnota_s_dph) || 0) > 0);
+    const prumerneCerpani = aktivniSeStropem.length > 0
+      ? aktivniSeStropem.reduce((sum, s) => {
           const pocatecniStav = parseFloat(s.hodnota_s_dph) || 0;
           const cerpano = parseFloat(s.cerpano_celkem) || 0;
-          return sum + (pocatecniStav > 0 ? (cerpano / pocatecniStav) * 100 : 0);
-        }, 0) / aktivniSmlouvy.length 
-      : 0;
+          return sum + ((cerpano / pocatecniStav) * 100);
+        }, 0) / aktivniSeStropem.length
+      : null;
 
     return {
       pocet_celkem: filteredSmlouvy.length,
@@ -1376,13 +1381,30 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       cell: info => {
         const row = info.row.original;
         const pocatecniStav = parseFloat(row.hodnota_s_dph) || 0;
+        const hasCap = pocatecniStav > 0;
         const cerpano = parseFloat(info.getValue()) || 0;
-        const percent = pocatecniStav > 0 ? (cerpano / pocatecniStav) * 100 : 0;
+        const backendPercent = row.procento_cerpani === null || row.procento_cerpani === undefined
+          ? null
+          : Number(row.procento_cerpani);
+
+        const computedPercent = hasCap ? (cerpano / pocatecniStav) * 100 : null;
+
+        const percentForBar = hasCap
+          ? (Number.isFinite(backendPercent)
+              ? backendPercent
+              : (Number.isFinite(computedPercent) ? computedPercent : 0))
+          : 0;
+
+        const percentText = hasCap
+          ? (Number.isFinite(backendPercent)
+              ? `${backendPercent.toFixed(1)}%`
+              : (Number.isFinite(computedPercent) ? `${computedPercent.toFixed(1)}%` : '—'))
+          : '—';
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <ProgressBar>
-              <ProgressFill $percent={percent} />
-              <ProgressText $percent={percent}>{percent.toFixed(1)}%</ProgressText>
+              <ProgressFill $percent={percentForBar} />
+              <ProgressText $percent={percentForBar}>{percentText}</ProgressText>
             </ProgressBar>
             <strong>{formatCurrency(cerpano)}</strong>
           </div>
@@ -1399,7 +1421,33 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         id: 'zbyva',
         header: 'Zbývá s DPH',
         cell: info => {
-          const zbyva = parseFloat(info.getValue()) || 0;
+          const row = info.row.original;
+          const pocatecniStav = parseFloat(row.hodnota_s_dph) || 0;
+          if (pocatecniStav <= 0) {
+            return (
+              <span style={{ color: '#6b7280', fontWeight: '600' }}>
+                —
+              </span>
+            );
+          }
+
+          const raw = info.getValue();
+          if (raw === null || raw === undefined || raw === '') {
+            return (
+              <span style={{ color: '#6b7280', fontWeight: '600' }}>
+                —
+              </span>
+            );
+          }
+
+          const zbyva = Number(raw);
+          if (!Number.isFinite(zbyva)) {
+            return (
+              <span style={{ color: '#6b7280', fontWeight: '600' }}>
+                —
+              </span>
+            );
+          }
           return (
             <span style={{ 
               color: zbyva >= 0 ? '#10b981' : '#dc2626',
@@ -1411,8 +1459,26 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         },
         enableSorting: true,
         sortingFn: (rowA, rowB) => {
-          const a = parseFloat(rowA.original.zbyva) || 0;
-          const b = parseFloat(rowB.original.zbyva) || 0;
+          const aCap = (parseFloat(rowA.original.hodnota_s_dph) || 0) > 0;
+          const bCap = (parseFloat(rowB.original.hodnota_s_dph) || 0) > 0;
+          if (!aCap && !bCap) return 0;
+          if (!aCap) return 1;
+          if (!bCap) return -1;
+
+          const aRaw = rowA.original.zbyva;
+          const bRaw = rowB.original.zbyva;
+
+          const aNull = aRaw === null || aRaw === undefined || aRaw === '';
+          const bNull = bRaw === null || bRaw === undefined || bRaw === '';
+          if (aNull && bNull) return 0;
+          if (aNull) return 1;
+          if (bNull) return -1;
+
+          const a = Number(aRaw);
+          const b = Number(bRaw);
+          if (!Number.isFinite(a) && !Number.isFinite(b)) return 0;
+          if (!Number.isFinite(a)) return 1;
+          if (!Number.isFinite(b)) return -1;
           return a - b;
         }
       }
@@ -1559,7 +1625,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   // =============================================================================
 
   const formatCurrency = (value) => {
-    const num = parseFloat(value) || 0;
+    if (value === null || value === undefined || value === '') return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
     return new Intl.NumberFormat('cs-CZ', {
       style: 'currency',
       currency: 'CZK',
@@ -1748,7 +1816,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         </StatItem>
         <StatItem>
           <StatLabel>Průměrné čerpání</StatLabel>
-          <StatValue>{statistics.prumerne_cerpani.toFixed(1)}%</StatValue>
+          <StatValue>
+            {statistics.prumerne_cerpani === null || statistics.prumerne_cerpani === undefined
+              ? '—'
+              : `${Number(statistics.prumerne_cerpani).toFixed(1)}%`}
+          </StatValue>
         </StatItem>
       </StatsBar>
 

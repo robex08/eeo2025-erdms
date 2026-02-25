@@ -25,6 +25,7 @@
  */
 
 require_once 'orderQueries.php';
+require_once 'searchHelpers.php';
 
 /**
  * 💰 Normalizace peněžní částky pro DB (fa_castka) - legacy invoices25
@@ -1685,10 +1686,20 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = (int)$filters['fa_dorucena'];
         }
 
-        // Filtr: fa_cislo_vema (partial match)
+        // Filtr: fa_cislo_vema + fa_poznamka (partial match, bez diakritiky, case-insensitive)
         if (isset($filters['fa_cislo_vema']) && trim($filters['fa_cislo_vema']) !== '') {
-            $where_conditions[] = 'f.fa_cislo_vema LIKE ?';
-            $params[] = '%' . trim($filters['fa_cislo_vema']) . '%';
+            $search_raw = trim($filters['fa_cislo_vema']);
+            $search_norm = mb_strtolower(removeDiacritics($search_raw), 'UTF-8');
+            $search_like = '%' . escapeLikeWildcards($search_norm) . '%';
+
+            $where_conditions[] = "(\n" .
+                "  LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n" .
+                "    f.fa_cislo_vema, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s')) LIKE ? OR\n" .
+                "  LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n" .
+                "    f.fa_poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s')) LIKE ?\n" .
+                ")";
+            $params[] = $search_like;
+            $params[] = $search_like;
         }
 
         // Filtr: datum OD - kontroluje vystavení, doručení nebo splatnost (OR)
@@ -1984,6 +1995,11 @@ function handle_invoices25_list($input, $config, $queries) {
                     // Zkontrolované faktury (kontrola_radku.kontrolovano = true)
                     $where_conditions[] = 'JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = TRUE';
                     break;
+
+                case 'with_note':
+                    // Faktury s vyplněnou poznámkou
+                    $where_conditions[] = '(f.fa_poznamka IS NOT NULL AND TRIM(f.fa_poznamka) <> "")';
+                    break;
                     
                 default:
                     // Neznámá hodnota - ignorovat
@@ -2057,7 +2073,8 @@ function handle_invoices25_list($input, $config, $queries) {
             COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
             COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,
             COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky,
-            COUNT(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 END) as pocet_zkontrolovano
+            COUNT(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 END) as pocet_zkontrolovano,
+            COUNT(CASE WHEN f.fa_poznamka IS NOT NULL AND TRIM(f.fa_poznamka) <> '' THEN 1 END) as pocet_s_poznamkou
         FROM `$faktury_table` f
         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
@@ -2096,7 +2113,8 @@ function handle_invoices25_list($input, $config, $queries) {
             'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
             'pocet_bez_prirazeni' => (int)$stats['pocet_bez_prirazeni'],
             'pocet_ze_spisovky' => (int)$stats['pocet_ze_spisovky'],
-            'pocet_zkontrolovano' => (int)$stats['pocet_zkontrolovano']
+            'pocet_zkontrolovano' => (int)$stats['pocet_zkontrolovano'],
+            'pocet_s_poznamkou' => (int)$stats['pocet_s_poznamkou']
         );
         
         // KROK 2: Načíst samotné záznamy
