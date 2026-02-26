@@ -11,8 +11,12 @@ define('TOKEN_REFRESH_THRESHOLD', 10 * 60);    // Obnovit pokud zbývá < 10 min
 
 // Připojení k databázi (PDO)
 function get_db($config) {
-    $dsn = "mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4";
-    return new PDO($dsn, $config['username'], $config['password'], array(
+    // ✅ FIX: Backwards compatible - pokud $config obsahuje 'mysql', použij to (nový způsob)
+    // Jinak předpokládej, že $config JE přímo MySQL konfigurace (starý způsob)
+    $dbConfig = isset($config['mysql']) ? $config['mysql'] : $config;
+    
+    $dsn = "mysql:host={$dbConfig['host']};dbname={$dbConfig['database']};charset=utf8mb4";
+    return new PDO($dsn, $dbConfig['username'], $dbConfig['password'], array(
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ));
