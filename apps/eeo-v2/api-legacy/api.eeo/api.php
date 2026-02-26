@@ -253,7 +253,8 @@ define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
 
 // Načtení konfigurace a dotazů
 $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';
-$config = $_config['mysql'];
+// ✅ FIX: Předáváme celou konfiguraci (včetně 'upload'), ne jen 'mysql'
+$config = $_config;
 require __DIR__ . '/' . VERSION . '/lib/queries.php';
 require __DIR__ . '/' . VERSION . '/lib/handlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/TimezoneHelper.php';
