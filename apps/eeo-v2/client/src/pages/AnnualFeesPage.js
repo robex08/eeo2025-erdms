@@ -1359,6 +1359,9 @@ const AttachmentName = styled.div`
 `;
 
 const AttachmentMeta = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.75rem;
   color: #64748b;
   margin-top: 0.125rem;
@@ -1554,6 +1557,9 @@ function AnnualFeesPage() {
   // Editace hlavního řádku (fee)
   const [editingFeeId, setEditingFeeId] = useState(null);
   const [editFeeData, setEditFeeData] = useState({});
+  const [editingNoteFeeId, setEditingNoteFeeId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSavingFeeId, setNoteSavingFeeId] = useState(null);
   
   // Editace položek
   const [editingItemId, setEditingItemId] = useState(null);
@@ -3215,6 +3221,8 @@ function AnnualFeesPage() {
   // Editace hlavního řádku (fee)
   const handleStartEditFee = (fee) => {
     setEditingFeeId(fee.id);
+    setEditingNoteFeeId(null);
+    setNoteDraft('');
     setEditFeeData({
       nazev: fee.nazev,
       poznamka: fee.poznamka || '',
@@ -3229,6 +3237,59 @@ function AnnualFeesPage() {
   const handleCancelEditFee = () => {
     setEditingFeeId(null);
     setEditFeeData({});
+  };
+
+  const handleStartEditNote = (fee) => {
+    if (!canEdit) {
+      return;
+    }
+    setEditingNoteFeeId(fee.id);
+    setNoteDraft(fee.poznamka || '');
+  };
+
+  const handleCancelEditNote = () => {
+    setEditingNoteFeeId(null);
+    setNoteDraft('');
+    setNoteSavingFeeId(null);
+  };
+
+  const handleSaveEditNote = async (feeId) => {
+    const originalFee = annualFees.find(f => f.id === feeId);
+    const originalValue = (originalFee?.poznamka || '').trim();
+    const nextValue = (noteDraft || '').trim();
+
+    if (nextValue === originalValue) {
+      handleCancelEditNote();
+      return;
+    }
+
+    try {
+      setNoteSavingFeeId(feeId);
+      const response = await updateAnnualFee({
+        token,
+        username,
+        id: feeId,
+        data: {
+          poznamka: nextValue === '' ? null : nextValue
+        }
+      });
+
+      if (response.status === 'success') {
+        const updatedNote = response.data?.poznamka ?? (nextValue === '' ? null : nextValue);
+        setAnnualFees(prev => prev.map(f => (
+          f.id === feeId ? { ...f, poznamka: updatedNote } : f
+        )));
+        showToast(formatToastMessage('Poznámka uložena', 'success'), { type: 'success' });
+        handleCancelEditNote();
+      } else {
+        showToast(formatToastMessage(response.message || 'Chyba při ukládání poznámky', 'error'), { type: 'error' });
+      }
+    } catch (error) {
+      console.error('Chyba při ukládání poznámky:', error);
+      showToast(formatToastMessage('Chyba při ukládání poznámky', 'error'), { type: 'error' });
+    } finally {
+      setNoteSavingFeeId(null);
+    }
   };
   
   const handleSaveEditFee = async (feeId) => {
@@ -3899,6 +3960,8 @@ function AnnualFeesPage() {
               {/* Existující řádky */}
               {paginatedData.map(fee => {
                 const isEditingFee = editingFeeId === fee.id;
+                const isEditingNote = editingNoteFeeId === fee.id;
+                const isNoteSaving = noteSavingFeeId === fee.id;
                 const hasZaplaceno = fee.pocet_zaplaceno > 0;
                 const hasOverdueItems = fee.pocet_po_splatnosti > 0;
                 const hasDueSoonItems = fee.pocet_blizi_se_splatnost > 0;
@@ -4112,11 +4175,90 @@ function AnnualFeesPage() {
                           onChange={(e) => setEditFeeData(prev => ({...prev, poznamka: e.target.value}))}
                           style={{fontSize: '0.85rem'}}
                           placeholder="Poznámka"
+                          onClick={(e) => e.stopPropagation()}
                         />
+                      ) : isEditingNote ? (
+                        <div
+                          style={{display: 'flex', alignItems: 'center', gap: '6px'}}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <InlineInput
+                            value={noteDraft}
+                            onChange={(e) => setNoteDraft(e.target.value)}
+                            style={{fontSize: '0.85rem'}}
+                            placeholder="Poznámka"
+                            disabled={isNoteSaving}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveEditNote(fee.id);
+                              }
+                              if (e.key === 'Escape') {
+                                handleCancelEditNote();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditNote(fee.id)}
+                            disabled={isNoteSaving}
+                            title="Uložit poznámku"
+                            style={{
+                              border: '1px solid #10b981',
+                              background: '#10b981',
+                              color: 'white',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              cursor: isNoteSaving ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faCheckCircle} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelEditNote}
+                            disabled={isNoteSaving}
+                            title="Zrušit"
+                            style={{
+                              border: '1px solid #ef4444',
+                              background: 'white',
+                              color: '#ef4444',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              cursor: isNoteSaving ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faTimes} />
+                          </button>
+                        </div>
                       ) : (
-                        fee.poznamka ? (
-                          <div style={{color: '#6b7280'}}>{highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
-                        ) : '-'
+                        <div
+                          style={{display: 'flex', alignItems: 'center', gap: '6px', width: '100%'}}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {fee.poznamka ? (
+                            <div style={{color: '#6b7280'}}>{highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
+                          ) : (
+                            <span style={{color: '#9ca3af'}}>-</span>
+                          )}
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditNote(fee)}
+                              title="Upravit poznámku"
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#64748b',
+                                borderRadius: '0',
+                                padding: '0',
+                                cursor: 'pointer',
+                                marginLeft: 'auto'
+                              }}
+                            >
+                              <FontAwesomeIcon icon={faEdit} />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </Td>
                     <Td style={{textAlign: 'center'}}>
@@ -4126,12 +4268,19 @@ function AnnualFeesPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
+                          const tooltipMaxWidth = Math.min(520, window.innerWidth - 32);
+                          const margin = 12;
+                          const left = Math.min(
+                            rect.left + window.scrollX,
+                            window.scrollX + window.innerWidth - margin - tooltipMaxWidth
+                          );
+                          const clampedLeft = Math.max(left, window.scrollX + margin);
                           setAttachmentsTooltip({
                             visible: true,
                             feeId: fee.id,
                             position: {
                               top: rect.bottom + window.scrollY + 8,
-                              left: Math.min(rect.left + window.scrollX, window.innerWidth - 320)
+                              left: clampedLeft
                             }
                           });
                         }}
@@ -4275,6 +4424,21 @@ function AnnualFeesPage() {
                             <AttachmentsList>
                               {attachments[fee.id].map(att => {
                                 const extension = att.systemova_cesta?.split('.').pop()?.toLowerCase();
+                                const fileType = (extension || 'file').toUpperCase();
+                                const fileTypeColors = {
+                                  pdf: { bg: '#fee2e2', text: '#dc2626' },
+                                  doc: { bg: '#dbeafe', text: '#1d4ed8' },
+                                  docx: { bg: '#dbeafe', text: '#1d4ed8' },
+                                  xls: { bg: '#dcfce7', text: '#15803d' },
+                                  xlsx: { bg: '#dcfce7', text: '#15803d' },
+                                  jpg: { bg: '#fef3c7', text: '#b45309' },
+                                  jpeg: { bg: '#fef3c7', text: '#b45309' },
+                                  png: { bg: '#fef3c7', text: '#b45309' },
+                                  gif: { bg: '#fef3c7', text: '#b45309' },
+                                  zip: { bg: '#e5e7eb', text: '#374151' },
+                                  rar: { bg: '#e5e7eb', text: '#374151' }
+                                };
+                                const typeStyle = fileTypeColors[extension] || { bg: '#e2e8f0', text: '#475569' };
                                 const fileIcon = extension === 'pdf' ? '📄' :
                                                ['jpg', 'jpeg', 'png', 'gif'].includes(extension) ? '🖼️' :
                                                ['doc', 'docx'].includes(extension) ? '📝' :
@@ -4287,9 +4451,28 @@ function AnnualFeesPage() {
                                     <AttachmentInfo>
                                       <AttachmentName title={att.originalni_nazev_souboru}>
                                         {att.originalni_nazev_souboru}
+                                        <span
+                                          style={{
+                                            marginLeft: '8px',
+                                            background: typeStyle.bg,
+                                            color: typeStyle.text,
+                                            fontWeight: 700,
+                                            fontSize: '0.65rem',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.04em'
+                                          }}
+                                        >
+                                          {fileType}
+                                        </span>
                                       </AttachmentName>
                                       <AttachmentMeta>
-                                        {formatFileSize(att.velikost_souboru_b)} • {att.dt_vytvoreni ? new Date(att.dt_vytvoreni).toLocaleDateString('cs-CZ') : ''}
+                                        <span>{att.nahrano_jmeno || 'Neznámý'}</span>
+                                        <span>•</span>
+                                        <span>{att.dt_vytvoreni ? new Date(att.dt_vytvoreni).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                        <span>•</span>
+                                        <span>{formatFileSize(att.velikost_souboru_b)}</span>
                                       </AttachmentMeta>
                                     </AttachmentInfo>
                                     <AttachmentActions>

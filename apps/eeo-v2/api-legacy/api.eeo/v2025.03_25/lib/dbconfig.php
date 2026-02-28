@@ -30,6 +30,25 @@ if (file_exists($env_file)) {
 // ============================================
 // DATABÁZOVÁ KONFIGURACE Z .ENV
 // ============================================
+require_once __DIR__ . '/environment-utils.php';
+
+$upload_root_path = $_ENV['UPLOAD_ROOT_PATH'] ?? $_SERVER['UPLOAD_ROOT_PATH'] ?? getenv('UPLOAD_ROOT_PATH');
+if (empty($upload_root_path)) {
+    $upload_root_path = get_upload_root_path();
+}
+
+$docx_templates_path = $_ENV['DOCX_TEMPLATES_PATH'] ?? $_SERVER['DOCX_TEMPLATES_PATH'] ?? getenv('DOCX_TEMPLATES_PATH');
+if (empty($docx_templates_path)) {
+    $docx_templates_path = get_templates_path();
+}
+
+$manuals_path = $_ENV['MANUALS_PATH'] ?? $_SERVER['MANUALS_PATH'] ?? getenv('MANUALS_PATH');
+if (empty($manuals_path)) {
+    $manuals_path = get_manuals_path();
+}
+
+$upload_web_url_prefix = $_ENV['UPLOAD_WEB_URL_PREFIX'] ?? $_SERVER['UPLOAD_WEB_URL_PREFIX'] ?? getenv('UPLOAD_WEB_URL_PREFIX') ?: '';
+
 return [
     'mysql' => [
         'host' => $_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? getenv('DB_HOST') ?: '10.3.172.11',
@@ -41,15 +60,15 @@ return [
         // Root cesta pro nahrávání příloh - environment aware
         // DEV: /var/www/erdms-dev/data/eeo-v2/prilohy/
         // PROD: /var/www/erdms-platform/data/eeo-v2/prilohy/
-        'root_path' => $_ENV['UPLOAD_ROOT_PATH'] ?? $_SERVER['UPLOAD_ROOT_PATH'] ?? getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/',
+        'root_path' => rtrim($upload_root_path, '/') . '/',
         
         // Alternativní relativní cesta (stejná jako root_path)
-        'relative_path' => $_ENV['UPLOAD_ROOT_PATH'] ?? $_SERVER['UPLOAD_ROOT_PATH'] ?? getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/',
+        'relative_path' => rtrim($upload_root_path, '/') . '/',
         
         // Cesta pro DOCX šablony - environment aware
         // DEV: /var/www/erdms-dev/data/eeo-v2/sablony/
         // PROD: /var/www/erdms-platform/data/eeo-v2/sablony/
-        'docx_templates_path' => $_ENV['DOCX_TEMPLATES_PATH'] ?? $_SERVER['DOCX_TEMPLATES_PATH'] ?? getenv('DOCX_TEMPLATES_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/sablony/',
+        'docx_templates_path' => rtrim($docx_templates_path, '/') . '/',
         
         // Maximální velikost souboru v bajtech (50MB)
         'max_file_size' => 50 * 1024 * 1024,
@@ -80,7 +99,7 @@ return [
         ],
         
         // URL prefix pro přístup k souborům (pokud budou přístupné přes web)
-        'web_url_prefix' => 'https://erdms.zachranka.cz/eeo-v2/prilohy/',
+        'web_url_prefix' => $upload_web_url_prefix,
         
         // Bezpečnostní nastavení
         'security' => [

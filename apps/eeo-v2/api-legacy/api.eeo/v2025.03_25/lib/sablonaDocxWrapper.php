@@ -21,7 +21,9 @@ function sablonaDocxWrapper($originalFunction, $input, $config, $queries) {
         );
         
         // Vytvoření MySQLi připojení z PDO konfigurace
-        $mysqli = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
+        // ✅ FIX: Použít $config['mysql'] protože teď předáváme celou konfiguraci
+        $dbConfig = isset($config['mysql']) ? $config['mysql'] : $config;
+        $mysqli = new mysqli($dbConfig['host'], $dbConfig['username'], $dbConfig['password'], $dbConfig['database']);
         
         if ($mysqli->connect_error) {
             throw new Exception('Chyba připojení: ' . $mysqli->connect_error);
@@ -78,7 +80,9 @@ function handle_sablona_docx_download_wrapper($input, $config, $queries) {
     // Download je speciální - nevrací JSON ale soubor
     try {
         $user = array('id' => 1, 'username' => 'test', 'usek_zkr' => 'ALL');
-        $mysqli = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
+        // ✅ FIX: Použít $config['mysql'] protože teď předáváme celou konfiguraci
+        $dbConfig = isset($config['mysql']) ? $config['mysql'] : $config;
+        $mysqli = new mysqli($dbConfig['host'], $dbConfig['username'], $dbConfig['password'], $dbConfig['database']);
         
         if ($mysqli->connect_error) {
             throw new Exception('Chyba připojení: ' . $mysqli->connect_error);

@@ -490,12 +490,8 @@ export const uploadAnnualFeeAttachment = async ({
       body: formData, // Bez Content-Type - browser nastaví správný boundary
     });
 
-    console.log('Upload response status:', response.status);
-    console.log('Upload response headers:', Object.fromEntries(response.headers.entries()));
-    
-    // Přečti response body jako text pro debugging
+    // Přečti response body jako text pro zpracování
     const responseText = await response.text();
-    console.log('Upload response body:', responseText);
 
     if (!response.ok) {
       let errorMessage = 'Chyba při nahrávání přílohy';

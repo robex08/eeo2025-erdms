@@ -24,8 +24,10 @@ require_once __DIR__ . '/environment-utils.php';
  * Získá cestu k manuálům s automatickou detekcí prostředí
  * Používá centrální environment utility pro konzistentní správu cest
  */
-function get_manuals_path() {
-    return rtrim(get_env_path('MANUALS_PATH'), '/');
+if (!function_exists('get_manuals_path')) {
+    function get_manuals_path() {
+        return rtrim(get_env_path('MANUALS_PATH'), '/');
+    }
 }
 
 /**

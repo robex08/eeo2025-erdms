@@ -387,8 +387,8 @@ if ($endpoint === 'version') {
         $db_name = 'unknown';
         if (getenv('DB_NAME')) {
             $db_name = getenv('DB_NAME');
-        } elseif (isset($config['database'])) {
-            $db_name = $config['database'];
+        } elseif (isset($config['mysql']['database'])) {
+            $db_name = $config['mysql']['database'];
         }
         
         echo json_encode(array(
@@ -596,10 +596,12 @@ if (($endpoint === 'api.php' || $endpoint === '' || $endpoint === 'api.eeo') && 
 
 // Create PDO connection for handlers that need it
 try {
+    // ✅ FIX: Použít $config['mysql'] protože teď předáváme celou konfiguraci
+    $dbConfig = $config['mysql'];
     $pdo = new PDO(
-        "mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4",
-        $config['username'],
-        $config['password'],
+        "mysql:host={$dbConfig['host']};dbname={$dbConfig['database']};charset=utf8mb4",
+        $dbConfig['username'],
+        $dbConfig['password'],
         array(
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
@@ -2010,8 +2012,10 @@ switch ($endpoint) {
     case 'orders25/import-oldies':
         if ($request_method === 'POST') {
             try {
-                $dsn = "mysql:host={$config['host']};dbname={$config['database']};charset=utf8";
-                $db = new PDO($dsn, $config['username'], $config['password']);
+                // ✅ FIX: Použít $config['mysql'] protože teď předáváme celou konfiguraci
+                $dbConfig = $config['mysql'];
+                $dsn = "mysql:host={$dbConfig['host']};dbname={$dbConfig['database']};charset=utf8";
+                $db = new PDO($dsn, $dbConfig['username'], $dbConfig['password']);
                 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 
                 $result = handle_orders25_import_oldies($db, $input);
