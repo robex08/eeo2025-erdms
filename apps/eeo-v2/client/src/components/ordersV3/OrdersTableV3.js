@@ -61,6 +61,7 @@ import {
   faComment,
   faComments,
   faCircle,
+  faInfoCircle,
   faCheckSquare,
   faSync,
   faLock,
@@ -2600,7 +2601,11 @@ const OrdersTableV3 = ({
             height: '100%',
             padding: '0.25rem 0'
           }}>
-            <FontAwesomeIcon icon={faFlag} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
+            <SmartTooltip text="Schválení / storno" icon="info" preferredPosition="top">
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FontAwesomeIcon icon={faInfoCircle} style={{ fontSize: '0.95rem', opacity: 0.8 }} />
+              </span>
+            </SmartTooltip>
           </div>
         ),
         cell: ({ row }) => {

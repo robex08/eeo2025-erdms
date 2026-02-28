@@ -1235,8 +1235,10 @@ function handle_react_action($input, $config, $queries) {
                 api_error(400, 'Neplatný název databáze', 'INVALID_DATABASE');
                 return;
             }
-            $dsn = "mysql:host={$config['host']};dbname={$dbOverride};charset=utf8mb4";
-            $db = new PDO($dsn, $config['username'], $config['password'], [
+            // ✅ FIX: Použít $config['mysql'] protože teď předáváme celou konfiguraci
+            $dbConfig = isset($config['mysql']) ? $config['mysql'] : $config;
+            $dsn = "mysql:host={$dbConfig['host']};dbname={$dbOverride};charset=utf8mb4";
+            $db = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
             ]);
@@ -7981,8 +7983,10 @@ function handle_old_react_action($input, $config, $queries) {
                 api_error(400, 'Neplatný název databáze', 'INVALID_DATABASE');
                 return;
             }
-            $dsn = "mysql:host={$config['host']};dbname={$dbOverride};charset=utf8mb4";
-            $db = new PDO($dsn, $config['username'], $config['password'], array(
+            // ✅ FIX: Použít $config['mysql'] protože teď předáváme celou konfiguraci
+            $dbConfig = isset($config['mysql']) ? $config['mysql'] : $config;
+            $dsn = "mysql:host={$dbConfig['host']};dbname={$dbOverride};charset=utf8mb4";
+            $db = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], array(
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
             ));

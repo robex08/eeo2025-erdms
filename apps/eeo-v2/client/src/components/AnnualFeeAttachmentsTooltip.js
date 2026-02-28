@@ -16,8 +16,8 @@ const TooltipContainer = styled.div`
   border-radius: 8px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   padding: 0;
-  min-width: 280px;
-  max-width: min(400px, calc(100vw - 40px));
+  min-width: 340px;
+  max-width: min(520px, calc(100vw - 32px));
   animation: fadeIn 0.15s ease-out;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   
@@ -211,6 +211,21 @@ const formatFileSize = (bytes) => {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toLocaleString('cs-CZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 const AnnualFeeAttachmentsTooltip = ({ 
   attachments = [], 
   position, 
@@ -358,6 +373,7 @@ const AnnualFeeAttachmentsTooltip = ({
             const fileInfo = getFileIcon(filename);
             const ext = getFileExtension(filename);
             const userName = attachment.nahrano_jmeno || 'Neznámý';
+            const createdAt = formatDateTime(attachment.dt_vytvoreni);
             
             return (
               <AttachmentItem key={attachment.id}>
@@ -368,13 +384,28 @@ const AnnualFeeAttachmentsTooltip = ({
                 <AttachmentInfo>
                   <FileName title={filename}>
                     {filename}
+                    <span
+                      style={{
+                        marginLeft: '8px',
+                        background: fileInfo.bg,
+                        color: fileInfo.color,
+                        fontWeight: 700,
+                        fontSize: '0.65rem',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }}
+                    >
+                      {ext}
+                    </span>
                   </FileName>
                   <FileDetails>
-                    <FileBadge $bgColor={fileInfo.bg} $color={fileInfo.color}>
-                      {ext}
-                    </FileBadge>
-                    <span>{formatFileSize(filesize)}</span>
-                    <span style={{ color: '#64748b', fontSize: '0.8rem' }}>• {userName}</span>
+                    <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{userName}</span>
+                    {createdAt && (
+                      <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>• {createdAt}</span>
+                    )}
+                    <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>• {formatFileSize(filesize)}</span>
                   </FileDetails>
                 </AttachmentInfo>
                 

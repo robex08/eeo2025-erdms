@@ -424,7 +424,10 @@ function handle_orders25_download_attachment($config, $queries) {
 
         // ✅ ENVIRONMENT-AWARE: Použít basename + aktuální UPLOAD_ROOT_PATH z .env
         // Funguje pro staré záznamy (plná cesta) i nové (jen název)
-        $upload_root = $config['upload']['root_path'] ?? '/var/www/erdms-dev/data/eeo-v2/prilohy/';
+        if (!function_exists('get_upload_root_path')) {
+            require_once __DIR__ . '/environment-utils.php';
+        }
+        $upload_root = $config['upload']['root_path'] ?? get_upload_root_path();
         $filename = basename($attachment['systemova_cesta']);
         $filePath = rtrim($upload_root, '/') . '/' . $filename;
         $originalName = $attachment['originalni_nazev_souboru'];
