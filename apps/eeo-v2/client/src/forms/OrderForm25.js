@@ -4817,66 +4817,6 @@ function OrderForm25() {
     };
   }, [formData.id, formData.cislo_objednavky, formData.ev_cislo]);
 
-  // 📎 LocalStorage obnovení neuložených příloh (musí být AŽ PO formData definici)
-  useEffect(() => {
-    const restoreUnsavedAttachments = () => {
-      try {
-        const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
-        const savedAttachmentsStr = localStorage.getItem(storageKey);
-        
-        if (savedAttachmentsStr) {
-          const savedAttachments = JSON.parse(savedAttachmentsStr);
-          
-          if (savedAttachments.length > 0) {
-            addDebugLog('info', 'ATTACHMENTS', 'restore-from-ls',
-              `Nalezeno ${savedAttachments.length} neuložených příloh v LocalStorage`);
-            
-            // Zobrazit upozornění uživateli
-            showToast && showToast(
-              `📎 Nalezeny neuložené přílohy z předchozí session!\n\n` +
-              `🔄 Obnoveno ${savedAttachments.length} příloh.\n` +
-              `⚠️ Soubory bude nutné znovu vybrat a nahrát.`, 
-              { 
-                type: 'info', 
-                timeout: 8000,
-                action: {
-                  confirmText: 'Obnovit přílohy',
-                  cancelText: 'Smazat',
-                  onConfirm: () => {
-                    // Obnovit přílohy bez file objektů (budou označeny pro novou selekci)
-                    const restoredAttachments = savedAttachments.map(att => ({
-                      ...att,
-                      status: 'needs_reselection',
-                      file: null,
-                      uploadError: 'Soubor je nutné znovu vybrat'
-                    }));
-                    
-                    setAttachments(prev => [...prev, ...restoredAttachments]);
-                    
-                    addDebugLog('success', 'ATTACHMENTS', 'restored-from-ls',
-                      `Obnoveno ${restoredAttachments.length} příloh z LocalStorage`);
-                  },
-                  onCancel: () => {
-                    // Smazat z LocalStorage
-                    localStorage.removeItem(storageKey);
-                    addDebugLog('info', 'ATTACHMENTS', 'cleared-ls',
-                      'LocalStorage přílohy smazány na žádost uživatele');
-                  }
-                }
-              }
-            );
-          }
-        }
-      } catch (error) {
-        addDebugLog('error', 'ATTACHMENTS', 'restore-from-ls-error', error.message);
-      }
-    };
-
-    // Obnovit pouze pokud máme user_id a formData je načtené
-    if (user_id && formData) {
-      restoreUnsavedAttachments();
-    }
-  }, [user_id, formData.id]); // Trigger při změně user_id nebo order ID
 
   // 📸 SNAPSHOT původního stavu formuláře pro detekci změn
   const originalFormDataRef = useRef(null);
@@ -5182,17 +5122,21 @@ function OrderForm25() {
     const hasEditIntent = !!editOrderId; // URL parametr edit=123 = editační záměr
     
     // ✅ JEDNOZNAČNÁ LOGIKA:
-    // 1. Má DB ID (formData.id) → EDITACE (nezáleží na editOrderId)
-    // 2. Nemá DB ID, ale má změny (isChanged) → KONCEPT
-    // 3. Nemá DB ID ani změny → NOVÁ
+    // 1. Má DB ID (formData.id) → EDITACE
+    // 2. Má editOrderId (editace z URL) → EDITACE i před načtením dat
+    // 3. Nemá DB ID, ale má změny (isChanged) → KONCEPT
+    // 4. Nemá DB ID ani změny → NOVÁ
     
     let menuBarState = 'NOVA'; // Default
     
     if (hasRealId) {
       // Má DB ID → EDITACE
       menuBarState = 'EDITACE';
-    } else if (isChanged || hasEditIntent) {
-      // Nemá DB ID, ale má změny nebo editační záměr → KONCEPT
+    } else if (hasEditIntent) {
+      // Editace z URL → EDITACE i během načítání
+      menuBarState = 'EDITACE';
+    } else if (isChanged) {
+      // Nemá DB ID, ale má změny → KONCEPT
       menuBarState = 'KONCEPT';
     }
     
@@ -9635,6 +9579,11 @@ function OrderForm25() {
       return false;
     }
 
+    // 1.5️⃣ Pokud už máme číslo z DB, nic negenerovat
+    if (formData.cislo_objednavky) {
+      return false;
+    }
+
     // 2️⃣ Zkontrolovat metadata
     const metadata = draftManager.getMetadata();
     const isInEditMode = isEditMode || metadata?.isEditMode === true;
@@ -13658,6 +13607,12 @@ function OrderForm25() {
       return;
     }
 
+    // 1.5️⃣ Pokud má cislo_objednavky z DB → SKIP
+    if (formData.cislo_objednavky) {
+      hasLoadedNextNumberRef.current = true;
+      return;
+    }
+
     // 2️⃣ Pokud je v EDIT mode → SKIP
     if (isEditMode) {
       return;
@@ -14138,81 +14093,10 @@ function OrderForm25() {
       } catch (error) {
       }
 
-      // 💾 ULOŽENÍ NEULOŽENÝCH PŘÍLOH DO LOCALSTORAGE
-      const unsavedAttachments = attachments.filter(att =>
-        !att.serverId && // Nemá server ID = není nahráno na server
-        att.status !== 'uploaded' && // Není označeno jako nahrané
-        !att.fromServer && // Není ze serveru
-        att.file // Má skutečný soubor
-      );
-
-      const unclassifiedAttachments = attachments.filter(att =>
-        (!att.klasifikace || att.klasifikace.trim() === '') && // Není klasifikováno
-        !att.fromServer // Není ze serveru
-      );
-
-      // Uložit neuložené přílohy do LocalStorage (bez file objektů kvůli velikosti)
-      if (unsavedAttachments.length > 0 || unclassifiedAttachments.length > 0) {
-        try {
-          const attachmentsToSave = [...unsavedAttachments, ...unclassifiedAttachments].map(att => ({
-            id: att.id,
-            name: att.name,
-            size: att.size,
-            type: att.type,
-            klasifikace: att.klasifikace || '',
-            uploadDate: att.uploadDate,
-            lastModified: att.lastModified || Date.now(),
-            // File object nelze uložit do LS - musí se znovu vybrat
-            needsReselection: true
-          }));
-
-          const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
-          localStorage.setItem(storageKey, JSON.stringify(attachmentsToSave));
-          
-          addDebugLog('info', 'ATTACHMENTS', 'save-to-ls', 
-            `Uloženo ${attachmentsToSave.length} neuložených příloh do LocalStorage`);
-        } catch (error) {
-          addDebugLog('error', 'ATTACHMENTS', 'save-to-ls-error', error.message);
-        }
-
-        // Místo browser alertu - bez preventDefault, jen notifikace
-        addDebugLog('warning', 'ATTACHMENTS', 'unsaved-on-exit', 
-          `Opouštíte stránku s ${unsavedAttachments.length} neuloženými a ${unclassifiedAttachments.length} neklasifikovanými přílohami`);
-      }
     };
 
     const handlePopState = () => {
-      // 💾 ULOŽIT NEULOŽENÉ PŘÍLOHY při navigaci
-      const unsavedAttachments = attachments.filter(att =>
-        !att.serverId && att.status !== 'uploaded' && !att.fromServer && att.file
-      );
-      const unclassifiedAttachments = attachments.filter(att =>
-        (!att.klasifikace || att.klasifikace.trim() === '') && !att.fromServer
-      );
-
-      if (unsavedAttachments.length > 0 || unclassifiedAttachments.length > 0) {
-        // Jen uložit do LS, neblokovat navigaci
-        try {
-          const attachmentsToSave = [...unsavedAttachments, ...unclassifiedAttachments].map(att => ({
-            id: att.id,
-            name: att.name,
-            size: att.size,
-            type: att.type,
-            klasifikace: att.klasifikace || '',
-            uploadDate: att.uploadDate,
-            lastModified: att.lastModified || Date.now(),
-            needsReselection: true
-          }));
-
-          const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
-          localStorage.setItem(storageKey, JSON.stringify(attachmentsToSave));
-          
-          addDebugLog('info', 'ATTACHMENTS', 'save-on-navigation', 
-            `Uloženo ${attachmentsToSave.length} neuložených příloh při navigaci`);
-        } catch (error) {
-          addDebugLog('error', 'ATTACHMENTS', 'save-on-navigation-error', error.message);
-        }
-      }
+      // placeholder - přílohy se při navigaci neukládají
     };
 
     // Přidej event listenery
@@ -20066,6 +19950,8 @@ function OrderForm25() {
       </LoadingOverlay>
     );
   }
+
+  const displayEvCislo = formData.cislo_objednavky || formData.ev_cislo;
   //       <LoadingMessage $visible={true}>Načítám formulář objednávky</LoadingMessage>
   //       <LoadingSubtext $visible={true}>Zpracovávám data z databáze...</LoadingSubtext>
   //     </LoadingOverlay>
@@ -20150,7 +20036,7 @@ function OrderForm25() {
               <HeaderLeft>
                 <TitleWithButtons>
                   <HeaderTitle
-                    title={isEditMode && formData.ev_cislo ? `Editace objednávky ev.č. ${formData.ev_cislo}` : ''}
+                    title={isEditMode && displayEvCislo ? `Editace objednávky ev.č. ${displayEvCislo}` : ''}
                   >
                     Objednávka
                     {formData.id && (
@@ -20262,7 +20148,7 @@ function OrderForm25() {
                         <Spinner />
                         Načítám...
                       </span>
-                    ) : !isValidEvCislo(formData.ev_cislo) ? (
+                    ) : !isValidEvCislo(displayEvCislo) ? (
                       <span style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -20282,13 +20168,13 @@ function OrderForm25() {
                           ↻ Zkusit znovu
                         </RetryButton>
                       </span>
-                    ) : typeof formData.ev_cislo === 'object' ? (
-                      formData.ev_cislo?.next_order_string ||
-                      formData.ev_cislo?.order_number_string ||
-                      formData.ev_cislo?.next_number ||
+                    ) : typeof displayEvCislo === 'object' ? (
+                      displayEvCislo?.next_order_string ||
+                      displayEvCislo?.order_number_string ||
+                      displayEvCislo?.next_number ||
                       'Načítám...'
                     ) : (
-                      formData.ev_cislo || 'Načítám...'
+                      displayEvCislo || 'Načítám...'
                     )}
                   </EvidenceValue>
                 </EvidenceNumber>
@@ -22951,7 +22837,7 @@ function OrderForm25() {
                                   <Input
                                     type="text"
                                     name={`polozka_${index}_usek_kod`}
-                                    placeholder="Úsek..."
+                                    placeholder="Usek..."
                                     value={polozka.usek_kod || ''}
                                     onChange={(e) => updatePolozka(polozka.id, 'usek_kod', e.target.value)}
                                     onBlur={() => handleFieldBlur(`polozka_${index}_usek_kod`, polozka.usek_kod)}
@@ -24862,7 +24748,7 @@ function OrderForm25() {
 
                                           setFakturaFormData({
                                             fa_datum_doruceni: dnesniDatum,
-    fa_dorucena: 1, // ✅ Boolean flag
+                                            fa_dorucena: 1, // Boolean flag
                                             fa_castka: predpokladanaCastka,
                                             fa_cislo_vema: '',
                                             fa_strediska_kod: formData.strediska_kod || [],
@@ -26603,7 +26489,7 @@ function OrderForm25() {
                       id="fileInput"
                       type="file"
                       multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt"
+                      accept=".pdf,.doc,.docx,.rtf,.odt,.isdoc,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp,.txt,.md,.jpg,.jpeg,.png,.gif,.bmp,.webp,.svg,.zip,.rar,.7z,.tar,.gz,.eml,.msg"
                       onChange={handleFileSelect}
                       disabled={isPrilohyLocked}
                       style={{ display: 'none' }}

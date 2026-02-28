@@ -110,10 +110,13 @@ const FilterLabel = styled.label`
 const FilterInput = styled.input`
   width: 100%;
   padding: 0.625rem 0.875rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid ${props => props.$active ? '#f59e0b' : '#e2e8f0'};
   border-radius: 6px;
   font-size: 0.875rem;
   color: #1e293b;
+  background: ${props => props.$active ? '#fffbeb' : 'white'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.25)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
   transition: all 0.2s ease;
   box-sizing: border-box;
 
@@ -136,11 +139,13 @@ const FilterInput = styled.input`
 const FilterSelect = styled.select`
   width: 100%;
   padding: 0.625rem 0.875rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid ${props => props.$active ? '#f59e0b' : '#e2e8f0'};
   border-radius: 6px;
   font-size: 0.875rem;
   color: #1e293b;
-  background: white;
+  background: ${props => props.$active ? '#fffbeb' : 'white'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.25)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
   cursor: pointer;
   transition: all 0.2s ease;
   box-sizing: border-box;
@@ -254,6 +259,11 @@ const OrdersFiltersV3 = ({
 }) => {
   const [localFilters, setLocalFilters] = useState(filters);
 
+  const isActiveValue = (value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return value !== null && value !== undefined && value !== '';
+  };
+
   const handleFilterChange = (key, value) => {
     const newFilters = { ...localFilters, [key]: value };
     setLocalFilters(newFilters);
@@ -335,6 +345,8 @@ const OrdersFiltersV3 = ({
             placeholder="např. OBJ-2026-0001"
             value={localFilters.cislo_objednavky || ''}
             onChange={(e) => handleFilterChange('cislo_objednavky', e.target.value)}
+            $active={isActiveValue(localFilters.cislo_objednavky)}
+            data-filter-active={isActiveValue(localFilters.cislo_objednavky) ? 'true' : 'false'}
           />
         </FilterGroup>
 
@@ -348,6 +360,8 @@ const OrdersFiltersV3 = ({
             placeholder="Hledat v předmětu..."
             value={localFilters.predmet || ''}
             onChange={(e) => handleFilterChange('predmet', e.target.value)}
+            $active={isActiveValue(localFilters.predmet)}
+            data-filter-active={isActiveValue(localFilters.predmet) ? 'true' : 'false'}
           />
         </FilterGroup>
 
@@ -360,6 +374,8 @@ const OrdersFiltersV3 = ({
             <FilterSelect
               value={localFilters.dodavatel_nazev || ''}
               onChange={(e) => handleFilterChange('dodavatel_nazev', e.target.value)}
+              $active={isActiveValue(localFilters.dodavatel_nazev)}
+              data-filter-active={isActiveValue(localFilters.dodavatel_nazev) ? 'true' : 'false'}
             >
               <option value="">-- Všichni dodavatelé --</option>
               {availableSuppliers.map(supplier => (
@@ -374,6 +390,8 @@ const OrdersFiltersV3 = ({
               placeholder="Název dodavatele..."
               value={localFilters.dodavatel_nazev || ''}
               onChange={(e) => handleFilterChange('dodavatel_nazev', e.target.value)}
+              $active={isActiveValue(localFilters.dodavatel_nazev)}
+              data-filter-active={isActiveValue(localFilters.dodavatel_nazev) ? 'true' : 'false'}
             />
           )}
         </FilterGroup>
@@ -386,6 +404,8 @@ const OrdersFiltersV3 = ({
           <FilterSelect
             value={localFilters.stav_objednavky || ''}
             onChange={(e) => handleFilterChange('stav_objednavky', e.target.value)}
+            $active={isActiveValue(localFilters.stav_objednavky)}
+            data-filter-active={isActiveValue(localFilters.stav_objednavky) ? 'true' : 'false'}
           >
             <option value="">-- Všechny stavy --</option>
             <option value="NOVA">Nová</option>
@@ -411,6 +431,8 @@ const OrdersFiltersV3 = ({
             <FilterSelect
               value={localFilters.objednatel || ''}
               onChange={(e) => handleFilterChange('objednatel', e.target.value)}
+              $active={isActiveValue(localFilters.objednatel)}
+              data-filter-active={isActiveValue(localFilters.objednatel) ? 'true' : 'false'}
             >
               <option value="">-- Všichni --</option>
               {availableUsers.map(user => (
@@ -425,6 +447,8 @@ const OrdersFiltersV3 = ({
               placeholder="Jméno objednatele..."
               value={localFilters.objednatel || ''}
               onChange={(e) => handleFilterChange('objednatel', e.target.value)}
+              $active={isActiveValue(localFilters.objednatel)}
+              data-filter-active={isActiveValue(localFilters.objednatel) ? 'true' : 'false'}
             />
           )}
         </FilterGroup>
@@ -439,6 +463,8 @@ const OrdersFiltersV3 = ({
             placeholder="Jméno garanta..."
             value={localFilters.garant || ''}
             onChange={(e) => handleFilterChange('garant', e.target.value)}
+            $active={isActiveValue(localFilters.garant)}
+            data-filter-active={isActiveValue(localFilters.garant) ? 'true' : 'false'}
           />
         </FilterGroup>
 
@@ -455,6 +481,8 @@ const OrdersFiltersV3 = ({
                 className={localFilters.min_cena ? 'with-clear' : ''}
                 value={localFilters.min_cena || ''}
                 onChange={(e) => handleFilterChange('min_cena', e.target.value)}
+                $active={isActiveValue(localFilters.min_cena)}
+                data-filter-active={isActiveValue(localFilters.min_cena) ? 'true' : 'false'}
               />
               {localFilters.min_cena && (
                 <FilterClearButton
@@ -473,6 +501,8 @@ const OrdersFiltersV3 = ({
                 className={localFilters.max_cena ? 'with-clear' : ''}
                 value={localFilters.max_cena || ''}
                 onChange={(e) => handleFilterChange('max_cena', e.target.value)}
+                $active={isActiveValue(localFilters.max_cena)}
+                data-filter-active={isActiveValue(localFilters.max_cena) ? 'true' : 'false'}
               />
               {localFilters.max_cena && (
                 <FilterClearButton
@@ -498,6 +528,8 @@ const OrdersFiltersV3 = ({
                 className={localFilters.dt_od ? 'with-clear' : ''}
                 value={localFilters.dt_od || ''}
                 onChange={(e) => handleFilterChange('dt_od', e.target.value)}
+                $active={isActiveValue(localFilters.dt_od)}
+                data-filter-active={isActiveValue(localFilters.dt_od) ? 'true' : 'false'}
               />
               {localFilters.dt_od && (
                 <FilterClearButton
@@ -515,6 +547,8 @@ const OrdersFiltersV3 = ({
                 className={localFilters.dt_do ? 'with-clear' : ''}
                 value={localFilters.dt_do || ''}
                 onChange={(e) => handleFilterChange('dt_do', e.target.value)}
+                $active={isActiveValue(localFilters.dt_do)}
+                data-filter-active={isActiveValue(localFilters.dt_do) ? 'true' : 'false'}
               />
               {localFilters.dt_do && (
                 <FilterClearButton
@@ -536,6 +570,8 @@ const OrdersFiltersV3 = ({
           <FilterSelect
             value={localFilters.registr_smluv || ''}
             onChange={(e) => handleFilterChange('registr_smluv', e.target.value)}
+            $active={isActiveValue(localFilters.registr_smluv)}
+            data-filter-active={isActiveValue(localFilters.registr_smluv) ? 'true' : 'false'}
           >
             <option value="">-- Všechny --</option>
             <option value="ANO">Ano</option>
@@ -549,6 +585,8 @@ const OrdersFiltersV3 = ({
           <FilterSelect
             value={localFilters.mimoradna_udalost || ''}
             onChange={(e) => handleFilterChange('mimoradna_udalost', e.target.value)}
+            $active={isActiveValue(localFilters.mimoradna_udalost)}
+            data-filter-active={isActiveValue(localFilters.mimoradna_udalost) ? 'true' : 'false'}
           >
             <option value="">-- Všechny --</option>
             <option value="ANO">Ano</option>

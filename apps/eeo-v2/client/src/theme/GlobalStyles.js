@@ -73,6 +73,23 @@ export const GlobalStyles = () => (
     /* Původní .App wrapper */
     .App { display:flex; flex-direction:column; min-height:100vh; }
 
+    /* Zvýraznění aktivních filtrů (data-filter-active) */
+    input[data-filter-active="true"],
+    select[data-filter-active="true"],
+    textarea[data-filter-active="true"] {
+      background-color: #fffbeb;
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+      font-weight: 600;
+    }
+
+    input[data-filter-active="true"]:focus,
+    select[data-filter-active="true"]:focus,
+    textarea[data-filter-active="true"]:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
     /* Historické utility (ponechány pro případ, že někde ještě existuje className) */
     .user-info { font-size:16px; font-weight:bold; }
     .logout-button { background-color:#ff4d4d; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; }

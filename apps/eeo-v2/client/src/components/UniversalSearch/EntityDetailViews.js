@@ -13,6 +13,7 @@ import draftManager from '../../services/DraftManager';
 import { getStoredUserId } from '../../utils/authStorage';
 import ConfirmDialog from '../ConfirmDialog';
 import { listInvoiceAttachments25 } from '../../services/api25invoices';
+import { prettyDate, formatDateOnly } from '../../utils/format';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faEnvelope, 
@@ -30,6 +31,7 @@ import {
   faBox,
   faFileContract,
   faFileInvoice,
+  faFileInvoiceDollar,
   faTruck,
   faExclamationTriangle,
   faEye,
@@ -50,11 +52,7 @@ const formatDateSafe = (dateValue) => {
       return 'Neplatné datum';
     }
     
-    return date.toLocaleDateString('cs-CZ', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
-    });
+    return formatDateOnly(dateValue);
   } catch (error) {
     console.error('Chyba při formátování data:', error);
     return 'Chyba formátování';
@@ -100,11 +98,12 @@ const DetailSection = styled.div`
 `;
 
 const SectionTitle = styled.h3`
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #64748b;
+  letter-spacing: 0.08em;
+  color: #6b7280;
   margin: 0 0 1rem 0;
   padding-bottom: 0.5rem;
   border-bottom: 2px solid #e2e8f0;
@@ -158,18 +157,21 @@ const InfoContent = styled.div`
 `;
 
 const InfoLabel = styled.div`
-  font-size: 0.75rem;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.68rem;
   font-weight: 600;
-  color: #64748b;
-  margin-bottom: 0.25rem;
+  color: #6b7280;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.25rem;
 `;
 
 const InfoValue = styled.div`
-  font-size: 0.9375rem;
-  color: #1e293b;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.95rem;
+  color: #0f172a;
   font-weight: 500;
+  line-height: 1.35;
   word-break: break-word;
 `;
 
@@ -448,7 +450,7 @@ export const UserDetailView = ({ data }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum vytvoření</InfoLabel>
-                  <InfoValue>{new Date(data.dt_vytvoreni).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_vytvoreni)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -459,7 +461,7 @@ export const UserDetailView = ({ data }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum aktualizace</InfoLabel>
-                  <InfoValue>{new Date(data.dt_aktualizace).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_aktualizace)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -470,7 +472,7 @@ export const UserDetailView = ({ data }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Vytvořeno</InfoLabel>
-                  <InfoValue>{new Date(data.created_at).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.created_at)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -481,7 +483,7 @@ export const UserDetailView = ({ data }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Poslední přihlášení</InfoLabel>
-                  <InfoValue>{new Date(data.last_login).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.last_login)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -516,7 +518,7 @@ export const UserDetailView = ({ data }) => {
                   <InfoContent>
                     <InfoLabel>Čas</InfoLabel>
                     <InfoValue>
-                      {new Date(data.dt_posledni_aktivita).toLocaleString('cs-CZ')}
+                      {prettyDate(data.dt_posledni_aktivita)}
                     </InfoValue>
                   </InfoContent>
                 </InfoRow>
@@ -935,17 +937,19 @@ export const OrderDetailView = ({
                   </InfoContent>
                 </InfoRow>
 
-                <InfoRow>
-                  <InfoIcon>
-                    <FontAwesomeIcon icon={faMoneyBill} />
-                  </InfoIcon>
-                  <InfoContent>
-                    <InfoLabel>Maximální cena s DPH</InfoLabel>
-                    <InfoValue style={{ fontSize: '1.125rem', fontWeight: '700', color: '#1e40af' }}>
-                      {data.max_cena_s_dph ? `${parseFloat(data.max_cena_s_dph).toLocaleString('cs-CZ')} Kč` : '—'}
-                    </InfoValue>
-                  </InfoContent>
-                </InfoRow>
+                {firstFinancovani?.cislo_smlouvy && (
+                  <InfoRow>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faMoneyBill} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Maximální cena s DPH</InfoLabel>
+                      <InfoValue style={{ fontSize: '1.125rem', fontWeight: '700', color: '#1e40af' }}>
+                        {data.max_cena_s_dph ? `${parseFloat(data.max_cena_s_dph).toLocaleString('cs-CZ')} Kč` : '—'}
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRow>
+                )}
 
                 {/* Poznámka ke smlouvě - celá šířka */}
                 {firstFinancovani?.poznamka_smlouvy && (
@@ -986,6 +990,34 @@ export const OrderDetailView = ({
                       <InfoLabel>Celková cena s DPH</InfoLabel>
                       <InfoValue style={{ fontSize: '1.125rem', fontWeight: '700', color: '#1e40af' }}>
                         {parseFloat(data.cena_s_dph).toLocaleString('cs-CZ')} Kč
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRow>
+                )}
+
+                {parseFloat(data.polozky_celkova_cena_s_dph) > 0 && (
+                  <InfoRow>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faMoneyBill} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Celková cena položek s DPH</InfoLabel>
+                      <InfoValue style={{ fontSize: '1.125rem', fontWeight: '700', color: '#166534' }}>
+                        {parseFloat(data.polozky_celkova_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRow>
+                )}
+
+                {parseFloat(data.faktury_celkova_castka_s_dph) > 0 && (
+                  <InfoRow>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faFileInvoiceDollar} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Celková částka faktur ({data.pocet_faktur || 0} ks)</InfoLabel>
+                      <InfoValue style={{ fontSize: '1.125rem', fontWeight: '700', color: '#1e40af' }}>
+                        {parseFloat(data.faktury_celkova_castka_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </InfoValue>
                     </InfoContent>
                   </InfoRow>
@@ -1107,7 +1139,7 @@ export const OrderDetailView = ({
                     </InfoValue>
                     {priloha.dt_vytvoreni && (
                       <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>
-                        Nahráno: {new Date(priloha.dt_vytvoreni).toLocaleString('cs-CZ')}
+                        Nahráno: {prettyDate(priloha.dt_vytvoreni)}
                       </div>
                     )}
                   </InfoContent>
@@ -1225,7 +1257,7 @@ export const OrderDetailView = ({
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum vytvoření</InfoLabel>
-                  <InfoValue>{new Date(data.dt_vytvoreni).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_vytvoreni)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -1236,7 +1268,7 @@ export const OrderDetailView = ({
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum aktualizace</InfoLabel>
-                  <InfoValue>{new Date(data.dt_aktualizace).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_aktualizace)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -1561,7 +1593,7 @@ export const ContractDetailView = ({ data }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum vytvoření</InfoLabel>
-                  <InfoValue>{new Date(data.dt_vytvoreni).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_vytvoreni)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -1572,7 +1604,7 @@ export const ContractDetailView = ({ data }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum aktualizace</InfoLabel>
-                  <InfoValue>{new Date(data.dt_aktualizace).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_aktualizace)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -1858,7 +1890,7 @@ export const InvoiceDetailView = ({ data, username, token }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum vytvoření</InfoLabel>
-                  <InfoValue>{new Date(data.dt_vytvoreni).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_vytvoreni)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -1869,7 +1901,7 @@ export const InvoiceDetailView = ({ data, username, token }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Datum aktualizace</InfoLabel>
-                  <InfoValue>{new Date(data.dt_aktualizace).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.dt_aktualizace)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}
@@ -2346,7 +2378,7 @@ export const SupplierDetailView = ({ data, onCloseAll }) => {
                 </InfoIcon>
                 <InfoContent>
                   <InfoLabel>Vytvořeno</InfoLabel>
-                  <InfoValue>{new Date(data.created_at).toLocaleString('cs-CZ')}</InfoValue>
+                  <InfoValue>{prettyDate(data.created_at)}</InfoValue>
                 </InfoContent>
               </InfoRow>
             )}

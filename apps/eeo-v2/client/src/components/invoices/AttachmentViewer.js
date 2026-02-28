@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import MsgReader from '@kenjiuno/msgreader';
 import ReactDOM from 'react-dom';
 import styled from 'styled-components';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -13,6 +14,118 @@ import {
   faDownload,
   faRotateRight
 } from '@fortawesome/free-solid-svg-icons';
+
+// ─── MSG Viewer styled components ───────────────────────────────────────────
+const MsgViewerWrap = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1.5rem;
+  background: #f8fafc;
+  font-family: 'Roboto Condensed', 'Roboto', sans-serif;
+  font-size: 0.875rem;
+  color: #1e293b;
+`;
+
+const MsgMeta = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.25rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+
+  td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+  }
+  td:first-child {
+    width: 90px;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+    background: #f8fafc;
+  }
+  tr:last-child td {
+    border-bottom: none;
+  }
+`;
+
+const MsgBodyWrap = styled.div`
+  flex: 1;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  word-break: break-word;
+
+  a {
+    color: #3b82f6;
+    text-decoration: underline;
+    word-break: break-all;
+    
+    &:hover {
+      color: #2563eb;
+    }
+  }
+`;
+
+const MsgBodyHtml = styled.div`
+  flex: 1;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: auto;
+
+  iframe {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    border: none;
+  }
+`;
+
+const MsgStatusMsg = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.75rem;
+  color: #64748b;
+  padding: 2rem;
+  text-align: center;
+`;
+
+const MsgAttachmentsWrap = styled.div`
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #f1f5f9;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #475569;
+
+  strong { display: block; margin-bottom: 0.35rem; }
+  ul { margin: 0; padding-left: 1.2em; }
+`;
+
+const MsgToolbar = styled.div`
+  flex-shrink: 0;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #111827;
+  color: rgba(255, 255, 255, 0.9);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+`;
 
 // Styled Components
 const ViewerOverlay = styled.div`
@@ -359,6 +472,80 @@ const DownloadButton = styled.button`
 `;
 
 /**
+ * Helper: převede plain text s URL na HTML s klikatelnými odkazy
+ * Zkrátí dlouhé URL pro lepší čitelnost
+ */
+const linkifyText = (text) => {
+  if (!text) return '';
+  
+  // Escapovat HTML entity
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  
+  // Detekovat URL s lepší detekcí konce (nezahrnuje koncové znaky jako >)],.:;!?)
+  const urlRegex = /(https?:\/\/[^\s<>"'\]]+?)([>\])\.,;!?]*(?=\s|&lt;|&gt;|$))|(www\.[^\s<>"'\]]+?)([>\])\.,;!?]*(?=\s|&lt;|&gt;|$))/gi;
+  
+  return escaped.replace(urlRegex, (fullMatch, httpUrl, httpTrailing, wwwUrl, wwwTrailing) => {
+    // Určit, jestli jde o http(s) nebo www URL
+    let url = httpUrl || wwwUrl;
+    if (!url) return fullMatch;
+    
+    // Odstranit trailing interpunkci z URL
+    url = url.replace(/[>\])\.,;!?]+$/, '');
+    
+    // Pokud začíná www, přidat http://
+    let href = url;
+    if (url.startsWith('www.')) {
+      href = 'http://' + url;
+    }
+    
+    // Zkrátit dlouhé URL pro zobrazení
+    let displayText = url;
+    if (url.length > 60) {
+      displayText = url.substring(0, 50) + '...' + url.substring(url.length - 7);
+    }
+    
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${url}" style="color: #3b82f6; text-decoration: underline; word-break: break-all;">${displayText}</a>${httpTrailing || wwwTrailing || ''}`;
+  });
+};
+
+/**
+ * Helper: preprocessing HTML emailu - nahradí CID obrázky data URL z attachmentů
+ */
+const preprocessMsgHtml = (html, attachments) => {
+  if (!html || !attachments?.length) return html;
+  
+  let processed = html;
+  
+  // Najít všechny CID reference v HTML
+  attachments.forEach((att) => {
+    if (att.contentId && att.content) {
+      try {
+        // CID může být <image001.jpg@01DA1234.12345678> nebo jen image001.jpg
+        const cid = att.contentId.replace(/^<|>$/g, '');
+        // Vytvořit data URL z attachment content
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(att.content)));
+        const mimeType = att.mimeType || 'image/jpeg';
+        const dataUrl = `data:${mimeType};base64,${base64}`;
+        
+        // Nahradit cid: odkazy za data URL
+        processed = processed.replace(
+          new RegExp(`cid:${cid}`, 'gi'),
+          dataUrl
+        );
+      } catch (e) {
+        // Ignorovat chyby při konverzi
+      }
+    }
+  });
+  
+  return processed;
+};
+
+/**
  * AttachmentViewer
  * Sdílený resizable viewer pro přílohy faktur s fullscreen režimem
  * Podporuje PDF, obrázky a textové soubory
@@ -377,6 +564,12 @@ const AttachmentViewer = ({
   const [imageSrc, setImageSrc] = useState(null);
   const [imageZoom, setImageZoom] = useState(1);
   const [imageNaturalSize, setImageNaturalSize] = useState(null); // { w, h }
+  const [parsedMsg, setParsedMsg] = useState(null);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [msgError, setMsgError] = useState(null);
+  const [msgFontSize, setMsgFontSize] = useState(14);
+  const [msgShowRaw, setMsgShowRaw] = useState(false);
+  const [msgRawContent, setMsgRawContent] = useState(null);
   const [fitZoom, setFitZoom] = useState(null);
   const [didAutoFit, setDidAutoFit] = useState(false);
   const [isImagePanning, setIsImagePanning] = useState(false);
@@ -457,7 +650,14 @@ const AttachmentViewer = ({
   }, [attachment?.blobUrl, attachment?.blob, internalBlobUrl]);
 
   useEffect(() => {
-    if (!attachment?.blob) {
+    if (!attachment?.blob || attachment?.blobUrl) {
+      if (internalUrlRef.current) {
+        const prev = internalUrlRef.current;
+        internalUrlRef.current = null;
+        setTimeout(() => {
+          window.URL.revokeObjectURL(prev);
+        }, 1000);
+      }
       setInternalBlobUrl(null);
       return;
     }
@@ -472,7 +672,7 @@ const AttachmentViewer = ({
         window.URL.revokeObjectURL(previousUrl);
       }, 1000);
     }
-  }, [attachment?.blob]);
+  }, [attachment?.blob, attachment?.blobUrl]);
 
   const effectiveBlobUrl = internalBlobUrl || attachment?.blobUrl;
 
@@ -490,6 +690,8 @@ const AttachmentViewer = ({
       fileType = 'pdf';
     } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
       fileType = 'image';
+    } else if (ext === 'msg' || ext === 'eml') {
+      fileType = 'msg';
     } else {
       fileType = 'other';
     }
@@ -546,6 +748,102 @@ const AttachmentViewer = ({
     // (bez logování)
     
   }, [fileType, attachment?.blob, attachment?.imageSrc, filename]);
+
+  // ─── MSG/EML parsování ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (fileType !== 'msg') {
+      setParsedMsg(null);
+      setMsgError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const blobUrl = effectiveBlobUrl || attachment?.blobUrl;
+
+    if (!blobUrl && !attachment?.blob) {
+      setMsgError('Soubor není k dispozici ke zobrazení.');
+      return;
+    }
+
+    const parseMsg = async () => {
+      setMsgLoading(true);
+      setMsgError(null);
+      try {
+        let arrayBuffer;
+        if (attachment?.blob) {
+          arrayBuffer = await attachment.blob.arrayBuffer();
+        } else {
+          const res = await fetch(blobUrl);
+          if (!res.ok) throw new Error('Nelze stáhnout soubor.');
+          arrayBuffer = await res.arrayBuffer();
+        }
+
+        if (cancelled) return;
+
+        const ext = filename.toLowerCase().split('.').pop();
+        
+        // Uložit raw obsah JEN pro EML (to je textový formát)
+        // MSG je binární formát - raw zobrazí nesmysly
+        if (ext === 'eml') {
+          const rawText = new TextDecoder('utf-8', { fatal: false }).decode(arrayBuffer);
+          setMsgRawContent(rawText);
+        } else {
+          setMsgRawContent(null); // MSG je binární - raw nemá smysl
+        }
+
+        if (ext === 'eml') {
+          // EML je plain text/MIME – převedeme na readable text
+          const text = new TextDecoder('utf-8').decode(arrayBuffer);
+          const lines = text.split(/\r?\n/);
+          const headers = {};
+          let bodyStart = 0;
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim() === '') { bodyStart = i + 1; break; }
+            const m = lines[i].match(/^([\w-]+):\s*(.*)/);
+            if (m) headers[m[1].toLowerCase()] = m[2];
+          }
+          const body = lines.slice(bodyStart).join('\n').replace(/^--[^\n]+.*$/gm, '').trim();
+          if (!cancelled) setParsedMsg({
+            subject: headers['subject'] || '(bez předmětu)',
+            senderEmail: headers['from'] || '',
+            recipients: [{ name: headers['to'] || '' }],
+            createdDate: headers['date'] || '',
+            body: body,
+            bodyHtml: null,
+            attachments: []
+          });
+        } else {
+          // MSG
+          const reader = new MsgReader(arrayBuffer);
+          const info = reader.getFileData();
+          
+          // Preprocessing HTML - nahradit CID obrázky
+          let processedHtml = info.bodyHtml;
+          if (processedHtml && info.attachments?.length) {
+            processedHtml = preprocessMsgHtml(processedHtml, info.attachments);
+          }
+          
+          if (!cancelled) setParsedMsg({
+            subject: info.subject || '(bez předmětu)',
+            senderEmail: info.senderEmail || info.senderName || '',
+            recipients: info.recipients || [],
+            createdDate: info.createdTime || '',
+            body: info.body || '',
+            bodyHtml: processedHtml,
+            attachments: info.attachments || []
+          });
+        }
+      } catch (err) {
+        if (!cancelled) setMsgError('Soubor nelze zobrazit: ' + err.message);
+      } finally {
+        if (!cancelled) setMsgLoading(false);
+      }
+    };
+
+    parseMsg();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileType, effectiveBlobUrl, attachment?.blob, filename]);
 
   const handleClose = () => {
     if (internalUrlRef.current) {
@@ -891,6 +1189,14 @@ const AttachmentViewer = ({
     }
   };
 
+  const msgZoomIn = () => {
+    setMsgFontSize(prev => Math.min(prev + 2, 28));
+  };
+
+  const msgZoomOut = () => {
+    setMsgFontSize(prev => Math.max(prev - 2, 10));
+  };
+
   const handleImagePanStart = (e) => {
     if (fileType !== 'image') return;
     if (!contentRef.current) return;
@@ -979,6 +1285,8 @@ const AttachmentViewer = ({
   const hasImageSrc = !!(imageSrc || attachment?.imageSrc);
   if (fileType === 'image') {
     if (!effectiveBlobUrl && !hasImageSrc) return null;
+  } else if (fileType === 'msg') {
+    // MSG: povolíme render vždy (parsování probíhá asynchronně, chyby zobrazíme uvnitř)
   } else {
     if (!effectiveBlobUrl) return null;
   }
@@ -1022,6 +1330,46 @@ const AttachmentViewer = ({
             </HeaderButton>
           </HeaderButtons>
         </ViewerHeader>
+
+        {fileType === 'msg' && (
+          <MsgToolbar onClick={(e) => e.stopPropagation()}>
+            <ToolbarSlot className="left">
+              <ToolbarGroup>
+                {msgRawContent && (
+                  <ToolbarButton 
+                    onClick={() => setMsgShowRaw(!msgShowRaw)} 
+                    title={msgShowRaw ? "Zobrazit zpracovanou zprávu" : "Zobrazit surový formát (RAW)"}
+                    style={{ fontSize: '0.75rem', minWidth: '60px' }}
+                  >
+                    {msgShowRaw ? '📧 MSG' : '📄 RAW'}
+                  </ToolbarButton>
+                )}
+              </ToolbarGroup>
+            </ToolbarSlot>
+            
+            <ToolbarSlot className="center">
+              <ToolbarGroup>
+                <ToolbarButton onClick={msgZoomOut} disabled={msgFontSize <= 10} title="Zmenšit text">
+                  <FontAwesomeIcon icon={faSearchMinus} />
+                </ToolbarButton>
+                <ZoomLabel title="Velikost písma">
+                  {msgFontSize}px
+                </ZoomLabel>
+                <ToolbarButton onClick={msgZoomIn} disabled={msgFontSize >= 28} title="Zvětšit text">
+                  <FontAwesomeIcon icon={faSearchPlus} />
+                </ToolbarButton>
+              </ToolbarGroup>
+            </ToolbarSlot>
+
+            <ToolbarSlot className="right">
+              <ToolbarGroup>
+                <ToolbarButton onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDownload(); }} title="Stáhnout">
+                  <FontAwesomeIcon icon={faDownload} />
+                </ToolbarButton>
+              </ToolbarGroup>
+            </ToolbarSlot>
+          </MsgToolbar>
+        )}
 
         {fileType === 'image' && (
           <ImageToolbar onClick={(e) => e.stopPropagation()}>
@@ -1125,6 +1473,70 @@ const AttachmentViewer = ({
                 }}
               />
             )
+          )}
+          {fileType === 'msg' && (
+            <MsgViewerWrap style={{ fontSize: `${msgFontSize}px` }}>
+              {msgLoading && (
+                <MsgStatusMsg>
+                  <div>⏳ Načítání emailu…</div>
+                </MsgStatusMsg>
+              )}
+              {msgError && !msgLoading && (
+                <MsgStatusMsg>
+                  <div style={{ fontSize: '2rem' }}>📧</div>
+                  <div style={{ fontWeight: 600 }}>{msgError}</div>
+                  <DownloadButton onClick={(e) => { e.stopPropagation(); handleDownload(); }}>Stáhnout soubor</DownloadButton>
+                </MsgStatusMsg>
+              )}
+              {msgShowRaw && msgRawContent && (
+                <MsgBodyWrap style={{ fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'pre', overflowX: 'auto' }}>
+                  {msgRawContent}
+                </MsgBodyWrap>
+              )}
+              {!msgShowRaw && parsedMsg && !msgLoading && !msgError && (
+                <>
+                  <MsgMeta>
+                    <tbody>
+                      <tr><td>Předmět</td><td><strong>{parsedMsg.subject}</strong></td></tr>
+                      <tr><td>Od</td><td>{parsedMsg.senderEmail}</td></tr>
+                      {parsedMsg.recipients?.length > 0 && (
+                        <tr><td>Komu</td><td>{parsedMsg.recipients.map(r => r.name || r.email || '').filter(Boolean).join(', ')}</td></tr>
+                      )}
+                      {parsedMsg.createdDate && (
+                        <tr><td>Datum</td><td>{parsedMsg.createdDate}</td></tr>
+                      )}
+                    </tbody>
+                  </MsgMeta>
+
+                  {(parsedMsg.bodyHtml && !msgShowRaw) ? (
+                    <MsgBodyHtml>
+                      <iframe
+                        title="email-body"
+                        srcDoc={parsedMsg.bodyHtml}
+                        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+                      />
+                    </MsgBodyHtml>
+                  ) : parsedMsg.body ? (
+                    <MsgBodyWrap 
+                      dangerouslySetInnerHTML={{ __html: linkifyText(parsedMsg.body) }}
+                    />
+                  ) : (
+                    <MsgBodyWrap>(prázdné tělo)</MsgBodyWrap>
+                  )}
+
+                  {!msgShowRaw && parsedMsg.attachments?.length > 0 && (
+                    <MsgAttachmentsWrap>
+                      <strong>📎 Přílohy v emailu ({parsedMsg.attachments.length}):</strong>
+                      <ul>
+                        {parsedMsg.attachments.map((a, i) => (
+                          <li key={i}>{a.fileName || a.name || `Příloha ${i + 1}`}</li>
+                        ))}
+                      </ul>
+                    </MsgAttachmentsWrap>
+                  )}
+                </>
+              )}
+            </MsgViewerWrap>
           )}
           {fileType === 'other' && (
             <UnsupportedMessage>

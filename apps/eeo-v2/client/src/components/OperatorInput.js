@@ -8,7 +8,7 @@ import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes } from '@fortawesome/free-solid-svg-icons';
 
-const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearButton, onClear }) => {
+const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearButton, onClear, isActive = false }) => {
   // Rozdělit value na operátor a číslo
   // Formát: "=5000" nebo ">1000" nebo "<500"
   const parseValue = (val) => {
@@ -59,7 +59,7 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
   };
 
   return (
-    <Wrapper>
+    <Wrapper $active={isActive} data-filter-active={isActive ? 'true' : 'false'}>
       <OperatorSelect 
         value={operator} 
         onChange={(e) => handleOperatorChange(e.target.value)}
@@ -90,13 +90,17 @@ const Wrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 0;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#d1d5db'};
   border-radius: 4px;
-  background: white;
+  background: ${props => props.$active ? '#fffbeb' : 'white'};
   transition: all 0.2s ease;
   position: relative;
   overflow: visible;
   width: 100%;
+
+  ${props => props.$active && `
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+  `}
 
   &:focus-within {
     border-color: #3b82f6;
@@ -106,7 +110,7 @@ const Wrapper = styled.div`
 
 const OperatorSelect = styled.select`
   border: none;
-  background: #f8fafc;
+  background: transparent;
   padding: 0.35rem 0.3rem;
   font-size: 0.75rem;
   font-weight: 600;

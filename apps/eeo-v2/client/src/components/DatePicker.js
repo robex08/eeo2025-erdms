@@ -400,6 +400,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           $highlight={highlight}
           placeholder={placeholder}
           data-datepicker={fieldName}
+          data-filter-active={highlight ? 'true' : 'false'}
           $variant={variant}
           $hasValue={!!value}
         />
@@ -549,15 +550,19 @@ const DateInputField = styled.input`
   padding: ${props => props.$variant === 'compact' ? '0.375rem 0.625rem' : '0.5rem 2.75rem'};
   padding-left: ${props => props.$variant === 'compact' ? '0.625rem' : '2.75rem'};
   padding-right: ${props => props.$variant === 'compact' && props.$hasValue ? '1.5rem' : props.$variant === 'compact' ? '0.625rem' : '0.75rem'};
-  border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
+  border: 1px solid ${props => props.hasError ? '#ef4444' : props.$highlight ? '#f59e0b' : '#cbd5e1'};
   border-radius: 6px;
-  background: ${props => props.disabled ? '#f1f5f9' : 'white'};
+  background: ${props => props.disabled ? '#f1f5f9' : props.$highlight ? '#fffbeb' : 'white'};
   color: ${props => props.disabled ? '#6b7280' : '#1e293b'};
   font-size: ${props => props.$variant === 'compact' ? '0.75rem' : '0.875rem'};
-  font-weight: ${props => props.$hasValue ? '500' : '400'};
+  font-weight: ${props => props.$highlight ? '600' : props.$hasValue ? '500' : '400'};
   cursor: text;
   transition: all 0.2s ease;
   box-sizing: border-box;
+
+  ${props => props.$highlight && `
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  `}
 
   &::placeholder {
     color: #94a3af;

@@ -717,7 +717,7 @@ const AttachmentManager = ({ orderId, readonly = false, onChange }) => {
               multiple
               style={{ display: 'none' }}
               onChange={handleFileInputChange}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.gif"
+              accept=".pdf,.doc,.docx,.rtf,.odt,.isdoc,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp,.txt,.md,.jpg,.jpeg,.png,.gif,.bmp,.webp,.svg,.zip,.rar,.7z,.tar,.gz,.eml,.msg"
             />
           </UploadZone>
         )}

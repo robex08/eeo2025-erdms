@@ -132,11 +132,13 @@ const SearchInput = styled.input`
   width: 100%;
   box-sizing: border-box;
   padding: 0.75rem 2.5rem 0.75rem 2.5rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid ${props => props.$active ? '#f59e0b' : '#e5e7eb'};
   border-radius: 8px;
   font-size: 0.875rem;
   transition: all 0.2s ease;
-  background: white;
+  background: ${props => props.$active ? '#fffbeb' : 'white'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.25)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
 
   &:focus {
     outline: none;
@@ -1275,6 +1277,8 @@ const ContactManagement = ({ contactType, permissionLevel, userDetail, showToast
               placeholder="Vyhledejte podle názvu nebo IČO..."
               value={searchTerm}
               onChange={handleSearchChange}
+              $active={!!searchTerm}
+              data-filter-active={searchTerm ? 'true' : 'false'}
             />
             {searchTerm && (
               <ClearButton onClick={() => setSearchTerm('')} title="Vymazat">

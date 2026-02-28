@@ -116,6 +116,12 @@ const YearDropdownButton = styled.button`
   justify-content: space-between;
   gap: 0.5rem;
 
+  ${props => props.$active && `
+    border-color: rgba(245, 158, 11, 0.9);
+    background: rgba(245, 158, 11, 0.2);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  `}
+
   &:hover {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
@@ -195,6 +201,12 @@ const MonthDropdownButton = styled.button`
   display: flex;
   justify-content: space-between;
   align-items: center;
+
+  ${props => props.$active && `
+    border-color: rgba(245, 158, 11, 0.9);
+    background: rgba(245, 158, 11, 0.2);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  `}
 
   &:focus {
     outline: none;
@@ -1013,9 +1025,11 @@ const InfoCard = styled.div`
 
 const InfoCardTitle = styled.h4`
   margin: 0 0 0.75rem 0;
-  font-size: 1rem;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.95rem;
   font-weight: 600;
-  color: #0a0a0a;
+  letter-spacing: 0.02em;
+  color: #0f172a;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1036,21 +1050,26 @@ const InfoRow = styled.div`
 `;
 
 const InfoLabel = styled.span`
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: #0a0a0a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
   flex-shrink: 0;
   white-space: nowrap;
   max-width: 45%;
 `;
 
 const InfoValue = styled.span`
-  color: #0a0a0a;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  color: #0f172a;
   text-align: right;
   word-wrap: break-word;
   overflow-wrap: break-word;
   flex: 1;
   min-width: 0;
-  line-height: 1.5;
+  line-height: 1.35;
 `;
 
 const Orders = () => {
@@ -1352,6 +1371,9 @@ const Orders = () => {
            pokladniDokFilter ||
            zverejnitFilter;
   }, [globalFilter, garantFilter, druhFilter, yearFilter, fakturaFilter, pokladniDokFilter, zverejnitFilter]);
+
+  const isYearFilterActive = yearFilter !== '2025';
+  const isMonthFilterActive = selectedMonth !== '10-12';
 
   // Enhanced clear all filters function
   const clearAllFilters = () => {
@@ -2760,7 +2782,11 @@ return (
           Rok:
         </YearFilterLabel>
         <YearDropdownContainer ref={yearSelectRef}>
-          <YearDropdownButton onClick={toggleYearDropdown}>
+          <YearDropdownButton
+            onClick={toggleYearDropdown}
+            $active={isYearFilterActive}
+            data-filter-active={isYearFilterActive ? 'true' : 'false'}
+          >
             <span>{yearFilter}</span>
             <FontAwesomeIcon icon={isYearDropdownOpen ? faChevronUp : faChevronDown} />
           </YearDropdownButton>
@@ -2780,7 +2806,11 @@ return (
           Období:
         </MonthFilterLabel>
         <MonthDropdownContainer ref={monthSelectRef}>
-          <MonthDropdownButton onClick={toggleMonthDropdown}>
+          <MonthDropdownButton
+            onClick={toggleMonthDropdown}
+            $active={isMonthFilterActive}
+            data-filter-active={isMonthFilterActive ? 'true' : 'false'}
+          >
             <span>{getMonthLabel(selectedMonth)}</span>
             <FontAwesomeIcon icon={isMonthDropdownOpen ? faChevronUp : faChevronDown} />
           </MonthDropdownButton>
@@ -3186,6 +3216,7 @@ return (
           value={globalFilter}
           onChange={(e) => handleGlobalFilterChange(e.target.value)}
           className="filter-input"
+          data-filter-active={globalFilter ? 'true' : 'false'}
         />
         {globalFilter && <button className="clear-filter-button" onClick={() => handleGlobalFilterChange('')} aria-label="Vyčistit">×</button>}
       </div>

@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import React, { useEffect, useMemo, useState, useCallback, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useContext, useRef } from 'react';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -1035,6 +1035,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   }, [hasAdminRole, userDetail]);
   // 🖼️ State pro AttachmentViewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
+  const lastViewerCloseAtRef = useRef(0);
 
   // Číselníky typů příloh (OBJ + FA)
   const [attachmentTypeLabels, setAttachmentTypeLabels] = useState({
@@ -1323,6 +1324,10 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   
   // 📥 Download/Preview handler pro přílohy - detekce typu a zobrazení ve vieweru
   const handleDownloadAttachment = async (attachment, orderId) => {
+    const now = Date.now();
+    if (now - lastViewerCloseAtRef.current < 300) {
+      return;
+    }
     const fileName = attachment.originalni_nazev_souboru || `priloha_${attachment.id}`;
 
     if (!attachment.id || !orderId || !token || !username) {
@@ -3056,6 +3061,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
         attachment={viewerAttachment}
         closeOnOverlayClick={false}
         onClose={() => {
+          lastViewerCloseAtRef.current = Date.now();
           // Cleanup blob URL při zavření vieweru
           if (viewerAttachment.blobUrl && viewerAttachment.blobUrl.startsWith('blob:')) {
             window.URL.revokeObjectURL(viewerAttachment.blobUrl);

@@ -25,7 +25,7 @@ import ORDERS_V3_CONFIG from '../../constants/ordersV3Config';
 // MULTISELECT KOMPONENTA
 // ============================================================================
 
-const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon, showSecondColumn = false }) => {
+const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon, showSecondColumn = false, isActive = false }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const dropdownRef = React.useRef(null);
@@ -129,20 +129,22 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon, 
     <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
       <div
         onClick={handleMainClick}
+        data-filter-active={isActive ? 'true' : 'false'}
         style={{
           width: '100%',
           padding: '0.5rem 2rem 0.5rem 0.75rem',
-          border: '1px solid #e5e7eb',
+          border: isActive ? '2px solid #f59e0b' : '1px solid #e5e7eb',
           borderRadius: '6px',
           fontSize: '0.875rem',
-          background: '#ffffff',
+          background: isActive ? '#fffbeb' : '#ffffff',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           position: 'relative',
           color: (!value || value.length === 0) ? '#9ca3af' : '#1f2937',
-          fontWeight: (value && value.length > 0) ? '500' : '400',
+          fontWeight: isActive ? '600' : (value && value.length > 0) ? '500' : '400',
+          boxShadow: isActive ? '0 0 0 2px rgba(245, 158, 11, 0.2)' : 'none',
           minHeight: '38px'
         }}
       >
@@ -531,10 +533,13 @@ const FilterInputWithIcon = styled.div`
 const FilterInput = styled.input`
   width: 100%;
   padding: ${props => props.hasIcon ? '0.5rem 2.5rem 0.5rem 2rem' : '0.5rem 0.75rem'};
-  border: 1px solid #e5e7eb;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#e5e7eb'};
   border-radius: 6px;
   font-size: 0.875rem;
   font-family: inherit;
+  background: ${props => props.$active ? '#fffbeb' : '#ffffff'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.25)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
   transition: all 0.2s ease;
   min-height: 38px;
 
@@ -721,6 +726,11 @@ const OrdersFiltersV3Full = ({
   
   // State pro zobrazování rozšířených filtrů (nezávislé na showFilters) - načíst z localStorage
   const [showExtendedFilters, setShowExtendedFilters] = useState(true);
+
+  const isActiveValue = (value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return value !== null && value !== undefined && value !== '';
+  };
 
   // Načíst stav rozšířených filtrů z localStorage při změně uživatele
   useEffect(() => {
@@ -1048,6 +1058,8 @@ const OrdersFiltersV3Full = ({
             value={globalFilter || ''}
             onChange={(e) => onGlobalFilterChange(e.target.value)}
             hasIcon
+            $active={isActiveValue(globalFilter)}
+            data-filter-active={isActiveValue(globalFilter) ? 'true' : 'false'}
           />
           {globalFilter && (
             <ClearButton onClick={() => onGlobalFilterChange('')} title="Vymazat">
@@ -1084,6 +1096,7 @@ const OrdersFiltersV3Full = ({
                 options={sortedActiveUsers}
                 placeholder="Vyberte objednatele..."
                 icon={<FontAwesomeIcon icon={faUser} />}
+                isActive={isActiveValue(filters.objednatel)}
               />
             </SelectWithIcon>
           </FilterGroup>
@@ -1112,6 +1125,7 @@ const OrdersFiltersV3Full = ({
                 options={sortedActiveUsers}
                 placeholder="Vyberte guaranty..."
                 icon={<FontAwesomeIcon icon={faUser} />}
+                isActive={isActiveValue(filters.garant)}
               />
             </SelectWithIcon>
           </FilterGroup>
@@ -1140,6 +1154,7 @@ const OrdersFiltersV3Full = ({
                 options={sortedActiveApprovers}
                 placeholder="Vyberte příkazce..."
                 icon={<FontAwesomeIcon icon={faUser} />}
+                isActive={isActiveValue(filters.prikazce)}
               />
             </SelectWithIcon>
           </FilterGroup>
@@ -1168,6 +1183,7 @@ const OrdersFiltersV3Full = ({
                 options={sortedActiveApprovers}
                 placeholder="Vyberte schvalovatele..."
                 icon={<FontAwesomeIcon icon={faShield} />}
+                isActive={isActiveValue(filters.schvalovatel)}
               />
             </SelectWithIcon>
           </FilterGroup>
@@ -1196,6 +1212,7 @@ const OrdersFiltersV3Full = ({
                 options={statusOptions}
                 placeholder="Vyberte stavy..."
                 icon={<FontAwesomeIcon icon={faList} />}
+                isActive={isActiveValue(filters.stav)}
               />
             </SelectWithIcon>
           </FilterGroup>
@@ -1215,6 +1232,7 @@ const OrdersFiltersV3Full = ({
                   value={filters.dateFrom || ''}
                   onChange={(value) => handleFilterChange('dateFrom', value || '')}
                   placeholder="Datum od"
+                  highlight={isActiveValue(filters.dateFrom)}
                 />
               </DateInputWrapper>
               <DateSeparator>—</DateSeparator>
@@ -1224,6 +1242,7 @@ const OrdersFiltersV3Full = ({
                   value={filters.dateTo || ''}
                   onChange={(value) => handleFilterChange('dateTo', value || '')}
                   placeholder="Datum do"
+                  highlight={isActiveValue(filters.dateTo)}
                 />
               </DateInputWrapper>
             </DateRangeInputs>
@@ -1246,6 +1265,8 @@ const OrdersFiltersV3Full = ({
                   value={formatNumberWithSpaces(filters.amountFrom)}
                   onChange={handleAmountFromChange}
                   hasIcon
+                  $active={isActiveValue(filters.amountFrom)}
+                  data-filter-active={isActiveValue(filters.amountFrom) ? 'true' : 'false'}
                   style={{ textAlign: 'right', paddingRight: filters.amountFrom ? '2.8rem' : '2.5rem' }}
                 />
                 {filters.amountFrom && (
@@ -1306,6 +1327,8 @@ const OrdersFiltersV3Full = ({
                   value={formatNumberWithSpaces(filters.amountTo)}
                   onChange={handleAmountToChange}
                   hasIcon
+                  $active={isActiveValue(filters.amountTo)}
+                  data-filter-active={isActiveValue(filters.amountTo) ? 'true' : 'false'}
                   style={{ textAlign: 'right', paddingRight: filters.amountTo ? '2.8rem' : '2.5rem' }}
                 />
                 {filters.amountTo && (
@@ -1385,6 +1408,7 @@ const OrdersFiltersV3Full = ({
                 placeholder="Vyberte LP kódy..."
                 icon={<FontAwesomeIcon icon={faFileContract} />}
                 showSecondColumn={true}
+                isActive={isActiveValue(filters.lp_kody)}
               />
             </SelectWithIcon>
           </FilterGroup>

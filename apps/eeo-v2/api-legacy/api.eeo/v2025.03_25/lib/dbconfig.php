@@ -76,7 +76,7 @@ return [
         // Povolené přípony souborů
         'allowed_extensions' => [
             // Dokumenty
-            'pdf', 'doc', 'docx', 'rtf', 'odt',
+            'pdf', 'doc', 'docx', 'rtf', 'odt', 'isdoc',
             // Tabulky
             'xls', 'xlsx', 'ods', 'csv',
             // Prezentace  
@@ -86,7 +86,9 @@ return [
             // Obrázky
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
             // Archivy
-            'zip', 'rar', '7z', 'tar', 'gz'
+            'zip', 'rar', '7z', 'tar', 'gz',
+            // Emailové zprávy
+            'eml', 'msg'
         ],
         
         // Struktura adresářů - jak organizovat soubory

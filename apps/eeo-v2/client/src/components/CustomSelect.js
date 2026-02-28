@@ -38,10 +38,10 @@ const CustomSelectButton = styled.div`
   height: 48px;
   box-sizing: border-box;
   padding: ${props => props.hasIcon ? '1px 2.5rem 1px 2.5rem' : '1px 2.5rem 1px 0.875rem'};
-  border: 2px solid ${props => props.hasError ? '#dc2626' : '#e2e8f0'};
+  border: 2px solid ${props => props.hasError ? '#dc2626' : props.$active ? '#f59e0b' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.95rem;
-  background: ${props => props.hasError ? '#fee2e2' : (props.disabled ? '#f9fafb' : '#ffffff')};
+  background: ${props => props.hasError ? '#fee2e2' : (props.disabled ? '#f9fafb' : (props.$active ? '#fffbeb' : '#ffffff'))};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   color: ${props => {
     if (props.disabled) return '#6b7280'; // Sladěno s disabled Input barvou
@@ -49,7 +49,7 @@ const CustomSelectButton = styled.div`
     return '#1f2937';
   }};
 
-  font-weight: ${props => props.disabled ? '400' : (props.value && props.value !== '' && props.placeholder !== "true" ? '500' : '400')};
+  font-weight: ${props => props.disabled ? '400' : (props.$active ? '600' : (props.value && props.value !== '' && props.placeholder !== "true" ? '500' : '400'))};
 
   /* CSS třída pro disabled stav - nejsilnější možný override */
   &.custom-select-disabled {
@@ -65,6 +65,10 @@ const CustomSelectButton = styled.div`
   align-items: center;
   position: relative;
   transition: all 0.2s ease;
+
+  ${props => props.$active && `
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  `}
 
   /* Custom arrow - větší a lépe viditelná */
   appearance: none;
@@ -342,6 +346,7 @@ const CustomSelect = ({
   icon = null,
   multiple = false,
   isClearable = false,
+  highlightActive,
   enableSearch = true, // Výchozí hodnota true, ale lze vypnout
   // Global state hooks
   selectStates,
@@ -483,6 +488,23 @@ const CustomSelect = ({
   const hasValue = multiple
     ? (Array.isArray(value) && value.length > 0)
     : selectedOption;
+
+  const filterFieldNames = new Set([
+    'fa_typ',
+    'stav',
+    'vecna_kontrola',
+    'ma_prilohy',
+    'floating_fa_typ',
+    'floating_stav',
+    'floating_vecna_kontrola',
+    'ma_prilohy_floating',
+    'statusFilter'
+  ]);
+
+  const isFilterField = typeof highlightActive === 'boolean'
+    ? highlightActive
+    : (typeof field === 'string' && (/filter/i.test(field) || filterFieldNames.has(field)));
+  const isActiveHighlight = Boolean(isFilterField && hasValue && !disabled && !hasError);
 
   const shouldShowError = hasError || (required && !hasValue && !loading && !disabled && hasTriedToSubmit);
 
@@ -694,6 +716,8 @@ const CustomSelect = ({
         }}
         disabled={disabled}
         hasError={shouldShowError}
+        $active={isActiveHighlight}
+        data-filter-active={isActiveHighlight ? 'true' : 'false'}
         placeholder={(multiple ? !hasValue : !selectedOption) ? "true" : "false"}
         value={(multiple ? (hasValue ? 'selected' : '') : (selectedOption ? value : ''))}
         isOpen={isOpen}

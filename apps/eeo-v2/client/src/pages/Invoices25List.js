@@ -1329,11 +1329,12 @@ const DetailSection = styled.div`
 `;
 
 const SectionTitle = styled.h3`
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #64748b;
+  letter-spacing: 0.08em;
+  color: #6b7280;
   margin: 0 0 1rem 0;
   padding-bottom: 0.5rem;
   border-bottom: 2px solid #e2e8f0;
@@ -1384,18 +1385,21 @@ const InfoContent = styled.div`
 `;
 
 const InfoLabel = styled.div`
-  font-size: 0.75rem;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.68rem;
   font-weight: 600;
-  color: #64748b;
+  color: #6b7280;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.08em;
   margin-bottom: 0.25rem;
 `;
 
 const InfoValue = styled.div`
-  font-size: 0.9375rem;
-  color: #1e293b;
+  font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  font-size: 0.95rem;
+  color: #0f172a;
   font-weight: 500;
+  line-height: 1.35;
   word-break: break-word;
 `;
 
@@ -6657,13 +6661,7 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Datum zaevidování</InfoLabel>
                         <InfoValue style={{ fontWeight: '600' }}>
-                          {new Date(slidePanelInvoice.dt_vytvoreni).toLocaleString('cs-CZ', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {prettyDate(slidePanelInvoice.dt_vytvoreni)}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
@@ -7142,13 +7140,7 @@ const Invoices25List = () => {
                         <InfoContent>
                           <InfoLabel>Datum potvrzení</InfoLabel>
                           <InfoValue>
-                            {new Date(slidePanelInvoice.dt_potvrzeni_vecne_spravnosti).toLocaleString('cs-CZ', {
-                              day: '2-digit',
-                              month: 'long',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            {prettyDate(slidePanelInvoice.dt_potvrzeni_vecne_spravnosti)}
                           </InfoValue>
                         </InfoContent>
                       </InfoRow>

@@ -15,7 +15,7 @@ cd /var/www/erdms-dev/docs/scripts-shell
 ## Checklist před DEV buildem
 
 - [ ] Pracujeme pouze v DEV workspace `/var/www/erdms-dev/` (žádný deploy do produkce)
-- [ ] `REACT_APP_VERSION` je nastavené na aktuální DEV verzi (např. `2.33-DEV`) v [eeo-v2/client/.env](eeo-v2/client/.env)
+- [ ] `REACT_APP_VERSION` je nastavené na aktuální DEV verzi (např. `2.34-DEV`) v [eeo-v2/client/.env](eeo-v2/client/.env)
 - [ ] Pro stažení importovaných příloh je nastavené `REACT_APP_OLD_ATTACHMENTS_URL` **nebo** aspoň `REACT_APP_UPLOAD_BASE_URL` (jinak se `IMPORT` přílohy nepůjdou stáhnout)
 - [ ] DEV DB je správně (nesahat na PROD DB)
 - [ ] Nejsou přidané hardcoded URL/cesty/DB názvy (vše přes env)
@@ -57,7 +57,7 @@ Platí pouze DEV FE postup uvedený nahoře.
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální DEV verze:** `2.33` *(aktivní verze)*
+**Aktuální DEV verze:** `2.34` *(aktivní verze)*
 
 ## 🔄 VERSION CHECKING SYSTEM
 
@@ -82,9 +82,9 @@ ERDMS používá **automatický version checking systém** založený na build h
 
 **PŘÍKLAD:**
 ```bash
-# Drobná oprava CSS → Verze zůstane 2.33-DEV
+# Drobná oprava CSS → Verze zůstane 2.34-DEV
 # ALE build hash se změní: c7a2487ddeef → d8e3f9a12b45
-# → Uživatelé dostanou notifikaci "Je dostupná nová verze v2.33-DEV"
+# → Uživatelé dostanou notifikaci "Je dostupná nová verze v2.34-DEV"
 ```
 
 ### 📋 Build Hash Workflow
@@ -636,17 +636,17 @@ cd /var/www/erdms-dev/docs/scripts-shell
 
 **ŘEŠENÍ - Kontrolní seznam pro změnu verze:**
 
-1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.33\``
+1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.34\``
 2. ✅ **Client .env soubory:**
-   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.33-DEV`
-   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.33-DEV`
-   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.33`
+   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.34-DEV`
+   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.34-DEV`
+   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.34`
 3. ✅ **Client package.json:**
-   - `"version": "2.33.0"`
-   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.33-DEV`
+   - `"version": "2.34.0"`
+   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.34-DEV`
 4. ✅ **API Legacy .env soubory:**
-   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.33-DEV`
-   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.33`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.34-DEV`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.34`
 
 **🔍 Kde se verze zobrazuje:**
 - **Patička aplikace:** Zobrazuje `v{REACT_APP_VERSION}` vpravo dole
@@ -657,7 +657,7 @@ cd /var/www/erdms-dev/docs/scripts-shell
   - Soubory: `App.js`, `versionChecker.js`, `UpdateNotificationModal.js`
   - ✅ **Načítá dynamicky z `process.env.REACT_APP_VERSION`** - změna verze v .env stačí!
 
-**🔧 CO DĚLAT PŘI ZMĚNĚ VERZE (např. 2.33 → 2.34):**
+**🔧 CO DĚLAT PŘI ZMĚNĚ VERZE (např. 2.34 → 2.35):**
 
 1. **Aktualizuj .env soubory** (6 souborů - viz seznam výše)
 2. **Rebuild aplikace** - build proces načte nové hodnoty z .env
