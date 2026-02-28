@@ -860,6 +860,32 @@ function Orders25ListV3() {
   // 🆕 State pro potvrzení zavření rozpracované objednávky při vytváření nové
   const [showNewOrderConfirmDialog, setShowNewOrderConfirmDialog] = useState(false);
 
+  // 🆕 State pro potvrzení přepnutí mezi otevřenými objednávkami
+  const [showSwitchOrderConfirm, setShowSwitchOrderConfirm] = useState(false);
+  const [pendingEditOrder, setPendingEditOrder] = useState(null);
+  const [activeOrderInfo, setActiveOrderInfo] = useState(null);
+
+  const getActiveOrderInfo = useCallback(() => {
+    const state = window.__orderFormState;
+    if (state?.orderId || state?.hasDraft) {
+      return {
+        orderId: state?.orderId ?? null,
+        orderNumber: state?.orderNumber ?? ''
+      };
+    }
+
+    const legacyId = window.__activeOrderFormId || null;
+    const legacyNumber = window.__activeOrderFormEvCislo || '';
+    if (legacyId || legacyNumber) {
+      return {
+        orderId: legacyId,
+        orderNumber: legacyNumber
+      };
+    }
+
+    return null;
+  }, []);
+
   const isSelectionInsideOrdersTable = useCallback((selection) => {
     const tableElement = document.querySelector('[data-orders-v3-table="true"]');
     if (!tableElement || !selection) return false;
@@ -1572,6 +1598,48 @@ function Orders25ListV3() {
     }
   };
 
+  const requestEditOrder = useCallback(async (order) => {
+    if (!order) return;
+
+    const active = getActiveOrderInfo();
+    const targetId = order.id || order.objednavka_id;
+
+    if (active?.orderId && targetId && String(active.orderId) !== String(targetId)) {
+      setPendingEditOrder(order);
+      setActiveOrderInfo(active);
+      setShowSwitchOrderConfirm(true);
+      return;
+    }
+
+    try {
+      draftManager.setCurrentUser(user_id);
+      const hasDraft = await draftManager.hasDraft();
+
+      if (hasDraft) {
+        const draftData = await draftManager.loadDraft();
+        const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
+
+        if (draftOrderId && targetId && String(draftOrderId) !== String(targetId)) {
+          const hasNewConcept = isValidConcept(draftData);
+          const hasDbChanges = hasDraftChanges(draftData);
+          if (hasNewConcept || hasDbChanges) {
+            setPendingEditOrder(order);
+            setActiveOrderInfo({
+              orderId: draftOrderId,
+              orderNumber: draftData.formData?.cislo_objednavky || draftData.formData?.ev_cislo || ''
+            });
+            setShowSwitchOrderConfirm(true);
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      // Pokud selze kontrola draftu, pokracuj v editaci
+    }
+
+    handleEditOrder(order);
+  }, [getActiveOrderInfo, handleEditOrder, user_id]);
+
   // Handler pro evidování faktury
   const handleCreateInvoice = async (order) => {
     // ✅ Kontrola zda je objednávka ve správném stavu a má práva
@@ -1669,7 +1737,7 @@ function Orders25ListV3() {
   const handleActionClick = (action, order) => {
     switch (action) {
       case 'edit':
-        handleEditOrder(order);
+        requestEditOrder(order);
         break;
       case 'create-invoice':
         handleCreateInvoice(order);
@@ -1808,8 +1876,8 @@ function Orders25ListV3() {
 
   const handleContextMenuEdit = useCallback((order) => {
     handleCloseContextMenu();
-    handleEditOrder(order);
-  }, [handleCloseContextMenu, handleEditOrder]);
+    requestEditOrder(order);
+  }, [handleCloseContextMenu, requestEditOrder]);
 
   const handleContextMenuDelete = useCallback((order) => {
     handleCloseContextMenu();
@@ -2406,6 +2474,43 @@ function Orders25ListV3() {
           Máte rozpracovanou objednávku v Order formuláři.
           <br />
           Pokud budete pokračovat, rozpracovaná data se zavřou a otevře se nová objednávka.
+        </ConfirmDialog>,
+        document.body
+      )}
+
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showSwitchOrderConfirm}
+          onClose={() => {
+            setShowSwitchOrderConfirm(false);
+            setPendingEditOrder(null);
+            setActiveOrderInfo(null);
+          }}
+          onConfirm={() => {
+            const orderToOpen = pendingEditOrder;
+            setShowSwitchOrderConfirm(false);
+            setPendingEditOrder(null);
+            setActiveOrderInfo(null);
+            if (orderToOpen) {
+              handleEditOrder(orderToOpen);
+            }
+          }}
+          title="Uz mate otevrenou objednavku"
+          icon={faExclamationTriangle}
+          variant="warning"
+          confirmText="Otevrit novou"
+          showCancel={true}
+          cancelText="Zrusit"
+          onCancel={() => {
+            setShowSwitchOrderConfirm(false);
+            setPendingEditOrder(null);
+            setActiveOrderInfo(null);
+          }}
+        >
+          Mate otevrenou objednavku{' '}
+          <strong>{activeOrderInfo?.orderNumber || activeOrderInfo?.orderId || ''}</strong>.
+          <br />
+          Opravdu ji chcete zavrit a otevrit jinou?
         </ConfirmDialog>,
         document.body
       )}

@@ -427,10 +427,12 @@ const ColumnClearButton = styled.button`
 const ColumnFilterInput = styled.input`
   width: 100%;
   padding: 0.35rem 1.75rem 0.35rem 1.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#d1d5db'};
   border-radius: 4px;
   font-size: 0.7rem;
-  background: #f9fafb;
+  background: ${props => props.$active ? '#fffbeb' : '#f9fafb'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.2)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
   transition: all 0.15s ease;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -452,10 +454,12 @@ const ColumnFilterInput = styled.input`
 const ColumnFilterSelect = styled.select`
   width: 100%;
   padding: 0.35rem 1.75rem 0.35rem 1.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#d1d5db'};
   border-radius: 4px;
   font-size: 0.7rem;
-  background: #f9fafb;
+  background: ${props => props.$active ? '#fffbeb' : '#f9fafb'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.2)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
   transition: all 0.15s ease;
   cursor: pointer;
   appearance: none;
@@ -1493,6 +1497,8 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
   const displayText = currentValue.length === 0 
     ? 'Všechny stavy...' 
     : `Vybráno: ${currentValue.length}`;
+
+  const isActive = currentValue.length > 0;
   
   return (
     <div ref={dropdownRef} style={{ position: 'relative', marginTop: '4px' }}>
@@ -1504,17 +1510,19 @@ const StavMultiSelect = ({ columnId, localColumnFilters, handleFilterChange, ord
           }
           setStavDropdownOpen(!stavDropdownOpen);
         }}
+        data-filter-active={isActive ? 'true' : 'false'}
         style={{
           width: '100%',
           padding: '0.35rem 1.5rem 0.35rem 0.5rem',
-          border: '1px solid #d1d5db',
+          border: isActive ? '1px solid #f59e0b' : '1px solid #d1d5db',
           borderRadius: '4px',
           fontSize: '0.7rem',
-          background: 'white',
+          background: isActive ? '#fffbeb' : 'white',
           cursor: 'pointer',
           position: 'relative',
           color: currentValue.length > 0 ? '#1f2937' : '#9ca3af',
-          fontWeight: currentValue.length > 0 ? '500' : '400',
+          fontWeight: isActive ? '600' : currentValue.length > 0 ? '500' : '400',
+          boxShadow: isActive ? '0 0 0 2px rgba(245, 158, 11, 0.2)' : 'none',
           textTransform: 'none', // ✅ Normální velikost písmenek (ne uppercase)
         }}
       >
@@ -1913,6 +1921,7 @@ const OrdersTableV3 = ({
   
   // ✅ State pro reset sloupce confirm dialog
   const [resetColumnsConfirm, setResetColumnsConfirm] = useState(false);
+
   
   // State pro resizing - načíst z localStorage (per user)
   const [columnSizing, setColumnSizing] = useState(() => {
@@ -3845,6 +3854,18 @@ const OrdersTableV3 = ({
   });
 
   const activeFiltersCount = Object.values(localColumnFilters).filter(v => v).length;
+
+  const isActiveColumnValue = (value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed === '') return false;
+      if (/^[=<>]$/.test(trimmed)) return false;
+      return true;
+    }
+    return Boolean(value);
+  };
   const hasActiveSorting = sorting.length > 0;
   const hasData = data && data.length > 0;
   const colSpan = table.getAllColumns().length;
@@ -4040,6 +4061,7 @@ const OrdersTableV3 = ({
                                 onChange={(value) => handleFilterChange(columnId, value)}
                                 placeholder="Datum"
                                 variant="compact"
+                                highlight={isActiveColumnValue(dateValue)}
                               />
                             </div>
                           );
@@ -4070,6 +4092,7 @@ const OrdersTableV3 = ({
                                   'Cena FA'
                                 }
                                 clearButton={true}
+                                isActive={isActiveColumnValue(localColumnFilters[columnId])}
                                 onClear={(e) => {
                                   e?.stopPropagation();
                                   handleFilterChange(columnId, '');
@@ -4090,6 +4113,8 @@ const OrdersTableV3 = ({
                               onChange={(e) => handleFilterChange(columnId, e.target.value)}
                               onClick={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}
+                              $active={isActiveColumnValue(localColumnFilters[columnId])}
+                              data-filter-active={isActiveColumnValue(localColumnFilters[columnId]) ? 'true' : 'false'}
                             />
                             {localColumnFilters[columnId] && (
                               <ColumnClearButton
@@ -4313,7 +4338,7 @@ const OrdersTableV3 = ({
       {/* 🎯 Schvalovací dialog */}
       {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
         <ApprovalDialogOverlay>
-          <ApprovalDialog $narrow onClick={(e) => e.stopPropagation()}>
+          <ApprovalDialog onClick={(e) => e.stopPropagation()}>
             <ApprovalDialogHeader>
               <ApprovalDialogIcon>✅</ApprovalDialogIcon>
               <ApprovalDialogTitle>

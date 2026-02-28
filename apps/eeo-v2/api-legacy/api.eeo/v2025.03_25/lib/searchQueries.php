@@ -144,6 +144,8 @@ function getSqlSearchOrders2025() {
             ) as prikazce,
             (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = o.id) as pocet_priloh_obj,
             (SELECT COUNT(*) FROM " . TBL_FAKTURY . " WHERE objednavka_id = o.id AND aktivni = 1) as pocet_faktur,
+            (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as polozky_celkova_cena_s_dph,
+            (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph,
             DATE(o.dt_objednavky) as datum_objednavky,
             DATE(o.dt_schvaleni) as datum_schvaleni,
             DATE(o.dt_odeslani) as datum_odeslani,

@@ -3720,8 +3720,8 @@ const Layout = ({ children }) => {
               })()}
               icon={(() => {
                 if (location.pathname === '/order-form-25') return 'info';
-                if (hasDraftOrder && !isOrderEditMode) return 'time';
                 if (isOrderEditMode) return 'database';
+                if (hasDraftOrder && !isOrderEditMode) return 'time';
                 return 'success';
               })()}
               preferredPosition="bottom"
@@ -3737,8 +3737,9 @@ const Layout = ({ children }) => {
               data-status={location.pathname === '/order-form-25'
                 ? 'inactive'
                 : (() => {
+                    if (isOrderEditMode) return 'edit';
                     if (!hasDraftOrder || orderPhaseInfo.isZrusena) return 'new';
-                    return isOrderEditMode ? 'edit' : 'draft';
+                    return 'draft';
                   })()}
               data-inactive={location.pathname === '/order-form-25' ? 'true' : 'false'}
               style={{
@@ -4123,9 +4124,9 @@ const Layout = ({ children }) => {
               return 'Vytvořit novou objednávku';
             })()}
             icon={(() => {
+              if (isOrderEditMode) return 'database';
               if (!hasDraftOrder || orderPhaseInfo.isZrusena) return 'success';
               if (hasDraftOrder && !isOrderEditMode) return 'time';
-              if (isOrderEditMode) return 'database';
               return 'success';
             })()}
             preferredPosition="left"
@@ -4155,19 +4156,25 @@ const Layout = ({ children }) => {
                 window.dispatchEvent(new CustomEvent('orderDraftInternal', { detail: { action: 'reload-draft' } }));
               }}
               data-status={(() => {
+                if (isOrderEditMode) return 'edit';
                 if (!hasDraftOrder || orderPhaseInfo.isZrusena) return 'new';
-                return isOrderEditMode ? 'edit' : 'draft';
+                return 'draft';
               })()}
               style={{ position:'static' }}
             >
               <FontAwesomeIcon icon={(() => {
+                // Edit ma prednost pred zrusenou/bez draftu
+                if (isOrderEditMode) {
+                  return faEdit;
+                }
+
                 // Jednodušší logika ikony - plus jen když je zrušená nebo nemá draft
                 if (!hasDraftOrder || orderPhaseInfo.isZrusena) {
                   return faPlus; // Nová objednávka (pouze když zrušená nebo bez draftu)
                 }
 
                 // Pokud má draft nebo je v edit režimu → Edit ikona
-                if (hasDraftOrder || isOrderEditMode || orderPhaseInfo.phase > 1) {
+                if (hasDraftOrder || orderPhaseInfo.phase > 1) {
                   return faEdit;
                 }
 
