@@ -7281,6 +7281,10 @@ const Invoices25List = () => {
               <TableHead>
                 {/* Hlavní řádek se jmény sloupců */}
                 <tr>
+                  {/* PRVNÍ SLOUPEC - Kontrola řádku */}
+                  <TableHeader title="Kontrola">
+                    <FontAwesomeIcon icon={faCheckSquare} style={{ color: '#64748b' }} />
+                  </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'dt_aktualizace' ? 'active' : ''}`}
                     onClick={() => handleSort('dt_aktualizace')}
@@ -7440,15 +7444,72 @@ const Invoices25List = () => {
                       </span>
                     )}
                   </TableHeader>
-                  <TableHeader title="Kontrola řádku faktury">
-                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
-                  </TableHeader>
                   <TableHeader>
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
                 {/* FILTROVACÍ ŘÁDEK - IDENTICKÁ STRUKTURA JAKO V HLAVNÍ TABULCE */}
                 <tr className="filter-row">
+                  {/* Kontrola řádku - PRVNÍ SLOUPEC */}
+                  <TableHeader className="filter-cell">
+                    <button
+                      onClick={() => {
+                        const currentState = columnFilters.kontrola_radku || 'all';
+                        const nextState = currentState === 'all' ? 'kontrolovano' : 
+                                         currentState === 'kontrolovano' ? 'nekontrolovano' : 
+                                         'all';
+                        setColumnFilters({...columnFilters, kontrola_radku: nextState});
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        transition: 'all 0.2s'
+                      }}
+                      title={(() => {
+                        const state = columnFilters.kontrola_radku || 'all';
+                        if (state === 'kontrolovano') return 'Filtr: Pouze zkontrolované (klikněte pro nekontrolované)';
+                        if (state === 'nekontrolovano') return 'Filtr: Pouze nekontrolované (klikněte pro vše)';
+                        return 'Filtr: Vše (klikněte pro zkontrolované)';
+                      })()}
+                    >
+                      {(() => {
+                        const state = columnFilters.kontrola_radku || 'all';
+                        if (state === 'all') {
+                          return (
+                            <svg viewBox="0 0 448 512" style={{ width: '20px', height: '20px' }}>
+                              <defs>
+                                <clipPath id="clip-left-floating">
+                                  <rect x="0" y="0" width="224" height="512"/>
+                                </clipPath>
+                                <clipPath id="clip-right-floating">
+                                  <rect x="224" y="0" width="224" height="512"/>
+                                </clipPath>
+                              </defs>
+                              <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384z"
+                                    fill="#10b981" clipPath="url(#clip-left-floating)"/>
+                              <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384z"
+                                    fill="#94a3b8" clipPath="url(#clip-right-floating)"/>
+                            </svg>
+                          );
+                        }
+                        if (state === 'kontrolovano') {
+                          return <FontAwesomeIcon icon={faCheckSquare} style={{ color: '#10b981', fontSize: '20px' }}/>;
+                        }
+                        return (
+                          <svg viewBox="0 0 448 512" style={{ width: '20px', height: '20px' }}>
+                            <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384zM384 80H64C55.16 80 48 87.16 48 96V416C48 424.8 55.16 432 64 432H384C392.8 432 400 424.8 400 416V96C400 87.16 392.8 80 384 80z"
+                                  fill="#64748b" 
+                                  stroke="#64748b" 
+                                  strokeWidth="32"/>
+                          </svg>
+                        );
+                      })()}
+                    </button>
+                  </TableHeader>
+
                   {/* Aktualizováno */}
                   <TableHeader className="filter-cell">
                     <div className="date-filter-wrapper">
@@ -7736,11 +7797,6 @@ const Invoices25List = () => {
                         placeholder="Vše"
                       />
                     </div>
-                  </TableHeader>
-
-                  {/* Kontrola řádku - prázdná */}
-                  <TableHeader className="filter-cell">
-                    {/* Prázdná buňka pro checkbox kontroly */}
                   </TableHeader>
 
                   {/* Akce */}
