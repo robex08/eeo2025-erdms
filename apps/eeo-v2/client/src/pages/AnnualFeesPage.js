@@ -3270,12 +3270,12 @@ function AnnualFeesPage() {
         username,
         id: feeId,
         data: {
-          poznamka: nextValue === '' ? null : nextValue
+          poznamka: nextValue
         }
       });
 
       if (response.status === 'success') {
-        const updatedNote = response.data?.poznamka ?? (nextValue === '' ? null : nextValue);
+        const updatedNote = response.data?.poznamka ?? nextValue;
         setAnnualFees(prev => prev.map(f => (
           f.id === feeId ? { ...f, poznamka: updatedNote } : f
         )));
@@ -4182,21 +4182,35 @@ function AnnualFeesPage() {
                           style={{display: 'flex', alignItems: 'center', gap: '6px'}}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <InlineInput
-                            value={noteDraft}
-                            onChange={(e) => setNoteDraft(e.target.value)}
-                            style={{fontSize: '0.85rem'}}
-                            placeholder="Poznámka"
-                            disabled={isNoteSaving}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSaveEditNote(fee.id);
-                              }
-                              if (e.key === 'Escape') {
-                                handleCancelEditNote();
-                              }
-                            }}
-                          />
+                          <div style={{ position: 'relative', flex: 1 }}>
+                            <InlineInput
+                              value={noteDraft}
+                              onChange={(e) => setNoteDraft(e.target.value)}
+                              style={{
+                                fontSize: '0.85rem',
+                                paddingRight: noteDraft ? '2rem' : '0.5rem'
+                              }}
+                              placeholder="Poznámka"
+                              disabled={isNoteSaving}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveEditNote(fee.id);
+                                }
+                                if (e.key === 'Escape') {
+                                  handleCancelEditNote();
+                                }
+                              }}
+                            />
+                            {noteDraft && (
+                              <ClearButton
+                                type="button"
+                                onClick={() => setNoteDraft('')}
+                                title="Vymazat poznámku"
+                              >
+                                <FontAwesomeIcon icon={faTimes} style={{fontSize: '0.875rem'}} />
+                              </ClearButton>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleSaveEditNote(fee.id)}
