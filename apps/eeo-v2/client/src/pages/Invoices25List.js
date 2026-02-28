@@ -4947,10 +4947,47 @@ const Invoices25List = () => {
                       <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.potvrdil_vecnou_spravnost_zkracene ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
-                              <strong>{invoice.potvrdil_vecnou_spravnost_zkracene}</strong>
-                            </div>
+                            {(() => {
+                              const normalize = (value) =>
+                                String(value || '')
+                                  .normalize('NFD')
+                                  .replace(/[\u0300-\u036f]/g, '')
+                                  .replace(/\s+/g, ' ')
+                                  .trim()
+                                  .toLowerCase();
+
+                              const confirmedId = invoice.potvrdil_vecnou_spravnost_id;
+                              const assignedId = invoice.fa_predana_zam_id;
+                              const confirmedNormalized = normalize(invoice.potvrdil_vecnou_spravnost_zkracene);
+                              const assignedNormalized = normalize(invoice.fa_predana_zam_jmeno_cele);
+
+                              let isDifferent = false;
+                              if (confirmedNormalized && assignedNormalized && confirmedNormalized === assignedNormalized) {
+                                isDifferent = false;
+                              } else if (confirmedId && assignedId) {
+                                isDifferent = String(confirmedId) !== String(assignedId);
+                              } else {
+                                isDifferent = !!(confirmedNormalized && assignedNormalized && confirmedNormalized !== assignedNormalized);
+                              }
+
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                                  <strong
+                                    style={{
+                                      background: isDifferent ? '#ffedd5' : 'transparent',
+                                      borderRadius: isDifferent ? '6px' : '0',
+                                      padding: isDifferent ? '1px 5px' : '0',
+                                      color: isDifferent ? '#9a3412' : 'inherit',
+                                      whiteSpace: 'nowrap',
+                                      display: 'inline-block'
+                                    }}
+                                  >
+                                    {invoice.potvrdil_vecnou_spravnost_zkracene}
+                                  </strong>
+                                </div>
+                              );
+                            })()}
                             {invoice.dt_potvrzeni_vecne_spravnosti && (
                               <div style={{ color: '#64748b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                 <div style={{
@@ -6639,9 +6676,55 @@ const Invoices25List = () => {
                       </InfoIcon>
                       <InfoContent>
                         <InfoLabel>Předána zaměstnanci</InfoLabel>
-                        <InfoValue style={{ fontWeight: '600' }}>
-                          {slidePanelInvoice.fa_predana_zam_jmeno_cele}
-                        </InfoValue>
+                        {(() => {
+                          const confirmedByName = [
+                            slidePanelInvoice.potvrdil_vecnou_spravnost_titul_pred,
+                            slidePanelInvoice.potvrdil_vecnou_spravnost_jmeno,
+                            slidePanelInvoice.potvrdil_vecnou_spravnost_prijmeni,
+                            slidePanelInvoice.potvrdil_vecnou_spravnost_titul_za
+                          ].filter(Boolean).join(' ');
+
+                          const normalize = (value) =>
+                            String(value || '')
+                              .normalize('NFD')
+                              .replace(/[\u0300-\u036f]/g, '')
+                              .replace(/\s+/g, ' ')
+                              .trim()
+                              .toLowerCase();
+
+                          const confirmedId = slidePanelInvoice.potvrdil_vecnou_spravnost_id;
+                          const assignedId = slidePanelInvoice.fa_predana_zam_id;
+                          const confirmedNormalized = normalize(confirmedByName);
+                          const assignedNormalized = normalize(slidePanelInvoice.fa_predana_zam_jmeno_cele);
+
+                          let isDifferent = false;
+                          if (confirmedNormalized && assignedNormalized && confirmedNormalized === assignedNormalized) {
+                            isDifferent = false;
+                          } else if (confirmedId && assignedId) {
+                            isDifferent = String(confirmedId) !== String(assignedId);
+                          } else {
+                            isDifferent = !!(confirmedNormalized && assignedNormalized && confirmedNormalized !== assignedNormalized);
+                          }
+
+                          return (
+                            <>
+                              <InfoValue style={{ fontWeight: '600' }}>
+                                {slidePanelInvoice.fa_predana_zam_jmeno_cele}
+                              </InfoValue>
+                              {isDifferent && confirmedByName && (
+                                <div
+                                  style={{
+                                    marginTop: '4px',
+                                    color: '#dc2626',
+                                    fontWeight: '700'
+                                  }}
+                                >
+                                  Potvrdil(a) věcnou správnost: {confirmedByName}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </InfoContent>
                     </InfoRow>
                   )}
