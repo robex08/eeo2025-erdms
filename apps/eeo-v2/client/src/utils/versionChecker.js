@@ -137,7 +137,8 @@ class VersionChecker {
       localStorage.setItem('app_update_available', JSON.stringify({
         timestamp: Date.now(),
         buildHash: versionData.buildHash,
-        buildTime: versionData.buildTime
+        buildTime: versionData.buildTime,
+        version: versionData.version
       }));
     } catch (e) {
       // Ignore localStorage errors
@@ -160,7 +161,8 @@ class VersionChecker {
       ? new Date(versionData.buildTime).toLocaleString('cs-CZ')
       : 'nedávno';
 
-    const message = `Je dostupná nová verze aplikace ${process.env.REACT_APP_VERSION || 'N/A'} (${buildTime}).\n\n` +
+    const displayVersion = versionData.version || process.env.REACT_APP_VERSION || 'N/A';
+    const message = `Je dostupná nová verze aplikace ${displayVersion} (${buildTime}).\n\n` +
                     `Doporučujeme obnovit stránku pro zajištění správné funkčnosti.\n\n` +
                     `Obnovit nyní?`;
 
