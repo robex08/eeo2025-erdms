@@ -56,6 +56,18 @@ fi
 # Generuj timestamp (ISO 8601 format)
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+# Zjisti verzi aplikace (REACT_APP_VERSION)
+APP_VERSION="${REACT_APP_VERSION}"
+if [ -z "$APP_VERSION" ]; then
+  if [ "$BUILD_DIR" = "build-prod" ] && [ -f "../.env.production" ]; then
+    APP_VERSION=$(grep -E '^REACT_APP_VERSION=' ../.env.production | tail -n 1 | cut -d'=' -f2-)
+  elif [ -f "../.env.development" ]; then
+    APP_VERSION=$(grep -E '^REACT_APP_VERSION=' ../.env.development | tail -n 1 | cut -d'=' -f2-)
+  elif [ -f "../.env" ]; then
+    APP_VERSION=$(grep -E '^REACT_APP_VERSION=' ../.env | tail -n 1 | cut -d'=' -f2-)
+  fi
+fi
+
 echo "✅ Build hash: $BUILD_HASH"
 echo "⏰ Build time: $BUILD_TIME"
 
@@ -65,6 +77,7 @@ cat > "$VERSION_JSON" << EOF
 {
   "buildHash": "$BUILD_HASH",
   "buildTime": "$BUILD_TIME",
+  "version": "${APP_VERSION}",
   "generated": "$(date)"
 }
 EOF

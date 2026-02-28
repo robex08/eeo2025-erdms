@@ -2636,7 +2636,6 @@ const OrdersTableV3 = ({
             'FAKTURACE',
             'VECNA_SPRAVNOST',
             'ZKONTROLOVANA',
-            'CEKA_SE',
             'NEUVEREJNIT'
           ];
 

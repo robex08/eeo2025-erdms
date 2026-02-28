@@ -31,6 +31,8 @@ const UpdateNotificationModal = ({ open, onClose, onUpdate, versionData }) => {
     onUpdate();
   };
 
+  const newVersion = versionData?.version || process.env.REACT_APP_VERSION || 'N/A';
+
   return (
     <Dialog
       open={open}
@@ -62,7 +64,7 @@ const UpdateNotificationModal = ({ open, onClose, onUpdate, versionData }) => {
         />
         <Box>
           <Typography variant="h6" component="div">
-            Nová verze aplikace ({process.env.REACT_APP_VERSION || 'N/A'})
+            Nová verze aplikace ({newVersion})
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Aktualizace ze {buildTime}
