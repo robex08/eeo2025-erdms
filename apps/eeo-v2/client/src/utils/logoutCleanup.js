@@ -83,6 +83,8 @@ export const LOGOUT_CLEANUP_CONFIG = {
     'permissions_cache*',
     'financial_cache*',
     'calendar_order_counts*',  // 📅 Kalendářové počty objednávek (citlivá data)
+    'ordersV3_expandedRows_*',  // 🔽 V3: Rozbalené řádky (per-user session data)
+    'ordersV3_detailsCache_*',  // 💾 V3: Cache detailů objednávek (citlivá data)
 
     // 🔒 Per-user citlivé šablony a často používané hodnoty
     'order_templates*',    // 📋 Šablony objednávek (dodavatelé, částky, popisy)
