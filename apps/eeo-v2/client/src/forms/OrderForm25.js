@@ -11417,6 +11417,19 @@ function OrderForm25() {
             }
           }
 
+          // 🆕 Čeká na zveřejnění v registru při INSERT (UVEREJNIT)
+          if (hasWorkflowState(workflowKod, 'UVEREJNIT')) {
+            try {
+              await triggerNotification('ORDER_REGISTRY_PENDING', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-uverejnit-new', `✅ Notifikace odeslána: nová objednávka čeká na zveřejnění v registru ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-uverejnit-new', `⚠️ Chyba při notifikaci UVEREJNIT: ${triggerError.message}`);
+            }
+          }
+
           // 🆕 Okamžité dokončení při INSERT (velmi rare, ale možné)
           if (hasWorkflowState(workflowKod, 'DOKONCENA')) {
             try {
@@ -12031,6 +12044,23 @@ function OrderForm25() {
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-potvrzena', `Notifikace odeslána: objednávka potvrzena dodavatelem ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-potvrzena', `Chyba při notifikaci POTVRZENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Čeká na zveřejnění v registru (UVEREJNIT)
+          // Příjemci: role Veřejné zakázky (ID 8) - automaticky přes org hierarchii
+          const hasUverejnit = hasWorkflowState(result.stav_workflow_kod, 'UVEREJNIT');
+          const hadUverejnit = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'UVEREJNIT') : false;
+          
+          if (hasUverejnit && !hadUverejnit) {
+            try {
+              await triggerNotification('ORDER_REGISTRY_PENDING', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-uverejnit', `✅ Notifikace odeslána: objednávka čeká na zveřejnění v registru ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-uverejnit', `⚠️ Chyba při notifikaci UVEREJNIT: ${triggerError.message}`);
             }
           }
 
