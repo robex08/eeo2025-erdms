@@ -246,6 +246,34 @@ class CashbookService {
                 throw new Exception('Kniha již je uzavřená');
             }
             
+            // ✅ KONTROLA CHRONOLOGIE: Předchozí měsíc musí být uzavřený (PRO STEJNOU POKLADNU)
+            $prevMonth = $book['mesic'] == 1 ? 12 : $book['mesic'] - 1;
+            $prevYear = $book['mesic'] == 1 ? $book['rok'] - 1 : $book['rok'];
+            
+            // Načíst předchozí měsíc PRO STEJNOU POKLADNU
+            $prevBooks = $this->bookModel->getBooks(array(
+                'uzivatel_id' => $book['uzivatel_id'],
+                'rok' => $prevYear,
+                'mesic' => $prevMonth,
+                'pokladna_ids' => array($book['pokladna_id'])  // ✅ KRITICKÉ: Kontrolovat STEJNOU pokladnu
+            ));
+            
+            if (!empty($prevBooks['books'])) {
+                // ✅ Najít knihu pro STEJNOU pokladnu (může být více knih pro různé pokladny)
+                $prevBook = null;
+                foreach ($prevBooks['books'] as $b) {
+                    if ($b['pokladna_id'] == $book['pokladna_id']) {
+                        $prevBook = $b;
+                        break;
+                    }
+                }
+                
+                // Pokud existuje předchozí kniha pro stejnou pokladnu a je AKTIVNÍ → blokovat
+                if ($prevBook && $prevBook['stav_knihy'] === 'aktivni') {
+                    throw new Exception('Nelze uzavřít měsíc. Nejprve uzavřete předchozí měsíc pro tuto pokladnu (' . $prevMonth . '/' . $prevYear . ').');
+                }
+            }
+            
             // Uzavřít uživatelem
             $this->bookModel->closeBookByUser($bookId, $userId);
             

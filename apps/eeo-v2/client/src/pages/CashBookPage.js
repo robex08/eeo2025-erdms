@@ -2297,20 +2297,22 @@ const CashBookPage = () => {
 
   // 🆕 Kontrola zda předchozí měsíc je uzavřený (pro warning)
   const checkPreviousMonthStatus = useCallback(async () => {
-    if (!currentBookId || !mainAssignment?.uzivatel_id) {
+    if (!currentBookId || !mainAssignment?.uzivatel_id || !mainAssignment?.pokladna_id) {
       setShowPreviousMonthWarning(false);
       return;
     }
 
     const userId = mainAssignment.uzivatel_id;
+    const pokladnaId = mainAssignment.pokladna_id;
     const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
     const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
 
     try {
-      const result = await cashbookAPI.listBooks(userId, prevYear, prevMonth);
+      // ✅ OPRAVA: Použít listBooksForCashbox() - filtruje podle POKLADNY!
+      const result = await cashbookAPI.listBooksForCashbox(pokladnaId, prevYear, prevMonth);
 
       if (result.status === 'ok' && result.data?.books?.length > 0) {
-        const prevBook = result.data.books[0];
+        const prevBook = result.data.books[0];  // Backend už vrací jen knihy pro tuto pokladnu
 
         // Pokud je předchozí měsíc AKTIVNÍ (ne uzavřený) → zobrazit warning
         if (prevBook.stav_knihy === 'aktivni') {
@@ -3569,6 +3571,19 @@ const CashBookPage = () => {
       return;
     }
 
+    // ✅ KONTROLA CHRONOLOGIE: Blokovat uzavření pokud předchozí měsíc není uzavřený
+    if (showPreviousMonthWarning) {
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      const prevMonthName = new Date(prevYear, prevMonth - 1).toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' });
+      
+      showToast(
+        `Nelze uzavřít měsíc. Nejprve uzavřete předchozí měsíc: ${prevMonthName}`,
+        'error'
+      );
+      return;
+    }
+
     // Otevřít confirm dialog
     setCloseMonthDialogOpen(true);
   };
@@ -3623,6 +3638,13 @@ const CashBookPage = () => {
         const bookResult = await cashbookAPI.getBook(book.id, false); // force_recalc = false
 
         if (bookResult.status !== 'ok' || !bookResult.data?.entries) {
+          continue;
+        }
+
+        // ✅ FIX: Přeskočit uzavřené knihy (nelze je upravovat)
+        const bookStatus = bookResult.data.stav_knihy || book.stav_knihy;
+        if (bookStatus && bookStatus !== 'aktivni') {
+          console.log(`⏭️ Přeskakuji knihu ${book.rok}/${book.mesic} (stav: ${bookStatus})`);
           continue;
         }
 

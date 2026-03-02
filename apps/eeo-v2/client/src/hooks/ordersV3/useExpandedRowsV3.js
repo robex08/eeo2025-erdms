@@ -33,7 +33,31 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
   const storageKey = `${STORAGE_KEY_PREFIX}${userId}`;
   const cacheKey = `${DETAILS_CACHE_KEY_PREFIX}${userId}`;
 
-  // 💾 Load expanded rows from localStorage při mount
+  // � Version check - pokud je jiná verze app, smazat cache
+  useEffect(() => {
+    if (!userId) return;
+
+    try {
+      const CURRENT_VERSION = process.env.REACT_APP_VERSION || '2.34-DEV';
+      const versionKey = `ordersV3_version_${userId}`;
+      const savedVersion = localStorage.getItem(versionKey);
+
+      if (savedVersion && savedVersion !== CURRENT_VERSION) {
+        // Nová verze aplikace - vyčistit cache
+        console.log(`🔄 Nová verze aplikace (${savedVersion} → ${CURRENT_VERSION}), čištění V3 cache...`);
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem(cacheKey);
+        localStorage.setItem(versionKey, CURRENT_VERSION);
+      } else if (!savedVersion) {
+        // První spuštění - uložit verzi
+        localStorage.setItem(versionKey, CURRENT_VERSION);
+      }
+    } catch (error) {
+      console.warn('⚠️ Chyba při version check:', error);
+    }
+  }, [userId, storageKey, cacheKey]);
+
+  // �💾 Load expanded rows from localStorage při mount
   useEffect(() => {
     if (!userId) return;
 
@@ -238,6 +262,23 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
       return detail;
     } catch (error) {
       console.error(`❌ [REFRESH] Error loading order ${orderId}:`, error);
+      
+      // 🔥 AUTO-CLEANUP: Pokud objednávka neexistuje (404), odstranit z expandedRows
+      if (error.response?.status === 404 || error.message?.includes('nebyla nalezena')) {
+        console.log(`🗑️ [AUTO-CLEANUP] Objednávka ${orderId} neexistuje, odstraňuji z expandedRows...`);
+        setExpandedRows(prev => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+        
+        // Odstranit také z cache
+        setDetailsCache(prev => {
+          const next = { ...prev };
+          delete next[orderId];
+          return next;
+        });
+      }
       
       setErrors(prev => ({
         ...prev,
