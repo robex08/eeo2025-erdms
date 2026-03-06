@@ -117,7 +117,6 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
     // - Minimální zátěž serveru (24 requestů/den místo 480)
     // - Token refresh max 2x v posledních 2h před vypršením (místo 40x při 3min intervalu)
     intervalRef.current = setInterval(() => {
-      console.log('⏰ Background ping triggered (1h interval) - with token refresh');
       updateActivity();
     }, 3600000); // 1 hodina = 3 600 000 ms
 

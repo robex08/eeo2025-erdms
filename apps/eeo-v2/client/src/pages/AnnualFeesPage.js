@@ -2893,7 +2893,63 @@ function AnnualFeesPage() {
       if (response.status === 'success') {
         showToast(formatToastMessage('✅ Položka přidána', 'success'), { type: 'success' });
         handleCancelAddItem();
-        loadAnnualFees();
+        
+        // ✅ Refresh jen konkrétního fee (bez zavření řádku)
+        try {
+          const detail = await getAnnualFeeDetail({
+            token,
+            username,
+            id: feeId
+          });
+          
+          if (detail.data) {
+            // Vypočítat počty pro badges
+            const pocet_zaplaceno = (detail.data.polozky || []).filter(item => item.stav === 'ZAPLACENO').length;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const pocet_po_splatnosti = (detail.data.polozky || []).filter(item => {
+              if (item.stav === 'ZAPLACENO') return false;
+              const dueDate = new Date(item.datum_splatnosti);
+              dueDate.setHours(0, 0, 0, 0);
+              return dueDate < today;
+            }).length;
+            
+            const pocet_blizi_se_splatnost = (detail.data.polozky || []).filter(item => {
+              if (item.stav === 'ZAPLACENO') return false;
+              const dueDate = new Date(item.datum_splatnosti);
+              dueDate.setHours(0, 0, 0, 0);
+              const dueSoonLimit = new Date(today);
+              dueSoonLimit.setDate(today.getDate() + 10);
+              return dueDate >= today && dueDate <= dueSoonLimit;
+            }).length;
+            
+            // Aktualizovat jen tento fee bez zavření řádku
+            setAnnualFees(prev => prev.map(f => 
+              f.id === feeId ? { 
+                ...f, 
+                ...detail.data, 
+                polozky: detail.data.polozky, 
+                pocet_zaplaceno, 
+                pocet_po_splatnosti, 
+                pocet_blizi_se_splatnost 
+              } : f
+            ));
+            
+            // Refresh dashboard statistik
+            const statsResponse = await getAnnualFeesStats({
+              token,
+              username,
+              rok: filters.rok !== 'all' ? filters.rok : undefined
+            });
+            
+            if (statsResponse.status === 'success' && statsResponse.data?.dashboard) {
+              setDashboardStats(statsResponse.data.dashboard);
+            }
+          }
+        } catch (error) {
+          console.error('Chyba při refresh po přidání položky:', error);
+        }
       } else {
         showToast(formatToastMessage(`⚠️ ${response.message || 'Chyba při přidávání položky'}`, 'error'), { type: 'error' });
       }

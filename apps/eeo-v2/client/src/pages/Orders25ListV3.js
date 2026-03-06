@@ -822,8 +822,6 @@ function Orders25ListV3() {
       stav_id: order.stav_id,
       stav_id_num: order.stav_id_num,
     }));
-
-    console.log('DEBUG OrdersV3 first page statuses', snapshot);
   }, [orders, itemsPerPage]);
 
   // Helper funkce pro získání labelu období
@@ -1362,9 +1360,6 @@ function Orders25ListV3() {
         const result = await loadOrders(gf, { forceRefresh: false, silent: true });
         if (result?.status === 'success') {
           setLastBtAutoRefreshTime(new Date());
-          if (process.env.NODE_ENV === 'development') {
-            console.log('✅ [Orders25ListV3] BT auto-refresh OK');
-          }
         }
         return result;
       } catch (_) {
