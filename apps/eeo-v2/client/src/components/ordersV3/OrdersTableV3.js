@@ -1663,6 +1663,10 @@ const OrdersTableV3 = ({
   canApproveOrder = null,
   canCancelOrder = null,
   onRefreshOrders = null,
+  isBudgetManagerRole = false, // 🆕 Je uživatel správce rozpočtu?
+  isAdmin = false, // 🆕 Je uživatel admin (SUPERADMIN/ADMINISTRATOR)?
+  hasPermission = null, // 🆕 Callback pro kontrolu oprávnění
+  hasAccountingRole = false, // 🆕 Je uživatel v účetní roli (UCETNI/HLAVNI_UCETNI/VEREJNE_ZAKAZKY)?
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
   highlightOrderId = null, // 🎯 ID objednávky k zvýraznění po návratu z editace
@@ -2626,8 +2630,17 @@ const OrdersTableV3 = ({
           const workflowStates = parseWorkflowStates(order.stav_workflow_kod);
           const lastState = getLastWorkflowState(order.stav_workflow_kod);
 
+          // ✅ Zjištění, zda je aktuální uživatel oprávněn schvalovat
+          const isPrikazce = String(order.prikazce_id) === String(userId);
+          const canUserApprove = isPrikazce || isBudgetManagerRole || isAdmin;
+
+          // 🎯 Zjištění, zda je uživatel v privilegované roli (admin, příkazce, správce rozpočtu, účetní role)
+          const isPrivilegedUser = isAdmin || isPrikazce || isBudgetManagerRole || hasAccountingRole;
+
           const allowedApproveStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
-          const allowedCancelStates = [
+          
+          // 📋 ROZŠÍŘENÝ seznam stavů pro storno (pro privilegované uživatele)
+          const allowedCancelStatesExtended = [
             'ROZPRACOVANA',
             'ODESLANA',
             'POTVRZENA',
@@ -2636,13 +2649,35 @@ const OrdersTableV3 = ({
             'FAKTURACE',
             'VECNA_SPRAVNOST',
             'ZKONTROLOVANA',
-            'NEUVEREJNIT'
+            'NEUVEREJNIT',
+            'ODESLANA_KE_SCHVALENI'
           ];
+          
+          // 📋 OMEZENÝ seznam stavů pro storno (pro běžné uživatele)
+          const allowedCancelStatesBasic = [
+            'ROZPRACOVANA',
+            'ODESLANA',
+            'POTVRZENA',
+            'FAKTURACE',
+            'ODESLANA_KE_SCHVALENI'
+          ];
+          
+          // ✅ Vyber správnou sadu stavů podle role uživatele
+          const allowedCancelStates = isPrivilegedUser 
+            ? allowedCancelStatesExtended 
+            : allowedCancelStatesBasic;
 
           const isAllowedApproveState = allowedApproveStates.includes(lastState);
           const isAllowedCancelState = allowedCancelStates.includes(lastState);
+          
+          // 🎯 KLÍČOVÁ LOGIKA: Pro ODESLANA_KE_SCHVALENI a SCHVALENA:
+          // - Příkazce/správce/admin → zobrazit SCHVÁLENÍ (mohou zamítnout místo storna)
+          // - Ostatní uživatelé → zobrazit STORNO
+          const shouldShowApprovalForUser = isAllowedApproveState && canUserApprove;
+          const shouldShowCancelForUser = isAllowedCancelState && !shouldShowApprovalForUser;
 
-          if (!isAllowedApproveState && !isAllowedCancelState) return null;
+          // Pokud uživatel nemá právo na schválení ani na storno, nezobrazovat nic
+          if (!shouldShowApprovalForUser && !shouldShowCancelForUser) return null;
           
           // Určení ikony podle stavu
           const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
@@ -2692,7 +2727,7 @@ const OrdersTableV3 = ({
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '0.3rem' }}>
-              {isAllowedApproveState && (
+              {shouldShowApprovalForUser && (
                 <SmartTooltip 
                   text={approvalTooltipText} 
                   icon={approvalTooltipIcon} 
@@ -2747,7 +2782,7 @@ const OrdersTableV3 = ({
                 </SmartTooltip>
               )}
 
-              {isAllowedCancelState && (
+              {shouldShowCancelForUser && (
                 <SmartTooltip
                   text={cancelTooltipText}
                   icon={cancelTooltipIcon}

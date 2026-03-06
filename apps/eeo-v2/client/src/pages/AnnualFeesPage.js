@@ -3714,7 +3714,7 @@ function AnnualFeesPage() {
                 <Th>Položky</Th>
                 <Th style={{textAlign: 'center'}}>Stav</Th>
                 <Th>Zpracovatel</Th>
-                <Th>Poznámka</Th>
+                <Th style={{maxWidth: '300px'}}>Poznámka</Th>
                 <Th style={{textAlign: 'center'}} title="Přílohy">📎</Th>
                 <Th style={{textAlign: 'center'}}>Akce</Th>
               </tr>
@@ -4168,7 +4168,7 @@ function AnnualFeesPage() {
                         <span style={{color: '#9ca3af'}}>-</span>
                       )}
                     </Td>
-                    <Td style={{fontSize: '0.85rem', color: '#6b7280'}}>
+                    <Td style={{fontSize: '0.85rem', color: '#6b7280', maxWidth: '300px', wordWrap: 'break-word', whiteSpace: 'normal'}}>
                       {isEditingFee ? (
                         <InlineInput
                           value={editFeeData.poznamka || ''}
@@ -4250,7 +4250,7 @@ function AnnualFeesPage() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           {fee.poznamka ? (
-                            <div style={{color: '#6b7280'}}>{highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
+                            <div style={{color: '#6b7280', wordWrap: 'break-word', whiteSpace: 'normal', lineHeight: '1.4'}}>{highlightSearchTerm(fee.poznamka, debouncedFulltext)}</div>
                           ) : (
                             <span style={{color: '#9ca3af'}}>-</span>
                           )}

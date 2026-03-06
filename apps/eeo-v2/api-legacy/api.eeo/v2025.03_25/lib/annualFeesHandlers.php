@@ -129,7 +129,7 @@ function canCreateAnnualFees($user) {
 }
 
 /**
- * Kontrola práv pro EDIT (editace)
+ * Kontrola práv pro EDIT (editace hlavičky)
  * ADMIN, ANNUAL_FEES_MANAGE nebo ANNUAL_FEES_EDIT
  * @param array $user
  * @return bool
@@ -137,6 +137,21 @@ function canCreateAnnualFees($user) {
 function canEditAnnualFees($user) {
     return isAnnualFeesAdmin($user) || 
            hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_EDIT']);
+}
+
+/**
+ * Kontrola práv pro EDIT POLOŽEK (editace jednotlivých položek)
+ * ADMIN, ANNUAL_FEES_MANAGE nebo ANNUAL_FEES_EDIT nebo ANNUAL_FEES_ITEM_UPDATE
+ * 
+ * ⚠️ DŮLEŽITÉ: Tato funkce kontroluje práva pro editaci POLOŽEK ročních poplatků.
+ * Je mírnější než canEditAnnualFees(), protože zahrnuje i granulární právo ANNUAL_FEES_ITEM_UPDATE.
+ * 
+ * @param array $user
+ * @return bool
+ */
+function canEditAnnualFeesItems($user) {
+    return isAnnualFeesAdmin($user) || 
+           hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_MANAGE', 'ANNUAL_FEES_EDIT', 'ANNUAL_FEES_ITEM_UPDATE']);
 }
 
 /**
@@ -803,8 +818,8 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
             ];
         }
     } else {
-        // Editace ostatních polí - potřeba EDIT právo
-        if (!canEditAnnualFees($user)) {
+        // Editace ostatních polí položky - potřeba EDIT právo (včetně ITEM_UPDATE)
+        if (!canEditAnnualFeesItems($user)) {
             return [
                 'status' => 'error',
                 'message' => 'Nemáte oprávnění k editaci položek ročních poplatků',

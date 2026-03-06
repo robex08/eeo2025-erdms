@@ -20533,7 +20533,7 @@ function OrderForm25() {
                 <Lock size={20} style={{ marginTop: '0.25rem', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ marginBottom: '0.5rem' }}>
-                    Objednavka byla uspesne dokoncena. Vsechny kroky byly splneny.
+                    Objednávka byla úspěšně dokončena. Všechny kroky byly splněny.
                   </div>
                   {formData.dokoncil_id && (
                     <div style={{ fontWeight: 'normal', fontSize: '0.875rem' }}>
