@@ -677,6 +677,20 @@ function Orders25ListV3() {
     return hasAdminRole && hasAdminRole();
   }, [hasAdminRole]);
 
+  const isBudgetManagerRole = useMemo(() => {
+    return userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
+  }, [userDetail?.roles]);
+
+  // ✅ Kontrola privilegovaných rolí (účetní, hlavní účetní, veřejné zakázky)
+  const hasAccountingRole = useMemo(() => {
+    if (!userDetail?.roles) return false;
+    return userDetail.roles.some(role => 
+      role.kod_role === 'UCETNI' || 
+      role.kod_role === 'HLAVNI_UCETNI' || 
+      role.kod_role === 'VEREJNE_ZAKAZKY'
+    );
+  }, [userDetail?.roles]);
+
   const hasApproveColumn = useMemo(() => {
     if (!hasPermission) return false;
     return (hasAdminRole && hasAdminRole()) ||
@@ -793,6 +807,25 @@ function Orders25ListV3() {
   // ✅ VIRTUALIZATION: Automatic based na data size (declared after orders)
   const shouldUseVirtualization = orders.length >= ORDERS_V3_CONFIG.VIRTUALIZATION_THRESHOLD;
 
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    const maxItems = itemsPerPage && itemsPerPage > 0
+      ? Math.min(itemsPerPage, orders.length)
+      : Math.min(20, orders.length);
+
+    const snapshot = orders.slice(0, maxItems).map((order) => ({
+      id: order.id,
+      cislo_objednavky: order.cislo_objednavky,
+      stav_workflow_kod: order.stav_workflow_kod,
+      stav_objednavky: order.stav_objednavky,
+      stav_id: order.stav_id,
+      stav_id_num: order.stav_id_num,
+    }));
+
+    console.log('DEBUG OrdersV3 first page statuses', snapshot);
+  }, [orders, itemsPerPage]);
+
   // Helper funkce pro získání labelu období
   const getPeriodLabel = (value) => {
     const labels = {
@@ -859,32 +892,6 @@ function Orders25ListV3() {
 
   // 🆕 State pro potvrzení zavření rozpracované objednávky při vytváření nové
   const [showNewOrderConfirmDialog, setShowNewOrderConfirmDialog] = useState(false);
-
-  // 🆕 State pro potvrzení přepnutí mezi otevřenými objednávkami
-  const [showSwitchOrderConfirm, setShowSwitchOrderConfirm] = useState(false);
-  const [pendingEditOrder, setPendingEditOrder] = useState(null);
-  const [activeOrderInfo, setActiveOrderInfo] = useState(null);
-
-  const getActiveOrderInfo = useCallback(() => {
-    const state = window.__orderFormState;
-    if (state?.orderId || state?.hasDraft) {
-      return {
-        orderId: state?.orderId ?? null,
-        orderNumber: state?.orderNumber ?? ''
-      };
-    }
-
-    const legacyId = window.__activeOrderFormId || null;
-    const legacyNumber = window.__activeOrderFormEvCislo || '';
-    if (legacyId || legacyNumber) {
-      return {
-        orderId: legacyId,
-        orderNumber: legacyNumber
-      };
-    }
-
-    return null;
-  }, []);
 
   const isSelectionInsideOrdersTable = useCallback((selection) => {
     const tableElement = document.querySelector('[data-orders-v3-table="true"]');
@@ -1598,48 +1605,6 @@ function Orders25ListV3() {
     }
   };
 
-  const requestEditOrder = useCallback(async (order) => {
-    if (!order) return;
-
-    const active = getActiveOrderInfo();
-    const targetId = order.id || order.objednavka_id;
-
-    if (active?.orderId && targetId && String(active.orderId) !== String(targetId)) {
-      setPendingEditOrder(order);
-      setActiveOrderInfo(active);
-      setShowSwitchOrderConfirm(true);
-      return;
-    }
-
-    try {
-      draftManager.setCurrentUser(user_id);
-      const hasDraft = await draftManager.hasDraft();
-
-      if (hasDraft) {
-        const draftData = await draftManager.loadDraft();
-        const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
-
-        if (draftOrderId && targetId && String(draftOrderId) !== String(targetId)) {
-          const hasNewConcept = isValidConcept(draftData);
-          const hasDbChanges = hasDraftChanges(draftData);
-          if (hasNewConcept || hasDbChanges) {
-            setPendingEditOrder(order);
-            setActiveOrderInfo({
-              orderId: draftOrderId,
-              orderNumber: draftData.formData?.cislo_objednavky || draftData.formData?.ev_cislo || ''
-            });
-            setShowSwitchOrderConfirm(true);
-            return;
-          }
-        }
-      }
-    } catch (error) {
-      // Pokud selze kontrola draftu, pokracuj v editaci
-    }
-
-    handleEditOrder(order);
-  }, [getActiveOrderInfo, handleEditOrder, user_id]);
-
   // Handler pro evidování faktury
   const handleCreateInvoice = async (order) => {
     // ✅ Kontrola zda je objednávka ve správném stavu a má práva
@@ -1737,7 +1702,7 @@ function Orders25ListV3() {
   const handleActionClick = (action, order) => {
     switch (action) {
       case 'edit':
-        requestEditOrder(order);
+        handleEditOrder(order);
         break;
       case 'create-invoice':
         handleCreateInvoice(order);
@@ -1876,8 +1841,8 @@ function Orders25ListV3() {
 
   const handleContextMenuEdit = useCallback((order) => {
     handleCloseContextMenu();
-    requestEditOrder(order);
-  }, [handleCloseContextMenu, requestEditOrder]);
+    handleEditOrder(order);
+  }, [handleCloseContextMenu, handleEditOrder]);
 
   const handleContextMenuDelete = useCallback((order) => {
     handleCloseContextMenu();
@@ -1969,7 +1934,9 @@ function Orders25ListV3() {
       order.potvrdil_vecnou_spravnost_id,       // 12. Potvrdil věcnou správnost
     ];
 
-    return participantRoles.some(roleId => roleId === currentUserId);
+    return participantRoles.some(roleId =>
+      roleId !== null && roleId !== undefined && String(roleId) === String(currentUserId)
+    );
   }, [currentUserId]);
 
   const canAddComment = useCallback((order) => {
@@ -1991,6 +1958,43 @@ function Orders25ListV3() {
   const canCancelOrder = useCallback((order) => {
     if (!order || !currentUserId || isNaN(currentUserId) || !hasPermission) return false;
 
+    const isBudgetManagerRole = userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
+
+    // ✅ Zjisti workflow stav objednávky
+    let lastState = '';
+    try {
+      let workflowStates = [];
+      if (Array.isArray(order.stav_workflow_kod)) {
+        workflowStates = order.stav_workflow_kod;
+      } else if (typeof order.stav_workflow_kod === 'string') {
+        workflowStates = JSON.parse(order.stav_workflow_kod);
+      }
+      
+      if (workflowStates.length > 0) {
+        const last = workflowStates[workflowStates.length - 1];
+        lastState = (typeof last === 'string' 
+          ? last 
+          : (last.kod_stavu || last.nazev_stavu || '')
+        ).toUpperCase().trim();
+      }
+    } catch (e) {
+      lastState = '';
+    }
+
+    // ⚠️ SPECIÁLNÍ PRAVIDLO: Pro stav ODESLANA_KE_SCHVALENI
+    // Příkazce a admini NEMOHOU stornovat - mají ikonu schválení/zamítnutí
+    if (lastState === 'ODESLANA_KE_SCHVALENI') {
+      const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+      const isAdmin = hasPermission('SUPERADMIN') || 
+                      hasPermission('ADMINISTRATOR') || 
+                      hasPermission('ORDER_MANAGE');
+      
+      if (isPrikazce || isAdmin || isBudgetManagerRole) {
+        return false; // Příkazce/admin nemůže stornovat - má zamítnout místo toho
+      }
+    }
+
+    // ✅ Standardní oprávnění pro storno
     if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE') || hasPermission('ORDER_EDIT_SUBORDINATE')) {
       return true;
     }
@@ -2000,7 +2004,7 @@ function Orders25ListV3() {
     }
 
     return false;
-  }, [currentUserId, hasPermission, isUserInOrderRole]);
+  }, [currentUserId, hasPermission, isUserInOrderRole, userDetail?.roles]);
 
   // canToggleCheck - pouze SUPERADMIN, ADMINISTRATOR, KONTROLOR_OBJEDNAVEK
   const canToggleCheck = useCallback(() => {
@@ -2014,13 +2018,8 @@ function Orders25ListV3() {
     if (!order) return false;
     
     const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+    const isBudgetManagerRole = userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
     const isAdminRole = hasAdminRole && hasAdminRole();
-    
-    const hasPermissionToApprove = isPrikazce || isAdminRole;
-    
-    if (!hasPermissionToApprove) {
-      return false;
-    }
     
     // Zkontroluj workflow stav
     let workflowStates = [];
@@ -2042,8 +2041,21 @@ function Orders25ListV3() {
         ).toUpperCase()
       : '';
     
-    return allowedStates.includes(lastState);
-  }, [currentUserId, hasAdminRole]);
+    const isAllowedState = allowedStates.includes(lastState);
+    
+    // 🎯 ADMINI mohou vždy schvalovat (pokud je správný stav)
+    if (isAdminRole) {
+      return isAllowedState;
+    }
+    
+    // 🎯 Správce rozpočtu a příkazci mohou schvalovat pouze SVOJE objednávky
+    // (pokud nejsou příkazcem, ikona bude vyšedivělá)
+    if (isBudgetManagerRole || isPrikazce) {
+      return isPrikazce && isAllowedState;
+    }
+    
+    return false;
+  }, [currentUserId, hasAdminRole, userDetail]);
 
   return (
     <>
@@ -2304,9 +2316,13 @@ function Orders25ListV3() {
         canDelete={canDelete}
         canHardDelete={canHardDelete}
         canGenerateFinancialControl={canGenerateFinancialControl()}
-        showApproveColumn={hasApproveColumn}
+        showApproveColumn={true}
         canApproveOrder={canApprove}
         canCancelOrder={canCancelOrder}
+        isBudgetManagerRole={isBudgetManagerRole}
+        isAdmin={isAdmin}
+        hasPermission={hasPermission}
+        hasAccountingRole={hasAccountingRole}
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
         highlightOrderId={highlightOrderId}
@@ -2318,6 +2334,7 @@ function Orders25ListV3() {
         getOrderTotalPriceWithDPH={getOrderTotalPriceWithDPH}
         forceVirtualization={shouldUseVirtualization}
         showPerformanceInfo={process.env.NODE_ENV === 'development'}
+        isBudgetManagerRole={isBudgetManagerRole}
         // 🆕 Kontrola a komentáře
         onToggleOrderCheck={handleToggleOrderCheck}
         onLoadComments={handleLoadComments}
@@ -2474,43 +2491,6 @@ function Orders25ListV3() {
           Máte rozpracovanou objednávku v Order formuláři.
           <br />
           Pokud budete pokračovat, rozpracovaná data se zavřou a otevře se nová objednávka.
-        </ConfirmDialog>,
-        document.body
-      )}
-
-      {createPortal(
-        <ConfirmDialog
-          isOpen={showSwitchOrderConfirm}
-          onClose={() => {
-            setShowSwitchOrderConfirm(false);
-            setPendingEditOrder(null);
-            setActiveOrderInfo(null);
-          }}
-          onConfirm={() => {
-            const orderToOpen = pendingEditOrder;
-            setShowSwitchOrderConfirm(false);
-            setPendingEditOrder(null);
-            setActiveOrderInfo(null);
-            if (orderToOpen) {
-              handleEditOrder(orderToOpen);
-            }
-          }}
-          title="Uz mate otevrenou objednavku"
-          icon={faExclamationTriangle}
-          variant="warning"
-          confirmText="Otevrit novou"
-          showCancel={true}
-          cancelText="Zrusit"
-          onCancel={() => {
-            setShowSwitchOrderConfirm(false);
-            setPendingEditOrder(null);
-            setActiveOrderInfo(null);
-          }}
-        >
-          Mate otevrenou objednavku{' '}
-          <strong>{activeOrderInfo?.orderNumber || activeOrderInfo?.orderId || ''}</strong>.
-          <br />
-          Opravdu ji chcete zavrit a otevrit jinou?
         </ConfirmDialog>,
         document.body
       )}
