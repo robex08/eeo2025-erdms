@@ -130,7 +130,7 @@ $queries['auditni_zaznamy_select_by_id'] = "SELECT * FROM ".TBL_AUDITNI_ZAZNAMY.
 $queries['ciselnik_stavy_select_all'] = "SELECT * FROM ".TBL_CISELNIK_STAVY;
 $queries['ciselnik_stavy_select_by_id'] = "SELECT * FROM ".TBL_CISELNIK_STAVY." WHERE id = :id";
 // Select status entries by their type (e.g. 'OBJEDNAVKA') - expects a parameter :typ
-$queries['ciselnik_stavy_select_by_typ'] = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM ".TBL_CISELNIK_STAVY." WHERE typ_objektu = :typ ORDER BY id";
+$queries['ciselnik_stavy_select_by_typ'] = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis, atribut_objektu FROM ".TBL_CISELNIK_STAVY." WHERE typ_objektu = :typ AND aktivni = 1 ORDER BY id";
 $queries['dodavatele_select_all'] = "SELECT * FROM ".TBL_DODAVATELE;
 $queries['dodavatele_select_by_id'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE id = :id";
 $queries['dodavatele_select_by_ico'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE ico = :ico LIMIT 1";

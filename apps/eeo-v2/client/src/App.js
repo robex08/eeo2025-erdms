@@ -46,6 +46,7 @@ const About = lazy(() => import('./components/About'));
 const ReportsPlaceholder = lazy(() => import('./pages/ReportsPlaceholder'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
+const StatsReportsPage = lazy(() => import('./pages/StatsReportsPage'));
 const CerpaniPage = lazy(() => import('./pages/CerpaniPage'));
 const MajetekOverviewPage = lazy(() => import('./pages/MajetekOverviewPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
@@ -978,6 +979,10 @@ function App() {
                   } />}
                   {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
                   {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
+                  {isLoggedIn && (
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/stats-reports" element={<StatsReportsPage />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||
                     (hasPermission && hasPermission('BETA_TESTER'))

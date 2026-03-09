@@ -249,18 +249,19 @@ function getUserOrderPermissions($user_id, $db) {
         //   user_id = -1 → právo z role (platí pro všechny v roli)
         //   user_id = X → přímé přiřazení práva uživateli X
         // MySQL 5.5.43 kompatibilní SQL - bez složitých EXISTS subqueries
+        // OPRAVENO 2026-03-06: Přidána podmínka role_id = -1 pro přímo přiřazená práva
         $sql = "
             SELECT DISTINCT p.kod_prava
             FROM " . TBL_PRAVA . " p
             WHERE p.kod_prava LIKE 'ORDER_%'
             AND p.id IN (
-                -- Přímá práva (user_id v 25_role_prava)
+                -- Přímá práva (user_id != -1, role_id = -1)
                 SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
-                WHERE rp.user_id = :user_id
+                WHERE rp.user_id = :user_id AND rp.role_id = -1
                 
                 UNION
                 
-                -- Práva z rolí (user_id = -1 znamená právo z role)
+                -- Práva z rolí (user_id = -1, role_id = X)
                 SELECT rp.pravo_id 
                 FROM " . TBL_UZIVATELE_ROLE . " ur
                 JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1

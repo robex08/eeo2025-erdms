@@ -1364,6 +1364,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.dt_vytvoreni,
                 o.dt_aktualizace,
                 o.financovani,
+                o.druh_objednavky_kod,
                 o.max_cena_s_dph,
                 o.stav_objednavky,
                 o.stav_workflow_kod,
