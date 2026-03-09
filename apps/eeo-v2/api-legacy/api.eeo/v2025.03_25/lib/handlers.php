@@ -147,14 +147,28 @@ function verify_token_v2($username, $token, $db = null) {
         $token_data['roles'] = $roles; // ✅ Přidat pole rolí do výstupu
         
         // ✅ Načtení uživatelských oprávnění (pro Annual Fees a další moduly)
-        // OPRAVENO: Permissions jsou v 25_role_prava, ne v 25_uzivatele_prava
+        // OPRAVENO 2026-03-06 v2: Načítá OBOJÍ - přímo přiřazená práva + práva z rolí
+        // STRUKTURA 25_role_prava:
+        //   user_id=-1, role_id=X  → právo přiřazené roli X
+        //   user_id=Y, role_id=-1  → právo přiřazené přímo uživateli Y
         $stmt = $db->prepare("
-            SELECT p.kod_prava, p.popis 
+            SELECT DISTINCT p.kod_prava, p.popis 
             FROM " . TBL_ROLE_PRAVA . " rp
             INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
-            WHERE rp.user_id = ? AND rp.aktivni = 1
+            WHERE (
+                (rp.user_id = ? AND rp.role_id = -1)  -- přímo přiřazená práva uživateli
+                OR (
+                    rp.user_id = -1  -- práva z role
+                    AND rp.role_id IN (
+                        SELECT role_id 
+                        FROM " . TBL_UZIVATELE_ROLE . " 
+                        WHERE uzivatel_id = ?
+                    )
+                )
+            )
+            AND rp.aktivni = 1
         ");
-        $stmt->execute(array($token_data['id']));
+        $stmt->execute(array($token_data['id'], $token_data['id']));
         $token_data['permissions'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
     } catch (Exception $e) {

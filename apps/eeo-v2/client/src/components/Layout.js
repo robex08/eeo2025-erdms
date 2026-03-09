@@ -1883,6 +1883,13 @@ const Layout = ({ children }) => {
     );
   }, [hasPermission, hasAdminRole]);
 
+  const hasBetaMenuAccess = useMemo(() => {
+    return (
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      (typeof hasPermission === 'function' && hasPermission('BETA_TESTER'))
+    );
+  }, [hasAdminRole, hasPermission]);
+
   const [hasAssignedCashbook, setHasAssignedCashbook] = useState(false);
 
   const isCashBookAdminOrManage = useMemo(() => {
@@ -3541,7 +3548,7 @@ const Layout = ({ children }) => {
             ) }
             
             {/* 🚀 BETA menu - nové/experimentální funkce - pro ADMIN a BETA_TESTER */}
-            { ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+            {hasBetaMenuAccess && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={betaButtonRef}
@@ -3593,7 +3600,7 @@ const Layout = ({ children }) => {
                       minWidth: `${betaDropdownPosition.width}px`
                     }}
                   >
-                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
+                    {hasBetaMenuAccess && (
                       <MenuDropdownItem 
                         to="/majetek-overview" 
                         onClick={() => setBetaMenuOpen(false)}
@@ -3601,7 +3608,15 @@ const Layout = ({ children }) => {
                       <FontAwesomeIcon icon={faList} style={{color: '#6366f1'}} /> Přehled majetku
                       </MenuDropdownItem>
                     )}
-                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_orders_v3_visible && (
+                    {hasBetaMenuAccess && (
+                      <MenuDropdownItem
+                        to="/stats-reports"
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faChartBar} style={{color: '#2563eb'}} /> Statistika a reporty (BETA)
+                      </MenuDropdownItem>
+                    )}
+                    {hasBetaMenuAccess && !moduleSettings.module_orders_v3_visible && (
                       <MenuDropdownItem 
                         to="/orders25-list-v3" 
                         onClick={() => setBetaMenuOpen(false)}
@@ -3609,7 +3624,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3)
                       </MenuDropdownItem>
                     )}
-                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_orders_visible && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
+                    {hasBetaMenuAccess && !moduleSettings.module_orders_visible && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
                       <MenuDropdownItem 
                         to="/orders25-list" 
                         onClick={() => setBetaMenuOpen(false)}
@@ -3617,7 +3632,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky - přehled
                       </MenuDropdownItem>
                     )}
-                    {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && !moduleSettings.module_invoices_visible && hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')) && (
+                    {hasBetaMenuAccess && !moduleSettings.module_invoices_visible && hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')) && (
                       <MenuDropdownItem 
                         to="/invoices25-list" 
                         onClick={() => setBetaMenuOpen(false)}
@@ -3630,7 +3645,7 @@ const Layout = ({ children }) => {
                     {moduleSettings.module_orders_v3_visible && 
                      moduleSettings.module_orders_visible && 
                      moduleSettings.module_invoices_visible && 
-                     moduleSettings.module_annual_fees_visible && (
+                     moduleSettings.module_annual_fees_visible && !hasBetaMenuAccess && (
                       <>
                         <div style={{
                           padding: '1rem',

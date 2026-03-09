@@ -106,6 +106,7 @@ export const useActivityTracking = () => {
       '/contracts': 'Smlouvy',
       '/address-book': 'Adresář',
       '/notifications': 'Notifikace',
+      '/stats-reports': 'Statistika a reporty',
       '/reports': 'Reporty',
       '/statistics': 'Statistiky',
       '/profile': 'Profil',

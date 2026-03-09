@@ -1534,18 +1534,19 @@ function handle_invoices25_list($input, $config, $queries) {
         $user_usek_zkr = $usek_data ? $usek_data['usek_zkr'] : null;
         
         // Načíst permissions uživatele z DB (pro kontrolu INVOICE_MANAGE)
+        // OPRAVENO 2026-03-06: Přidána podmínka role_id = -1 pro přímo přiřazená práva
         $perms_sql = "
             SELECT DISTINCT p.kod_prava
             FROM " . TBL_PRAVA . " p
             WHERE p.kod_prava LIKE 'INVOICE_%'
             AND p.id IN (
-                -- Přímá práva (user_id v 25_role_prava)
+                -- Přímá práva (user_id != -1, role_id = -1)
                 SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
-                WHERE rp.user_id = ?
+                WHERE rp.user_id = ? AND rp.role_id = -1
                 
                 UNION
                 
-                -- Práva z rolí (user_id = -1 znamená právo z role)
+                -- Práva z rolí (user_id = -1, role_id = X)
                 SELECT rp.pravo_id 
                 FROM " . TBL_UZIVATELE_ROLE . " ur
                 JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
