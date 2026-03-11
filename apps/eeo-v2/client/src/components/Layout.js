@@ -1008,14 +1008,15 @@ const Footer = styled.footer`
   gap: 0;
   min-height: 54px;
   padding: 0;
-  background-color: #f4f4f4;
+  background-color: ${props => props.$transparent ? 'rgba(244, 244, 244, 0.6)' : '#f4f4f4'};
+  backdrop-filter: ${props => props.$transparent ? 'blur(12px)' : 'none'};
   color: #666;
   font-size: 13px;
   position: fixed;
   left: 0;
   bottom: 0;
   width: 100%;
-  border-top: 1px solid #ccc;
+  border-top: ${props => props.$transparent ? '1px solid rgba(204, 204, 204, 0.3)' : '1px solid #ccc'};
   z-index: 100;
 `;
 
@@ -4317,7 +4318,7 @@ const Layout = ({ children }) => {
         />
       )}
       {/* Notifications bubble is rendered inline next to the bell icon above */}
-      <Footer>
+      <Footer $transparent={!isLoggedIn}>
         <FooterLeft>
           {isLoggedIn && <CurrencyTicker />}
         </FooterLeft>
