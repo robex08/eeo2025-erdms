@@ -81,8 +81,10 @@ const SECTION_BLOCKS = {
     { key: 'cancelledOrders', label: 'Stornované / smazané objednávky' }
   ],
   spend: [
-    { key: 'financingOptions', label: 'Čerpání podle financování' },
-    { key: 'usekySpend', label: 'LP rozdělení podle úseků' }
+    { key: 'spendByFinancingUsek', label: 'Čerpání s rozpadem po úsecích' },
+    { key: 'spendByUsekFinancing', label: 'Čerpání: Úsek → Financování' },
+    { key: 'spendByDruhFinancing', label: 'Čerpání: Druh → Financování' },
+    { key: 'spendByLpKod', label: 'Čerpání LP: podle LP kódu' }
   ],
   reports: [
     { key: 'ordersWithoutInvoice', label: 'Objednávky bez faktury 2+ měsíce (schváleno+)' },
@@ -551,6 +553,7 @@ const FilterRow = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  & > * { width: 100%; box-sizing: border-box; }
 `;
 
 const Section = styled.div`
@@ -1249,7 +1252,14 @@ export default function StatsReportsPage() {
   const navigate = useNavigate();
   const userKey = user_id || user?.id || username || 'guest';
 
-  const [activeTab, setActiveTab] = useState('control');
+  const activeTabLsKey = `${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`;
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${userKey || 'guest'}`);
+      if (saved && SECTION_BLOCKS[saved]) return saved;
+    } catch (e) {}
+    return 'control';
+  });
   const [loading, setLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [viewerAttachment, setViewerAttachment] = useState(null);
@@ -1277,6 +1287,13 @@ export default function StatsReportsPage() {
   const [dataMeta, setDataMeta] = useState({ loadedAt: null, truncated: false });
   const [loadError, setLoadError] = useState('');
   const [tablePaging, setTablePaging] = useState({});
+  const [expandedSpendFinancing, setExpandedSpendFinancing] = useState(() => new Set());
+  const [expandedSpendUseks, setExpandedSpendUseks] = useState(() => new Set());
+  const [expandedSpendUsekF, setExpandedSpendUsekF] = useState(() => new Set());
+  const [expandedSpendUsekFSub, setExpandedSpendUsekFSub] = useState(() => new Set());
+  const [expandedSpendDruh, setExpandedSpendDruh] = useState(() => new Set());
+  const [expandedSpendDruhSub, setExpandedSpendDruhSub] = useState(() => new Set());
+  const [expandedSpendLp, setExpandedSpendLp] = useState(() => new Set());
   const blockSelectRef = useRef(null);
   const [blockSelectOpen, setBlockSelectOpen] = useState(false);
   const [visibleBlocks, setVisibleBlocks] = useState(() => {
@@ -1338,7 +1355,8 @@ export default function StatsReportsPage() {
 
   useEffect(() => {
     setBlockSelectOpen(false);
-  }, [activeTab]);
+    try { localStorage.setItem(activeTabLsKey, activeTab); } catch (e) {}
+  }, [activeTab, activeTabLsKey]);
 
   const updateNotes = useCallback((key, value) => {
     setNotes(prev => {
@@ -1959,7 +1977,7 @@ export default function StatsReportsPage() {
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(invoice => {
-      const invoiceDate = toDate(invoice.datum_vystaveni);
+      const invoiceDate = toDate(invoice.datum_doruceni || invoice.datum_vystaveni);
       if (filters.dateFrom && invoiceDate && invoiceDate < new Date(filters.dateFrom)) return false;
       if (filters.dateTo && invoiceDate && invoiceDate > new Date(filters.dateTo)) return false;
       return true;
@@ -2263,6 +2281,99 @@ export default function StatsReportsPage() {
     () => getPagedItems(usekSpendSummary, 'usekySpend'),
     [usekSpendSummary, getPagedItems]
   );
+
+  const spendByFinancingGroups = useMemo(() => {
+    const groups = {};
+    filteredOrders.forEach(order => {
+      const finCode = getOrderFinancingCode(order) || '__none__';
+      const finLabel = getOrderFinancingLabel(order) || 'Neurčeno';
+      const usekCode = getOrdererUsekCode(order) || '__none__';
+      const usekLabel = getOrdererUsekLabel(order) || 'Neurčeno';
+      if (!groups[finCode]) {
+        groups[finCode] = { code: finCode, label: finLabel, useky: {}, totalCount: 0, totalAmount: 0 };
+      }
+      if (!groups[finCode].useky[usekCode]) {
+        groups[finCode].useky[usekCode] = { code: usekCode, label: usekLabel, orders: [], count: 0, amount: 0 };
+      }
+      const amt = getOrderAmount(order);
+      groups[finCode].useky[usekCode].orders.push(order);
+      groups[finCode].useky[usekCode].count += 1;
+      groups[finCode].useky[usekCode].amount += amt;
+      groups[finCode].totalCount += 1;
+      groups[finCode].totalAmount += amt;
+    });
+    return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel]);
+
+  // Úsek → Financování
+  const spendByUsekGroups = useMemo(() => {
+    const groups = {};
+    filteredOrders.forEach(order => {
+      const usekCode = getOrdererUsekCode(order) || '__none__';
+      const usekLabel = getOrdererUsekLabel(order) || 'Neurčeno';
+      const finCode = getOrderFinancingCode(order) || '__none__';
+      const finLabel = getOrderFinancingLabel(order) || 'Neurčeno';
+      if (!groups[usekCode]) groups[usekCode] = { code: usekCode, label: usekLabel, financing: {}, totalCount: 0, totalAmount: 0 };
+      if (!groups[usekCode].financing[finCode]) groups[usekCode].financing[finCode] = { code: finCode, label: finLabel, orders: [], count: 0, amount: 0 };
+      const amt = getOrderAmount(order);
+      groups[usekCode].financing[finCode].orders.push(order);
+      groups[usekCode].financing[finCode].count += 1;
+      groups[usekCode].financing[finCode].amount += amt;
+      groups[usekCode].totalCount += 1;
+      groups[usekCode].totalAmount += amt;
+    });
+    return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel]);
+
+  // Druh objednávky → Financování
+  const spendByDruhGroups = useMemo(() => {
+    const groups = {};
+    filteredOrders.forEach(order => {
+      const druhCode = getOrderTypeCode(order) || '__none__';
+      const druhLabel = getOrderTypeLabel(order) || 'Neurčeno';
+      const finCode = getOrderFinancingCode(order) || '__none__';
+      const finLabel = getOrderFinancingLabel(order) || 'Neurčeno';
+      if (!groups[druhCode]) groups[druhCode] = { code: druhCode, label: druhLabel, financing: {}, totalCount: 0, totalAmount: 0 };
+      if (!groups[druhCode].financing[finCode]) groups[druhCode].financing[finCode] = { code: finCode, label: finLabel, orders: [], count: 0, amount: 0 };
+      const amt = getOrderAmount(order);
+      groups[druhCode].financing[finCode].orders.push(order);
+      groups[druhCode].financing[finCode].count += 1;
+      groups[druhCode].financing[finCode].amount += amt;
+      groups[druhCode].totalCount += 1;
+      groups[druhCode].totalAmount += amt;
+    });
+    return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrderTypeCode, getOrderTypeLabel]);
+
+  // LP financování → LP kód (cislo_lp) → objednávky
+  const spendByLpKodGroups = useMemo(() => {
+    const groups = {};
+    filteredOrders.forEach(order => {
+      const fin = parseFinancing(order?.financovani);
+      if (!fin || String(fin?.typ || '').toUpperCase() !== 'LP') return;
+      const lpNazvy = Array.isArray(fin?.lp_nazvy) ? fin.lp_nazvy : [];
+      if (lpNazvy.length === 0) {
+        const code = '__no_lp__';
+        if (!groups[code]) groups[code] = { code, label: 'Bez přiřazeného LP kódu', orders: [], count: 0, amount: 0 };
+        const amt = getOrderAmount(order);
+        groups[code].orders.push(order);
+        groups[code].count += 1;
+        groups[code].amount += amt;
+      } else {
+        lpNazvy.forEach(lp => {
+          const code = lp.cislo_lp || lp.kod || '__none__';
+          const label = lp.nazev ? `${code} – ${lp.nazev}` : code;
+          if (!groups[code]) groups[code] = { code, label, orders: [], count: 0, amount: 0 };
+          const amt = getOrderAmount(order);
+          groups[code].orders.push(order);
+          groups[code].count += 1;
+          groups[code].amount += amt;
+        });
+      }
+    });
+    return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+  }, [filteredOrders]);
+
   const pagedOrdersWithoutInvoice = useMemo(
     () => getPagedItems(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice'),
     [reportSections.ordersWithoutInvoice, getPagedItems]
@@ -3229,12 +3340,15 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Objednávka</Th>
+                          <Th>Dt. obj.</Th>
                           <Th>Předmět</Th>
                           <Th>Limit</Th>
                           <Th>Faktury</Th>
                           <Th>Objednatel</Th>
                           <Th>Schvalovatel</Th>
+                          <Th>Úsek</Th>
                           <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Poznámka</Th>
                           <Th>NŘK</Th>
                         </tr>
@@ -3246,12 +3360,15 @@ export default function StatsReportsPage() {
                           return (
                             <Tr key={order.id}>
                               <Td>{renderOrderLink(order)}</Td>
+                              <Td>{formatDateCz(getOrderDate(order))}</Td>
                               <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                               <Td>{fmtCurrency(getOrderLimit(order))}</Td>
                               <Td>{fmtCurrency(invoiceSum)}</Td>
                               <Td>{renderOrdererStack(order)}</Td>
                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                              <Td>{getOrdererUsekLabel(order)}</Td>
                               <Td>{getOrderFinancingLabel(order)}</Td>
+                              <Td>{getOrderTypeLabel(order)}</Td>
                               <Td>{renderNoteCell(rowKey)}</Td>
                               <Td>{renderCheckCell(rowKey)}</Td>
                             </Tr>
@@ -3279,7 +3396,9 @@ export default function StatsReportsPage() {
                           <Th>Fa doručena</Th>
                           <Th>Objednatel</Th>
                           <Th>Schvalovatel</Th>
+                          <Th>Úsek</Th>
                           <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Poznámka</Th>
                           <Th>NŘK</Th>
                         </tr>
@@ -3294,7 +3413,9 @@ export default function StatsReportsPage() {
                               <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
                               <Td>{renderOrdererStack(order)}</Td>
                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                              <Td>{getOrdererUsekLabel(order)}</Td>
                               <Td>{getOrderFinancingLabel(order)}</Td>
+                              <Td>{getOrderTypeLabel(order)}</Td>
                               <Td>{renderNoteCell(rowKey)}</Td>
                               <Td>{renderCheckCell(rowKey)}</Td>
                             </Tr>
@@ -3318,10 +3439,13 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Objednávka</Th>
+                          <Th>Dt. obj.</Th>
                           <Th>Předmět</Th>
                           <Th>Objednatel</Th>
                           <Th>Schvalovatel</Th>
+                          <Th>Úsek</Th>
                           <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Poznámka</Th>
                           <Th>NŘK</Th>
                         </tr>
@@ -3332,10 +3456,13 @@ export default function StatsReportsPage() {
                           return (
                             <Tr key={order.id}>
                               <Td>{renderOrderLink(order)}</Td>
+                              <Td>{formatDateCz(getOrderDate(order))}</Td>
                               <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                               <Td>{renderOrdererStack(order)}</Td>
                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                              <Td>{getOrdererUsekLabel(order)}</Td>
                               <Td>{getOrderFinancingLabel(order)}</Td>
+                              <Td>{getOrderTypeLabel(order)}</Td>
                               <Td>{renderNoteCell(rowKey)}</Td>
                               <Td>{renderCheckCell(rowKey)}</Td>
                             </Tr>
@@ -3359,10 +3486,13 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Fa VS</Th>
+                          <Th>Doručena</Th>
                           <Th>Objednávka/Smlouva</Th>
                           <Th>Částka</Th>
                           <Th>Příkazce</Th>
+                          <Th>Úsek</Th>
                           <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Poznámka</Th>
                           <Th>NŘK</Th>
                         </tr>
@@ -3374,10 +3504,13 @@ export default function StatsReportsPage() {
                           return (
                             <Tr key={invoice.id}>
                               <Td>{renderInvoiceLink(invoice)}</Td>
+                              <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
                               <Td>{order ? renderOrderLink(order) : invoice.cislo_smlouvy || invoice.smlouva_id || '-'}</Td>
                               <Td>{fmtCurrency(getInvoiceAmount(invoice))}</Td>
                               <Td>{order ? getApproverName(order) : '-'}</Td>
+                              <Td>{order ? getOrdererUsekLabel(order) : '-'}</Td>
                               <Td>{order ? getOrderFinancingLabel(order) : '-'}</Td>
+                              <Td>{order ? getOrderTypeLabel(order) : '-'}</Td>
                               <Td>{renderNoteCell(rowKey)}</Td>
                               <Td>{renderCheckCell(rowKey)}</Td>
                             </Tr>
@@ -3401,10 +3534,14 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Fa VS</Th>
+                          <Th>Doručena</Th>
                           <Th>Stav</Th>
                           <Th>Částka</Th>
                           <Th>Splatnost</Th>
                           <Th>Objednávka/Smlouva</Th>
+                          <Th>Úsek</Th>
+                          <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Poznámka</Th>
                           <Th>NŘK</Th>
                         </tr>
@@ -3416,10 +3553,14 @@ export default function StatsReportsPage() {
                           return (
                             <Tr key={invoice.id}>
                               <Td>{renderInvoiceLink(invoice)}</Td>
+                              <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
                               <Td>{getInvoiceStatusLabel(invoice)}</Td>
                               <Td>{fmtCurrency(getInvoiceAmount(invoice))}</Td>
                               <Td>{formatDateCz(invoice.datum_splatnosti)}</Td>
                               <Td>{order ? renderOrderLink(order) : invoice.cislo_smlouvy || invoice.smlouva_id || '-'}</Td>
+                              <Td>{order ? getOrdererUsekLabel(order) : '-'}</Td>
+                              <Td>{order ? getOrderFinancingLabel(order) : '-'}</Td>
+                              <Td>{order ? getOrderTypeLabel(order) : '-'}</Td>
                               <Td>{renderNoteCell(rowKey)}</Td>
                               <Td>{renderCheckCell(rowKey)}</Td>
                             </Tr>
@@ -3443,9 +3584,13 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Objednávka</Th>
+                          <Th>Dt. obj.</Th>
                           <Th>Předmět</Th>
                           <Th>Stav</Th>
                           <Th>Objednatel</Th>
+                          <Th>Úsek</Th>
+                          <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Poznámka</Th>
                         </tr>
                       </thead>
@@ -3456,9 +3601,13 @@ export default function StatsReportsPage() {
                             $inactive={order?.active === false || order?.aktivni === false || order?.aktivni === 0 || order?.aktivni === '0'}
                           >
                             <Td>{renderOrderLink(order)}</Td>
+                            <Td>{formatDateCz(getOrderDate(order))}</Td>
                             <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                             <Td>{getOrderStatusLabel(order)}</Td>
                             <Td>{getOrdererName(order)}</Td>
+                            <Td>{getOrdererUsekLabel(order)}</Td>
+                            <Td>{getOrderFinancingLabel(order)}</Td>
+                            <Td>{getOrderTypeLabel(order)}</Td>
                             <Td>{renderNoteCell(`order_cancelled_${order.id}`)}</Td>
                           </Tr>
                         ))}
@@ -3473,68 +3622,428 @@ export default function StatsReportsPage() {
 
             {activeTab === 'spend' && (
               <>
-                {isBlockVisible('spend', 'financingOptions') && (
+                {isBlockVisible('spend', 'spendByFinancingUsek') && (
                   <SectionCard>
-                  <SectionHeader>
-                    <SectionTitle>Čerpání podle financování</SectionTitle>
-                    <SectionBadge $tone="warn">{financingOptions.length} typy</SectionBadge>
-                  </SectionHeader>
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Financování</Th>
-                          <Th>Počet objednávek</Th>
-                          <Th>Částka</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedFinancingOptions.items.map(option => {
-                          const subset = filteredOrders.filter(order => getOrderFinancingCode(order) === option.value);
+                    <SectionHeader>
+                      <SectionTitle>Přehled čerpání po financování a úsecích</SectionTitle>
+                      <SectionBadge $tone="warn">{spendByFinancingGroups.length} typy</SectionBadge>
+                    </SectionHeader>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {spendByFinancingGroups.length === 0 ? (
+                        <EmptyState>Bez dat pro zvolené filtry</EmptyState>
+                      ) : (
+                        <>
+                          {/* Záhlaví soupce */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div />
+                            <div>Financování</div>
+                            <div style={{ textAlign: 'right' }}>Počet</div>
+                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                          </div>
+                          {spendByFinancingGroups.map(group => {
+                          const finOpen = expandedSpendFinancing.has(group.code);
+                          const usekyArr = Object.values(group.useky).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                           return (
-                            <Tr key={option.value}>
-                              <Td>{option.label}</Td>
-                              <Td>{subset.length}</Td>
-                              <Td>{fmtCurrency(subset.reduce((sum, order) => sum + getOrderAmount(order), 0))}</Td>
-                            </Tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('financingOptions', pagedFinancingOptions)}
+                          <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                            <div
+                              onClick={() => setExpandedSpendFinancing(prev => {
+                                const next = new Set(prev);
+                                if (next.has(group.code)) next.delete(group.code); else next.add(group.code);
+                                return next;
+                              })}
+                              style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: finOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                            >
+                              <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{finOpen ? '−' : '+'}</span>
+                              <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                              <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
+                              <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
+                            </div>
+                            {finOpen && (
+                              <TableWrapper>
+                                <Table>
+                                  <thead>
+                                    <tr>
+                                      <Th style={{ width: '24px' }}></Th>
+                                      <Th>Úsek</Th>
+                                      <Th>Počet</Th>
+                                      <Th>Celkem</Th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {usekyArr.map(usek => {
+                                      const detailKey = `spendDetail_${group.code}_${usek.code}`;
+                                      const usekOpen = expandedSpendUseks.has(detailKey);
+                                      const pagedDetail = getPagedItems(usek.orders, detailKey);
+                                      return (
+                                        <React.Fragment key={`${group.code}_${usek.code}`}>
+                                          <Tr
+                                            onClick={() => setExpandedSpendUseks(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(detailKey)) next.delete(detailKey); else next.add(detailKey);
+                                              return next;
+                                            })}
+                                            style={{ cursor: 'pointer', background: usekOpen ? '#f0f9ff' : undefined }}
+                                          >
+                                            <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>
+                                              {usekOpen ? '−' : '+'}
+                                            </Td>
+                                            <Td>{usek.label}</Td>
+                                            <Td>{usek.count}</Td>
+                                            <Td>{fmtCurrency(usek.amount)}</Td>
+                                          </Tr>
+                                          {usekOpen && (
+                                            <tr>
+                                              <td colSpan={4} style={{ padding: '0.5rem 0.5rem 0.75rem 2rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                <TableWrapper style={{ margin: 0 }}>
+                                                  <Table>
+                                                    <thead>
+                                                      <tr>
+                                                        <Th>Číslo</Th>
+                                                        <Th>Dt. obj.</Th>
+                                                        <Th>Předmět</Th>
+                                                        <Th>Objednatel</Th>
+                                                        <Th>Stav</Th>
+                                                        <Th>Financování</Th>
+                                                        <Th>Druh</Th>
+                                                        <Th>Částka</Th>
+                                                      </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                      {pagedDetail.items.map(order => (
+                                                        <Tr key={order.id}>
+                                                          <Td>{renderOrderLink(order)}</Td>
+                                                          <Td>{formatDateCz(getOrderDate(order))}</Td>
+                                                          <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                                          <Td>{renderOrdererStack(order)}</Td>
+                                                          <Td>{getOrderStatusLabel(order)}</Td>
+                                                          <Td>{getOrderFinancingLabel(order)}</Td>
+                                                          <Td>{getOrderTypeLabel(order)}</Td>
+                                                          <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                                        </Tr>
+                                                      ))}
+                                                    </tbody>
+                                                  </Table>
+                                                </TableWrapper>
+                                                {renderPagination(detailKey, pagedDetail)}
+                                              </td>
+                                            </tr>
+                                          )}
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                  </tbody>
+                                </Table>
+                              </TableWrapper>
+                            )}
+                          </div>
+                        );
+                      })}
+                        </>
+                      )}
+                    </div>
                   </SectionCard>
                 )}
 
-                {isBlockVisible('spend', 'usekySpend') && (
+                {/* === ÚSEK → FINANCOVÁNÍ === */}
+                {isBlockVisible('spend', 'spendByUsekFinancing') && (
                   <SectionCard>
-                  <SectionHeader>
-                    <SectionTitle>LP rozdělení podle úseků</SectionTitle>
-                      <SectionBadge $tone="warn">{usekSpendSummary.length}</SectionBadge>
-                  </SectionHeader>
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Úsek</Th>
-                          <Th>Počet objednávek</Th>
-                          <Th>Částka</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedUseky.items.map(usek => (
-                          <Tr key={usek.label}>
-                            <Td>{usek.label}</Td>
-                            <Td>{usek.count}</Td>
-                            <Td>{fmtCurrency(usek.amount)}</Td>
-                          </Tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('usekySpend', pagedUseky)}
+                    <SectionHeader>
+                      <SectionTitle>Přehled čerpání po úsecích a financování</SectionTitle>
+                      <SectionBadge $tone="warn">{spendByUsekGroups.length} úseků</SectionBadge>
+                    </SectionHeader>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {spendByUsekGroups.length === 0 ? (
+                        <EmptyState>Bez dat pro zvolené filtry</EmptyState>
+                      ) : (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div />
+                            <div>Úsek</div>
+                            <div style={{ textAlign: 'right' }}>Počet</div>
+                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                          </div>
+                          {spendByUsekGroups.map(group => {
+                            const grpOpen = expandedSpendUsekF.has(group.code);
+                            const finArr = Object.values(group.financing).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+                            return (
+                              <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => setExpandedSpendUsekF(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f0fdf4' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#16a34a', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#14532d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
+                                </div>
+                                {grpOpen && (
+                                  <TableWrapper>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <Th style={{ width: '24px' }}></Th>
+                                          <Th>Financování</Th>
+                                          <Th>Počet</Th>
+                                          <Th>Celkem</Th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {finArr.map(fin => {
+                                          const detailKey = `spendUFDetail_${group.code}_${fin.code}`;
+                                          const finOpen = expandedSpendUsekFSub.has(detailKey);
+                                          const pagedDetail = getPagedItems(fin.orders, detailKey);
+                                          return (
+                                            <React.Fragment key={`${group.code}_${fin.code}`}>
+                                              <Tr
+                                                onClick={() => setExpandedSpendUsekFSub(prev => { const next = new Set(prev); if (next.has(detailKey)) next.delete(detailKey); else next.add(detailKey); return next; })}
+                                                style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
+                                              >
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                <Td>{fin.label}</Td>
+                                                <Td>{fin.count}</Td>
+                                                <Td>{fmtCurrency(fin.amount)}</Td>
+                                              </Tr>
+                                              {finOpen && (
+                                                <tr>
+                                                  <td colSpan={4} style={{ padding: '0.5rem 0.5rem 0.75rem 2rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    <TableWrapper style={{ margin: 0 }}>
+                                                      <Table>
+                                                        <thead>
+                                                          <tr>
+                                                            <Th>Číslo</Th>
+                                                            <Th>Dt. obj.</Th>
+                                                            <Th>Předmět</Th>
+                                                            <Th>Objednatel</Th>
+                                                            <Th>Stav</Th>
+                                                            <Th>Financování</Th>
+                                                            <Th>Druh</Th>
+                                                            <Th>Částka</Th>
+                                                          </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                          {pagedDetail.items.map(order => (
+                                                            <Tr key={order.id}>
+                                                              <Td>{renderOrderLink(order)}</Td>
+                                                              <Td>{formatDateCz(getOrderDate(order))}</Td>
+                                                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                                              <Td>{renderOrdererStack(order)}</Td>
+                                                              <Td>{getOrderStatusLabel(order)}</Td>
+                                                              <Td>{getOrderFinancingLabel(order)}</Td>
+                                                              <Td>{getOrderTypeLabel(order)}</Td>
+                                                              <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                                            </Tr>
+                                                          ))}
+                                                        </tbody>
+                                                      </Table>
+                                                    </TableWrapper>
+                                                    {renderPagination(detailKey, pagedDetail)}
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
                   </SectionCard>
                 )}
+
+                {/* === DRUH OBJEDNÁVKY → FINANCOVÁNÍ === */}
+                {isBlockVisible('spend', 'spendByDruhFinancing') && (
+                  <SectionCard>
+                    <SectionHeader>
+                      <SectionTitle>Přehled čerpání po druhu a financování</SectionTitle>
+                      <SectionBadge $tone="warn">{spendByDruhGroups.length} druhů</SectionBadge>
+                    </SectionHeader>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {spendByDruhGroups.length === 0 ? (
+                        <EmptyState>Bez dat pro zvolené filtry</EmptyState>
+                      ) : (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div />
+                            <div>Druh objednávky</div>
+                            <div style={{ textAlign: 'right' }}>Počet</div>
+                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                          </div>
+                          {spendByDruhGroups.map(group => {
+                            const grpOpen = expandedSpendDruh.has(group.code);
+                            const finArr = Object.values(group.financing).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+                            return (
+                              <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => setExpandedSpendDruh(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fdf4ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#7c3aed', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#4c1d95', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
+                                </div>
+                                {grpOpen && (
+                                  <TableWrapper>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <Th style={{ width: '24px' }}></Th>
+                                          <Th>Financování</Th>
+                                          <Th>Počet</Th>
+                                          <Th>Celkem</Th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {finArr.map(fin => {
+                                          const detailKey = `spendDFDetail_${group.code}_${fin.code}`;
+                                          const finOpen = expandedSpendDruhSub.has(detailKey);
+                                          const pagedDetail = getPagedItems(fin.orders, detailKey);
+                                          return (
+                                            <React.Fragment key={`${group.code}_${fin.code}`}>
+                                              <Tr
+                                                onClick={() => setExpandedSpendDruhSub(prev => { const next = new Set(prev); if (next.has(detailKey)) next.delete(detailKey); else next.add(detailKey); return next; })}
+                                                style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
+                                              >
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                <Td>{fin.label}</Td>
+                                                <Td>{fin.count}</Td>
+                                                <Td>{fmtCurrency(fin.amount)}</Td>
+                                              </Tr>
+                                              {finOpen && (
+                                                <tr>
+                                                  <td colSpan={4} style={{ padding: '0.5rem 0.5rem 0.75rem 2rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    <TableWrapper style={{ margin: 0 }}>
+                                                      <Table>
+                                                        <thead>
+                                                          <tr>
+                                                            <Th>Číslo</Th>
+                                                            <Th>Dt. obj.</Th>
+                                                            <Th>Předmět</Th>
+                                                            <Th>Objednatel</Th>
+                                                            <Th>Stav</Th>
+                                                            <Th>Financování</Th>
+                                                            <Th>Druh</Th>
+                                                            <Th>Částka</Th>
+                                                          </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                          {pagedDetail.items.map(order => (
+                                                            <Tr key={order.id}>
+                                                              <Td>{renderOrderLink(order)}</Td>
+                                                              <Td>{formatDateCz(getOrderDate(order))}</Td>
+                                                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                                              <Td>{renderOrdererStack(order)}</Td>
+                                                              <Td>{getOrderStatusLabel(order)}</Td>
+                                                              <Td>{getOrderFinancingLabel(order)}</Td>
+                                                              <Td>{getOrderTypeLabel(order)}</Td>
+                                                              <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                                            </Tr>
+                                                          ))}
+                                                        </tbody>
+                                                      </Table>
+                                                    </TableWrapper>
+                                                    {renderPagination(detailKey, pagedDetail)}
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* === LP → LP KÓD (LPIT1, LPIT2...) → OBJEDNÁVKY === */}
+                {isBlockVisible('spend', 'spendByLpKod') && (
+                  <SectionCard>
+                    <SectionHeader>
+                      <SectionTitle>Čerpání LP podle LP kódu</SectionTitle>
+                      <SectionBadge $tone="warn">{spendByLpKodGroups.length} LP kódů</SectionBadge>
+                    </SectionHeader>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {spendByLpKodGroups.length === 0 ? (
+                        <EmptyState>Bez objednávek LP pro zvolené filtry</EmptyState>
+                      ) : (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div />
+                            <div>LP kód</div>
+                            <div style={{ textAlign: 'right' }}>Počet</div>
+                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                          </div>
+                          {spendByLpKodGroups.map(group => {
+                            const lpOpen = expandedSpendLp.has(group.code);
+                            const pagedDetail = getPagedItems(group.orders, `spendLpKod_${group.code}`);
+                            return (
+                              <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => setExpandedSpendLp(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#d97706', lineHeight: 1, textAlign: 'center' }}>{lpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
+                                </div>
+                                {lpOpen && (
+                                  <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc' }}>
+                                    <TableWrapper style={{ margin: 0 }}>
+                                      <Table>
+                                        <thead>
+                                          <tr>
+                                            <Th>Číslo</Th>
+                                            <Th>Dt. obj.</Th>
+                                            <Th>Předmět</Th>
+                                            <Th>Objednatel</Th>
+                                            <Th>Stav</Th>
+                                            <Th>Úsek</Th>
+                                            <Th>Druh</Th>
+                                            <Th>Částka</Th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {pagedDetail.items.map(order => (
+                                            <Tr key={order.id}>
+                                              <Td>{renderOrderLink(order)}</Td>
+                                              <Td>{formatDateCz(getOrderDate(order))}</Td>
+                                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                              <Td>{renderOrdererStack(order)}</Td>
+                                              <Td>{getOrderStatusLabel(order)}</Td>
+                                              <Td>{getOrdererUsekLabel(order)}</Td>
+                                              <Td>{getOrderTypeLabel(order)}</Td>
+                                              <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                            </Tr>
+                                          ))}
+                                        </tbody>
+                                      </Table>
+                                    </TableWrapper>
+                                    {renderPagination(`spendLpKod_${group.code}`, pagedDetail)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+
               </>
             )}
 
@@ -3621,9 +4130,13 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Objednávka</Th>
+                          <Th>Dt. obj.</Th>
                           <Th>Předmět</Th>
                           <Th>Stav</Th>
                           <Th>Objednatel</Th>
+                          <Th>Úsek</Th>
+                          <Th>Financování</Th>
+                          <Th>Druh</Th>
                           <Th>Částka</Th>
                           <Th>Poznámka</Th>
                         </tr>
@@ -3632,9 +4145,13 @@ export default function StatsReportsPage() {
                         {pagedOrdersWithoutInvoice.items.map(order => (
                           <Tr key={order.id}>
                             <Td>{renderOrderLink(order)}</Td>
+                            <Td>{formatDateCz(getOrderDate(order))}</Td>
                             <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                             <Td>{getOrderStatusLabel(order)}</Td>
                             <Td>{getOrdererName(order)}</Td>
+                            <Td>{getOrdererUsekLabel(order)}</Td>
+                            <Td>{getOrderFinancingLabel(order)}</Td>
+                            <Td>{getOrderTypeLabel(order)}</Td>
                             <Td>{fmtCurrency(getOrderAmount(order))}</Td>
                             <Td>{renderNoteCell(`report_no_invoice_${order.id}`)}</Td>
                           </Tr>
@@ -3657,8 +4174,11 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Objednávka</Th>
+                          <Th>Dt. obj.</Th>
                           <Th>Stav</Th>
                           <Th>Objednatel</Th>
+                          <Th>Úsek</Th>
+                          <Th>Financování</Th>
                           <Th>VS faktur</Th>
                           <Th>Částka</Th>
                           <Th>Druh</Th>
@@ -3668,8 +4188,11 @@ export default function StatsReportsPage() {
                         {pagedOrdersWithInvoiceNotDone.items.map(order => (
                           <Tr key={order.id}>
                             <Td>{renderOrderLink(order)}</Td>
+                            <Td>{formatDateCz(getOrderDate(order))}</Td>
                             <Td>{getOrderStatusLabel(order)}</Td>
                             <Td>{getOrdererName(order)}</Td>
+                            <Td>{getOrdererUsekLabel(order)}</Td>
+                            <Td>{getOrderFinancingLabel(order)}</Td>
                             <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => inv.cislo_faktury).filter(Boolean).join(', ')}</Td>
                             <Td>{fmtCurrency(getOrderAmount(order))}</Td>
                             <Td>{getOrderTypeLabel(order)}</Td>
