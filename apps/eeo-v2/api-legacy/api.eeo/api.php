@@ -3715,6 +3715,39 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/order-v2/attachments/stats - statistiky priloh objednavek podle typu
+        if (preg_match('/^order-v2\/attachments\/stats$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_order_v2_attachments_stats($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/attachments/by-type - prilohy objednavek podle typu s pagingem
+        if (preg_match('/^order-v2\/attachments\/by-type$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_order_v2_attachments_by_type($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/attachments/orders-without - objednavky BEZ priloh
+        if (preg_match('/^order-v2\/attachments\/orders-without$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_order_v2_orders_without_attachments($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // POST /api.eeo/order-v2/{id}/attachments/upload - upload prilohy k objednavce
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/attachments\/upload$/', $endpoint, $matches)) {
             // Support both numeric and string IDs
@@ -3918,6 +3951,39 @@ switch ($endpoint) {
         if (preg_match('/^order-v2\/invoices\/attachments\/list$/', $endpoint, $matches)) {
             if ($request_method === 'POST') {
                 handle_order_v2_list_all_invoice_attachments($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/invoices/attachments/stats - statistiky priloh faktur podle typu
+        if (preg_match('/^order-v2\/invoices\/attachments\/stats$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_order_v2_invoice_attachments_stats($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/invoices/attachments/by-type - prilohy faktur podle typu s pagingem
+        if (preg_match('/^order-v2\/invoices\/attachments\/by-type$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_order_v2_invoice_attachments_by_type($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/invoices/attachments/invoices-without - faktury BEZ priloh
+        if (preg_match('/^order-v2\/invoices\/attachments\/invoices-without$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_order_v2_invoices_without_attachments($input, $config, $queries);
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));

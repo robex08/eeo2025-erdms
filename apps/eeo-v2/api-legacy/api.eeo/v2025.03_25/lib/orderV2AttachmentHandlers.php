@@ -1060,6 +1060,7 @@ function handle_order_v2_list_all_attachments($input, $config, $queries) {
         $sql = "SELECT 
                     a.id,
                     a.objednavka_id,
+                    a.typ_prilohy,
                     a.originalni_nazev_souboru,
                     a.systemova_cesta,
                     a.velikost_souboru_b,
@@ -1096,6 +1097,7 @@ function handle_order_v2_list_all_attachments($input, $config, $queries) {
             $mappedAttachments[] = array(
                 'id' => (int)$att['id'],
                 'order_id' => (int)$att['objednavka_id'],
+                'type' => $att['typ_prilohy'],
                 'original_name' => $att['originalni_nazev_souboru'],
                 'system_path' => $att['systemova_cesta'],
                 'file_size' => (int)$att['velikost_souboru_b'],
@@ -1124,5 +1126,335 @@ function handle_order_v2_list_all_attachments($input, $config, $queries) {
         error_log("Order V2 LIST ALL ATTACHMENTS Error: " . $e->getMessage());
         http_response_code(500);
         echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání příloh: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * ORDER V2 API - Get attachment statistics (agregované počty podle typů)
+ * 
+ * POST /api.eeo/order-v2/attachments/stats
+ * 
+ * Response: JSON s počty příloh podle typů pro objednávky
+ */
+function handle_order_v2_attachments_stats($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // Agregace počtů podle typu přílohy
+        $sql = "SELECT 
+                    COALESCE(a.typ_prilohy, 'NEURCENO') as typ_prilohy,
+                    COUNT(*) as pocet
+                FROM " . get_order_attachments_table_name() . " a
+                INNER JOIN " . get_orders_table_name() . " o ON a.objednavka_id = o.id
+                WHERE o.aktivni = 1
+                GROUP BY COALESCE(a.typ_prilohy, 'NEURCENO')
+                ORDER BY pocet DESC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Celkový počet
+        $totalSql = "SELECT COUNT(*) as total 
+                     FROM " . get_order_attachments_table_name() . " a
+                     INNER JOIN " . get_orders_table_name() . " o ON a.objednavka_id = o.id
+                     WHERE o.aktivni = 1";
+        $totalStmt = $db->prepare($totalSql);
+        $totalStmt->execute();
+        $total = $totalStmt->fetch(PDO::FETCH_ASSOC);
+        
+        $typesArray = array();
+        foreach ($stats as $row) {
+            $typesArray[] = array(
+                'type' => $row['typ_prilohy'],
+                'count' => (int)$row['pocet']
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'types' => $typesArray,
+                'total' => (int)$total['total']
+            ),
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 ATTACHMENTS STATS Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * ORDER V2 API - List attachments by type (s pagingem)
+ * 
+ * POST /api.eeo/order-v2/attachments/by-type
+ * 
+ * Input:
+ * - type: typ přílohy (KOSILKA, OBJEDNAVKA, atd.)
+ * - page: číslo stránky (default 1)
+ * - per_page: počet na stránku (default 50)
+ * 
+ * Response: JSON seznam příloh daného typu
+ */
+function handle_order_v2_attachments_by_type($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $type = isset($input['type']) ? trim($input['type']) : '';
+    $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
+    $per_page = isset($input['per_page']) ? min(100, max(10, (int)$input['per_page'])) : 50;
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if (empty($type)) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Parametr type je povinný'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        $offset = ($page - 1) * $per_page;
+        
+        // Počet celkem pro daný typ
+        $countSql = "SELECT COUNT(*) as total 
+                     FROM " . get_order_attachments_table_name() . " a
+                     INNER JOIN " . get_orders_table_name() . " o ON a.objednavka_id = o.id
+                     WHERE o.aktivni = 1 AND COALESCE(a.typ_prilohy, 'NEURCENO') = :type";
+        $countStmt = $db->prepare($countSql);
+        $countStmt->bindValue(':type', $type, PDO::PARAM_STR);
+        $countStmt->execute();
+        $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+        
+        // Načtení příloh s detaily
+        $sql = "SELECT 
+                    a.id,
+                    a.objednavka_id,
+                    a.guid,
+                    a.typ_prilohy,
+                    a.originalni_nazev_souboru,
+                    a.systemova_cesta,
+                    a.velikost_souboru_b,
+                    a.dt_vytvoreni,
+                    a.nahrano_uzivatel_id,
+                    o.cislo_objednavky,
+                    o.predmet as objednavka_nazev,
+                    o.stav_objednavky,
+                    o.dodavatel_nazev,
+                    u.jmeno as nahrano_jmeno,
+                    u.prijmeni as nahrano_prijmeni
+                FROM " . get_order_attachments_table_name() . " a
+                INNER JOIN " . get_orders_table_name() . " o ON a.objednavka_id = o.id
+                LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+                WHERE o.aktivni = 1 AND COALESCE(a.typ_prilohy, 'NEURCENO') = :type
+                ORDER BY a.dt_vytvoreni DESC
+                LIMIT :limit OFFSET :offset";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':type', $type, PDO::PARAM_STR);
+        $stmt->bindValue(':limit', $per_page, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $mappedAttachments = array();
+        foreach ($attachments as $att) {
+            $mappedAttachments[] = array(
+                'id' => (int)$att['id'],
+                'order_id' => (int)$att['objednavka_id'],
+                'order_number' => $att['cislo_objednavky'],
+                'order_name' => $att['objednavka_nazev'],
+                'order_stav' => $att['stav_objednavky'],
+                'supplier' => $att['dodavatel_nazev'],
+                'type' => $att['typ_prilohy'],
+                'original_name' => $att['originalni_nazev_souboru'],
+                'file_size' => (int)$att['velikost_souboru_b'],
+                'created_at' => $att['dt_vytvoreni'],
+                'uploaded_by' => trim($att['nahrano_jmeno'] . ' ' . $att['nahrano_prijmeni'])
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $mappedAttachments,
+            'pagination' => array(
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_pages' => ceil($total / $per_page),
+                'returned' => count($mappedAttachments)
+            ),
+            'type' => $type,
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 ATTACHMENTS BY TYPE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * Mapování kódů stavů workflow na lidsky čitelné názvy
+ */
+function get_workflow_status_label($code) {
+    $labels = array(
+        'NOVA' => 'Nová',
+        'ODESLANA_KE_SCHVALENI' => 'Ke schválení',
+        'KE_SCHVALENI' => 'Ke schválení',
+        'SCHVALENA' => 'Schválená',
+        'ZAMITNUTA' => 'Zamítnuta',
+        'CEKA_POTVRZENI' => 'Čeká na potvrzení',
+        'POTVRZENA' => 'Potvrzená dodavatelem',
+        'DOKONCENA' => 'Dokončená',
+        'ZRUSENA' => 'Zrušena',
+        'ROZPRACOVANA' => 'Rozpracovaná',
+        'ODESLANA' => 'Odeslaná dodavateli',
+        'VECNA_SPRAVNOST' => 'Věcná správnost',
+        'ZKONTROLOVANA' => 'Zkontrolovaná',
+        'FAKTURACE' => 'V procesu fakturace',
+        'K_UVEREJNENI_DO_REGISTRU' => 'K uveřejnění v registru',
+        'UVEREJNENA' => 'Uveřejněna v registru',
+        'CEKA_SE' => 'Čeká se',
+        'SMAZANA' => 'Smazána',
+        'ARCHIVOVANO' => 'Archivováno'
+    );
+
+    // Normalizace - odstraň hranaté závorky (formát [SCHVALENA] nebo [SCHVALENA,DOKONCENA])
+    $code = trim($code);
+    $code = trim($code, '[]');
+
+    // Více stavů oddělených čárkou nebo středníkem - vezmi poslední (nejnovější)
+    foreach (array(',', ';') as $sep) {
+        if (strpos($code, $sep) !== false) {
+            $parts = array_filter(array_map('trim', explode($sep, $code)));
+            $code = end($parts);
+            break;
+        }
+    }
+
+    $code = strtoupper(trim($code));
+
+    return isset($labels[$code]) ? $labels[$code] : $code;
+}
+
+/**
+ * ORDER V2 API - Seznam objednávek BEZ příloh
+ * 
+ * POST /api.eeo/order-v2/attachments/orders-without
+ * 
+ * Input:
+ * - page: číslo stránky (default 1)
+ * - per_page: počet na stránku (default 50)
+ * 
+ * Response: JSON seznam objednávek bez příloh s lidsky čitelnými stavy
+ */
+function handle_order_v2_orders_without_attachments($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
+    $per_page = isset($input['per_page']) ? min(100, max(10, (int)$input['per_page'])) : 50;
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        $offset = ($page - 1) * $per_page;
+        
+        // Počet objednávek bez příloh
+        $countSql = "SELECT COUNT(DISTINCT o.id) as total 
+                     FROM " . get_orders_table_name() . " o
+                     LEFT JOIN " . get_order_attachments_table_name() . " a ON o.id = a.objednavka_id
+                     WHERE o.aktivni = 1 
+                       AND a.id IS NULL";
+        $countStmt = $db->prepare($countSql);
+        $countStmt->execute();
+        $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+        
+        // Načtení objednávek bez příloh
+        $sql = "SELECT 
+                    o.id,
+                    o.cislo_objednavky,
+                    o.predmet as nazev,
+                    o.stav_objednavky,
+                    o.uzivatel_id,
+                    o.dt_vytvoreni,
+                    o.max_cena_s_dph,
+                    o.dodavatel_nazev,
+                    u.jmeno as autor_jmeno,
+                    u.prijmeni as autor_prijmeni
+                FROM " . get_orders_table_name() . " o
+                LEFT JOIN " . get_order_attachments_table_name() . " a ON o.id = a.objednavka_id
+                LEFT JOIN `25_uzivatele` u ON o.uzivatel_id = u.id
+                WHERE o.aktivni = 1 
+                  AND a.id IS NULL
+                ORDER BY o.dt_vytvoreni DESC
+                LIMIT :limit OFFSET :offset";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':limit', $per_page, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $mappedOrders = array();
+        foreach ($orders as $ord) {
+            $mappedOrders[] = array(
+                'id' => (int)$ord['id'],
+                'cislo_objednavky' => $ord['cislo_objednavky'],
+                'nazev' => $ord['nazev'],
+                'stav' => $ord['stav_objednavky'],
+                'dodavatel' => $ord['dodavatel_nazev'],
+                'autor' => trim($ord['autor_jmeno'] . ' ' . $ord['autor_prijmeni']),
+                'datum_vytvoreni' => $ord['dt_vytvoreni'],
+                'castka' => (float)$ord['max_cena_s_dph']
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $mappedOrders,
+            'pagination' => array(
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_pages' => ceil($total / $per_page),
+                'returned' => count($mappedOrders)
+            ),
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 ORDERS WITHOUT ATTACHMENTS Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()));
     }
 }

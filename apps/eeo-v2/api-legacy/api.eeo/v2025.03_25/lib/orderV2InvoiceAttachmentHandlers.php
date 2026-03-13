@@ -956,3 +956,460 @@ function handle_order_v2_update_invoice_attachment($input, $config, $queries) {
         ));
     }
 }
+
+/**
+ * ORDER V2 API - List ALL invoice attachments (všechny přílohy všech faktur)
+ * 
+ * POST /api.eeo/order-v2/invoices/attachments/list
+ * 
+ * Input (POST JSON):
+ * - username: uživatelské jméno
+ * - token: autentizační token
+ * - limit: (optional) počet záznamů (default 100)
+ * - offset: (optional) offset pro stránkování (default 0)
+ * 
+ * Response: JSON seznam všech příloh faktur s info o faktuře a objednávce
+ * PHP 5.6 compatible with TimezoneHelper
+ */
+function handle_order_v2_list_all_invoice_attachments($input, $config, $queries) {
+    // Token authentication
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $limit = isset($input['limit']) ? intval($input['limit']) : 100;
+    $offset = isset($input['offset']) ? intval($input['offset']) : 0;
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // Načtení všech příloh faktur se základními info o faktuře a objednávce
+        // Faktura může být navázána na objednávku (objednavka_id) nebo smlouvu (smlouva_id)
+        $sql = "SELECT 
+                    a.id,
+                    a.guid,
+                    a.faktura_id,
+                    a.typ_prilohy,
+                    a.originalni_nazev_souboru,
+                    a.systemova_cesta,
+                    a.velikost_souboru_b,
+                    a.dt_vytvoreni,
+                    a.dt_aktualizace,
+                    a.nahrano_uzivatel_id,
+                    a.je_isdoc,
+                    f.fa_cislo_vema as cislo_faktury,
+                    f.objednavka_id,
+                    f.smlouva_id,
+                    o.cislo_objednavky,
+                    o.predmet as objednavka_nazev,
+                    sm.cislo_smlouvy,
+                    sm.nazev_smlouvy,
+                    u.jmeno as nahrano_uzivatel_jmeno,
+                    u.prijmeni as nahrano_uzivatel_prijmeni
+                FROM " . get_invoice_attachments_table_name() . " a
+                INNER JOIN " . get_invoices_table_name() . " f ON a.faktura_id = f.id
+                LEFT JOIN " . get_orders_table_name() . " o ON f.objednavka_id = o.id
+                LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
+                LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+                WHERE f.aktivni = 1
+                ORDER BY a.dt_vytvoreni DESC
+                LIMIT :limit OFFSET :offset";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Count total
+        $countSql = "SELECT COUNT(*) as total 
+                     FROM " . get_invoice_attachments_table_name() . " a
+                     INNER JOIN " . get_invoices_table_name() . " f ON a.faktura_id = f.id
+                     WHERE f.aktivni = 1";
+        $countStmt = $db->prepare($countSql);
+        $countStmt->execute();
+        $total = $countStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Mapping DB fields to response format
+        $mappedAttachments = array();
+        foreach ($attachments as $att) {
+            $mappedAttachments[] = array(
+                'id' => (int)$att['id'],
+                'guid' => $att['guid'],
+                'invoice_id' => (int)$att['faktura_id'],
+                'invoice_number' => $att['cislo_faktury'],
+                'order_id' => $att['objednavka_id'] ? (int)$att['objednavka_id'] : null,
+                'order_number' => $att['cislo_objednavky'],
+                'order_name' => $att['objednavka_nazev'],
+                'contract_id' => $att['smlouva_id'] ? (int)$att['smlouva_id'] : null,
+                'contract_number' => $att['cislo_smlouvy'],
+                'contract_name' => $att['nazev_smlouvy'],
+                'type' => $att['typ_prilohy'],
+                'original_name' => $att['originalni_nazev_souboru'],
+                'system_path' => $att['systemova_cesta'],
+                'file_size' => (int)$att['velikost_souboru_b'],
+                'created_at' => $att['dt_vytvoreni'],
+                'updated_at' => $att['dt_aktualizace'],
+                'uploaded_by_id' => (int)$att['nahrano_uzivatel_id'],
+                'uploaded_by_name' => trim($att['nahrano_uzivatel_jmeno'] . ' ' . $att['nahrano_uzivatel_prijmeni']),
+                'is_isdoc' => (int)$att['je_isdoc']
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $mappedAttachments,
+            'pagination' => array(
+                'total' => (int)$total['total'],
+                'limit' => $limit,
+                'offset' => $offset,
+                'returned' => count($mappedAttachments)
+            ),
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("handle_order_v2_list_all_invoice_attachments error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání příloh faktur: ' . $e->getMessage()
+        ));
+    }
+}
+
+/**
+ * ORDER V2 API - Get invoice attachment statistics (agregované počty podle typů)
+ * 
+ * POST /api.eeo/order-v2/invoices/attachments/stats
+ * 
+ * Response: JSON s počty příloh faktur podle typů
+ */
+function handle_order_v2_invoice_attachments_stats($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // Agregace počtů podle typu přílohy
+        $sql = "SELECT 
+                    COALESCE(a.typ_prilohy, 'NEURCENO') as typ_prilohy,
+                    COUNT(*) as pocet
+                FROM " . get_invoice_attachments_table_name() . " a
+                INNER JOIN " . get_invoices_table_name() . " f ON a.faktura_id = f.id
+                WHERE f.aktivni = 1
+                GROUP BY COALESCE(a.typ_prilohy, 'NEURCENO')
+                ORDER BY pocet DESC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Celkový počet
+        $totalSql = "SELECT COUNT(*) as total 
+                     FROM " . get_invoice_attachments_table_name() . " a
+                     INNER JOIN " . get_invoices_table_name() . " f ON a.faktura_id = f.id
+                     WHERE f.aktivni = 1";
+        $totalStmt = $db->prepare($totalSql);
+        $totalStmt->execute();
+        $total = $totalStmt->fetch(PDO::FETCH_ASSOC);
+        
+        $typesArray = array();
+        foreach ($stats as $row) {
+            $typesArray[] = array(
+                'type' => $row['typ_prilohy'],
+                'count' => (int)$row['pocet']
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'types' => $typesArray,
+                'total' => (int)$total['total']
+            ),
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 INVOICE ATTACHMENTS STATS Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * ORDER V2 API - List invoice attachments by type (s pagingem)
+ * 
+ * POST /api.eeo/order-v2/invoices/attachments/by-type
+ * 
+ * Input:
+ * - type: typ přílohy (FAKTURA, DODACI_LIST, atd.)
+ * - page: číslo stránky (default 1)
+ * - per_page: počet na stránku (default 50)
+ * 
+ * Response: JSON seznam příloh faktur daného typu
+ */
+function handle_order_v2_invoice_attachments_by_type($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $type = isset($input['type']) ? trim($input['type']) : '';
+    $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
+    $per_page = isset($input['per_page']) ? min(100, max(10, (int)$input['per_page'])) : 50;
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if (empty($type)) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Parametr type je povinný'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        $offset = ($page - 1) * $per_page;
+        
+        // Počet celkem pro daný typ
+        $countSql = "SELECT COUNT(*) as total 
+                     FROM " . get_invoice_attachments_table_name() . " a
+                     INNER JOIN " . get_invoices_table_name() . " f ON a.faktura_id = f.id
+                     WHERE f.aktivni = 1 AND COALESCE(a.typ_prilohy, 'NEURCENO') = :type";
+        $countStmt = $db->prepare($countSql);
+        $countStmt->bindValue(':type', $type, PDO::PARAM_STR);
+        $countStmt->execute();
+        $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+        
+        // Načtení příloh s detaily
+        $sql = "SELECT 
+                    a.id,
+                    a.faktura_id,
+                    a.guid,
+                    a.typ_prilohy,
+                    a.originalni_nazev_souboru,
+                    a.systemova_cesta,
+                    a.velikost_souboru_b,
+                    a.dt_vytvoreni,
+                    a.nahrano_uzivatel_id,
+                    a.je_isdoc,
+                    f.fa_cislo_vema as cislo_faktury,
+                    f.stav as fa_stav,
+                    f.objednavka_id,
+                    f.smlouva_id,
+                    o.cislo_objednavky,
+                    o.predmet as objednavka_nazev,
+                    sm.cislo_smlouvy,
+                    u.jmeno as nahrano_jmeno,
+                    u.prijmeni as nahrano_prijmeni
+                FROM " . get_invoice_attachments_table_name() . " a
+                INNER JOIN " . get_invoices_table_name() . " f ON a.faktura_id = f.id
+                LEFT JOIN " . get_orders_table_name() . " o ON f.objednavka_id = o.id
+                LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
+                LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+                WHERE f.aktivni = 1 AND COALESCE(a.typ_prilohy, 'NEURCENO') = :type
+                ORDER BY a.dt_vytvoreni DESC
+                LIMIT :limit OFFSET :offset";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':type', $type, PDO::PARAM_STR);
+        $stmt->bindValue(':limit', $per_page, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $mappedAttachments = array();
+        foreach ($attachments as $att) {
+            $mappedAttachments[] = array(
+                'id' => (int)$att['id'],
+                'invoice_id' => (int)$att['faktura_id'],
+                'invoice_number' => $att['cislo_faktury'],
+                'invoice_stav' => get_invoice_status_label($att['fa_stav']),
+                'order_id' => $att['objednavka_id'] ? (int)$att['objednavka_id'] : null,
+                'order_number' => $att['cislo_objednavky'],
+                'order_name' => $att['objednavka_nazev'],
+                'contract_id' => $att['smlouva_id'] ? (int)$att['smlouva_id'] : null,
+                'contract_number' => $att['cislo_smlouvy'],
+                'type' => $att['typ_prilohy'],
+                'original_name' => $att['originalni_nazev_souboru'],
+                'file_size' => (int)$att['velikost_souboru_b'],
+                'created_at' => $att['dt_vytvoreni'],
+                'uploaded_by' => trim($att['nahrano_jmeno'] . ' ' . $att['nahrano_prijmeni']),
+                'is_isdoc' => (int)$att['je_isdoc']
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $mappedAttachments,
+            'pagination' => array(
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_pages' => ceil($total / $per_page),
+                'returned' => count($mappedAttachments)
+            ),
+            'type' => $type,
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 INVOICE ATTACHMENTS BY TYPE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * Mapování kódů stavů faktur na lidsky čitelné názvy
+ */
+function get_invoice_status_label($code) {
+    $labels = array(
+        'ZAEVIDOVANA' => 'Zaevidována',
+        'VECNA_SPRAVNOST' => 'Věcná správnost',
+        'K_ZAPLACENI' => 'K zaplacení',
+        'ZAPLACENO' => 'Zaplacena',
+        'DOKONCENA' => 'Dokončena',
+        'STORNO' => 'Stornována',
+        'PREDANA_PO' => 'Předána PO',
+        'NOVA' => 'Nová',
+        'ROZPRACOVANA' => 'Rozpracovaná',
+        'CEKA_SCHVALENI' => 'Čeká na schválení',
+        'SCHVALENA' => 'Schválena',
+        'ZAMITNUTA' => 'Zamítnuta'
+    );
+    
+    // Normalizace kódu - uppercase a trim
+    $code = strtoupper(trim($code));
+    
+    return isset($labels[$code]) ? $labels[$code] : $code;
+}
+
+/**
+ * ORDER V2 API - Seznam faktur BEZ příloh
+ * 
+ * POST /api.eeo/order-v2/invoices/attachments/invoices-without
+ * 
+ * Input:
+ * - page: číslo stránky (default 1)
+ * - per_page: počet na stránku (default 50)
+ * 
+ * Response: JSON seznam faktur bez příloh s lidsky čitelnými stavy
+ */
+function handle_order_v2_invoices_without_attachments($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
+    $per_page = isset($input['per_page']) ? min(100, max(10, (int)$input['per_page'])) : 50;
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        $offset = ($page - 1) * $per_page;
+        
+        // Počet faktur bez příloh
+        $countSql = "SELECT COUNT(DISTINCT f.id) as total 
+                     FROM " . get_invoices_table_name() . " f
+                     LEFT JOIN " . get_invoice_attachments_table_name() . " a ON f.id = a.faktura_id
+                     WHERE f.aktivni = 1 
+                       AND a.id IS NULL";
+        $countStmt = $db->prepare($countSql);
+        $countStmt->execute();
+        $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+        
+        // Načtení faktur bez příloh
+        $sql = "SELECT 
+                    f.id,
+                    f.fa_cislo_vema as cislo_faktury,
+                    f.fa_datum_vystaveni as datum_vystaveni,
+                    f.fa_datum_splatnosti as datum_splatnosti,
+                    f.fa_castka,
+                    f.objednavka_id,
+                    f.smlouva_id,
+                    f.stav,
+                    o.cislo_objednavky,
+                    o.predmet as objednavka_nazev,
+                    o.dodavatel_nazev,
+                    sm.cislo_smlouvy
+                FROM " . get_invoices_table_name() . " f
+                LEFT JOIN " . get_invoice_attachments_table_name() . " a ON f.id = a.faktura_id
+                LEFT JOIN " . get_orders_table_name() . " o ON f.objednavka_id = o.id
+                LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
+                WHERE f.aktivni = 1 
+                  AND a.id IS NULL
+                ORDER BY f.fa_datum_vystaveni DESC
+                LIMIT :limit OFFSET :offset";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':limit', $per_page, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $mappedInvoices = array();
+        foreach ($invoices as $inv) {
+            $mappedInvoices[] = array(
+                'id' => (int)$inv['id'],
+                'cislo_faktury' => $inv['cislo_faktury'],
+                'datum_vystaveni' => $inv['datum_vystaveni'],
+                'datum_splatnosti' => $inv['datum_splatnosti'],
+                'stav_kod' => $inv['stav'],
+                'stav' => get_invoice_status_label($inv['stav']),
+                'objednavka_id' => $inv['objednavka_id'] ? (int)$inv['objednavka_id'] : null,
+                'cislo_objednavky' => $inv['cislo_objednavky'],
+                'objednavka_nazev' => $inv['objednavka_nazev'],
+                'smlouva_id' => $inv['smlouva_id'] ? (int)$inv['smlouva_id'] : null,
+                'cislo_smlouvy' => $inv['cislo_smlouvy'],
+                'dodavatel' => $inv['dodavatel_nazev'],
+                'castka' => (float)$inv['fa_castka']
+            );
+        }
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $mappedInvoices,
+            'pagination' => array(
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_pages' => ceil($total / $per_page),
+                'returned' => count($mappedInvoices)
+            ),
+            'timestamp' => TimezoneHelper::getApiTimestamp()
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 INVOICES WITHOUT ATTACHMENTS Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()));
+    }
+}
