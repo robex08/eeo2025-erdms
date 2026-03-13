@@ -1,4 +1,5 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -24,7 +25,9 @@ import {
   faFile,
   faFileInvoice,
   faEye,
-  faCheck
+  faCheck,
+  faExpand,
+  faCompress
 } from '@fortawesome/free-solid-svg-icons';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -807,8 +810,11 @@ const Toggle = styled.input`
 
 const ChartGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.25rem;
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const ChartCard = styled.div`
@@ -817,6 +823,48 @@ const ChartCard = styled.div`
   padding: 1rem 1.2rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+  position: relative;
+`;
+
+const ChartExpandBtn = styled.button`
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+  z-index: 2;
+  &:hover { color: #1d4ed8; background: #eff6ff; }
+`;
+
+const ChartOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+`;
+
+const ChartFullscreenBox = styled.div`
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  width: 92vw;
+  max-width: 1400px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+  overflow: auto;
 `;
 
 const EmptyState = styled.div`
@@ -1305,17 +1353,21 @@ export default function StatsReportsPage() {
   const userKey = user_id || user?.id || username || 'guest';
 
   const activeTabLsKey = `${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`;
-  const [activeTab, setActiveTab] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${userKey || 'guest'}`);
-      if (saved && SECTION_BLOCKS[saved]) return saved;
-    } catch (e) {}
-    return 'control';
-  });
+  const filterLsKey = `${LOCAL_STORAGE_PREFIX}_filters_${userKey}`;
+  const [activeTab, setActiveTab] = useState('control');
+  // Ref pro detekci prvního načtení per-user dat
+  const lsLoadedForKey = useRef(null);
   const [loading, setLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [viewerAttachment, setViewerAttachment] = useState(null);
   const lastViewerCloseAtRef = useRef(0);
+  const [fullscreenChart, setFullscreenChart] = useState(null);
+  useEffect(() => {
+    if (!fullscreenChart) return;
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreenChart(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [fullscreenChart]);
   const [orders, setOrders] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -1375,6 +1427,27 @@ export default function StatsReportsPage() {
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [pendingFilters, setPendingFilters] = useState(FILTER_DEFAULTS);
 
+  // Načtení uloženého tabu + filtrů po znám userKey (řeší async auth kontext)
+  useEffect(() => {
+    if (!userKey || userKey === 'guest') return;
+    if (lsLoadedForKey.current === userKey) return;
+    lsLoadedForKey.current = userKey;
+    try {
+      const savedTab = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`);
+      if (savedTab && SECTION_BLOCKS[savedTab]) setActiveTab(savedTab);
+    } catch (e) {}
+    try {
+      const savedFilters = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_filters_${userKey}`);
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters);
+        const merged = { ...FILTER_DEFAULTS, ...parsed };
+        setFilters(merged);
+        setPendingFilters(merged);
+      }
+    } catch (e) {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userKey]);
+
   const [notes, setNotes] = useState(() => {
     try {
       const raw = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_notes_${userKey}`);
@@ -1409,10 +1482,10 @@ export default function StatsReportsPage() {
     } catch (e) {}
   }, [userKey, visibleBlocks]);
 
-  useEffect(() => {
-    setBlockSelectOpen(false);
-    try { localStorage.setItem(activeTabLsKey, activeTab); } catch (e) {}
-  }, [activeTab, activeTabLsKey]);
+  // Tab a filtry se ukládají přímo v handlerech — oprava race condition při LS restore
+  // (staré useEffecty způsobovaly přepis LS hodnotou 'control' před načtením uložené hodnoty)
+
+  // (filtry se ukládají přímo v handleApplyFilters / handleResetFilters)
 
   const updateNotes = useCallback((key, value) => {
     setNotes(prev => {
@@ -3119,17 +3192,38 @@ export default function StatsReportsPage() {
   };
 
   const handleApplyFilters = useCallback(() => {
-    setFilters(prev => ({ ...prev, ...pendingFilters }));
+    const merged = { ...filters, ...pendingFilters };
+    setFilters(merged);
     setApplyTrigger(t => t + 1);
-  }, [pendingFilters]);
+    try {
+      if (userKey && userKey !== 'guest') {
+        localStorage.setItem(filterLsKey, JSON.stringify(merged));
+      }
+    } catch (e) {}
+  }, [pendingFilters, filters, userKey, filterLsKey]);
 
   const handleResetFilters = useCallback(() => {
     const cur = FILTER_DEFAULTS;
     setPendingFilters(cur);
     setFilters(cur);
     setApplyTrigger(t => t + 1);
+    try {
+      if (userKey && userKey !== 'guest') {
+        localStorage.setItem(filterLsKey, JSON.stringify(cur));
+      }
+    } catch (e) {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userKey, filterLsKey]);
+
+  const handleTabChange = useCallback((tabId) => {
+    setActiveTab(tabId);
+    setBlockSelectOpen(false);
+    try {
+      if (userKey && userKey !== 'guest') {
+        localStorage.setItem(activeTabLsKey, tabId);
+      }
+    } catch (e) {}
+  }, [userKey, activeTabLsKey]);
 
   const hasUnappliedFilters = useMemo(() => {
     return JSON.stringify(pendingFilters) !== JSON.stringify(filters);
@@ -3336,7 +3430,7 @@ export default function StatsReportsPage() {
                 key={tab.id}
                 $active={activeTab === tab.id}
                 $tone={TAB_TONES[tab.id]}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
               >
                 <FontAwesomeIcon icon={tab.icon} /> {tab.label}
               </TabButton>
@@ -4219,24 +4313,20 @@ export default function StatsReportsPage() {
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
+                  const finChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
+                    <Bar data={{ labels, datasets: [
+                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
+                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                    }}} />
+                  );
                   return (
                     <ChartCard>
                       <SectionTitle>Financování – počet a částka</SectionTitle>
-                      {labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
-                        <Bar
-                          data={{ labels, datasets: [
-                            { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                            { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                          ]}}
-                          options={{
-                            plugins: { legend: { position: 'bottom' } },
-                            scales: {
-                              yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                              yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                            }
-                          }}
-                        />
-                      )}
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Financování – počet a částka', el: finChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      {finChartEl}
                     </ChartCard>
                   );
                 })()}
@@ -4248,24 +4338,20 @@ export default function StatsReportsPage() {
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
+                  const usekChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
+                    <Bar data={{ labels, datasets: [
+                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
+                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                    }}} />
+                  );
                   return (
                     <ChartCard>
                       <SectionTitle>Úseky – počet a částka</SectionTitle>
-                      {labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
-                        <Bar
-                          data={{ labels, datasets: [
-                            { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                            { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                          ]}}
-                          options={{
-                            plugins: { legend: { position: 'bottom' } },
-                            scales: {
-                              yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                              yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                            }
-                          }}
-                        />
-                      )}
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Úseky – počet a částka', el: usekChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      {usekChartEl}
                     </ChartCard>
                   );
                 })()}
@@ -4277,24 +4363,20 @@ export default function StatsReportsPage() {
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
+                  const druhChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
+                    <Bar data={{ labels, datasets: [
+                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
+                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                    }}} />
+                  );
                   return (
                     <ChartCard>
                       <SectionTitle>Druhy objednávek – počet a částka</SectionTitle>
-                      {labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
-                        <Bar
-                          data={{ labels, datasets: [
-                            { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                            { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                          ]}}
-                          options={{
-                            plugins: { legend: { position: 'bottom' } },
-                            scales: {
-                              yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                              yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                            }
-                          }}
-                        />
-                      )}
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Druhy objednávek – počet a částka', el: druhChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      {druhChartEl}
                     </ChartCard>
                   );
                 })()}
@@ -4306,51 +4388,45 @@ export default function StatsReportsPage() {
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
-                  return labels.length === 0 ? null : (
+                  if (labels.length === 0) return null;
+                  const lpChartEl = (
+                    <Bar data={{ labels, datasets: [
+                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
+                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                    }}} />
+                  );
+                  return (
                     <ChartCard>
                       <SectionTitle>LP kódy – počet a částka</SectionTitle>
-                      <Bar
-                        data={{ labels, datasets: [
-                          { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                          { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                        ]}}
-                        options={{
-                          plugins: { legend: { position: 'bottom' } },
-                          scales: {
-                            yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                            yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                          }
-                        }}
-                      />
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'LP kódy – počet a částka', el: lpChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      {lpChartEl}
                     </ChartCard>
                   );
                 })()}
 
                 {/* Top dodavatelé */}
-                <ChartCard>
-                  <SectionTitle>Top dodavatelé (částka)</SectionTitle>
-                  {statisticsCharts.topSuppliers.length === 0 ? (
+                {(() => {
+                  const suppEl = statisticsCharts.topSuppliers.length === 0 ? (
                     <EmptyState>Bez dat</EmptyState>
                   ) : (
-                    <Bar
-                      data={{
-                        labels: statisticsCharts.topSuppliers.map(([name]) => name),
-                        datasets: [{
-                          label: 'Částka',
-                          data: statisticsCharts.topSuppliers.map(([, value]) => Math.round(value / 1000)),
-                          backgroundColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS),
-                          borderColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS),
-                          borderWidth: 1
-                        }]
-                      }}
-                      options={{
-                        indexAxis: 'y',
-                        plugins: { legend: { display: false } },
-                        scales: { x: { ticks: { callback: v => `${v}k` } } }
-                      }}
-                    />
-                  )}
-                </ChartCard>
+                    <Bar data={{
+                      labels: statisticsCharts.topSuppliers.map(([name]) => name),
+                      datasets: [{ label: 'Částka', data: statisticsCharts.topSuppliers.map(([, value]) => Math.round(value / 1000)),
+                        backgroundColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS),
+                        borderColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS), borderWidth: 1 }]
+                    }} options={{ indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => `${v}k` } } } }} />
+                  );
+                  return (
+                    <ChartCard>
+                      <SectionTitle>Top dodavatelé (částka)</SectionTitle>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Top dodavatelé (částka)', el: suppEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      {suppEl}
+                    </ChartCard>
+                  );
+                })()}
 
               </ChartGrid>
             )}
@@ -5114,6 +5190,22 @@ export default function StatsReportsPage() {
         </ContentGrid>
       </PageContainer>
     </PageWrapper>
+    {fullscreenChart && ReactDOM.createPortal(
+      <ChartOverlay onClick={(e) => { if (e.target === e.currentTarget) setFullscreenChart(null); }}>
+        <ChartFullscreenBox>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <SectionTitle style={{ margin: 0 }}>{fullscreenChart.title}</SectionTitle>
+            <button onClick={() => setFullscreenChart(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#64748b', padding: '0.25rem 0.5rem', borderRadius: '4px' }} title="Zavřít (ESC)">
+              <FontAwesomeIcon icon={faCompress} />
+            </button>
+          </div>
+          <div style={{ flex: 1, minHeight: '55vh' }}>
+            {fullscreenChart.el}
+          </div>
+        </ChartFullscreenBox>
+      </ChartOverlay>,
+      document.body
+    )}
     {viewerAttachment && (
       <AttachmentViewer
         attachment={viewerAttachment}
