@@ -854,6 +854,14 @@ const ChartCard = styled.div`
   border: 1px solid rgba(148, 163, 184, 0.2);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
   position: relative;
+  overflow: hidden;
+  min-width: 0;
+`;
+
+const ChartWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  height: 280px;
 `;
 
 const ChartExpandBtn = styled.button`
@@ -4405,11 +4413,11 @@ export default function StatsReportsPage() {
                     { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
                     { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
                   ]};
-                  const finOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                  const finOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: {
                     yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
                     yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
                   }};
-                  const finChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={finData} options={finOpts} />;
+                  const finChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <ChartWrapper><Bar data={finData} options={finOpts} /></ChartWrapper>;
                   return (
                     <ChartCard>
                       <SectionTitle>Financování – počet a částka</SectionTitle>
@@ -4430,11 +4438,11 @@ export default function StatsReportsPage() {
                     { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
                     { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
                   ]};
-                  const usekOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                  const usekOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: {
                     yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
                     yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
                   }};
-                  const usekChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={usekData} options={usekOpts} />;
+                  const usekChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <ChartWrapper><Bar data={usekData} options={usekOpts} /></ChartWrapper>;
                   return (
                     <ChartCard>
                       <SectionTitle>Úseky – počet a částka</SectionTitle>
@@ -4455,11 +4463,11 @@ export default function StatsReportsPage() {
                     { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
                     { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
                   ]};
-                  const druhOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                  const druhOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: {
                     yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
                     yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
                   }};
-                  const druhChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={druhData} options={druhOpts} />;
+                  const druhChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <ChartWrapper><Bar data={druhData} options={druhOpts} /></ChartWrapper>;
                   return (
                     <ChartCard>
                       <SectionTitle>Druhy objednávek – počet a částka</SectionTitle>
@@ -4481,11 +4489,11 @@ export default function StatsReportsPage() {
                     { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
                     { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
                   ]};
-                  const lpOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                  const lpOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: {
                     yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
                     yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
                   }};
-                  const lpChartEl = <Bar data={lpData} options={lpOpts} />;
+                  const lpChartEl = <ChartWrapper><Bar data={lpData} options={lpOpts} /></ChartWrapper>;
                   return (
                     <ChartCard>
                       <SectionTitle>LP kódy – počet a částka</SectionTitle>
@@ -4504,6 +4512,8 @@ export default function StatsReportsPage() {
                   const colors = buildChartColors(labels.length, CHART_COLORS);
                   const suppData = { labels, datasets: [{ label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, borderColor: colors, borderWidth: 1 }] };
                   const suppOpts = {
+                    responsive: true,
+                    maintainAspectRatio: false,
                     indexAxis: 'y',
                     plugins: {
                       legend: { display: false },
@@ -4521,7 +4531,7 @@ export default function StatsReportsPage() {
                     },
                     scales: { x: { ticks: { callback: v => `${v}k` } } }
                   };
-                  const suppEl = suppliers.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={suppData} options={suppOpts} />;
+                  const suppEl = suppliers.length === 0 ? <EmptyState>Bez dat</EmptyState> : <ChartWrapper><Bar data={suppData} options={suppOpts} /></ChartWrapper>;
                   return (
                     <ChartCard>
                       <SectionTitle>Top dodavatelé (částka)</SectionTitle>
@@ -4542,6 +4552,8 @@ export default function StatsReportsPage() {
                     { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, borderColor: colors, borderWidth: 1 }
                   ]};
                   const buyerOpts = {
+                    responsive: true,
+                    maintainAspectRatio: false,
                     indexAxis: 'y',
                     plugins: {
                       legend: { display: false },
@@ -4562,7 +4574,7 @@ export default function StatsReportsPage() {
                       x: { title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
                     }
                   };
-                  const buyerEl = <Bar data={buyerData} options={buyerOpts} />;
+                  const buyerEl = <ChartWrapper><Bar data={buyerData} options={buyerOpts} /></ChartWrapper>;
                   return (
                     <ChartCard>
                       <SectionTitle>Top objednatelé (částka)</SectionTitle>
