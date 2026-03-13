@@ -90,6 +90,14 @@ const SECTION_BLOCKS = {
     { key: 'spendByDruhFinancing', label: 'Čerpání: Druh → Financování' },
     { key: 'spendByLpKod', label: 'Čerpání LP: podle LP kódu' }
   ],
+  stats: [
+    { key: 'chartFinancing', label: 'Financování – počet a částka' },
+    { key: 'chartUsek', label: 'Úseky – počet a částka' },
+    { key: 'chartDruh', label: 'Druhy objednávek – počet a částka' },
+    { key: 'chartLpKod', label: 'LP kódy – počet a částka' },
+    { key: 'chartTopSuppliers', label: 'Top dodavatelé (částka)' },
+    { key: 'chartTopBuyers', label: 'Top objednatelé (počet a částka)' }
+  ],
   reports: [
     { key: 'ordersWithoutInvoice', label: 'Objednávky bez faktury 2+ měsíce (schváleno+)' },
     { key: 'ordersWithInvoiceNotDone', label: 'Objednávky s fakturou, nedokončené' },
@@ -100,8 +108,30 @@ const SECTION_BLOCKS = {
     { key: 'invoiceAttachmentsByType', label: 'Přílohy faktur podle typu' },
     { key: 'ordersWithoutAttachments', label: 'Objednávky bez příloh' },
     { key: 'invoicesWithoutAttachments', label: 'Faktury bez příloh' }
+  ],
+  pivot: [
+    { key: 'pivotTable', label: 'Agregační tabulka' }
   ]
 };
+
+// Vrátí kopii Chart.js options s většími fonty pro fullscreen panel
+const withFsFont = (opts, sz = 15) => ({
+  ...opts,
+  plugins: opts.plugins ? {
+    ...opts.plugins,
+    legend: opts.plugins.legend ? {
+      ...opts.plugins.legend,
+      labels: { ...opts.plugins.legend.labels, font: { size: sz } }
+    } : opts.plugins.legend
+  } : opts.plugins,
+  scales: opts.scales ? Object.fromEntries(
+    Object.entries(opts.scales).map(([k, v]) => [k, {
+      ...v,
+      title: v.title ? { ...v.title, font: { size: sz } } : v.title,
+      ticks: v.ticks ? { ...v.ticks, font: { size: sz - 1 } } : v.ticks
+    }])
+  ) : opts.scales
+});
 
 const LOCAL_STORAGE_PREFIX = 'stats_reports';
 const MAX_ORDERS_BATCH = 1000;
@@ -857,9 +887,8 @@ const ChartFullscreenBox = styled.div`
   background: #fff;
   border-radius: 16px;
   padding: 1.5rem 2rem;
-  width: 92vw;
-  max-width: 1400px;
-  max-height: 90vh;
+  width: 80vw;
+  height: 80vh;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -871,6 +900,22 @@ const EmptyState = styled.div`
   padding: 1.5rem;
   text-align: center;
   color: #94a3b8;
+`;
+
+const TabEmptyStateWrap = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5rem 2rem;
+  gap: 1.5rem;
+  color: #94a3b8;
+`;
+
+const TabEmptyStateText = styled.div`
+  text-align: center;
+  h3 { font-size: 1.15rem; font-weight: 600; color: #64748b; margin: 0 0 0.4rem; }
+  p  { font-size: 0.9rem; color: #94a3b8; margin: 0; }
 `;
 
 const PaginationContainer = styled.div`
@@ -1354,8 +1399,17 @@ export default function StatsReportsPage() {
 
   const activeTabLsKey = `${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`;
   const filterLsKey = `${LOCAL_STORAGE_PREFIX}_filters_${userKey}`;
-  const [activeTab, setActiveTab] = useState('control');
-  // Ref pro detekci prvního načtení per-user dat
+  // Lazy init — načte tab přímo z LS při prvním renderu (synchronně), takže F5 nevyžaduje async useEffect
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const key = user_id || user?.id || username || 'guest';
+      if (!key || key === 'guest') return 'control';
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${key}`);
+      if (saved && PAGE_TABS.some(t => t.id === saved)) return saved;
+    } catch (e) {}
+    return 'control';
+  });
+  // Ref pro detekci prvního načtení per-user dat (fallback pro async auth)
   const lsLoadedForKey = useRef(null);
   const [loading, setLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -1434,7 +1488,7 @@ export default function StatsReportsPage() {
     lsLoadedForKey.current = userKey;
     try {
       const savedTab = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`);
-      if (savedTab && SECTION_BLOCKS[savedTab]) setActiveTab(savedTab);
+      if (savedTab && PAGE_TABS.some(t => t.id === savedTab)) setActiveTab(savedTab);
     } catch (e) {}
     try {
       const savedFilters = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_filters_${userKey}`);
@@ -2566,7 +2620,9 @@ export default function StatsReportsPage() {
 
       // Dodavatelé
       const suppKey = getSupplierName(order) || 'Neurčeno';
-      suppliersByAmount[suppKey] = (suppliersByAmount[suppKey] || 0) + amt;
+      if (!suppliersByAmount[suppKey]) suppliersByAmount[suppKey] = { count: 0, amount: 0 };
+      suppliersByAmount[suppKey].count += 1;
+      suppliersByAmount[suppKey].amount += amt;
 
       // LP kódy
       const fin = parseFinancing(order?.financovani);
@@ -2590,8 +2646,21 @@ export default function StatsReportsPage() {
 
     const topSuppliers = Object.entries(suppliersByAmount)
       .filter(([name]) => name && name !== 'Neurčeno')
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1].amount - a[1].amount)
       .slice(0, 7);
+
+    // Top objednatelé - bubliny (počet + částka)
+    const buyersByData = {};
+    filteredOrders.forEach(order => {
+      const name = getOrdererName(order) || 'Neurčeno';
+      if (!buyersByData[name]) buyersByData[name] = { count: 0, amount: 0 };
+      buyersByData[name].count += 1;
+      buyersByData[name].amount += getOrderAmount(order);
+    });
+    const topBuyers = Object.entries(buyersByData)
+      .filter(([name]) => name && name !== 'Neurčeno')
+      .sort((a, b) => b[1].amount - a[1].amount)
+      .slice(0, 15);
 
     const sortByKey = obj => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b, 'cs-CZ')));
 
@@ -2602,9 +2671,10 @@ export default function StatsReportsPage() {
       byUsek: sortByKey(byUsek),
       byDruh: sortByKey(byDruh),
       byLpKod: sortByKey(byLpKod),
-      topSuppliers
+      topSuppliers,
+      topBuyers
     };
-  }, [filteredOrders, getOrderTypeLabel, getOrderFinancingLabel, getOrdererUsekCode, getOrderAmount, parseFinancing]);
+  }, [filteredOrders, getOrderTypeLabel, getOrderFinancingLabel, getOrdererUsekCode, getOrderAmount, parseFinancing, getOrdererName]);
 
   const pivotData = useMemo(() => {
     const normalizeAttachmentTypes = (items = []) => {
@@ -3540,6 +3610,24 @@ export default function StatsReportsPage() {
           </Panel>
 
           <Section>
+            {/* Empty state — žádná sekce není zapnutá */}
+            {activeBlocks.length > 0 && activeVisibleCount === 0 && (
+              <TabEmptyStateWrap>
+                <svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="96" height="96" rx="48" fill="#f1f5f9"/>
+                  <rect x="20" y="56" width="12" height="20" rx="3" fill="#cbd5e1"/>
+                  <rect x="38" y="42" width="12" height="34" rx="3" fill="#cbd5e1"/>
+                  <rect x="56" y="48" width="12" height="28" rx="3" fill="#cbd5e1"/>
+                  <line x1="18" y1="30" x2="78" y2="72" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round"/>
+                  <line x1="78" y1="30" x2="18" y2="72" stroke="#f1f5f9" strokeWidth="5" strokeLinecap="round"/>
+                  <line x1="78" y1="30" x2="18" y2="72" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round"/>
+                </svg>
+                <TabEmptyStateText>
+                  <h3>Žádná sekce není zobrazena</h3>
+                  <p>Klikněte na tlačítko <strong>Zobrazení</strong> vpravo nahoře<br/>a vyberte, co chcete vidět.</p>
+                </TabEmptyStateText>
+              </TabEmptyStateWrap>
+            )}
             {activeTab === 'control' && (
               <>
                 {/* Klasifikace příloh - zobrazí se po kliknutí na tlačítko */}
@@ -4307,123 +4395,179 @@ export default function StatsReportsPage() {
               <ChartGrid>
 
                 {/* Financování - počet + částka */}
-                {(() => {
+                {isBlockVisible('stats', 'chartFinancing') && (() => {
                   const entries = Object.entries(statisticsCharts.byFinancing);
                   const labels = entries.map(([k]) => k);
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
-                  const finChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
-                    <Bar data={{ labels, datasets: [
-                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
-                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                    }}} />
-                  );
+                  const finData = { labels, datasets: [
+                    { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                    { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                  ]};
+                  const finOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                    yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                    yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                  }};
+                  const finChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={finData} options={finOpts} />;
                   return (
                     <ChartCard>
                       <SectionTitle>Financování – počet a částka</SectionTitle>
-                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Financování – počet a částka', el: finChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Financování – počet a částka', el: labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={finData} options={withFsFont(finOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
                       {finChartEl}
                     </ChartCard>
                   );
                 })()}
 
                 {/* Úseky - počet + částka */}
-                {(() => {
+                {isBlockVisible('stats', 'chartUsek') && (() => {
                   const entries = Object.entries(statisticsCharts.byUsek);
                   const labels = entries.map(([k]) => k);
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
-                  const usekChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
-                    <Bar data={{ labels, datasets: [
-                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
-                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                    }}} />
-                  );
+                  const usekData = { labels, datasets: [
+                    { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                    { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                  ]};
+                  const usekOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                    yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                    yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                  }};
+                  const usekChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={usekData} options={usekOpts} />;
                   return (
                     <ChartCard>
                       <SectionTitle>Úseky – počet a částka</SectionTitle>
-                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Úseky – počet a částka', el: usekChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Úseky – počet a částka', el: labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={usekData} options={withFsFont(usekOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
                       {usekChartEl}
                     </ChartCard>
                   );
                 })()}
 
                 {/* Druhy objednávek - počet + částka */}
-                {(() => {
+                {isBlockVisible('stats', 'chartDruh') && (() => {
                   const entries = Object.entries(statisticsCharts.byDruh);
                   const labels = entries.map(([k]) => k);
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
-                  const druhChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
-                    <Bar data={{ labels, datasets: [
-                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
-                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                    }}} />
-                  );
+                  const druhData = { labels, datasets: [
+                    { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                    { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                  ]};
+                  const druhOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                    yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                    yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                  }};
+                  const druhChartEl = labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={druhData} options={druhOpts} />;
                   return (
                     <ChartCard>
                       <SectionTitle>Druhy objednávek – počet a částka</SectionTitle>
-                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Druhy objednávek – počet a částka', el: druhChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Druhy objednávek – počet a částka', el: labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={druhData} options={withFsFont(druhOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
                       {druhChartEl}
                     </ChartCard>
                   );
                 })()}
 
                 {/* LP kódy - počet + částka */}
-                {(() => {
+                {isBlockVisible('stats', 'chartLpKod') && (() => {
                   const entries = Object.entries(statisticsCharts.byLpKod);
                   const labels = entries.map(([k]) => k);
                   const counts = entries.map(([, v]) => v.count);
                   const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
                   const colors = buildChartColors(labels.length, CHART_COLORS);
                   if (labels.length === 0) return null;
-                  const lpChartEl = (
-                    <Bar data={{ labels, datasets: [
-                      { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
-                      { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
-                    ]}} options={{ plugins: { legend: { position: 'bottom' } }, scales: {
-                      yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
-                      yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
-                    }}} />
-                  );
+                  const lpData = { labels, datasets: [
+                    { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                    { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                  ]};
+                  const lpOpts = { plugins: { legend: { position: 'bottom' } }, scales: {
+                    yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                    yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                  }};
+                  const lpChartEl = <Bar data={lpData} options={lpOpts} />;
                   return (
                     <ChartCard>
                       <SectionTitle>LP kódy – počet a částka</SectionTitle>
-                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'LP kódy – počet a částka', el: lpChartEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'LP kódy – počet a částka', el: <Bar data={lpData} options={withFsFont(lpOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
                       {lpChartEl}
                     </ChartCard>
                   );
                 })()}
 
                 {/* Top dodavatelé */}
-                {(() => {
-                  const suppEl = statisticsCharts.topSuppliers.length === 0 ? (
-                    <EmptyState>Bez dat</EmptyState>
-                  ) : (
-                    <Bar data={{
-                      labels: statisticsCharts.topSuppliers.map(([name]) => name),
-                      datasets: [{ label: 'Částka', data: statisticsCharts.topSuppliers.map(([, value]) => Math.round(value / 1000)),
-                        backgroundColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS),
-                        borderColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS), borderWidth: 1 }]
-                    }} options={{ indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => `${v}k` } } } }} />
-                  );
+                {isBlockVisible('stats', 'chartTopSuppliers') && (() => {
+                  const suppliers = statisticsCharts.topSuppliers;
+                  const labels = suppliers.map(([name]) => name);
+                  const amounts = suppliers.map(([, v]) => Math.round(v.amount / 1000));
+                  const counts = suppliers.map(([, v]) => v.count);
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  const suppData = { labels, datasets: [{ label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, borderColor: colors, borderWidth: 1 }] };
+                  const suppOpts = {
+                    indexAxis: 'y',
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          label: ctx => {
+                            const i = ctx.dataIndex;
+                            return [
+                              `Počet: ${counts[i]} ks`,
+                              `Částka: ${amounts[i].toLocaleString('cs-CZ')} tis. Kč`
+                            ];
+                          }
+                        }
+                      }
+                    },
+                    scales: { x: { ticks: { callback: v => `${v}k` } } }
+                  };
+                  const suppEl = suppliers.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={suppData} options={suppOpts} />;
                   return (
                     <ChartCard>
                       <SectionTitle>Top dodavatelé (částka)</SectionTitle>
-                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Top dodavatelé (částka)', el: suppEl })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Top dodavatelé (částka)', el: suppliers.length === 0 ? <EmptyState>Bez dat</EmptyState> : <Bar data={suppData} options={withFsFont(suppOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
                       {suppEl}
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* Top objednatelé - horizontální bar, X = částka, tooltip = počet + částka */}
+                {isBlockVisible('stats', 'chartTopBuyers') && (() => {
+                  const buyers = statisticsCharts.topBuyers;
+                  if (buyers.length === 0) return null;
+                  const labels = buyers.map(([name]) => name);
+                  const amounts = buyers.map(([, v]) => Math.round(v.amount / 1000));
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  const buyerData = { labels, datasets: [
+                    { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, borderColor: colors, borderWidth: 1 }
+                  ]};
+                  const buyerOpts = {
+                    indexAxis: 'y',
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          label: ctx => {
+                            const v = buyers[ctx.dataIndex]?.[1];
+                            if (!v) return ctx.formattedValue;
+                            return [
+                              `Počet: ${v.count} ks`,
+                              `Částka: ${Math.round(v.amount / 1000).toLocaleString('cs-CZ')} tis. Kč`
+                            ];
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      x: { title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                    }
+                  };
+                  const buyerEl = <Bar data={buyerData} options={buyerOpts} />;
+                  return (
+                    <ChartCard>
+                      <SectionTitle>Top objednatelé (částka)</SectionTitle>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Top objednatelé (částka)', el: <Bar data={buyerData} options={withFsFont(buyerOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      {buyerEl}
                     </ChartCard>
                   );
                 })()}
@@ -5199,7 +5343,7 @@ export default function StatsReportsPage() {
               <FontAwesomeIcon icon={faCompress} />
             </button>
           </div>
-          <div style={{ flex: 1, minHeight: '55vh' }}>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
             {fullscreenChart.el}
           </div>
         </ChartFullscreenBox>
