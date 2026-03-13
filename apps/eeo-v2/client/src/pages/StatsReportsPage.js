@@ -44,6 +44,8 @@ import {
   downloadInvoiceAttachment
 } from '../services/apiOrderV2';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
+import LimitovanePrislibyManager from '../components/LimitovanePrislibyManager';
+import SmlouvyTab from '../components/dictionaries/tabs/SmlouvyTab';
 import { listOrdersV3 } from '../services/apiOrdersV3';
 import { listInvoices25 } from '../services/api25invoices';
 import { getSmlouvyList } from '../services/apiSmlouvy';
@@ -80,7 +82,9 @@ const SECTION_BLOCKS = {
   ],
   spend: [
     { key: 'financingOptions', label: 'Čerpání podle financování' },
-    { key: 'usekySpend', label: 'LP rozdělení podle úseků' }
+    { key: 'usekySpend', label: 'LP rozdělení podle úseků' },
+    { key: 'lpCerpani', label: 'Čerpání limitovaných příslibů' },
+    { key: 'smlouvyCerpani', label: 'Čerpání smluv' }
   ],
   reports: [
     { key: 'ordersWithoutInvoice', label: 'Objednávky bez faktury 2+ měsíce (schváleno+)' },
@@ -3395,6 +3399,14 @@ export default function StatsReportsPage() {
                   </TableWrapper>
                   {renderPagination('usekySpend', pagedUseky)}
                   </SectionCard>
+                )}
+
+                {isBlockVisible('spend', 'lpCerpani') && (
+                  <LimitovanePrislibyManager forceFullAccess={true} />
+                )}
+
+                {isBlockVisible('spend', 'smlouvyCerpani') && (
+                  <SmlouvyTab readOnly forceUnrestrictedReadOnly={true} />
                 )}
               </>
             )}
