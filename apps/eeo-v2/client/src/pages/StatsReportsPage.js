@@ -12,6 +12,7 @@ import {
   faPlus,
   faReceipt,
   faRefresh,
+  faSearch,
   faTable,
   faTriangleExclamation,
   faXmark,
@@ -44,8 +45,7 @@ import {
   downloadInvoiceAttachment
 } from '../services/apiOrderV2';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
-import LimitovanePrislibyManager from '../components/LimitovanePrislibyManager';
-import SmlouvyTab from '../components/dictionaries/tabs/SmlouvyTab';
+import DatePicker from '../components/DatePicker';
 import { listOrdersV3 } from '../services/apiOrdersV3';
 import { listInvoices25 } from '../services/api25invoices';
 import { getSmlouvyList } from '../services/apiSmlouvy';
@@ -82,9 +82,7 @@ const SECTION_BLOCKS = {
   ],
   spend: [
     { key: 'financingOptions', label: 'Čerpání podle financování' },
-    { key: 'usekySpend', label: 'LP rozdělení podle úseků' },
-    { key: 'lpCerpani', label: 'Čerpání limitovaných příslibů' },
-    { key: 'smlouvyCerpani', label: 'Čerpání smluv' }
+    { key: 'usekySpend', label: 'LP rozdělení podle úseků' }
   ],
   reports: [
     { key: 'ordersWithoutInvoice', label: 'Objednávky bez faktury 2+ měsíce (schváleno+)' },
@@ -831,6 +829,8 @@ const Pill = styled.span`
   font-size: 0.75rem;
 `;
 
+
+
 const fmtCurrency = (value) => {
   const num = Number(value || 0);
   return `${num.toLocaleString('cs-CZ')} Kč`;
@@ -1102,6 +1102,146 @@ const parseOrdersResponse = (response) => {
   return { orders, pagination, status, message };
 };
 
+/* ─── Vlastní MultiSelect filtr (V3 styl) ───────────────────────── */
+function FilterMultiSelect({ options, values, onChange, placeholder }) {
+  const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState('');
+  const wrapRef = useRef(null);
+  const searchRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (open && searchRef.current) {
+      requestAnimationFrame(() => searchRef.current?.focus());
+    }
+  }, [open]);
+
+  const valueSet = useMemo(() => new Set(values.map(v => String(v))), [values]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options;
+    const s = search.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return options.filter(o =>
+      (o.label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(s)
+    );
+  }, [options, search]);
+
+  const toggle = (val) => {
+    const str = String(val);
+    onChange(valueSet.has(str) ? values.filter(v => v !== str) : [...values, str]);
+  };
+
+  const isActive = values.length > 0;
+  const triggerLabel = !isActive
+    ? placeholder
+    : values.length === options.length
+      ? 'Vše'
+      : `Vybráno: ${values.length}`;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+      {/* Trigger tlačítko */}
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', padding: '0.5rem 2rem 0.5rem 0.75rem',
+          border: isActive ? '2px solid #f59e0b' : '1px solid #e5e7eb',
+          borderRadius: '6px', fontSize: '0.875rem',
+          background: isActive ? '#fffbeb' : '#ffffff',
+          cursor: 'pointer', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', position: 'relative',
+          color: !isActive ? '#9ca3af' : '#1f2937',
+          fontWeight: isActive ? '600' : '400',
+          boxShadow: isActive ? '0 0 0 2px rgba(245,158,11,0.2)' : 'none',
+          minHeight: '38px', userSelect: 'none', boxSizing: 'border-box'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{triggerLabel}</span>
+        <svg
+          style={{ position: 'absolute', right: '0.5rem', width: '16px', height: '16px', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', pointerEvents: 'none' }}
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {/* Dropdown */}
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '2px solid #3b82f6', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 9999, display: 'flex', flexDirection: 'column', maxHeight: '360px' }}>
+          {/* Vyhledávací pole */}
+          <div style={{ padding: '0.6rem', borderBottom: '2px solid #e5e7eb', background: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
+            <div style={{ position: 'relative' }}>
+              <FontAwesomeIcon icon={faSearch} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '0.75rem', pointerEvents: 'none' }} />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Hledat..."
+                onClick={e => e.stopPropagation()}
+                onFocus={e => { e.target.style.borderColor = '#3b82f6'; }}
+                onBlur={e => { e.target.style.borderColor = '#d1d5db'; }}
+                style={{ width: '100%', padding: '0.45rem 2rem 0.45rem 2rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
+              />
+              {search && (
+                <button onClick={e => { e.stopPropagation(); setSearch(''); }} style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                  <FontAwesomeIcon icon={faXmark} style={{ fontSize: '0.8rem' }} />
+                </button>
+              )}
+            </div>
+          </div>
+          {/* Seznam options */}
+          <div style={{ overflowY: 'auto', maxHeight: '280px' }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>Žádné výsledky</div>
+            ) : filtered.map((opt, idx) => {
+              const checked = valueSet.has(String(opt.value));
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => toggle(opt.value)}
+                  style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer', background: checked ? '#eff6ff' : 'transparent', borderBottom: idx < filtered.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background 0.15s' }}
+                  onMouseEnter={e => { if (!checked) e.currentTarget.style.background = '#f9fafb'; }}
+                  onMouseLeave={e => { if (!checked) e.currentTarget.style.background = checked ? '#eff6ff' : 'transparent'; }}
+                >
+                  <input type="checkbox" checked={checked} onChange={() => {}} style={{ width: '15px', height: '15px', accentColor: '#3b82f6', pointerEvents: 'none', flexShrink: 0, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.875rem', color: checked ? '#1e3a8a' : '#374151', fontWeight: checked ? '600' : '400', userSelect: 'none' }}>{opt.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Zvolené tagy */}
+      {values.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+          {values.map(v => {
+            const opt = options.find(o => String(o.value) === v);
+            return opt ? (
+              <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#dbeafe', color: '#1d4ed8', borderRadius: '999px', padding: '0.15rem 0.5rem 0.15rem 0.65rem', fontSize: '0.74rem', fontWeight: '600' }}>
+                {opt.label}
+                <button type="button" onClick={() => toggle(v)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: '0.85rem', fontWeight: '700' }}>×</button>
+              </span>
+            ) : null;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StatsReportsPage() {
   const { token, username, user, user_id } = useContext(AuthContext);
   const progress = useContext(ProgressContext);
@@ -1157,9 +1297,9 @@ export default function StatsReportsPage() {
     dateFrom: '',
     dateTo: '',
     year: new Date().getFullYear(),
-    usekId: '',
-    financing: 'ALL',
-    orderType: 'ALL'
+    usekIds: [],
+    financingValues: [],
+    orderTypes: []
   });
 
   const [notes, setNotes] = useState(() => {
@@ -1407,7 +1547,7 @@ export default function StatsReportsPage() {
         year: filters.year || undefined,
         datum_od: filters.dateFrom || undefined,
         datum_do: filters.dateTo || undefined,
-        usek_id: filters.usekId || undefined
+        usek_id: filters.usekIds.length === 1 ? filters.usekIds[0] : undefined
       });
       const batch = (response.faktury || []).map(normalizeInvoice);
       all.push(...batch);
@@ -1416,18 +1556,18 @@ export default function StatsReportsPage() {
       }
     }
     return { data: all, truncated: true };
-  }, [token, username, filters.year, filters.dateFrom, filters.dateTo, filters.usekId]);
+  }, [token, username, filters.year, filters.dateFrom, filters.dateTo, filters.usekIds]);
 
   const loadContracts = useCallback(async () => {
     const response = await getSmlouvyList({
       token,
       username,
-      usek_id: filters.usekId || null,
+      usek_id: filters.usekIds.length === 1 ? filters.usekIds[0] : null,
       platnost_od: filters.dateFrom || null,
       platnost_do: filters.dateTo || null
     });
     return response?.smlouvy || response?.data || [];
-  }, [token, username, filters.usekId, filters.dateFrom, filters.dateTo]);
+  }, [token, username, filters.usekIds, filters.dateFrom, filters.dateTo]);
 
   const handleLoadData = useCallback(async () => {
     if (!token || !username) return;
@@ -1801,17 +1941,21 @@ export default function StatsReportsPage() {
       const orderDate = toDate(getOrderDate(order));
       if (filters.dateFrom && orderDate && orderDate < new Date(filters.dateFrom)) return false;
       if (filters.dateTo && orderDate && orderDate > new Date(filters.dateTo)) return false;
-      if (filters.financing !== 'ALL') {
-        const code = getOrderFinancingCode(order);
-        if (String(code) !== String(filters.financing)) return false;
+      if (filters.financingValues.length > 0) {
+        const code = String(getOrderFinancingCode(order) ?? '');
+        if (!filters.financingValues.includes(code)) return false;
       }
-      if (filters.orderType !== 'ALL') {
-        const code = getOrderTypeCode(order);
-        if (String(code) !== String(filters.orderType)) return false;
+      if (filters.orderTypes.length > 0) {
+        const code = String(getOrderTypeCode(order) ?? '');
+        if (!filters.orderTypes.includes(code)) return false;
+      }
+      if (filters.usekIds.length > 0) {
+        const usekCode = String(order?.usek_id ?? '');
+        if (!filters.usekIds.includes(usekCode)) return false;
       }
       return true;
     });
-  }, [orders, filters.dateFrom, filters.dateTo, filters.financing, filters.orderType, getOrderFinancingCode, getOrderTypeCode]);
+  }, [orders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, getOrderFinancingCode, getOrderTypeCode]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(invoice => {
@@ -2966,11 +3110,23 @@ export default function StatsReportsPage() {
             <FilterStack>
               <FilterRow>
                 <FieldLabel>Datum od</FieldLabel>
-                <Input type="date" value={filters.dateFrom} onChange={(event) => handleFilterChange('dateFrom', event.target.value)} />
+                <DatePicker
+                  fieldName="dateFrom"
+                  value={filters.dateFrom}
+                  onChange={v => handleFilterChange('dateFrom', v || '')}
+                  placeholder="Datum od"
+                  highlight={!!filters.dateFrom}
+                />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Datum do</FieldLabel>
-                <Input type="date" value={filters.dateTo} onChange={(event) => handleFilterChange('dateTo', event.target.value)} />
+                <DatePicker
+                  fieldName="dateTo"
+                  value={filters.dateTo}
+                  onChange={v => handleFilterChange('dateTo', v || '')}
+                  placeholder="Datum do"
+                  highlight={!!filters.dateTo}
+                />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Rok faktur</FieldLabel>
@@ -2978,51 +3134,30 @@ export default function StatsReportsPage() {
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Úsek</FieldLabel>
-                <Select
-                  value={filters.usekId}
-                  onChange={(event) => handleFilterChange('usekId', event.target.value)}
-                  disabled={usekOptions.length === 0}
-                >
-                  <option value="">Všechny úseky</option>
-                  {usekOptions.length === 0 && (
-                    <option value="" disabled>Úseky nejsou dostupné</option>
-                  )}
-                  {usekOptions.map((usek) => (
-                    <option key={usek.value} value={usek.value}>{usek.label}</option>
-                  ))}
-                </Select>
+                <FilterMultiSelect
+                  options={usekOptions}
+                  values={filters.usekIds}
+                  onChange={v => handleFilterChange('usekIds', v)}
+                  placeholder="Všechny úseky"
+                />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Financování</FieldLabel>
-                <Select
-                  value={filters.financing}
-                  onChange={(event) => handleFilterChange('financing', event.target.value)}
-                  disabled={financingOptions.length === 0}
-                >
-                  <option value="ALL">Všechny typy</option>
-                  {financingOptions.length === 0 && (
-                    <option value="" disabled>Financování není dostupné</option>
-                  )}
-                  {financingOptions.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </Select>
+                <FilterMultiSelect
+                  options={financingOptions}
+                  values={filters.financingValues}
+                  onChange={v => handleFilterChange('financingValues', v)}
+                  placeholder="Všechny typy"
+                />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Druh objednávky</FieldLabel>
-                <Select
-                  value={filters.orderType}
-                  onChange={(event) => handleFilterChange('orderType', event.target.value)}
-                  disabled={orderTypeOptions.length === 0}
-                >
-                  <option value="ALL">Všechny druhy</option>
-                  {orderTypeOptions.length === 0 && (
-                    <option value="" disabled>Druhy nejsou dostupné</option>
-                  )}
-                  {orderTypeOptions.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </Select>
+                <FilterMultiSelect
+                  options={orderTypeOptions}
+                  values={filters.orderTypes}
+                  onChange={v => handleFilterChange('orderTypes', v)}
+                  placeholder="Všechny druhy"
+                />
               </FilterRow>
             </FilterStack>
             {loadError && (
@@ -3399,14 +3534,6 @@ export default function StatsReportsPage() {
                   </TableWrapper>
                   {renderPagination('usekySpend', pagedUseky)}
                   </SectionCard>
-                )}
-
-                {isBlockVisible('spend', 'lpCerpani') && (
-                  <LimitovanePrislibyManager forceFullAccess={true} />
-                )}
-
-                {isBlockVisible('spend', 'smlouvyCerpani') && (
-                  <SmlouvyTab readOnly forceUnrestrictedReadOnly={true} />
                 )}
               </>
             )}
