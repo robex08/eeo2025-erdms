@@ -117,6 +117,8 @@ const SECTION_BLOCKS = {
 // Vrátí kopii Chart.js options s většími fonty pro fullscreen panel
 const withFsFont = (opts, sz = 15) => ({
   ...opts,
+  responsive: true,
+  maintainAspectRatio: false,
   plugins: opts.plugins ? {
     ...opts.plugins,
     legend: opts.plugins.legend ? {
@@ -5355,7 +5357,7 @@ export default function StatsReportsPage() {
               <FontAwesomeIcon icon={faCompress} />
             </button>
           </div>
-          <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', width: '100%', height: '100%' }}>
             {fullscreenChart.el}
           </div>
         </ChartFullscreenBox>
