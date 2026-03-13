@@ -23,7 +23,8 @@ import {
   faChevronRight,
   faFile,
   faFileInvoice,
-  faEye
+  faEye,
+  faCheck
 } from '@fortawesome/free-solid-svg-icons';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -59,16 +60,16 @@ const PAGE_TABS = [
   { id: 'stats', label: 'Statistiky', icon: faChartLine },
   { id: 'reports', label: 'Reporty', icon: faReceipt },
   { id: 'attachments', label: 'Přílohy', icon: faPaperclip },
-  { id: 'pivot', label: 'Kontingenční tabulka', icon: faTable }
+  { id: 'pivot', label: 'Agregační tabulka - vlastní', icon: faTable }
 ];
 
 const TAB_TONES = {
-  control: { base: '#0f172a', soft: '#e2e8f0' },
+  control: { base: '#b91c1c', soft: '#fee2e2' },
   spend: { base: '#0f766e', soft: '#ccfbf1' },
   stats: { base: '#1d4ed8', soft: '#dbeafe' },
   reports: { base: '#b45309', soft: '#fef3c7' },
   attachments: { base: '#7c3aed', soft: '#ede9fe' },
-  pivot: { base: '#6d28d9', soft: '#ede9fe' }
+  pivot: { base: '#0891b2', soft: '#cffafe' }
 };
 
 const SECTION_BLOCKS = {
@@ -377,7 +378,7 @@ const ContentGrid = styled.div`
 const Panel = styled.div`
   background: rgba(255, 255, 255, 0.96);
   border-radius: 16px;
-  padding: 1.3rem;
+  padding: 1.5rem 1.4rem 1.75rem;
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
   border: 1px solid rgba(148, 163, 184, 0.2);
 `;
@@ -516,7 +517,7 @@ const PanelTitle = styled.div`
 const FilterStack = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 1.25rem;
 `;
 
 const FieldLabel = styled.label`
@@ -552,8 +553,61 @@ const Select = styled.select`
 const FilterRow = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.45rem;
   & > * { width: 100%; box-sizing: border-box; }
+`;
+
+const FilterActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+`;
+
+const FilterApplyBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  background: ${props => props.$dirty ? '#16a34a' : '#15803d'};
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: background 0.2s;
+  &:hover { background: #15803d; }
+  &:disabled { opacity: 0.6; cursor: default; }
+`;
+
+const FilterResetBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  &:hover { background: #e2e8f0; color: #334155; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
+const FilterDirtyBadge = styled.div`
+  font-size: 0.72rem;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 5px;
+  padding: 0.2rem 0.5rem;
+  margin-top: 0.6rem;
 `;
 
 const Section = styled.div`
@@ -1310,14 +1364,18 @@ export default function StatsReportsPage() {
     }, {});
   });
 
-  const [filters, setFilters] = useState({
+  const FILTER_DEFAULTS = {
     dateFrom: '',
     dateTo: '',
     year: new Date().getFullYear(),
+    orderYear: new Date().getFullYear().toString(),
     usekIds: [],
     financingValues: [],
     orderTypes: []
-  });
+  };
+
+  const [filters, setFilters] = useState(FILTER_DEFAULTS);
+  const [pendingFilters, setPendingFilters] = useState(FILTER_DEFAULTS);
 
   const [notes, setNotes] = useState(() => {
     try {
@@ -1627,6 +1685,14 @@ export default function StatsReportsPage() {
     initialLoadRef.current = true;
     handleLoadData();
   }, [token, username, handleLoadData]);
+
+  const [applyTrigger, setApplyTrigger] = useState(0);
+  const loadDataRef = useRef(handleLoadData);
+  useEffect(() => { loadDataRef.current = handleLoadData; }, [handleLoadData]);
+  useEffect(() => {
+    if (applyTrigger === 0) return;
+    loadDataRef.current();
+  }, [applyTrigger]);
 
   const handleLoadAttachmentsStats = useCallback(async () => {
     if (!token || !username) return;
@@ -1971,9 +2037,13 @@ export default function StatsReportsPage() {
         const usekCode = String(order?.usek_id ?? '');
         if (!filters.usekIds.includes(usekCode)) return false;
       }
+      if (filters.orderYear) {
+        const oDate = toDate(getOrderDate(order));
+        if (!oDate || String(oDate.getFullYear()) !== String(filters.orderYear)) return false;
+      }
       return true;
     });
-  }, [orders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, getOrderFinancingCode, getOrderTypeCode]);
+  }, [orders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, filters.orderYear, getOrderFinancingCode, getOrderTypeCode, getOrderDate]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(invoice => {
@@ -3000,8 +3070,25 @@ export default function StatsReportsPage() {
   }, [pivotTable.rowTree, pivotExpanded]);
 
   const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setPendingFilters(prev => ({ ...prev, [key]: value }));
   };
+
+  const handleApplyFilters = useCallback(() => {
+    setFilters(prev => ({ ...prev, ...pendingFilters }));
+    setApplyTrigger(t => t + 1);
+  }, [pendingFilters]);
+
+  const handleResetFilters = useCallback(() => {
+    const cur = FILTER_DEFAULTS;
+    setPendingFilters(cur);
+    setFilters(cur);
+    setApplyTrigger(t => t + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const hasUnappliedFilters = useMemo(() => {
+    return JSON.stringify(pendingFilters) !== JSON.stringify(filters);
+  }, [pendingFilters, filters]);
 
   const renderNoteCell = (rowKey) => (
     <NoteInput
@@ -3223,31 +3310,41 @@ export default function StatsReportsPage() {
                 <FieldLabel>Datum od</FieldLabel>
                 <DatePicker
                   fieldName="dateFrom"
-                  value={filters.dateFrom}
+                  value={pendingFilters.dateFrom}
                   onChange={v => handleFilterChange('dateFrom', v || '')}
                   placeholder="Datum od"
-                  highlight={!!filters.dateFrom}
+                  highlight={!!pendingFilters.dateFrom}
                 />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Datum do</FieldLabel>
                 <DatePicker
                   fieldName="dateTo"
-                  value={filters.dateTo}
+                  value={pendingFilters.dateTo}
                   onChange={v => handleFilterChange('dateTo', v || '')}
                   placeholder="Datum do"
-                  highlight={!!filters.dateTo}
+                  highlight={!!pendingFilters.dateTo}
+                />
+              </FilterRow>
+              <FilterRow>
+                <FieldLabel>Rok objednávek</FieldLabel>
+                <Input
+                  type="number"
+                  value={pendingFilters.orderYear}
+                  placeholder="např. 2025"
+                  onChange={e => handleFilterChange('orderYear', e.target.value)}
+                  style={pendingFilters.orderYear ? { borderColor: '#f59e0b' } : {}}
                 />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Rok faktur</FieldLabel>
-                <Input type="number" value={filters.year} onChange={(event) => handleFilterChange('year', event.target.value)} />
+                <Input type="number" value={pendingFilters.year} onChange={(event) => handleFilterChange('year', event.target.value)} />
               </FilterRow>
               <FilterRow>
                 <FieldLabel>Úsek</FieldLabel>
                 <FilterMultiSelect
                   options={usekOptions}
-                  values={filters.usekIds}
+                  values={pendingFilters.usekIds}
                   onChange={v => handleFilterChange('usekIds', v)}
                   placeholder="Všechny úseky"
                 />
@@ -3256,7 +3353,7 @@ export default function StatsReportsPage() {
                 <FieldLabel>Financování</FieldLabel>
                 <FilterMultiSelect
                   options={financingOptions}
-                  values={filters.financingValues}
+                  values={pendingFilters.financingValues}
                   onChange={v => handleFilterChange('financingValues', v)}
                   placeholder="Všechny typy"
                 />
@@ -3265,12 +3362,32 @@ export default function StatsReportsPage() {
                 <FieldLabel>Druh objednávky</FieldLabel>
                 <FilterMultiSelect
                   options={orderTypeOptions}
-                  values={filters.orderTypes}
+                  values={pendingFilters.orderTypes}
                   onChange={v => handleFilterChange('orderTypes', v)}
                   placeholder="Všechny druhy"
                 />
               </FilterRow>
             </FilterStack>
+            {hasUnappliedFilters && (
+              <FilterDirtyBadge>⚠ Filtry nejsou aplikovány</FilterDirtyBadge>
+            )}
+            <FilterActions>
+              <FilterApplyBtn
+                $dirty={hasUnappliedFilters}
+                onClick={handleApplyFilters}
+                disabled={loading}
+                title="Aplikovat vybrané filtry a znovu načíst data"
+              >
+                <FontAwesomeIcon icon={faCheck} /> Aplikovat
+              </FilterApplyBtn>
+              <FilterResetBtn
+                onClick={handleResetFilters}
+                disabled={loading}
+                title="Resetovat všechny filtry na výchozí hodnoty a znovu načíst data"
+              >
+                <FontAwesomeIcon icon={faRefresh} /> Reset
+              </FilterResetBtn>
+            </FilterActions>
             {loadError && (
               <EmptyState style={{ color: '#b91c1c' }}>
                 <FontAwesomeIcon icon={faTriangleExclamation} /> {loadError}
@@ -4510,385 +4627,4 @@ export default function StatsReportsPage() {
                               <PageButton onClick={() => handleLoadOrdersWithoutAttachments(ordersWithoutAttachmentsPage + 1)} disabled={ordersWithoutAttachmentsPage >= (ordersWithoutAttachments.pagination.total_pages || 1)}>›</PageButton>
                               <PageButton onClick={() => handleLoadOrdersWithoutAttachments(ordersWithoutAttachments.pagination.total_pages || 1)} disabled={ordersWithoutAttachmentsPage >= (ordersWithoutAttachments.pagination.total_pages || 1)}>»»</PageButton>
                             </PaginationControls>
-                          </PaginationContainer>
-                        )}
-                      </TableWrapper>
-                    )}
-                  </SectionCard>
-                )}
-
-                {/* Faktury bez příloh */}
-                {isBlockVisible('attachments', 'invoicesWithoutAttachments') && (
-                  <SectionCard>
-                    <SectionHeader>
-                      <SmartTooltip text="Obnovit seznam faktur bez příloh" preferredPosition="right">
-                        <PageButton
-                          onClick={() => handleLoadInvoicesWithoutAttachments(1)}
-                          disabled={attachmentsLoading}
-                          style={{ padding: '0.25rem 0.5rem', lineHeight: 1, marginRight: '0.5rem' }}
-                        >
-                          <FontAwesomeIcon icon={faRefresh} spin={attachmentsLoading} />
-                        </PageButton>
-                      </SmartTooltip>
-                      <SectionTitle style={{ flex: 1 }}>
-                        Faktury bez příloh
-                      </SectionTitle>
-                      <SectionBadge $tone="warn">{invoicesWithoutAttachments?.pagination?.total || '...'}</SectionBadge>
-                    </SectionHeader>
-                    {invoicesWithoutAttachments && (
-                      <TableWrapper>
-                        <Table>
-                          <thead>
-                            <tr>
-                              <Th>Faktura</Th>
-                              <Th>Stav</Th>
-                              <Th>Objednávka</Th>
-                              <Th>Dodavatel</Th>
-                              <Th>Částka</Th>
-                              <Th>Splatnost</Th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(invoicesWithoutAttachments?.data || []).map(invoice => (
-                              <Tr key={invoice.id}>
-                                <Td>{renderInvoiceLink(invoice)}</Td>
-                                <Td>
-                                  <Pill $tone="default">{invoice.stav}</Pill>
-                                </Td>
-                                <Td>{invoice.objednavka_id ? renderOrderLink({ id: invoice.objednavka_id, cislo_objednavky: invoice.cislo_objednavky }) : '-'}</Td>
-                                <Td>{invoice.dodavatel || '-'}</Td>
-                                <Td>{invoice.castka ? fmtCurrency(invoice.castka) : '-'}</Td>
-                                <Td>{invoice.datum_splatnosti ? new Date(invoice.datum_splatnosti).toLocaleDateString('cs-CZ') : '-'}</Td>
-                              </Tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                        {invoicesWithoutAttachments?.pagination && invoicesWithoutAttachments.pagination.total_pages > 1 && (
-                          <PaginationContainer>
-                            <PaginationInfo>
-                              Zobrazeno {((invoicesWithoutAttachmentsPage - 1) * (invoicesWithoutAttachments.pagination.per_page || 25)) + 1}–{Math.min(invoicesWithoutAttachmentsPage * (invoicesWithoutAttachments.pagination.per_page || 25), invoicesWithoutAttachments.pagination.total)} z {invoicesWithoutAttachments.pagination.total}
-                            </PaginationInfo>
-                            <PaginationControls>
-                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(1)} disabled={invoicesWithoutAttachmentsPage <= 1}>««</PageButton>
-                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(invoicesWithoutAttachmentsPage - 1)} disabled={invoicesWithoutAttachmentsPage <= 1}>‹</PageButton>
-                              <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 1rem' }}>Stránka {invoicesWithoutAttachmentsPage} z {invoicesWithoutAttachments.pagination.total_pages || 1}</span>
-                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(invoicesWithoutAttachmentsPage + 1)} disabled={invoicesWithoutAttachmentsPage >= (invoicesWithoutAttachments.pagination.total_pages || 1)}>›</PageButton>
-                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(invoicesWithoutAttachments.pagination.total_pages || 1)} disabled={invoicesWithoutAttachmentsPage >= (invoicesWithoutAttachments.pagination.total_pages || 1)}>»»</PageButton>
-                            </PaginationControls>
-                          </PaginationContainer>
-                        )}
-                      </TableWrapper>
-                    )}
-                  </SectionCard>
-                )}
-              </>
-            )}
-
-            {activeTab === 'pivot' && (
-              <SectionCard>
-                <SectionHeader>
-                  <SectionTitle>Kontingenční tabulka</SectionTitle>
-                  <PivotHeaderActions>
-                    <Select
-                      value={pivotConfig.dataset}
-                      onChange={(event) => setPivotConfig(prev => ({ ...prev, dataset: event.target.value }))}
-                    >
-                      <option value="all">Vše dohromady</option>
-                      <option value="orders">Objednávky</option>
-                      <option value="invoices">Faktury</option>
-                      <option value="contracts">Smlouvy</option>
-                    </Select>
-                  </PivotHeaderActions>
-                </SectionHeader>
-                <PivotPanel>
-                  <PivotZonesStack>
-                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'row')}>
-                      <PivotZoneTitle>Řádky (textová pole)</PivotZoneTitle>
-                      <PivotZoneBody>
-                        {(pivotConfig.rowFields || []).length > 0 ? (
-                          (pivotConfig.rowFields || []).map((fieldId, index) => (
-                            <PivotChip
-                              key={`row_${fieldId}_${index}`}
-                              $tone={pivotToneByKey(fieldId, 'text')}
-                              draggable
-                              onDragStart={(event) => handlePivotDragStart(event, 'text', fieldId, 'row', index)}
-                              onDrop={(event) => {
-                                const fromIndex = Number(event.dataTransfer.getData('from-index'));
-                                const fromZone = event.dataTransfer.getData('pivot-zone');
-                                if (fromZone === 'row') {
-                                  handlePivotReorder(fromIndex, index, 'row');
-                                }
-                              }}
-                              onDragOver={(event) => event.preventDefault()}
-                            >
-                              <FontAwesomeIcon icon={faGripVertical} />
-                              {pivotTextLabelMap.get(fieldId) || fieldId}
-                              <PivotChipIndex>{index + 1}</PivotChipIndex>
-                              <PivotChipButton
-                                onClick={() =>
-                                  setPivotConfig(prev => ({
-                                    ...prev,
-                                    rowFields: (prev.rowFields || []).filter((item, idx) => idx !== index)
-                                  }))
-                                }
-                              >
-                                <FontAwesomeIcon icon={faXmark} />
-                              </PivotChipButton>
-                            </PivotChip>
-                          ))
-                        ) : (
-                          <PivotHint>Sem přetáhni pole pro řádky.</PivotHint>
-                        )}
-                      </PivotZoneBody>
-                    </PivotZone>
-
-                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'col')}>
-                      <PivotZoneTitle>Sloupce (textová pole)</PivotZoneTitle>
-                      <PivotZoneBody>
-                        {(pivotConfig.colFields || []).length > 0 ? (
-                          (pivotConfig.colFields || []).map((fieldId, index) => (
-                            <PivotChip
-                              key={`col_${fieldId}_${index}`}
-                              $tone={pivotToneByKey(fieldId, 'text')}
-                              draggable
-                              onDragStart={(event) => handlePivotDragStart(event, 'text', fieldId, 'col', index)}
-                              onDrop={(event) => {
-                                const fromIndex = Number(event.dataTransfer.getData('from-index'));
-                                const fromZone = event.dataTransfer.getData('pivot-zone');
-                                if (fromZone === 'col') {
-                                  handlePivotReorder(fromIndex, index, 'col');
-                                }
-                              }}
-                              onDragOver={(event) => event.preventDefault()}
-                            >
-                              <FontAwesomeIcon icon={faGripVertical} />
-                              {pivotTextLabelMap.get(fieldId) || fieldId}
-                              <PivotChipIndex>{index + 1}</PivotChipIndex>
-                              <PivotChipButton
-                                onClick={() =>
-                                  setPivotConfig(prev => ({
-                                    ...prev,
-                                    colFields: (prev.colFields || []).filter((item, idx) => idx !== index)
-                                  }))
-                                }
-                              >
-                                <FontAwesomeIcon icon={faXmark} />
-                              </PivotChipButton>
-                            </PivotChip>
-                          ))
-                        ) : (
-                          <PivotHint>Sem přetáhni pole pro sloupce.</PivotHint>
-                        )}
-                      </PivotZoneBody>
-                    </PivotZone>
-
-                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'metric')}>
-                      <PivotZoneTitle>Hodnota (číselná metrika)</PivotZoneTitle>
-                      <PivotZoneBody>
-                        {pivotConfig.metric ? (
-                          <PivotChip
-                            $tone={pivotToneByKey(pivotConfig.metric, 'metric')}
-                            draggable
-                            onDragStart={(event) => handlePivotDragStart(event, 'metric', pivotConfig.metric)}
-                          >
-                            <FontAwesomeIcon icon={faGripVertical} />
-                            {pivotMetricLabelMap.get(pivotConfig.metric) || pivotConfig.metric}
-                            <PivotChipIndex>H</PivotChipIndex>
-                            <PivotChipButton onClick={() => setPivotConfig(prev => ({ ...prev, metric: '' }))}>
-                              <FontAwesomeIcon icon={faXmark} />
-                            </PivotChipButton>
-                          </PivotChip>
-                        ) : (
-                          <PivotHint>Sem přetáhni metrické pole.</PivotHint>
-                        )}
-                      </PivotZoneBody>
-                    </PivotZone>
-                  </PivotZonesStack>
-
-                  <PivotOptionsPanel>
-                    <PivotOptionsGroup>
-                      <PivotOptionsTitle>
-                        <FontAwesomeIcon icon={faLayerGroup} /> Klasifikační pole
-                      </PivotOptionsTitle>
-                      <PivotChipsWrap>
-                        {pivotTextGroups.order.length > 0 && (
-                          <div style={{ width: '100%' }}>
-                            <PivotHint style={{ fontWeight: 700, color: '#1e40af' }}>Objednávky</PivotHint>
-                            <PivotChipsWrap>
-                              {pivotTextGroups.order.map(option => (
-                                <PivotChip
-                                  key={option.key}
-                                  $tone={pivotToneByKey(option.key, 'text')}
-                                  draggable
-                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
-                                >
-                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
-                                </PivotChip>
-                              ))}
-                            </PivotChipsWrap>
-                          </div>
-                        )}
-                        {pivotTextGroups.invoice.length > 0 && (
-                          <div style={{ width: '100%' }}>
-                            <PivotHint style={{ fontWeight: 700, color: '#155e75' }}>Faktury</PivotHint>
-                            <PivotChipsWrap>
-                              {pivotTextGroups.invoice.map(option => (
-                                <PivotChip
-                                  key={option.key}
-                                  $tone={pivotToneByKey(option.key, 'text')}
-                                  draggable
-                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
-                                >
-                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
-                                </PivotChip>
-                              ))}
-                            </PivotChipsWrap>
-                          </div>
-                        )}
-                        {pivotTextGroups.contract.length > 0 && (
-                          <div style={{ width: '100%' }}>
-                            <PivotHint style={{ fontWeight: 700, color: '#166534' }}>Smlouvy</PivotHint>
-                            <PivotChipsWrap>
-                              {pivotTextGroups.contract.map(option => (
-                                <PivotChip
-                                  key={option.key}
-                                  $tone={pivotToneByKey(option.key, 'text')}
-                                  draggable
-                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
-                                >
-                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
-                                </PivotChip>
-                              ))}
-                            </PivotChipsWrap>
-                          </div>
-                        )}
-                        {pivotTextGroups.shared.length > 0 && (
-                          <div style={{ width: '100%' }}>
-                            <PivotHint style={{ fontWeight: 700, color: '#334155' }}>Sdílené</PivotHint>
-                            <PivotChipsWrap>
-                              {pivotTextGroups.shared.map(option => (
-                                <PivotChip
-                                  key={option.key}
-                                  $tone={pivotToneByKey(option.key, 'text')}
-                                  draggable
-                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
-                                >
-                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
-                                </PivotChip>
-                              ))}
-                            </PivotChipsWrap>
-                          </div>
-                        )}
-                        {availablePivotTextOptions.length === 0 && (
-                          <PivotHint>Všechna textová pole jsou už použita.</PivotHint>
-                        )}
-                      </PivotChipsWrap>
-                    </PivotOptionsGroup>
-
-                    <PivotOptionsGroup>
-                      <PivotOptionsTitle>
-                        <FontAwesomeIcon icon={faLayerGroup} /> Číselné metriky
-                      </PivotOptionsTitle>
-                      <PivotChipsWrap>
-                        {availablePivotMetricOptions.map(option => (
-                          <PivotChip
-                            key={option.key}
-                            $tone={pivotToneByKey(option.key, 'metric')}
-                            draggable
-                            onDragStart={(event) => handlePivotDragStart(event, 'metric', option.key)}
-                          >
-                            <FontAwesomeIcon icon={faGripVertical} /> {option.label}
-                          </PivotChip>
-                        ))}
-                        {availablePivotMetricOptions.length === 0 && (
-                          <PivotHint>Všechny metriky jsou už použité.</PivotHint>
-                        )}
-                      </PivotChipsWrap>
-                    </PivotOptionsGroup>
-                  </PivotOptionsPanel>
-                </PivotPanel>
-                <TableWrapper>
-                  <Table>
-                    <thead>
-                      <tr>
-                        <Th>
-                          {(pivotConfig.rowFields || []).map(key => pivotTextLabelMap.get(key) || key).join(' / ') || 'Řádky'}
-                        </Th>
-                        {pivotTable.colKeys.map(colKey => (
-                          <Th key={colKey}>{colKey}</Th>
-                        ))}
-                        <Th>Celkem</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pivotRowNodes.length === 0 && (
-                        <Tr>
-                          <Td colSpan={pivotTable.colKeys.length + 2}>
-                            <EmptyState>Bez dat</EmptyState>
-                          </Td>
-                        </Tr>
-                      )}
-                      {pivotRowNodes.map(node => {
-                        const isExpanded = pivotExpanded[node.id] ?? node.depth === 0;
-                        const hasChildren = node.children.length > 0;
-                        return (
-                          <Tr key={node.id}>
-                            <Td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingLeft: `${node.depth * 14}px` }}>
-                                {hasChildren && (
-                                  <PivotTreeToggle
-                                    onClick={() =>
-                                      setPivotExpanded(prev => ({
-                                        ...prev,
-                                        [node.id]: !isExpanded
-                                      }))
-                                    }
-                                    aria-label={isExpanded ? 'Sbalit' : 'Rozbalit'}
-                                  >
-                                    <FontAwesomeIcon icon={isExpanded ? faMinus : faPlus} />
-                                  </PivotTreeToggle>
-                                )}
-                                <strong>{node.label}</strong>
-                              </div>
-                            </Td>
-                            {pivotTable.colKeys.map(colKey => (
-                              <Td key={`${node.id}_${colKey}`}>{formatMetric(pivotTable.getValue(node, colKey))}</Td>
-                            ))}
-                            <Td><strong>{formatMetric(pivotTable.getRowTotal(node))}</strong></Td>
-                          </Tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <Tr>
-                        <Td><strong>Celkem</strong></Td>
-                        {pivotTable.colKeys.map(colKey => (
-                          <Td key={`total_${colKey}`}><strong>{formatMetric(pivotTable.totalForCol(colKey))}</strong></Td>
-                        ))}
-                        <Td><strong>{formatMetric(pivotTable.grandTotal)}</strong></Td>
-                      </Tr>
-                    </tfoot>
-                  </Table>
-                </TableWrapper>
-              </SectionCard>
-            )}
-          </Section>
-        </ContentGrid>
-      </PageContainer>
-    </PageWrapper>
-    {viewerAttachment && (
-      <AttachmentViewer
-        attachment={viewerAttachment}
-        closeOnOverlayClick={false}
-        onClose={() => {
-          lastViewerCloseAtRef.current = Date.now();
-          if (viewerAttachment.blobUrl?.startsWith('blob:')) {
-            window.URL.revokeObjectURL(viewerAttachment.blobUrl);
-          }
-          setViewerAttachment(null);
-        }}
-      />
-    )}
-    </>
-  );
-}
+                          </PaginationContainer
