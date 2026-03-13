@@ -99,6 +99,7 @@ export const LOGOUT_CLEANUP_CONFIG = {
     'app_lastRoute',        // ⚠️ Poslední route může obsahovat per-user context
     'addressBook_activeTab_*', // 📇 Aktivní záložky address book (session state)
     'profile_active_tab_*',    // 📋 Aktivní záložka profilu (session state)
+    'stats_reports_*',         // 📊 StatsReports: aktivní tab, filtry, poznámky (per-user)
 
     // Dočasné soubory a uploady
     'temp_upload_*',
