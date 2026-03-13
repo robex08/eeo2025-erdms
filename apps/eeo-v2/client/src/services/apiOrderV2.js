@@ -954,7 +954,7 @@ export async function uploadAttachmentV2(orderId, fileData, token, username, typ
  * const attachments = await listAttachmentsV2(11248, token, username); // konkrétní objednávka
  * const allAttachments = await listAttachmentsV2(null, token, username); // všechny přílohy
  */
-export async function listAttachmentsV2(orderId, token, username) {
+export async function listAttachmentsV2(orderId, token, username, options = {}) {
   if (!token || !username) {
     throw new Error('Authentication required (token and username)');
   }
@@ -968,7 +968,9 @@ export async function listAttachmentsV2(orderId, token, username) {
   try {
     const response = await apiOrderV2.post(endpoint, {
       token,
-      username
+      username,
+      limit: options.limit || 10000,  // Default vysoký limit pro statistiky
+      offset: options.offset || 0
     });
 
     const result = validateAPIResponse(response, 'listAttachmentsV2');
@@ -1207,7 +1209,7 @@ export async function uploadInvoiceAttachmentV2(invoiceId, orderId, fileData, to
  * const attachments = await listInvoiceAttachmentsV2(789, token, username); // konkrétní faktura
  * const allAttachments = await listInvoiceAttachmentsV2(null, token, username); // všechny přílohy faktur
  */
-export async function listInvoiceAttachmentsV2(invoiceId, token, username) {
+export async function listInvoiceAttachmentsV2(invoiceId, token, username, options = {}) {
   if (!token || !username) {
     throw new Error('Authentication required (token and username)');
   }
@@ -1221,7 +1223,9 @@ export async function listInvoiceAttachmentsV2(invoiceId, token, username) {
   try {
     const response = await apiOrderV2.post(endpoint, {
       token,
-      username
+      username,
+      limit: options.limit || 10000,  // Default vysoký limit pro statistiky
+      offset: options.offset || 0
     });
 
     const result = validateAPIResponse(response, 'listInvoiceAttachmentsV2');
@@ -1316,7 +1320,195 @@ export async function deleteInvoiceAttachmentV2(invoiceId, attachmentId, token, 
 }
 
 // ========================================
-// �📤 EXPORTS
+// 📊 ATTACHMENT STATS & ANALYSIS
+// ========================================
+
+/**
+ * 📊 Statistiky příloh objednávek podle typu
+ *
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<{types: Array<{type: string, count: number}>, total: number}>}
+ */
+export async function getOrderAttachmentsStatsV2(token, username) {
+  if (!token || !username) {
+    throw new Error('Authentication required (token and username)');
+  }
+
+  try {
+    const response = await apiOrderV2.post('/order-v2/attachments/stats', {
+      token,
+      username
+    });
+
+    const result = validateAPIResponse(response, 'getOrderAttachmentsStatsV2');
+    return result.data || { types: [], total: 0 };
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * 📊 Statistiky příloh faktur podle typu
+ *
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<{types: Array<{type: string, count: number}>, total: number}>}
+ */
+export async function getInvoiceAttachmentsStatsV2(token, username) {
+  if (!token || !username) {
+    throw new Error('Authentication required (token and username)');
+  }
+
+  try {
+    const response = await apiOrderV2.post('/order-v2/invoices/attachments/stats', {
+      token,
+      username
+    });
+
+    const result = validateAPIResponse(response, 'getInvoiceAttachmentsStatsV2');
+    return result.data || { types: [], total: 0 };
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * 📄 Seznam příloh objednávek podle typu (s pagingem)
+ *
+ * @param {string} type - Typ přílohy (KOSILKA, OBJEDNAVKA, atd.)
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @param {Object} options - { page, per_page }
+ * @returns {Promise<{data: Array, pagination: Object}>}
+ */
+export async function getOrderAttachmentsByTypeV2(type, token, username, options = {}) {
+  if (!token || !username) {
+    throw new Error('Authentication required (token and username)');
+  }
+
+  try {
+    const response = await apiOrderV2.post('/order-v2/attachments/by-type', {
+      token,
+      username,
+      type,
+      page: options.page || 1,
+      per_page: options.per_page || 50
+    });
+
+    const result = validateAPIResponse(response, 'getOrderAttachmentsByTypeV2');
+    return {
+      data: result.data || [],
+      pagination: result.pagination || {}
+    };
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * 📄 Seznam příloh faktur podle typu (s pagingem)
+ *
+ * @param {string} type - Typ přílohy (FAKTURA, DODACI_LIST, atd.)
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @param {Object} options - { page, per_page }
+ * @returns {Promise<{data: Array, pagination: Object}>}
+ */
+export async function getInvoiceAttachmentsByTypeV2(type, token, username, options = {}) {
+  if (!token || !username) {
+    throw new Error('Authentication required (token and username)');
+  }
+
+  try {
+    const response = await apiOrderV2.post('/order-v2/invoices/attachments/by-type', {
+      token,
+      username,
+      type,
+      page: options.page || 1,
+      per_page: options.per_page || 50
+    });
+
+    const result = validateAPIResponse(response, 'getInvoiceAttachmentsByTypeV2');
+    return {
+      data: result.data || [],
+      pagination: result.pagination || {}
+    };
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * 📋 Seznam objednávek BEZ příloh (s pagingem)
+ *
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @param {Object} options - { page, per_page }
+ * @returns {Promise<{data: Array, pagination: Object}>}
+ */
+export async function getOrdersWithoutAttachmentsV2(token, username, options = {}) {
+  if (!token || !username) {
+    throw new Error('Authentication required (token and username)');
+  }
+
+  try {
+    const response = await apiOrderV2.post('/order-v2/attachments/orders-without', {
+      token,
+      username,
+      page: options.page || 1,
+      per_page: options.per_page || 50
+    });
+
+    const result = validateAPIResponse(response, 'getOrdersWithoutAttachmentsV2');
+    return {
+      data: result.data || [],
+      pagination: result.pagination || {}
+    };
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+/**
+ * 📋 Seznam faktur BEZ příloh (s pagingem)
+ *
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @param {Object} options - { page, per_page }
+ * @returns {Promise<{data: Array, pagination: Object}>}
+ */
+export async function getInvoicesWithoutAttachmentsV2(token, username, options = {}) {
+  if (!token || !username) {
+    throw new Error('Authentication required (token and username)');
+  }
+
+  try {
+    const response = await apiOrderV2.post('/order-v2/invoices/attachments/invoices-without', {
+      token,
+      username,
+      page: options.page || 1,
+      per_page: options.per_page || 50
+    });
+
+    const result = validateAPIResponse(response, 'getInvoicesWithoutAttachmentsV2');
+    return {
+      data: result.data || [],
+      pagination: result.pagination || {}
+    };
+
+  } catch (error) {
+    throw new Error(normalizeError(error));
+  }
+}
+
+// ========================================
+// 📤 EXPORTS
 // ========================================
 
 // Named exports are already done inline with "export async function..." above
@@ -1342,6 +1534,13 @@ export default {
   listInvoiceAttachmentsV2,
   downloadInvoiceAttachmentV2,
   deleteInvoiceAttachmentV2,
+  // Attachment stats & analysis
+  getOrderAttachmentsStatsV2,
+  getInvoiceAttachmentsStatsV2,
+  getOrderAttachmentsByTypeV2,
+  getInvoiceAttachmentsByTypeV2,
+  getOrdersWithoutAttachmentsV2,
+  getInvoicesWithoutAttachmentsV2,
   // Utilities
   prepareDataForAPI,
   validateOrderV2Data,
