@@ -19908,21 +19908,19 @@ function OrderForm25() {
   // Tím dojde k PŘEPSÁNÍ validationErrors objektem BEZ lokalizačních chyb!
   // 🔧 ŘEŠENÍ: Live validace není potřeba - validujeme pouze při kliknutí na "Uložit"
   //            ve funkci validateFormForSave(), která validuje VŠE včetně lokací.
-  /*
-  useEffect(() => {
-    // KRITICKÉ: Spusť validaci pouze pokud uživatel už se pokusil odeslat formulář!
-    if (currentPhase >= 2 && formData.id && hasTriedToSubmit) {
-      // Malé zpoždění aby se stihly přepočítat všechny derived values
-      const timeout = setTimeout(() => {
-        const validationWorkflowCode = mainWorkflowState;
-        const errors = validateWorkflowData(formData, validationWorkflowCode);
-        setValidationErrors(errors);
-      }, 100);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [currentPhase, mainWorkflowState, formData.id, hasTriedToSubmit]);
-  */
+  // useEffect(() => {
+  //   // KRITICKÉ: Spusť validaci pouze pokud uživatel už se pokusil odeslat formulář!
+  //   if (currentPhase >= 2 && formData.id && hasTriedToSubmit) {
+  //     // Malé zpoždění aby se stihly přepočítat všechny derived values
+  //     const timeout = setTimeout(() => {
+  //       const validationWorkflowCode = mainWorkflowState;
+  //       const errors = validateWorkflowData(formData, validationWorkflowCode);
+  //       setValidationErrors(errors);
+  //     }, 100);
+  //
+  //     return () => clearTimeout(timeout);
+  //   }
+  // }, [currentPhase, mainWorkflowState, formData.id, hasTriedToSubmit]);
 
   // 🎯 NOVÁ LOADING GATE: Souhrn všech načítání pro RACE CONDITION FIX
   // Tato proměnná určuje, zda jsou všechna potřebná data připravena
