@@ -209,8 +209,8 @@ const Container = styled.div`
   }
 `;
 
-// Year Filter Panel (prominent position above main header)
-const YearFilterPanel = styled.div`
+// Period Filter Panel (prominent position above main header)
+const PeriodFilterPanel = styled.div`
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   padding: 1rem;
   margin-bottom: 1rem;
@@ -225,14 +225,14 @@ const YearFilterPanel = styled.div`
   z-index: 9999;
 `;
 
-const YearFilterLeft = styled.div`
+const PeriodFilterLeft = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
 `;
 
-const YearFilterTitle = styled.h2`
+const PeriodFilterTitle = styled.h2`
   font-size: calc(1.5rem + 3px);
   font-weight: 700;
   color: white;
@@ -243,7 +243,7 @@ const YearFilterTitle = styled.h2`
   gap: 0.75rem;
 `;
 
-const YearFilterLabel = styled.label`
+const PeriodFilterLabel = styled.label`
   font-weight: 600;
   font-size: 1rem;
   display: flex;
@@ -251,7 +251,7 @@ const YearFilterLabel = styled.label`
   gap: 0.5rem;
 `;
 
-const YearFilterSelect = styled.select`
+const PeriodFilterSelect = styled.select`
   padding: 0.75rem 1rem;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
@@ -1597,7 +1597,7 @@ const Invoices25List = () => {
   
   // ⚠️ DEPRECATED: Tento stav se již nepoužívá - check_status je přímo v invoice objektu z BE
   // Ponecháno pro kompatibilitu s toggle funkcionalitou
-  const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
+  const [selectedPeriod, setSelectedPeriod] = useState(savedState?.selectedPeriod || 'current-year');
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
   
@@ -2323,7 +2323,7 @@ const Invoices25List = () => {
   // 💾 Ukládání stavu do localStorage při změnách
   useEffect(() => {
     const stateToSave = {
-      selectedYear,
+      selectedPeriod,
       columnFilters,
       filters,
       activeFilterStatus,
@@ -2335,7 +2335,7 @@ const Invoices25List = () => {
       sortDirection
     };
     saveToLS(stateToSave);
-  }, [selectedYear, columnFilters, filters, activeFilterStatus, globalSearchTerm, showDashboard, currentPage, itemsPerPage, saveToLS]);
+  }, [selectedPeriod, columnFilters, filters, activeFilterStatus, globalSearchTerm, showDashboard, currentPage, itemsPerPage, saveToLS]);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -2357,10 +2357,37 @@ const Invoices25List = () => {
         per_page: itemsPerPage
       };
       
-      // Rok -> datum_od/datum_do
-      if (selectedYear) {
-        apiParams.datum_od = `${selectedYear}-01-01`;
-        apiParams.datum_do = `${selectedYear}-12-31`;
+      // Období -> datum_od/datum_do
+      if (selectedPeriod && selectedPeriod !== 'all') {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const currentYear = today.getFullYear();
+        
+        switch (selectedPeriod) {
+          case 'current-year':
+            apiParams.datum_od = `${currentYear}-01-01`;
+            apiParams.datum_do = `${currentYear}-12-31`;
+            break;
+          case 'current-month':
+            apiParams.datum_od = `${currentYear}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+            apiParams.datum_do = todayStr;
+            break;
+          case 'last-month':
+            const last30 = new Date(today);
+            last30.setDate(last30.getDate() - 30);
+            apiParams.datum_od = last30.toISOString().split('T')[0];
+            apiParams.datum_do = todayStr;
+            break;
+          case 'last-quarter':
+            const last90 = new Date(today);
+            last90.setDate(last90.getDate() - 90);
+            apiParams.datum_od = last90.toISOString().split('T')[0];
+            apiParams.datum_do = todayStr;
+            break;
+          default:
+            // 'all' - bez omezení
+            break;
+        }
       }
       
       // 🔍 Globální vyhledávání (search_term)
@@ -2723,7 +2750,7 @@ const Invoices25List = () => {
       setLoading(false);
       hideProgress?.();
     }
-  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, debouncedGlobalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
+  }, [token, username, selectedPeriod, currentPage, itemsPerPage, debouncedColumnFilters, filters, debouncedGlobalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
   // Initial load
   useEffect(() => {
@@ -2870,7 +2897,7 @@ const Invoices25List = () => {
       setCurrentPage(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columnFilters, selectedYear, globalSearchTerm]);
+  }, [columnFilters, selectedPeriod, globalSearchTerm]);
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -3016,8 +3043,8 @@ const Invoices25List = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleYearChange = (e) => {
-    setSelectedYear(parseInt(e.target.value, 10));
+  const handlePeriodChange = (e) => {
+    setSelectedPeriod(e.target.value);
   };
 
   const handleViewInvoice = async (invoice) => {
@@ -3484,16 +3511,6 @@ const Invoices25List = () => {
     }
   };
 
-  // Generate years for select
-  const availableYears = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let year = currentYear; year >= 2025; year--) {
-      years.push(year);
-    }
-    return years;
-  }, []);
-
   return (
     <>
       {/* Loading Overlay - při prvním načítání */}
@@ -3510,30 +3527,32 @@ const Invoices25List = () => {
       </FilteringOverlay>
 
       <Container>
-        {/* Year Filter Panel */}
-        <YearFilterPanel>
-          <YearFilterLeft>
-            <YearFilterLabel>
+        {/* Period Filter Panel */}
+        <PeriodFilterPanel>
+          <PeriodFilterLeft>
+            <PeriodFilterLabel>
               <FontAwesomeIcon icon={faCalendarAlt} />
-              Rok:
-            </YearFilterLabel>
-            <YearFilterSelect value={selectedYear} onChange={handleYearChange}>
-              {availableYears.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </YearFilterSelect>
+              Období:
+            </PeriodFilterLabel>
+            <PeriodFilterSelect value={selectedPeriod} onChange={handlePeriodChange}>
+              <option value="current-year">Aktuální rok</option>
+              <option value="current-month">Aktuální měsíc</option>
+              <option value="last-month">Poslední měsíc</option>
+              <option value="last-quarter">Poslední kvartál</option>
+              <option value="all">Vše (bez omezení)</option>
+            </PeriodFilterSelect>
             <TooltipWrapper text="Obnovit data" preferredPosition="bottom">
               <RefreshIconButton onClick={handleRefresh}>
                 <FontAwesomeIcon icon={faSyncAlt} />
               </RefreshIconButton>
             </TooltipWrapper>
-          </YearFilterLeft>
+          </PeriodFilterLeft>
           
-          <YearFilterTitle>
+          <PeriodFilterTitle>
             Přehled faktur
             <FontAwesomeIcon icon={faFileInvoice} />
-          </YearFilterTitle>
-        </YearFilterPanel>
+          </PeriodFilterTitle>
+        </PeriodFilterPanel>
 
         {/* Action Bar - hlavní */}
         <ActionBar>
@@ -3596,7 +3615,7 @@ const Invoices25List = () => {
             <LargeStatCard $color="#8b5cf6" onClick={() => handleDashboardCardClick('all')}>
               <div>
                 <LargeStatValue>{formatCurrency(stats.totalAmount)}</LargeStatValue>
-                <LargeStatLabel>Celková částka {selectedYear}</LargeStatLabel>
+                <LargeStatLabel>Celková částka ({selectedPeriod === 'current-year' ? new Date().getFullYear() : selectedPeriod === 'current-month' ? 'aktuální měsíc' : selectedPeriod === 'last-month' ? 'poslední měsíc' : selectedPeriod === 'last-quarter' ? 'poslední kvartál' : 'vše'})</LargeStatLabel>
               </div>
               <SummaryRow>
                 <SummaryItem $color="#22c55e" $bg="#f0fdf4">
@@ -3629,7 +3648,7 @@ const Invoices25List = () => {
                 </StatIcon>
               </StatHeader>
               <StatValue>{stats.total}</StatValue>
-              <StatLabel>Všechny faktury {selectedYear}</StatLabel>
+              <StatLabel>Všechny faktury ({selectedPeriod === 'current-year' ? new Date().getFullYear() : selectedPeriod === 'current-month' ? 'aktuální měsíc' : selectedPeriod === 'last-month' ? 'poslední měsíc' : selectedPeriod === 'last-quarter' ? 'poslední kvartál' : 'vše'})</StatLabel>
             </DashboardCard>
 
             {/* Věcná správnost */}
