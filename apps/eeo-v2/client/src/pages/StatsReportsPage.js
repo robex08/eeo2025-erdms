@@ -584,18 +584,16 @@ const FilterApplyBtn = styled.button`
 const FilterResetBtn = styled.button`
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  padding: 0;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
   background: #f1f5f9;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: #64748b;
   cursor: pointer;
   transition: background 0.2s;
-  flex-shrink: 0;
   &:hover { background: #e2e8f0; color: #334155; }
   &:disabled { opacity: 0.5; cursor: default; }
 `;
@@ -2458,35 +2456,82 @@ export default function StatsReportsPage() {
   );
 
   const statisticsCharts = useMemo(() => {
-    const ordersByType = filteredOrders.reduce((acc, order) => {
-      const key = getOrderTypeLabel(order) || 'Neurčeno';
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
+    // Druhy - počet
+    const ordersByType = {};
+    // Financování - počet + částka
+    const byFinancing = {};
+    // Úseky - počet + částka
+    const byUsek = {};
+    // Druhy - počet + částka
+    const byDruh = {};
+    // LP kódy - počet + částka
+    const byLpKod = {};
+    // Top dodavatelé
+    const suppliersByAmount = {};
 
-    const ordersByUsek = filteredOrders.reduce((acc, order) => {
-      const key = getOrdererUsekCode(order) || 'Neurčeno';
-      acc[key] = (acc[key] || 0) + getOrderAmount(order);
-      return acc;
-    }, {});
+    filteredOrders.forEach(order => {
+      const amt = getOrderAmount(order);
 
-    const suppliersByAmount = filteredOrders.reduce((acc, order) => {
-      const key = getSupplierName(order) || 'Neurčeno';
-      acc[key] = (acc[key] || 0) + getOrderAmount(order);
-      return acc;
-    }, {});
+      // Druhy
+      const druhKey = getOrderTypeLabel(order) || 'Neurčeno';
+      ordersByType[druhKey] = (ordersByType[druhKey] || 0) + 1;
+      if (!byDruh[druhKey]) byDruh[druhKey] = { count: 0, amount: 0 };
+      byDruh[druhKey].count += 1;
+      byDruh[druhKey].amount += amt;
+
+      // Financování
+      const finKey = getOrderFinancingLabel(order) || 'Neurčeno';
+      if (!byFinancing[finKey]) byFinancing[finKey] = { count: 0, amount: 0 };
+      byFinancing[finKey].count += 1;
+      byFinancing[finKey].amount += amt;
+
+      // Úseky
+      const usekKey = getOrdererUsekCode(order) || 'Neurčeno';
+      if (!byUsek[usekKey]) byUsek[usekKey] = { count: 0, amount: 0 };
+      byUsek[usekKey].count += 1;
+      byUsek[usekKey].amount += amt;
+
+      // Dodavatelé
+      const suppKey = getSupplierName(order) || 'Neurčeno';
+      suppliersByAmount[suppKey] = (suppliersByAmount[suppKey] || 0) + amt;
+
+      // LP kódy
+      const fin = parseFinancing(order?.financovani);
+      if (fin && String(fin?.typ || '').toUpperCase() === 'LP') {
+        const lpNazvy = Array.isArray(fin?.lp_nazvy) ? fin.lp_nazvy : [];
+        if (lpNazvy.length === 0) {
+          const code = 'Bez LP kódu';
+          if (!byLpKod[code]) byLpKod[code] = { count: 0, amount: 0 };
+          byLpKod[code].count += 1;
+          byLpKod[code].amount += amt;
+        } else {
+          lpNazvy.forEach(lp => {
+            const code = lp.cislo_lp || lp.kod || 'Neurčeno';
+            if (!byLpKod[code]) byLpKod[code] = { count: 0, amount: 0 };
+            byLpKod[code].count += 1;
+            byLpKod[code].amount += amt;
+          });
+        }
+      }
+    });
 
     const topSuppliers = Object.entries(suppliersByAmount)
       .filter(([name]) => name && name !== 'Neurčeno')
       .sort((a, b) => b[1] - a[1])
       .slice(0, 7);
 
+    const sortByKey = obj => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b, 'cs-CZ')));
+
     return {
       ordersByType,
-      ordersByUsek,
+      ordersByUsek: Object.fromEntries(Object.entries(byUsek).sort(([a], [b]) => a.localeCompare(b, 'cs-CZ'))),
+      byFinancing: sortByKey(byFinancing),
+      byUsek: sortByKey(byUsek),
+      byDruh: sortByKey(byDruh),
+      byLpKod: sortByKey(byLpKod),
       topSuppliers
     };
-  }, [filteredOrders, getOrderTypeLabel]);
+  }, [filteredOrders, getOrderTypeLabel, getOrderFinancingLabel, getOrdererUsekCode, getOrderAmount, parseFinancing]);
 
   const pivotData = useMemo(() => {
     const normalizeAttachmentTypes = (items = []) => {
@@ -4166,50 +4211,124 @@ export default function StatsReportsPage() {
 
             {activeTab === 'stats' && (
               <ChartGrid>
+
+                {/* Financování - počet + částka */}
+                {(() => {
+                  const entries = Object.entries(statisticsCharts.byFinancing);
+                  const labels = entries.map(([k]) => k);
+                  const counts = entries.map(([, v]) => v.count);
+                  const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  return (
+                    <ChartCard>
+                      <SectionTitle>Financování – počet a částka</SectionTitle>
+                      {labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
+                        <Bar
+                          data={{ labels, datasets: [
+                            { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                            { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                          ]}}
+                          options={{
+                            plugins: { legend: { position: 'bottom' } },
+                            scales: {
+                              yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                              yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                            }
+                          }}
+                        />
+                      )}
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* Úseky - počet + částka */}
+                {(() => {
+                  const entries = Object.entries(statisticsCharts.byUsek);
+                  const labels = entries.map(([k]) => k);
+                  const counts = entries.map(([, v]) => v.count);
+                  const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  return (
+                    <ChartCard>
+                      <SectionTitle>Úseky – počet a částka</SectionTitle>
+                      {labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
+                        <Bar
+                          data={{ labels, datasets: [
+                            { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                            { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                          ]}}
+                          options={{
+                            plugins: { legend: { position: 'bottom' } },
+                            scales: {
+                              yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                              yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                            }
+                          }}
+                        />
+                      )}
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* Druhy objednávek - počet + částka */}
+                {(() => {
+                  const entries = Object.entries(statisticsCharts.byDruh);
+                  const labels = entries.map(([k]) => k);
+                  const counts = entries.map(([, v]) => v.count);
+                  const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  return (
+                    <ChartCard>
+                      <SectionTitle>Druhy objednávek – počet a částka</SectionTitle>
+                      {labels.length === 0 ? <EmptyState>Bez dat</EmptyState> : (
+                        <Bar
+                          data={{ labels, datasets: [
+                            { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                            { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                          ]}}
+                          options={{
+                            plugins: { legend: { position: 'bottom' } },
+                            scales: {
+                              yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                              yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                            }
+                          }}
+                        />
+                      )}
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* LP kódy - počet + částka */}
+                {(() => {
+                  const entries = Object.entries(statisticsCharts.byLpKod);
+                  const labels = entries.map(([k]) => k);
+                  const counts = entries.map(([, v]) => v.count);
+                  const amounts = entries.map(([, v]) => Math.round(v.amount / 1000));
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  return labels.length === 0 ? null : (
+                    <ChartCard>
+                      <SectionTitle>LP kódy – počet a částka</SectionTitle>
+                      <Bar
+                        data={{ labels, datasets: [
+                          { label: 'Počet', data: counts, backgroundColor: colors.map(c => c + 'cc'), yAxisID: 'yCount', order: 2 },
+                          { label: 'Částka (tis. Kč)', data: amounts, backgroundColor: colors, yAxisID: 'yAmount', order: 1 }
+                        ]}}
+                        options={{
+                          plugins: { legend: { position: 'bottom' } },
+                          scales: {
+                            yCount: { type: 'linear', position: 'left', title: { display: true, text: 'Počet' }, grid: { drawOnChartArea: false } },
+                            yAmount: { type: 'linear', position: 'right', title: { display: true, text: 'tis. Kč' }, ticks: { callback: v => `${v}k` } }
+                          }
+                        }}
+                      />
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* Top dodavatelé */}
                 <ChartCard>
-                  <SectionTitle>Druhy objednávek</SectionTitle>
-                  {Object.keys(statisticsCharts.ordersByType).length === 0 ? (
-                    <EmptyState>Bez dat</EmptyState>
-                  ) : (
-                    <Doughnut
-                      data={{
-                        labels: Object.keys(statisticsCharts.ordersByType),
-                        datasets: [{
-                          data: Object.values(statisticsCharts.ordersByType),
-                          backgroundColor: ['#1d4ed8', '#7c3aed', '#06b6d4', '#f97316', '#f43f5e', '#10b981']
-                        }]
-                      }}
-                      options={{ plugins: { legend: { position: 'bottom' } } }}
-                    />
-                  )}
-                </ChartCard>
-                <ChartCard>
-                  <SectionTitle>Částky podle úseků</SectionTitle>
-                  {Object.keys(statisticsCharts.ordersByUsek).length === 0 ? (
-                    <EmptyState>Bez dat</EmptyState>
-                  ) : (
-                    <Bar
-                      data={{
-                        labels: Object.keys(statisticsCharts.ordersByUsek),
-                        datasets: [{
-                          label: 'Částka',
-                          data: Object.values(statisticsCharts.ordersByUsek),
-                          backgroundColor: buildChartColors(Object.keys(statisticsCharts.ordersByUsek).length, CHART_COLORS),
-                          borderColor: buildChartColors(Object.keys(statisticsCharts.ordersByUsek).length, CHART_COLORS),
-                          borderWidth: 1
-                        }]
-                      }}
-                      options={{
-                        plugins: { legend: { display: false } },
-                        scales: {
-                          y: { ticks: { callback: (value) => `${value / 1000}k` } }
-                        }
-                      }}
-                    />
-                  )}
-                </ChartCard>
-                <ChartCard>
-                  <SectionTitle>Top dodavatelé</SectionTitle>
+                  <SectionTitle>Top dodavatelé (částka)</SectionTitle>
                   {statisticsCharts.topSuppliers.length === 0 ? (
                     <EmptyState>Bez dat</EmptyState>
                   ) : (
@@ -4218,7 +4337,7 @@ export default function StatsReportsPage() {
                         labels: statisticsCharts.topSuppliers.map(([name]) => name),
                         datasets: [{
                           label: 'Částka',
-                          data: statisticsCharts.topSuppliers.map(([, value]) => value),
+                          data: statisticsCharts.topSuppliers.map(([, value]) => Math.round(value / 1000)),
                           backgroundColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS),
                           borderColor: buildChartColors(statisticsCharts.topSuppliers.length, CHART_COLORS),
                           borderWidth: 1
@@ -4226,11 +4345,13 @@ export default function StatsReportsPage() {
                       }}
                       options={{
                         indexAxis: 'y',
-                        plugins: { legend: { display: false } }
+                        plugins: { legend: { display: false } },
+                        scales: { x: { ticks: { callback: v => `${v}k` } } }
                       }}
                     />
                   )}
                 </ChartCard>
+
               </ChartGrid>
             )}
 
@@ -4627,4 +4748,385 @@ export default function StatsReportsPage() {
                               <PageButton onClick={() => handleLoadOrdersWithoutAttachments(ordersWithoutAttachmentsPage + 1)} disabled={ordersWithoutAttachmentsPage >= (ordersWithoutAttachments.pagination.total_pages || 1)}>›</PageButton>
                               <PageButton onClick={() => handleLoadOrdersWithoutAttachments(ordersWithoutAttachments.pagination.total_pages || 1)} disabled={ordersWithoutAttachmentsPage >= (ordersWithoutAttachments.pagination.total_pages || 1)}>»»</PageButton>
                             </PaginationControls>
-                          </PaginationContainer
+                          </PaginationContainer>
+                        )}
+                      </TableWrapper>
+                    )}
+                  </SectionCard>
+                )}
+
+                {/* Faktury bez příloh */}
+                {isBlockVisible('attachments', 'invoicesWithoutAttachments') && (
+                  <SectionCard>
+                    <SectionHeader>
+                      <SmartTooltip text="Obnovit seznam faktur bez příloh" preferredPosition="right">
+                        <PageButton
+                          onClick={() => handleLoadInvoicesWithoutAttachments(1)}
+                          disabled={attachmentsLoading}
+                          style={{ padding: '0.25rem 0.5rem', lineHeight: 1, marginRight: '0.5rem' }}
+                        >
+                          <FontAwesomeIcon icon={faRefresh} spin={attachmentsLoading} />
+                        </PageButton>
+                      </SmartTooltip>
+                      <SectionTitle style={{ flex: 1 }}>
+                        Faktury bez příloh
+                      </SectionTitle>
+                      <SectionBadge $tone="warn">{invoicesWithoutAttachments?.pagination?.total || '...'}</SectionBadge>
+                    </SectionHeader>
+                    {invoicesWithoutAttachments && (
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Faktura</Th>
+                              <Th>Stav</Th>
+                              <Th>Objednávka</Th>
+                              <Th>Dodavatel</Th>
+                              <Th>Částka</Th>
+                              <Th>Splatnost</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(invoicesWithoutAttachments?.data || []).map(invoice => (
+                              <Tr key={invoice.id}>
+                                <Td>{renderInvoiceLink(invoice)}</Td>
+                                <Td>
+                                  <Pill $tone="default">{invoice.stav}</Pill>
+                                </Td>
+                                <Td>{invoice.objednavka_id ? renderOrderLink({ id: invoice.objednavka_id, cislo_objednavky: invoice.cislo_objednavky }) : '-'}</Td>
+                                <Td>{invoice.dodavatel || '-'}</Td>
+                                <Td>{invoice.castka ? fmtCurrency(invoice.castka) : '-'}</Td>
+                                <Td>{invoice.datum_splatnosti ? new Date(invoice.datum_splatnosti).toLocaleDateString('cs-CZ') : '-'}</Td>
+                              </Tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                        {invoicesWithoutAttachments?.pagination && invoicesWithoutAttachments.pagination.total_pages > 1 && (
+                          <PaginationContainer>
+                            <PaginationInfo>
+                              Zobrazeno {((invoicesWithoutAttachmentsPage - 1) * (invoicesWithoutAttachments.pagination.per_page || 25)) + 1}–{Math.min(invoicesWithoutAttachmentsPage * (invoicesWithoutAttachments.pagination.per_page || 25), invoicesWithoutAttachments.pagination.total)} z {invoicesWithoutAttachments.pagination.total}
+                            </PaginationInfo>
+                            <PaginationControls>
+                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(1)} disabled={invoicesWithoutAttachmentsPage <= 1}>««</PageButton>
+                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(invoicesWithoutAttachmentsPage - 1)} disabled={invoicesWithoutAttachmentsPage <= 1}>‹</PageButton>
+                              <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 1rem' }}>Stránka {invoicesWithoutAttachmentsPage} z {invoicesWithoutAttachments.pagination.total_pages || 1}</span>
+                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(invoicesWithoutAttachmentsPage + 1)} disabled={invoicesWithoutAttachmentsPage >= (invoicesWithoutAttachments.pagination.total_pages || 1)}>›</PageButton>
+                              <PageButton onClick={() => handleLoadInvoicesWithoutAttachments(invoicesWithoutAttachments.pagination.total_pages || 1)} disabled={invoicesWithoutAttachmentsPage >= (invoicesWithoutAttachments.pagination.total_pages || 1)}>»»</PageButton>
+                            </PaginationControls>
+                          </PaginationContainer>
+                        )}
+                      </TableWrapper>
+                    )}
+                  </SectionCard>
+                )}
+              </>
+            )}
+
+            {activeTab === 'pivot' && (
+              <SectionCard>
+                <SectionHeader>
+                  <SectionTitle>Kontingenční tabulka</SectionTitle>
+                  <PivotHeaderActions>
+                    <Select
+                      value={pivotConfig.dataset}
+                      onChange={(event) => setPivotConfig(prev => ({ ...prev, dataset: event.target.value }))}
+                    >
+                      <option value="all">Vše dohromady</option>
+                      <option value="orders">Objednávky</option>
+                      <option value="invoices">Faktury</option>
+                      <option value="contracts">Smlouvy</option>
+                    </Select>
+                  </PivotHeaderActions>
+                </SectionHeader>
+                <PivotPanel>
+                  <PivotZonesStack>
+                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'row')}>
+                      <PivotZoneTitle>Řádky (textová pole)</PivotZoneTitle>
+                      <PivotZoneBody>
+                        {(pivotConfig.rowFields || []).length > 0 ? (
+                          (pivotConfig.rowFields || []).map((fieldId, index) => (
+                            <PivotChip
+                              key={`row_${fieldId}_${index}`}
+                              $tone={pivotToneByKey(fieldId, 'text')}
+                              draggable
+                              onDragStart={(event) => handlePivotDragStart(event, 'text', fieldId, 'row', index)}
+                              onDrop={(event) => {
+                                const fromIndex = Number(event.dataTransfer.getData('from-index'));
+                                const fromZone = event.dataTransfer.getData('pivot-zone');
+                                if (fromZone === 'row') {
+                                  handlePivotReorder(fromIndex, index, 'row');
+                                }
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                            >
+                              <FontAwesomeIcon icon={faGripVertical} />
+                              {pivotTextLabelMap.get(fieldId) || fieldId}
+                              <PivotChipIndex>{index + 1}</PivotChipIndex>
+                              <PivotChipButton
+                                onClick={() =>
+                                  setPivotConfig(prev => ({
+                                    ...prev,
+                                    rowFields: (prev.rowFields || []).filter((item, idx) => idx !== index)
+                                  }))
+                                }
+                              >
+                                <FontAwesomeIcon icon={faXmark} />
+                              </PivotChipButton>
+                            </PivotChip>
+                          ))
+                        ) : (
+                          <PivotHint>Sem přetáhni pole pro řádky.</PivotHint>
+                        )}
+                      </PivotZoneBody>
+                    </PivotZone>
+
+                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'col')}>
+                      <PivotZoneTitle>Sloupce (textová pole)</PivotZoneTitle>
+                      <PivotZoneBody>
+                        {(pivotConfig.colFields || []).length > 0 ? (
+                          (pivotConfig.colFields || []).map((fieldId, index) => (
+                            <PivotChip
+                              key={`col_${fieldId}_${index}`}
+                              $tone={pivotToneByKey(fieldId, 'text')}
+                              draggable
+                              onDragStart={(event) => handlePivotDragStart(event, 'text', fieldId, 'col', index)}
+                              onDrop={(event) => {
+                                const fromIndex = Number(event.dataTransfer.getData('from-index'));
+                                const fromZone = event.dataTransfer.getData('pivot-zone');
+                                if (fromZone === 'col') {
+                                  handlePivotReorder(fromIndex, index, 'col');
+                                }
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                            >
+                              <FontAwesomeIcon icon={faGripVertical} />
+                              {pivotTextLabelMap.get(fieldId) || fieldId}
+                              <PivotChipIndex>{index + 1}</PivotChipIndex>
+                              <PivotChipButton
+                                onClick={() =>
+                                  setPivotConfig(prev => ({
+                                    ...prev,
+                                    colFields: (prev.colFields || []).filter((item, idx) => idx !== index)
+                                  }))
+                                }
+                              >
+                                <FontAwesomeIcon icon={faXmark} />
+                              </PivotChipButton>
+                            </PivotChip>
+                          ))
+                        ) : (
+                          <PivotHint>Sem přetáhni pole pro sloupce.</PivotHint>
+                        )}
+                      </PivotZoneBody>
+                    </PivotZone>
+
+                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'metric')}>
+                      <PivotZoneTitle>Hodnota (číselná metrika)</PivotZoneTitle>
+                      <PivotZoneBody>
+                        {pivotConfig.metric ? (
+                          <PivotChip
+                            $tone={pivotToneByKey(pivotConfig.metric, 'metric')}
+                            draggable
+                            onDragStart={(event) => handlePivotDragStart(event, 'metric', pivotConfig.metric)}
+                          >
+                            <FontAwesomeIcon icon={faGripVertical} />
+                            {pivotMetricLabelMap.get(pivotConfig.metric) || pivotConfig.metric}
+                            <PivotChipIndex>H</PivotChipIndex>
+                            <PivotChipButton onClick={() => setPivotConfig(prev => ({ ...prev, metric: '' }))}>
+                              <FontAwesomeIcon icon={faXmark} />
+                            </PivotChipButton>
+                          </PivotChip>
+                        ) : (
+                          <PivotHint>Sem přetáhni metrické pole.</PivotHint>
+                        )}
+                      </PivotZoneBody>
+                    </PivotZone>
+                  </PivotZonesStack>
+
+                  <PivotOptionsPanel>
+                    <PivotOptionsGroup>
+                      <PivotOptionsTitle>
+                        <FontAwesomeIcon icon={faLayerGroup} /> Klasifikační pole
+                      </PivotOptionsTitle>
+                      <PivotChipsWrap>
+                        {pivotTextGroups.order.length > 0 && (
+                          <div style={{ width: '100%' }}>
+                            <PivotHint style={{ fontWeight: 700, color: '#1e40af' }}>Objednávky</PivotHint>
+                            <PivotChipsWrap>
+                              {pivotTextGroups.order.map(option => (
+                                <PivotChip
+                                  key={option.key}
+                                  $tone={pivotToneByKey(option.key, 'text')}
+                                  draggable
+                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
+                                >
+                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
+                                </PivotChip>
+                              ))}
+                            </PivotChipsWrap>
+                          </div>
+                        )}
+                        {pivotTextGroups.invoice.length > 0 && (
+                          <div style={{ width: '100%' }}>
+                            <PivotHint style={{ fontWeight: 700, color: '#155e75' }}>Faktury</PivotHint>
+                            <PivotChipsWrap>
+                              {pivotTextGroups.invoice.map(option => (
+                                <PivotChip
+                                  key={option.key}
+                                  $tone={pivotToneByKey(option.key, 'text')}
+                                  draggable
+                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
+                                >
+                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
+                                </PivotChip>
+                              ))}
+                            </PivotChipsWrap>
+                          </div>
+                        )}
+                        {pivotTextGroups.contract.length > 0 && (
+                          <div style={{ width: '100%' }}>
+                            <PivotHint style={{ fontWeight: 700, color: '#166534' }}>Smlouvy</PivotHint>
+                            <PivotChipsWrap>
+                              {pivotTextGroups.contract.map(option => (
+                                <PivotChip
+                                  key={option.key}
+                                  $tone={pivotToneByKey(option.key, 'text')}
+                                  draggable
+                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
+                                >
+                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
+                                </PivotChip>
+                              ))}
+                            </PivotChipsWrap>
+                          </div>
+                        )}
+                        {pivotTextGroups.shared.length > 0 && (
+                          <div style={{ width: '100%' }}>
+                            <PivotHint style={{ fontWeight: 700, color: '#334155' }}>Sdílené</PivotHint>
+                            <PivotChipsWrap>
+                              {pivotTextGroups.shared.map(option => (
+                                <PivotChip
+                                  key={option.key}
+                                  $tone={pivotToneByKey(option.key, 'text')}
+                                  draggable
+                                  onDragStart={(event) => handlePivotDragStart(event, 'text', option.key)}
+                                >
+                                  <FontAwesomeIcon icon={faGripVertical} /> {option.label}
+                                </PivotChip>
+                              ))}
+                            </PivotChipsWrap>
+                          </div>
+                        )}
+                        {availablePivotTextOptions.length === 0 && (
+                          <PivotHint>Všechna textová pole jsou už použita.</PivotHint>
+                        )}
+                      </PivotChipsWrap>
+                    </PivotOptionsGroup>
+
+                    <PivotOptionsGroup>
+                      <PivotOptionsTitle>
+                        <FontAwesomeIcon icon={faLayerGroup} /> Číselné metriky
+                      </PivotOptionsTitle>
+                      <PivotChipsWrap>
+                        {availablePivotMetricOptions.map(option => (
+                          <PivotChip
+                            key={option.key}
+                            $tone={pivotToneByKey(option.key, 'metric')}
+                            draggable
+                            onDragStart={(event) => handlePivotDragStart(event, 'metric', option.key)}
+                          >
+                            <FontAwesomeIcon icon={faGripVertical} /> {option.label}
+                          </PivotChip>
+                        ))}
+                        {availablePivotMetricOptions.length === 0 && (
+                          <PivotHint>Všechny metriky jsou už použité.</PivotHint>
+                        )}
+                      </PivotChipsWrap>
+                    </PivotOptionsGroup>
+                  </PivotOptionsPanel>
+                </PivotPanel>
+                <TableWrapper>
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>
+                          {(pivotConfig.rowFields || []).map(key => pivotTextLabelMap.get(key) || key).join(' / ') || 'Řádky'}
+                        </Th>
+                        {pivotTable.colKeys.map(colKey => (
+                          <Th key={colKey}>{colKey}</Th>
+                        ))}
+                        <Th>Celkem</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pivotRowNodes.length === 0 && (
+                        <Tr>
+                          <Td colSpan={pivotTable.colKeys.length + 2}>
+                            <EmptyState>Bez dat</EmptyState>
+                          </Td>
+                        </Tr>
+                      )}
+                      {pivotRowNodes.map(node => {
+                        const isExpanded = pivotExpanded[node.id] ?? node.depth === 0;
+                        const hasChildren = node.children.length > 0;
+                        return (
+                          <Tr key={node.id}>
+                            <Td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingLeft: `${node.depth * 14}px` }}>
+                                {hasChildren && (
+                                  <PivotTreeToggle
+                                    onClick={() =>
+                                      setPivotExpanded(prev => ({
+                                        ...prev,
+                                        [node.id]: !isExpanded
+                                      }))
+                                    }
+                                    aria-label={isExpanded ? 'Sbalit' : 'Rozbalit'}
+                                  >
+                                    <FontAwesomeIcon icon={isExpanded ? faMinus : faPlus} />
+                                  </PivotTreeToggle>
+                                )}
+                                <strong>{node.label}</strong>
+                              </div>
+                            </Td>
+                            {pivotTable.colKeys.map(colKey => (
+                              <Td key={`${node.id}_${colKey}`}>{formatMetric(pivotTable.getValue(node, colKey))}</Td>
+                            ))}
+                            <Td><strong>{formatMetric(pivotTable.getRowTotal(node))}</strong></Td>
+                          </Tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <Tr>
+                        <Td><strong>Celkem</strong></Td>
+                        {pivotTable.colKeys.map(colKey => (
+                          <Td key={`total_${colKey}`}><strong>{formatMetric(pivotTable.totalForCol(colKey))}</strong></Td>
+                        ))}
+                        <Td><strong>{formatMetric(pivotTable.grandTotal)}</strong></Td>
+                      </Tr>
+                    </tfoot>
+                  </Table>
+                </TableWrapper>
+              </SectionCard>
+            )}
+          </Section>
+        </ContentGrid>
+      </PageContainer>
+    </PageWrapper>
+    {viewerAttachment && (
+      <AttachmentViewer
+        attachment={viewerAttachment}
+        closeOnOverlayClick={false}
+        onClose={() => {
+          lastViewerCloseAtRef.current = Date.now();
+          if (viewerAttachment.blobUrl?.startsWith('blob:')) {
+            window.URL.revokeObjectURL(viewerAttachment.blobUrl);
+          }
+          setViewerAttachment(null);
+        }}
+      />
+    )}
+    </>
+  );
+}
