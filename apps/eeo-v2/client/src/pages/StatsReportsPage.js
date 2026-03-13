@@ -20,6 +20,9 @@ import {
   faFileContract,
   faCoins,
   faPaperclip,
+  faClipboardList,
+  faDownload,
+  faPercent,
   faChevronDown,
   faChevronRight,
   faFile,
@@ -82,7 +85,7 @@ const SECTION_BLOCKS = {
     { key: 'ordersInvoicesWithoutAttachments', label: 'Objednávky s fakturami bez příloh' },
     { key: 'invoicesWithoutAttachments', label: 'Faktury bez přílohy' },
     { key: 'overdueInvoices', label: 'Faktury po splatnosti 14+ dní' },
-    { key: 'cancelledOrders', label: 'Stornované / smazané objednávky' }
+    { key: 'cancelledOrders', label: 'Zrušené a zamítnuté objednávky' }
   ],
   spend: [
     { key: 'spendByFinancingUsek', label: 'Čerpání s rozpadem po úsecích' },
@@ -104,6 +107,7 @@ const SECTION_BLOCKS = {
     { key: 'topSuppliers', label: 'Top dodavatelé (LP vs smlouvy)' }
   ],
   attachments: [
+    { key: 'invoiceAttachmentsList', label: 'Přehled příloh faktur (soubory)' },
     { key: 'orderAttachmentsByType', label: 'Přílohy objednávek podle typu' },
     { key: 'invoiceAttachmentsByType', label: 'Přílohy faktur podle typu' },
     { key: 'ordersWithoutAttachments', label: 'Objednávky bez příloh' },
@@ -647,6 +651,7 @@ const Section = styled.div`
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  min-width: 0;
 `;
 
 const SectionCard = styled.div`
@@ -681,8 +686,9 @@ const SectionBadge = styled.span`
 const PivotHeaderActions = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  min-width: 220px;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 `;
 
 const BlockSelect = styled.div`
@@ -738,10 +744,12 @@ const BlockCheckbox = styled.input`
 
 const TableWrapper = styled.div`
   overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 `;
 
 const Table = styled.table`
-  width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.88rem;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -796,6 +804,11 @@ const SubjectTd = styled(Td)`
   white-space: normal;
   word-break: break-word;
 `;
+
+const ThR = styled(Th)`text-align: right;`;
+const ThC = styled(Th)`text-align: center;`;
+const TdR = styled(Td)`text-align: right;`;
+const TdC = styled(Td)`text-align: center;`;
 
 const NameStack = styled.div`
   display: flex;
@@ -863,7 +876,7 @@ const ChartCard = styled.div`
 const ChartWrapper = styled.div`
   position: relative;
   width: 100%;
-  height: 280px;
+  height: 420px;
 `;
 
 const ChartExpandBtn = styled.button`
@@ -1186,7 +1199,13 @@ const renderApproverStack = (order, getOrderStatusCodeFn, getInvoiceApprovalDate
 };
 
 const getUsekLabel = (order) => {
-  return order?.usek_zkr || order?.usek?.usek_zkr || order?.usek_nazev || order?.usek || '';
+  const direct = order?.usek_zkr || order?.usek?.usek_zkr || order?.usek_nazev;
+  if (direct) return String(direct);
+  // Fallback: z objednatele nebo z čísla objednávky (2025/ZMZ/001 → ZMZ)
+  const fromObjednatel = order?.objednatel_usek_zkr || order?.objednatel?.usek_zkr || order?.objednatel_uzivatel?.usek_zkr || order?.usek_objednatele;
+  if (fromObjednatel) return String(fromObjednatel);
+  const evNum = order?.ev_cislo || order?.cislo_objednavky || '';
+  return parseUsekFromOrderNumber(evNum);
 };
 
 const parseUsekFromOrderNumber = (value) => {
@@ -1399,6 +1418,16 @@ function FilterMultiSelect({ options, values, onChange, placeholder }) {
     </div>
   );
 }
+
+const getFinancingIcon = (label) => {
+  if (!label) return faMoneyBillWave;
+  const l = label.toLowerCase();
+  if (l.includes('příslib') || l.includes('lp')) return faCoins;
+  if (l.includes('smlouv')) return faFileContract;
+  if (l.includes('schválení') || l.includes('individuál')) return faCheck;
+  if (l.includes('pojist')) return faPaperclip;
+  return faMoneyBillWave;
+};
 
 export default function StatsReportsPage() {
   const { token, username, user, user_id } = useContext(AuthContext);
@@ -2376,8 +2405,6 @@ export default function StatsReportsPage() {
     });
 
     const cancelledOrders = filteredOrders.filter(order => {
-      const isInactive = order?.active === false || order?.aktivni === false || order?.aktivni === 0 || order?.aktivni === '0';
-      if (isInactive) return true;
       const statusCode = getOrderStatusCode(order);
       const statusLabel = getOrderStatusLabel(order);
       const statusRaw = `${statusCode} ${statusLabel}`.toUpperCase();
@@ -2710,12 +2737,20 @@ export default function StatsReportsPage() {
 
     const resolveUsekForInvoice = (invoice, linkedOrder, linkedContract) => {
       if (linkedOrder) {
-        return getUsekLabel(linkedOrder) || 'Chybi hodnota';
+        // Vždy vrátíme zkratku (kód), ne plný název, aby nedocházelo ke duplikaci sloupců
+        const fromOrder = getOrdererUsekCode(linkedOrder);
+        if (fromOrder) return fromOrder;
+        const fallback = getUsekLabel(linkedOrder);
+        if (fallback && fallback !== 'Neurčeno') return fallback;
       }
       if (linkedContract) {
-        return getContractUsek(linkedContract) || 'Chybi hodnota';
+        const fromContract = getContractUsek(linkedContract);
+        if (fromContract) return fromContract;
       }
-      return invoice?.usek_zkr || 'Neurčeno';
+      // Zkus vlastní pole faktury nebo parsuj z čísla objednávky na faktuře
+      const fromInvoice = invoice?.objednavka_usek_zkr || invoice?.usek_zkr
+        || parseUsekFromOrderNumber(invoice?.cislo_objednavky || '');
+      return fromInvoice || 'Neurčeno';
     };
 
     const orderRows = filteredOrders.map(order => {
@@ -2723,20 +2758,27 @@ export default function StatsReportsPage() {
       const invoicedAmount = getOrderInvoicedAmount(order, invoicesForOrder);
       const plannedAmount = getOrderPlannedAmount(order);
       const limitAmount = getOrderLimit(order);
+      // Úsek: vždy jen zkratka (kód), aby nedocházelo ke duplikaci sloupců ("EN" vs "EN - ÚSEK EKONOMICKÝ")
+      const usekCode = getOrdererUsekCode(order) || getUsekLabel(order) || 'Neurčeno';
       return {
-      id: order.id,
-      usek: getUsekLabel(order) || 'Neurčeno',
-      financing: getOrderFinancingLabel(order) || 'Neurčeno',
-      type: getOrderTypeLabel(order) || 'Neurčeno',
-      status: getOrderStatusLabel(order) || 'Neurčeno',
-      supplier: getSupplierName(order) || 'Neurčeno',
-      orderer: getOrdererName(order) || 'Neurčeno',
-      amount: invoicedAmount,
-      amount_invoiced: invoicedAmount,
-      amount_planned: plannedAmount,
-      amount_limit: limitAmount,
-      hasInvoice: (invoicesByOrderId[String(order.id)] || []).length > 0 ? 'Ano' : 'Ne',
-      source: 'Objednávky'
+        id: order.id,
+        usek: usekCode,
+        financing: getOrderFinancingLabel(order) || 'Neurčeno',
+        type: getOrderTypeLabel(order) || 'Neurčeno',
+        status: getOrderStatusLabel(order) || 'Neurčeno',
+        supplier: getSupplierName(order) || 'Neurčeno',
+        orderer: getOrdererName(order) || 'Neurčeno',
+        garant: getGarantName(order) || 'Neurčeno',
+        prikazce: getPrikazceName(order) || 'Neurčeno',
+        schvalovatel: getSchvalovatelName(order) || 'Neurčeno',
+        amount: invoicedAmount,
+        amount_invoiced: invoicedAmount,
+        amount_planned: plannedAmount,
+        amount_limit: limitAmount,
+        hasInvoice: (invoicesByOrderId[String(order.id)] || []).length > 0 ? 'Ano' : 'Ne',
+        attachmentType: order.ma_prilohy ? 'Má přílohy' : 'Bez příloh',
+        attachmentSource: 'OBJ',
+        source: 'Objednávky'
       };
     });
 
@@ -2744,19 +2786,30 @@ export default function StatsReportsPage() {
       const linkedOrder = inv?.objednavka_id != null ? ordersById.get(String(inv.objednavka_id)) : null;
       const linkedContract = resolveContract(linkedOrder, inv);
       const invoiceAmount = getInvoiceAmount(inv);
+      const invUsek = resolveUsekForInvoice(inv, linkedOrder, linkedContract);
+      // Financování z navázané objednávky (faktura sama ho nenosí)
+      const invFinancing = linkedOrder ? (getOrderFinancingLabel(linkedOrder) || 'Neurčeno') : 'Neurčeno';
+      // Dodavatel z navázané objednávky
+      const invSupplier = getSupplierName(linkedOrder) || 'Neurčeno';
       return {
-      id: inv.id,
-      usek: resolveUsekForInvoice(inv, linkedOrder, linkedContract),
-      status: getInvoiceStatusLabel(inv) || 'Neurčeno',
-      type: inv.fa_typ || 'Neurčeno',
-      paid: inv.zaplacena ? 'Ano' : 'Ne',
-      hasAttachment: inv.ma_prilohy ? 'Ano' : 'Ne',
+        id: inv.id,
+        usek: invUsek,
+        financing: invFinancing,
+        supplier: invSupplier,
+        status: getInvoiceStatusLabel(inv) || 'Neurčeno',
+        type: inv.fa_typ || 'Neurčeno',
+        paid: inv.zaplacena ? 'Ano' : 'Ne',
+        hasAttachment: inv.ma_prilohy ? 'Ano' : 'Ne',
+        garant: getGarantName(linkedOrder) || 'Neurčeno',
+        prikazce: getPrikazceName(linkedOrder) || 'Neurčeno',
+        schvalovatel: getSchvalovatelName(linkedOrder) || 'Neurčeno',
         amount: invoiceAmount,
         amount_invoiced: invoiceAmount,
         amount_planned: 0,
         amount_limit: 0,
-      attachmentType: normalizeAttachmentTypes(inv.prilohy),
-      source: 'Faktury'
+        attachmentType: normalizeAttachmentTypes(inv.prilohy),
+        attachmentSource: 'FA',
+        source: 'Faktury'
       };
     });
 
@@ -2776,15 +2829,22 @@ export default function StatsReportsPage() {
 
     filteredOrders.forEach((order) => {
       const invoicesForOrder = invoicesByOrderId[String(order?.id)] || [];
+      // Vždy jen zkratka (kód), aby nedocházelo ke duplikaci sloupců
+      const _usekCode = getOrdererUsekCode(order) || getUsekLabel(order) || 'Neurčeno';
       const base = {
-        usek: getUsekLabel(order) || 'Neurčeno',
+        usek: _usekCode,
         financing: getOrderFinancingLabel(order) || 'Neurčeno',
         supplier: getSupplierName(order) || 'Neurčeno',
         orderer: getOrdererName(order) || 'Neurčeno',
+        garant: getGarantName(order) || 'Neurčeno',
+        prikazce: getPrikazceName(order) || 'Neurčeno',
+        schvalovatel: getSchvalovatelName(order) || 'Neurčeno',
         orderNumber: order?.ev_cislo || order?.cislo_objednavky || 'Chybi hodnota',
         orderType: getOrderTypeLabel(order) || 'Neurčeno',
         orderStatus: getOrderStatusLabel(order) || 'Neurčeno',
-        hasInvoice: invoicesForOrder.length ? 'Ano' : 'Ne'
+        hasInvoice: invoicesForOrder.length ? 'Ano' : 'Ne',
+        attachmentType: order.ma_prilohy ? 'Má přílohy' : 'Bez příloh',
+        attachmentSource: 'OBJ'
       };
 
       if (invoicesForOrder.length === 0) {
@@ -2801,8 +2861,7 @@ export default function StatsReportsPage() {
           invoiceStatus: 'Chybi hodnota',
           invoiceType: 'Chybi hodnota',
           paid: 'Chybi hodnota',
-          hasAttachment: 'Chybi hodnota',
-          attachmentType: 'Chybi hodnota',
+          hasAttachment: order.ma_prilohy ? 'Ano' : 'Ne',
           contractNumber: contractNumber || 'Chybi hodnota',
           contractType: contract?.druh_smlouvy || contract?.typ || 'Chybi hodnota',
           contractStatus: contract?.stav || 'Chybi hodnota',
@@ -2831,6 +2890,7 @@ export default function StatsReportsPage() {
           paid: inv.zaplacena ? 'Ano' : 'Ne',
           hasAttachment: inv.ma_prilohy ? 'Ano' : 'Ne',
           attachmentType: normalizeAttachmentTypes(inv.prilohy),
+          attachmentSource: 'FA',
           contractNumber: contractNumber || 'Chybi hodnota',
           contractType: contract?.druh_smlouvy || contract?.typ || 'Chybi hodnota',
           contractStatus: contract?.stav || 'Chybi hodnota',
@@ -2852,9 +2912,12 @@ export default function StatsReportsPage() {
       const contractNumber = contract ? getContractNumber(contract) : '';
       combinedRows.push({
         usek: resolveUsekForInvoice(inv, null, contract),
-        financing: 'Chybi hodnota',
-        supplier: 'Chybi hodnota',
-        orderer: 'Chybi hodnota',
+        financing: 'Neurčeno',
+        supplier: 'Neurčeno',
+        orderer: 'Neurčeno',
+        garant: 'Neurčeno',
+        prikazce: 'Neurčeno',
+        schvalovatel: 'Neurčeno',
         orderNumber: inv.cislo_objednavky || 'Chybi hodnota',
         orderType: 'Chybi hodnota',
         orderStatus: 'Chybi hodnota',
@@ -2865,6 +2928,7 @@ export default function StatsReportsPage() {
         paid: inv.zaplacena ? 'Ano' : 'Ne',
         hasAttachment: inv.ma_prilohy ? 'Ano' : 'Ne',
         attachmentType: normalizeAttachmentTypes(inv.prilohy),
+        attachmentSource: 'FA',
         contractNumber: contractNumber || 'Chybi hodnota',
         contractType: contract?.druh_smlouvy || contract?.typ || 'Chybi hodnota',
         contractStatus: contract?.stav || 'Chybi hodnota',
@@ -2887,6 +2951,9 @@ export default function StatsReportsPage() {
         financing: 'Chybi hodnota',
         supplier: 'Chybi hodnota',
         orderer: 'Chybi hodnota',
+        garant: 'Chybi hodnota',
+        prikazce: 'Chybi hodnota',
+        schvalovatel: 'Chybi hodnota',
         orderNumber: 'Chybi hodnota',
         orderType: 'Chybi hodnota',
         orderStatus: 'Chybi hodnota',
@@ -2911,7 +2978,34 @@ export default function StatsReportsPage() {
     });
 
     return { orderRows, invoiceRows, contractRows, combinedRows };
-  }, [filteredOrders, filteredInvoices, contracts, invoicesByOrderId, contractsById, contractsByNumber, getOrderFinancingLabel, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel]);
+  }, [filteredOrders, filteredInvoices, contracts, invoicesByOrderId, ordersById, contractsById, contractsByNumber, getOrderFinancingLabel, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getOrdererUsekCode]);
+
+  // Plochý seznam příloh faktur z paměti (prilohy jsou načteny spolu s fakturami)
+  const allInvoiceAttachments = useMemo(() => {
+    const result = [];
+    (filteredInvoices || []).forEach(inv => {
+      if (!Array.isArray(inv.prilohy) || inv.prilohy.length === 0) return;
+      const linkedOrder = inv.objednavka_id != null ? ordersById.get(String(inv.objednavka_id)) : null;
+      inv.prilohy.forEach(att => {
+        result.push({
+          ...att,
+          invoice_id: inv.id,
+          cislo_faktury: inv.cislo_faktury,
+          objednavka_id: inv.objednavka_id || null,
+          cislo_objednavky: linkedOrder?.ev_cislo || linkedOrder?.cislo_objednavky || inv.cislo_objednavky || null,
+          dodavatel: getSupplierName(linkedOrder) || '',
+          fa_stav: inv.stav,
+          attachmentSource: 'FA'
+        });
+      });
+    });
+    return result;
+  }, [filteredInvoices, ordersById]);
+
+  const pagedInvoiceAttachmentsList = useMemo(
+    () => getPagedItems(allInvoiceAttachments, 'invoiceAttachmentsList'),
+    [allInvoiceAttachments, getPagedItems, tablePaging]
+  );
 
   const pivotStorageKey = `${LOCAL_STORAGE_PREFIX}_pivot_${userKey}`;
 
@@ -2924,7 +3018,10 @@ export default function StatsReportsPage() {
       dataset: 'all',
       rowFields: ['usek'],
       colFields: ['financing'],
-      metric: 'count'
+      metric: 'count',
+      aggFunc: 'sum',
+      colMode: 'fields',
+      colMetrics: null
     };
   });
   const [pivotExpanded, setPivotExpanded] = useState({});
@@ -2938,53 +3035,68 @@ export default function StatsReportsPage() {
   const pivotTextOptions = useMemo(() => {
     if (pivotConfig.dataset === 'invoices') {
       return [
-        { key: 'usek', label: 'Úsek' },
-        { key: 'status', label: 'Stav faktury' },
-        { key: 'type', label: 'Typ faktury' },
-        { key: 'paid', label: 'Zaplaceno' },
-        { key: 'hasAttachment', label: 'Má přílohu' },
-        { key: 'source', label: 'Zdroj' }
+        { key: 'usek', label: 'Úsek', shortLabel: 'Úsek' },
+        { key: 'status', label: 'Stav faktury', shortLabel: 'Stav FA' },
+        { key: 'type', label: 'Typ faktury', shortLabel: 'Typ FA' },
+        { key: 'paid', label: 'Zaplaceno', shortLabel: 'Zapl.' },
+        { key: 'hasAttachment', label: 'Má přílohu', shortLabel: 'Má příl.' },
+        { key: 'attachmentType', label: 'Klasifikace přílohy', shortLabel: 'Klas. příl.' },
+        { key: 'attachmentSource', label: 'Zdroj přílohy (OBJ/FA)', shortLabel: 'OBJ/FA' },
+        { key: 'garant', label: 'Garant', shortLabel: 'Garant' },
+        { key: 'prikazce', label: 'Příkazce', shortLabel: 'Příkazce' },
+        { key: 'schvalovatel', label: 'Schvalovatel', shortLabel: 'Schval.' },
+        { key: 'source', label: 'Zdroj', shortLabel: 'Zdroj' }
       ];
     }
     if (pivotConfig.dataset === 'contracts') {
       return [
-        { key: 'usek', label: 'Úsek' },
-        { key: 'status', label: 'Stav smlouvy' },
-        { key: 'type', label: 'Druh smlouvy' },
-        { key: 'source', label: 'Zdroj' }
+        { key: 'usek', label: 'Úsek', shortLabel: 'Úsek' },
+        { key: 'status', label: 'Stav smlouvy', shortLabel: 'Stav SM' },
+        { key: 'type', label: 'Druh smlouvy', shortLabel: 'Druh SM' },
+        { key: 'source', label: 'Zdroj', shortLabel: 'Zdroj' }
       ];
     }
     if (pivotConfig.dataset === 'all') {
       return [
-        { key: 'source', label: 'Zdroj' },
-        { key: 'usek', label: 'Úsek' },
-        { key: 'financing', label: 'Financování' },
-        { key: 'orderNumber', label: 'Číslo objednávky' },
-        { key: 'invoiceNumber', label: 'Číslo faktury' },
-        { key: 'contractNumber', label: 'Číslo smlouvy' },
-        { key: 'orderType', label: 'Druh objednávky' },
-        { key: 'invoiceType', label: 'Typ faktury' },
-        { key: 'contractType', label: 'Druh smlouvy' },
-        { key: 'orderStatus', label: 'Stav objednávky' },
-        { key: 'invoiceStatus', label: 'Stav faktury' },
-        { key: 'contractStatus', label: 'Stav smlouvy' },
-        { key: 'supplier', label: 'Dodavatel' },
-        { key: 'orderer', label: 'Objednatel' },
-        { key: 'hasInvoice', label: 'Má fakturu' },
-        { key: 'paid', label: 'Zaplaceno' },
-        { key: 'hasAttachment', label: 'Má přílohu' },
-        { key: 'attachmentType', label: 'Klasifikace přílohy' }
+        { key: 'source', label: 'Zdroj', shortLabel: 'Zdroj' },
+        { key: 'usek', label: 'Úsek', shortLabel: 'Úsek' },
+        { key: 'financing', label: 'Financování', shortLabel: 'Financ.' },
+        { key: 'orderNumber', label: 'Číslo objednávky', shortLabel: 'Č. obj.' },
+        { key: 'invoiceNumber', label: 'Číslo faktury', shortLabel: 'Č. FA' },
+        { key: 'contractNumber', label: 'Číslo smlouvy', shortLabel: 'Č. SM' },
+        { key: 'orderType', label: 'Druh objednávky', shortLabel: 'Druh obj.' },
+        { key: 'invoiceType', label: 'Typ faktury', shortLabel: 'Typ FA' },
+        { key: 'contractType', label: 'Druh smlouvy', shortLabel: 'Druh SM' },
+        { key: 'orderStatus', label: 'Stav objednávky', shortLabel: 'Stav obj.' },
+        { key: 'invoiceStatus', label: 'Stav faktury', shortLabel: 'Stav FA' },
+        { key: 'contractStatus', label: 'Stav smlouvy', shortLabel: 'Stav SM' },
+        { key: 'supplier', label: 'Dodavatel', shortLabel: 'Dodav.' },
+        { key: 'orderer', label: 'Objednatel', shortLabel: 'Objedn.' },
+        { key: 'hasInvoice', label: 'Má fakturu', shortLabel: 'Má FA' },
+        { key: 'paid', label: 'Zaplaceno', shortLabel: 'Zapl.' },
+        { key: 'hasAttachment', label: 'Má přílohu', shortLabel: 'Má příl.' },
+        { key: 'attachmentType', label: 'Klasifikace přílohy', shortLabel: 'Klas. příl.' },
+        { key: 'attachmentSource', label: 'Zdroj přílohy (OBJ/FA)', shortLabel: 'OBJ/FA' },
+        { key: 'garant', label: 'Garant', shortLabel: 'Garant' },
+        { key: 'prikazce', label: 'Příkazce', shortLabel: 'Příkazce' },
+        { key: 'schvalovatel', label: 'Schvalovatel', shortLabel: 'Schval.' }
       ];
     }
     return [
-      { key: 'usek', label: 'Úsek' },
-      { key: 'financing', label: 'Financování' },
-      { key: 'type', label: 'Druh objednávky' },
-      { key: 'status', label: 'Stav objednávky' },
-      { key: 'supplier', label: 'Dodavatel' },
-      { key: 'orderer', label: 'Objednatel' },
-      { key: 'hasInvoice', label: 'Má fakturu' },
-      { key: 'source', label: 'Zdroj' }
+      { key: 'usek', label: 'Úsek', shortLabel: 'Úsek' },
+      { key: 'financing', label: 'Financování', shortLabel: 'Financ.' },
+      { key: 'type', label: 'Druh objednávky', shortLabel: 'Druh obj.' },
+      { key: 'status', label: 'Stav objednávky', shortLabel: 'Stav obj.' },
+      { key: 'supplier', label: 'Dodavatel', shortLabel: 'Dodav.' },
+      { key: 'orderer', label: 'Objednatel', shortLabel: 'Objedn.' },
+      { key: 'hasInvoice', label: 'Má fakturu', shortLabel: 'Má FA' },
+      { key: 'hasAttachment', label: 'Má přílohu', shortLabel: 'Má příl.' },
+      { key: 'attachmentType', label: 'Klasifikace přílohy', shortLabel: 'Klas. příl.' },
+      { key: 'attachmentSource', label: 'Zdroj přílohy (OBJ/FA)', shortLabel: 'OBJ/FA' },
+      { key: 'garant', label: 'Garant', shortLabel: 'Garant' },
+      { key: 'prikazce', label: 'Příkazce', shortLabel: 'Příkazce' },
+      { key: 'schvalovatel', label: 'Schvalovatel', shortLabel: 'Schval.' },
+      { key: 'source', label: 'Zdroj', shortLabel: 'Zdroj' }
     ];
   }, [pivotConfig.dataset]);
 
@@ -3019,6 +3131,7 @@ export default function StatsReportsPage() {
   }, [pivotConfig.dataset]);
 
   const pivotTextLabelMap = useMemo(() => new Map(pivotTextOptions.map(option => [option.key, option.label])), [pivotTextOptions]);
+  const pivotTextShortLabelMap = useMemo(() => new Map(pivotTextOptions.map(option => [option.key, option.shortLabel || option.label])), [pivotTextOptions]);
   const pivotMetricLabelMap = useMemo(() => new Map(pivotMetricOptions.map(option => [option.key, option.label])), [pivotMetricOptions]);
 
   useEffect(() => {
@@ -3164,23 +3277,31 @@ export default function StatsReportsPage() {
           ? pivotData.combinedRows
           : pivotData.orderRows;
 
-    if (!pivotConfig.rowFields?.length || !pivotConfig.colFields?.length) {
-      return {
-        rowTree: [],
-        colKeys: [],
-        getValue: () => 0,
-        getRowTotal: () => 0,
-        totalForCol: () => 0,
-        grandTotal: 0
-      };
+    const mkEmpty = () => ({ sum: 0, count: 0, min: Infinity, max: -Infinity });
+    const isMetricMode = pivotConfig.colMode === 'metrics';
+
+    if (!pivotConfig.rowFields?.length || (!isMetricMode && !pivotConfig.colFields?.length)) {
+      const e = mkEmpty();
+      return { rowTree: [], colKeys: [], getValue: () => e, getRowTotal: () => e, totalForCol: () => e, grandTotal: e };
     }
 
-    const makeKey = (record, fields) => fields.map(field => record[field] || 'Chybi hodnota').join(' / ');
+    const metricValForKey = (record, metricKey) => {
+      if (metricKey === 'count') return 0;
+      if (metricKey === 'amount_invoiced') return Number(record.amount_invoiced || record.amount || 0);
+      if (metricKey === 'amount_planned') return Number(record.amount_planned || 0);
+      if (metricKey === 'amount_limit') return Number(record.amount_limit || 0);
+      if (metricKey === 'limit') return Number(record.limit || 0);
+      if (metricKey === 'spent') return Number(record.spent || 0);
+      return 0;
+    };
 
-    const colKeys = Array.from(new Set(rows.map(r => makeKey(r, pivotConfig.colFields)))).sort();
+    const makeKey = (record, fields) => fields.map(field => record[field] || 'Chybi hodnota').join(' / ');
+    const colKeys = isMetricMode
+      ? (pivotConfig.colMetrics?.length ? pivotConfig.colMetrics : pivotMetricOptions.map(o => o.key))
+      : Array.from(new Set(rows.map(r => makeKey(r, pivotConfig.colFields)))).sort();
 
     const metricForRecord = (record) => {
-      if (pivotConfig.metric === 'count') return 1;
+      if (pivotConfig.metric === 'count') return 0;
       if (pivotConfig.metric === 'amount_invoiced') return Number(record.amount_invoiced || record.amount || 0);
       if (pivotConfig.metric === 'amount_planned') return Number(record.amount_planned || 0);
       if (pivotConfig.metric === 'amount_limit') return Number(record.amount_limit || 0);
@@ -3189,27 +3310,26 @@ export default function StatsReportsPage() {
       return 0;
     };
 
+    const addToAcc = (acc, numVal) => {
+      acc.sum += numVal;
+      acc.count += 1;
+      if (numVal < acc.min) acc.min = numVal;
+      if (numVal > acc.max) acc.max = numVal;
+    };
+
     const root = {
-      id: 'root',
-      label: 'root',
-      depth: -1,
-      children: [],
-      childMap: new Map(),
-      colTotals: new Map(),
-      total: 0
+      id: 'root', label: 'root', depth: -1,
+      children: [], childMap: new Map(),
+      colTotals: new Map(), total: mkEmpty()
     };
 
     const ensureChild = (parent, label, fieldKey, depth) => {
       if (parent.childMap.has(label)) return parent.childMap.get(label);
       const child = {
         id: `${parent.id}::${fieldKey}=${label}`,
-        label,
-        fieldKey,
-        depth,
-        children: [],
-        childMap: new Map(),
-        colTotals: new Map(),
-        total: 0
+        label, fieldKey, depth,
+        children: [], childMap: new Map(),
+        colTotals: new Map(), total: mkEmpty()
       };
       parent.childMap.set(label, child);
       parent.children.push(child);
@@ -3217,42 +3337,95 @@ export default function StatsReportsPage() {
     };
 
     rows.forEach((record) => {
-      const colKey = makeKey(record, pivotConfig.colFields);
-      const metricValue = metricForRecord(record);
+      const primaryVal = metricForRecord(record);
 
-      root.total += metricValue;
-      root.colTotals.set(colKey, (root.colTotals.get(colKey) || 0) + metricValue);
+      if (isMetricMode) {
+        // Mód: metriky jako sloupce — akumulujeme všechny metriky najednou
+        colKeys.forEach(metricKey => {
+          const numVal = metricValForKey(record, metricKey);
+          const rootAcc = root.colTotals.get(metricKey) || mkEmpty();
+          addToAcc(rootAcc, numVal);
+          root.colTotals.set(metricKey, rootAcc);
+        });
+        addToAcc(root.total, primaryVal);
 
-      let node = root;
-      pivotConfig.rowFields.forEach((fieldKey, index) => {
-        const label = record[fieldKey] || 'Chybi hodnota';
-        node = ensureChild(node, label, fieldKey, index);
-        node.total += metricValue;
-        node.colTotals.set(colKey, (node.colTotals.get(colKey) || 0) + metricValue);
-      });
+        let node = root;
+        pivotConfig.rowFields.forEach((fieldKey, index) => {
+          const label = record[fieldKey] || 'Chybi hodnota';
+          node = ensureChild(node, label, fieldKey, index);
+          colKeys.forEach(metricKey => {
+            const numVal = metricValForKey(record, metricKey);
+            const nodeAcc = node.colTotals.get(metricKey) || mkEmpty();
+            addToAcc(nodeAcc, numVal);
+            node.colTotals.set(metricKey, nodeAcc);
+          });
+          addToAcc(node.total, primaryVal);
+        });
+      } else {
+        // Mód: textová pole jako sloupce
+        const colKey = makeKey(record, pivotConfig.colFields);
+        const numVal = primaryVal;
+
+        const rootAcc = root.colTotals.get(colKey) || mkEmpty();
+        addToAcc(rootAcc, numVal);
+        root.colTotals.set(colKey, rootAcc);
+        addToAcc(root.total, numVal);
+
+        let node = root;
+        pivotConfig.rowFields.forEach((fieldKey, index) => {
+          const label = record[fieldKey] || 'Chybi hodnota';
+          node = ensureChild(node, label, fieldKey, index);
+          const nodeAcc = node.colTotals.get(colKey) || mkEmpty();
+          addToAcc(nodeAcc, numVal);
+          node.colTotals.set(colKey, nodeAcc);
+          addToAcc(node.total, numVal);
+        });
+      }
     });
 
     const sortTree = (node) => {
-      node.children.sort((a, b) => b.total - a.total);
+      node.children.sort((a, b) =>
+        pivotConfig.metric === 'count' ? b.total.count - a.total.count : b.total.sum - a.total.sum
+      );
       node.children.forEach(sortTree);
     };
-
     sortTree(root);
 
+    const safe = (acc) => acc || mkEmpty();
     return {
       rowTree: root.children,
       colKeys,
-      getValue: (node, colKey) => node.colTotals.get(colKey) || 0,
-      getRowTotal: (node) => node.total || 0,
-      totalForCol: (colKey) => root.colTotals.get(colKey) || 0,
-      grandTotal: root.total || 0
+      getValue: (node, colKey) => safe(node.colTotals.get(colKey)),
+      getRowTotal: (node) => safe(node.total),
+      totalForCol: (colKey) => safe(root.colTotals.get(colKey)),
+      grandTotal: safe(root.total)
     };
-  }, [pivotData, pivotConfig]);
+  }, [pivotData, pivotConfig, pivotMetricOptions]);
 
-  const formatMetric = (value) => {
-    if (pivotConfig.metric === 'count') return value;
-    return fmtCurrency(value);
-  };
+  // Formátování konkrétní metriky v módu metriky-jako-sloupce
+  const formatMetricForKey = useCallback((acc, metricKey) => {
+    if (!acc || acc.count === 0) return metricKey === 'count' ? 0 : fmtCurrency(0);
+    if (metricKey === 'count') return acc.count;
+    const fn = pivotConfig.aggFunc || 'sum';
+    let val;
+    if (fn === 'avg') val = acc.count > 0 ? acc.sum / acc.count : 0;
+    else if (fn === 'min') val = acc.min === Infinity ? 0 : acc.min;
+    else if (fn === 'max') val = acc.max === -Infinity ? 0 : acc.max;
+    else val = acc.sum;
+    return fmtCurrency(val);
+  }, [pivotConfig.aggFunc]);
+
+  const formatMetric = useCallback((acc) => {
+    if (!acc || acc.count === 0) return pivotConfig.metric === 'count' ? 0 : fmtCurrency(0);
+    if (pivotConfig.metric === 'count') return acc.count;
+    const fn = pivotConfig.aggFunc || 'sum';
+    let val;
+    if (fn === 'avg') val = acc.count > 0 ? acc.sum / acc.count : 0;
+    else if (fn === 'min') val = acc.min === Infinity ? 0 : acc.min;
+    else if (fn === 'max') val = acc.max === -Infinity ? 0 : acc.max;
+    else val = acc.sum;
+    return fmtCurrency(val);
+  }, [pivotConfig.metric, pivotConfig.aggFunc]);
 
   const pivotRowNodes = useMemo(() => {
     const rows = [];
@@ -3266,6 +3439,84 @@ export default function StatsReportsPage() {
     pivotTable.rowTree.forEach(node => walk(node));
     return rows;
   }, [pivotTable.rowTree, pivotExpanded]);
+
+  // Všechny uzly stromové struktury (bez ohledu na expand stav)
+  const pivotAllNodes = useMemo(() => {
+    const nodes = [];
+    const walk = (node) => { nodes.push(node); node.children.forEach(walk); };
+    pivotTable.rowTree.forEach(walk);
+    return nodes;
+  }, [pivotTable.rowTree]);
+
+  const pivotNodesWithChildren = useMemo(
+    () => pivotAllNodes.filter(n => n.children.length > 0),
+    [pivotAllNodes]
+  );
+
+  const pivotAllExpanded = useMemo(() => {
+    if (!pivotNodesWithChildren.length) return false;
+    return pivotNodesWithChildren.every(n => pivotExpanded[n.id] ?? n.depth === 0);
+  }, [pivotNodesWithChildren, pivotExpanded]);
+
+  const handlePivotExpandAll = useCallback(() => {
+    if (!pivotNodesWithChildren.length) return;
+    if (pivotAllExpanded) {
+      // Sbalit vše
+      const next = {};
+      pivotNodesWithChildren.forEach(n => { next[n.id] = false; });
+      setPivotExpanded(next);
+    } else {
+      // Rozbalit vše
+      const next = {};
+      pivotNodesWithChildren.forEach(n => { next[n.id] = true; });
+      setPivotExpanded(next);
+    }
+  }, [pivotNodesWithChildren, pivotAllExpanded]);
+
+  const [pivotShowPct, setPivotShowPct] = useState(false);
+
+  const pagedPivotRows = useMemo(
+    () => getPagedItems(pivotRowNodes, 'pivotTable'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pivotRowNodes, tablePaging]
+  );
+
+  const handlePivotExportCsv = useCallback(() => {
+    if (!pivotTable.colKeys.length && !pivotRowNodes.length) return;
+    const isMetricMode = pivotConfig.colMode === 'metrics';
+    const rowLabel = (pivotConfig.rowFields || []).map(key => pivotTextLabelMap.get(key) || key).join(' / ') || 'Řádky';
+    const colHeaders = isMetricMode
+      ? pivotTable.colKeys.map(k => pivotMetricLabelMap.get(k) || k)
+      : pivotTable.colKeys;
+    const headers = [rowLabel, ...colHeaders, 'Celkem'];
+    const getCellVal = (acc, colKey) => isMetricMode
+      ? String(formatMetricForKey(acc, colKey))
+      : String(formatMetric(acc));
+    const dataRows = pivotRowNodes.map(node => {
+      const indent = '  '.repeat(node.depth);
+      return [
+        `${indent}${node.label}`,
+        ...pivotTable.colKeys.map(colKey => getCellVal(pivotTable.getValue(node, colKey), colKey)),
+        isMetricMode
+          ? String(pivotTable.colKeys.map(k => formatMetricForKey(pivotTable.getValue(node, k), k)).join(' | '))
+          : String(formatMetric(pivotTable.getRowTotal(node)))
+      ];
+    });
+    const totalRow = ['Celkem',
+      ...pivotTable.colKeys.map(colKey => getCellVal(pivotTable.totalForCol(colKey), colKey)),
+      isMetricMode ? '' : String(formatMetric(pivotTable.grandTotal))
+    ];
+    const csv = [headers, ...dataRows, totalRow]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agregacni-tabulka-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [pivotTable, pivotRowNodes, pivotConfig, pivotTextLabelMap, pivotMetricLabelMap, formatMetric, formatMetricForKey]);
 
   const handleFilterChange = (key, value) => {
     setPendingFilters(prev => ({ ...prev, [key]: value }));
@@ -3371,10 +3622,27 @@ export default function StatsReportsPage() {
 
   const renderOrderLink = (order) => (
     <LinkButton onClick={() => navigate(`/order-form-25?edit=${order.id}`, { state: { returnTo: '/stats-reports' } })}>
-
       {order.ev_cislo || order.cislo_objednavky || order.id}
     </LinkButton>
   );
+
+  // Lookup mapy pro pivot linky — indexujeme dle čísla (ev_cislo / cislo_faktury)
+  const ordersByEvCislo = useMemo(() => {
+    const m = new Map();
+    (filteredOrders || []).forEach(o => {
+      if (o.ev_cislo) m.set(String(o.ev_cislo), o);
+      if (o.cislo_objednavky && o.cislo_objednavky !== o.ev_cislo) m.set(String(o.cislo_objednavky), o);
+    });
+    return m;
+  }, [filteredOrders]);
+
+  const invoicesByCislo = useMemo(() => {
+    const m = new Map();
+    (filteredInvoices || []).forEach(inv => {
+      if (inv.cislo_faktury) m.set(String(inv.cislo_faktury), inv);
+    });
+    return m;
+  }, [filteredInvoices]);
 
   const renderInvoiceLink = (invoice) => (
     <LinkButton
@@ -3391,6 +3659,34 @@ export default function StatsReportsPage() {
       {invoice.cislo_faktury || invoice.id}
     </LinkButton>
   );
+
+  // Renderuje štítek buňky v pivot tabulce — pro čísla obj./faktur přidá klikací link
+  const renderPivotCellLabel = (node) => {
+    const { label, fieldKey } = node;
+    if (label === 'Chybi hodnota' || label === 'Neurčeno') return <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>{label}</span>;
+    if (fieldKey === 'orderNumber') {
+      const order = ordersByEvCislo.get(label);
+      if (order) return renderOrderLink(order);
+      return (
+        <LinkButton onClick={() => navigate('/orders25-list-v3', { state: { searchQuery: label } })}>
+          {label}
+        </LinkButton>
+      );
+    }
+    if (fieldKey === 'invoiceNumber') {
+      const invoice = invoicesByCislo.get(label);
+      if (invoice) return renderInvoiceLink(invoice);
+      return <span>{label}</span>;
+    }
+    if (fieldKey === 'contractNumber') {
+      return (
+        <LinkButton onClick={() => navigate('/orders25-list-v3', { state: { searchQuery: label } })}>
+          {label}
+        </LinkButton>
+      );
+    }
+    return <span>{label}</span>;
+  };
 
   const buildChartColors = useCallback((count, palette) => {
     if (!count) return [];
@@ -3467,24 +3763,22 @@ export default function StatsReportsPage() {
 
         <SummaryGrid>
           <SummaryCard>
-            <SummaryLabel>Objednávky</SummaryLabel>
+            <SummaryLabel><FontAwesomeIcon icon={faClipboardList} style={{ marginRight: '0.4rem', opacity: 0.7 }} />Objednávky</SummaryLabel>
             <SummaryValue>{summary.totalOrders}</SummaryValue>
             <SummaryMeta>{fmtCurrency(summary.totalOrderAmount)}</SummaryMeta>
           </SummaryCard>
           <SummaryCard>
-            <SummaryLabel>Faktury</SummaryLabel>
+            <SummaryLabel><FontAwesomeIcon icon={faReceipt} style={{ marginRight: '0.4rem', opacity: 0.7 }} />Faktury</SummaryLabel>
             <SummaryValue>{summary.totalInvoices}</SummaryValue>
             <SummaryMeta>{fmtCurrency(summary.totalInvoiceAmount)}</SummaryMeta>
           </SummaryCard>
           <SummaryCard title="Počet smluv, které mají alespoň jednu fakturu nebo objednávku">
             <SummaryLabel><FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.4rem', opacity: 0.7 }} />Aktivní smlouvy</SummaryLabel>
             <SummaryValue>{summary.totalContracts}</SummaryValue>
-            <SummaryMeta>Limit: {fmtCurrency(summary.totalContractLimit)}</SummaryMeta>
-          </SummaryCard>
-          <SummaryCard title="Celková suma faktur napojených na smlouvy">
-            <SummaryLabel><FontAwesomeIcon icon={faCoins} style={{ marginRight: '0.4rem', opacity: 0.7 }} />Vyčerpáno ze smluv</SummaryLabel>
-            <SummaryValue>{fmtCurrency(summary.totalContractSpent)}</SummaryValue>
-            <SummaryMeta>{dataMeta.loadedAt ? `Aktualizace ${new Date(dataMeta.loadedAt).toLocaleString('cs-CZ')}` : 'Bez dat'}</SummaryMeta>
+            <SummaryMeta>Čerpáno: {fmtCurrency(summary.totalContractSpent)}</SummaryMeta>
+            {summary.totalContractLimit > 0 && (
+              <SummaryMeta>Limit: {fmtCurrency(summary.totalContractLimit)}</SummaryMeta>
+            )}
           </SummaryCard>
         </SummaryGrid>
 
@@ -3494,7 +3788,7 @@ export default function StatsReportsPage() {
             <SummaryGrid>
               {financingSummary.map(item => (
                 <SummaryCard key={item.label}>
-                  <SummaryLabel>{item.label}</SummaryLabel>
+                  <SummaryLabel><FontAwesomeIcon icon={getFinancingIcon(item.label)} style={{ marginRight: '0.4rem', opacity: 0.7 }} />{item.label}</SummaryLabel>
                   <SummaryValue>{item.count}</SummaryValue>
                   <SummaryMeta>{fmtCurrency(item.amount)}</SummaryMeta>
                 </SummaryCard>
@@ -3696,8 +3990,8 @@ export default function StatsReportsPage() {
                           <Th>Objednávka</Th>
                           <Th>Dt. obj.</Th>
                           <Th>Předmět</Th>
-                          <Th>Limit</Th>
-                          <Th>Faktury</Th>
+                          <ThR>Limit</ThR>
+                          <ThR>Faktury</ThR>
                           <Th>Objednatel</Th>
                           <Th>Schvalovatel</Th>
                           <Th>Úsek</Th>
@@ -3716,8 +4010,8 @@ export default function StatsReportsPage() {
                               <Td>{renderOrderLink(order)}</Td>
                               <Td>{formatDateCz(getOrderDate(order))}</Td>
                               <SubjectTd>{getOrderSubject(order)}</SubjectTd>
-                              <Td>{fmtCurrency(getOrderLimit(order))}</Td>
-                              <Td>{fmtCurrency(invoiceSum)}</Td>
+                              <TdR>{fmtCurrency(getOrderLimit(order))}</TdR>
+                              <TdR>{fmtCurrency(invoiceSum)}</TdR>
                               <Td>{renderOrdererStack(order)}</Td>
                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                               <Td>{getOrdererUsekLabel(order)}</Td>
@@ -3842,7 +4136,7 @@ export default function StatsReportsPage() {
                           <Th>Fa VS</Th>
                           <Th>Doručena</Th>
                           <Th>Objednávka/Smlouva</Th>
-                          <Th>Částka</Th>
+                          <ThR>Částka</ThR>
                           <Th>Příkazce</Th>
                           <Th>Úsek</Th>
                           <Th>Financování</Th>
@@ -3860,7 +4154,7 @@ export default function StatsReportsPage() {
                               <Td>{renderInvoiceLink(invoice)}</Td>
                               <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
                               <Td>{order ? renderOrderLink(order) : invoice.cislo_smlouvy || invoice.smlouva_id || '-'}</Td>
-                              <Td>{fmtCurrency(getInvoiceAmount(invoice))}</Td>
+                              <TdR>{fmtCurrency(getInvoiceAmount(invoice))}</TdR>
                               <Td>{order ? getApproverName(order) : '-'}</Td>
                               <Td>{order ? getOrdererUsekLabel(order) : '-'}</Td>
                               <Td>{order ? getOrderFinancingLabel(order) : '-'}</Td>
@@ -3890,7 +4184,7 @@ export default function StatsReportsPage() {
                           <Th>Fa VS</Th>
                           <Th>Doručena</Th>
                           <Th>Stav</Th>
-                          <Th>Částka</Th>
+                          <ThR>Částka</ThR>
                           <Th>Splatnost</Th>
                           <Th>Objednávka/Smlouva</Th>
                           <Th>Úsek</Th>
@@ -3909,7 +4203,7 @@ export default function StatsReportsPage() {
                               <Td>{renderInvoiceLink(invoice)}</Td>
                               <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
                               <Td>{getInvoiceStatusLabel(invoice)}</Td>
-                              <Td>{fmtCurrency(getInvoiceAmount(invoice))}</Td>
+                              <TdR>{fmtCurrency(getInvoiceAmount(invoice))}</TdR>
                               <Td>{formatDateCz(invoice.datum_splatnosti)}</Td>
                               <Td>{order ? renderOrderLink(order) : invoice.cislo_smlouvy || invoice.smlouva_id || '-'}</Td>
                               <Td>{order ? getOrdererUsekLabel(order) : '-'}</Td>
@@ -3930,7 +4224,7 @@ export default function StatsReportsPage() {
                 {isBlockVisible('control', 'cancelledOrders') && (
                   <SectionCard>
                   <SectionHeader>
-                    <SectionTitle>Stornované / smazané objednávky</SectionTitle>
+                    <SectionTitle>Zrušené a zamítnuté objednávky</SectionTitle>
                     <SectionBadge $tone="danger">{controlSections.cancelledOrders.length}</SectionBadge>
                   </SectionHeader>
                   <TableWrapper>
@@ -3942,6 +4236,7 @@ export default function StatsReportsPage() {
                           <Th>Předmět</Th>
                           <Th>Stav</Th>
                           <Th>Objednatel</Th>
+                          <Th>Schvalovatel</Th>
                           <Th>Úsek</Th>
                           <Th>Financování</Th>
                           <Th>Druh</Th>
@@ -3950,15 +4245,13 @@ export default function StatsReportsPage() {
                       </thead>
                       <tbody>
                         {pagedCancelledOrders.items.map(order => (
-                          <Tr
-                            key={order.id}
-                            $inactive={order?.active === false || order?.aktivni === false || order?.aktivni === 0 || order?.aktivni === '0'}
-                          >
+                          <Tr key={order.id}>
                             <Td>{renderOrderLink(order)}</Td>
                             <Td>{formatDateCz(getOrderDate(order))}</Td>
                             <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                             <Td>{getOrderStatusLabel(order)}</Td>
-                            <Td>{getOrdererName(order)}</Td>
+                            <Td>{renderOrdererStack(order)}</Td>
+                            <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                             <Td>{getOrdererUsekLabel(order)}</Td>
                             <Td>{getOrderFinancingLabel(order)}</Td>
                             <Td>{getOrderTypeLabel(order)}</Td>
@@ -4019,8 +4312,8 @@ export default function StatsReportsPage() {
                                     <tr>
                                       <Th style={{ width: '24px' }}></Th>
                                       <Th>Úsek</Th>
-                                      <Th>Počet</Th>
-                                      <Th>Celkem</Th>
+                                      <ThC>Počet</ThC>
+                                      <ThR>Celkem</ThR>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -4042,8 +4335,8 @@ export default function StatsReportsPage() {
                                               {usekOpen ? '−' : '+'}
                                             </Td>
                                             <Td>{usek.label}</Td>
-                                            <Td>{usek.count}</Td>
-                                            <Td>{fmtCurrency(usek.amount)}</Td>
+                                            <TdC>{usek.count}</TdC>
+                                            <TdR>{fmtCurrency(usek.amount)}</TdR>
                                           </Tr>
                                           {usekOpen && (
                                             <tr>
@@ -4056,10 +4349,11 @@ export default function StatsReportsPage() {
                                                         <Th>Dt. obj.</Th>
                                                         <Th>Předmět</Th>
                                                         <Th>Objednatel</Th>
+                                                        <Th>Schvalovatel</Th>
                                                         <Th>Stav</Th>
                                                         <Th>Financování</Th>
                                                         <Th>Druh</Th>
-                                                        <Th>Částka</Th>
+                                                        <ThR>Částka</ThR>
                                                       </tr>
                                                     </thead>
                                                     <tbody>
@@ -4069,10 +4363,11 @@ export default function StatsReportsPage() {
                                                           <Td>{formatDateCz(getOrderDate(order))}</Td>
                                                           <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                                                           <Td>{renderOrdererStack(order)}</Td>
+                                                          <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                           <Td>{getOrderStatusLabel(order)}</Td>
                                                           <Td>{getOrderFinancingLabel(order)}</Td>
                                                           <Td>{getOrderTypeLabel(order)}</Td>
-                                                          <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                                          <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
                                                         </Tr>
                                                       ))}
                                                     </tbody>
@@ -4137,8 +4432,8 @@ export default function StatsReportsPage() {
                                         <tr>
                                           <Th style={{ width: '24px' }}></Th>
                                           <Th>Financování</Th>
-                                          <Th>Počet</Th>
-                                          <Th>Celkem</Th>
+                                          <ThC>Počet</ThC>
+                                          <ThR>Celkem</ThR>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -4154,8 +4449,8 @@ export default function StatsReportsPage() {
                                               >
                                                 <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
                                                 <Td>{fin.label}</Td>
-                                                <Td>{fin.count}</Td>
-                                                <Td>{fmtCurrency(fin.amount)}</Td>
+                                                <TdC>{fin.count}</TdC>
+                                                <TdR>{fmtCurrency(fin.amount)}</TdR>
                                               </Tr>
                                               {finOpen && (
                                                 <tr>
@@ -4168,10 +4463,11 @@ export default function StatsReportsPage() {
                                                             <Th>Dt. obj.</Th>
                                                             <Th>Předmět</Th>
                                                             <Th>Objednatel</Th>
+                                                            <Th>Schvalovatel</Th>
                                                             <Th>Stav</Th>
                                                             <Th>Financování</Th>
                                                             <Th>Druh</Th>
-                                                            <Th>Částka</Th>
+                                                            <ThR>Částka</ThR>
                                                           </tr>
                                                         </thead>
                                                         <tbody>
@@ -4181,10 +4477,11 @@ export default function StatsReportsPage() {
                                                               <Td>{formatDateCz(getOrderDate(order))}</Td>
                                                               <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                                                               <Td>{renderOrdererStack(order)}</Td>
+                                                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                               <Td>{getOrderStatusLabel(order)}</Td>
                                                               <Td>{getOrderFinancingLabel(order)}</Td>
                                                               <Td>{getOrderTypeLabel(order)}</Td>
-                                                              <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                                              <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
                                                             </Tr>
                                                           ))}
                                                         </tbody>
@@ -4249,8 +4546,8 @@ export default function StatsReportsPage() {
                                         <tr>
                                           <Th style={{ width: '24px' }}></Th>
                                           <Th>Financování</Th>
-                                          <Th>Počet</Th>
-                                          <Th>Celkem</Th>
+                                          <ThC>Počet</ThC>
+                                          <ThR>Celkem</ThR>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -4266,8 +4563,8 @@ export default function StatsReportsPage() {
                                               >
                                                 <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
                                                 <Td>{fin.label}</Td>
-                                                <Td>{fin.count}</Td>
-                                                <Td>{fmtCurrency(fin.amount)}</Td>
+                                                <TdC>{fin.count}</TdC>
+                                                <TdR>{fmtCurrency(fin.amount)}</TdR>
                                               </Tr>
                                               {finOpen && (
                                                 <tr>
@@ -4280,10 +4577,11 @@ export default function StatsReportsPage() {
                                                             <Th>Dt. obj.</Th>
                                                             <Th>Předmět</Th>
                                                             <Th>Objednatel</Th>
+                                                            <Th>Schvalovatel</Th>
                                                             <Th>Stav</Th>
                                                             <Th>Financování</Th>
                                                             <Th>Druh</Th>
-                                                            <Th>Částka</Th>
+                                                            <ThR>Částka</ThR>
                                                           </tr>
                                                         </thead>
                                                         <tbody>
@@ -4293,10 +4591,11 @@ export default function StatsReportsPage() {
                                                               <Td>{formatDateCz(getOrderDate(order))}</Td>
                                                               <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                                                               <Td>{renderOrdererStack(order)}</Td>
+                                                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                               <Td>{getOrderStatusLabel(order)}</Td>
                                                               <Td>{getOrderFinancingLabel(order)}</Td>
                                                               <Td>{getOrderTypeLabel(order)}</Td>
-                                                              <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                                              <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
                                                             </Tr>
                                                           ))}
                                                         </tbody>
@@ -4364,10 +4663,11 @@ export default function StatsReportsPage() {
                                             <Th>Dt. obj.</Th>
                                             <Th>Předmět</Th>
                                             <Th>Objednatel</Th>
+                                            <Th>Schvalovatel</Th>
                                             <Th>Stav</Th>
                                             <Th>Úsek</Th>
                                             <Th>Druh</Th>
-                                            <Th>Částka</Th>
+                                            <ThR>Částka</ThR>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -4377,10 +4677,11 @@ export default function StatsReportsPage() {
                                               <Td>{formatDateCz(getOrderDate(order))}</Td>
                                               <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                                               <Td>{renderOrdererStack(order)}</Td>
+                                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                               <Td>{getOrderStatusLabel(order)}</Td>
                                               <Td>{getOrdererUsekLabel(order)}</Td>
                                               <Td>{getOrderTypeLabel(order)}</Td>
-                                              <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                                              <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
                                             </Tr>
                                           ))}
                                         </tbody>
@@ -4606,10 +4907,11 @@ export default function StatsReportsPage() {
                           <Th>Předmět</Th>
                           <Th>Stav</Th>
                           <Th>Objednatel</Th>
+                          <Th>Schvalovatel</Th>
                           <Th>Úsek</Th>
                           <Th>Financování</Th>
                           <Th>Druh</Th>
-                          <Th>Částka</Th>
+                          <ThR>Částka</ThR>
                           <Th>Poznámka</Th>
                         </tr>
                       </thead>
@@ -4620,11 +4922,12 @@ export default function StatsReportsPage() {
                             <Td>{formatDateCz(getOrderDate(order))}</Td>
                             <SubjectTd>{getOrderSubject(order)}</SubjectTd>
                             <Td>{getOrderStatusLabel(order)}</Td>
-                            <Td>{getOrdererName(order)}</Td>
+                            <Td>{renderOrdererStack(order)}</Td>
+                            <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                             <Td>{getOrdererUsekLabel(order)}</Td>
                             <Td>{getOrderFinancingLabel(order)}</Td>
                             <Td>{getOrderTypeLabel(order)}</Td>
-                            <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                            <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
                             <Td>{renderNoteCell(`report_no_invoice_${order.id}`)}</Td>
                           </Tr>
                         ))}
@@ -4649,10 +4952,11 @@ export default function StatsReportsPage() {
                           <Th>Dt. obj.</Th>
                           <Th>Stav</Th>
                           <Th>Objednatel</Th>
+                          <Th>Schvalovatel</Th>
                           <Th>Úsek</Th>
                           <Th>Financování</Th>
                           <Th>VS faktur</Th>
-                          <Th>Částka</Th>
+                          <ThR>Částka</ThR>
                           <Th>Druh</Th>
                         </tr>
                       </thead>
@@ -4662,11 +4966,12 @@ export default function StatsReportsPage() {
                             <Td>{renderOrderLink(order)}</Td>
                             <Td>{formatDateCz(getOrderDate(order))}</Td>
                             <Td>{getOrderStatusLabel(order)}</Td>
-                            <Td>{getOrdererName(order)}</Td>
+                            <Td>{renderOrdererStack(order)}</Td>
+                            <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                             <Td>{getOrdererUsekLabel(order)}</Td>
                             <Td>{getOrderFinancingLabel(order)}</Td>
                             <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => inv.cislo_faktury).filter(Boolean).join(', ')}</Td>
-                            <Td>{fmtCurrency(getOrderAmount(order))}</Td>
+                            <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
                             <Td>{getOrderTypeLabel(order)}</Td>
                           </Tr>
                         ))}
@@ -4688,7 +4993,7 @@ export default function StatsReportsPage() {
                       <thead>
                         <tr>
                           <Th>Dodavatel</Th>
-                          <Th>Celkem</Th>
+                          <ThR>Celkem</ThR>
                           <Th>Rozpad</Th>
                         </tr>
                       </thead>
@@ -4696,7 +5001,7 @@ export default function StatsReportsPage() {
                         {pagedTopSuppliers.items.map(supplier => (
                           <Tr key={supplier.name}>
                             <Td>{supplier.name}</Td>
-                            <Td>{fmtCurrency(supplier.total)}</Td>
+                            <TdR>{fmtCurrency(supplier.total)}</TdR>
                             <Td>
                               {Object.entries(supplier.split).map(([key, value]) => (
                                 <Pill key={key} $tone="success" style={{ marginRight: '0.35rem' }}>
@@ -4719,6 +5024,72 @@ export default function StatsReportsPage() {
             {activeTab === 'attachments' && (
               <>
                 {/* Přílohy objednávek podle typu */}
+                {isBlockVisible('attachments', 'invoiceAttachmentsList') && (
+                  <SectionCard>
+                    <SectionHeader>
+                      <SectionTitle style={{ flex: 1 }}>
+                        <FontAwesomeIcon icon={faPaperclip} style={{ marginRight: '0.5rem', color: '#7c3aed' }} />
+                        Přehled příloh faktur
+                      </SectionTitle>
+                      <SectionBadge $tone="info">{allInvoiceAttachments.length} souborů</SectionBadge>
+                    </SectionHeader>
+                    {allInvoiceAttachments.length === 0 ? (
+                      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
+                        Žádné přílohy faktur nenalezeny (přílohy se načítají spolu se seznamem faktur)
+                      </div>
+                    ) : (
+                      <>
+                        <TableWrapper>
+                          <Table>
+                            <thead>
+                              <tr>
+                                <Th style={{ minWidth: '200px' }}>Soubor</Th>
+                                <Th>Typ přílohy</Th>
+                                <Th>Faktura</Th>
+                                <Th>Objednávka</Th>
+                                <Th>Dodavatel</Th>
+                                <Th>Stav FA</Th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pagedInvoiceAttachmentsList.items.map((att, idx) => (
+                                <Tr key={att.id || idx}>
+                                  <Td>
+                                    <span
+                                      style={{ color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                                      onClick={() => handleOpenAttachment(att, 'invoice')}
+                                      title="Otevřít přílohu v prohlížeči"
+                                    >
+                                      <FontAwesomeIcon icon={faEye} style={{ fontSize: '0.8rem', opacity: 0.7 }} />
+                                      {att.original_name || att.nazev_souboru || `Příloha #${att.id}`}
+                                    </span>
+                                  </Td>
+                                  <Td>
+                                    <Pill $tone="default">{getAttachmentType(att)}</Pill>
+                                  </Td>
+                                  <Td>
+                                    {att.invoice_id
+                                      ? renderInvoiceLink({ id: att.invoice_id, objednavka_id: att.objednavka_id, cislo_faktury: att.cislo_faktury || `#${att.invoice_id}` })
+                                      : '-'}
+                                  </Td>
+                                  <Td>
+                                    {att.objednavka_id
+                                      ? renderOrderLink({ id: att.objednavka_id, cislo_objednavky: att.cislo_objednavky })
+                                      : '-'}
+                                  </Td>
+                                  <Td>{att.dodavatel || '-'}</Td>
+                                  <Td><Pill $tone="default">{att.fa_stav || '-'}</Pill></Td>
+                                </Tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </TableWrapper>
+                        {renderPagination('invoiceAttachmentsList', pagedInvoiceAttachmentsList)}
+                      </>
+                    )}
+                  </SectionCard>
+                )}
+
                 {isBlockVisible('attachments', 'orderAttachmentsByType') && (
                   <SectionCard>
                     <SectionHeader>
@@ -4949,8 +5320,8 @@ export default function StatsReportsPage() {
                               <Th>Předmět</Th>
                               <Th>Stav</Th>
                               <Th>Dodavatel</Th>
-                              <Th>Autor</Th>
-                              <Th>Částka</Th>
+                              <Th>Objednatel</Th>
+                              <ThR>Částka</ThR>
                             </tr>
                           </thead>
                           <tbody>
@@ -4964,8 +5335,8 @@ export default function StatsReportsPage() {
                                   <Pill $tone="default">{order.stav}</Pill>
                                 </Td>
                                 <Td>{order.dodavatel || '-'}</Td>
-                                <Td>{order.autor || '-'}</Td>
-                                <Td>{order.castka ? fmtCurrency(order.castka) : '-'}</Td>
+                                <Td>{order.objednatel || order.autor || '-'}</Td>
+                                <TdR>{order.castka ? fmtCurrency(order.castka) : '-'}</TdR>
                               </Tr>
                             ))}
                           </tbody>
@@ -5016,7 +5387,7 @@ export default function StatsReportsPage() {
                               <Th>Stav</Th>
                               <Th>Objednávka</Th>
                               <Th>Dodavatel</Th>
-                              <Th>Částka</Th>
+                              <ThR>Částka</ThR>
                               <Th>Splatnost</Th>
                             </tr>
                           </thead>
@@ -5029,7 +5400,7 @@ export default function StatsReportsPage() {
                                 </Td>
                                 <Td>{invoice.objednavka_id ? renderOrderLink({ id: invoice.objednavka_id, cislo_objednavky: invoice.cislo_objednavky }) : '-'}</Td>
                                 <Td>{invoice.dodavatel || '-'}</Td>
-                                <Td>{invoice.castka ? fmtCurrency(invoice.castka) : '-'}</Td>
+                                <TdR>{invoice.castka ? fmtCurrency(invoice.castka) : '-'}</TdR>
                                 <Td>{invoice.datum_splatnosti ? new Date(invoice.datum_splatnosti).toLocaleDateString('cs-CZ') : '-'}</Td>
                               </Tr>
                             ))}
@@ -5059,17 +5430,59 @@ export default function StatsReportsPage() {
             {activeTab === 'pivot' && (
               <SectionCard>
                 <SectionHeader>
-                  <SectionTitle>Kontingenční tabulka</SectionTitle>
+                  <SectionTitle><FontAwesomeIcon icon={faTable} style={{ marginRight: '0.5rem', opacity: 0.7 }} />Agregační tabulka</SectionTitle>
                   <PivotHeaderActions>
                     <Select
                       value={pivotConfig.dataset}
                       onChange={(event) => setPivotConfig(prev => ({ ...prev, dataset: event.target.value }))}
+                      style={{ flex: '0 0 auto', width: 'auto', fontSize: '0.85rem' }}
                     >
                       <option value="all">Vše dohromady</option>
                       <option value="orders">Objednávky</option>
                       <option value="invoices">Faktury</option>
                       <option value="contracts">Smlouvy</option>
                     </Select>
+                    {pivotConfig.metric !== 'count' && pivotConfig.colMode !== 'metrics' && (
+                      <Select
+                        value={pivotConfig.aggFunc || 'sum'}
+                        onChange={(e) => setPivotConfig(prev => ({ ...prev, aggFunc: e.target.value }))}
+                        style={{ flex: '0 0 auto', width: 'auto', fontSize: '0.85rem' }}
+                        title="Způsob agregace číselné hodnoty"
+                      >
+                        <option value="sum">Σ Suma</option>
+                        <option value="avg">⌀ Průměr</option>
+                        <option value="min">↓ Min</option>
+                        <option value="max">↑ Max</option>
+                      </Select>
+                    )}
+                    <button
+                      onClick={() => setPivotConfig(prev => ({ ...prev, colMode: prev.colMode === 'metrics' ? 'fields' : 'metrics', colMetrics: null }))}
+                      title={pivotConfig.colMode === 'metrics' ? 'Přepnout: textová pole jako sloupce' : 'Přepnout: metriky jako sloupce – vyber které metriky se zobrazí'}
+                      style={{ border: `1px solid ${pivotConfig.colMode === 'metrics' ? '#6d28d9' : '#cbd5e1'}`, background: pivotConfig.colMode === 'metrics' ? '#ede9fe' : '#f8fafc', color: pivotConfig.colMode === 'metrics' ? '#5b21b6' : '#64748b', borderRadius: '8px', padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                    >
+                      Σ… Metriky sl.
+                    </button>
+                    <button
+                      onClick={() => setPivotShowPct(p => !p)}
+                      title="Zobrazit % ze součtu sloupce"
+                      style={{ border: `1px solid ${pivotShowPct ? '#0891b2' : '#cbd5e1'}`, background: pivotShowPct ? '#cffafe' : '#f8fafc', color: pivotShowPct ? '#0e7490' : '#64748b', borderRadius: '8px', padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                    >
+                      <FontAwesomeIcon icon={faPercent} />
+                    </button>
+                    <button
+                      onClick={handlePivotExportCsv}
+                      title="Exportovat do CSV"
+                      style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                    >
+                      <FontAwesomeIcon icon={faDownload} /> CSV
+                    </button>
+                    <button
+                      onClick={() => setPivotConfig({ dataset: 'all', rowFields: ['usek'], colFields: ['financing'], metric: 'count', aggFunc: 'sum', colMode: 'fields', colMetrics: null })}
+                      title="Resetovat konfiguraci tabulky"
+                      style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#64748b', borderRadius: '8px', padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem' }}
+                    >
+                      <FontAwesomeIcon icon={faRefresh} />
+                    </button>
                   </PivotHeaderActions>
                 </SectionHeader>
                 <PivotPanel>
@@ -5114,10 +5527,41 @@ export default function StatsReportsPage() {
                       </PivotZoneBody>
                     </PivotZone>
 
-                    <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'col')}>
-                      <PivotZoneTitle>Sloupce (textová pole)</PivotZoneTitle>
+                    <PivotZone
+                      onDragOver={(event) => { if (pivotConfig.colMode !== 'metrics') event.preventDefault(); }}
+                      onDrop={(event) => { if (pivotConfig.colMode !== 'metrics') handlePivotDrop(event, 'col'); }}
+                    >
+                      <PivotZoneTitle>
+                        Sloupce
+                        {pivotConfig.colMode === 'metrics'
+                          ? <span style={{ fontSize: '0.72rem', color: '#5b21b6', background: '#ede9fe', borderRadius: '5px', padding: '0.1rem 0.5rem', fontWeight: 700 }}>výběr metrik</span>
+                          : <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>(textová pole)</span>}
+                      </PivotZoneTitle>
                       <PivotZoneBody>
-                        {(pivotConfig.colFields || []).length > 0 ? (
+                        {pivotConfig.colMode === 'metrics' ? (
+                          pivotMetricOptions.map(option => {
+                            const isActive = !pivotConfig.colMetrics || pivotConfig.colMetrics.includes(option.key);
+                            return (
+                              <PivotChip
+                                key={option.key}
+                                $tone={isActive ? 'metric' : 'muted'}
+                                style={{ opacity: isActive ? 1 : 0.4, cursor: 'pointer', userSelect: 'none' }}
+                                title={isActive ? 'Klikni pro skrytí této metriky' : 'Klikni pro zobrazení této metriky'}
+                                onClick={() => setPivotConfig(prev => {
+                                  const allKeys = pivotMetricOptions.map(o => o.key);
+                                  const current = prev.colMetrics ?? allKeys;
+                                  const next = current.includes(option.key)
+                                    ? current.filter(k => k !== option.key)
+                                    : [...current, option.key];
+                                  return { ...prev, colMetrics: next.length === allKeys.length ? null : next };
+                                })}
+                              >
+                                <FontAwesomeIcon icon={isActive ? faCheck : faXmark} style={{ fontSize: '0.7rem' }} />
+                                {option.label}
+                              </PivotChip>
+                            );
+                          })
+                        ) : (pivotConfig.colFields || []).length > 0 ? (
                           (pivotConfig.colFields || []).map((fieldId, index) => (
                             <PivotChip
                               key={`col_${fieldId}_${index}`}
@@ -5155,9 +5599,34 @@ export default function StatsReportsPage() {
                     </PivotZone>
 
                     <PivotZone onDragOver={(event) => event.preventDefault()} onDrop={(event) => handlePivotDrop(event, 'metric')}>
-                      <PivotZoneTitle>Hodnota (číselná metrika)</PivotZoneTitle>
+                      <PivotZoneTitle>
+                        {pivotConfig.colMode === 'metrics' ? 'Agregace' : 'Hodnota (číselná metrika)'}
+                        {pivotConfig.colMode !== 'metrics' && pivotConfig.metric !== 'count' && (
+                          <span style={{ fontSize: '0.72rem', color: '#0891b2', background: '#cffafe', borderRadius: '5px', padding: '0.1rem 0.4rem', fontWeight: 600 }}>
+                            {({ avg: 'průměr', min: 'min', max: 'max', sum: 'suma' })[pivotConfig.aggFunc || 'sum'] || 'suma'}
+                          </span>
+                        )}
+                      </PivotZoneTitle>
                       <PivotZoneBody>
-                        {pivotConfig.metric ? (
+                        {pivotConfig.colMode === 'metrics' ? (
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {[{ value: 'sum', label: 'Σ Suma' }, { value: 'avg', label: '⌀ Průměr' }, { value: 'min', label: '↓ Min' }, { value: 'max', label: '↑ Max' }].map(opt => (
+                              <button
+                                key={opt.value}
+                                onClick={() => setPivotConfig(prev => ({ ...prev, aggFunc: opt.value }))}
+                                style={{
+                                  border: `1.5px solid ${(pivotConfig.aggFunc || 'sum') === opt.value ? '#0891b2' : '#cbd5e1'}`,
+                                  background: (pivotConfig.aggFunc || 'sum') === opt.value ? '#cffafe' : '#f8fafc',
+                                  color: (pivotConfig.aggFunc || 'sum') === opt.value ? '#0e7490' : '#64748b',
+                                  borderRadius: '8px', padding: '0.35rem 0.7rem', cursor: 'pointer',
+                                  fontSize: '0.82rem', fontWeight: (pivotConfig.aggFunc || 'sum') === opt.value ? 700 : 400
+                                }}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : pivotConfig.metric ? (
                           <PivotChip
                             $tone={pivotToneByKey(pivotConfig.metric, 'metric')}
                             draggable
@@ -5283,29 +5752,55 @@ export default function StatsReportsPage() {
                   <Table>
                     <thead>
                       <tr>
-                        <Th>
-                          {(pivotConfig.rowFields || []).map(key => pivotTextLabelMap.get(key) || key).join(' / ') || 'Řádky'}
+                        <Th style={{ minWidth: '180px', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {pivotNodesWithChildren.length > 0 && (
+                              <PivotTreeToggle
+                                onClick={handlePivotExpandAll}
+                                title={pivotAllExpanded ? 'Sbalit vše' : 'Rozbalit vše'}
+                                style={{ color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '0.1rem 0.3rem', background: '#f8fafc' }}
+                              >
+                                <FontAwesomeIcon icon={pivotAllExpanded ? faMinus : faPlus} />
+                              </PivotTreeToggle>
+                            )}
+                            {(pivotConfig.rowFields || []).map(key => pivotTextShortLabelMap.get(key) || key).join(' / ') || 'Řádky'}
+                          </div>
                         </Th>
                         {pivotTable.colKeys.map(colKey => (
-                          <Th key={colKey}>{colKey}</Th>
+                          <ThR
+                            key={colKey}
+                            title={pivotConfig.colMode === 'metrics' ? (pivotMetricLabelMap.get(colKey) || colKey) : colKey}
+                            style={{ whiteSpace: pivotConfig.colMode === 'metrics' ? 'nowrap' : 'normal', minWidth: '80px', maxWidth: '130px', wordBreak: 'break-word', fontSize: '0.8rem' }}
+                          >
+                            {pivotConfig.colMode === 'metrics' ? (pivotMetricLabelMap.get(colKey) || colKey) : colKey}
+                          </ThR>
                         ))}
-                        <Th>Celkem</Th>
+                        <ThR style={{ whiteSpace: 'nowrap', minWidth: '90px' }}>
+                          {pivotConfig.colMode === 'metrics' ? 'Celkem (prim.)' : 'Celkem'}
+                        </ThR>
                       </tr>
                     </thead>
                     <tbody>
                       {pivotRowNodes.length === 0 && (
                         <Tr>
                           <Td colSpan={pivotTable.colKeys.length + 2}>
-                            <EmptyState>Bez dat</EmptyState>
+                            <EmptyState>Bez dat — přetáhni pole do Řádků a Sloupců</EmptyState>
                           </Td>
                         </Tr>
                       )}
-                      {pivotRowNodes.map(node => {
+                      {pagedPivotRows.items.map(node => {
                         const isExpanded = pivotExpanded[node.id] ?? node.depth === 0;
                         const hasChildren = node.children.length > 0;
+                        const rowAcc = pivotTable.getRowTotal(node);
+                        const grandAcc = pivotTable.grandTotal;
+                        const rowPctOfGrand = grandAcc && grandAcc.count > 0
+                          ? (pivotConfig.metric === 'count'
+                            ? grandAcc.count > 0 ? (rowAcc.count / grandAcc.count * 100).toFixed(1) : 0
+                            : grandAcc.sum > 0 ? (rowAcc.sum / grandAcc.sum * 100).toFixed(1) : 0)
+                          : 0;
                         return (
                           <Tr key={node.id}>
-                            <Td>
+                            <Td style={{ whiteSpace: 'nowrap' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingLeft: `${node.depth * 14}px` }}>
                                 {hasChildren && (
                                   <PivotTreeToggle
@@ -5320,13 +5815,30 @@ export default function StatsReportsPage() {
                                     <FontAwesomeIcon icon={isExpanded ? faMinus : faPlus} />
                                   </PivotTreeToggle>
                                 )}
-                                <strong>{node.label}</strong>
+                                <strong>{renderPivotCellLabel(node)}</strong>
                               </div>
                             </Td>
-                            {pivotTable.colKeys.map(colKey => (
-                              <Td key={`${node.id}_${colKey}`}>{formatMetric(pivotTable.getValue(node, colKey))}</Td>
-                            ))}
-                            <Td><strong>{formatMetric(pivotTable.getRowTotal(node))}</strong></Td>
+                            {pivotTable.colKeys.map(colKey => {
+                              const acc = pivotTable.getValue(node, colKey);
+                              const isMetricMode = pivotConfig.colMode === 'metrics';
+                              const cellValue = isMetricMode ? formatMetricForKey(acc, colKey) : formatMetric(acc);
+                              const colTotalAcc = pivotTable.totalForCol(colKey);
+                              const pct = !isMetricMode && pivotShowPct && colTotalAcc && colTotalAcc.count > 0
+                                ? (pivotConfig.metric === 'count'
+                                  ? colTotalAcc.count > 0 ? (acc.count / colTotalAcc.count * 100).toFixed(1) : 0
+                                  : colTotalAcc.sum > 0 ? (acc.sum / colTotalAcc.sum * 100).toFixed(1) : 0)
+                                : null;
+                              return (
+                                <TdR key={`${node.id}_${colKey}`}>
+                                  {cellValue}
+                                  {pct !== null && <div style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1 }}>{pct} %</div>}
+                                </TdR>
+                              );
+                            })}
+                            <TdR>
+                              <strong>{formatMetric(rowAcc)}</strong>
+                              {pivotShowPct && pivotConfig.colMode !== 'metrics' && <div style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1 }}>{rowPctOfGrand} %</div>}
+                            </TdR>
                           </Tr>
                         );
                       })}
@@ -5335,13 +5847,18 @@ export default function StatsReportsPage() {
                       <Tr>
                         <Td><strong>Celkem</strong></Td>
                         {pivotTable.colKeys.map(colKey => (
-                          <Td key={`total_${colKey}`}><strong>{formatMetric(pivotTable.totalForCol(colKey))}</strong></Td>
+                          <TdR key={`total_${colKey}`}><strong>
+                            {pivotConfig.colMode === 'metrics'
+                              ? formatMetricForKey(pivotTable.totalForCol(colKey), colKey)
+                              : formatMetric(pivotTable.totalForCol(colKey))}
+                          </strong></TdR>
                         ))}
-                        <Td><strong>{formatMetric(pivotTable.grandTotal)}</strong></Td>
+                        <TdR><strong>{pivotConfig.colMode === 'metrics' ? '' : formatMetric(pivotTable.grandTotal)}</strong></TdR>
                       </Tr>
                     </tfoot>
                   </Table>
                 </TableWrapper>
+                {renderPagination('pivotTable', pagedPivotRows)}
               </SectionCard>
             )}
           </Section>

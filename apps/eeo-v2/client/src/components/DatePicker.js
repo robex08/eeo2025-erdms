@@ -96,7 +96,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       let left = buttonRect.left;
       
       // Zajistit, že kalendář se nevejde mimo viewport
-      const calendarWidth = 220; // Fixní šířka kalendáře (200px grid + 2*10px padding)
+      const calendarWidth = Math.max(220, Math.round(buttonRect.width)); // min 220px nebo šířka inputu
       if (left + calendarWidth > window.innerWidth) {
         left = window.innerWidth - calendarWidth - 10; // 10px margin
       }
