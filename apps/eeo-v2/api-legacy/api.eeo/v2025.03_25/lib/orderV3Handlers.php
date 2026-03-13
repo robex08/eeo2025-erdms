@@ -168,13 +168,21 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
 
 /**
  * Vypočítá datový rozsah podle zvoleného období
- * @param string $period - 'all', 'current-month', 'last-month', 'last-quarter', 'all-months'
+ * @param string $period - 'all', 'current-year', 'current-month', 'last-month', 'last-quarter', 'all-months'
  * @return array|null - ['date_from' => 'Y-m-d', 'date_to' => 'Y-m-d'] nebo null pro 'all'
  */
 function calculatePeriodRange($period) {
     $today = date('Y-m-d');
     
     switch ($period) {
+        case 'current-year':
+        case 'all-months':
+            // Celý aktuální rok
+            return array(
+                'date_from' => date('Y') . '-01-01',
+                'date_to' => date('Y') . '-12-31'
+            );
+            
         case 'current-month':
             // První den aktuálního měsíce až dnes
             return array(
@@ -194,13 +202,6 @@ function calculatePeriodRange($period) {
             return array(
                 'date_from' => date('Y-m-d', strtotime('-90 days')),
                 'date_to' => $today
-            );
-            
-        case 'all-months':
-            // Celý aktuální rok
-            return array(
-                'date_from' => date('Y') . '-01-01',
-                'date_to' => date('Y') . '-12-31'
             );
             
         case 'all':

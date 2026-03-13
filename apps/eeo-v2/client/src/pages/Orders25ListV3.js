@@ -5,7 +5,7 @@
  * 
  * Datum: 23. ledna 2026
  * Účel: Paralelní implementace pro postupný přechod na BE paging/filtering
- * Status: 🚧 BETA - Ve vývoji, zatím jen pro ADMINY
+ * Status: ✅ PRODUKČNÍ - Verze 3.0
  * 
  * Dokumentace: /docs/ORDERS25LIST_BACKEND_PAGINATION_ANALYSIS.md
  * 
@@ -27,7 +27,6 @@ import {
   faRocket, 
   faSpinner, 
   faExclamationTriangle,
-  faInfoCircle,
   faCog,
   faChartBar,
   faFilter,
@@ -45,6 +44,7 @@ import {
   faUnlock,
   faPlus,
   faFileExport,
+  faCalendarAlt,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -107,13 +107,13 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 2rem;
-  padding: 1.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
   flex-wrap: wrap;
-  gap: 1.5rem;
+  gap: 1rem;
   color: white;
 `;
 
@@ -129,27 +129,14 @@ const TitleSection = styled.div`
 `;
 
 const Title = styled.h1`
-  font-size: 2rem;
+  font-size: calc(1.5rem + 3px);
   font-weight: 700;
   color: white;
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-`;
-
-const Badge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border-radius: 20px;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 `;
 
 const HeaderActions = styled.div`
@@ -244,12 +231,28 @@ const ToggleButton = styled.button`
   }
 `;
 
+const PeriodWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const PeriodLabel = styled.label`
+  font-weight: 600;
+  font-size: 1rem;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+`;
+
 const PeriodSelector = styled.select`
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.15);
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border-radius: 6px;
+  font-size: 1rem;
   font-weight: 600;
   color: white;
   cursor: pointer;
@@ -828,6 +831,7 @@ function Orders25ListV3() {
   const getPeriodLabel = (value) => {
     const labels = {
       'all': 'Vše (bez omezení)',
+      'current-year': 'Aktuální rok',
       'current-month': 'Aktuální měsíc',
       'last-month': 'Poslední měsíc',
       'last-quarter': 'Poslední kvartál',
@@ -2071,28 +2075,30 @@ function Orders25ListV3() {
       <Header>
         <TitleSection>
           <Title>
-            <Badge>
-              <FontAwesomeIcon icon={faInfoCircle} />
-              BETA
-            </Badge>
-            Objednávky V3
+            Objednávky (V3)
             <FontAwesomeIcon icon={faRocket} style={{ color: 'white' }} />
           </Title>
         </TitleSection>
 
         <HeaderActions>
           {/* Výběr období */}
-          <PeriodSelector
-            value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value)}
-            disabled={loading}
-          >
-            <option value="all">Vše (bez omezení)</option>
-            <option value="current-month">Aktuální měsíc</option>
-            <option value="last-month">Poslední měsíc</option>
-            <option value="last-quarter">Poslední kvartál</option>
-            <option value="all-months">Všechny měsíce</option>
-          </PeriodSelector>
+          <PeriodWrapper>
+            <PeriodLabel>
+              <FontAwesomeIcon icon={faCalendarAlt} />
+              Období:
+            </PeriodLabel>
+            <PeriodSelector
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value)}
+              disabled={loading}
+            >
+              <option value="current-year">Aktuální rok</option>
+              <option value="current-month">Aktuální měsíc</option>
+              <option value="last-month">Poslední měsíc</option>
+              <option value="last-quarter">Poslední kvartál</option>
+              <option value="all">Vše (bez omezení)</option>
+            </PeriodSelector>
+          </PeriodWrapper>
 
           {/* ✨ Reload tlačítko */}
           <SmartTooltip text="Načíst objednávky z databáze (vyčistit cache)" icon="info" preferredPosition="bottom">

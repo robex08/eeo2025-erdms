@@ -2015,6 +2015,12 @@ export default function InvoiceEvidencePage() {
   // 🔥 LP čerpání (Limitované přísliby) - např. [{lp_cislo: '6', lp_id: 6, castka: 50000, poznamka: ''}]
   const [lpCerpani, setLpCerpani] = useState([]);
   const [lpCerpaniLoaded, setLpCerpaniLoaded] = useState(false);
+  // 🔥 REF pro synchronní přístup k lpCerpani (řeší closure problém při validaci)
+  const lpCerpaniRef = useRef([]);
+  // 🔥 Synchronizace ref se state - pokryje všechny případy setLpCerpani
+  useEffect(() => {
+    lpCerpaniRef.current = lpCerpani;
+  }, [lpCerpani]);
   // ✅ Flag pro kontrolu zda POVOLIT auto-save do localStorage
   // Když uživatel klikne "Zrušit úpravu", nastaví se na false aby se data znovu neuložila
   const [allowLSSave, setAllowLSSave] = useState(true);
@@ -4085,21 +4091,39 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin.typ === 'LP') {
-            // 🔥 FIX: Filtrovat jen validní řádky (s LP kódem a částkou >= 0, akceptovat i 0 pro zálohové faktury)
-            const validLpCerpani = (lpCerpani || []).filter(lp => {
-              return lp.lp_id && lp.lp_cislo && 
-                     lp.castka !== null && lp.castka !== undefined && lp.castka !== '' && 
-                     !isNaN(parseFloat(lp.castka)) && parseFloat(lp.castka) >= 0;
+            // Získat LP kódy z objednávky
+            const lpKodyFromOrder = fin.lp_kody || [];
+            const availableLPCodes = dictionaries?.data?.lpKodyOptions || [];
+            const filteredLPCodes = availableLPCodes.filter(lp => {
+              const lpCislo = lp.cislo_lp || lp.kod;
+              return lpKodyFromOrder.includes(lpCislo) || lpKodyFromOrder.includes(lp.id);
             });
             
-            if (validLpCerpani.length === 0) {
+            // 🔥 JEDNODUCHÁ LOGIKA: 
+            // - Pokud je JEN 1 LP kód a máme validní částku faktury (i 0 pro zálohové) → je to validní (auto-fill v UI)
+            // - Jinak kontroluj lpCerpani
+            const faCastkaRaw = formData.fa_castka;
+            const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+            const faCastka = parseFloat(faCastkaRaw) || 0;
+            const hasAutoFill = filteredLPCodes.length === 1 && faCastkaValid;
+            
+            const currentLpCerpani = lpCerpaniRef.current || lpCerpani || [];
+            const validLpCerpani = currentLpCerpani.filter(lp => {
+              return lp.lp_id && lp.lp_cislo && 
+                     lp.castka !== null && lp.castka !== undefined && lp.castka !== '' && 
+                     !isNaN(parseFloat(lp.castka));
+            });
+            
+            // Pokud není auto-fill a není validní LP čerpání → chyba
+            if (!hasAutoFill && validLpCerpani.length === 0) {
               showToast && showToast('⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!', 'error');
               setLoading(false);
               return;
             }
 
-            const totalLP = validLpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
-            const faCastka = parseFloat(formData.fa_castka) || 0;
+            const totalLP = validLpCerpani.length > 0 
+              ? validLpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0)
+              : faCastka; // Pokud je auto-fill, celá částka jde na jediný LP
             if (totalLP > faCastka) {
               showToast && showToast(`❌ Součet LP čerpání překračuje částku faktury`, 'error');
               setLoading(false);
@@ -4202,11 +4226,41 @@ export default function InvoiceEvidencePage() {
         const isLPFinancing = orderData?.financovani?.typ === 'LP' || 
                              (orderData?.zpusob_financovani && String(orderData.zpusob_financovani).toLowerCase().includes('lp'));
         
-        if (isLPFinancing && lpCerpani && lpCerpani.length > 0) {
+        if (isLPFinancing) {
           let validLpCerpani = [];
           try {
-            // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
-            validLpCerpani = lpCerpani.filter(row => {
+            // 🔥 FIX: Získat LP čerpání - buď z uživatelského výběru nebo auto-fill
+            let lpCerpaniToSave = lpCerpani || [];
+            
+            // 🔥 AUTO-FILL FALLBACK: Pokud je lpCerpani prázdné ale máme jen 1 LP kód
+            if (lpCerpaniToSave.length === 0) {
+              const fin = typeof orderData.financovani === 'string' 
+                ? JSON.parse(orderData.financovani) 
+                : orderData.financovani;
+              const lpKodyFromOrder = fin?.lp_kody || [];
+              const availableLPCodes = dictionaries?.data?.lpKodyOptions || [];
+              const filteredLPCodes = availableLPCodes.filter(lp => {
+                const lpCislo = lp.cislo_lp || lp.kod;
+                return lpKodyFromOrder.includes(lpCislo) || lpKodyFromOrder.includes(lp.id);
+              });
+              
+              const faCastkaRaw = formData.fa_castka;
+              const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+              const faCastka = parseFloat(faCastkaRaw) || 0;
+              if (filteredLPCodes.length === 1 && faCastkaValid) {
+                // Vytvořit auto-fill záznam (i pro 0 Kč u zálohových faktur)
+                lpCerpaniToSave = [{
+                  lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
+                  lp_id: filteredLPCodes[0].id,
+                  castka: faCastka,
+                  poznamka: ''
+                }];
+                console.debug('[LP auto-fill] Vytvořen záznam pro uložení:', lpCerpaniToSave);
+              }
+            }
+            
+            // Filtrovat a mapovat data
+            validLpCerpani = lpCerpaniToSave.filter(row => {
               const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
               const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
               // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
@@ -4446,15 +4500,29 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin?.typ === 'LP') {
-            // Kontrola LP čerpání - musí být alespoň jeden validní řádek (akceptovat i 0 pro zálohové faktury)
-            const validLpRows = lpCerpani?.filter(row => 
+            // Získat LP kódy z objednávky
+            const lpKodyFromOrder = fin.lp_kody || [];
+            const availableLPCodes = dictionaries?.data?.lpKodyOptions || [];
+            const filteredLPCodes = availableLPCodes.filter(lp => {
+              const lpCislo = lp.cislo_lp || lp.kod;
+              return lpKodyFromOrder.includes(lpCislo) || lpKodyFromOrder.includes(lp.id);
+            });
+            
+            // 🔥 JEDNODUCHÁ LOGIKA: Pokud je JEN 1 LP kód a máme validní částku (i 0) → validní
+            const faCastkaRaw = formData.fa_castka;
+            const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+            const hasAutoFill = filteredLPCodes.length === 1 && faCastkaValid;
+            
+            const currentLpCerpani = lpCerpaniRef.current || lpCerpani || [];
+            const validLpRows = currentLpCerpani.filter(row => 
               row.lp_id && 
               row.lp_cislo && 
               row.castka !== null && row.castka !== undefined && row.castka !== '' &&
-              !isNaN(parseFloat(row.castka)) && parseFloat(row.castka) >= 0
-            ) || [];
+              !isNaN(parseFloat(row.castka))
+            );
             
-            if (validLpRows.length === 0) {
+            // Pokud není auto-fill a není validní LP čerpání → chyba
+            if (!hasAutoFill && validLpRows.length === 0) {
               errors.lp_cerpani = '⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód s částkou!';
             }
           }
@@ -7315,8 +7383,13 @@ export default function InvoiceEvidencePage() {
                             faktura={formData}
                             orderData={orderData}
                             lpCerpani={lpCerpani}
+                            lpCerpaniRef={lpCerpaniRef}
                             availableLPCodes={dictionaries.data?.lpKodyOptions || []}
-                            onChange={(newLpCerpani) => setLpCerpani(newLpCerpani)}
+                            onChange={(newLpCerpani) => {
+                              // 🔥 Synchronní update ref (pro validaci)
+                              lpCerpaniRef.current = newLpCerpani;
+                              setLpCerpani(newLpCerpani);
+                            }}
                             disabled={!isVecnaSpravnostEditable || loading}
                           />
                           {/* Chybová zpráva pro LP čerpání */}

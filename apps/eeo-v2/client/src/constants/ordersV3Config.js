@@ -100,7 +100,7 @@ export const ORDERS_V3_CONFIG = {
     dashboardMode: 'dynamic', // 'full' | 'dynamic' | 'compact'
     showRowColoring: true,
     itemsPerPage: 50,
-    selectedPeriod: 'all',
+    selectedPeriod: 'current-year',
     columnFilters: {
       // Multi-select arrays (user IDs)
       objednatel: [],

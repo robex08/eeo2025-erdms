@@ -8584,26 +8584,43 @@ function OrderForm25() {
       return false;
     }
 
-    // Zjistit částku faktury (pro pravidla: 0 Kč dovolí i LP řádky s 0 Kč)
+    // Zjistit částku faktury
     const fakturaCastka = (() => {
       const faktury = Array.isArray(formData?.faktury) ? formData.faktury : [];
       const faktura = faktury.find(f => String(f.id) === String(fakturaId));
       return parseFloat(faktura?.fa_castka) || 0;
     })();
-    const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
 
-    // Filtrovat jen kompletní řádky
-    const validRows = lpCerpaniData.filter(row => {
+    // 🔥 AUTO-FILL FALLBACK: Pokud je lpCerpaniData prázdné ale máme jen 1 LP kód
+    let lpDataToSave = lpCerpaniData;
+    if (lpCerpaniData.length === 0) {
+      const selectedLpValues = Array.isArray(formData?.lp_kod) ? formData.lp_kod : [];
+      const faCastkaRaw = (() => {
+        const faktury = Array.isArray(formData?.faktury) ? formData.faktury : [];
+        const faktura = faktury.find(f => String(f.id) === String(fakturaId));
+        return faktura?.fa_castka;
+      })();
+      const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+      
+      if (selectedLpValues.length === 1 && faCastkaValid) {
+        const lpValue = selectedLpValues[0];
+        lpDataToSave = [{
+          lp_cislo: lpValue,
+          lp_id: null,
+          castka: parseFloat(faCastkaRaw) || 0,
+          poznamka: ''
+        }];
+        console.debug('[LP auto-fill] Vytvořen záznam pro uložení:', lpDataToSave);
+      }
+    }
+
+    // Filtrovat jen kompletní řádky - 🔥 částka může být i záporná (dobropisy) nebo 0
+    const validRows = lpDataToSave.filter(row => {
       const hasLpId = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== '';
       const hasLpCislo = row.lp_cislo !== null && row.lp_cislo !== undefined && String(row.lp_cislo).trim() !== '';
       const hasLpRef = hasLpCislo || hasLpId;
       const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
-      if (!hasLpRef || !hasCastka) return false;
-
-      const castkaNum = parseFloat(row.castka);
-      if (castkaNum < 0) return false;
-
-      return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+      return hasLpRef && hasCastka;
     }).map(row => ({
       // Backend validuje lp_cislo (string) vůči financovani.lp_kody.
       // lp_id je volitelný int (pokud je k dispozici a je číselný).
@@ -8681,15 +8698,30 @@ function OrderForm25() {
       const lpData = fakturyLPCerpani[fakturaId];
       let lpRows = lpData?.lpCerpani;
 
+      // 🔥 AUTO-FILL FALLBACK: Pokud je lpRows prázdné ale máme jen 1 LP kód
       if (!Array.isArray(lpRows) || lpRows.length === 0) {
         const faktura = fakturyList.find(f => String(f?.id) === String(fakturaId));
-        const fakturaCastka = parseFloat(faktura?.fa_castka) || 0;
-        const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+        const faCastkaRaw = faktura?.fa_castka;
+        const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+        const fakturaCastka = parseFloat(faCastkaRaw) || 0;
         const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
-        const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
-
-        if (autoLpRows.length > 0) {
-          lpRows = autoLpRows;
+        
+        // Pokud je jen 1 LP a validní částka → auto-fill
+        if (selectedLpValues.length === 1 && faCastkaValid) {
+          lpRows = [{
+            lp_cislo: selectedLpValues[0],
+            lp_id: null,
+            castka: fakturaCastka,
+            poznamka: ''
+          }];
+          console.debug('[LP auto-fill saveAll] Vytvořen záznam pro fakturu:', fakturaId, lpRows);
+        } else {
+          // Fallback pro 0 Kč faktury s více LP
+          const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+          const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
+          if (autoLpRows.length > 0) {
+            lpRows = autoLpRows;
+          }
         }
       }
 
@@ -17984,15 +18016,27 @@ function OrderForm25() {
           
           if (isLPFinancing) {
             const lpRows = (lpData && Array.isArray(lpData.lpCerpani)) ? lpData.lpCerpani : [];
-            const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
+            const faCastkaRaw = faktura.fa_castka;
+            const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+            const fakturaCastkaNum = parseFloat(faCastkaRaw) || 0;
+            const allowZeroLpAmount = Math.abs(fakturaCastkaNum) < 0.00001;
             const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
+            
+            // 🔥 JEDNODUCHÁ LOGIKA: Pokud je JEN 1 LP kód a máme validní částku faktury → hasAutoFill
+            const hasAutoFill = selectedLpValues.length === 1 && faCastkaValid;
+            
             const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
             const effectiveLpRows = lpRows.length > 0 ? lpRows : autoLpRows;
 
-            // Pokud uživatel vůbec nevyplnil LP čerpání, je to chyba (LP financování)
-            if (effectiveLpRows.length === 0) {
+            // Pokud uživatel vůbec nevyplnil LP čerpání a NENÍ auto-fill, je to chyba
+            if (effectiveLpRows.length === 0 && !hasAutoFill) {
               errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód`;
               return;
+            }
+            
+            // Pokud je hasAutoFill, přeskočíme validaci LP čerpání (automaticky se vyplní)
+            if (hasAutoFill && effectiveLpRows.length === 0) {
+              return; // OK - auto-fill se postará
             }
 
             const hasCastkaValue = (v) => {
@@ -18022,26 +18066,21 @@ function OrderForm25() {
               return (hasLp && !hasCastka) || (!hasLp && hasCastka);
             });
             if (incompleteRows.length > 0) {
-              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku (0 Kč je povoleno pouze u faktury 0 Kč)`;
+              errors[`vecna_lp_faktura_${index + 1}_incomplete`] = `Faktura ${index + 1}: Všechny řádky LP musí mít vyplněný LP kód i částku`;
             }
 
             // Kontrola alespoň jednoho LP řádku dle částky faktury
+            // 🔥 Částka může být i záporná (dobropisy) nebo 0 (zálohové faktury)
             const validRows = effectiveLpRows.filter(r => {
               const hasLp = (r.lp_cislo !== null && r.lp_cislo !== undefined && String(r.lp_cislo).trim() !== '') ||
                             (r.lp_id !== null && r.lp_id !== undefined && String(r.lp_id).trim() !== '');
               const hasCastka = hasCastkaValue(r.castka);
-              if (!hasLp || !hasCastka) return false;
-
-              const castkaNum = parseFloat(r.castka);
-              if (castkaNum < 0) return false;
-
-              return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+              return hasLp && hasCastka;
             });
 
-            if (validRows.length === 0) {
-              errors[`vecna_lp_faktura_${index + 1}_missing`] = allowZeroLpAmount
-                ? `Faktura ${index + 1}: Objednávka je financována z LP - musíte mít alespoň jeden LP kód (u faktury 0 Kč může být částka 0 Kč)`
-                : `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód s částkou > 0 Kč`;
+            // Pokud není hasAutoFill a není validní LP čerpání → chyba
+            if (validRows.length === 0 && !hasAutoFill) {
+              errors[`vecna_lp_faktura_${index + 1}_missing`] = `Faktura ${index + 1}: Objednávka je financována z LP - musíte přiřadit alespoň jeden LP kód s částkou`;
             }
           }
         });

@@ -49,7 +49,8 @@ const CustomSelectButton = styled.div`
     return '#1f2937';
   }};
 
-  font-weight: ${props => props.disabled ? '400' : (props.$active ? '600' : (props.value && props.value !== '' && props.placeholder !== "true" ? '500' : '400'))};
+  font-weight: ${props => props.disabled ? '400' : (props.$active ? '600' : '400')};
+
 
   /* CSS třída pro disabled stav - nejsilnější možný override */
   &.custom-select-disabled {
@@ -444,17 +445,17 @@ const CustomSelect = ({
       if (field === 'zpusob_financovani') {
         return (opt.kod || opt.id) === value || opt === value;
       }
-      // Pro LP kódy porovnávej podle ID
-      if (field === 'lp_kod') {
-        return (opt.id || opt.kod) === value || opt === value;
+      // Pro LP kódy porovnávej podle ID (field může být 'lp_kod' nebo 'lp_kod_row_123')
+      if (field === 'lp_kod' || field.startsWith('lp_kod_')) {
+        return (opt.id || opt.kod) === value || String(opt.id) === String(value) || opt === value;
       }
       // Pro druhy objednávky porovnávej podle value (kod_stavu)
       if (field === 'druh_objednavky_kod') {
         return (opt.value || opt.kod || opt.id) === value || opt === value;
       }
       // Pro filtry faktur porovnávej podle value
-      if (field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' ||
-          field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola') {
+      if (field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
+          field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola' || field === 'ma_prilohy_floating') {
         return (opt.value || opt.id) === value || opt === value;
       }
       // Pro rok, období a sekci (ProfilePage) porovnávej podle value
@@ -484,11 +485,6 @@ const CustomSelect = ({
         : placeholder)
     : (selectedOption ? getOptionLabel(selectedOption, field) : placeholder);
 
-  // Pro multiselect kontroluj hodnotu jinak
-  const hasValue = multiple
-    ? (Array.isArray(value) && value.length > 0)
-    : selectedOption;
-
   const filterFieldNames = new Set([
     'fa_typ',
     'stav',
@@ -500,6 +496,21 @@ const CustomSelect = ({
     'ma_prilohy_floating',
     'statusFilter'
   ]);
+
+  // Pro multiselect kontroluj hodnotu jinak
+  // Pro filtry: prázdná hodnota '', null, undefined znamená "Vše" = nemá aktivní filtr
+  const isFilterFieldForHasValue = typeof field === 'string' && filterFieldNames.has(field);
+  
+  // Extrahuj skutečnou hodnotu - může být string nebo objekt {value: ...}
+  const actualValue = (typeof value === 'object' && value !== null && 'value' in value) 
+    ? value.value 
+    : value;
+  
+  const hasValue = multiple
+    ? (Array.isArray(value) && value.length > 0)
+    : (isFilterFieldForHasValue 
+        ? (actualValue !== '' && actualValue !== null && actualValue !== undefined && actualValue !== 'all')
+        : selectedOption);
 
   const isFilterField = typeof highlightActive === 'boolean'
     ? highlightActive
@@ -538,8 +549,8 @@ const CustomSelect = ({
           return (opt.value || opt.id) === value || opt === value;
         } else if (field === 'zpusob_financovani') {
           return (opt.kod || opt.id) === value || opt === value;
-        } else if (field === 'lp_kod') {
-          return (opt.id || opt.kod) === value || opt === value;
+        } else if (field === 'lp_kod' || field.startsWith('lp_kod_')) {
+          return (opt.id || opt.kod) === value || String(opt.id) === String(value) || opt === value;
         } else if (field === 'druh_objednavky_kod') {
           return (opt.value || opt.kod || opt.id) === value || opt === value;
         } else if (field === 'fa_typ') {
@@ -619,7 +630,7 @@ const CustomSelect = ({
     } else if (field === 'zpusob_financovani') {
       // Pro financování ukládej kod_stavu
       optionValue = option.kod || option.id || option;
-    } else if (field === 'lp_kod') {
+    } else if (field === 'lp_kod' || field.startsWith('lp_kod_')) {
       // Pro LP kódy ukládej ID LP záznamu
       optionValue = option.id || option.kod || option;
     } else if (field === 'druh_objednavky_kod') {
@@ -627,8 +638,8 @@ const CustomSelect = ({
       optionValue = option.value || option.kod || option.id || option;
     } else if (field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
                field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola' || field === 'ma_prilohy_floating') {
-      // Pro faktury - vracíme PŘÍMO hodnotu (string)
-      optionValue = option.value || option.id || option;
+      // Pro faktury - vracíme PŘÍMO hodnotu (string), respektujeme prázdný string pro "Vše"
+      optionValue = 'value' in option ? option.value : (option.id !== undefined ? option.id : option);
       onChange(optionValue); // PŘÍMO hodnota, ne event wrapper
       setSelectStates(prev => ({ ...prev, [field]: false }));
       setSearchStates(prev => ({ ...prev, [field]: '' }));
@@ -668,7 +679,7 @@ const CustomSelect = ({
     let optionValue;
 
     // Pro LP kódy ukládej ID LP záznamu
-    if (field === 'lp_kod') {
+    if (field === 'lp_kod' || field.startsWith('lp_kod_')) {
       optionValue = option.id || option.kod || option;
     } else {
       optionValue = option.id || option.user_id || option.value || option;
@@ -994,8 +1005,8 @@ const CustomSelect = ({
                 ? ((option.value || option.id) === value || option === value)
                 : field === 'zpusob_financovani'
                 ? ((option.kod || option.id) === value || option === value)
-                : field === 'lp_kod'
-                ? ((option.id || option.kod) === value || option === value)
+                : (field === 'lp_kod' || field.startsWith('lp_kod_'))
+                ? ((option.id || option.kod) === value || String(option.id) === String(value) || option === value)
                 : field === 'druh_objednavky_kod'
                 ? ((option.value || option.kod || option.id) === value || option === value)
                 : field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
