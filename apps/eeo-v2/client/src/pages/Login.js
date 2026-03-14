@@ -224,46 +224,6 @@ const ErrorMessage = styled.div`
   font-size: 0.8rem; /* mírně zmenšeno z 0.875rem */
 `;
 
-const TeamImage = styled.div`
-  position: fixed;
-  bottom: 0;
-  right: 0;
-  width: min(450px, 28vw);
-  height: auto;
-  pointer-events: none;
-  z-index: 150;
-  
-  img {
-    width: 100%;
-    height: auto;
-    display: block;
-    mask-image: linear-gradient(
-      to left,
-      rgba(0, 0, 0, 1) 0%,
-      rgba(0, 0, 0, 1) 40%,
-      rgba(0, 0, 0, 0.8) 70%,
-      transparent 100%
-    );
-    -webkit-mask-image: linear-gradient(
-      to left,
-      rgba(0, 0, 0, 1) 0%,
-      rgba(0, 0, 0, 1) 40%,
-      rgba(0, 0, 0, 0.8) 70%,
-      transparent 100%
-    );
-    opacity: 0.85;
-    filter: brightness(1.05);
-  }
-  
-  @media (max-width: 768px) {
-    width: min(300px, 35vw);
-  }
-  
-  @media (max-width: 480px) {
-    display: none;
-  }
-`;
-
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -337,9 +297,6 @@ const Login = () => {
   const canSubmit = !loading && (username || usernameRef.current?.value) && (password || passwordRef.current?.value);
   return (
     <>
-      <TeamImage>
-        <img src={`${process.env.PUBLIC_URL}/eeo-tym.png`} alt="" />
-      </TeamImage>
       <Wrapper>
         <Container>
         <CardHeader>
