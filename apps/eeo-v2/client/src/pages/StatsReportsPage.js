@@ -683,6 +683,34 @@ const SectionBadge = styled.span`
   font-weight: 700;
 `;
 
+const SearchBox = styled.div`
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: white;
+  transition: all 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
 const PivotHeaderActions = styled.div`
   display: flex;
   align-items: center;
@@ -1484,6 +1512,7 @@ export default function StatsReportsPage() {
   const [dataMeta, setDataMeta] = useState({ loadedAt: null, truncated: false });
   const [loadError, setLoadError] = useState('');
   const [tablePaging, setTablePaging] = useState({});
+  const [searchQueries, setSearchQueries] = useState({});
   const [expandedSpendFinancing, setExpandedSpendFinancing] = useState(() => new Set());
   const [expandedSpendUseks, setExpandedSpendUseks] = useState(() => new Set());
   const [expandedSpendUsekF, setExpandedSpendUsekF] = useState(() => new Set());
@@ -1649,21 +1678,63 @@ export default function StatsReportsPage() {
     });
   }, []);
 
+  const getSearchQuery = useCallback((key) => {
+    return searchQueries[key] || '';
+  }, [searchQueries]);
+
+  const setSearchQuery = useCallback((key, query) => {
+    setSearchQueries(prev => ({ ...prev, [key]: query }));
+    // Reset na první stránku při vyhledávání
+    setTablePaging(prev => {
+      const current = prev[key] || { page: 1, pageSize: DEFAULT_TABLE_PAGE_SIZE };
+      return { ...prev, [key]: { ...current, page: 1 } };
+    });
+  }, []);
+
+  // Dynamické fulltext vyhledávání - prohledává všechny hodnoty v objektu
+  const searchInObject = useCallback((obj, query) => {
+    if (!query || !obj) return true;
+    const lowerQuery = query.toLowerCase().trim();
+    if (!lowerQuery) return true;
+    
+    const searchValue = (val) => {
+      if (val == null) return false;
+      if (typeof val === 'string' || typeof val === 'number') {
+        return String(val).toLowerCase().includes(lowerQuery);
+      }
+      if (typeof val === 'object' && !Array.isArray(val)) {
+        return Object.values(val).some(searchValue);
+      }
+      if (Array.isArray(val)) {
+        return val.some(searchValue);
+      }
+      return false;
+    };
+    
+    return Object.values(obj).some(searchValue);
+  }, []);
+
   const getPagedItems = useCallback((items, key) => {
+    // Nejdříve aplikovat search filter
+    const query = getSearchQuery(key);
+    const filteredItems = query ? items.filter(item => searchInObject(item, query)) : items;
+    
     const { page, pageSize } = getTablePaging(key);
-    const total = items.length;
+    const total = filteredItems.length;
     const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
     const safePage = totalPages > 0 ? Math.min(page, totalPages) : 1;
     const start = (safePage - 1) * pageSize;
     const end = start + pageSize;
     return {
-      items: items.slice(start, end),
+      items: filteredItems.slice(start, end),
       page: safePage,
       pageSize,
       total,
-      totalPages
+      totalPages,
+      originalTotal: items.length,
+      isFiltered: query ? true : false
     };
-  }, [getTablePaging]);
+  }, [getTablePaging, getSearchQuery, searchInObject]);
 
   const renderPagination = useCallback((key, paging) => {
     if (!paging.total || paging.total <= paging.pageSize) return null;
@@ -2605,6 +2676,142 @@ export default function StatsReportsPage() {
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
   }, [filteredOrders]);
+
+  // Filtrované verze spend groups podle search query
+  const filteredSpendByFinancingGroups = useMemo(() => {
+    const query = getSearchQuery('spendByFinancingUsek');
+    if (!query) return spendByFinancingGroups;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    return spendByFinancingGroups.map(group => {
+      // Filtrovat úseky v rámci této skupiny
+      const filteredUseky = {};
+      let groupHasMatches = group.label.toLowerCase().includes(lowerQuery);
+      
+      Object.entries(group.useky).forEach(([usekCode, usek]) => {
+        const usekMatches = usek.label.toLowerCase().includes(lowerQuery);
+        const filteredOrders = usek.orders.filter(order => searchInObject(order, query));
+        
+        if (usekMatches || filteredOrders.length > 0) {
+          filteredUseky[usekCode] = {
+            ...usek,
+            orders: filteredOrders,
+            count: filteredOrders.length,
+            amount: filteredOrders.reduce((sum, o) => sum + getOrderAmount(o), 0)
+          };
+          groupHasMatches = true;
+        }
+      });
+      
+      if (!groupHasMatches) return null;
+      
+      const totalCount = Object.values(filteredUseky).reduce((sum, u) => sum + u.count, 0);
+      const totalAmount = Object.values(filteredUseky).reduce((sum, u) => sum + u.amount, 0);
+      
+      return {
+        ...group,
+        useky: filteredUseky,
+        totalCount,
+        totalAmount
+      };
+    }).filter(Boolean);
+  }, [spendByFinancingGroups, getSearchQuery, searchInObject, getOrderAmount]);
+
+  const filteredSpendByUsekGroups = useMemo(() => {
+    const query = getSearchQuery('spendByUsekFinancing');
+    if (!query) return spendByUsekGroups;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    return spendByUsekGroups.map(group => {
+      const filteredFinancing = {};
+      let groupHasMatches = group.label.toLowerCase().includes(lowerQuery);
+      
+      Object.entries(group.financing).forEach(([finCode, fin]) => {
+        const finMatches = fin.label.toLowerCase().includes(lowerQuery);
+        const filteredOrders = fin.orders.filter(order => searchInObject(order, query));
+        
+        if (finMatches || filteredOrders.length > 0) {
+          filteredFinancing[finCode] = {
+            ...fin,
+            orders: filteredOrders,
+            count: filteredOrders.length,
+            amount: filteredOrders.reduce((sum, o) => sum + getOrderAmount(o), 0)
+          };
+          groupHasMatches = true;
+        }
+      });
+      
+      if (!groupHasMatches) return null;
+      
+      const totalCount = Object.values(filteredFinancing).reduce((sum, f) => sum + f.count, 0);
+      const totalAmount = Object.values(filteredFinancing).reduce((sum, f) => sum + f.amount, 0);
+      
+      return {
+        ...group,
+        financing: filteredFinancing,
+        totalCount,
+        totalAmount
+      };
+    }).filter(Boolean);
+  }, [spendByUsekGroups, getSearchQuery, searchInObject, getOrderAmount]);
+
+  const filteredSpendByDruhGroups = useMemo(() => {
+    const query = getSearchQuery('spendByDruhFinancing');
+    if (!query) return spendByDruhGroups;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    return spendByDruhGroups.map(group => {
+      const filteredFinancing = {};
+      let groupHasMatches = group.label.toLowerCase().includes(lowerQuery);
+      
+      Object.entries(group.financing).forEach(([finCode, fin]) => {
+        const finMatches = fin.label.toLowerCase().includes(lowerQuery);
+        const filteredOrders = fin.orders.filter(order => searchInObject(order, query));
+        
+        if (finMatches || filteredOrders.length > 0) {
+          filteredFinancing[finCode] = {
+            ...fin,
+            orders: filteredOrders,
+            count: filteredOrders.length,
+            amount: filteredOrders.reduce((sum, o) => sum + getOrderAmount(o), 0)
+          };
+          groupHasMatches = true;
+        }
+      });
+      
+      if (!groupHasMatches) return null;
+      
+      const totalCount = Object.values(filteredFinancing).reduce((sum, f) => sum + f.count, 0);
+      const totalAmount = Object.values(filteredFinancing).reduce((sum, f) => sum + f.amount, 0);
+      
+      return {
+        ...group,
+        financing: filteredFinancing,
+        totalCount,
+        totalAmount
+      };
+    }).filter(Boolean);
+  }, [spendByDruhGroups, getSearchQuery, searchInObject, getOrderAmount]);
+
+  const filteredSpendByLpKodGroups = useMemo(() => {
+    const query = getSearchQuery('spendByLpKod');
+    if (!query) return spendByLpKodGroups;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    return spendByLpKodGroups.map(group => {
+      const groupMatches = group.label.toLowerCase().includes(lowerQuery);
+      const filteredOrders = group.orders.filter(order => searchInObject(order, query));
+      
+      if (!groupMatches && filteredOrders.length === 0) return null;
+      
+      return {
+        ...group,
+        orders: filteredOrders,
+        count: filteredOrders.length,
+        amount: filteredOrders.reduce((sum, o) => sum + getOrderAmount(o), 0)
+      };
+    }).filter(Boolean);
+  }, [spendByLpKodGroups, getSearchQuery, searchInObject, getOrderAmount]);
 
   const pagedOrdersWithoutInvoice = useMemo(
     () => getPagedItems(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice'),
@@ -3983,6 +4190,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Faktury vyšší než schválená objednávka</SectionTitle>
                     <SectionBadge $tone="danger">{controlSections.ordersOverLimit.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('ordersOverLimit')}
+                      onChange={(e) => setSearchQuery('ordersOverLimit', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedOrdersOverLimit.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedOrdersOverLimit.total} z {pagedOrdersOverLimit.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4035,6 +4255,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Objednávka vytvořená po doručení faktury</SectionTitle>
                     <SectionBadge $tone="warn">{controlSections.ordersAfterInvoice.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('ordersAfterInvoice')}
+                      onChange={(e) => setSearchQuery('ordersAfterInvoice', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedOrdersAfterInvoice.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedOrdersAfterInvoice.total} z {pagedOrdersAfterInvoice.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4082,6 +4315,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Objednávky s fakturami bez příloh</SectionTitle>
                     <SectionBadge $tone="warn">{controlSections.ordersInvoicesWithoutAttachments.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('ordersInvoicesWithoutAttachments')}
+                      onChange={(e) => setSearchQuery('ordersInvoicesWithoutAttachments', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedOrdersInvoicesWithoutAttachments.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedOrdersInvoicesWithoutAttachments.total} z {pagedOrdersInvoicesWithoutAttachments.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4129,6 +4375,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Faktury bez přílohy</SectionTitle>
                     <SectionBadge $tone="warn">{controlSections.invoicesWithoutAttachments.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('invoicesWithoutAttachments')}
+                      onChange={(e) => setSearchQuery('invoicesWithoutAttachments', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedInvoicesWithoutAttachments.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedInvoicesWithoutAttachments.total} z {pagedInvoicesWithoutAttachments.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4177,6 +4436,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Faktury po splatnosti 14+ dní</SectionTitle>
                     <SectionBadge $tone="danger">{controlSections.overdueInvoices.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('overdueInvoices')}
+                      onChange={(e) => setSearchQuery('overdueInvoices', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedOverdueInvoices.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedOverdueInvoices.total} z {pagedOverdueInvoices.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4227,6 +4499,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Zrušené a zamítnuté objednávky</SectionTitle>
                     <SectionBadge $tone="danger">{controlSections.cancelledOrders.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('cancelledOrders')}
+                      onChange={(e) => setSearchQuery('cancelledOrders', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedCancelledOrders.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedCancelledOrders.total} z {pagedCancelledOrders.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4273,10 +4558,18 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Přehled čerpání po financování a úsecích</SectionTitle>
-                      <SectionBadge $tone="warn">{spendByFinancingGroups.length} typy</SectionBadge>
+                      <SectionBadge $tone="warn">{filteredSpendByFinancingGroups.length} typů</SectionBadge>
                     </SectionHeader>
+                    <SearchBox>
+                      <SearchInput
+                        type="text"
+                        placeholder="🔍 Fulltext vyhledávání (v názvech financování, úseků, detailech objednávek)..."
+                        value={getSearchQuery('spendByFinancingUsek')}
+                        onChange={(e) => setSearchQuery('spendByFinancingUsek', e.target.value)}
+                      />
+                    </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      {spendByFinancingGroups.length === 0 ? (
+                      {filteredSpendByFinancingGroups.length === 0 ? (
                         <EmptyState>Bez dat pro zvolené filtry</EmptyState>
                       ) : (
                         <>
@@ -4287,7 +4580,7 @@ export default function StatsReportsPage() {
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
                           </div>
-                          {spendByFinancingGroups.map(group => {
+                          {filteredSpendByFinancingGroups.map(group => {
                           const finOpen = expandedSpendFinancing.has(group.code);
                           const usekyArr = Object.values(group.useky).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                           return (
@@ -4398,10 +4691,18 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Přehled čerpání po úsecích a financování</SectionTitle>
-                      <SectionBadge $tone="warn">{spendByUsekGroups.length} úseků</SectionBadge>
+                      <SectionBadge $tone="warn">{filteredSpendByUsekGroups.length} úseků</SectionBadge>
                     </SectionHeader>
+                    <SearchBox>
+                      <SearchInput
+                        type="text"
+                        placeholder="🔍 Fulltext vyhledávání (v názvech úseků, financování, detailech objednávek)..."
+                        value={getSearchQuery('spendByUsekFinancing')}
+                        onChange={(e) => setSearchQuery('spendByUsekFinancing', e.target.value)}
+                      />
+                    </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      {spendByUsekGroups.length === 0 ? (
+                      {filteredSpendByUsekGroups.length === 0 ? (
                         <EmptyState>Bez dat pro zvolené filtry</EmptyState>
                       ) : (
                         <>
@@ -4411,7 +4712,7 @@ export default function StatsReportsPage() {
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
                           </div>
-                          {spendByUsekGroups.map(group => {
+                          {filteredSpendByUsekGroups.map(group => {
                             const grpOpen = expandedSpendUsekF.has(group.code);
                             const finArr = Object.values(group.financing).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                             return (
@@ -4512,10 +4813,18 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Přehled čerpání po druhu a financování</SectionTitle>
-                      <SectionBadge $tone="warn">{spendByDruhGroups.length} druhů</SectionBadge>
+                      <SectionBadge $tone="warn">{filteredSpendByDruhGroups.length} druhů</SectionBadge>
                     </SectionHeader>
+                    <SearchBox>
+                      <SearchInput
+                        type="text"
+                        placeholder="🔍 Fulltext vyhledávání (v názvech druhů, financování, detailech objednávek)..."
+                        value={getSearchQuery('spendByDruhFinancing')}
+                        onChange={(e) => setSearchQuery('spendByDruhFinancing', e.target.value)}
+                      />
+                    </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      {spendByDruhGroups.length === 0 ? (
+                      {filteredSpendByDruhGroups.length === 0 ? (
                         <EmptyState>Bez dat pro zvolené filtry</EmptyState>
                       ) : (
                         <>
@@ -4525,7 +4834,7 @@ export default function StatsReportsPage() {
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
                           </div>
-                          {spendByDruhGroups.map(group => {
+                          {filteredSpendByDruhGroups.map(group => {
                             const grpOpen = expandedSpendDruh.has(group.code);
                             const finArr = Object.values(group.financing).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                             return (
@@ -4626,10 +4935,18 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Čerpání LP podle LP kódu</SectionTitle>
-                      <SectionBadge $tone="warn">{spendByLpKodGroups.length} LP kódů</SectionBadge>
+                      <SectionBadge $tone="warn">{filteredSpendByLpKodGroups.length} LP kódů</SectionBadge>
                     </SectionHeader>
+                    <SearchBox>
+                      <SearchInput
+                        type="text"
+                        placeholder="🔍 Fulltext vyhledávání (v názvech LP kódů, detailech objednávek)..."
+                        value={getSearchQuery('spendByLpKod')}
+                        onChange={(e) => setSearchQuery('spendByLpKod', e.target.value)}
+                      />
+                    </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      {spendByLpKodGroups.length === 0 ? (
+                      {filteredSpendByLpKodGroups.length === 0 ? (
                         <EmptyState>Bez objednávek LP pro zvolené filtry</EmptyState>
                       ) : (
                         <>
@@ -4639,7 +4956,7 @@ export default function StatsReportsPage() {
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
                           </div>
-                          {spendByLpKodGroups.map(group => {
+                          {filteredSpendByLpKodGroups.map(group => {
                             const lpOpen = expandedSpendLp.has(group.code);
                             const pagedDetail = getPagedItems(group.orders, `spendLpKod_${group.code}`);
                             return (
@@ -4898,6 +5215,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Objednávky bez faktury 2+ měsíce (schváleno+)</SectionTitle>
                     <SectionBadge $tone="warn">{reportSections.ordersWithoutInvoice.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('ordersWithoutInvoice')}
+                      onChange={(e) => setSearchQuery('ordersWithoutInvoice', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedOrdersWithoutInvoice.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedOrdersWithoutInvoice.total} z {pagedOrdersWithoutInvoice.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4944,6 +5274,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Objednávky s fakturou, nedokončené (mimo vzdělávání)</SectionTitle>
                     <SectionBadge $tone="warn">{reportSections.ordersWithInvoiceNotDone.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('ordersWithInvoiceNotDone')}
+                      onChange={(e) => setSearchQuery('ordersWithInvoiceNotDone', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedOrdersWithInvoiceNotDone.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedOrdersWithInvoiceNotDone.total} z {pagedOrdersWithInvoiceNotDone.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -4988,6 +5331,19 @@ export default function StatsReportsPage() {
                     <SectionTitle>Top dodavatelé (LP vs smlouvy)</SectionTitle>
                     <SectionBadge $tone="warn">TOP {reportSections.topSuppliers.length}</SectionBadge>
                   </SectionHeader>
+                  <SearchBox>
+                    <SearchInput
+                      type="text"
+                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                      value={getSearchQuery('topSuppliers')}
+                      onChange={(e) => setSearchQuery('topSuppliers', e.target.value)}
+                    />
+                  </SearchBox>
+                  {pagedTopSuppliers.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedTopSuppliers.total} z {pagedTopSuppliers.originalTotal} záznamů
+                    </div>
+                  )}
                   <TableWrapper>
                     <Table>
                       <thead>
@@ -5039,6 +5395,19 @@ export default function StatsReportsPage() {
                       </div>
                     ) : (
                       <>
+                        <SearchBox>
+                          <SearchInput
+                            type="text"
+                            placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                            value={getSearchQuery('invoiceAttachmentsList')}
+                            onChange={(e) => setSearchQuery('invoiceAttachmentsList', e.target.value)}
+                          />
+                        </SearchBox>
+                        {pagedInvoiceAttachmentsList.isFiltered && (
+                          <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                            Nalezeno {pagedInvoiceAttachmentsList.total} z {pagedInvoiceAttachmentsList.originalTotal} záznamů
+                          </div>
+                        )}
                         <TableWrapper>
                           <Table>
                             <thead>
@@ -5748,6 +6117,19 @@ export default function StatsReportsPage() {
                     </PivotOptionsGroup>
                   </PivotOptionsPanel>
                 </PivotPanel>
+                <SearchBox>
+                  <SearchInput
+                    type="text"
+                    placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
+                    value={getSearchQuery('pivotTable')}
+                    onChange={(e) => setSearchQuery('pivotTable', e.target.value)}
+                  />
+                </SearchBox>
+                {pagedPivotRows.isFiltered && (
+                  <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                    Nalezeno {pagedPivotRows.total} z {pagedPivotRows.originalTotal} záznamů
+                  </div>
+                )}
                 <TableWrapper>
                   <Table>
                     <thead>
