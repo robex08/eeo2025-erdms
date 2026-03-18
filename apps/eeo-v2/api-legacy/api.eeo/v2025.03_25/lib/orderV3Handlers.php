@@ -608,16 +608,18 @@ function handle_order_v3_list($input, $config, $queries) {
         }
         
         if (!empty($filters['dodavatel_nazev'])) {
-            // ⚠️ DODAVATEL: Hledat v názvu + adrese + kontaktech (case-insensitive + bez diakritiky)
+            // ⚠️ DODAVATEL: Hledat v názvu + IČO + adrese + kontaktech (case-insensitive + bez diakritiky)
             $filter_value = normalizeSearchString($filters['dodavatel_nazev']);
             $filter_pattern = '%' . $filter_value . '%';
             $where_conditions[] = "(
                 " . sqlNormalizeExpression('d.nazev') . " LIKE ?
                 OR " . sqlNormalizeExpression('o.dodavatel_nazev') . " LIKE ?
+                OR o.dodavatel_ico LIKE ?
                 OR " . sqlNormalizeExpression('o.dodavatel_adresa') . " LIKE ?
                 OR " . sqlNormalizeExpression('o.dodavatel_kontakt_jmeno') . " LIKE ?
                 OR " . sqlNormalizeExpression('o.dodavatel_kontakt_email') . " LIKE ?
             )";
+            $where_params[] = $filter_pattern;
             $where_params[] = $filter_pattern;
             $where_params[] = $filter_pattern;
             $where_params[] = $filter_pattern;
@@ -994,6 +996,7 @@ function handle_order_v3_list($input, $config, $queries) {
                     " . sqlNormalizeExpression('o.predmet') . " LIKE ? OR
                     " . sqlNormalizeExpression('o.poznamka') . " LIKE ? OR
                     " . sqlNormalizeExpression('o.dodavatel_nazev') . " LIKE ? OR
+                    o.dodavatel_ico LIKE ? OR
                     " . sqlNormalizeExpression("CONCAT(u1.prijmeni, ' ', u1.jmeno)") . " LIKE ? OR
                     LOWER(u1.email) LIKE ? OR
                     " . sqlNormalizeExpression("CONCAT(u2.prijmeni, ' ', u2.jmeno)") . " LIKE ? OR
@@ -1054,8 +1057,8 @@ function handle_order_v3_list($input, $config, $queries) {
                 
                 $search_pattern = '%' . $search_term_normalized . '%';
                 
-                // Celkem 26 parametrů pro fulltext
-                for ($i = 0; $i < 26; $i++) {
+                // Celkem 27 parametrů pro fulltext (včetně dodavatel_ico)
+                for ($i = 0; $i < 27; $i++) {
                     $where_params[] = $search_pattern;
                 }
                 
