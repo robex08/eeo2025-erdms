@@ -2733,3 +2733,165 @@ function handle_order_v3_items($input, $config, $queries) {
         ));
     }
 }
+
+/**
+ * 📈 POST order-v3/timeline
+ * Vrací denní agregaci částek objednávek (pro čárový graf)
+ * 
+ * INPUT (JSON):
+ * - token (string)
+ * - username (string)
+ * - year (int, optional) - Rok pro filtrování (default: aktuální rok)
+ * 
+ * OUTPUT (JSON):
+ * {
+ *   "status": "success",
+ *   "data": {
+ *     "timeline": [
+ *       {
+ *         "datum": "2026-01-01",
+ *         "max_dph_cumulative": 123456.78,
+ *         "polozky_sum_cumulative": 98765.43,
+ *         "faktury_sum_cumulative": 87654.32
+ *       },
+ *       ...
+ *     ],
+ *     "year": 2026,
+ *     "start_date": "2026-01-01",
+ *     "end_date": "2026-12-31"
+ *   }
+ * }
+ */
+function handle_orderV3_timeline($input, $config) {
+    // Validace metody
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    // Parametry
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $year = isset($input['year']) ? (int)$input['year'] : (int)date('Y');
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    try {
+        // DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // Nastavit timezone
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // Ověřit token
+        $token_data = verify_token($token);
+        if (!$token_data || $token_data['username'] !== $username) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            return;
+        }
+
+        // Získat user_id
+        $user_id = get_user_id_from_username($username, $db);
+        if (!$user_id) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Uživatel nenalezen']);
+            return;
+        }
+
+        // Datum rozsahu (celý rok)
+        $start_date = "$year-01-01";
+        $end_date = "$year-12-31";
+
+        // WHERE podmínky + user permissions
+        $where_conditions = ["o.aktivni = 1"];
+        $where_params = [];
+        
+        // Aplikovat user permissions
+        $is_admin = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+        
+        // Přidat datum rozsahu
+        $where_conditions[] = "DATE(o.dt_vytvoreni) >= ?";
+        $where_params[] = $start_date;
+        $where_conditions[] = "DATE(o.dt_vytvoreni) <= ?";
+        $where_params[] = $end_date;
+
+        $where_sql = implode(' AND ', $where_conditions);
+
+        // Query pro denní agregaci - KUMULATIVNÍ součty
+        $sql = "
+            WITH RECURSIVE dates AS (
+                SELECT DATE('$start_date') as datum
+                UNION ALL
+                SELECT DATE_ADD(datum, INTERVAL 1 DAY)
+                FROM dates
+                WHERE datum < DATE('$end_date')
+            ),
+            daily_orders AS (
+                SELECT 
+                    DATE(o.dt_vytvoreni) as den,
+                    SUM(o.cena_celkem_dph) as max_dph,
+                    SUM(o.cena_polozek_celkem) as polozky_sum,
+                    SUM(IFNULL(f.castka, 0)) as faktury_sum
+                FROM " . TBL_OBJEDNAVKY . " o
+                LEFT JOIN (
+                    SELECT 
+                        objednavka_id,
+                        SUM(castka) as castka
+                    FROM " . TBL_FAKTURY . "
+                    WHERE aktivni = 1
+                    GROUP BY objednavka_id
+                ) f ON o.id = f.objednavka_id
+                WHERE $where_sql
+                GROUP BY den
+            )
+            SELECT 
+                d.datum,
+                IFNULL(SUM(do.max_dph) OVER (ORDER BY d.datum ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as max_dph_cumulative,
+                IFNULL(SUM(do.polozky_sum) OVER (ORDER BY d.datum ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as polozky_sum_cumulative,
+                IFNULL(SUM(do.faktury_sum) OVER (ORDER BY d.datum ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as faktury_sum_cumulative
+            FROM dates d
+            LEFT JOIN daily_orders do ON d.datum = do.den
+            ORDER BY d.datum ASC
+        ";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($where_params);
+        $timeline = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Konverze na float
+        foreach ($timeline as &$row) {
+            $row['max_dph_cumulative'] = (float)$row['max_dph_cumulative'];
+            $row['polozky_sum_cumulative'] = (float)$row['polozky_sum_cumulative'];
+            $row['faktury_sum_cumulative'] = (float)$row['faktury_sum_cumulative'];
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'timeline' => $timeline,
+                'year' => $year,
+                'start_date' => $start_date,
+                'end_date' => $end_date
+            ],
+            'message' => 'Timeline data načtena úspěšně'
+        ]);
+
+    } catch (Exception $e) {
+        error_log("[OrderV3 Timeline] Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání timeline dat: ' . $e->getMessage()
+        ]);
+    }
+}

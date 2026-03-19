@@ -2263,6 +2263,16 @@ switch ($endpoint) {
         }
         break;
 
+    // POST /api.eeo/order-v3/timeline - Denní agregace částek (pro čárový graf)
+    case 'order-v3/timeline':
+        if ($request_method === 'POST') {
+            handle_orderV3_timeline($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // POST /api.eeo/order-v3/majetek-list - Přehled MAJETEK objednávek
     case 'order-v3/majetek-list':
         if ($request_method === 'POST') {
