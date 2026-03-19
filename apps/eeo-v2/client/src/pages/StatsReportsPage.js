@@ -94,6 +94,7 @@ const SECTION_BLOCKS = {
     { key: 'spendByLpKod', label: 'Čerpání LP: podle LP kódu' }
   ],
   stats: [
+    { key: 'chartTimeline', label: 'Vývoj částek objednávek (timeline)' },
     { key: 'chartFinancing', label: 'Financování – počet a částka' },
     { key: 'chartUsek', label: 'Úseky – počet a částka' },
     { key: 'chartDruh', label: 'Druhy objednávek – počet a částka' },
@@ -962,6 +963,22 @@ const ChartWrapper = styled.div`
   height: 420px;
 `;
 
+const ChartToggleBtn = styled.button`
+  position: absolute;
+  top: 0.6rem;
+  right: 2.2rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+  z-index: 2;
+  &:hover { color: #1d4ed8; background: #eff6ff; }
+`;
+
 const ChartExpandBtn = styled.button`
   position: absolute;
   top: 0.6rem;
@@ -1568,6 +1585,7 @@ export default function StatsReportsPage() {
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [timelineData, setTimelineData] = useState(null);
+  const [timelineCumulative, setTimelineCumulative] = useState(true);
   const [attachmentsStats, setAttachmentsStats] = useState(null);
   // Attachments tab state
   const [orderAttachmentsStats, setOrderAttachmentsStats] = useState(null);
@@ -5456,14 +5474,20 @@ export default function StatsReportsPage() {
               <ChartGrid>
 
                 {/* 📈 TIMELINE - Denní vývoj částek objednávek (celá šířka) */}
-                {timelineData && timelineData.length > 0 && (() => {
+                {isBlockVisible('stats', 'chartTimeline') && timelineData && timelineData.length > 0 && (() => {
                   const labels = timelineData.map(d => {
                     const date = new Date(d.datum);
                     return `${date.getDate()}.${date.getMonth() + 1}.`;
                   });
-                  const maxDphData = timelineData.map(d => Math.round(d.max_dph_cumulative / 1000));
-                  const polozkyData = timelineData.map(d => Math.round(d.polozky_sum_cumulative / 1000));
-                  const fakturyData = timelineData.map(d => Math.round(d.faktury_sum_cumulative / 1000));
+                  const maxDphData = timelineCumulative
+                    ? timelineData.map(d => Math.round(d.max_dph_cumulative / 1000))
+                    : timelineData.map(d => Math.round(d.max_dph / 1000));
+                  const polozkyData = timelineCumulative
+                    ? timelineData.map(d => Math.round(d.polozky_sum_cumulative / 1000))
+                    : timelineData.map(d => Math.round(d.polozky_sum / 1000));
+                  const fakturyData = timelineCumulative
+                    ? timelineData.map(d => Math.round(d.faktury_sum_cumulative / 1000))
+                    : timelineData.map(d => Math.round(d.faktury_sum / 1000));
                   
                   const timelineChartData = {
                     labels,
@@ -5555,13 +5579,19 @@ export default function StatsReportsPage() {
                     }
                   };
                   
-                  const timelineChartEl = <ChartWrapper><Line data={timelineChartData} options={timelineOpts} /></ChartWrapper>;
+                  const timelineChartEl = <ChartWrapper style={{ height: '567px' }}><Line data={timelineChartData} options={timelineOpts} /></ChartWrapper>;
                   
                   return (
                     <ChartCardWide>
                       <SectionTitle>
-                        📈 Vývoj částek objednávek v roce {new Date().getFullYear()} (den po dni)
+                        📈 Vývoj částek objednávek v roce {new Date().getFullYear()} ({timelineCumulative ? 'kumulativně' : 'den po dni'})
                       </SectionTitle>
+                      <ChartToggleBtn
+                        title={timelineCumulative ? 'Přepnout na denní pohled' : 'Přepnout na kumulativní pohled'}
+                        onClick={() => setTimelineCumulative(v => !v)}
+                      >
+                        <FontAwesomeIcon icon={timelineCumulative ? faLayerGroup : faChartLine} />
+                      </ChartToggleBtn>
                       <ChartExpandBtn 
                         title="Celá obrazovka (ESC = zavřít)" 
                         onClick={() => setFullscreenChart({ 
