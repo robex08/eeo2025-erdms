@@ -1367,6 +1367,11 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.dt_objednavky,
                 o.dt_vytvoreni,
                 o.dt_aktualizace,
+                o.dt_schvaleni,
+                o.dt_odeslani,
+                o.dt_akceptace,
+                o.dt_zverejneni,
+                o.dt_dokonceni,
                 o.financovani,
                 o.druh_objednavky_kod,
                 o.max_cena_s_dph,
@@ -1374,9 +1379,13 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.stav_workflow_kod,
                 o.mimoradna_udalost,
                 o.zverejnit,
-                o.dt_zverejneni,
                 o.registr_iddt,
                 o.zverejnil_id,
+                o.dokoncil_id,
+                o.fakturant_id,
+                o.dt_faktura_pridana,
+                o.potvrdil_vecnou_spravnost_id,
+                o.dt_potvrzeni_vecne_spravnosti,
                 
                 -- Dodavatel - prioritizovat přímé sloupce z objednávky, pak z číselníku
                 o.dodavatel_id,
@@ -1389,20 +1398,73 @@ function handle_order_v3_list($input, $config, $queries) {
                 
                 -- Objednatel
                 u1.id as objednatel_id,
-                CONCAT(u1.prijmeni, ' ', u1.jmeno) as objednatel_jmeno,
+                u1.jmeno as objednatel_jmeno,
+                u1.prijmeni as objednatel_prijmeni,
+                u1.titul_pred as objednatel_titul_pred,
+                u1.titul_za as objednatel_titul_za,
                 u1.email as objednatel_email,
+                
+                -- Vytvořil (užíváme pro fallback pokud není objednatel)
+                COALESCE(o.objednatel_id, o.uzivatel_id) as vytvoril_id,
                 
                 -- Garant
                 u2.id as garant_id,
-                CONCAT(u2.prijmeni, ' ', u2.jmeno) as garant_jmeno,
+                u2.jmeno as garant_jmeno,
+                u2.prijmeni as garant_prijmeni,
                 
                 -- Příkazce
                 u3.id as prikazce_id,
-                CONCAT(u3.prijmeni, ' ', u3.jmeno) as prikazce_jmeno,
+                u3.jmeno as prikazce_jmeno,
+                u3.prijmeni as prikazce_prijmeni,
                 
                 -- Schvalovatel
                 u4.id as schvalovatel_id,
-                CONCAT(u4.prijmeni, ' ', u4.jmeno) as schvalovatel_jmeno,
+                u4.jmeno as schvalovatel_jmeno,
+                u4.prijmeni as schvalovatel_prijmeni,
+                u4.titul_pred as schvalovatel_titul_pred,
+                u4.titul_za as schvalovatel_titul_za,
+                
+                -- Odesilatel (osoba, která odeslala dodavateli)
+                u5.id as odesilatel_id,
+                u5.jmeno as odesilatel_jmeno,
+                u5.prijmeni as odesilatel_prijmeni,
+                u5.titul_pred as odesilatel_titul_pred,
+                u5.titul_za as odesilatel_titul_za,
+                
+                -- Dodavatel potvrdil (osoba, která potvrdila)
+                u6.id as dodavatel_potvrdil_id,
+                u6.jmeno as dodavatel_potvrdil_jmeno,
+                u6.prijmeni as dodavatel_potvrdil_prijmeni,
+                u6.titul_pred as dodavatel_potvrdil_titul_pred,
+                u6.titul_za as dodavatel_potvrdil_titul_za,
+                
+                -- Zveřejnil
+                u7.id as zverejnil_uid,
+                u7.jmeno as zverejnil_jmeno,
+                u7.prijmeni as zverejnil_prijmeni,
+                u7.titul_pred as zverejnil_titul_pred,
+                u7.titul_za as zverejnil_titul_za,
+                
+                -- Dokončil objednávku
+                u8.id as dokoncil_uid,
+                u8.jmeno as dokoncil_jmeno,
+                u8.prijmeni as dokoncil_prijmeni,
+                u8.titul_pred as dokoncil_titul_pred,
+                u8.titul_za as dokoncil_titul_za,
+                
+                -- Fakturant (osoba, která přidala fakturu)
+                u9.id as fakturant_uid,
+                u9.jmeno as fakturant_jmeno,
+                u9.prijmeni as fakturant_prijmeni,
+                u9.titul_pred as fakturant_titul_pred,
+                u9.titul_za as fakturant_titul_za,
+                
+                -- Potvrdil věcnou správnost
+                u10.id as potvrdil_vecnou_spravnost_uid,
+                u10.jmeno as potvrdil_vecnou_spravnost_jmeno,
+                u10.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
+                u10.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
+                u10.titul_za as potvrdil_vecnou_spravnost_titul_za,
                 
                 -- Počet položek
                 (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as pocet_polozek,
@@ -1416,11 +1478,6 @@ function handle_order_v3_list($input, $config, $queries) {
                 -- Faktury - součet a count
                 (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as pocet_faktur,
                 (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph,
-                
-                -- Registr - sloupce z objednávky
-                o.dt_zverejneni,
-                o.zverejnit,
-                o.zverejnil_id,
                 
                 -- 🆕 Kontrola a komentáře (Order V3)
                 o.kontrola_metadata,
@@ -1454,6 +1511,12 @@ function handle_order_v3_list($input, $config, $queries) {
             LEFT JOIN " . TBL_UZIVATELE . " u2 ON o.garant_uzivatel_id = u2.id
             LEFT JOIN " . TBL_UZIVATELE . " u3 ON o.prikazce_id = u3.id
             LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
+            LEFT JOIN " . TBL_UZIVATELE . " u5 ON o.odesilatel_id = u5.id
+            LEFT JOIN " . TBL_UZIVATELE . " u6 ON o.dodavatel_potvrdil_id = u6.id
+            LEFT JOIN " . TBL_UZIVATELE . " u7 ON o.zverejnil_id = u7.id
+            LEFT JOIN " . TBL_UZIVATELE . " u8 ON o.dokoncil_id = u8.id
+            LEFT JOIN " . TBL_UZIVATELE . " u9 ON o.fakturant_id = u9.id
+            LEFT JOIN " . TBL_UZIVATELE . " u10 ON o.potvrdil_vecnou_spravnost_id = u10.id
             WHERE $where_sql
             ORDER BY $order_by_sql
             LIMIT $per_page OFFSET $offset
@@ -1498,6 +1561,7 @@ function handle_order_v3_list($input, $config, $queries) {
             enrichFinancovaniV3($db, $order);
             enrichDodavatelV3($db, $order);
             enrichRegistrZverejneniV3($db, $order);
+            enrichOrderWithInvoices($db, $order); // ✅ Přidáno načítání faktur pro workflow tooltip
         }
         unset($order);
 
