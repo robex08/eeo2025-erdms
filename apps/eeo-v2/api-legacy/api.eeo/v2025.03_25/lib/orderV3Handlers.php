@@ -2750,9 +2750,9 @@ function handle_order_v3_items($input, $config, $queries) {
  *     "timeline": [
  *       {
  *         "datum": "2026-01-01",
- *         "max_dph_cumulative": 123456.78,
- *         "polozky_sum_cumulative": 98765.43,
- *         "faktury_sum_cumulative": 87654.32
+ *         "max_dph": 123456.78,
+ *         "polozky_sum": 98765.43,
+ *         "faktury_sum": 87654.32
  *       },
  *       ...
  *     ],
@@ -2763,135 +2763,118 @@ function handle_order_v3_items($input, $config, $queries) {
  * }
  */
 function handle_orderV3_timeline($input, $config) {
-    // Validace metody
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
-        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         return;
     }
 
-    // Parametry
-    $token = $input['token'] ?? '';
-    $username = $input['username'] ?? '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
     $year = isset($input['year']) ? (int)$input['year'] : (int)date('Y');
 
     if (!$token || !$username) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
         return;
     }
 
+    // Ověření tokenu - stejný pattern jako handle_order_v3_stats
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+
+    $user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
+
     try {
-        // DB připojení
         $db = get_db($config);
         if (!$db) {
             throw new Exception('Chyba připojení k databázi');
         }
 
-        // Nastavit timezone
         TimezoneHelper::setMysqlTimezone($db);
 
-        // Ověřit token
-        $token_data = verify_token($token);
-        if (!$token_data || $token_data['username'] !== $username) {
-            http_response_code(401);
-            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
-            return;
-        }
-
-        // Získat user_id
-        $user_id = get_user_id_from_username($username, $db);
-        if (!$user_id) {
-            http_response_code(403);
-            echo json_encode(['status' => 'error', 'message' => 'Uživatel nenalezen']);
-            return;
-        }
-
-        // Datum rozsahu (celý rok)
         $start_date = "$year-01-01";
         $end_date = "$year-12-31";
 
         // WHERE podmínky + user permissions
-        $where_conditions = ["o.aktivni = 1"];
-        $where_params = [];
-        
-        // Aplikovat user permissions
-        $is_admin = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
-        
+        // Správné sloupce ověřeny z DB: max_cena_s_dph, dt_vytvoreni, aktivni
+        $where_conditions = array('o.aktivni = 1');
+        $where_params = array();
+        applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+
         // Přidat datum rozsahu
-        $where_conditions[] = "DATE(o.dt_vytvoreni) >= ?";
+        $where_conditions[] = 'DATE(o.dt_vytvoreni) >= ?';
+        $where_conditions[] = 'DATE(o.dt_vytvoreni) <= ?';
         $where_params[] = $start_date;
-        $where_conditions[] = "DATE(o.dt_vytvoreni) <= ?";
         $where_params[] = $end_date;
 
         $where_sql = implode(' AND ', $where_conditions);
 
-        // Query pro denní agregaci - KUMULATIVNÍ součty
+        // SQL - denní agregace
+        // Ověřené sloupce z DB:
+        //   25a_objednavky: max_cena_s_dph, dt_vytvoreni, aktivni
+        //   25a_objednavky_polozky: cena_s_dph, objednavka_id
+        //   25a_objednavky_faktury: fa_castka, objednavka_id, aktivni
         $sql = "
-            WITH RECURSIVE dates AS (
-                SELECT DATE('$start_date') as datum
-                UNION ALL
-                SELECT DATE_ADD(datum, INTERVAL 1 DAY)
-                FROM dates
-                WHERE datum < DATE('$end_date')
-            ),
-            daily_orders AS (
-                SELECT 
-                    DATE(o.dt_vytvoreni) as den,
-                    SUM(o.cena_celkem_dph) as max_dph,
-                    SUM(o.cena_polozek_celkem) as polozky_sum,
-                    SUM(IFNULL(f.castka, 0)) as faktury_sum
-                FROM " . TBL_OBJEDNAVKY . " o
-                LEFT JOIN (
-                    SELECT 
-                        objednavka_id,
-                        SUM(castka) as castka
-                    FROM " . TBL_FAKTURY . "
-                    WHERE aktivni = 1
-                    GROUP BY objednavka_id
-                ) f ON o.id = f.objednavka_id
-                WHERE $where_sql
-                GROUP BY den
-            )
-            SELECT 
-                d.datum,
-                IFNULL(SUM(do.max_dph) OVER (ORDER BY d.datum ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as max_dph_cumulative,
-                IFNULL(SUM(do.polozky_sum) OVER (ORDER BY d.datum ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as polozky_sum_cumulative,
-                IFNULL(SUM(do.faktury_sum) OVER (ORDER BY d.datum ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as faktury_sum_cumulative
-            FROM dates d
-            LEFT JOIN daily_orders do ON d.datum = do.den
-            ORDER BY d.datum ASC
+            SELECT
+                DATE(o.dt_vytvoreni) as datum,
+                COALESCE(SUM(o.max_cena_s_dph), 0) as max_dph,
+                COALESCE(SUM(
+                    (SELECT COALESCE(SUM(pol.cena_s_dph), 0)
+                     FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol
+                     WHERE pol.objednavka_id = o.id)
+                ), 0) as polozky_sum,
+                COALESCE(SUM(
+                    (SELECT COALESCE(SUM(f.fa_castka), 0)
+                     FROM " . TBL_FAKTURY . " f
+                     WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                ), 0) as faktury_sum
+            FROM " . TBL_OBJEDNAVKY . " o
+            WHERE $where_sql
+            GROUP BY DATE(o.dt_vytvoreni)
+            ORDER BY datum ASC
         ";
 
         $stmt = $db->prepare($sql);
         $stmt->execute($where_params);
         $timeline = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Konverze na float
+        // Frontend očekává _cumulative pole + kumulativní součty
+        $cum_max_dph = 0.0;
+        $cum_polozky = 0.0;
+        $cum_faktury = 0.0;
         foreach ($timeline as &$row) {
-            $row['max_dph_cumulative'] = (float)$row['max_dph_cumulative'];
-            $row['polozky_sum_cumulative'] = (float)$row['polozky_sum_cumulative'];
-            $row['faktury_sum_cumulative'] = (float)$row['faktury_sum_cumulative'];
+            $cum_max_dph += (float)$row['max_dph'];
+            $cum_polozky += (float)$row['polozky_sum'];
+            $cum_faktury += (float)$row['faktury_sum'];
+            $row['max_dph_cumulative']     = $cum_max_dph;
+            $row['polozky_sum_cumulative'] = $cum_polozky;
+            $row['faktury_sum_cumulative'] = $cum_faktury;
         }
+        unset($row);
 
         http_response_code(200);
-        echo json_encode([
+        echo json_encode(array(
             'status' => 'success',
-            'data' => [
+            'data' => array(
                 'timeline' => $timeline,
                 'year' => $year,
                 'start_date' => $start_date,
                 'end_date' => $end_date
-            ],
+            ),
             'message' => 'Timeline data načtena úspěšně'
-        ]);
+        ));
 
     } catch (Exception $e) {
-        error_log("[OrderV3 Timeline] Error: " . $e->getMessage());
+        error_log('[OrderV3 Timeline] Error: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode([
+        echo json_encode(array(
             'status' => 'error',
             'message' => 'Chyba při načítání timeline dat: ' . $e->getMessage()
-        ]);
+        ));
     }
 }

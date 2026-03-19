@@ -25,7 +25,9 @@ require_once __DIR__ . '/handlers.php';
 require_once __DIR__ . '/orderQueries.php';
 
 // === TABLE CONSTANTS ===
-define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
+if (!defined('TBL_SPISOVKA_ZPRACOVANI_LOG')) {
+    define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
+}
 
 /**
  * 🔐 Helper: Kontrola oprávnění pro Spisovka InBox
