@@ -534,6 +534,24 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
       date: order.dt_dokonceni,
       user: formatUserName(order.dokoncil_jmeno, order.dokoncil_prijmeni, order.dokoncil_titul_pred, order.dokoncil_titul_za),
       label: 'Dokončena'
+    },
+    ZAMITNUTA: {
+      date: order.dt_schvaleni,
+      user: formatUserName(order.schvalovatel_jmeno, order.schvalovatel_prijmeni, order.schvalovatel_titul_pred, order.schvalovatel_titul_za),
+      label: 'Zamítnuta',
+      extra: order.schvaleni_komentar || null
+    },
+    CEKA_SE: {
+      date: order.dt_schvaleni,
+      user: formatUserName(order.schvalovatel_jmeno, order.schvalovatel_prijmeni, order.schvalovatel_titul_pred, order.schvalovatel_titul_za),
+      label: 'Čeká se (odložena)',
+      extra: order.schvaleni_komentar || null
+    },
+    ZRUSENA: {
+      date: order.dt_aktualizace,
+      user: formatUserName(order.aktualizoval_jmeno, order.aktualizoval_prijmeni, order.aktualizoval_titul_pred, order.aktualizoval_titul_za),
+      label: 'Zrušena (stornována)',
+      extra: order.odeslani_storno_duvod || null
     }
   };
   
@@ -594,7 +612,11 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
              statusCode === 'ODESLANA' || statusCode === 'ODESLANA_KE_SCHVALENI' ? 'Odeslal:' :
              statusCode === 'FAKTURACE' ? 'Přidal fakturu:' :
              statusCode === 'VECNA_SPRAVNOST' || statusCode === 'ZKONTROLOVANA' ? 'Potvrdil věcnou správnost:' :
-             statusCode === 'NOVA' ? 'Vytvořil:' : 'Provedl:'}
+             statusCode === 'NOVA' ? 'Vytvořil:' :
+             statusCode === 'ZAMITNUTA' ? 'Zamítl:' :
+             statusCode === 'CEKA_SE' ? 'Odložil:' :
+             statusCode === 'ZRUSENA' ? 'Stornoval:' :
+             'Provedl:'}
           </div>
           <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>
             {info.user}
@@ -606,6 +628,36 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
       {info.action && (
         <div style={{ color: '#fbbf24', fontSize: '0.7rem', fontStyle: 'italic', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '2px solid #fbbf24' }}>
           ℹ️ Na základě předchozího kroku workflow
+        </div>
+      )}
+      
+      {/* ✅ EXTRA KOMENTÁŘ: důvod zamítnutí / odložení / zrušení */}
+      {info.extra && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+            {statusCode === 'ZRUSENA' ? 'Důvod zrušení:' : 'Komentář:'}
+          </div>
+          <div style={{
+            color: '#fcd34d',
+            fontSize: '0.8rem',
+            paddingLeft: '0.5rem',
+            paddingRight: '0.4rem',
+            paddingTop: '0.3rem',
+            paddingBottom: '0.3rem',
+            fontStyle: 'italic',
+            borderLeft: '2px solid #f59e0b',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            maxWidth: '420px',
+            maxHeight: '7em',
+            overflowY: 'auto',
+            lineHeight: '1.5',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#475569 #1e293b'
+          }}>
+            {info.extra}
+          </div>
         </div>
       )}
       
@@ -3693,7 +3745,7 @@ const OrdersTableV3 = ({
               
               {/* Druhý a třetí řádek - datum a čas vytvoření (s tooltipem) */}
               {workflowTooltip ? (
-                <SmartTooltip text={workflowTooltip} preferredPosition="right" icon="none">
+                <SmartTooltip text={workflowTooltip} preferredPosition="right" icon="none" interactive={true}>
                   <div>
                     <div style={{ fontSize: '0.7rem', color: '#9ca3af', cursor: 'help' }}>
                       {formatDateOnly(created)}
@@ -3747,7 +3799,7 @@ const OrdersTableV3 = ({
                     fontWeight: 'normal',
                     color: '#1e293b',
                     marginTop: '4px',
-                    maxWidth: '150px',
+                    paddingRight: '1em',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     display: '-webkit-box',
@@ -3763,7 +3815,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 160,
+        size: 220,
         enableSorting: true,
       },
       {
@@ -3970,7 +4022,7 @@ const OrdersTableV3 = ({
           // Pokud máme tooltip, obal badge do SmartTooltip
           if (tooltipContent) {
             return (
-              <SmartTooltip text={tooltipContent} preferredPosition="right" icon="none">
+              <SmartTooltip text={tooltipContent} preferredPosition="right" icon="none" interactive={true}>
                 {badge}
               </SmartTooltip>
             );
@@ -4056,7 +4108,7 @@ const OrdersTableV3 = ({
           // Pokud máme tooltip, obal badge do SmartTooltip
           if (tooltipContent) {
             return (
-              <SmartTooltip text={tooltipContent} preferredPosition="right" icon="none">
+              <SmartTooltip text={tooltipContent} preferredPosition="right" icon="none" interactive={true}>
                 {badge}
               </SmartTooltip>
             );

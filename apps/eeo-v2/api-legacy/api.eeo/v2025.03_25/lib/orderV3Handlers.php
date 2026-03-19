@@ -1372,6 +1372,8 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.dt_akceptace,
                 o.dt_zverejneni,
                 o.dt_dokonceni,
+                o.schvaleni_komentar,
+                o.odeslani_storno_duvod,
                 o.financovani,
                 o.druh_objednavky_kod,
                 o.max_cena_s_dph,
@@ -1466,6 +1468,13 @@ function handle_order_v3_list($input, $config, $queries) {
                 u10.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
                 u10.titul_za as potvrdil_vecnou_spravnost_titul_za,
                 
+                -- Naposledy aktualizoval (= kdo stornoval při stavu ZRUSENA)
+                u11.id as aktualizoval_uid,
+                u11.jmeno as aktualizoval_jmeno,
+                u11.prijmeni as aktualizoval_prijmeni,
+                u11.titul_pred as aktualizoval_titul_pred,
+                u11.titul_za as aktualizoval_titul_za,
+                
                 -- Počet položek
                 (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as pocet_polozek,
                 
@@ -1517,6 +1526,7 @@ function handle_order_v3_list($input, $config, $queries) {
             LEFT JOIN " . TBL_UZIVATELE . " u8 ON o.dokoncil_id = u8.id
             LEFT JOIN " . TBL_UZIVATELE . " u9 ON o.fakturant_id = u9.id
             LEFT JOIN " . TBL_UZIVATELE . " u10 ON o.potvrdil_vecnou_spravnost_id = u10.id
+            LEFT JOIN " . TBL_UZIVATELE . " u11 ON o.uzivatel_akt_id = u11.id
             WHERE $where_sql
             ORDER BY $order_by_sql
             LIMIT $per_page OFFSET $offset

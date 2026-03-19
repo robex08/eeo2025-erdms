@@ -34,7 +34,7 @@ const TooltipBubble = styled.div`
     inset 0 1px 0 rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  pointer-events: none;
+  pointer-events: ${props => props.$interactive ? 'auto' : 'none'};
   z-index: 999999;
   line-height: 1.6;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
@@ -132,10 +132,12 @@ export const SmartTooltip = ({
   icon = 'info',
   preferredPosition = 'top',
   multiline = false,
-  disabled = false
+  disabled = false,
+  interactive = false
 }) => {
   const childRef = useRef(null);
   const tooltipRef = useRef(null);
+  const hideTimeoutRef = useRef(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isClicked, setIsClicked] = useState(false); // ✅ NOVÝ STATE pro tracking kliknutí
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -150,14 +152,39 @@ export const SmartTooltip = ({
   // Obal pro bezpečné získání refu bez přidávání ref na funkční komponenty
   const childElement = React.Children.only(children);
   const handleMouseEnter = (e) => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
     if (!isClicked) {
       setIsHovered(true);
     }
   };
 
   const handleMouseLeave = () => {
-    setIsHovered(false);
-    setIsClicked(false);
+    if (interactive) {
+      hideTimeoutRef.current = setTimeout(() => {
+        setIsHovered(false);
+        setIsClicked(false);
+      }, 120);
+    } else {
+      setIsHovered(false);
+      setIsClicked(false);
+    }
+  };
+
+  const handleTooltipMouseEnter = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  const handleTooltipMouseLeave = () => {
+    hideTimeoutRef.current = setTimeout(() => {
+      setIsHovered(false);
+      setIsClicked(false);
+    }, 80);
   };
 
   const handleMouseDown = () => {
@@ -353,6 +380,9 @@ export const SmartTooltip = ({
           $measuring={isMeasuring}
           $icon={icon}
           $multiline={multiline}
+          $interactive={interactive}
+          onMouseEnter={interactive ? handleTooltipMouseEnter : undefined}
+          onMouseLeave={interactive ? handleTooltipMouseLeave : undefined}
         >
           {text}
         </TooltipBubble>,
