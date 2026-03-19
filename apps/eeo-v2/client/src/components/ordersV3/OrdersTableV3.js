@@ -135,6 +135,490 @@ const getMySQLDate = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 };
 
+// Funkce pro formátování jména uživatele s titulem (stejná jako v OrderExpandedRowV3)
+const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
+  const parts = [];
+  
+  if (titulPred) parts.push(titulPred);
+  if (jmeno) parts.push(jmeno);
+  if (prijmeni) parts.push(prijmeni);
+  if (titulZa) parts.push(titulZa);
+  
+  return parts.length > 0 ? parts.join(' ') : '---';
+};
+
+// Funkce pro detekci časové části v datetime stringu
+const hasTimePart = (dateString) => {
+  if (!dateString) return false;
+  if (typeof dateString !== 'string') return true;
+  // MySQL: YYYY-MM-DD HH:MM:SS, ISO: YYYY-MM-DDTHH:MM:SS
+  // Kontrola, zda čas není 00:00:00
+  const match = dateString.match(/[T\s](\d{2}):(\d{2}):?(\d{2})?/);
+  if (!match) return false;
+  const hours = match[1];
+  const minutes = match[2];
+  const seconds = match[3] || '00';
+  // Pokud je čas 00:00:00, považujeme to za datum bez času
+  return !(hours === '00' && minutes === '00' && seconds === '00');
+};
+
+// Formátování data s časem nebo jen data podle obsahu
+const formatSmartDate = (dateString) => {
+  if (!dateString) return '---';
+  try {
+    const date = new Date(dateString);
+    if (hasTimePart(dateString)) {
+      // S časem
+      return new Intl.DateTimeFormat('cs-CZ', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    } else {
+      // Jen datum
+      return new Intl.DateTimeFormat('cs-CZ', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).format(date);
+    }
+  } catch {
+    return dateString;
+  }
+};
+
+// Funkce pro formátování workflow tooltipů (stejná logika jako v OrderExpandedRowV3)
+const formatWorkflowTooltip = (order) => {
+  const steps = [];
+  
+  // 1. Vytvořil/Objednatel
+  if (order.dt_vytvoreni) {
+    const userName = (order.objednatel_jmeno || order.objednatel_prijmeni)
+      ? formatUserName(order.objednatel_jmeno, order.objednatel_prijmeni, order.objednatel_titul_pred, order.objednatel_titul_za)
+      : '---';
+    steps.push({
+      label: `1. ${order.objednatel_jmeno ? 'Objednatel' : 'Vytvořil'}:`,
+      user: userName,
+      date: formatSmartDate(order.dt_vytvoreni),
+      color: '#3b82f6'
+    });
+  }
+  
+  // 2. Schválil
+  if (order.dt_schvaleni && (order.schvalovatel_jmeno || order.schvalovatel_prijmeni)) {
+    const userName = formatUserName(order.schvalovatel_jmeno, order.schvalovatel_prijmeni, order.schvalovatel_titul_pred, order.schvalovatel_titul_za);
+    steps.push({
+      label: '2. Schválil:',
+      user: userName,
+      date: formatSmartDate(order.dt_schvaleni),
+      color: '#059669'
+    });
+  }
+  
+  // 3. Odeslal dodavateli
+  if (order.dt_odeslani) {
+    const userName = (order.odesilatel_jmeno || order.odesilatel_prijmeni)
+      ? formatUserName(order.odesilatel_jmeno, order.odesilatel_prijmeni, order.odesilatel_titul_pred, order.odesilatel_titul_za)
+      : '---';
+    steps.push({
+      label: '3. Odeslal dodavateli:',
+      user: userName,
+      date: formatSmartDate(order.dt_odeslani),
+      color: '#0891b2'
+    });
+  }
+  
+  // 4. Dodavatel potvrdil
+  if (order.dt_akceptace) {
+    const userName = (order.dodavatel_potvrdil_jmeno || order.dodavatel_potvrdil_prijmeni)
+      ? formatUserName(order.dodavatel_potvrdil_jmeno, order.dodavatel_potvrdil_prijmeni, order.dodavatel_potvrdil_titul_pred, order.dodavatel_potvrdil_titul_za)
+      : '---';
+    steps.push({
+      label: '4. Dodavatel potvrdil:',
+      user: userName,
+      date: formatSmartDate(order.dt_akceptace),
+      color: '#7c3aed'
+    });
+  }
+  
+  // 5. Zveřejnil
+  if (order.dt_zverejneni) {
+    const userName = (order.zverejnil_jmeno || order.zverejnil_prijmeni)
+      ? formatUserName(order.zverejnil_jmeno, order.zverejnil_prijmeni, order.zverejnil_titul_pred, order.zverejnil_titul_za)
+      : '---';
+    steps.push({
+      label: '5. Zveřejnil:',
+      user: userName,
+      date: formatSmartDate(order.dt_zverejneni),
+      color: '#f59e0b'
+    });
+  }
+  
+  // 6-7. Přidání faktur, ověření věcné správnosti
+  if (order.faktury && order.faktury.length > 0) {
+    const faktury = order.faktury
+      .filter(f => f.dt_vytvoreni)
+      .sort((a, b) => new Date(a.dt_vytvoreni) - new Date(b.dt_vytvoreni));
+      
+    if (faktury.length > 0) {
+      steps.push({
+        label: '6.-7. Přidání faktur, ověření věcné správnosti',
+        faktury: faktury,
+        color: '#ea580c'
+      });
+    }
+  }
+  
+  // 7. Dokončil objednávku
+  if (order.dt_dokonceni) {
+    const userName = (order.dokoncil_jmeno || order.dokoncil_prijmeni)
+      ? formatUserName(order.dokoncil_jmeno, order.dokoncil_prijmeni, order.dokoncil_titul_pred, order.dokoncil_titul_za)
+      : '---';
+    steps.push({
+      label: '7. Dokončil objednávku:',
+      user: userName,
+      date: formatSmartDate(order.dt_dokonceni),
+      color: '#16a34a'
+    });
+  }
+  
+  if (steps.length === 0) return null;
+  
+  // Vytvoř JSX element s barevným formátováním
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '400px' }}>
+      {steps.map((step, index) => {
+        // Speciální rendering pro faktury
+        if (step.faktury) {
+          return (
+            <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <div style={{ color: step.color, fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+                {step.label}
+              </div>
+              {step.faktury.map((faktura, fIndex) => (
+                <div key={fIndex} style={{ paddingLeft: '0.5rem', borderLeft: `2px solid ${step.color}`, marginBottom: '0.5rem' }}>
+                  {/* Řádek faktury */}
+                  <div style={{ color: '#374151', fontWeight: 600, fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                    FA VS: {faktura.fa_cislo_vema || 'N/A'}
+                  </div>
+                  <div style={{ color: 'white', fontSize: '0.75rem', paddingLeft: '0.5rem' }}>
+                    {faktura.vytvoril_uzivatel_jmeno && faktura.vytvoril_uzivatel_prijmeni
+                      ? formatUserName(faktura.vytvoril_uzivatel_jmeno, faktura.vytvoril_uzivatel_prijmeni, faktura.vytvoril_uzivatel_titul_pred, faktura.vytvoril_uzivatel_titul_za)
+                      : 'Neznámý'} - {formatSmartDate(faktura.dt_vytvoreni)}
+                  </div>
+                  
+                  {/* Věcná správnost (pokud existuje) */}
+                  {faktura.dt_potvrzeni_vecne_spravnosti && (
+                    <div style={{ marginTop: '0.25rem', paddingLeft: '0.5rem' }}>
+                      <div style={{ color: '#0891b2', fontWeight: 600, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span>✓</span>
+                        <span>Věcná správnost</span>
+                      </div>
+                      <div style={{ color: 'white', fontSize: '0.75rem', paddingLeft: '0.75rem' }}>
+                        {faktura.potvrdil_vecnou_spravnost_jmeno && faktura.potvrdil_vecnou_spravnost_prijmeni
+                          ? formatUserName(faktura.potvrdil_vecnou_spravnost_jmeno, faktura.potvrdil_vecnou_spravnost_prijmeni, faktura.potvrdil_vecnou_spravnost_titul_pred, faktura.potvrdil_vecnou_spravnost_titul_za)
+                          : '---'} - {formatSmartDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        }
+        
+        // Normální rendering pro běžné kroky
+        return (
+          <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+            <div style={{ color: step.color, fontWeight: 700, fontSize: '0.85rem' }}>
+              {step.label}
+            </div>
+            <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+              {step.user} - {step.date}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * Formátuje tooltip pro stav registru (Zveřejněno / Má být zveřejněno)
+ * @param {Object} order - Objednávka
+ * @param {string} statusCode - Kód stavu ('UVEREJNENA' nebo 'KE_SCHVALENI')
+ * @returns {JSX.Element|null} - JSX element s tooltipem nebo null
+ */
+const formatRegistrTooltip = (order, statusCode) => {
+  if (!statusCode || statusCode === 'EMPTY') return null;
+  
+  const registr = order.registr_smluv;
+  
+  // Pro "Zveřejněno" - zobraz datum, uživatele a registr ID
+  if (statusCode === 'UVEREJNENA' && registr?.dt_zverejneni) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '300px' }}>
+        <div style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '0.25rem' }}>
+          Zveřejněno v registru smluv
+        </div>
+        
+        {/* Datum zveřejnění */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Datum zveřejnění:</div>
+          <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>
+            {formatSmartDate(registr.dt_zverejneni)}
+          </div>
+        </div>
+        
+        {/* Uživatel který zveřejnil */}
+        {(order.zverejnil_jmeno || order.zverejnil_prijmeni) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Zveřejnil:</div>
+            <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>
+              {formatUserName(order.zverejnil_jmeno, order.zverejnil_prijmeni, order.zverejnil_titul_pred, order.zverejnil_titul_za)}
+            </div>
+          </div>
+        )}
+        
+        {/* Registr ID */}
+        {registr.registr_iddt && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>ID v registru:</div>
+            <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem', fontFamily: 'monospace' }}>
+              {registr.registr_iddt}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // Pro "Má být zveřejněno" - zobraz jen info že čeká na zveřejnění
+  if (statusCode === 'KE_SCHVALENI') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '250px' }}>
+        <div style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '0.25rem' }}>
+          Má být zveřejněno
+        </div>
+        
+        <div style={{ color: 'white', fontSize: '0.8rem', fontStyle: 'italic' }}>
+          Objednávka zatím nebyla zveřejněna v registru smluv.
+        </div>
+        
+        {/* Pokud existuje zverejnit flag */}
+        {registr?.zverejnit === 'ANO' && (
+          <div style={{ color: '#fbbf24', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+            ⚠️ Označeno k zveřejnění
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  return null;
+};
+
+/**
+ * Formátuje tooltip pro workflow stav objednávky
+ * @param {Object} order - Objednávka
+ * @param {string} displayStatus - Zobrazovaný text stavu
+ * @param {string} statusCode - Systémový kód stavu
+ * @returns {JSX.Element|null} - JSX element s tooltipem nebo null
+ */
+const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
+  if (!statusCode || statusCode === 'EMPTY') return null;
+  
+  // Mapování stavů na datum a uživatele
+  const statusInfo = {
+    NOVA: {
+      date: order.dt_vytvoreni,
+      user: formatUserName(order.objednatel_jmeno, order.objednatel_prijmeni, order.objednatel_titul_pred, order.objednatel_titul_za),
+      label: 'Vytvořena'
+    },
+    ODESLANA_KE_SCHVALENI: {
+      date: order.dt_odeslani,
+      user: formatUserName(order.odesilatel_jmeno, order.odesilatel_prijmeni, order.odesilatel_titul_pred, order.odesilatel_titul_za),
+      label: 'Odeslána ke schválení',
+      // Fallback: pokud nemá vlastní datum/uživatele, použij z NOVA (objednatel vytvořil)
+      fallbackDate: order.dt_vytvoreni,
+      fallbackUser: formatUserName(order.objednatel_jmeno, order.objednatel_prijmeni, order.objednatel_titul_pred, order.objednatel_titul_za),
+      fallbackAction: 'Vytvořil'
+    },
+    SCHVALENA: {
+      date: order.dt_schvaleni,
+      user: formatUserName(order.schvalovatel_jmeno, order.schvalovatel_prijmeni, order.schvalovatel_titul_pred, order.schvalovatel_titul_za),
+      label: 'Schválena'
+    },
+    ODESLANA: {
+      date: order.dt_odeslani,
+      user: formatUserName(order.odesilatel_jmeno, order.odesilatel_prijmeni, order.odesilatel_titul_pred, order.odesilatel_titul_za),
+      label: 'Odeslána dodavateli'
+    },
+    POTVRZENA: {
+      date: order.dt_akceptace,
+      user: formatUserName(order.dodavatel_potvrdil_jmeno, order.dodavatel_potvrdil_prijmeni, order.dodavatel_potvrdil_titul_pred, order.dodavatel_potvrdil_titul_za),
+      label: 'Potvrzena dodavatelem'
+    },
+    K_UVEREJNENI_DO_REGISTRU: {
+      date: order.dt_zverejneni,
+      user: formatUserName(order.zverejnil_jmeno, order.zverejnil_prijmeni, order.zverejnil_titul_pred, order.zverejnil_titul_za),
+      label: 'K uveřejnění',
+      // Fallback: pokud nemá vlastní datum/uživatele, použij z POTVRZENA (dodavatel potvrdil)
+      fallbackDate: order.dt_akceptace,
+      fallbackUser: formatUserName(order.dodavatel_potvrdil_jmeno, order.dodavatel_potvrdil_prijmeni, order.dodavatel_potvrdil_titul_pred, order.dodavatel_potvrdil_titul_za),
+      fallbackAction: 'Potvrdil'
+    },
+    UVEREJNENA: {
+      date: order.dt_zverejneni,
+      user: formatUserName(order.zverejnil_jmeno, order.zverejnil_prijmeni, order.zverejnil_titul_pred, order.zverejnil_titul_za),
+      label: 'Uveřejněna'
+    },
+    FAKTURACE: {
+      // Fallback: pokud není fakturant_id, použij prvního uživatele z faktur
+      date: order.dt_faktura_pridana || (order.faktury && order.faktury[0] ? order.faktury[0].dt_vytvoreni : null),
+      user: (order.fakturant_jmeno || order.fakturant_prijmeni)
+        ? formatUserName(order.fakturant_jmeno, order.fakturant_prijmeni, order.fakturant_titul_pred, order.fakturant_titul_za)
+        : (order.faktury && order.faktury[0] && order.faktury[0].vytvoril_uzivatel_jmeno)
+          ? formatUserName(order.faktury[0].vytvoril_uzivatel_jmeno, order.faktury[0].vytvoril_uzivatel_prijmeni, order.faktury[0].vytvoril_uzivatel_titul_pred, order.faktury[0].vytvoril_uzivatel_titul_za)
+          : null,
+      label: 'Fakturace',
+      // Fallback: PŘEDCHOZÍ WORKFLOW KROK podle workflow manageru
+      // Pokud bylo zveřejněno → Zveřejnil, jinak → Dodavatel potvrdil
+      fallbackDate: order.dt_zverejneni || order.dt_akceptace,
+      fallbackUser: order.dt_zverejneni 
+        ? formatUserName(order.zverejnil_jmeno, order.zverejnil_prijmeni, order.zverejnil_titul_pred, order.zverejnil_titul_za)
+        : formatUserName(order.dodavatel_potvrdil_jmeno, order.dodavatel_potvrdil_prijmeni, order.dodavatel_potvrdil_titul_pred, order.dodavatel_potvrdil_titul_za),
+      fallbackAction: order.dt_zverejneni ? 'Zveřejnil' : 'Potvrdil'
+    },
+    VECNA_SPRAVNOST: {
+      date: order.dt_potvrzeni_vecne_spravnosti,
+      user: formatUserName(order.potvrdil_vecnou_spravnost_jmeno, order.potvrdil_vecnou_spravnost_prijmeni, order.potvrdil_vecnou_spravnost_titul_pred, order.potvrdil_vecnou_spravnost_titul_za),
+      label: 'Věcná správnost',
+      // Fallback: PŘEDCHOZÍ WORKFLOW KROK = FAKTURACE (kdo přidal fakturu)
+      fallbackDate: order.dt_faktura_pridana || (order.faktury && order.faktury[0] ? order.faktury[0].dt_vytvoreni : null),
+      fallbackUser: (order.fakturant_jmeno || order.fakturant_prijmeni)
+        ? formatUserName(order.fakturant_jmeno, order.fakturant_prijmeni, order.fakturant_titul_pred, order.fakturant_titul_za)
+        : (order.faktury && order.faktury[0] && order.faktury[0].vytvoril_uzivatel_jmeno)
+          ? formatUserName(order.faktury[0].vytvoril_uzivatel_jmeno, order.faktury[0].vytvoril_uzivatel_prijmeni, order.faktury[0].vytvoril_uzivatel_titul_pred, order.faktury[0].vytvoril_uzivatel_titul_za)
+          : null,
+      fallbackAction: 'Přidal fakturu'
+    },
+    ZKONTROLOVANA: {
+      date: order.dt_potvrzeni_vecne_spravnosti,
+      user: formatUserName(order.potvrdil_vecnou_spravnost_jmeno, order.potvrdil_vecnou_spravnost_prijmeni, order.potvrdil_vecnou_spravnost_titul_pred, order.potvrdil_vecnou_spravnost_titul_za),
+      label: 'Zkontrolována',
+      // Fallback: VĚCNÁ SPRÁVNOST z faktury (ne z přidání faktury!)
+      fallbackDate: (() => {
+        // Najdi fakturu s potvrzenou věcnou správností
+        if (order.faktury && order.faktury.length > 0) {
+          const fakturaVS = order.faktury.find(f => f.dt_potvrzeni_vecne_spravnosti);
+          return fakturaVS ? fakturaVS.dt_potvrzeni_vecne_spravnosti : null;
+        }
+        return null;
+      })(),
+      fallbackUser: (() => {
+        // Najdi fakturu s potvrzenou věcnou správností
+        if (order.faktury && order.faktury.length > 0) {
+          const fakturaVS = order.faktury.find(f => f.dt_potvrzeni_vecne_spravnosti);
+          if (fakturaVS && (fakturaVS.potvrdil_vecnou_spravnost_jmeno || fakturaVS.potvrdil_vecnou_spravnost_prijmeni)) {
+            return formatUserName(fakturaVS.potvrdil_vecnou_spravnost_jmeno, fakturaVS.potvrdil_vecnou_spravnost_prijmeni, fakturaVS.potvrdil_vecnou_spravnost_titul_pred, fakturaVS.potvrdil_vecnou_spravnost_titul_za);
+          }
+        }
+        return null;
+      })(),
+      fallbackAction: 'Potvrdil věcnou správnost'
+    },
+    DOKONCENA: {
+      date: order.dt_dokonceni,
+      user: formatUserName(order.dokoncil_jmeno, order.dokoncil_prijmeni, order.dokoncil_titul_pred, order.dokoncil_titul_za),
+      label: 'Dokončena'
+    }
+  };
+  
+  let info = statusInfo[statusCode];
+  
+  // ✅ FALLBACK NA PŘEDCHOZÍ STAV: pokud současný stav nemá ani datum ani uživatele, použij fallback
+  if (info && !info.date && (!info.user || info.user === '---') && (info.fallbackDate || info.fallbackUser)) {
+    info = {
+      ...info,
+      date: info.fallbackDate || info.date,
+      user: info.fallbackUser || info.user,
+      action: info.fallbackAction // Pro lepší popis akce
+    };
+  }
+  
+  // Pokud nemáme info pro tento stav VŮBEC, zobraz jen obecné info
+  if (!info) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '250px' }}>
+        <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '0.25rem' }}>
+          {displayStatus}
+        </div>
+        <div style={{ color: 'white', fontSize: '0.8rem', fontStyle: 'italic' }}>
+          Aktuální stav objednávky
+        </div>
+      </div>
+    );
+  }
+  
+  // ✅ OPRAVENO: i když není datum, zobraz aspoň uživatele pokud existuje
+  // Zobraz detail stavu s datem a/nebo uživatelem
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '280px' }}>
+      <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '0.25rem' }}>
+        {info.label}
+      </div>
+      
+      {/* Datum */}
+      {info.date && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Datum:</div>
+          <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>
+            {formatSmartDate(info.date)}
+          </div>
+        </div>
+      )}
+      
+      {/* Uživatel */}
+      {info.user && info.user !== '---' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+            {/* ✅ Použij custom akci pokud je dostupná (z fallbacku) */}
+            {info.action ? `${info.action}:` :
+             statusCode === 'POTVRZENA' ? 'Potvrdil:' : 
+             statusCode === 'SCHVALENA' ? 'Schválil:' :
+             statusCode === 'DOKONCENA' ? 'Dokončil:' :
+             statusCode === 'UVEREJNENA' || statusCode === 'K_UVEREJNENI_DO_REGISTRU' ? 'Zveřejnil:' :
+             statusCode === 'ODESLANA' || statusCode === 'ODESLANA_KE_SCHVALENI' ? 'Odeslal:' :
+             statusCode === 'FAKTURACE' ? 'Přidal fakturu:' :
+             statusCode === 'VECNA_SPRAVNOST' || statusCode === 'ZKONTROLOVANA' ? 'Potvrdil věcnou správnost:' :
+             statusCode === 'NOVA' ? 'Vytvořil:' : 'Provedl:'}
+          </div>
+          <div style={{ color: 'white', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>
+            {info.user}
+          </div>
+        </div>
+      )}
+      
+      {/* ✅ NOVÁ POZNÁMKA: Zobraz info že je to z předchozího stavu pokud byl použit fallback */}
+      {info.action && (
+        <div style={{ color: '#fbbf24', fontSize: '0.7rem', fontStyle: 'italic', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '2px solid #fbbf24' }}>
+          ℹ️ Na základě předchozího kroku workflow
+        </div>
+      )}
+      
+      {/* Pokud nemáme ani datum ani uživatele, zobraz aspoň info že je to aktuální stav */}
+      {!info.date && (!info.user || info.user === '---') && (
+        <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontStyle: 'italic' }}>
+          Aktuální stav objednávky (bez dalších detailů)
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============================================================================
 // STYLED COMPONENTS
 // ============================================================================
@@ -3200,14 +3684,35 @@ const OrdersTableV3 = ({
           const order = row.original;
           const lastModified = order.dt_objednavky; // datum aktualizace
           const created = order.dt_vytvoreni || order.dt_objednavky;
+          const workflowTooltip = formatWorkflowTooltip(order);
           
           return (
             <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
+              {/* První řádek - datum aktualizace (bez tooltipu) */}
               <div style={{ fontWeight: 'bold' }}>{formatDateOnly(lastModified)}</div>
-              <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{formatDateOnly(created)}</div>
-              <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
-                {created ? new Date(created).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : ''}
-              </div>
+              
+              {/* Druhý a třetí řádek - datum a čas vytvoření (s tooltipem) */}
+              {workflowTooltip ? (
+                <SmartTooltip text={workflowTooltip} preferredPosition="right" icon="none">
+                  <div>
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af', cursor: 'help' }}>
+                      {formatDateOnly(created)}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af', cursor: 'help' }}>
+                      {created ? new Date(created).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </div>
+                  </div>
+                </SmartTooltip>
+              ) : (
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                    {formatDateOnly(created)}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                    {created ? new Date(created).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </div>
+                </div>
+              )}
             </div>
           );
         },
@@ -3236,21 +3741,24 @@ const OrdersTableV3 = ({
                 )}
               </div>
               {order.predmet && (
-                <div style={{
-                  fontSize: '1em',
-                  fontWeight: 'normal',
-                  color: '#1e293b',
-                  marginTop: '4px',
-                  maxWidth: '150px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 1,
-                  WebkitBoxOrient: 'vertical',
-                  lineHeight: '1.2'
-                }}>
-                  {order.predmet}
-                </div>
+                <SmartTooltip text={order.predmet} preferredPosition="right" multiline={true}>
+                  <div style={{
+                    fontSize: '1em',
+                    fontWeight: 'normal',
+                    color: '#1e293b',
+                    marginTop: '4px',
+                    maxWidth: '150px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    lineHeight: '1.2',
+                    cursor: 'help'
+                  }}>
+                    {order.predmet}
+                  </div>
+                </SmartTooltip>
               )}
             </div>
           );
@@ -3298,9 +3806,13 @@ const OrdersTableV3 = ({
         header: 'Objednatel / Garant',
         cell: ({ row }) => {
           const order = row.original;
-          // DB sloupce 1:1 bez konverzí
-          const objednatel = order.objednatel_jmeno || '---';
-          const garant = order.garant_jmeno || '---';
+          // Příjmení Jméno (BEZ titulů)
+          const objednatel = (order.objednatel_prijmeni && order.objednatel_jmeno)
+            ? `${order.objednatel_prijmeni} ${order.objednatel_jmeno}`
+            : (order.objednatel_prijmeni || order.objednatel_jmeno || '---');
+          const garant = (order.garant_prijmeni && order.garant_jmeno)
+            ? `${order.garant_prijmeni} ${order.garant_jmeno}`
+            : (order.garant_prijmeni || order.garant_jmeno || '---');
           
           return (
             <div style={{ lineHeight: '1.3' }}>
@@ -3318,9 +3830,13 @@ const OrdersTableV3 = ({
         header: 'Příkazce / Schvalovatel',
         cell: ({ row }) => {
           const order = row.original;
-          // DB sloupce 1:1 bez konverzí
-          const prikazce = order.prikazce_jmeno || '---';
-          const schvalovatel = order.schvalovatel_jmeno || '---';
+          // Příjmení Jméno (BEZ titulů)
+          const prikazce = (order.prikazce_prijmeni && order.prikazce_jmeno)
+            ? `${order.prikazce_prijmeni} ${order.prikazce_jmeno}`
+            : (order.prikazce_prijmeni || order.prikazce_jmeno || '---');
+          const schvalovatel = (order.schvalovatel_prijmeni && order.schvalovatel_jmeno)
+            ? `${order.schvalovatel_prijmeni} ${order.schvalovatel_jmeno}`
+            : (order.schvalovatel_prijmeni || order.schvalovatel_jmeno || '---');
           
           return (
             <div style={{ lineHeight: '1.3' }}>
@@ -3440,12 +3956,27 @@ const OrdersTableV3 = ({
             CEKA_SE: faHourglassHalf,
           };
           
-          return (
+          // Vytvoř tooltip obsah
+          const tooltipContent = formatWorkflowStateTooltip(order, displayStatus, statusCode);
+          
+          // Badge s ikonou
+          const badge = (
             <StatusBadge $status={statusCode}>
               <FontAwesomeIcon icon={iconMap[statusCode] || faCircleNotch} style={{ fontSize: '12px' }} />
               <span>{displayStatus}</span>
             </StatusBadge>
           );
+          
+          // Pokud máme tooltip, obal badge do SmartTooltip
+          if (tooltipContent) {
+            return (
+              <SmartTooltip text={tooltipContent} preferredPosition="right" icon="none">
+                {badge}
+              </SmartTooltip>
+            );
+          }
+          
+          return badge;
         },
         size: 130,
         enableSorting: true,
@@ -3511,12 +4042,27 @@ const OrdersTableV3 = ({
             return <div style={{ color: '#94a3b8', fontSize: '0.9em' }}>---</div>;
           }
           
-          return (
+          // Vytvoř tooltip obsah
+          const tooltipContent = formatRegistrTooltip(order, statusCode);
+          
+          // Badge s tooltipem (pokud existuje)
+          const badge = (
             <StatusBadge $status={statusCode}>
               <FontAwesomeIcon icon={icon} style={{ fontSize: '12px' }} />
               <span>{stavText}</span>
             </StatusBadge>
           );
+          
+          // Pokud máme tooltip, obal badge do SmartTooltip
+          if (tooltipContent) {
+            return (
+              <SmartTooltip text={tooltipContent} preferredPosition="right" icon="none">
+                {badge}
+              </SmartTooltip>
+            );
+          }
+          
+          return badge;
         },
         sortingFn: (rowA, rowB) => {
           const getRegistrValue = (order) => {

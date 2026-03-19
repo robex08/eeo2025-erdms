@@ -685,15 +685,28 @@ const SectionBadge = styled.span`
 
 const SearchBox = styled.div`
   margin-bottom: 1rem;
-  padding: 0.75rem;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+`;
+
+const SearchInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const SearchInputIcon = styled.div`
+  position: absolute;
+  left: 0.875rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  z-index: 1;
 `;
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 0.65rem 1rem;
+  padding: 0.65rem 2.75rem 0.65rem 2.5rem;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-size: 0.875rem;
@@ -709,6 +722,41 @@ const SearchInput = styled.input`
   &::placeholder {
     color: #94a3b8;
   }
+`;
+
+const SearchClearButton = styled.button`
+  position: absolute;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  z-index: 1;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #fef2f2;
+    color: #dc2626;
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+  }
+`;
+
+const HighlightedText = styled.mark`
+  background: #fef08a;
+  color: #854d0e;
+  padding: 0.1rem 0.2rem;
+  border-radius: 3px;
+  font-weight: 600;
 `;
 
 const PivotHeaderActions = styled.div`
@@ -951,6 +999,26 @@ const EmptyState = styled.div`
   padding: 1.5rem;
   text-align: center;
   color: #94a3b8;
+`;
+
+const SearchEmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  gap: 1rem;
+  color: #94a3b8;
+  
+  svg {
+    font-size: 3rem;
+    opacity: 0.3;
+  }
+  
+  p {
+    font-size: 0.95rem;
+    margin: 0;
+  }
 `;
 
 const TabEmptyStateWrap = styled.div`
@@ -1691,16 +1759,69 @@ export default function StatsReportsPage() {
     });
   }, []);
 
-  // Dynamické fulltext vyhledávání - prohledává všechny hodnoty v objektu
-  const searchInObject = useCallback((obj, query) => {
-    if (!query || !obj) return true;
-    const lowerQuery = query.toLowerCase().trim();
-    if (!lowerQuery) return true;
-    
+  // Odstranění diakritiky pro vyhledávání
+  const removeDiacritics = useCallback((str) => {
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }, []);
+
+  // Vyhledávání pouze ve viditelných sloupcích (nikoliv v ID, technických polích apod.)
+  const searchInVisibleColumns = useCallback((item, query, searchKey) => {
+    if (!query || !item) return true;
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
+    if (!normalizedQuery) return true;
+
+    const matchesText = (val) => {
+      if (val == null || val === '') return false;
+      const normalizedVal = removeDiacritics(String(val).toLowerCase());
+      return normalizedVal.includes(normalizedQuery);
+    };
+
+    // Pro objednávky - vyhledávání ve viditelných sloupcích (přímo z vlastností)
+    if (item.ev_cislo || item.cislo_objednavky || item.predmet) {
+      const visibleValues = [
+        item.ev_cislo,
+        item.cislo_objednavky,
+        item.datum_objednavky,
+        item.datum_schvaleni,
+        item.predmet,
+        item.stav,
+        item.objednatel_jmeno,
+        item.objednatel_prijmeni,
+        item.schvalovatel_jmeno,
+        item.schvalovatel_prijmeni,
+        item.usek_nazev,
+        item.financovani_nazev,
+        item.druh_nazev,
+        item.castka,
+        item.poznamka
+      ];
+      return visibleValues.some(matchesText);
+    }
+
+    // Pro faktury - vyhledávání ve viditelných sloupcích (přímo z vlastností)
+    if (item.cislo_faktury || item.fa_cislo_vema) {
+      const visibleValues = [
+        item.cislo_faktury,
+        item.fa_cislo_vema,
+        item.datum_vystaveni,
+        item.fa_datum_vystaveni,
+        item.datum_doruceni,
+        item.fa_datum_doruceni,
+        item.datum_splatnosti,
+        item.fa_datum_splatnosti,
+        item.stav,
+        item.castka,
+        item.fa_castka,
+        item.cislo_smlouvy
+      ];
+      return visibleValues.some(matchesText);
+    }
+
+    // Fallback - standardní rekurzivní vyhledávání (pro jiné typy)
     const searchValue = (val) => {
       if (val == null) return false;
       if (typeof val === 'string' || typeof val === 'number') {
-        return String(val).toLowerCase().includes(lowerQuery);
+        return matchesText(val);
       }
       if (typeof val === 'object' && !Array.isArray(val)) {
         return Object.values(val).some(searchValue);
@@ -1711,13 +1832,55 @@ export default function StatsReportsPage() {
       return false;
     };
     
-    return Object.values(obj).some(searchValue);
-  }, []);
+    return Object.values(item).some(searchValue);
+  }, [removeDiacritics]);
+
+  // Funkce pro zvýraznění hledaného textu
+  const highlightText = useCallback((text, searchKey) => {
+    const query = searchQueries[searchKey] || '';
+    if (!query || !text) return text;
+    
+    const textStr = String(text);
+    const normalizedText = removeDiacritics(textStr.toLowerCase());
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
+    
+    if (!normalizedQuery || !normalizedText.includes(normalizedQuery)) return text;
+    
+    const parts = [];
+    let lastIndex = 0;
+    let searchIndex = 0;
+    let partKey = 0;
+    
+    while (searchIndex < normalizedText.length) {
+      const index = normalizedText.indexOf(normalizedQuery, searchIndex);
+      if (index === -1) break;
+      
+      // Text před shodou
+      if (index > lastIndex) {
+        parts.push(<span key={`text-${partKey++}`}>{textStr.substring(lastIndex, index)}</span>);
+      }
+      // Zvýrazněný text (originální s diakritikou)
+      parts.push(
+        <HighlightedText key={`hl-${partKey++}`}>
+          {textStr.substring(index, index + normalizedQuery.length)}
+        </HighlightedText>
+      );
+      lastIndex = index + normalizedQuery.length;
+      searchIndex = lastIndex;
+    }
+    
+    // Zbývající text
+    if (lastIndex < textStr.length) {
+      parts.push(<span key={`text-${partKey++}`}>{textStr.substring(lastIndex)}</span>);
+    }
+    
+    return parts.length > 0 ? <>{parts}</> : text;
+  }, [searchQueries, removeDiacritics]);
 
   const getPagedItems = useCallback((items, key) => {
     // Nejdříve aplikovat search filter
     const query = getSearchQuery(key);
-    const filteredItems = query ? items.filter(item => searchInObject(item, query)) : items;
+    const filteredItems = query ? items.filter(item => searchInVisibleColumns(item, query, key)) : items;
     
     const { page, pageSize } = getTablePaging(key);
     const total = filteredItems.length;
@@ -1734,7 +1897,7 @@ export default function StatsReportsPage() {
       originalTotal: items.length,
       isFiltered: query ? true : false
     };
-  }, [getTablePaging, getSearchQuery, searchInObject]);
+  }, [getTablePaging, getSearchQuery, searchInVisibleColumns]);
 
   const renderPagination = useCallback((key, paging) => {
     if (!paging.total || paging.total <= paging.pageSize) return null;
@@ -2682,15 +2845,15 @@ export default function StatsReportsPage() {
     const query = getSearchQuery('spendByFinancingUsek');
     if (!query) return spendByFinancingGroups;
     
-    const lowerQuery = query.toLowerCase().trim();
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
     return spendByFinancingGroups.map(group => {
       // Filtrovat úseky v rámci této skupiny
       const filteredUseky = {};
-      let groupHasMatches = group.label.toLowerCase().includes(lowerQuery);
+      let groupHasMatches = removeDiacritics(group.label.toLowerCase()).includes(normalizedQuery);
       
       Object.entries(group.useky).forEach(([usekCode, usek]) => {
-        const usekMatches = usek.label.toLowerCase().includes(lowerQuery);
-        const filteredOrders = usek.orders.filter(order => searchInObject(order, query));
+        const usekMatches = removeDiacritics(usek.label.toLowerCase()).includes(normalizedQuery);
+        const filteredOrders = usek.orders.filter(order => searchInVisibleColumns(order, query, 'spendByFinancingUsek'));
         
         if (usekMatches || filteredOrders.length > 0) {
           filteredUseky[usekCode] = {
@@ -2715,20 +2878,20 @@ export default function StatsReportsPage() {
         totalAmount
       };
     }).filter(Boolean);
-  }, [spendByFinancingGroups, getSearchQuery, searchInObject, getOrderAmount]);
+  }, [spendByFinancingGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
 
   const filteredSpendByUsekGroups = useMemo(() => {
     const query = getSearchQuery('spendByUsekFinancing');
     if (!query) return spendByUsekGroups;
     
-    const lowerQuery = query.toLowerCase().trim();
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
     return spendByUsekGroups.map(group => {
       const filteredFinancing = {};
-      let groupHasMatches = group.label.toLowerCase().includes(lowerQuery);
+      let groupHasMatches = removeDiacritics(group.label.toLowerCase()).includes(normalizedQuery);
       
       Object.entries(group.financing).forEach(([finCode, fin]) => {
-        const finMatches = fin.label.toLowerCase().includes(lowerQuery);
-        const filteredOrders = fin.orders.filter(order => searchInObject(order, query));
+        const finMatches = removeDiacritics(fin.label.toLowerCase()).includes(normalizedQuery);
+        const filteredOrders = fin.orders.filter(order => searchInVisibleColumns(order, query, 'spendByUsekFinancing'));
         
         if (finMatches || filteredOrders.length > 0) {
           filteredFinancing[finCode] = {
@@ -2753,20 +2916,20 @@ export default function StatsReportsPage() {
         totalAmount
       };
     }).filter(Boolean);
-  }, [spendByUsekGroups, getSearchQuery, searchInObject, getOrderAmount]);
+  }, [spendByUsekGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
 
   const filteredSpendByDruhGroups = useMemo(() => {
     const query = getSearchQuery('spendByDruhFinancing');
     if (!query) return spendByDruhGroups;
     
-    const lowerQuery = query.toLowerCase().trim();
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
     return spendByDruhGroups.map(group => {
       const filteredFinancing = {};
-      let groupHasMatches = group.label.toLowerCase().includes(lowerQuery);
+      let groupHasMatches = removeDiacritics(group.label.toLowerCase()).includes(normalizedQuery);
       
       Object.entries(group.financing).forEach(([finCode, fin]) => {
-        const finMatches = fin.label.toLowerCase().includes(lowerQuery);
-        const filteredOrders = fin.orders.filter(order => searchInObject(order, query));
+        const finMatches = removeDiacritics(fin.label.toLowerCase()).includes(normalizedQuery);
+        const filteredOrders = fin.orders.filter(order => searchInVisibleColumns(order, query, 'spendByDruhFinancing'));
         
         if (finMatches || filteredOrders.length > 0) {
           filteredFinancing[finCode] = {
@@ -2791,16 +2954,16 @@ export default function StatsReportsPage() {
         totalAmount
       };
     }).filter(Boolean);
-  }, [spendByDruhGroups, getSearchQuery, searchInObject, getOrderAmount]);
+  }, [spendByDruhGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
 
   const filteredSpendByLpKodGroups = useMemo(() => {
     const query = getSearchQuery('spendByLpKod');
     if (!query) return spendByLpKodGroups;
     
-    const lowerQuery = query.toLowerCase().trim();
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
     return spendByLpKodGroups.map(group => {
-      const groupMatches = group.label.toLowerCase().includes(lowerQuery);
-      const filteredOrders = group.orders.filter(order => searchInObject(order, query));
+      const groupMatches = removeDiacritics(group.label.toLowerCase()).includes(normalizedQuery);
+      const filteredOrders = group.orders.filter(order => searchInVisibleColumns(order, query, 'spendByLpKod'));
       
       if (!groupMatches && filteredOrders.length === 0) return null;
       
@@ -2811,7 +2974,74 @@ export default function StatsReportsPage() {
         amount: filteredOrders.reduce((sum, o) => sum + getOrderAmount(o), 0)
       };
     }).filter(Boolean);
-  }, [spendByLpKodGroups, getSearchQuery, searchInObject, getOrderAmount]);
+  }, [spendByLpKodGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
+
+  // Auto-expand při vyhledávání ve spend sekcích
+  useEffect(() => {
+    const query = getSearchQuery('spendByFinancingUsek');
+    if (!query) return;
+    
+    const newExpanded = new Set();
+    filteredSpendByFinancingGroups.forEach(group => {
+      if (Object.keys(group.useky).length > 0) {
+        newExpanded.add(group.code);
+        Object.keys(group.useky).forEach(usekCode => {
+          newExpanded.add(`spendDetail_${group.code}_${usekCode}`);
+        });
+      }
+    });
+    setExpandedSpendFinancing(newExpanded);
+    setExpandedSpendUseks(newExpanded);
+  }, [filteredSpendByFinancingGroups, getSearchQuery]);
+
+  useEffect(() => {
+    const query = getSearchQuery('spendByUsekFinancing');
+    if (!query) return;
+    
+    const newExpandedGroups = new Set();
+    const newExpandedSubs = new Set();
+    filteredSpendByUsekGroups.forEach(group => {
+      if (Object.keys(group.financing).length > 0) {
+        newExpandedGroups.add(group.code);
+        Object.keys(group.financing).forEach(finCode => {
+          newExpandedSubs.add(`spendDetail_${group.code}_${finCode}`);
+        });
+      }
+    });
+    setExpandedSpendUsekF(newExpandedGroups);
+    setExpandedSpendUsekFSub(newExpandedSubs);
+  }, [filteredSpendByUsekGroups, getSearchQuery]);
+
+  useEffect(() => {
+    const query = getSearchQuery('spendByDruhFinancing');
+    if (!query) return;
+    
+    const newExpandedGroups = new Set();
+    const newExpandedSubs = new Set();
+    filteredSpendByDruhGroups.forEach(group => {
+      if (Object.keys(group.financing).length > 0) {
+        newExpandedGroups.add(group.code);
+        Object.keys(group.financing).forEach(finCode => {
+          newExpandedSubs.add(`spendDetail_${group.code}_${finCode}`);
+        });
+      }
+    });
+    setExpandedSpendDruh(newExpandedGroups);
+    setExpandedSpendDruhSub(newExpandedSubs);
+  }, [filteredSpendByDruhGroups, getSearchQuery]);
+
+  useEffect(() => {
+    const query = getSearchQuery('spendByLpKod');
+    if (!query) return;
+    
+    const newExpanded = new Set();
+    filteredSpendByLpKodGroups.forEach(group => {
+      if (group.orders.length > 0) {
+        newExpanded.add(group.code);
+      }
+    });
+    setExpandedSpendLp(newExpanded);
+  }, [filteredSpendByLpKodGroups, getSearchQuery]);
 
   const pagedOrdersWithoutInvoice = useMemo(
     () => getPagedItems(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice'),
@@ -3827,11 +4057,15 @@ export default function StatsReportsPage() {
     }
   }, [token, username, showToast]);
 
-  const renderOrderLink = (order) => (
-    <LinkButton onClick={() => navigate(`/order-form-25?edit=${order.id}`, { state: { returnTo: '/stats-reports' } })}>
-      {order.ev_cislo || order.cislo_objednavky || order.id}
-    </LinkButton>
-  );
+  const renderOrderLink = useCallback((order, searchKey = null) => {
+    const orderNumber = order.ev_cislo || order.cislo_objednavky || order.id;
+    const content = searchKey ? highlightText(String(orderNumber), searchKey) : orderNumber;
+    return (
+      <LinkButton onClick={() => navigate(`/order-form-25?edit=${order.id}`, { state: { returnTo: '/stats-reports' } })}>
+        {content}
+      </LinkButton>
+    );
+  }, [navigate, highlightText]);
 
   // Lookup mapy pro pivot linky — indexujeme dle čísla (ev_cislo / cislo_faktury)
   const ordersByEvCislo = useMemo(() => {
@@ -3851,21 +4085,25 @@ export default function StatsReportsPage() {
     return m;
   }, [filteredInvoices]);
 
-  const renderInvoiceLink = (invoice) => (
-    <LinkButton
-      onClick={() => {
-        navigate('/invoice-evidence', {
-          state: {
-            editInvoiceId: invoice.id,
-            orderIdForLoad: invoice.objednavka_id || null,
-            returnTo: '/stats-reports'
-          }
-        });
-      }}
-    >
-      {invoice.cislo_faktury || invoice.id}
-    </LinkButton>
-  );
+  const renderInvoiceLink = useCallback((invoice, searchKey = null) => {
+    const invoiceNumber = invoice.cislo_faktury || invoice.id;
+    const content = searchKey ? highlightText(String(invoiceNumber), searchKey) : invoiceNumber;
+    return (
+      <LinkButton
+        onClick={() => {
+          navigate('/invoice-evidence', {
+            state: {
+              editInvoiceId: invoice.id,
+              orderIdForLoad: invoice.objednavka_id || null,
+              returnTo: '/stats-reports'
+            }
+          });
+        }}
+      >
+        {content}
+      </LinkButton>
+    );
+  }, [navigate, highlightText]);
 
   // Renderuje štítek buňky v pivot tabulce — pro čísla obj./faktur přidá klikací link
   const renderPivotCellLabel = (node) => {
@@ -4191,61 +4429,83 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="danger">{controlSections.ordersOverLimit.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('ordersOverLimit')}
-                      onChange={(e) => setSearchQuery('ordersOverLimit', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('ordersOverLimit')}
+                        onChange={(e) => setSearchQuery('ordersOverLimit', e.target.value)}
+                      />
+                      {getSearchQuery('ordersOverLimit') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('ordersOverLimit', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedOrdersOverLimit.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedOrdersOverLimit.total} z {pagedOrdersOverLimit.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Objednávka</Th>
-                          <Th>Dt. obj.</Th>
-                          <Th>Předmět</Th>
-                          <ThR>Limit</ThR>
-                          <ThR>Faktury</ThR>
-                          <Th>Objednatel</Th>
-                          <Th>Schvalovatel</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <Th>Poznámka</Th>
-                          <Th>NŘK</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedOrdersOverLimit.items.map(order => {
-                          const rowKey = `order_over_limit_${order.id}`;
-                          const invoiceSum = (invoicesByOrderId[String(order.id)] || []).reduce((sum, inv) => sum + getInvoiceAmount(inv), 0);
-                          return (
-                            <Tr key={order.id}>
-                              <Td>{renderOrderLink(order)}</Td>
-                              <Td>{formatDateCz(getOrderDate(order))}</Td>
-                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
-                              <TdR>{fmtCurrency(getOrderLimit(order))}</TdR>
-                              <TdR>{fmtCurrency(invoiceSum)}</TdR>
-                              <Td>{renderOrdererStack(order)}</Td>
-                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                              <Td>{getOrdererUsekLabel(order)}</Td>
-                              <Td>{getOrderFinancingLabel(order)}</Td>
-                              <Td>{getOrderTypeLabel(order)}</Td>
-                              <Td>{renderNoteCell(rowKey)}</Td>
-                              <Td>{renderCheckCell(rowKey)}</Td>
-                            </Tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('ordersOverLimit', pagedOrdersOverLimit)}
+                  {pagedOrdersOverLimit.isFiltered && pagedOrdersOverLimit.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Objednávka</Th>
+                              <Th>Dt. obj.</Th>
+                              <Th>Předmět</Th>
+                              <ThR>Limit</ThR>
+                              <ThR>Faktury</ThR>
+                              <Th>Objednatel</Th>
+                              <Th>Schvalovatel</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <Th>Poznámka</Th>
+                              <Th>NŘK</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOrdersOverLimit.items.map(order => {
+                              const rowKey = `order_over_limit_${order.id}`;
+                              const invoiceSum = (invoicesByOrderId[String(order.id)] || []).reduce((sum, inv) => sum + getInvoiceAmount(inv), 0);
+                              return (
+                                <Tr key={order.id}>
+                                  <Td>{renderOrderLink(order)}</Td>
+                                  <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersOverLimit')}</Td>
+                                  <SubjectTd>{highlightText(getOrderSubject(order), 'ordersOverLimit')}</SubjectTd>
+                                  <TdR>{highlightText(fmtCurrency(getOrderLimit(order)), 'ordersOverLimit')}</TdR>
+                                  <TdR>{highlightText(fmtCurrency(invoiceSum), 'ordersOverLimit')}</TdR>
+                                  <Td>{renderOrdererStack(order)}</Td>
+                                  <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                  <Td>{highlightText(getOrdererUsekLabel(order), 'ordersOverLimit')}</Td>
+                                  <Td>{highlightText(getOrderFinancingLabel(order), 'ordersOverLimit')}</Td>
+                                  <Td>{highlightText(getOrderTypeLabel(order), 'ordersOverLimit')}</Td>
+                                  <Td>{renderNoteCell(rowKey)}</Td>
+                                  <Td>{renderCheckCell(rowKey)}</Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('ordersOverLimit', pagedOrdersOverLimit)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -4256,56 +4516,78 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="warn">{controlSections.ordersAfterInvoice.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('ordersAfterInvoice')}
-                      onChange={(e) => setSearchQuery('ordersAfterInvoice', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('ordersAfterInvoice')}
+                        onChange={(e) => setSearchQuery('ordersAfterInvoice', e.target.value)}
+                      />
+                      {getSearchQuery('ordersAfterInvoice') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('ordersAfterInvoice', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedOrdersAfterInvoice.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedOrdersAfterInvoice.total} z {pagedOrdersAfterInvoice.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Objednávka</Th>
-                          <Th>Fa VS</Th>
-                          <Th>Fa doručena</Th>
-                          <Th>Objednatel</Th>
-                          <Th>Schvalovatel</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <Th>Poznámka</Th>
-                          <Th>NŘK</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedOrdersAfterInvoice.items.map(({ order, invoice }) => {
-                          const rowKey = `order_after_invoice_${order.id}_${invoice.id}`;
-                          return (
-                            <Tr key={rowKey}>
-                              <Td>{renderOrderLink(order)}</Td>
-                              <Td>{renderInvoiceLink(invoice)}</Td>
-                              <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
-                              <Td>{renderOrdererStack(order)}</Td>
-                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                              <Td>{getOrdererUsekLabel(order)}</Td>
-                              <Td>{getOrderFinancingLabel(order)}</Td>
-                              <Td>{getOrderTypeLabel(order)}</Td>
-                              <Td>{renderNoteCell(rowKey)}</Td>
-                              <Td>{renderCheckCell(rowKey)}</Td>
-                            </Tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('ordersAfterInvoice', pagedOrdersAfterInvoice)}
+                  {pagedOrdersAfterInvoice.isFiltered && pagedOrdersAfterInvoice.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Objednávka</Th>
+                              <Th>Fa VS</Th>
+                              <Th>Fa doručena</Th>
+                              <Th>Objednatel</Th>
+                              <Th>Schvalovatel</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <Th>Poznámka</Th>
+                              <Th>NŘK</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOrdersAfterInvoice.items.map(({ order, invoice }) => {
+                              const rowKey = `order_after_invoice_${order.id}_${invoice.id}`;
+                              return (
+                                <Tr key={rowKey}>
+                                  <Td>{renderOrderLink(order)}</Td>
+                                  <Td>{renderInvoiceLink(invoice)}</Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'ordersAfterInvoice')}</Td>
+                                  <Td>{renderOrdererStack(order)}</Td>
+                                  <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                  <Td>{highlightText(getOrdererUsekLabel(order), 'ordersAfterInvoice')}</Td>
+                                  <Td>{highlightText(getOrderFinancingLabel(order), 'ordersAfterInvoice')}</Td>
+                                  <Td>{highlightText(getOrderTypeLabel(order), 'ordersAfterInvoice')}</Td>
+                                  <Td>{renderNoteCell(rowKey)}</Td>
+                                  <Td>{renderCheckCell(rowKey)}</Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('ordersAfterInvoice', pagedOrdersAfterInvoice)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -4316,56 +4598,78 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="warn">{controlSections.ordersInvoicesWithoutAttachments.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('ordersInvoicesWithoutAttachments')}
-                      onChange={(e) => setSearchQuery('ordersInvoicesWithoutAttachments', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('ordersInvoicesWithoutAttachments')}
+                        onChange={(e) => setSearchQuery('ordersInvoicesWithoutAttachments', e.target.value)}
+                      />
+                      {getSearchQuery('ordersInvoicesWithoutAttachments') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('ordersInvoicesWithoutAttachments', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedOrdersInvoicesWithoutAttachments.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedOrdersInvoicesWithoutAttachments.total} z {pagedOrdersInvoicesWithoutAttachments.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Objednávka</Th>
-                          <Th>Dt. obj.</Th>
-                          <Th>Předmět</Th>
-                          <Th>Objednatel</Th>
-                          <Th>Schvalovatel</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <Th>Poznámka</Th>
-                          <Th>NŘK</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedOrdersInvoicesWithoutAttachments.items.map(order => {
-                          const rowKey = `order_missing_invoice_attachment_${order.id}`;
-                          return (
-                            <Tr key={order.id}>
-                              <Td>{renderOrderLink(order)}</Td>
-                              <Td>{formatDateCz(getOrderDate(order))}</Td>
-                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
-                              <Td>{renderOrdererStack(order)}</Td>
-                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                              <Td>{getOrdererUsekLabel(order)}</Td>
-                              <Td>{getOrderFinancingLabel(order)}</Td>
-                              <Td>{getOrderTypeLabel(order)}</Td>
-                              <Td>{renderNoteCell(rowKey)}</Td>
-                              <Td>{renderCheckCell(rowKey)}</Td>
-                            </Tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('ordersInvoicesWithoutAttachments', pagedOrdersInvoicesWithoutAttachments)}
+                  {pagedOrdersInvoicesWithoutAttachments.isFiltered && pagedOrdersInvoicesWithoutAttachments.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Objednávka</Th>
+                              <Th>Dt. obj.</Th>
+                              <Th>Předmět</Th>
+                              <Th>Objednatel</Th>
+                              <Th>Schvalovatel</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <Th>Poznámka</Th>
+                              <Th>NŘK</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOrdersInvoicesWithoutAttachments.items.map(order => {
+                              const rowKey = `order_missing_invoice_attachment_${order.id}`;
+                              return (
+                                <Tr key={order.id}>
+                                  <Td>{renderOrderLink(order, 'ordersInvoicesWithoutAttachments')}</Td>
+                                  <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersInvoicesWithoutAttachments')}</Td>
+                                  <SubjectTd>{highlightText(getOrderSubject(order), 'ordersInvoicesWithoutAttachments')}</SubjectTd>
+                                  <Td>{renderOrdererStack(order)}</Td>
+                                  <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                  <Td>{highlightText(getOrdererUsekLabel(order), 'ordersInvoicesWithoutAttachments')}</Td>
+                                  <Td>{highlightText(getOrderFinancingLabel(order), 'ordersInvoicesWithoutAttachments')}</Td>
+                                  <Td>{highlightText(getOrderTypeLabel(order), 'ordersInvoicesWithoutAttachments')}</Td>
+                                  <Td>{renderNoteCell(rowKey)}</Td>
+                                  <Td>{renderCheckCell(rowKey)}</Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('ordersInvoicesWithoutAttachments', pagedOrdersInvoicesWithoutAttachments)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -4376,57 +4680,79 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="warn">{controlSections.invoicesWithoutAttachments.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('invoicesWithoutAttachments')}
-                      onChange={(e) => setSearchQuery('invoicesWithoutAttachments', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('invoicesWithoutAttachments')}
+                        onChange={(e) => setSearchQuery('invoicesWithoutAttachments', e.target.value)}
+                      />
+                      {getSearchQuery('invoicesWithoutAttachments') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('invoicesWithoutAttachments', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedInvoicesWithoutAttachments.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedInvoicesWithoutAttachments.total} z {pagedInvoicesWithoutAttachments.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Fa VS</Th>
-                          <Th>Doručena</Th>
-                          <Th>Objednávka/Smlouva</Th>
-                          <ThR>Částka</ThR>
-                          <Th>Příkazce</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <Th>Poznámka</Th>
-                          <Th>NŘK</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedInvoicesWithoutAttachments.items.map(invoice => {
-                          const order = ordersById.get(String(invoice.objednavka_id)) || null;
-                          const rowKey = `invoice_no_attachment_${invoice.id}`;
-                          return (
-                            <Tr key={invoice.id}>
-                              <Td>{renderInvoiceLink(invoice)}</Td>
-                              <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
-                              <Td>{order ? renderOrderLink(order) : invoice.cislo_smlouvy || invoice.smlouva_id || '-'}</Td>
-                              <TdR>{fmtCurrency(getInvoiceAmount(invoice))}</TdR>
-                              <Td>{order ? getApproverName(order) : '-'}</Td>
-                              <Td>{order ? getOrdererUsekLabel(order) : '-'}</Td>
-                              <Td>{order ? getOrderFinancingLabel(order) : '-'}</Td>
-                              <Td>{order ? getOrderTypeLabel(order) : '-'}</Td>
-                              <Td>{renderNoteCell(rowKey)}</Td>
-                              <Td>{renderCheckCell(rowKey)}</Td>
-                            </Tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('invoicesWithoutAttachments', pagedInvoicesWithoutAttachments)}
+                  {pagedInvoicesWithoutAttachments.isFiltered && pagedInvoicesWithoutAttachments.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Fa VS</Th>
+                              <Th>Doručena</Th>
+                              <Th>Objednávka/Smlouva</Th>
+                              <ThR>Částka</ThR>
+                              <Th>Příkazce</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <Th>Poznámka</Th>
+                              <Th>NŘK</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedInvoicesWithoutAttachments.items.map(invoice => {
+                              const order = ordersById.get(String(invoice.objednavka_id)) || null;
+                              const rowKey = `invoice_no_attachment_${invoice.id}`;
+                              return (
+                                <Tr key={invoice.id}>
+                                  <Td>{renderInvoiceLink(invoice, 'invoicesWithoutAttachments')}</Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'invoicesWithoutAttachments')}</Td>
+                                  <Td>{order ? renderOrderLink(order, 'invoicesWithoutAttachments') : highlightText(invoice.cislo_smlouvy || invoice.smlouva_id || '-', 'invoicesWithoutAttachments')}</Td>
+                                  <TdR>{highlightText(fmtCurrency(getInvoiceAmount(invoice)), 'invoicesWithoutAttachments')}</TdR>
+                                  <Td>{order ? highlightText(getApproverName(order), 'invoicesWithoutAttachments') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrdererUsekLabel(order), 'invoicesWithoutAttachments') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrderFinancingLabel(order), 'invoicesWithoutAttachments') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrderTypeLabel(order), 'invoicesWithoutAttachments') : '-'}</Td>
+                                  <Td>{renderNoteCell(rowKey)}</Td>
+                                  <Td>{renderCheckCell(rowKey)}</Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('invoicesWithoutAttachments', pagedInvoicesWithoutAttachments)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -4437,59 +4763,81 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="danger">{controlSections.overdueInvoices.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('overdueInvoices')}
-                      onChange={(e) => setSearchQuery('overdueInvoices', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('overdueInvoices')}
+                        onChange={(e) => setSearchQuery('overdueInvoices', e.target.value)}
+                      />
+                      {getSearchQuery('overdueInvoices') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('overdueInvoices', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedOverdueInvoices.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedOverdueInvoices.total} z {pagedOverdueInvoices.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Fa VS</Th>
-                          <Th>Doručena</Th>
-                          <Th>Stav</Th>
-                          <ThR>Částka</ThR>
-                          <Th>Splatnost</Th>
-                          <Th>Objednávka/Smlouva</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <Th>Poznámka</Th>
-                          <Th>NŘK</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedOverdueInvoices.items.map(invoice => {
-                          const order = ordersById.get(String(invoice.objednavka_id)) || null;
-                          const rowKey = `invoice_overdue_${invoice.id}`;
-                          return (
-                            <Tr key={invoice.id}>
-                              <Td>{renderInvoiceLink(invoice)}</Td>
-                              <Td>{formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni)}</Td>
-                              <Td>{getInvoiceStatusLabel(invoice)}</Td>
-                              <TdR>{fmtCurrency(getInvoiceAmount(invoice))}</TdR>
-                              <Td>{formatDateCz(invoice.datum_splatnosti)}</Td>
-                              <Td>{order ? renderOrderLink(order) : invoice.cislo_smlouvy || invoice.smlouva_id || '-'}</Td>
-                              <Td>{order ? getOrdererUsekLabel(order) : '-'}</Td>
-                              <Td>{order ? getOrderFinancingLabel(order) : '-'}</Td>
-                              <Td>{order ? getOrderTypeLabel(order) : '-'}</Td>
-                              <Td>{renderNoteCell(rowKey)}</Td>
-                              <Td>{renderCheckCell(rowKey)}</Td>
-                            </Tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('overdueInvoices', pagedOverdueInvoices)}
+                  {pagedOverdueInvoices.isFiltered && pagedOverdueInvoices.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Fa VS</Th>
+                              <Th>Doručena</Th>
+                              <Th>Stav</Th>
+                              <ThR>Částka</ThR>
+                              <Th>Splatnost</Th>
+                              <Th>Objednávka/Smlouva</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <Th>Poznámka</Th>
+                              <Th>NŘK</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOverdueInvoices.items.map(invoice => {
+                              const order = ordersById.get(String(invoice.objednavka_id)) || null;
+                              const rowKey = `invoice_overdue_${invoice.id}`;
+                              return (
+                                <Tr key={invoice.id}>
+                                  <Td>{renderInvoiceLink(invoice, 'overdueInvoices')}</Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'overdueInvoices')}</Td>
+                                  <Td>{highlightText(getInvoiceStatusLabel(invoice), 'overdueInvoices')}</Td>
+                                  <TdR>{highlightText(fmtCurrency(getInvoiceAmount(invoice)), 'overdueInvoices')}</TdR>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_splatnosti), 'overdueInvoices')}</Td>
+                                  <Td>{order ? renderOrderLink(order, 'overdueInvoices') : highlightText(invoice.cislo_smlouvy || invoice.smlouva_id || '-', 'overdueInvoices')}</Td>
+                                  <Td>{order ? highlightText(getOrdererUsekLabel(order), 'overdueInvoices') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrderFinancingLabel(order), 'overdueInvoices') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrderTypeLabel(order), 'overdueInvoices') : '-'}</Td>
+                                  <Td>{renderNoteCell(rowKey)}</Td>
+                                  <Td>{renderCheckCell(rowKey)}</Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('overdueInvoices', pagedOverdueInvoices)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -4500,53 +4848,75 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="danger">{controlSections.cancelledOrders.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('cancelledOrders')}
-                      onChange={(e) => setSearchQuery('cancelledOrders', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('cancelledOrders')}
+                        onChange={(e) => setSearchQuery('cancelledOrders', e.target.value)}
+                      />
+                      {getSearchQuery('cancelledOrders') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('cancelledOrders', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedCancelledOrders.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedCancelledOrders.total} z {pagedCancelledOrders.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Objednávka</Th>
-                          <Th>Dt. obj.</Th>
-                          <Th>Předmět</Th>
-                          <Th>Stav</Th>
-                          <Th>Objednatel</Th>
-                          <Th>Schvalovatel</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <Th>Poznámka</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedCancelledOrders.items.map(order => (
-                          <Tr key={order.id}>
-                            <Td>{renderOrderLink(order)}</Td>
-                            <Td>{formatDateCz(getOrderDate(order))}</Td>
-                            <SubjectTd>{getOrderSubject(order)}</SubjectTd>
-                            <Td>{getOrderStatusLabel(order)}</Td>
-                            <Td>{renderOrdererStack(order)}</Td>
-                            <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                            <Td>{getOrdererUsekLabel(order)}</Td>
-                            <Td>{getOrderFinancingLabel(order)}</Td>
-                            <Td>{getOrderTypeLabel(order)}</Td>
-                            <Td>{renderNoteCell(`order_cancelled_${order.id}`)}</Td>
-                          </Tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('cancelledOrders', pagedCancelledOrders)}
+                  {pagedCancelledOrders.isFiltered && pagedCancelledOrders.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Objednávka</Th>
+                              <Th>Dt. obj.</Th>
+                              <Th>Předmět</Th>
+                              <Th>Stav</Th>
+                              <Th>Objednatel</Th>
+                              <Th>Schvalovatel</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <Th>Poznámka</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedCancelledOrders.items.map(order => (
+                              <Tr key={order.id}>
+                                <Td>{renderOrderLink(order)}</Td>
+                                <Td>{highlightText(formatDateCz(getOrderDate(order)), 'cancelledOrders')}</Td>
+                                <SubjectTd>{highlightText(getOrderSubject(order), 'cancelledOrders')}</SubjectTd>
+                                <Td>{highlightText(getOrderStatusLabel(order), 'cancelledOrders')}</Td>
+                                <Td>{renderOrdererStack(order)}</Td>
+                                <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                <Td>{highlightText(getOrdererUsekLabel(order), 'cancelledOrders')}</Td>
+                                <Td>{highlightText(getOrderFinancingLabel(order), 'cancelledOrders')}</Td>
+                                <Td>{highlightText(getOrderTypeLabel(order), 'cancelledOrders')}</Td>
+                                <Td>{renderNoteCell(`order_cancelled_${order.id}`)}</Td>
+                              </Tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('cancelledOrders', pagedCancelledOrders)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
               </>
@@ -4561,12 +4931,25 @@ export default function StatsReportsPage() {
                       <SectionBadge $tone="warn">{filteredSpendByFinancingGroups.length} typů</SectionBadge>
                     </SectionHeader>
                     <SearchBox>
-                      <SearchInput
-                        type="text"
-                        placeholder="🔍 Fulltext vyhledávání (v názvech financování, úseků, detailech objednávek)..."
-                        value={getSearchQuery('spendByFinancingUsek')}
-                        onChange={(e) => setSearchQuery('spendByFinancingUsek', e.target.value)}
-                      />
+                      <SearchInputWrapper>
+                        <SearchInputIcon>
+                          <FontAwesomeIcon icon={faSearch} />
+                        </SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (v názvech financování, úseků, detailech objednávek)..."
+                          value={getSearchQuery('spendByFinancingUsek')}
+                          onChange={(e) => setSearchQuery('spendByFinancingUsek', e.target.value)}
+                        />
+                        {getSearchQuery('spendByFinancingUsek') && (
+                          <SearchClearButton
+                            onClick={() => setSearchQuery('spendByFinancingUsek', '')}
+                            title="Vymazat vyhledávání"
+                          >
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
                     </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {filteredSpendByFinancingGroups.length === 0 ? (
@@ -4594,7 +4977,7 @@ export default function StatsReportsPage() {
                               style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: finOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                             >
                               <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{finOpen ? '−' : '+'}</span>
-                              <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                              <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByFinancingUsek')}</span>
                               <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                               <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                             </div>
@@ -4627,7 +5010,7 @@ export default function StatsReportsPage() {
                                             <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>
                                               {usekOpen ? '−' : '+'}
                                             </Td>
-                                            <Td>{usek.label}</Td>
+                                            <Td>{highlightText(usek.label, 'spendByFinancingUsek')}</Td>
                                             <TdC>{usek.count}</TdC>
                                             <TdR>{fmtCurrency(usek.amount)}</TdR>
                                           </Tr>
@@ -4652,15 +5035,15 @@ export default function StatsReportsPage() {
                                                     <tbody>
                                                       {pagedDetail.items.map(order => (
                                                         <Tr key={order.id}>
-                                                          <Td>{renderOrderLink(order)}</Td>
-                                                          <Td>{formatDateCz(getOrderDate(order))}</Td>
-                                                          <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                                          <Td>{renderOrderLink(order, 'spendByFinancingUsek')}</Td>
+                                                          <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendByFinancingUsek')}</Td>
+                                                          <SubjectTd>{highlightText(getOrderSubject(order), 'spendByFinancingUsek')}</SubjectTd>
                                                           <Td>{renderOrdererStack(order)}</Td>
                                                           <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                                          <Td>{getOrderStatusLabel(order)}</Td>
-                                                          <Td>{getOrderFinancingLabel(order)}</Td>
-                                                          <Td>{getOrderTypeLabel(order)}</Td>
-                                                          <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                                          <Td>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsek')}</Td>
+                                                          <Td>{highlightText(getOrderFinancingLabel(order), 'spendByFinancingUsek')}</Td>
+                                                          <Td>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsek')}</Td>
+                                                          <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsek')}</TdR>
                                                         </Tr>
                                                       ))}
                                                     </tbody>
@@ -4694,12 +5077,25 @@ export default function StatsReportsPage() {
                       <SectionBadge $tone="warn">{filteredSpendByUsekGroups.length} úseků</SectionBadge>
                     </SectionHeader>
                     <SearchBox>
-                      <SearchInput
-                        type="text"
-                        placeholder="🔍 Fulltext vyhledávání (v názvech úseků, financování, detailech objednávek)..."
-                        value={getSearchQuery('spendByUsekFinancing')}
-                        onChange={(e) => setSearchQuery('spendByUsekFinancing', e.target.value)}
-                      />
+                      <SearchInputWrapper>
+                        <SearchInputIcon>
+                          <FontAwesomeIcon icon={faSearch} />
+                        </SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (v názvech úseků, financování, detailech objednávek)..."
+                          value={getSearchQuery('spendByUsekFinancing')}
+                          onChange={(e) => setSearchQuery('spendByUsekFinancing', e.target.value)}
+                        />
+                        {getSearchQuery('spendByUsekFinancing') && (
+                          <SearchClearButton
+                            onClick={() => setSearchQuery('spendByUsekFinancing', '')}
+                            title="Vymazat vyhledávání"
+                          >
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
                     </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {filteredSpendByUsekGroups.length === 0 ? (
@@ -4722,7 +5118,7 @@ export default function StatsReportsPage() {
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f0fdf4' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '700', color: '#16a34a', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
-                                  <span style={{ fontWeight: '700', color: '#14532d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                                  <span style={{ fontWeight: '700', color: '#14532d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByUsekFinancing')}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                 </div>
@@ -4749,7 +5145,7 @@ export default function StatsReportsPage() {
                                                 style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
                                               >
                                                 <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
-                                                <Td>{fin.label}</Td>
+                                                <Td>{highlightText(fin.label, 'spendByUsekFinancing')}</Td>
                                                 <TdC>{fin.count}</TdC>
                                                 <TdR>{fmtCurrency(fin.amount)}</TdR>
                                               </Tr>
@@ -4774,15 +5170,15 @@ export default function StatsReportsPage() {
                                                         <tbody>
                                                           {pagedDetail.items.map(order => (
                                                             <Tr key={order.id}>
-                                                              <Td>{renderOrderLink(order)}</Td>
-                                                              <Td>{formatDateCz(getOrderDate(order))}</Td>
-                                                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                                              <Td>{renderOrderLink(order, 'spendByUsekFinancing')}</Td>
+                                                              <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendByUsekFinancing')}</Td>
+                                                              <SubjectTd>{highlightText(getOrderSubject(order), 'spendByUsekFinancing')}</SubjectTd>
                                                               <Td>{renderOrdererStack(order)}</Td>
                                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                                              <Td>{getOrderStatusLabel(order)}</Td>
-                                                              <Td>{getOrderFinancingLabel(order)}</Td>
-                                                              <Td>{getOrderTypeLabel(order)}</Td>
-                                                              <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                                              <Td>{highlightText(getOrderStatusLabel(order), 'spendByUsekFinancing')}</Td>
+                                                              <Td>{highlightText(getOrderFinancingLabel(order), 'spendByUsekFinancing')}</Td>
+                                                              <Td>{highlightText(getOrderTypeLabel(order), 'spendByUsekFinancing')}</Td>
+                                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByUsekFinancing')}</TdR>
                                                             </Tr>
                                                           ))}
                                                         </tbody>
@@ -4816,12 +5212,25 @@ export default function StatsReportsPage() {
                       <SectionBadge $tone="warn">{filteredSpendByDruhGroups.length} druhů</SectionBadge>
                     </SectionHeader>
                     <SearchBox>
-                      <SearchInput
-                        type="text"
-                        placeholder="🔍 Fulltext vyhledávání (v názvech druhů, financování, detailech objednávek)..."
-                        value={getSearchQuery('spendByDruhFinancing')}
-                        onChange={(e) => setSearchQuery('spendByDruhFinancing', e.target.value)}
-                      />
+                      <SearchInputWrapper>
+                        <SearchInputIcon>
+                          <FontAwesomeIcon icon={faSearch} />
+                        </SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (v názvech druhů, financování, detailech objednávek)..."
+                          value={getSearchQuery('spendByDruhFinancing')}
+                          onChange={(e) => setSearchQuery('spendByDruhFinancing', e.target.value)}
+                        />
+                        {getSearchQuery('spendByDruhFinancing') && (
+                          <SearchClearButton
+                            onClick={() => setSearchQuery('spendByDruhFinancing', '')}
+                            title="Vymazat vyhledávání"
+                          >
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
                     </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {filteredSpendByDruhGroups.length === 0 ? (
@@ -4844,7 +5253,7 @@ export default function StatsReportsPage() {
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fdf4ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '700', color: '#7c3aed', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
-                                  <span style={{ fontWeight: '700', color: '#4c1d95', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                                  <span style={{ fontWeight: '700', color: '#4c1d95', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByDruhFinancing')}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                 </div>
@@ -4871,7 +5280,7 @@ export default function StatsReportsPage() {
                                                 style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
                                               >
                                                 <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
-                                                <Td>{fin.label}</Td>
+                                                <Td>{highlightText(fin.label, 'spendByDruhFinancing')}</Td>
                                                 <TdC>{fin.count}</TdC>
                                                 <TdR>{fmtCurrency(fin.amount)}</TdR>
                                               </Tr>
@@ -4896,15 +5305,15 @@ export default function StatsReportsPage() {
                                                         <tbody>
                                                           {pagedDetail.items.map(order => (
                                                             <Tr key={order.id}>
-                                                              <Td>{renderOrderLink(order)}</Td>
-                                                              <Td>{formatDateCz(getOrderDate(order))}</Td>
-                                                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                                              <Td>{renderOrderLink(order, 'spendByDruhFinancing')}</Td>
+                                                              <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendByDruhFinancing')}</Td>
+                                                              <SubjectTd>{highlightText(getOrderSubject(order), 'spendByDruhFinancing')}</SubjectTd>
                                                               <Td>{renderOrdererStack(order)}</Td>
                                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                                              <Td>{getOrderStatusLabel(order)}</Td>
-                                                              <Td>{getOrderFinancingLabel(order)}</Td>
-                                                              <Td>{getOrderTypeLabel(order)}</Td>
-                                                              <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                                              <Td>{highlightText(getOrderStatusLabel(order), 'spendByDruhFinancing')}</Td>
+                                                              <Td>{highlightText(getOrderFinancingLabel(order), 'spendByDruhFinancing')}</Td>
+                                                              <Td>{highlightText(getOrderTypeLabel(order), 'spendByDruhFinancing')}</Td>
+                                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByDruhFinancing')}</TdR>
                                                             </Tr>
                                                           ))}
                                                         </tbody>
@@ -4938,12 +5347,25 @@ export default function StatsReportsPage() {
                       <SectionBadge $tone="warn">{filteredSpendByLpKodGroups.length} LP kódů</SectionBadge>
                     </SectionHeader>
                     <SearchBox>
-                      <SearchInput
-                        type="text"
-                        placeholder="🔍 Fulltext vyhledávání (v názvech LP kódů, detailech objednávek)..."
-                        value={getSearchQuery('spendByLpKod')}
-                        onChange={(e) => setSearchQuery('spendByLpKod', e.target.value)}
-                      />
+                      <SearchInputWrapper>
+                        <SearchInputIcon>
+                          <FontAwesomeIcon icon={faSearch} />
+                        </SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (v názvech LP kódů, detailech objednávek)..."
+                          value={getSearchQuery('spendByLpKod')}
+                          onChange={(e) => setSearchQuery('spendByLpKod', e.target.value)}
+                        />
+                        {getSearchQuery('spendByLpKod') && (
+                          <SearchClearButton
+                            onClick={() => setSearchQuery('spendByLpKod', '')}
+                            title="Vymazat vyhledávání"
+                          >
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
                     </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {filteredSpendByLpKodGroups.length === 0 ? (
@@ -4966,7 +5388,7 @@ export default function StatsReportsPage() {
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '700', color: '#d97706', lineHeight: 1, textAlign: 'center' }}>{lpOpen ? '−' : '+'}</span>
-                                  <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.label}</span>
+                                  <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByLpKod')}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
                                 </div>
@@ -4990,15 +5412,15 @@ export default function StatsReportsPage() {
                                         <tbody>
                                           {pagedDetail.items.map(order => (
                                             <Tr key={order.id}>
-                                              <Td>{renderOrderLink(order)}</Td>
-                                              <Td>{formatDateCz(getOrderDate(order))}</Td>
-                                              <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                              <Td>{renderOrderLink(order, 'spendByLpKod')}</Td>
+                                              <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendByLpKod')}</Td>
+                                              <SubjectTd>{highlightText(getOrderSubject(order), 'spendByLpKod')}</SubjectTd>
                                               <Td>{renderOrdererStack(order)}</Td>
                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                              <Td>{getOrderStatusLabel(order)}</Td>
-                                              <Td>{getOrdererUsekLabel(order)}</Td>
-                                              <Td>{getOrderTypeLabel(order)}</Td>
-                                              <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                              <Td>{highlightText(getOrderStatusLabel(order), 'spendByLpKod')}</Td>
+                                              <Td>{highlightText(getOrdererUsekLabel(order), 'spendByLpKod')}</Td>
+                                              <Td>{highlightText(getOrderTypeLabel(order), 'spendByLpKod')}</Td>
+                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByLpKod')}</TdR>
                                             </Tr>
                                           ))}
                                         </tbody>
@@ -5216,55 +5638,75 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="warn">{reportSections.ordersWithoutInvoice.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('ordersWithoutInvoice')}
-                      onChange={(e) => setSearchQuery('ordersWithoutInvoice', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon icon={faSearch} />
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('ordersWithoutInvoice')}
+                        onChange={(e) => setSearchQuery('ordersWithoutInvoice', e.target.value)}
+                      />
+                      {getSearchQuery('ordersWithoutInvoice') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('ordersWithoutInvoice', '')}
+                          title="Vyčistit vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedOrdersWithoutInvoice.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedOrdersWithoutInvoice.total} z {pagedOrdersWithoutInvoice.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Objednávka</Th>
-                          <Th>Dt. obj.</Th>
-                          <Th>Předmět</Th>
-                          <Th>Stav</Th>
-                          <Th>Objednatel</Th>
-                          <Th>Schvalovatel</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>Druh</Th>
-                          <ThR>Částka</ThR>
-                          <Th>Poznámka</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedOrdersWithoutInvoice.items.map(order => (
-                          <Tr key={order.id}>
-                            <Td>{renderOrderLink(order)}</Td>
-                            <Td>{formatDateCz(getOrderDate(order))}</Td>
-                            <SubjectTd>{getOrderSubject(order)}</SubjectTd>
-                            <Td>{getOrderStatusLabel(order)}</Td>
-                            <Td>{renderOrdererStack(order)}</Td>
-                            <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                            <Td>{getOrdererUsekLabel(order)}</Td>
-                            <Td>{getOrderFinancingLabel(order)}</Td>
-                            <Td>{getOrderTypeLabel(order)}</Td>
-                            <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
-                            <Td>{renderNoteCell(`report_no_invoice_${order.id}`)}</Td>
-                          </Tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('ordersWithoutInvoice', pagedOrdersWithoutInvoice)}
+                  {pagedOrdersWithoutInvoice.isFiltered && pagedOrdersWithoutInvoice.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Objednávka</Th>
+                              <Th>Dt. obj.</Th>
+                              <Th>Předmět</Th>
+                              <Th>Stav</Th>
+                              <Th>Objednatel</Th>
+                              <Th>Schvalovatel</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>Druh</Th>
+                              <ThR>Částka</ThR>
+                              <Th>Poznámka</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOrdersWithoutInvoice.items.map(order => (
+                              <Tr key={order.id}>
+                                <Td>{renderOrderLink(order)}</Td>
+                                <Td>{formatDateCz(getOrderDate(order))}</Td>
+                                <SubjectTd>{getOrderSubject(order)}</SubjectTd>
+                                <Td>{getOrderStatusLabel(order)}</Td>
+                                <Td>{renderOrdererStack(order)}</Td>
+                                <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                <Td>{getOrdererUsekLabel(order)}</Td>
+                                <Td>{getOrderFinancingLabel(order)}</Td>
+                                <Td>{getOrderTypeLabel(order)}</Td>
+                                <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                <Td>{renderNoteCell(`report_no_invoice_${order.id}`)}</Td>
+                              </Tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('ordersWithoutInvoice', pagedOrdersWithoutInvoice)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -5275,53 +5717,73 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="warn">{reportSections.ordersWithInvoiceNotDone.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('ordersWithInvoiceNotDone')}
-                      onChange={(e) => setSearchQuery('ordersWithInvoiceNotDone', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon icon={faSearch} />
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('ordersWithInvoiceNotDone')}
+                        onChange={(e) => setSearchQuery('ordersWithInvoiceNotDone', e.target.value)}
+                      />
+                      {getSearchQuery('ordersWithInvoiceNotDone') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('ordersWithInvoiceNotDone', '')}
+                          title="Vyčistit vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedOrdersWithInvoiceNotDone.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedOrdersWithInvoiceNotDone.total} z {pagedOrdersWithInvoiceNotDone.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Objednávka</Th>
-                          <Th>Dt. obj.</Th>
-                          <Th>Stav</Th>
-                          <Th>Objednatel</Th>
-                          <Th>Schvalovatel</Th>
-                          <Th>Úsek</Th>
-                          <Th>Financování</Th>
-                          <Th>VS faktur</Th>
-                          <ThR>Částka</ThR>
-                          <Th>Druh</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedOrdersWithInvoiceNotDone.items.map(order => (
-                          <Tr key={order.id}>
-                            <Td>{renderOrderLink(order)}</Td>
-                            <Td>{formatDateCz(getOrderDate(order))}</Td>
-                            <Td>{getOrderStatusLabel(order)}</Td>
-                            <Td>{renderOrdererStack(order)}</Td>
-                            <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                            <Td>{getOrdererUsekLabel(order)}</Td>
-                            <Td>{getOrderFinancingLabel(order)}</Td>
-                            <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => inv.cislo_faktury).filter(Boolean).join(', ')}</Td>
-                            <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
-                            <Td>{getOrderTypeLabel(order)}</Td>
-                          </Tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('ordersWithInvoiceNotDone', pagedOrdersWithInvoiceNotDone)}
+                  {pagedOrdersWithInvoiceNotDone.isFiltered && pagedOrdersWithInvoiceNotDone.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Objednávka</Th>
+                              <Th>Dt. obj.</Th>
+                              <Th>Stav</Th>
+                              <Th>Objednatel</Th>
+                              <Th>Schvalovatel</Th>
+                              <Th>Úsek</Th>
+                              <Th>Financování</Th>
+                              <Th>VS faktur</Th>
+                              <ThR>Částka</ThR>
+                              <Th>Druh</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOrdersWithInvoiceNotDone.items.map(order => (
+                              <Tr key={order.id}>
+                                <Td>{renderOrderLink(order)}</Td>
+                                <Td>{formatDateCz(getOrderDate(order))}</Td>
+                                <Td>{getOrderStatusLabel(order)}</Td>
+                                <Td>{renderOrdererStack(order)}</Td>
+                                <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                <Td>{getOrdererUsekLabel(order)}</Td>
+                                <Td>{getOrderFinancingLabel(order)}</Td>
+                                <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => inv.cislo_faktury).filter(Boolean).join(', ')}</Td>
+                                <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                <Td>{getOrderTypeLabel(order)}</Td>
+                              </Tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('ordersWithInvoiceNotDone', pagedOrdersWithInvoiceNotDone)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
 
@@ -5332,45 +5794,65 @@ export default function StatsReportsPage() {
                     <SectionBadge $tone="warn">TOP {reportSections.topSuppliers.length}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
-                    <SearchInput
-                      type="text"
-                      placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                      value={getSearchQuery('topSuppliers')}
-                      onChange={(e) => setSearchQuery('topSuppliers', e.target.value)}
-                    />
+                    <SearchInputWrapper>
+                      <SearchInputIcon icon={faSearch} />
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                        value={getSearchQuery('topSuppliers')}
+                        onChange={(e) => setSearchQuery('topSuppliers', e.target.value)}
+                      />
+                      {getSearchQuery('topSuppliers') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('topSuppliers', '')}
+                          title="Vyčistit vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
                   </SearchBox>
                   {pagedTopSuppliers.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                       Nalezeno {pagedTopSuppliers.total} z {pagedTopSuppliers.originalTotal} záznamů
                     </div>
                   )}
-                  <TableWrapper>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Dodavatel</Th>
-                          <ThR>Celkem</ThR>
-                          <Th>Rozpad</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedTopSuppliers.items.map(supplier => (
-                          <Tr key={supplier.name}>
-                            <Td>{supplier.name}</Td>
-                            <TdR>{fmtCurrency(supplier.total)}</TdR>
-                            <Td>
-                              {Object.entries(supplier.split).map(([key, value]) => (
-                                <Pill key={key} $tone="success" style={{ marginRight: '0.35rem' }}>
-                                  {key}: {fmtCurrency(value)}
-                                </Pill>
-                              ))}
-                            </Td>
-                          </Tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </TableWrapper>
-                  {renderPagination('topSuppliers', pagedTopSuppliers)}
+                  {pagedTopSuppliers.isFiltered && pagedTopSuppliers.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>Dodavatel</Th>
+                              <ThR>Celkem</ThR>
+                              <Th>Rozpad</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedTopSuppliers.items.map(supplier => (
+                              <Tr key={supplier.name}>
+                                <Td>{supplier.name}</Td>
+                                <TdR>{fmtCurrency(supplier.total)}</TdR>
+                                <Td>
+                                  {Object.entries(supplier.split).map(([key, value]) => (
+                                    <Pill key={key} $tone="success" style={{ marginRight: '0.35rem' }}>
+                                      {key}: {fmtCurrency(value)}
+                                    </Pill>
+                                  ))}
+                                </Td>
+                              </Tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('topSuppliers', pagedTopSuppliers)}
+                    </>
+                  )}
                   </SectionCard>
                 )}
               </>
@@ -5396,64 +5878,84 @@ export default function StatsReportsPage() {
                     ) : (
                       <>
                         <SearchBox>
-                          <SearchInput
-                            type="text"
-                            placeholder="🔍 Fulltext vyhledávání ve všech zobrazenách datech..."
-                            value={getSearchQuery('invoiceAttachmentsList')}
-                            onChange={(e) => setSearchQuery('invoiceAttachmentsList', e.target.value)}
-                          />
+                          <SearchInputWrapper>
+                            <SearchInputIcon icon={faSearch} />
+                            <SearchInput
+                              type="text"
+                              placeholder="Fulltext vyhledávání ve všech zobrazenách datech..."
+                              value={getSearchQuery('invoiceAttachmentsList')}
+                              onChange={(e) => setSearchQuery('invoiceAttachmentsList', e.target.value)}
+                            />
+                            {getSearchQuery('invoiceAttachmentsList') && (
+                              <SearchClearButton
+                                onClick={() => setSearchQuery('invoiceAttachmentsList', '')}
+                                title="Vyčistit vyhledávání"
+                              >
+                                <FontAwesomeIcon icon={faXmark} />
+                              </SearchClearButton>
+                            )}
+                          </SearchInputWrapper>
                         </SearchBox>
                         {pagedInvoiceAttachmentsList.isFiltered && (
                           <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
                             Nalezeno {pagedInvoiceAttachmentsList.total} z {pagedInvoiceAttachmentsList.originalTotal} záznamů
                           </div>
                         )}
-                        <TableWrapper>
-                          <Table>
-                            <thead>
-                              <tr>
-                                <Th style={{ minWidth: '200px' }}>Soubor</Th>
-                                <Th>Typ přílohy</Th>
-                                <Th>Faktura</Th>
-                                <Th>Objednávka</Th>
-                                <Th>Dodavatel</Th>
-                                <Th>Stav FA</Th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pagedInvoiceAttachmentsList.items.map((att, idx) => (
-                                <Tr key={att.id || idx}>
-                                  <Td>
-                                    <span
-                                      style={{ color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                                      onClick={() => handleOpenAttachment(att, 'invoice')}
-                                      title="Otevřít přílohu v prohlížeči"
-                                    >
-                                      <FontAwesomeIcon icon={faEye} style={{ fontSize: '0.8rem', opacity: 0.7 }} />
-                                      {att.original_name || att.nazev_souboru || `Příloha #${att.id}`}
-                                    </span>
-                                  </Td>
-                                  <Td>
-                                    <Pill $tone="default">{getAttachmentType(att)}</Pill>
-                                  </Td>
-                                  <Td>
-                                    {att.invoice_id
-                                      ? renderInvoiceLink({ id: att.invoice_id, objednavka_id: att.objednavka_id, cislo_faktury: att.cislo_faktury || `#${att.invoice_id}` })
-                                      : '-'}
-                                  </Td>
-                                  <Td>
-                                    {att.objednavka_id
-                                      ? renderOrderLink({ id: att.objednavka_id, cislo_objednavky: att.cislo_objednavky })
-                                      : '-'}
-                                  </Td>
-                                  <Td>{att.dodavatel || '-'}</Td>
-                                  <Td><Pill $tone="default">{att.fa_stav || '-'}</Pill></Td>
-                                </Tr>
-                              ))}
-                            </tbody>
-                          </Table>
-                        </TableWrapper>
-                        {renderPagination('invoiceAttachmentsList', pagedInvoiceAttachmentsList)}
+                        {pagedInvoiceAttachmentsList.isFiltered && pagedInvoiceAttachmentsList.total === 0 ? (
+                          <SearchEmptyState>
+                            <FontAwesomeIcon icon={faSearch} />
+                            <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                          </SearchEmptyState>
+                        ) : (
+                          <>
+                            <TableWrapper>
+                              <Table>
+                                <thead>
+                                  <tr>
+                                    <Th style={{ minWidth: '200px' }}>Soubor</Th>
+                                    <Th>Typ přílohy</Th>
+                                    <Th>Faktura</Th>
+                                    <Th>Objednávka</Th>
+                                    <Th>Dodavatel</Th>
+                                    <Th>Stav FA</Th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {pagedInvoiceAttachmentsList.items.map((att, idx) => (
+                                    <Tr key={att.id || idx}>
+                                      <Td>
+                                        <span
+                                          style={{ color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                                          onClick={() => handleOpenAttachment(att, 'invoice')}
+                                          title="Otevřít přílohu v prohlížeči"
+                                        >
+                                          <FontAwesomeIcon icon={faEye} style={{ fontSize: '0.8rem', opacity: 0.7 }} />
+                                          {att.original_name || att.nazev_souboru || `Příloha #${att.id}`}
+                                        </span>
+                                      </Td>
+                                      <Td>
+                                        <Pill $tone="default">{getAttachmentType(att)}</Pill>
+                                      </Td>
+                                      <Td>
+                                        {att.invoice_id
+                                          ? renderInvoiceLink({ id: att.invoice_id, objednavka_id: att.objednavka_id, cislo_faktury: att.cislo_faktury || `#${att.invoice_id}` })
+                                          : '-'}
+                                      </Td>
+                                      <Td>
+                                        {att.objednavka_id
+                                          ? renderOrderLink({ id: att.objednavka_id, cislo_objednavky: att.cislo_objednavky })
+                                          : '-'}
+                                      </Td>
+                                      <Td>{att.dodavatel || '-'}</Td>
+                                      <Td><Pill $tone="default">{att.fa_stav || '-'}</Pill></Td>
+                                    </Tr>
+                                  ))}
+                                </tbody>
+                              </Table>
+                            </TableWrapper>
+                            {renderPagination('invoiceAttachmentsList', pagedInvoiceAttachmentsList)}
+                          </>
+                        )}
                       </>
                     )}
                   </SectionCard>
