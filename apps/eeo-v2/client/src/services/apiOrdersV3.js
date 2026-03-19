@@ -430,3 +430,33 @@ export async function deleteOrderComment({ token, username, comment_id }) {
 
   return response.json();
 }
+
+/**
+ * Načte timeline data pro čárový graf (denní agregace částek)
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.year - Rok (optional, default: aktuální rok)
+ * @returns {Promise<Object>} Response {status, data: {timeline: [...], year, start_date, end_date}, message}
+ */
+export async function fetchOrderTimelineV3({ token, username, year = new Date().getFullYear() }) {
+  const response = await fetch(`${API_BASE_URL}/order-v3/timeline`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      year
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+

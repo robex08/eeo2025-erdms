@@ -32,8 +32,8 @@ import {
   faExpand,
   faCompress
 } from '@fortawesome/free-solid-svg-icons';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement } from 'chart.js';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
@@ -53,12 +53,12 @@ import {
 } from '../services/apiOrderV2';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import DatePicker from '../components/DatePicker';
-import { listOrdersV3 } from '../services/apiOrdersV3';
+import { listOrdersV3, fetchOrderTimelineV3 } from '../services/apiOrdersV3';
 import { listInvoices25 } from '../services/api25invoices';
 import { getSmlouvyList } from '../services/apiSmlouvy';
 import { fetchCiselniky, fetchUseky } from '../services/api2auth';
 
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
 
 const PAGE_TABS = [
   { id: 'control', label: 'Finanční kontrola', icon: faTriangleExclamation },
@@ -949,6 +949,13 @@ const ChartCard = styled.div`
   min-width: 0;
 `;
 
+const ChartCardWide = styled(ChartCard)`
+  grid-column: span 2;
+  @media (max-width: 900px) {
+    grid-column: span 1;
+  }
+`;
+
 const ChartWrapper = styled.div`
   position: relative;
   width: 100%;
@@ -1560,6 +1567,7 @@ export default function StatsReportsPage() {
   const [orders, setOrders] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
+  const [timelineData, setTimelineData] = useState(null);
   const [attachmentsStats, setAttachmentsStats] = useState(null);
   // Attachments tab state
   const [orderAttachmentsStats, setOrderAttachmentsStats] = useState(null);
@@ -2050,14 +2058,16 @@ export default function StatsReportsPage() {
     if (progress?.start) progress.start();
     try {
       await loadLookups();
-      const [ordersResult, invoicesResult, contractsResult] = await Promise.all([
+      const [ordersResult, invoicesResult, contractsResult, timelineResult] = await Promise.all([
         loadOrders(),
         loadInvoices(),
-        loadContracts()
+        loadContracts(),
+        fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() })
       ]);
       setOrders(ordersResult.data || []);
       setInvoices(invoicesResult.data || []);
       setContracts(contractsResult || []);
+      setTimelineData(timelineResult?.data?.timeline || []);
       setDataMeta({
         loadedAt: new Date().toISOString(),
         truncated: ordersResult.truncated || invoicesResult.truncated
@@ -2067,6 +2077,7 @@ export default function StatsReportsPage() {
       setOrders([]);
       setInvoices([]);
       setContracts([]);
+      setTimelineData([]);
       setDataMeta({ loadedAt: null, truncated: false });
       setLoadError(e?.message || 'Nepodařilo se načíst data.');
       if (progress?.fail) progress.fail();
@@ -5443,6 +5454,127 @@ export default function StatsReportsPage() {
 
             {activeTab === 'stats' && (
               <ChartGrid>
+
+                {/* 📈 TIMELINE - Denní vývoj částek objednávek (celá šířka) */}
+                {timelineData && timelineData.length > 0 && (() => {
+                  const labels = timelineData.map(d => {
+                    const date = new Date(d.datum);
+                    return `${date.getDate()}.${date.getMonth() + 1}.`;
+                  });
+                  const maxDphData = timelineData.map(d => Math.round(d.max_dph_cumulative / 1000));
+                  const polozkyData = timelineData.map(d => Math.round(d.polozky_sum_cumulative / 1000));
+                  const fakturyData = timelineData.map(d => Math.round(d.faktury_sum_cumulative / 1000));
+                  
+                  const timelineChartData = {
+                    labels,
+                    datasets: [
+                      {
+                        label: 'MAX DPH (tis. Kč)',
+                        data: maxDphData,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                      },
+                      {
+                        label: 'Součet cen položek (tis. Kč)',
+                        data: polozkyData,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                      },
+                      {
+                        label: 'Součet FA - částka faktur (tis. Kč)',
+                        data: fakturyData,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                      }
+                    ]
+                  };
+                  
+                  const timelineOpts = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        labels: {
+                          boxWidth: 12,
+                          padding: 15,
+                          font: { size: 11 }
+                        }
+                      },
+                      tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                          label: (context) => {
+                            const label = context.dataset.label || '';
+                            const value = context.parsed.y;
+                            return `${label}: ${value.toLocaleString('cs-CZ')}k Kč`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: {
+                          maxTicksLimit: 20,
+                          autoSkip: true,
+                          font: { size: 10 }
+                        }
+                      },
+                      y: {
+                        beginAtZero: true,
+                        title: {
+                          display: true,
+                          text: 'Částka (tis. Kč)'
+                        },
+                        ticks: {
+                          callback: v => `${v}k`
+                        }
+                      }
+                    },
+                    interaction: {
+                      mode: 'nearest',
+                      axis: 'x',
+                      intersect: false
+                    }
+                  };
+                  
+                  const timelineChartEl = <ChartWrapper><Line data={timelineChartData} options={timelineOpts} /></ChartWrapper>;
+                  
+                  return (
+                    <ChartCardWide>
+                      <SectionTitle>
+                        📈 Vývoj částek objednávek v roce {new Date().getFullYear()} (den po dni)
+                      </SectionTitle>
+                      <ChartExpandBtn 
+                        title="Celá obrazovka (ESC = zavřít)" 
+                        onClick={() => setFullscreenChart({ 
+                          title: `Vývoj částek objednávek v roce ${new Date().getFullYear()}`, 
+                          el: <Line data={timelineChartData} options={withFsFont(timelineOpts)} />
+                        })}
+                      >
+                        <FontAwesomeIcon icon={faExpand} />
+                      </ChartExpandBtn>
+                      {timelineChartEl}
+                    </ChartCardWide>
+                  );
+                })()}
 
                 {/* Financování - počet + částka */}
                 {isBlockVisible('stats', 'chartFinancing') && (() => {
