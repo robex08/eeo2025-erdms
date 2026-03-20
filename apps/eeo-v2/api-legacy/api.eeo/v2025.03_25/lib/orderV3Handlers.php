@@ -327,7 +327,19 @@ function getLPDetailyV3($db, $lp_id) {
     if (empty($lp_id)) return null;
     
     try {
-        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = ? LIMIT 1");
+        $stmt = $db->prepare("
+            SELECT
+                lp.cislo_lp,
+                lp.nazev_uctu,
+                lp.vyse_financniho_kryti,
+                u.usek_zkr,
+                TRIM(CONCAT(COALESCE(uz.jmeno, ''), ' ', COALESCE(uz.prijmeni, ''))) AS prikazce_jmeno
+            FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
+            LEFT JOIN " . TBL_USEKY . " u ON u.id = lp.usek_id
+            LEFT JOIN " . TBL_UZIVATELE . " uz ON uz.id = lp.user_id
+            WHERE lp.id = ?
+            LIMIT 1
+        ");
         $stmt->execute(array($lp_id));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         return $result ? $result : null;
@@ -362,7 +374,7 @@ function enrichFinancovaniV3($db, &$order) {
         }
     }
     
-    // LP názvy - načíst z tabulky limitovane_prisliby
+    // LP názvy - načíst z tabulky limitovane_prisliby (+ úsek a příkazce z číselníků)
     if (isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
         $lp_nazvy = array();
         
@@ -374,13 +386,76 @@ function enrichFinancovaniV3($db, &$order) {
                     'id' => $lp_id,
                     'cislo_lp' => $lp['cislo_lp'],
                     'kod' => $lp['cislo_lp'],
-                    'nazev' => $lp['nazev_uctu']
+                    'nazev' => $lp['nazev_uctu'],
+                    'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
+                    'prikazce_jmeno' => isset($lp['prikazce_jmeno']) ? trim($lp['prikazce_jmeno']) : null,
+                    'vyse_financniho_kryti' => isset($lp['vyse_financniho_kryti']) ? $lp['vyse_financniho_kryti'] : null
                 );
             }
         }
         
         if (!empty($lp_nazvy)) {
             $order['financovani']['lp_nazvy'] = $lp_nazvy;
+        }
+    }
+    
+    // Smlouva - načíst dodavatele (nazev_firmy) a IČO z číselníku smluv (tabulka 25_smlouvy)
+    if (isset($order['financovani']['cislo_smlouvy']) && !empty($order['financovani']['cislo_smlouvy'])) {
+        $cislo_smlouvy = $order['financovani']['cislo_smlouvy'];
+        
+        try {
+            $stmt = $db->prepare("
+                SELECT 
+                    hodnota_s_dph as hodnota,
+                    cerpano_pozadovano,
+                    cerpano_planovano,
+                    cerpano_skutecne,
+                    zbyva_pozadovano,
+                    zbyva_planovano,
+                    zbyva_skutecne,
+                    nazev_firmy,
+                    ico
+                FROM " . TBL_SMLOUVY . " 
+                WHERE cislo_smlouvy = ?
+                AND aktivni = 1
+                LIMIT 1
+            ");
+            $stmt->execute(array($cislo_smlouvy));
+            $smlouva = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            
+            if ($smlouva) {
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => $smlouva['hodnota'],
+                    'cerpano_pozadovano' => $smlouva['cerpano_pozadovano'],
+                    'cerpano_planovano' => $smlouva['cerpano_planovano'],
+                    'cerpano_skutecne' => $smlouva['cerpano_skutecne'],
+                    'zbyva_pozadovano' => $smlouva['zbyva_pozadovano'],
+                    'zbyva_planovano' => $smlouva['zbyva_planovano'],
+                    'zbyva_skutecne' => $smlouva['zbyva_skutecne'],
+                    'nazev_firmy' => isset($smlouva['nazev_firmy']) ? $smlouva['nazev_firmy'] : null,
+                    'ico' => isset($smlouva['ico']) ? $smlouva['ico'] : null
+                );
+            } else {
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => null,
+                    'cerpano_pozadovano' => null,
+                    'cerpano_planovano' => null,
+                    'cerpano_skutecne' => null,
+                    'zbyva_pozadovano' => null,
+                    'zbyva_planovano' => null,
+                    'zbyva_skutecne' => null,
+                    'nazev_firmy' => null,
+                    'ico' => null
+                );
+            }
+        } catch (Exception $e) {
+            error_log("enrichFinancovaniV3 Smlouva Error: " . $e->getMessage());
         }
     }
 }

@@ -99,7 +99,9 @@ const SECTION_BLOCKS = {
     { key: 'spendByFinancingUsek', label: 'Čerpání s rozpadem po úsecích' },
     { key: 'spendByUsekFinancing', label: 'Čerpání: Úsek → Financování' },
     { key: 'spendByDruhFinancing', label: 'Čerpání: Druh → Financování' },
-    { key: 'spendByLpKod', label: 'Čerpání LP: podle LP kódu' }
+    { key: 'spendByFinancingUsekDruh', label: 'Čerpání: Financování → Úsek → Druh' },
+    { key: 'spendByLpKod', label: 'Čerpání LP: podle LP kódu' },
+    { key: 'spendBySmlouvy', label: 'Čerpání ze Smluv' }
   ],
   stats: [
     { key: 'chartTimeline', label: 'Vývoj částek objednávek (timeline)' },
@@ -1853,6 +1855,10 @@ export default function StatsReportsPage() {
   const [expandedSpendDruh, setExpandedSpendDruh] = useState(() => new Set());
   const [expandedSpendDruhSub, setExpandedSpendDruhSub] = useState(() => new Set());
   const [expandedSpendLp, setExpandedSpendLp] = useState(() => new Set());
+  const [expandedSpendFinDruh, setExpandedSpendFinDruh] = useState(() => new Set());
+  const [expandedSpendFinDruhUsek, setExpandedSpendFinDruhUsek] = useState(() => new Set());
+  const [expandedSpendFinDruhDetail, setExpandedSpendFinDruhDetail] = useState(() => new Set());
+  const [expandedSpendSmlouvy, setExpandedSpendSmlouvy] = useState(() => new Set());
   // Stav třídění flat tabulek: { [tableKey]: { field, dir } }
   const [tableSorts, setTableSorts] = useState({});
   const blockSelectRef = useRef(null);
@@ -2737,6 +2743,44 @@ export default function StatsReportsPage() {
     return fin?.typ_nazev || fin?.nazev || fin?.nazev_stavu || financingMap[String(code)] || code || '';
   }, [financingMap]);
 
+  // Vrátí referenční číslo/kód podle typu financování
+  const getOrderFinancingRef = useCallback((order) => {
+    const fin = parseFinancing(order?.financovani);
+    const typ = String(fin?.typ || '').toUpperCase();
+    if (typ === 'LP') {
+      const lpNazvy = Array.isArray(fin?.lp_nazvy) ? fin.lp_nazvy : [];
+      if (lpNazvy.length > 0) {
+        return lpNazvy.map(lp => lp.cislo_lp || lp.kod || '').filter(Boolean).join(', ');
+      }
+      return '';
+    }
+    if (typ === 'SMLOUVA') {
+      return fin?.cislo_smlouvy || order?.cislo_smlouvy || (order?.smlouva_id ? `#${order.smlouva_id}` : '') || '';
+    }
+    if (typ === 'INDIVIDUALNI_SCHVALENI') {
+      return fin?.individualni_schvaleni || fin?.ind_schvaleni || '';
+    }
+    if (typ === 'POJISTNA_UDALOST') {
+      return fin?.pojistna_udalost_cislo || '';
+    }
+    if (typ === 'INDIVIDUALNI') {
+      return order?.cislo_objednavky || '';
+    }
+    return '';
+  }, []);
+
+  // Vrátí zkrácený popisek sloupce ref. čísla dle typu financování
+  const getOrderFinancingRefLabel = useCallback((order) => {
+    const fin = parseFinancing(order?.financovani);
+    const typ = String(fin?.typ || '').toUpperCase();
+    if (typ === 'LP') return 'LP kód';
+    if (typ === 'SMLOUVA') return 'Č. smlouvy';
+    if (typ === 'INDIVIDUALNI_SCHVALENI') return 'Č. schválení';
+    if (typ === 'POJISTNA_UDALOST') return 'Č. poj. ud.';
+    if (typ === 'INDIVIDUALNI') return 'Č. obj.';
+    return 'Ref.';
+  }, []);
+
   const getInvoiceStatusLabel = useCallback((invoice) => {
     const raw = invoice?.stav || invoice?.fa_stav || '';
     const code = String(raw || '').toUpperCase();
@@ -3278,6 +3322,64 @@ export default function StatsReportsPage() {
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
   }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrderTypeCode, getOrderTypeLabel]);
 
+  // Financování → Úsek → Druh objednávky
+  const spendByFinancingUsekDruhGroups = useMemo(() => {
+    const groups = {};
+    filteredOrders.forEach(order => {
+      const finCode = getOrderFinancingCode(order) || '__none__';
+      const finLabel = getOrderFinancingLabel(order) || 'Neurčeno';
+      const usekCode = getOrdererUsekCode(order) || '__none__';
+      const usekLabel = getOrdererUsekLabel(order) || 'Neurčeno';
+      const druhCode = getOrderTypeCode(order) || '__none__';
+      const druhLabel = getOrderTypeLabel(order) || 'Neurčeno';
+      if (!groups[finCode]) groups[finCode] = { code: finCode, label: finLabel, useky: {}, totalCount: 0, totalAmount: 0 };
+      if (!groups[finCode].useky[usekCode]) groups[finCode].useky[usekCode] = { code: usekCode, label: usekLabel, druhy: {}, count: 0, amount: 0 };
+      if (!groups[finCode].useky[usekCode].druhy[druhCode]) groups[finCode].useky[usekCode].druhy[druhCode] = { code: druhCode, label: druhLabel, orders: [], count: 0, amount: 0 };
+      const amt = getOrderAmount(order);
+      groups[finCode].useky[usekCode].druhy[druhCode].orders.push(order);
+      groups[finCode].useky[usekCode].druhy[druhCode].count += 1;
+      groups[finCode].useky[usekCode].druhy[druhCode].amount += amt;
+      groups[finCode].useky[usekCode].count += 1;
+      groups[finCode].useky[usekCode].amount += amt;
+      groups[finCode].totalCount += 1;
+      groups[finCode].totalAmount += amt;
+    });
+    return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel, getOrderTypeCode, getOrderTypeLabel, getOrderAmount]);
+
+  // Smlouvy → objednávky čerpající ze smlouvy
+  const spendBySmlouvyGroups = useMemo(() => {
+    const groups = {};
+    filteredOrders.forEach(order => {
+      const finCode = String(getOrderFinancingCode(order) || '').toUpperCase();
+      if (finCode !== 'SMLOUVA') return;
+      const ref = getOrderFinancingRef(order) || (order?.smlouva_id ? '#' + order.smlouva_id : null);
+      if (!ref) return;
+      const key = ref;
+      if (!groups[key]) {
+        const smInfo = order?._enriched?.smlouva_info;
+        groups[key] = {
+          code: key, label: ref, orders: [], count: 0, amount: 0,
+          dodavatel: smInfo?.nazev_firmy || null,
+          ico: smInfo?.ico || null,
+          smlouva_hodnota: smInfo?.hodnota ? parseFloat(smInfo.hodnota) : null
+        };
+      }
+      // Doplnit dodavatele/IČO/hodnotu pokud předchozí objednávka neměla
+      if (!groups[key].dodavatel || !groups[key].ico || groups[key].smlouva_hodnota === null) {
+        const smInfo = order?._enriched?.smlouva_info;
+        if (smInfo?.nazev_firmy && !groups[key].dodavatel) groups[key].dodavatel = smInfo.nazev_firmy;
+        if (smInfo?.ico && !groups[key].ico) groups[key].ico = smInfo.ico;
+        if (smInfo?.hodnota && groups[key].smlouva_hodnota === null) groups[key].smlouva_hodnota = parseFloat(smInfo.hodnota);
+      }
+      const amt = getOrderAmount(order);
+      groups[key].orders.push(order);
+      groups[key].count += 1;
+      groups[key].amount += amt;
+    });
+    return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingRef, getOrderAmount]);
+
   // LP financování → LP kód (cislo_lp) → objednávky
   const spendByLpKodGroups = useMemo(() => {
     const groups = {};
@@ -3296,7 +3398,12 @@ export default function StatsReportsPage() {
         lpNazvy.forEach(lp => {
           const code = lp.cislo_lp || lp.kod || '__none__';
           const label = lp.nazev ? `${code} – ${lp.nazev}` : code;
-          if (!groups[code]) groups[code] = { code, label, orders: [], count: 0, amount: 0 };
+          if (!groups[code]) groups[code] = {
+            code, label, orders: [], count: 0, amount: 0,
+            usek_zkr: lp.usek_zkr || null,
+            prikazce_jmeno: lp.prikazce_jmeno || null,
+            lp_limit: lp.vyse_financniho_kryti ? parseFloat(lp.vyse_financniho_kryti) : null
+          };
           const amt = getOrderAmount(order);
           groups[code].orders.push(order);
           groups[code].count += 1;
@@ -3443,6 +3550,37 @@ export default function StatsReportsPage() {
     }).filter(Boolean);
   }, [spendByLpKodGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
 
+  const filteredSpendBySmlouvyGroups = useMemo(() => {
+    const query = getSearchQuery('spendBySmlouvy');
+    if (!query) return spendBySmlouvyGroups;
+    return spendBySmlouvyGroups.map(group => {
+      const filteredOrders = group.orders.filter(order => searchInVisibleColumns(order, query, 'spendBySmlouvy'));
+      if (filteredOrders.length === 0 && !group.code.toLowerCase().includes(query.toLowerCase())) return null;
+      return { ...group, orders: filteredOrders, count: filteredOrders.length, amount: filteredOrders.reduce((s, o) => s + getOrderAmount(o), 0) };
+    }).filter(Boolean);
+  }, [spendBySmlouvyGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount]);
+
+  const filteredSpendByFinancingUsekDruhGroups = useMemo(() => {
+    const query = getSearchQuery('spendByFinancingUsekDruh');
+    if (!query) return spendByFinancingUsekDruhGroups;
+    return spendByFinancingUsekDruhGroups.map(group => {
+      const filteredUseky = {};
+      Object.entries(group.useky).forEach(([usekCode, usek]) => {
+        const filteredDruhy = {};
+        Object.entries(usek.druhy).forEach(([druhCode, druh]) => {
+          const druhoOrders = druh.orders.filter(order => searchInVisibleColumns(order, query, 'spendByFinancingUsekDruh'));
+          if (druhoOrders.length > 0) filteredDruhy[druhCode] = { ...druh, orders: druhoOrders, count: druhoOrders.length, amount: druhoOrders.reduce((s, o) => s + getOrderAmount(o), 0) };
+        });
+        if (Object.keys(filteredDruhy).length > 0) {
+          const usekAmount = Object.values(filteredDruhy).reduce((s, d) => s + d.amount, 0);
+          filteredUseky[usekCode] = { ...usek, druhy: filteredDruhy, count: Object.values(filteredDruhy).reduce((s, d) => s + d.count, 0), amount: usekAmount };
+        }
+      });
+      if (Object.keys(filteredUseky).length === 0) return null;
+      return { ...group, useky: filteredUseky, totalCount: Object.values(filteredUseky).reduce((s, u) => s + u.count, 0), totalAmount: Object.values(filteredUseky).reduce((s, u) => s + u.amount, 0) };
+    }).filter(Boolean);
+  }, [spendByFinancingUsekDruhGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
+
   // Auto-expand při vyhledávání ve spend sekcích
   useEffect(() => {
     const query = getSearchQuery('spendByFinancingUsek');
@@ -3509,6 +3647,32 @@ export default function StatsReportsPage() {
     });
     setExpandedSpendLp(newExpanded);
   }, [filteredSpendByLpKodGroups, getSearchQuery]);
+
+  useEffect(() => {
+    const query = getSearchQuery('spendBySmlouvy');
+    if (!query) return;
+    setExpandedSpendSmlouvy(new Set(filteredSpendBySmlouvyGroups.filter(g => g.orders.length > 0).map(g => g.code)));
+  }, [filteredSpendBySmlouvyGroups, getSearchQuery]);
+
+  useEffect(() => {
+    const query = getSearchQuery('spendByFinancingUsekDruh');
+    if (!query) return;
+    const newGroups = new Set();
+    const newUseky = new Set();
+    const newDruhy = new Set();
+    filteredSpendByFinancingUsekDruhGroups.forEach(group => {
+      newGroups.add(group.code);
+      Object.entries(group.useky).forEach(([usekCode, usek]) => {
+        newUseky.add(`spendFUD_${group.code}_${usekCode}`);
+        Object.keys(usek.druhy).forEach(druhCode => {
+          newDruhy.add(`spendFUDD_${group.code}_${usekCode}_${druhCode}`);
+        });
+      });
+    });
+    setExpandedSpendFinDruh(newGroups);
+    setExpandedSpendFinDruhUsek(newUseky);
+    setExpandedSpendFinDruhDetail(newDruhy);
+  }, [filteredSpendByFinancingUsekDruhGroups, getSearchQuery]);
 
   const pagedOrdersWithoutInvoice = useMemo(
     () => getPagedItems(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice'),
@@ -5383,7 +5547,7 @@ export default function StatsReportsPage() {
                                   </Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'invoicesWithoutAttachments')}</Td>
                                   <Td>
-                                    {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'invoicesWithoutAttachments') : '-'}}
+                                    {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'invoicesWithoutAttachments') : '-'}
                                     {invoice.dt_vytvoreni && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{formatDateCz(invoice.dt_vytvoreni)}</div>}
                                   </Td>
                                   <Td>
@@ -5663,18 +5827,20 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Přehled čerpání po financování a úsecích</SectionTitle>
-                      <SectionBadge $tone="warn">{filteredSpendByFinancingGroups.length} typů</SectionBadge>
-                      <ExpandAllBtn
-                        onClick={() => {
-                          const allExp = filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code));
-                          if (allExp) { setExpandedSpendFinancing(new Set()); setExpandedSpendUseks(new Set()); }
-                          else { setExpandedSpendFinancing(new Set(filteredSpendByFinancingGroups.map(g => g.code))); }
-                        }}
-                        title="Rozbalit / sbalit všechny skupiny"
-                      >
-                        <FontAwesomeIcon icon={filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? faMinus : faPlus} />
-                        {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
-                      </ExpandAllBtn>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            const allExp = filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code));
+                            if (allExp) { setExpandedSpendFinancing(new Set()); setExpandedSpendUseks(new Set()); }
+                            else { setExpandedSpendFinancing(new Set(filteredSpendByFinancingGroups.map(g => g.code))); }
+                          }}
+                          title="Rozbalit / sbalit všechny skupiny"
+                        >
+                          <FontAwesomeIcon icon={filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? faMinus : faPlus} />
+                          {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{filteredSpendByFinancingGroups.length} typů</SectionBadge>
+                      </div>
                     </SectionHeader>
                     <SearchBox>
                       <SearchInputWrapper>
@@ -5704,7 +5870,17 @@ export default function StatsReportsPage() {
                         <>
                           {/* Záhlaví soupce */}
                           <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <div />
+                            <div
+                              title={filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                              onClick={() => {
+                                const allExp = filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code));
+                                if (allExp) { setExpandedSpendFinancing(new Set()); setExpandedSpendUseks(new Set()); }
+                                else { setExpandedSpendFinancing(new Set(filteredSpendByFinancingGroups.map(g => g.code))); }
+                              }}
+                              style={{ cursor: 'pointer', color: '#3b82f6', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                            >
+                              {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? '−' : '+'}
+                            </div>
                             <div>Financování</div>
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
@@ -5732,7 +5908,24 @@ export default function StatsReportsPage() {
                                 <Table>
                                   <thead>
                                     <tr>
-                                      <Th style={{ width: '24px' }}></Th>
+                                      <Th
+                                        style={{ width: '24px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontSize: '0.95rem', fontWeight: '900' }}
+                                        title={usekyArr.length > 0 && usekyArr.every(usek => expandedSpendUseks.has(`spendDetail_${group.code}_${usek.code}`)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          const allOpen = usekyArr.length > 0 && usekyArr.every(usek => expandedSpendUseks.has(`spendDetail_${group.code}_${usek.code}`));
+                                          setExpandedSpendUseks(prev => {
+                                            const next = new Set(prev);
+                                            usekyArr.forEach(usek => {
+                                              const k = `spendDetail_${group.code}_${usek.code}`;
+                                              if (allOpen) next.delete(k); else next.add(k);
+                                            });
+                                            return next;
+                                          });
+                                        }}
+                                      >
+                                        {usekyArr.length > 0 && usekyArr.every(usek => expandedSpendUseks.has(`spendDetail_${group.code}_${usek.code}`)) ? '−' : '+'}
+                                      </Th>
                                       <Th>Úsek</Th>
                                       <ThC>Počet</ThC>
                                       <ThR>Celkem</ThR>
@@ -5772,9 +5965,11 @@ export default function StatsReportsPage() {
                                                         <Th>Předmět</Th>
                                                         <Th>Objednatel</Th>
                                                         <Th>Schvalovatel</Th>
-                                                        <Th>Stav</Th>
+                                                        <ThNarrow>Úsek</ThNarrow>
                                                         <Th>Financování</Th>
+                                                        <ThNarrow>{group.code === 'LP' ? 'LP kód' : group.code === 'SMLOUVA' ? 'Č. smlouvy' : group.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : group.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
                                                         <ThNarrow>Druh</ThNarrow>
+                                                        <ThNarrow>Stav</ThNarrow>
                                                         <ThR>Částka</ThR>
                                                       </tr>
                                                     </thead>
@@ -5786,9 +5981,11 @@ export default function StatsReportsPage() {
                                                           <SubjectTd>{highlightText(getOrderSubject(order), 'spendByFinancingUsek')}</SubjectTd>
                                                           <Td>{renderOrdererStack(order)}</Td>
                                                           <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                                          <Td>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsek')}</Td>
+                                                          <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByFinancingUsek')}</TdNarrow>
                                                           <Td>{highlightText(getOrderFinancingLabel(order), 'spendByFinancingUsek')}</Td>
-                                                          <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsek')}</TdNarrow>
+                                                          <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByFinancingUsek')}</TdNarrow>
+                                                          <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsek')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                          <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsek')}</TdNarrow>
                                                           <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsek')}</TdR>
                                                         </Tr>
                                                       ))}
@@ -5820,18 +6017,20 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Přehled čerpání po úsecích a financování</SectionTitle>
-                      <SectionBadge $tone="warn">{filteredSpendByUsekGroups.length} úseků</SectionBadge>
-                      <ExpandAllBtn
-                        onClick={() => {
-                          const allExp = filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code));
-                          if (allExp) { setExpandedSpendUsekF(new Set()); setExpandedSpendUsekFSub(new Set()); }
-                          else { setExpandedSpendUsekF(new Set(filteredSpendByUsekGroups.map(g => g.code))); }
-                        }}
-                        title="Rozbalit / sbalit všechny skupiny"
-                      >
-                        <FontAwesomeIcon icon={filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? faMinus : faPlus} />
-                        {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
-                      </ExpandAllBtn>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            const allExp = filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code));
+                            if (allExp) { setExpandedSpendUsekF(new Set()); setExpandedSpendUsekFSub(new Set()); }
+                            else { setExpandedSpendUsekF(new Set(filteredSpendByUsekGroups.map(g => g.code))); }
+                          }}
+                          title="Rozbalit / sbalit všechny skupiny"
+                        >
+                          <FontAwesomeIcon icon={filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? faMinus : faPlus} />
+                          {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{filteredSpendByUsekGroups.length} úseků</SectionBadge>
+                      </div>
                     </SectionHeader>
                     <SearchBox>
                       <SearchInputWrapper>
@@ -5860,7 +6059,17 @@ export default function StatsReportsPage() {
                       ) : (
                         <>
                           <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <div />
+                            <div
+                              title={filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                              onClick={() => {
+                                const allExp = filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code));
+                                if (allExp) { setExpandedSpendUsekF(new Set()); setExpandedSpendUsekFSub(new Set()); }
+                                else { setExpandedSpendUsekF(new Set(filteredSpendByUsekGroups.map(g => g.code))); }
+                              }}
+                              style={{ cursor: 'pointer', color: '#16a34a', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                            >
+                              {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? '−' : '+'}
+                            </div>
                             <div>Úsek</div>
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
@@ -5884,7 +6093,24 @@ export default function StatsReportsPage() {
                                     <Table>
                                       <thead>
                                         <tr>
-                                          <Th style={{ width: '24px' }}></Th>
+                                          <Th
+                                            style={{ width: '24px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontSize: '0.95rem', fontWeight: '900' }}
+                                            title={finArr.length > 0 && finArr.every(fin => expandedSpendUsekFSub.has(`spendUFDetail_${group.code}_${fin.code}`)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              const allOpen = finArr.length > 0 && finArr.every(fin => expandedSpendUsekFSub.has(`spendUFDetail_${group.code}_${fin.code}`));
+                                              setExpandedSpendUsekFSub(prev => {
+                                                const next = new Set(prev);
+                                                finArr.forEach(fin => {
+                                                  const k = `spendUFDetail_${group.code}_${fin.code}`;
+                                                  if (allOpen) next.delete(k); else next.add(k);
+                                                });
+                                                return next;
+                                              });
+                                            }}
+                                          >
+                                            {finArr.length > 0 && finArr.every(fin => expandedSpendUsekFSub.has(`spendUFDetail_${group.code}_${fin.code}`)) ? '−' : '+'}
+                                          </Th>
                                           <Th>Financování</Th>
                                           <ThC>Počet</ThC>
                                           <ThR>Celkem</ThR>
@@ -5918,9 +6144,11 @@ export default function StatsReportsPage() {
                                                             <Th>Předmět</Th>
                                                             <Th>Objednatel</Th>
                                                             <Th>Schvalovatel</Th>
-                                                            <Th>Stav</Th>
+                                                            <ThNarrow>Úsek</ThNarrow>
                                                             <Th>Financování</Th>
+                                                            <ThNarrow>{fin.code === 'LP' ? 'LP kód' : fin.code === 'SMLOUVA' ? 'Č. smlouvy' : fin.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : fin.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
                                                             <ThNarrow>Druh</ThNarrow>
+                                                            <ThNarrow>Stav</ThNarrow>
                                                             <ThR>Částka</ThR>
                                                           </tr>
                                                         </thead>
@@ -5932,9 +6160,11 @@ export default function StatsReportsPage() {
                                                               <SubjectTd>{highlightText(getOrderSubject(order), 'spendByUsekFinancing')}</SubjectTd>
                                                               <Td>{renderOrdererStack(order)}</Td>
                                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                                              <Td>{highlightText(getOrderStatusLabel(order), 'spendByUsekFinancing')}</Td>
+                                                              <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByUsekFinancing')}</TdNarrow>
                                                               <Td>{highlightText(getOrderFinancingLabel(order), 'spendByUsekFinancing')}</Td>
-                                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByUsekFinancing')}</TdNarrow>
+                                                              <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByUsekFinancing')}</TdNarrow>
+                                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByUsekFinancing')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                              <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByUsekFinancing')}</TdNarrow>
                                                               <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByUsekFinancing')}</TdR>
                                                             </Tr>
                                                           ))}
@@ -5966,18 +6196,20 @@ export default function StatsReportsPage() {
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Přehled čerpání po druhu a financování</SectionTitle>
-                      <SectionBadge $tone="warn">{filteredSpendByDruhGroups.length} druhů</SectionBadge>
-                      <ExpandAllBtn
-                        onClick={() => {
-                          const allExp = filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code));
-                          if (allExp) { setExpandedSpendDruh(new Set()); setExpandedSpendDruhSub(new Set()); }
-                          else { setExpandedSpendDruh(new Set(filteredSpendByDruhGroups.map(g => g.code))); }
-                        }}
-                        title="Rozbalit / sbalit všechny skupiny"
-                      >
-                        <FontAwesomeIcon icon={filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? faMinus : faPlus} />
-                        {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
-                      </ExpandAllBtn>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            const allExp = filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code));
+                            if (allExp) { setExpandedSpendDruh(new Set()); setExpandedSpendDruhSub(new Set()); }
+                            else { setExpandedSpendDruh(new Set(filteredSpendByDruhGroups.map(g => g.code))); }
+                          }}
+                          title="Rozbalit / sbalit všechny skupiny"
+                        >
+                          <FontAwesomeIcon icon={filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? faMinus : faPlus} />
+                          {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{filteredSpendByDruhGroups.length} druhů</SectionBadge>
+                      </div>
                     </SectionHeader>
                     <SearchBox>
                       <SearchInputWrapper>
@@ -6006,7 +6238,17 @@ export default function StatsReportsPage() {
                       ) : (
                         <>
                           <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <div />
+                            <div
+                              title={filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                              onClick={() => {
+                                const allExp = filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code));
+                                if (allExp) { setExpandedSpendDruh(new Set()); setExpandedSpendDruhSub(new Set()); }
+                                else { setExpandedSpendDruh(new Set(filteredSpendByDruhGroups.map(g => g.code))); }
+                              }}
+                              style={{ cursor: 'pointer', color: '#7c3aed', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                            >
+                              {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? '−' : '+'}
+                            </div>
                             <div>Druh objednávky</div>
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
@@ -6030,7 +6272,24 @@ export default function StatsReportsPage() {
                                     <Table>
                                       <thead>
                                         <tr>
-                                          <Th style={{ width: '24px' }}></Th>
+                                          <Th
+                                            style={{ width: '24px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontSize: '0.95rem', fontWeight: '900' }}
+                                            title={finArr.length > 0 && finArr.every(fin => expandedSpendDruhSub.has(`spendDFDetail_${group.code}_${fin.code}`)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              const allOpen = finArr.length > 0 && finArr.every(fin => expandedSpendDruhSub.has(`spendDFDetail_${group.code}_${fin.code}`));
+                                              setExpandedSpendDruhSub(prev => {
+                                                const next = new Set(prev);
+                                                finArr.forEach(fin => {
+                                                  const k = `spendDFDetail_${group.code}_${fin.code}`;
+                                                  if (allOpen) next.delete(k); else next.add(k);
+                                                });
+                                                return next;
+                                              });
+                                            }}
+                                          >
+                                            {finArr.length > 0 && finArr.every(fin => expandedSpendDruhSub.has(`spendDFDetail_${group.code}_${fin.code}`)) ? '−' : '+'}
+                                          </Th>
                                           <Th>Financování</Th>
                                           <ThC>Počet</ThC>
                                           <ThR>Celkem</ThR>
@@ -6064,9 +6323,11 @@ export default function StatsReportsPage() {
                                                             <Th>Předmět</Th>
                                                             <Th>Objednatel</Th>
                                                             <Th>Schvalovatel</Th>
-                                                            <Th>Stav</Th>
+                                                            <ThNarrow>Úsek</ThNarrow>
                                                             <Th>Financování</Th>
+                                                            <ThNarrow>{fin.code === 'LP' ? 'LP kód' : fin.code === 'SMLOUVA' ? 'Č. smlouvy' : fin.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : fin.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
                                                             <ThNarrow>Druh</ThNarrow>
+                                                            <ThNarrow>Stav</ThNarrow>
                                                             <ThR>Částka</ThR>
                                                           </tr>
                                                         </thead>
@@ -6078,9 +6339,11 @@ export default function StatsReportsPage() {
                                                               <SubjectTd>{highlightText(getOrderSubject(order), 'spendByDruhFinancing')}</SubjectTd>
                                                               <Td>{renderOrdererStack(order)}</Td>
                                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                                              <Td>{highlightText(getOrderStatusLabel(order), 'spendByDruhFinancing')}</Td>
+                                                              <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByDruhFinancing')}</TdNarrow>
                                                               <Td>{highlightText(getOrderFinancingLabel(order), 'spendByDruhFinancing')}</Td>
-                                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByDruhFinancing')}</TdNarrow>
+                                                              <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByDruhFinancing')}</TdNarrow>
+                                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByDruhFinancing')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                              <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByDruhFinancing')}</TdNarrow>
                                                               <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByDruhFinancing')}</TdR>
                                                             </Tr>
                                                           ))}
@@ -6107,23 +6370,254 @@ export default function StatsReportsPage() {
                   </SectionCard>
                 )}
 
+                {/* === FINANCOVÁNÍ → ÚSEK → DRUH === */}
+                {isBlockVisible('spend', 'spendByFinancingUsekDruh') && (
+                  <SectionCard>
+                    <SectionHeader>
+                      <SectionTitle>Čerpání: Financování → Úsek → Druh</SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            const allExp = filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code));
+                            if (allExp) { setExpandedSpendFinDruh(new Set()); setExpandedSpendFinDruhUsek(new Set()); setExpandedSpendFinDruhDetail(new Set()); }
+                            else { setExpandedSpendFinDruh(new Set(filteredSpendByFinancingUsekDruhGroups.map(g => g.code))); }
+                          }}
+                          title="Rozbalit / sbalit všechny skupiny"
+                        >
+                          <FontAwesomeIcon icon={filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? faMinus : faPlus} />
+                          {filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{filteredSpendByFinancingUsekDruhGroups.length} typů financování</SectionBadge>
+                      </div>
+                    </SectionHeader>
+                    <SearchBox>
+                      <SearchInputWrapper>
+                        <SearchInputIcon><FontAwesomeIcon icon={faSearch} /></SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (v názvech financování, úseků, druhů, detailech objednávek)..."
+                          value={getSearchQuery('spendByFinancingUsekDruh')}
+                          onChange={(e) => setSearchQuery('spendByFinancingUsekDruh', e.target.value)}
+                        />
+                        {getSearchQuery('spendByFinancingUsekDruh') && (
+                          <SearchClearButton onClick={() => setSearchQuery('spendByFinancingUsekDruh', '')} title="Vymazat vyhledávání">
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
+                    </SearchBox>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {filteredSpendByFinancingUsekDruhGroups.length === 0 ? (
+                        <EmptyState>Bez dat pro zvolené filtry</EmptyState>
+                      ) : (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div
+                              title={filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                              onClick={() => {
+                                const allExp = filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code));
+                                if (allExp) { setExpandedSpendFinDruh(new Set()); setExpandedSpendFinDruhUsek(new Set()); setExpandedSpendFinDruhDetail(new Set()); }
+                                else { setExpandedSpendFinDruh(new Set(filteredSpendByFinancingUsekDruhGroups.map(g => g.code))); }
+                              }}
+                              style={{ cursor: 'pointer', color: '#0891b2', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                            >
+                              {filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? '−' : '+'}
+                            </div>
+                            <div>Financování</div>
+                            <div style={{ textAlign: 'right' }}>Počet</div>
+                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                          </div>
+                          {filteredSpendByFinancingUsekDruhGroups.map(group => {
+                            const grpOpen = expandedSpendFinDruh.has(group.code);
+                            const usekyArr = Object.values(group.useky).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+                            return (
+                              <div key={group.code} style={{ border: '1px solid #a5f3fc', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => setExpandedSpendFinDruh(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#ecfeff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#0891b2', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#0e4f6e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByFinancingUsekDruh')}</span>
+                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
+                                </div>
+                                {grpOpen && (
+                                  <TableWrapper>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <Th
+                                            style={{ width: '24px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontSize: '0.95rem', fontWeight: '900' }}
+                                            title={usekyArr.length > 0 && usekyArr.every(u => expandedSpendFinDruhUsek.has(`spendFUD_${group.code}_${u.code}`)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              const allOpen = usekyArr.length > 0 && usekyArr.every(u => expandedSpendFinDruhUsek.has(`spendFUD_${group.code}_${u.code}`));
+                                              setExpandedSpendFinDruhUsek(prev => {
+                                                const next = new Set(prev);
+                                                usekyArr.forEach(u => {
+                                                  const k = `spendFUD_${group.code}_${u.code}`;
+                                                  if (allOpen) next.delete(k); else next.add(k);
+                                                });
+                                                return next;
+                                              });
+                                            }}
+                                          >
+                                            {usekyArr.length > 0 && usekyArr.every(u => expandedSpendFinDruhUsek.has(`spendFUD_${group.code}_${u.code}`)) ? '−' : '+'}
+                                          </Th>
+                                          <Th>Úsek</Th>
+                                          <ThC>Počet</ThC>
+                                          <ThR>Celkem</ThR>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {usekyArr.map(usek => {
+                                          const usekKey = `spendFUD_${group.code}_${usek.code}`;
+                                          const usekOpen = expandedSpendFinDruhUsek.has(usekKey);
+                                          const druhyArr = Object.values(usek.druhy).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
+                                          return (
+                                            <React.Fragment key={`${group.code}_${usek.code}`}>
+                                              <Tr
+                                                onClick={() => setExpandedSpendFinDruhUsek(prev => { const next = new Set(prev); if (next.has(usekKey)) next.delete(usekKey); else next.add(usekKey); return next; })}
+                                                style={{ cursor: 'pointer', background: usekOpen ? '#f0f9ff' : undefined }}
+                                              >
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{usekOpen ? '−' : '+'}</Td>
+                                                <Td>{highlightText(usek.label, 'spendByFinancingUsekDruh')}</Td>
+                                                <TdC>{usek.count}</TdC>
+                                                <TdR>{fmtCurrency(usek.amount)}</TdR>
+                                              </Tr>
+                                              {usekOpen && (
+                                                <tr>
+                                                  <td colSpan={4} style={{ padding: '0.5rem 0.5rem 0.75rem 2rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    <TableWrapper style={{ margin: 0 }}>
+                                                      <Table>
+                                                        <thead>
+                                                          <tr>
+                                                            <Th
+                                                              style={{ width: '24px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontSize: '0.95rem', fontWeight: '900' }}
+                                                              title={druhyArr.length > 0 && druhyArr.every(d => expandedSpendFinDruhDetail.has(`spendFUDD_${group.code}_${usek.code}_${d.code}`)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                                                              onClick={e => {
+                                                                e.stopPropagation();
+                                                                const allOpen = druhyArr.length > 0 && druhyArr.every(d => expandedSpendFinDruhDetail.has(`spendFUDD_${group.code}_${usek.code}_${d.code}`));
+                                                                setExpandedSpendFinDruhDetail(prev => {
+                                                                  const next = new Set(prev);
+                                                                  druhyArr.forEach(d => {
+                                                                    const k = `spendFUDD_${group.code}_${usek.code}_${d.code}`;
+                                                                    if (allOpen) next.delete(k); else next.add(k);
+                                                                  });
+                                                                  return next;
+                                                                });
+                                                              }}
+                                                            >
+                                                              {druhyArr.length > 0 && druhyArr.every(d => expandedSpendFinDruhDetail.has(`spendFUDD_${group.code}_${usek.code}_${d.code}`)) ? '−' : '+'}
+                                                            </Th>
+                                                            <Th>Druh objednávky</Th>
+                                                            <ThC>Počet</ThC>
+                                                            <ThR>Celkem</ThR>
+                                                          </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                          {druhyArr.map(druh => {
+                                                            const druhKey = `spendFUDD_${group.code}_${usek.code}_${druh.code}`;
+                                                            const druhOpen = expandedSpendFinDruhDetail.has(druhKey);
+                                                            const pagedDetail = getPagedItems(druh.orders, druhKey);
+                                                            return (
+                                                              <React.Fragment key={`${group.code}_${usek.code}_${druh.code}`}>
+                                                                <Tr
+                                                                  onClick={() => setExpandedSpendFinDruhDetail(prev => { const next = new Set(prev); if (next.has(druhKey)) next.delete(druhKey); else next.add(druhKey); return next; })}
+                                                                  style={{ cursor: 'pointer', background: druhOpen ? '#f0f9ff' : undefined }}
+                                                                >
+                                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{druhOpen ? '−' : '+'}</Td>
+                                                                  <Td>{highlightText(druh.label, 'spendByFinancingUsekDruh')}</Td>
+                                                                  <TdC>{druh.count}</TdC>
+                                                                  <TdR>{fmtCurrency(druh.amount)}</TdR>
+                                                                </Tr>
+                                                                {druhOpen && (
+                                                                  <tr>
+                                                                    <td colSpan={4} style={{ padding: '0.5rem 0.5rem 0.75rem 2.5rem', background: '#f0faff', borderBottom: '1px solid #e2e8f0' }}>
+                                                                      <TableWrapper style={{ margin: 0 }}>
+                                                                        <Table>
+                                                                          <thead>
+                                                                            <tr>
+                                                                              <Th>Číslo</Th>
+                                                                              <Th>Dt. obj.</Th>
+                                                                              <Th>Předmět</Th>
+                                                                              <Th>Objednatel</Th>
+                                                                              <Th>Schvalovatel</Th>
+                                                                              <ThNarrow>Úsek</ThNarrow>
+                                                                              <Th>Financování</Th>
+                                                                              <ThNarrow>{group.code === 'LP' ? 'LP kód' : group.code === 'SMLOUVA' ? 'Č. smlouvy' : group.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : group.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
+                                                                              <ThNarrow>Druh</ThNarrow>
+                                                                              <ThNarrow>Stav</ThNarrow>
+                                                                              <ThR>Částka</ThR>
+                                                                            </tr>
+                                                                          </thead>
+                                                                          <tbody>
+                                                                            {pagedDetail.items.map(order => (
+                                                                              <Tr key={order.id}>
+                                                                                <Td>{renderOrderLink(order, 'spendByFinancingUsekDruh')}</Td>
+                                                                                <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendByFinancingUsekDruh')}</Td>
+                                                                                <SubjectTd>{highlightText(getOrderSubject(order), 'spendByFinancingUsekDruh')}</SubjectTd>
+                                                                                <Td>{renderOrdererStack(order)}</Td>
+                                                                                <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                                                                <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByFinancingUsekDruh')}</TdNarrow>
+                                                                                <Td>{highlightText(getOrderFinancingLabel(order), 'spendByFinancingUsekDruh')}</Td>
+                                                                                <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByFinancingUsekDruh')}</TdNarrow>
+                                                                                <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsekDruh')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                                                <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsekDruh')}</TdNarrow>
+                                                                                <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsekDruh')}</TdR>
+                                                                              </Tr>
+                                                                            ))}
+                                                                          </tbody>
+                                                                        </Table>
+                                                                      </TableWrapper>
+                                                                      {renderPagination(druhKey, pagedDetail)}
+                                                                    </td>
+                                                                  </tr>
+                                                                )}
+                                                              </React.Fragment>
+                                                            );
+                                                          })}
+                                                        </tbody>
+                                                      </Table>
+                                                    </TableWrapper>
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+
                 {/* === LP → LP KÓD (LPIT1, LPIT2...) → OBJEDNÁVKY === */}
                 {isBlockVisible('spend', 'spendByLpKod') && (
                   <SectionCard>
                     <SectionHeader>
                       <SectionTitle>Čerpání LP podle LP kódu</SectionTitle>
-                      <SectionBadge $tone="warn">{filteredSpendByLpKodGroups.length} LP kódů</SectionBadge>
-                      <ExpandAllBtn
-                        onClick={() => {
-                          const allExp = filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code));
-                          if (allExp) { setExpandedSpendLp(new Set()); }
-                          else { setExpandedSpendLp(new Set(filteredSpendByLpKodGroups.map(g => g.code))); }
-                        }}
-                        title="Rozbalit / sbalit všechny skupiny"
-                      >
-                        <FontAwesomeIcon icon={filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? faMinus : faPlus} />
-                        {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
-                      </ExpandAllBtn>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            const allExp = filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code));
+                            if (allExp) { setExpandedSpendLp(new Set()); }
+                            else { setExpandedSpendLp(new Set(filteredSpendByLpKodGroups.map(g => g.code))); }
+                          }}
+                          title="Rozbalit / sbalit všechny skupiny"
+                        >
+                          <FontAwesomeIcon icon={filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? faMinus : faPlus} />
+                          {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{filteredSpendByLpKodGroups.length} LP kódů</SectionBadge>
+                      </div>
                     </SectionHeader>
                     <SearchBox>
                       <SearchInputWrapper>
@@ -6151,23 +6645,46 @@ export default function StatsReportsPage() {
                         <EmptyState>Bez objednávek LP pro zvolené filtry</EmptyState>
                       ) : (
                         <>
-                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <div />
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 130px 75px 170px 70px 85px 150px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div
+                              title={filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                              onClick={() => {
+                                const allExp = filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code));
+                                if (allExp) { setExpandedSpendLp(new Set()); }
+                                else { setExpandedSpendLp(new Set(filteredSpendByLpKodGroups.map(g => g.code))); }
+                              }}
+                              style={{ cursor: 'pointer', color: '#d97706', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                            >
+                              {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? '−' : '+'}
+                            </div>
                             <div>LP kód</div>
+                            <div style={{ textAlign: 'right' }}>Budget</div>
+                            <div>Úsek</div>
+                            <div>Příkazce</div>
+                            <div style={{ textAlign: 'right' }}>Čerpání</div>
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
                           </div>
                           {filteredSpendByLpKodGroups.map(group => {
                             const lpOpen = expandedSpendLp.has(group.code);
                             const pagedDetail = getPagedItems(group.orders, `spendLpKod_${group.code}`);
+                            const lpUseky = group.usek_zkr || '-';
+                            const lpPrikazci = group.prikazce_jmeno || '-';
+                            const lpPct = group.lp_limit > 0 ? (group.amount / group.lp_limit * 100) : null;
+                            const lpPctText = lpPct !== null ? lpPct.toFixed(1) + ' %' : '-';
+                            const lpPctColor = lpPct !== null ? (lpPct > 90 ? '#dc2626' : lpPct > 70 ? '#d97706' : '#059669') : '#9ca3af';
                             return (
                               <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                                 <div
                                   onClick={() => setExpandedSpendLp(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
-                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 130px 75px 170px 70px 85px 150px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '700', color: '#d97706', lineHeight: 1, textAlign: 'center' }}>{lpOpen ? '−' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByLpKod')}</span>
+                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.lp_limit > 0 ? fmtCurrency(group.lp_limit) : '-'}</span>
+                                  <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lpUseky}</span>
+                                  <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lpPrikazci}</span>
+                                  <span style={{ fontSize: '0.78rem', fontWeight: '600', textAlign: 'right', color: lpPctColor }}>{lpPctText}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
                                 </div>
@@ -6182,9 +6699,10 @@ export default function StatsReportsPage() {
                                             <Th>Předmět</Th>
                                             <Th>Objednatel</Th>
                                             <Th>Schvalovatel</Th>
-                                            <Th>Stav</Th>
-                                            <Th>Úsek</Th>
+                                            <ThNarrow>Úsek</ThNarrow>
+                                            <ThNarrow>LP kód</ThNarrow>
                                             <ThNarrow>Druh</ThNarrow>
+                                            <ThNarrow>Stav</ThNarrow>
                                             <ThR>Částka</ThR>
                                           </tr>
                                         </thead>
@@ -6196,9 +6714,10 @@ export default function StatsReportsPage() {
                                               <SubjectTd>{highlightText(getOrderSubject(order), 'spendByLpKod')}</SubjectTd>
                                               <Td>{renderOrdererStack(order)}</Td>
                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                              <Td>{highlightText(getOrderStatusLabel(order), 'spendByLpKod')}</Td>
-                                              <Td>{highlightText(getOrdererUsekCode(order) || '-', 'spendByLpKod')}</Td>
-                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByLpKod')}</TdNarrow>
+                                              <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByLpKod')}</TdNarrow>
+                                              <TdNarrow style={{ fontWeight: 600, color: '#92400e' }}>{highlightText(group.code !== '__no_lp__' ? group.code : '-', 'spendByLpKod')}</TdNarrow>
+                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByLpKod')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                              <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByLpKod')}</TdNarrow>
                                               <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByLpKod')}</TdR>
                                             </Tr>
                                           ))}
@@ -6206,6 +6725,141 @@ export default function StatsReportsPage() {
                                       </Table>
                                     </TableWrapper>
                                     {renderPagination(`spendLpKod_${group.code}`, pagedDetail)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* === SMLOUVY → OBJEDNÁVKY ČERPAJÍCÍ ZE SMLOUVY === */}
+                {isBlockVisible('spend', 'spendBySmlouvy') && (
+                  <SectionCard>
+                    <SectionHeader>
+                      <SectionTitle>Čerpání ze Smluv</SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            const allExp = filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code));
+                            if (allExp) { setExpandedSpendSmlouvy(new Set()); }
+                            else { setExpandedSpendSmlouvy(new Set(filteredSpendBySmlouvyGroups.map(g => g.code))); }
+                          }}
+                          title="Rozbalit / sbalit všechny skupiny"
+                        >
+                          <FontAwesomeIcon icon={filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? faMinus : faPlus} />
+                          {filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{filteredSpendBySmlouvyGroups.length} smluv</SectionBadge>
+                      </div>
+                    </SectionHeader>
+                    <SearchBox>
+                      <SearchInputWrapper>
+                        <SearchInputIcon><FontAwesomeIcon icon={faSearch} /></SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (v číslech smluv, detailech objednávek)..."
+                          value={getSearchQuery('spendBySmlouvy')}
+                          onChange={(e) => setSearchQuery('spendBySmlouvy', e.target.value)}
+                        />
+                        {getSearchQuery('spendBySmlouvy') && (
+                          <SearchClearButton onClick={() => setSearchQuery('spendBySmlouvy', '')} title="Vymazat vyhledávání">
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
+                    </SearchBox>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {filteredSpendBySmlouvyGroups.length === 0 ? (
+                        <EmptyState>Bez dat pro zvolené filtry (žádné objednávky typu Smlouva)</EmptyState>
+                      ) : (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 130px 60px 70px 75px 140px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div
+                              title={filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                              onClick={() => {
+                                const allExp = filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code));
+                                if (allExp) { setExpandedSpendSmlouvy(new Set()); }
+                                else { setExpandedSpendSmlouvy(new Set(filteredSpendBySmlouvyGroups.map(g => g.code))); }
+                              }}
+                              style={{ cursor: 'pointer', color: '#6b7280', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                            >
+                              {filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? '−' : '+'}
+                            </div>
+                            <div>Číslo smlouvy</div>
+                            <div>Dodavatel</div>
+                            <div>IČO</div>
+                            <div style={{ textAlign: 'right' }}>Strop. cena</div>
+                            <div>Úsek</div>
+                            <div style={{ textAlign: 'right' }}>Čerpání</div>
+                            <div style={{ textAlign: 'right' }}>Počet obj.</div>
+                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                          </div>
+                          {filteredSpendBySmlouvyGroups.map(group => {
+                            const grpOpen = expandedSpendSmlouvy.has(group.code);
+                            const pagedDetail = getPagedItems(group.orders, 'spendSmlouvy_' + group.code);
+                            const smUseky = [...new Set(group.orders.map(o => getOrdererUsekCode(o)).filter(Boolean))].slice(0, 3).join(', ') || '-';
+                            const smDodavatel = group.dodavatel || '-';
+                            const smIco = group.ico || '-';
+                            const smPct = group.smlouva_hodnota > 0 ? (group.amount / group.smlouva_hodnota * 100) : null;
+                            const smPctText = smPct !== null ? smPct.toFixed(1) + ' %' : '-';
+                            const smPctColor = smPct !== null ? (smPct > 90 ? '#dc2626' : smPct > 70 ? '#d97706' : '#059669') : '#9ca3af';
+                            return (
+                              <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => setExpandedSpendSmlouvy(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 130px 60px 70px 75px 140px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f8fafc' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#6b7280', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={group.label}>{highlightText(group.label, 'spendBySmlouvy')}</span>
+                                  <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={smDodavatel}>{highlightText(smDodavatel, 'spendBySmlouvy')}</span>
+                                  <span style={{ fontSize: '0.78rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{smIco}</span>
+                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.smlouva_hodnota > 0 ? fmtCurrency(group.smlouva_hodnota) : '-'}</span>
+                                  <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{smUseky}</span>
+                                  <span style={{ fontSize: '0.78rem', fontWeight: '600', textAlign: 'right', color: smPctColor }}>{smPctText}</span>
+                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
+                                </div>
+                                {grpOpen && (
+                                  <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                                    <TableWrapper style={{ margin: 0 }}>
+                                      <Table>
+                                        <thead>
+                                          <tr>
+                                            <Th>Číslo</Th>
+                                            <Th>Dt. obj.</Th>
+                                            <Th>Předmět</Th>
+                                            <Th>Objednatel</Th>
+                                            <Th>Schvalovatel</Th>
+                                            <ThNarrow>Úsek</ThNarrow>
+                                            <ThNarrow>Č. smlouvy</ThNarrow>
+                                            <ThNarrow>Druh</ThNarrow>
+                                            <ThNarrow>Stav</ThNarrow>
+                                            <ThR>Částka</ThR>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {pagedDetail.items.map(order => (
+                                            <Tr key={order.id}>
+                                              <Td>{renderOrderLink(order, 'spendBySmlouvy')}</Td>
+                                              <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendBySmlouvy')}</Td>
+                                              <SubjectTd>{highlightText(getOrderSubject(order), 'spendBySmlouvy')}</SubjectTd>
+                                              <Td>{renderOrdererStack(order)}</Td>
+                                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                              <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendBySmlouvy')}</TdNarrow>
+                                              <TdNarrow style={{ fontWeight: 600, color: '#1e293b' }}>{highlightText(getOrderFinancingRef(order) || '-', 'spendBySmlouvy')}</TdNarrow>
+                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendBySmlouvy')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                              <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendBySmlouvy')}</TdNarrow>
+                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendBySmlouvy')}</TdR>
+                                            </Tr>
+                                          ))}
+                                        </tbody>
+                                      </Table>
+                                    </TableWrapper>
+                                    {renderPagination('spendSmlouvy_' + group.code, pagedDetail)}
                                   </div>
                                 )}
                               </div>
