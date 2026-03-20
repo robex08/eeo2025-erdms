@@ -749,7 +749,18 @@ function getLPDetaily($db, $lp_id) {
     if (empty($lp_id)) return null;
     
     try {
-        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
+        $stmt = $db->prepare("
+            SELECT
+                lp.cislo_lp,
+                lp.nazev_uctu,
+                u.usek_zkr,
+                TRIM(CONCAT(COALESCE(uz.jmeno, ''), ' ', COALESCE(uz.prijmeni, ''))) AS prikazce_jmeno
+            FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
+            LEFT JOIN " . TBL_USEKY . " u ON u.id = lp.usek_id
+            LEFT JOIN " . TBL_UZIVATELE . " uz ON uz.id = lp.user_id
+            WHERE lp.id = :lp_id
+            LIMIT 1
+        ");
         $stmt->bindParam(':lp_id', $lp_id, PDO::PARAM_INT);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -818,7 +829,9 @@ function getSmlouvaCerpaniInfo($db, $cislo_smlouvy) {
                 zbyva_skutecne,
                 procento_pozadovano,
                 procento_planovano,
-                procento_skutecne
+                procento_skutecne,
+                nazev_firmy,
+                ico
             FROM " . TBL_SMLOUVY . " 
             WHERE cislo_smlouvy = :cislo_smlouvy 
             AND aktivni = 1
@@ -873,7 +886,9 @@ function enrichOrderFinancovani($db, &$order) {
                     $lp_detaily[] = array(
                         'id' => $lp_id,
                         'cislo_lp' => $lp['cislo_lp'],
-                        'nazev' => $lp['nazev_uctu']
+                        'nazev' => $lp['nazev_uctu'],
+                        'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
+                        'prikazce_jmeno' => isset($lp['prikazce_jmeno']) ? trim($lp['prikazce_jmeno']) : null
                     );
                     
                     // Načíst zbývající budget z tabulky čerpání
@@ -934,7 +949,9 @@ function enrichOrderFinancovani($db, &$order) {
                     'cerpano_skutecne' => $smlouva_cerpani['cerpano_skutecne'],
                     'zbyva_pozadovano' => $smlouva_cerpani['zbyva_pozadovano'],
                     'zbyva_planovano' => $smlouva_cerpani['zbyva_planovano'],
-                    'zbyva_skutecne' => $smlouva_cerpani['zbyva_skutecne']
+                    'zbyva_skutecne' => $smlouva_cerpani['zbyva_skutecne'],
+                    'nazev_firmy' => isset($smlouva_cerpani['nazev_firmy']) ? $smlouva_cerpani['nazev_firmy'] : null,
+                    'ico' => isset($smlouva_cerpani['ico']) ? $smlouva_cerpani['ico'] : null
                 );
                 error_log("DEBUG enrichOrderFinancovani: Pridano smlouva_info do _enriched");
             } else {
@@ -948,7 +965,9 @@ function enrichOrderFinancovani($db, &$order) {
                     'cerpano_skutecne' => null,
                     'zbyva_pozadovano' => null,
                     'zbyva_planovano' => null,
-                    'zbyva_skutecne' => null
+                    'zbyva_skutecne' => null,
+                    'nazev_firmy' => null,
+                    'ico' => null
                 );
             }
         } else {
