@@ -5083,7 +5083,7 @@ export default function StatsReportsPage() {
                                   <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>{(invoicesByOrderId[String(order.id)] || []).map(inv => (
                                     <div key={inv.id}>
                                       {renderInvoiceLink(inv, 'ordersOverLimit')}
-                                      {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>{highlightText(truncated, 'ordersOverLimit')}</div></SmartTooltip></div>); })()}
+                                      {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>{highlightText(truncated, 'ordersOverLimit')}</div></SmartTooltip></div>); })()}
                                     </div>
                                   ))}</Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersOverLimit')}</Td>
@@ -5175,7 +5175,7 @@ export default function StatsReportsPage() {
                                   <Td>{renderOrderLink(order)}</Td>
                                   <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>
                                     {renderInvoiceLink(invoice)}
-                                    {(() => { const pozn = invoice.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>{highlightText(truncated, 'ordersAfterInvoice')}</div></SmartTooltip></div>); })()}
+                                    {(() => { const pozn = invoice.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>{highlightText(truncated, 'ordersAfterInvoice')}</div></SmartTooltip></div>); })()}
                                   </Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersAfterInvoice')}</Td>
                                   <Td>{renderOrdererStack(order)}</Td>
@@ -5266,7 +5266,7 @@ export default function StatsReportsPage() {
                                   <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>{(invoicesByOrderId[String(order.id)] || []).map(inv => (
                                     <div key={inv.id}>
                                       {renderInvoiceLink(inv, 'ordersInvoicesWithoutAttachments')}
-                                      {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>{highlightText(truncated, 'ordersInvoicesWithoutAttachments')}</div></SmartTooltip></div>); })()}
+                                      {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>{highlightText(truncated, 'ordersInvoicesWithoutAttachments')}</div></SmartTooltip></div>); })()}
                                     </div>
                                   ))}</Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersInvoicesWithoutAttachments')}</Td>
@@ -5372,8 +5372,8 @@ export default function StatsReportsPage() {
                                       const truncated = isLong ? pozn.slice(0, MAX).trimEnd() + '\u2026' : pozn;
                                       return (
                                         <div style={{ display: 'block', marginTop: '0.2em' }}>
-                                          <SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}>
-                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>
+                                          <SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}>
+                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>
                                               {highlightText(truncated, 'invoicesWithoutAttachments')}
                                             </div>
                                           </SmartTooltip>
@@ -5488,8 +5488,8 @@ export default function StatsReportsPage() {
                                       const truncated = isLong ? pozn.slice(0, MAX).trimEnd() + '\u2026' : pozn;
                                       return (
                                         <div style={{ display: 'block', marginTop: '0.2em' }}>
-                                          <SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}>
-                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>
+                                          <SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}>
+                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>
                                               {highlightText(truncated, 'overdueInvoices')}
                                             </div>
                                           </SmartTooltip>
@@ -5610,7 +5610,7 @@ export default function StatsReportsPage() {
                                     const truncated = isLong ? komentarText.slice(0, MAX_CHARS).trimEnd() + '\u2026' : komentarText;
                                     return (
                                       <div style={{ display: 'grid', marginTop: '0.25em', paddingRight: '1em' }}>
-                                        <SmartTooltip text={isLong ? komentarText : null} preferredPosition="right" icon="none" multiline={true}>
+                                        <SmartTooltip text={komentarText} preferredPosition="right" icon="none" multiline={true}>
                                           <div style={{
                                             fontSize: '0.75rem',
                                             color: '#6b7280',
@@ -5618,7 +5618,7 @@ export default function StatsReportsPage() {
                                             whiteSpace: 'normal',
                                             wordBreak: 'break-word',
                                             lineHeight: '1.35',
-                                            cursor: isLong ? 'help' : 'default',
+                                            cursor: 'help',
                                           }}>
                                             {highlightText(truncated, 'cancelledOrders')}
                                           </div>
