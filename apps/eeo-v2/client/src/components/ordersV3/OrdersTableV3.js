@@ -140,8 +140,8 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
   const parts = [];
   
   if (titulPred) parts.push(titulPred);
-  if (jmeno) parts.push(jmeno);
   if (prijmeni) parts.push(prijmeni);
+  if (jmeno) parts.push(jmeno);
   if (titulZa) parts.push(titulZa);
   
   return parts.length > 0 ? parts.join(' ') : '---';
