@@ -133,7 +133,8 @@ export const SmartTooltip = ({
   preferredPosition = 'top',
   multiline = false,
   disabled = false,
-  interactive = false
+  interactive = false,
+  stretch = false
 }) => {
   const childRef = useRef(null);
   const tooltipRef = useRef(null);
@@ -365,7 +366,7 @@ export const SmartTooltip = ({
         onMouseLeave={handleMouseLeave}
         onMouseDown={handleMouseDown}
         onClick={handleClick}
-        style={{ display: 'inline-flex' }}
+        style={{ display: stretch ? 'block' : 'inline-flex' }}
       >
         {childElement}
       </span>

@@ -1448,6 +1448,7 @@ const normalizeInvoice = (invoice) => ({
   dt_vytvoreni: invoice.dt_vytvoreni || null,
   fa_predana_zam_jmeno_cele: invoice.fa_predana_zam_jmeno_cele || null,
   fa_datum_predani_zam: invoice.fa_datum_predani_zam || null,
+  fa_poznamka: invoice.fa_poznamka || null,
 });
 
 const getContractLimit = (contract) => {
@@ -5057,7 +5058,7 @@ export default function StatsReportsPage() {
                           <thead>
                             <tr>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'ev_cislo')}>Ev.číslo obj.{sortIcon('ordersOverLimit', 'ev_cislo')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersOverLimit', 'fa_vs')}>Fa VS{sortIcon('ordersOverLimit', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '210px', maxWidth: '210px' }} onClick={() => handleTableSort('ordersOverLimit', 'fa_vs')}>Fa VS{sortIcon('ordersOverLimit', 'fa_vs')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'dt_obj')}>Dt. obj.{sortIcon('ordersOverLimit', 'dt_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'predmet')}>Předmět{sortIcon('ordersOverLimit', 'predmet')}</ThSort>
                               <ThRSort onClick={() => handleTableSort('ordersOverLimit', 'limit')}>Max cena DPH{sortIcon('ordersOverLimit', 'limit')}</ThRSort>
@@ -5079,7 +5080,12 @@ export default function StatsReportsPage() {
                               return (
                                 <Tr key={order.id}>
                                   <Td>{renderOrderLink(order)}</Td>
-                                  <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id}>{renderInvoiceLink(inv, 'ordersOverLimit')}</div>)}</Td>
+                                  <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>{(invoicesByOrderId[String(order.id)] || []).map(inv => (
+                                    <div key={inv.id}>
+                                      {renderInvoiceLink(inv, 'ordersOverLimit')}
+                                      {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>{highlightText(truncated, 'ordersOverLimit')}</div></SmartTooltip></div>); })()}
+                                    </div>
+                                  ))}</Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersOverLimit')}</Td>
                                   <SubjectTd>{highlightText(getOrderSubject(order), 'ordersOverLimit')}</SubjectTd>
                                   <TdR>{highlightText(fmtCurrency(getOrderLimit(order)), 'ordersOverLimit')}</TdR>
@@ -5148,7 +5154,7 @@ export default function StatsReportsPage() {
                           <thead>
                             <tr>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'ev_cislo')}>Ev.číslo obj.{sortIcon('ordersAfterInvoice', 'ev_cislo')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'fa_vs')}>Fa VS{sortIcon('ordersAfterInvoice', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '210px', maxWidth: '210px' }} onClick={() => handleTableSort('ordersAfterInvoice', 'fa_vs')}>Fa VS{sortIcon('ordersAfterInvoice', 'fa_vs')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'dt_fa')}>Fa doručena{sortIcon('ordersAfterInvoice', 'dt_fa')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'dt_obj_created')}>Obj vytvořena{sortIcon('ordersAfterInvoice', 'dt_obj_created')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'objednatel')}>Objednatel{sortIcon('ordersAfterInvoice', 'objednatel')}</ThSort>
@@ -5167,8 +5173,10 @@ export default function StatsReportsPage() {
                               return (
                                 <Tr key={rowKey}>
                                   <Td>{renderOrderLink(order)}</Td>
-                                  <Td>{renderInvoiceLink(invoice)}</Td>
-                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'ordersAfterInvoice')}</Td>
+                                  <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>
+                                    {renderInvoiceLink(invoice)}
+                                    {(() => { const pozn = invoice.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>{highlightText(truncated, 'ordersAfterInvoice')}</div></SmartTooltip></div>); })()}
+                                  </Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersAfterInvoice')}</Td>
                                   <Td>{renderOrdererStack(order)}</Td>
                                   <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
@@ -5234,7 +5242,7 @@ export default function StatsReportsPage() {
                           <thead>
                             <tr>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'ev_cislo')}>Objednávka{sortIcon('ordersInvoicesWithoutAttachments', 'ev_cislo')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'fa_vs')}>Fa VS{sortIcon('ordersInvoicesWithoutAttachments', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '210px', maxWidth: '210px' }} onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'fa_vs')}>Fa VS{sortIcon('ordersInvoicesWithoutAttachments', 'fa_vs')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'dt_obj')}>Dt. obj.{sortIcon('ordersInvoicesWithoutAttachments', 'dt_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'predmet')}>Předmět{sortIcon('ordersInvoicesWithoutAttachments', 'predmet')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'objednatel')}>Objednatel{sortIcon('ordersInvoicesWithoutAttachments', 'objednatel')}</ThSort>
@@ -5255,7 +5263,12 @@ export default function StatsReportsPage() {
                               return (
                                 <Tr key={order.id}>
                                   <Td>{renderOrderLink(order, 'ordersInvoicesWithoutAttachments')}</Td>
-                                  <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id}>{renderInvoiceLink(inv, 'ordersInvoicesWithoutAttachments')}</div>)}</Td>
+                                  <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>{(invoicesByOrderId[String(order.id)] || []).map(inv => (
+                                    <div key={inv.id}>
+                                      {renderInvoiceLink(inv, 'ordersInvoicesWithoutAttachments')}
+                                      {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>{highlightText(truncated, 'ordersInvoicesWithoutAttachments')}</div></SmartTooltip></div>); })()}
+                                    </div>
+                                  ))}</Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersInvoicesWithoutAttachments')}</Td>
                                   <SubjectTd>{highlightText(getOrderSubject(order), 'ordersInvoicesWithoutAttachments')}</SubjectTd>
                                   <Td>{renderOrdererStack(order)}</Td>
@@ -5327,7 +5340,7 @@ export default function StatsReportsPage() {
                         <Table>
                           <thead>
                             <tr>
-                              <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'fa_vs')}>Fa VS{sortIcon('invoicesWithoutAttachments', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '210px', maxWidth: '210px' }} onClick={() => handleTableSort('invoicesWithoutAttachments', 'fa_vs')}>Fa VS{sortIcon('invoicesWithoutAttachments', 'fa_vs')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'dt_dorucena')}>Doručena{sortIcon('invoicesWithoutAttachments', 'dt_dorucena')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'evidoval')}>Zaevidoval{sortIcon('invoicesWithoutAttachments', 'evidoval')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'predana')}>Předána{sortIcon('invoicesWithoutAttachments', 'predana')}</ThSort>
@@ -5349,10 +5362,28 @@ export default function StatsReportsPage() {
                               const rowKey = `invoice_no_attachment_${invoice.id}`;
                               return (
                                 <Tr key={invoice.id}>
-                                  <Td>{renderInvoiceLink(invoice, 'invoicesWithoutAttachments')}</Td>
+                                  <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>
+                                    {renderInvoiceLink(invoice, 'invoicesWithoutAttachments')}
+                                    {(() => {
+                                      const pozn = invoice.fa_poznamka;
+                                      if (!pozn) return null;
+                                      const MAX = 75;
+                                      const isLong = pozn.length > MAX;
+                                      const truncated = isLong ? pozn.slice(0, MAX).trimEnd() + '\u2026' : pozn;
+                                      return (
+                                        <div style={{ display: 'block', marginTop: '0.2em' }}>
+                                          <SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}>
+                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>
+                                              {highlightText(truncated, 'invoicesWithoutAttachments')}
+                                            </div>
+                                          </SmartTooltip>
+                                        </div>
+                                      );
+                                    })()}
+                                  </Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'invoicesWithoutAttachments')}</Td>
                                   <Td>
-                                    {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'invoicesWithoutAttachments') : '-'}
+                                    {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'invoicesWithoutAttachments') : '-'}}
                                     {invoice.dt_vytvoreni && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{formatDateCz(invoice.dt_vytvoreni)}</div>}
                                   </Td>
                                   <Td>
@@ -5424,7 +5455,7 @@ export default function StatsReportsPage() {
                         <Table>
                           <thead>
                             <tr>
-                              <ThSort onClick={() => handleTableSort('overdueInvoices', 'fa_vs')}>Fa VS{sortIcon('overdueInvoices', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '210px', maxWidth: '210px' }} onClick={() => handleTableSort('overdueInvoices', 'fa_vs')}>Fa VS{sortIcon('overdueInvoices', 'fa_vs')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'dt_dorucena')}>Doručena{sortIcon('overdueInvoices', 'dt_dorucena')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'splatnost')}>Splatnost{sortIcon('overdueInvoices', 'splatnost')}</ThSort>
                               <ThRSort onClick={() => handleTableSort('overdueInvoices', 'castka')}>Částka{sortIcon('overdueInvoices', 'castka')}</ThRSort>
@@ -5447,7 +5478,25 @@ export default function StatsReportsPage() {
                               const rowKey = `invoice_overdue_${invoice.id}`;
                               return (
                                 <Tr key={invoice.id}>
-                                  <Td>{renderInvoiceLink(invoice, 'overdueInvoices')}</Td>
+                                  <Td style={{ width: '210px', maxWidth: '210px', overflow: 'hidden' }}>
+                                    {renderInvoiceLink(invoice, 'overdueInvoices')}
+                                    {(() => {
+                                      const pozn = invoice.fa_poznamka;
+                                      if (!pozn) return null;
+                                      const MAX = 75;
+                                      const isLong = pozn.length > MAX;
+                                      const truncated = isLong ? pozn.slice(0, MAX).trimEnd() + '\u2026' : pozn;
+                                      return (
+                                        <div style={{ display: 'block', marginTop: '0.2em' }}>
+                                          <SmartTooltip text={isLong ? pozn : null} preferredPosition="right" icon="none" multiline={true}>
+                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: isLong ? 'help' : 'default' }}>
+                                              {highlightText(truncated, 'overdueInvoices')}
+                                            </div>
+                                          </SmartTooltip>
+                                        </div>
+                                      );
+                                    })()}
+                                  </Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'overdueInvoices')}</Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_splatnosti), 'overdueInvoices')}</Td>
                                   <TdR>{highlightText(fmtCurrency(getInvoiceAmount(invoice)), 'overdueInvoices')}</TdR>
@@ -5531,7 +5580,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'usek')}>Úsek{sortIcon('cancelledOrders', 'usek')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'financovani')}>Financování{sortIcon('cancelledOrders', 'financovani')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'druh')}>Druh{sortIcon('cancelledOrders', 'druh')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('cancelledOrders', 'stav')}>Stav obj.{sortIcon('cancelledOrders', 'stav')}</ThSort>
+                              <ThSort style={{ maxWidth: '240px', width: '240px' }} onClick={() => handleTableSort('cancelledOrders', 'stav')}>Stav obj.{sortIcon('cancelledOrders', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'pocet_fa')}>Počet FA{sortIcon('cancelledOrders', 'pocet_fa')}</ThSort>
                               <Th>Poznámka</Th>
                             </tr>
@@ -5547,7 +5596,37 @@ export default function StatsReportsPage() {
                                 <Td>{highlightText(getOrdererUsekCode(order) || '-', 'cancelledOrders')}</Td>
                                 <TdNarrow>{highlightText(getOrderFinancingLabel(order), 'cancelledOrders')}</TdNarrow>
                                 <TdNarrow>{highlightText(getOrderTypeLabel(order), 'cancelledOrders')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
-                                <Td>{highlightText(getOrderStatusLabel(order), 'cancelledOrders')}</Td>
+                                <Td style={{ maxWidth: '240px', width: '240px', overflow: 'hidden' }}>
+                                  {highlightText(getOrderStatusLabel(order), 'cancelledOrders')}
+                                  {(() => {
+                                    const statusRaw = `${getOrderStatusCode(order)} ${getOrderStatusLabel(order)}`.toUpperCase();
+                                    const isStorno = statusRaw.includes('STORNO') || statusRaw.includes('SMAZ') || statusRaw.includes('ZRUS');
+                                    const komentarText = isStorno
+                                      ? (order.odeslani_storno_duvod || order.stav_komentar || null)
+                                      : (order.schvaleni_komentar || order.stav_komentar || null);
+                                    if (!komentarText) return null;
+                                    const MAX_CHARS = 100;
+                                    const isLong = komentarText.length > MAX_CHARS;
+                                    const truncated = isLong ? komentarText.slice(0, MAX_CHARS).trimEnd() + '\u2026' : komentarText;
+                                    return (
+                                      <div style={{ display: 'grid', marginTop: '0.25em', paddingRight: '1em' }}>
+                                        <SmartTooltip text={isLong ? komentarText : null} preferredPosition="right" icon="none" multiline={true}>
+                                          <div style={{
+                                            fontSize: '0.75rem',
+                                            color: '#6b7280',
+                                            fontStyle: 'italic',
+                                            whiteSpace: 'normal',
+                                            wordBreak: 'break-word',
+                                            lineHeight: '1.35',
+                                            cursor: isLong ? 'help' : 'default',
+                                          }}>
+                                            {highlightText(truncated, 'cancelledOrders')}
+                                          </div>
+                                        </SmartTooltip>
+                                      </div>
+                                    );
+                                  })()}
+                                </Td>
                                 <Td>
                                   {(() => {
                                     const invs = invoicesByOrderId[String(order.id)] || [];
