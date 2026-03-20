@@ -2049,44 +2049,76 @@ export default function StatsReportsPage() {
       return normalizedVal.includes(normalizedQuery);
     };
 
-    // Pro objednávky - vyhledávání ve viditelných sloupcích (přímo z vlastností)
-    if (item.ev_cislo || item.cislo_objednavky || item.predmet) {
+    // Pro objednávky — pokrýváme všechna pole která jsou ve viditelných sloupcích V3
+    if (item.ev_cislo || item.cislo_objednavky || item.predmet || item.predmet_objednavky || item.stav_objednavky || item.max_cena_s_dph != null) {
+      // Rozbalit financovani objekt / JSON pro LP kódy a smlouvu
+      let fin = null;
+      if (item.financovani && typeof item.financovani === 'object') {
+        fin = item.financovani;
+      } else if (item.financovani && typeof item.financovani === 'string' && item.financovani.trim().startsWith('{')) {
+        try { fin = JSON.parse(item.financovani); } catch (e) { fin = null; }
+      }
+      const lpNazvy = Array.isArray(fin?.lp_nazvy) ? fin.lp_nazvy : [];
+      const lpStrings = lpNazvy.flatMap(lp => [lp.cislo_lp, lp.kod, lp.nazev_uctu].filter(Boolean));
+
       const visibleValues = [
+        // Čísla objednávky
         item.ev_cislo,
         item.cislo_objednavky,
-        item.datum_objednavky,
-        item.datum_schvaleni,
-        item.predmet,
-        item.stav,
-        item.objednatel_jmeno,
-        item.objednatel_prijmeni,
-        item.schvalovatel_jmeno,
-        item.schvalovatel_prijmeni,
+        // Datumy
+        item.datum_vytvoreni, item.dt_vytvoreni, item.dt_objednavky, item.datum_objednavky,
+        item.datum_schvaleni, item.dt_schvaleni,
+        // Předmět
+        item.predmet, item.predmet_objednavky, item.nazev,
+        // Stav
+        item.stav_objednavky, item.stav,
+        // Objednatel
+        item.objednatel_jmeno, item.objednatel_prijmeni,
+        item.objednatel_uzivatel?.cele_jmeno, item.objednatel?.cele_jmeno,
+        // Schvalovatel / příkazce
+        item.schvalovatel_jmeno, item.schvalovatel_prijmeni,
+        item.schvalovatel_uzivatel?.cele_jmeno, item.schvalovatel?.cele_jmeno,
+        item.prikazce_jmeno, item.prikazce_prijmeni, item.prikazce_uzivatel?.cele_jmeno,
+        // Úsek (V3 pole)
+        item.objednatel_usek_zkr, item.objednatel_usek, item.usek_objednatele,
+        item.objednatel_uzivatel?.usek_zkr, item.objednatel?.usek_zkr,
         item.usek_nazev,
-        item.financovani_nazev,
+        // Financování label
+        fin?.typ_nazev, fin?.nazev, fin?.nazev_stavu,
+        typeof item.financovani === 'string' && !item.financovani.trim().startsWith('{') ? item.financovani : null,
+        // LP kódy
+        ...lpStrings,
+        // Smlouva
+        fin?.cislo_smlouvy, item.cislo_smlouvy,
+        // Druh objednávky
+        item.druh_objednavky_nazev, item.druh_objednavky_label,
+        typeof item.druh_objednavky === 'string' && !item.druh_objednavky.trim().startsWith('{') ? item.druh_objednavky : null,
+        item.druh_objednavky?.nazev_stavu, item.druh_objednavky?.nazev,
+        item.druh_objednavky_kod?.nazev_stavu, item.druh_objednavky_kod?.nazev,
         item.druh_nazev,
-        item.castka,
-        item.poznamka
-      ];
+        // Částky
+        item.castka, item.max_cena_s_dph, item.cena_s_dph,
+        // Poznámka
+        item.poznamka,
+      ].filter(v => v != null);
       return visibleValues.some(matchesText);
     }
 
     // Pro faktury - vyhledávání ve viditelných sloupcích (přímo z vlastností)
-    if (item.cislo_faktury || item.fa_cislo_vema) {
+    if (item.cislo_faktury || item.fa_cislo_vema || item.fa_stav) {
       const visibleValues = [
         item.cislo_faktury,
         item.fa_cislo_vema,
-        item.datum_vystaveni,
-        item.fa_datum_vystaveni,
-        item.datum_doruceni,
-        item.fa_datum_doruceni,
-        item.datum_splatnosti,
-        item.fa_datum_splatnosti,
-        item.stav,
-        item.castka,
-        item.fa_castka,
-        item.cislo_smlouvy
-      ];
+        item.datum_vystaveni, item.fa_datum_vystaveni,
+        item.datum_doruceni, item.fa_datum_doruceni,
+        item.datum_splatnosti, item.fa_datum_splatnosti,
+        item.stav, item.fa_stav,
+        item.castka, item.fa_castka,
+        item.cislo_smlouvy,
+        item.vytvoril_uzivatel_zkracene,
+        item.fa_predana_zam_jmeno_cele,
+        item.fa_poznamka,
+      ].filter(v => v != null);
       return visibleValues.some(matchesText);
     }
 
@@ -3536,7 +3568,13 @@ export default function StatsReportsPage() {
     
     const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
     return spendByLpKodGroups.map(group => {
-      const groupMatches = removeDiacritics(group.label.toLowerCase()).includes(normalizedQuery);
+      // Hledat ve všech zobrazených polích hlavního řádku skupiny
+      const groupMatches = [
+        group.label,
+        group.code,
+        group.usek_zkr,
+        group.prikazce_jmeno,
+      ].filter(Boolean).some(s => removeDiacritics(String(s).toLowerCase()).includes(normalizedQuery));
       const filteredOrders = group.orders.filter(order => searchInVisibleColumns(order, query, 'spendByLpKod'));
       
       if (!groupMatches && filteredOrders.length === 0) return null;
@@ -3553,12 +3591,20 @@ export default function StatsReportsPage() {
   const filteredSpendBySmlouvyGroups = useMemo(() => {
     const query = getSearchQuery('spendBySmlouvy');
     if (!query) return spendBySmlouvyGroups;
+    const normalizedQuery = removeDiacritics(query.toLowerCase().trim());
     return spendBySmlouvyGroups.map(group => {
       const filteredOrders = group.orders.filter(order => searchInVisibleColumns(order, query, 'spendBySmlouvy'));
-      if (filteredOrders.length === 0 && !group.code.toLowerCase().includes(query.toLowerCase())) return null;
+      // Hledat ve všech zobrazených polích hlavního řádku skupiny (číslo smlouvy, dodavatel, IČO)
+      const groupMatches = [
+        group.code,
+        group.label,
+        group.dodavatel,
+        group.ico,
+      ].filter(Boolean).some(s => removeDiacritics(String(s).toLowerCase()).includes(normalizedQuery));
+      if (filteredOrders.length === 0 && !groupMatches) return null;
       return { ...group, orders: filteredOrders, count: filteredOrders.length, amount: filteredOrders.reduce((s, o) => s + getOrderAmount(o), 0) };
     }).filter(Boolean);
-  }, [spendBySmlouvyGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount]);
+  }, [spendBySmlouvyGroups, getSearchQuery, searchInVisibleColumns, getOrderAmount, removeDiacritics]);
 
   const filteredSpendByFinancingUsekDruhGroups = useMemo(() => {
     const query = getSearchQuery('spendByFinancingUsekDruh');
