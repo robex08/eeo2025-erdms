@@ -414,7 +414,8 @@ function enrichFinancovaniV3($db, &$order) {
                     zbyva_planovano,
                     zbyva_skutecne,
                     nazev_firmy,
-                    ico
+                    ico,
+                    nazev_smlouvy
                 FROM " . TBL_SMLOUVY . " 
                 WHERE cislo_smlouvy = ?
                 AND aktivni = 1
@@ -438,7 +439,8 @@ function enrichFinancovaniV3($db, &$order) {
                     'zbyva_planovano' => $smlouva['zbyva_planovano'],
                     'zbyva_skutecne' => $smlouva['zbyva_skutecne'],
                     'nazev_firmy' => isset($smlouva['nazev_firmy']) ? $smlouva['nazev_firmy'] : null,
-                    'ico' => isset($smlouva['ico']) ? $smlouva['ico'] : null
+                    'ico' => isset($smlouva['ico']) ? $smlouva['ico'] : null,
+                    'nazev_smlouvy' => isset($smlouva['nazev_smlouvy']) ? $smlouva['nazev_smlouvy'] : null
                 );
             } else {
                 $order['_enriched']['smlouva_info'] = array(
@@ -451,7 +453,8 @@ function enrichFinancovaniV3($db, &$order) {
                     'zbyva_planovano' => null,
                     'zbyva_skutecne' => null,
                     'nazev_firmy' => null,
-                    'ico' => null
+                    'ico' => null,
+                    'nazev_smlouvy' => null
                 );
             }
         } catch (Exception $e) {
