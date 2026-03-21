@@ -71,8 +71,8 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const PAGE_TABS = [
   { id: 'control', label: 'Finanční kontrola', icon: faTriangleExclamation },
   { id: 'spend', label: 'Čerpání', icon: faMoneyBillWave },
-  { id: 'stats', label: 'Statistiky', icon: faChartLine },
   { id: 'reports', label: 'Reporty', icon: faReceipt },
+  { id: 'stats', label: 'Statistiky', icon: faChartLine },
   { id: 'attachments', label: 'Přílohy', icon: faPaperclip },
   { id: 'pivot', label: 'Agregační tabulka - vlastní', icon: faTable }
 ];
@@ -103,6 +103,11 @@ const SECTION_BLOCKS = {
     { key: 'spendByLpKod', label: 'Čerpání LP: podle LP kódu' },
     { key: 'spendBySmlouvy', label: 'Čerpání ze Smluv' }
   ],
+  reports: [
+    { key: 'ordersWithoutInvoice', label: 'Objednávky bez faktury 2+ měsíce (schváleno+)' },
+    { key: 'ordersWithInvoiceNotDone', label: 'Objednávky s fakturou, nedokončené' },
+    { key: 'topSuppliers', label: 'Dodavatelé → Financování → Objednávky' }
+  ],
   stats: [
     { key: 'chartTimeline', label: 'Vývoj částek objednávek (timeline)' },
     { key: 'chartFinancing', label: 'Financování – počet a částka' },
@@ -111,11 +116,6 @@ const SECTION_BLOCKS = {
     { key: 'chartLpKod', label: 'LP kódy – počet a částka' },
     { key: 'chartTopSuppliers', label: 'Top dodavatelé (částka)' },
     { key: 'chartTopBuyers', label: 'Top objednatelé (počet a částka)' }
-  ],
-  reports: [
-    { key: 'ordersWithoutInvoice', label: 'Objednávky bez faktury 2+ měsíce (schváleno+)' },
-    { key: 'ordersWithInvoiceNotDone', label: 'Objednávky s fakturou, nedokončené' },
-    { key: 'topSuppliers', label: 'Top dodavatelé (LP vs smlouvy)' }
   ],
   attachments: [
     { key: 'invoiceAttachmentsList', label: 'Přehled příloh faktur (soubory)' },
@@ -1385,6 +1385,12 @@ const renderOrdererStack = (order) => (
   </NameStack>
 );
 
+const renderPrikazceStack = (order) => (
+  <NameStack>
+    {renderNameLine(getPrikazceName(order))}
+  </NameStack>
+);
+
 const renderApproverStack = (order, getOrderStatusCodeFn, getInvoiceApprovalDateFn) => {
   const approvalDate = getOrderApprovalDate(order) || (getInvoiceApprovalDateFn ? getInvoiceApprovalDateFn(order) : null);
   const status = getOrderStatusCodeFn ? getOrderStatusCodeFn(order) : '';
@@ -1859,6 +1865,9 @@ export default function StatsReportsPage() {
   const [expandedSpendFinDruhUsek, setExpandedSpendFinDruhUsek] = useState(() => new Set());
   const [expandedSpendFinDruhDetail, setExpandedSpendFinDruhDetail] = useState(() => new Set());
   const [expandedSpendSmlouvy, setExpandedSpendSmlouvy] = useState(() => new Set());
+  const [expandedTopSuppDod, setExpandedTopSuppDod] = useState(() => new Set());
+  const [expandedTopSuppFin, setExpandedTopSuppFin] = useState(() => new Set());
+  const [expandedTopSuppDetail, setExpandedTopSuppDetail] = useState(() => new Set());
   // Stav třídění flat tabulek: { [tableKey]: { field, dir } }
   const [tableSorts, setTableSorts] = useState({});
   const blockSelectRef = useRef(null);
@@ -2052,16 +2061,23 @@ export default function StatsReportsPage() {
     // Pro objednávky — pokrýváme všechna pole která jsou ve viditelných sloupcích V3
     if (item.ev_cislo || item.cislo_objednavky || item.predmet || item.predmet_objednavky || item.stav_objednavky || item.max_cena_s_dph != null) {
       // Rozbalit financovani objekt / JSON pro LP kódy a smlouvu
-      let fin = null;
+      var fin = null;
       if (item.financovani && typeof item.financovani === 'object') {
         fin = item.financovani;
       } else if (item.financovani && typeof item.financovani === 'string' && item.financovani.trim().startsWith('{')) {
         try { fin = JSON.parse(item.financovani); } catch (e) { fin = null; }
       }
-      const lpNazvy = Array.isArray(fin?.lp_nazvy) ? fin.lp_nazvy : [];
-      const lpStrings = lpNazvy.flatMap(lp => [lp.cislo_lp, lp.kod, lp.nazev_uctu].filter(Boolean));
+      var lpNazvy = (fin && Array.isArray(fin.lp_nazvy)) ? fin.lp_nazvy : [];
+      var lpStrings = lpNazvy.flatMap(function(lp) { return [lp.cislo_lp, lp.kod, lp.nazev_uctu].filter(Boolean); });
+      var objednatelUziv = item.objednatel_uzivatel || {};
+      var objednatelObj = item.objednatel && typeof item.objednatel === 'object' ? item.objednatel : {};
+      var schvalUziv = item.schvalovatel_uzivatel || {};
+      var schvalObj = item.schvalovatel && typeof item.schvalovatel === 'object' ? item.schvalovatel : {};
+      var prikazceUziv = item.prikazce_uzivatel || {};
+      var druhObj = item.druh_objednavky && typeof item.druh_objednavky === 'object' ? item.druh_objednavky : {};
+      var druhKodObj = item.druh_objednavky_kod && typeof item.druh_objednavky_kod === 'object' ? item.druh_objednavky_kod : {};
 
-      const visibleValues = [
+      var visibleValues = [
         // Čísla objednávky
         item.ev_cislo,
         item.cislo_objednavky,
@@ -2074,33 +2090,33 @@ export default function StatsReportsPage() {
         item.stav_objednavky, item.stav,
         // Objednatel
         item.objednatel_jmeno, item.objednatel_prijmeni,
-        item.objednatel_uzivatel?.cele_jmeno, item.objednatel?.cele_jmeno,
+        objednatelUziv.cele_jmeno, objednatelObj.cele_jmeno,
         // Schvalovatel / příkazce
         item.schvalovatel_jmeno, item.schvalovatel_prijmeni,
-        item.schvalovatel_uzivatel?.cele_jmeno, item.schvalovatel?.cele_jmeno,
-        item.prikazce_jmeno, item.prikazce_prijmeni, item.prikazce_uzivatel?.cele_jmeno,
+        schvalUziv.cele_jmeno, schvalObj.cele_jmeno,
+        item.prikazce_jmeno, item.prikazce_prijmeni, prikazceUziv.cele_jmeno,
         // Úsek (V3 pole)
         item.objednatel_usek_zkr, item.objednatel_usek, item.usek_objednatele,
-        item.objednatel_uzivatel?.usek_zkr, item.objednatel?.usek_zkr,
+        objednatelUziv.usek_zkr, objednatelObj.usek_zkr,
         item.usek_nazev,
         // Financování label
-        fin?.typ_nazev, fin?.nazev, fin?.nazev_stavu,
+        fin ? fin.typ_nazev : null, fin ? fin.nazev : null, fin ? fin.nazev_stavu : null,
         typeof item.financovani === 'string' && !item.financovani.trim().startsWith('{') ? item.financovani : null,
         // LP kódy
         ...lpStrings,
         // Smlouva
-        fin?.cislo_smlouvy, item.cislo_smlouvy,
+        fin ? fin.cislo_smlouvy : null, item.cislo_smlouvy,
         // Druh objednávky
         item.druh_objednavky_nazev, item.druh_objednavky_label,
         typeof item.druh_objednavky === 'string' && !item.druh_objednavky.trim().startsWith('{') ? item.druh_objednavky : null,
-        item.druh_objednavky?.nazev_stavu, item.druh_objednavky?.nazev,
-        item.druh_objednavky_kod?.nazev_stavu, item.druh_objednavky_kod?.nazev,
+        druhObj.nazev_stavu, druhObj.nazev,
+        druhKodObj.nazev_stavu, druhKodObj.nazev,
         item.druh_nazev,
         // Částky
         item.castka, item.max_cena_s_dph, item.cena_s_dph,
         // Poznámka
         item.poznamka,
-      ].filter(v => v != null);
+      ].filter(function(v) { return v != null; });
       return visibleValues.some(matchesText);
     }
 
@@ -2668,6 +2684,15 @@ export default function StatsReportsPage() {
       </span>
     );
   }, [tableSorts]);
+
+  const invoiceAttachmentAcc = useMemo(() => ({
+    nazev_souboru: att => att.original_name || att.nazev_souboru || '',
+    typ_prilohy:   att => att.typ_prilohy || att.attachment_type || '',
+    faktura:       att => att.cislo_faktury || '',
+    objednavka:    att => att.cislo_objednavky || '',
+    dodavatel:     att => att.dodavatel || '',
+    fa_stav:       att => att.fa_stav || '',
+  }), []);
   // ──────────────────────────────────────────────────────────────────────────────
 
   const getOrderTypeCode = useCallback((order) => {
@@ -2775,6 +2800,40 @@ export default function StatsReportsPage() {
     return fin?.typ_nazev || fin?.nazev || fin?.nazev_stavu || financingMap[String(code)] || code || '';
   }, [financingMap]);
 
+  // Vrátí poznámku k financování (typově specifické pole)
+  const getOrderFinancingNote = useCallback(function(order) {
+    var fin = parseFinancing(order ? order.financovani : null);
+    if (!fin) return '';
+    var typ = String(fin.typ || '').toUpperCase();
+    if (typ === 'LP') return fin.lp_poznamka || '';
+    if (typ === 'SMLOUVA') return fin.smlouva_poznamka || '';
+    if (typ === 'INDIVIDUALNI_SCHVALENI') return fin.individualni_poznamka || '';
+    if (typ === 'POJISTNA_UDALOST') return fin.pojistna_udalost_poznamka || '';
+    return fin.poznamka || '';
+  }, []);
+
+  // Renderuje buňku Financování s druhým řádkem poznámky a SmartTooltipem
+  const renderFinancingLabelCell = useCallback(function(order, sectionKey) {
+    var label = getOrderFinancingLabel(order) || '-';
+    var note = getOrderFinancingNote(order);
+    var inner = (
+      <div style={ note ? { cursor: 'help', maxWidth: '160px' } : { maxWidth: '160px' } }>
+        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlightText(label, sectionKey)}</div>
+        {note && (
+          <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: 1.3, marginTop: '2px', maxHeight: '2.6em', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>
+            {note}
+          </div>
+        )}
+      </div>
+    );
+    if (!note) return inner;
+    return (
+      <SmartTooltip text={label + '\n' + note} preferredPosition="top" icon="none" multiline={true}>
+        {inner}
+      </SmartTooltip>
+    );
+  }, [getOrderFinancingLabel, getOrderFinancingNote, highlightText]);
+
   // Vrátí referenční číslo/kód podle typu financování
   const getOrderFinancingRef = useCallback((order) => {
     const fin = parseFinancing(order?.financovani);
@@ -2813,6 +2872,46 @@ export default function StatsReportsPage() {
     return 'Ref.';
   }, []);
 
+  // Vrátí název smlouvy z enriched dat nebo z contractsByNumber mapy
+  const getOrderContractName = useCallback((order) => {
+    var smInfo = order && order._enriched ? order._enriched.smlouva_info : null;
+    if (smInfo && smInfo.nazev_smlouvy) return smInfo.nazev_smlouvy;
+    // Fallback: zkusit najít v contractsByNumber mapě
+    var ref = getOrderFinancingRef(order);
+    if (ref && contractsByNumber.has(String(ref))) {
+      var c = contractsByNumber.get(String(ref));
+      return c ? (c.nazev_smlouvy || c.nazev || '') : '';
+    }
+    return '';
+  }, [getOrderFinancingRef, contractsByNumber]);
+
+  // Renderuje buňku ref. čísla s druhým řádkem názvu smlouvy (pokud jde o SMLOUVA)
+  const renderFinancingRefCell = useCallback(function(order, sectionKey) {
+    var ref = getOrderFinancingRef(order) || '-';
+    var fin = parseFinancing(order ? order.financovani : null);
+    var typ = String(fin ? fin.typ || '' : '').toUpperCase();
+    if (typ !== 'SMLOUVA') {
+      return highlightText(ref, sectionKey);
+    }
+    var nazev = getOrderContractName(order);
+    var inner = (
+      <div style={ nazev ? { cursor: 'help' } : undefined }>
+        <div>{highlightText(ref, sectionKey)}</div>
+        {nazev && (
+          <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: 1.3, marginTop: '2px', maxHeight: '2.6em', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>
+            {nazev}
+          </div>
+        )}
+      </div>
+    );
+    if (!nazev) return inner;
+    return (
+      <SmartTooltip text={nazev} preferredPosition="top" icon="none" multiline={true}>
+        {inner}
+      </SmartTooltip>
+    );
+  }, [getOrderFinancingRef, getOrderContractName, highlightText]);
+
   const getInvoiceStatusLabel = useCallback((invoice) => {
     const raw = invoice?.stav || invoice?.fa_stav || '';
     const code = String(raw || '').toUpperCase();
@@ -2846,6 +2945,16 @@ export default function StatsReportsPage() {
     return label.includes('zaplacen') || label.includes('uhrazen') || label.includes('dokonc');
   }, [getInvoiceStatusLabel]);
 
+  // Mapa numeric ID → usek_zkr pro překlad filtrů (dropdown ukládá ID, ale objednávky mají zkratku)
+  const usekIdToZkrMap = useMemo(() => {
+    return (dictionaryUseky || []).reduce((acc, usek) => {
+      const id = String(usek.id || usek.usek_id || '');
+      const zkr = String(usek.usek_zkr || '');
+      if (id && zkr) acc[id] = zkr;
+      return acc;
+    }, {});
+  }, [dictionaryUseky]);
+
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const orderDate = toDate(getOrderDate(order));
@@ -2860,8 +2969,22 @@ export default function StatsReportsPage() {
         if (!filters.orderTypes.includes(code)) return false;
       }
       if (filters.usekIds.length > 0) {
-        const usekCode = String(order?.usek_id ?? '');
-        if (!filters.usekIds.includes(usekCode)) return false;
+        // Přeložit vybrané numeric ID na zkratky (dropdown ukládá ID, V3 objednávky mají zkratku)
+        var selectedZkr = filters.usekIds.map(function(id) { return usekIdToZkrMap[id] || ''; }).filter(Boolean);
+        // Inline logika getOrdererUsekCode (definován až níže, nelze použít před inicializací)
+        var directUsek = order.objednatel_usek_zkr
+          || order.objednatel_usek
+          || (order.objednatel && order.objednatel.usek_zkr)
+          || (order.objednatel_uzivatel && order.objednatel_uzivatel.usek_zkr)
+          || order.usek_objednatele
+          || '';
+        if (!directUsek) {
+          var evNum = order.ev_cislo || order.cislo_objednavky || '';
+          var m = String(evNum || '').trim().match(/20\d{2}\s*\/\s*([^\/\s]+)/i);
+          directUsek = m ? m[1].trim() : '';
+        }
+        var usekCode = String(directUsek);
+        if (selectedZkr.length > 0 && !selectedZkr.includes(usekCode)) return false;
       }
       if (filters.orderYear) {
         const oDate = toDate(getOrderDate(order));
@@ -2869,7 +2992,7 @@ export default function StatsReportsPage() {
       }
       return true;
     });
-  }, [orders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, filters.orderYear, getOrderFinancingCode, getOrderTypeCode, getOrderDate]);
+  }, [orders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, filters.orderYear, getOrderFinancingCode, getOrderTypeCode, getOrderDate, usekIdToZkrMap]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(invoice => {
@@ -2940,6 +3063,21 @@ export default function StatsReportsPage() {
     if (!code) return 'Neurčeno';
     return usekLabelMap[code] || code;
   }, [getOrdererUsekCode, usekLabelMap]);
+
+  // Sdílené accessory pro třídění detail tabulek objednávek v sekci Čerpání
+  const spendOrderAcc = useMemo(() => ({
+    ev_cislo:    o => o.ev_cislo || o.cislo || '',
+    dt_obj:      o => getOrderDate(o) || '',
+    predmet:     o => getOrderSubject(o) || '',
+    objednatel:  o => getOrdererName(o) || '',
+    schvalovatel: o => getSchvalovatelName(o) || '',
+    usek:        o => getOrdererUsekCode(o) || '',
+    financovani: o => getOrderFinancingLabel(o) || '',
+    detail_fin:  o => getOrderFinancingRef(o) || '',
+    druh:        o => getOrderTypeLabel(o) || '',
+    stav:        o => getOrderStatusLabel(o) || '',
+    castka:      o => String(getOrderAmount(o) || 0),
+  }), [getOrderDate, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getOrderAmount]);
 
   const getOrderActualAmount = useCallback((order) => {
     const invoicesForOrder = invoicesByOrderId[String(order?.id)] || [];
@@ -3143,29 +3281,67 @@ export default function StatsReportsPage() {
       return !type.includes('vzd');
     });
 
-    const topSuppliers = Object.entries(
-      filteredOrders.reduce((acc, order) => {
-        const supplier = getSupplierName(order) || 'Neurčeno';
-        const financing = getOrderFinancingLabel(order) || 'Neurčeno';
-        const amount = getOrderAmount(order);
-        if (!acc[supplier]) {
-          acc[supplier] = { total: 0, split: {} };
+    // Mapa IČO → { total, active, items: [{cislo, isValid}] }
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var contractsByIcoMap = {};
+    (contracts || []).forEach(function(c) {
+      var cIco = c ? String(c.ico || '').trim() : '';
+      if (cIco) {
+        if (!contractsByIcoMap[cIco]) contractsByIcoMap[cIco] = { total: 0, active: 0, items: [] };
+        contractsByIcoMap[cIco].total += 1;
+        var isAktivni = c.aktivni !== 0 && c.aktivni !== '0' && c.aktivni != null;
+        var platnostDo = c.platnost_do ? String(c.platnost_do).slice(0, 10) : '2099-12-31';
+        var isValid = isAktivni && platnostDo >= todayStr;
+        if (isValid) contractsByIcoMap[cIco].active += 1;
+        var cislo = c.cislo_smlouvy || c.cislo || '';
+        if (cislo) contractsByIcoMap[cIco].items.push({ cislo: cislo, isValid: isValid });
+      }
+    });
+
+    const supplierGroups = {};
+    filteredOrders.forEach(function(order) {
+      var supplier = getSupplierName(order) || 'Neurčeno';
+      var finCode = getOrderFinancingCode(order) || '__none__';
+      var finLabel = getOrderFinancingLabel(order) || 'Neurčeno';
+      var amount = getOrderAmount(order);
+      if (!supplierGroups[supplier]) supplierGroups[supplier] = { code: supplier, label: supplier, ico: '', financovani: {}, finCodes: {}, totalCount: 0, totalAmount: 0, smlouvyActive: 0, smlouvyTotal: 0, smlouvyItems: [] };
+      // Sbíráme IČO z objednávek (první nenulové)
+      if (!supplierGroups[supplier].ico) {
+        var orderIco = order ? String(order.dodavatel_ico || '').trim() : '';
+        if (orderIco) {
+          supplierGroups[supplier].ico = orderIco;
+          var icoStats = contractsByIcoMap[orderIco];
+          supplierGroups[supplier].smlouvyActive = icoStats ? icoStats.active : 0;
+          supplierGroups[supplier].smlouvyTotal = icoStats ? icoStats.total : 0;
+          supplierGroups[supplier].smlouvyItems = icoStats ? icoStats.items : [];
         }
-        acc[supplier].total += amount;
-        acc[supplier].split[financing] = (acc[supplier].split[financing] || 0) + amount;
-        return acc;
-      }, {})
-    )
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
+      }
+      // Sledujeme typy financování pro detekci mix (smlouva + ne-smlouva)
+      supplierGroups[supplier].finCodes[finCode] = true;
+      if (!supplierGroups[supplier].financovani[finCode]) supplierGroups[supplier].financovani[finCode] = { code: finCode, label: finLabel, orders: [], count: 0, amount: 0 };
+      supplierGroups[supplier].financovani[finCode].orders.push(order);
+      supplierGroups[supplier].financovani[finCode].count += 1;
+      supplierGroups[supplier].financovani[finCode].amount += amount;
+      supplierGroups[supplier].totalCount += 1;
+      supplierGroups[supplier].totalAmount += amount;
+    });
+    // Přidáme flagy pro barevné zvýraznění
+    Object.values(supplierGroups).forEach(function(g) {
+      var codes = Object.keys(g.finCodes || {});
+      var hasSmlouvaFin = codes.indexOf('SMLOUVA') >= 0;
+      var hasOther = codes.some(function(c) { return c !== 'SMLOUVA' && c !== '__none__'; });
+      g.hasMixedFinancing = hasSmlouvaFin && hasOther;
+      // Má platnou smlouvu ale vůbec z ní nečerpá (žádná obj. se SMLOUVA financováním)
+      g.hasContractNoUsage = g.smlouvyActive > 0 && !hasSmlouvaFin;
+    });
+    var topSuppliers = Object.values(supplierGroups).sort(function(a, b) { return b.totalAmount - a.totalAmount; });
 
     return {
       ordersWithoutInvoice,
       ordersWithInvoiceNotDone,
       topSuppliers
     };
-  }, [filteredOrders, invoicesByOrderId, getOrderStatusCode, getOrderTypeLabel, getOrderFinancingLabel]);
+  }, [filteredOrders, invoicesByOrderId, getOrderStatusCode, getOrderTypeLabel, getOrderFinancingCode, getOrderFinancingLabel, getOrderAmount, contracts]);
 
   const pagedOrdersOverLimit = useMemo(() => {
     const acc = {
@@ -3179,12 +3355,13 @@ export default function StatsReportsPage() {
       schvalovatel: o => getSchvalovatelName(o),
       usek:        o => getOrdererUsekLabel(o),
       financovani: o => getOrderFinancingLabel(o),
+      detail_fin:  o => getOrderFinancingRef(o),
       druh:        o => getOrderTypeLabel(o),
       stav:        o => getOrderStatusLabel(o),
       stav_fa:     o => getInvoiceStatusLabel((invoicesByOrderId[String(o.id)] || [])[0]) || '',
     };
     return getPagedItems(sortTableData(controlSections.ordersOverLimit, 'ordersOverLimit', acc), 'ordersOverLimit');
-  }, [controlSections.ordersOverLimit, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderTypeLabel, getOrderStatusLabel, invoicesByOrderId, getInvoiceStatusLabel]);
+  }, [controlSections.ordersOverLimit, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, invoicesByOrderId, getInvoiceStatusLabel]);
 
   const pagedOrdersAfterInvoice = useMemo(() => {
     const acc = {
@@ -3196,12 +3373,13 @@ export default function StatsReportsPage() {
       schvalovatel:   item => getSchvalovatelName(item.order),
       usek:           item => getOrdererUsekLabel(item.order),
       financovani:    item => getOrderFinancingLabel(item.order),
+      detail_fin:     item => getOrderFinancingRef(item.order),
       druh:           item => getOrderTypeLabel(item.order),
       stav:           item => getOrderStatusLabel(item.order),
       stav_fa:        item => getInvoiceStatusLabel(item.invoice) || '',
     };
     return getPagedItems(sortTableData(controlSections.ordersAfterInvoice, 'ordersAfterInvoice', acc), 'ordersAfterInvoice');
-  }, [controlSections.ordersAfterInvoice, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel]);
+  }, [controlSections.ordersAfterInvoice, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel]);
   const pagedOrdersInvoicesWithoutAttachments = useMemo(() => {
     const acc = {
       ev_cislo:     o => o.ev_cislo || o.cislo_objednavky || '',
@@ -3212,6 +3390,7 @@ export default function StatsReportsPage() {
       schvalovatel: o => getSchvalovatelName(o),
       usek:         o => getOrdererUsekLabel(o),
       financovani:  o => getOrderFinancingLabel(o),
+      detail_fin:   o => getOrderFinancingRef(o),
       druh:         o => getOrderTypeLabel(o),
       stav_obj:     o => getOrderStatusLabel(o),
       stav_fa:      o => (invoicesByOrderId[String(o.id)] || []).map(inv => getInvoiceStatusLabel(inv)).join(' '),
@@ -3219,7 +3398,7 @@ export default function StatsReportsPage() {
       prilohy_fa:   o => (invoicesByOrderId[String(o.id)] || []).reduce((s, inv) => s + (Number(inv.pocet_priloh) || 0), 0),
     };
     return getPagedItems(sortTableData(controlSections.ordersInvoicesWithoutAttachments, 'ordersInvoicesWithoutAttachments', acc), 'ordersInvoicesWithoutAttachments');
-  }, [controlSections.ordersInvoicesWithoutAttachments, getPagedItems, sortTableData, invoicesByOrderId, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderTypeLabel, getOrderStatusLabel]);
+  }, [controlSections.ordersInvoicesWithoutAttachments, getPagedItems, sortTableData, invoicesByOrderId, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel]);
   const pagedInvoicesWithoutAttachments = useMemo(() => {
     const acc = {
       fa_vs:        inv => inv.cislo_faktury || '',
@@ -3231,12 +3410,13 @@ export default function StatsReportsPage() {
       schvalovatel: inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getApproverName(o) : ''; },
       usek:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrdererUsekCode(o) : (inv.usek_zkr || ''); },
       financovani:  inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingLabel(o) : ''; },
+      detail_fin:   inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingRef(o) : ''; },
       druh:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderTypeLabel(o) : ''; },
       prilohy_obj:  inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? Number(o.pocet_priloh ?? o.prilohy_count ?? 0) : 0; },
       prilohy_fa:   inv => Number(inv.pocet_priloh ?? (Array.isArray(inv.prilohy) ? inv.prilohy.length : 0)),
     };
     return getPagedItems(sortTableData(controlSections.invoicesWithoutAttachments, 'invoicesWithoutAttachments', acc), 'invoicesWithoutAttachments');
-  }, [controlSections.invoicesWithoutAttachments, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderTypeLabel, getOrdererUsekCode]);
+  }, [controlSections.invoicesWithoutAttachments, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode]);
   const pagedOverdueInvoices = useMemo(() => {
     const acc = {
       fa_vs:        inv => inv.cislo_faktury || '',
@@ -3250,12 +3430,13 @@ export default function StatsReportsPage() {
       stav_obj:     inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderStatusLabel(o) : ''; },
       usek:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrdererUsekCode(o) : (inv.usek_zkr || ''); },
       financovani:  inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingLabel(o) : ''; },
+      detail_fin:   inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingRef(o) : ''; },
       druh:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderTypeLabel(o) : ''; },
       prilohy_obj:  inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? Number(o.pocet_priloh ?? o.prilohy_count ?? 0) : 0; },
       prilohy_fa:   inv => Number(inv.pocet_priloh ?? (Array.isArray(inv.prilohy) ? inv.prilohy.length : 0)),
     };
     return getPagedItems(sortTableData(controlSections.overdueInvoices, 'overdueInvoices', acc), 'overdueInvoices');
-  }, [controlSections.overdueInvoices, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderTypeLabel, getOrdererUsekCode]);
+  }, [controlSections.overdueInvoices, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode]);
   const pagedCancelledOrders = useMemo(() => {
     const acc = {
       ev_cislo:    o => o.ev_cislo || o.cislo_objednavky || '',
@@ -3266,11 +3447,12 @@ export default function StatsReportsPage() {
       schvalovatel: o => getSchvalovatelName(o),
       usek:        o => getOrdererUsekLabel(o),
       financovani: o => getOrderFinancingLabel(o),
+      detail_fin:  o => getOrderFinancingRef(o),
       druh:        o => getOrderTypeLabel(o),
       pocet_fa:    o => (invoicesByOrderId[String(o.id)] || []).length,
     };
     return getPagedItems(sortTableData(controlSections.cancelledOrders, 'cancelledOrders', acc), 'cancelledOrders');
-  }, [controlSections.cancelledOrders, getPagedItems, sortTableData, getOrderDate, getOrderStatusLabel, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderTypeLabel, invoicesByOrderId]);
+  }, [controlSections.cancelledOrders, getPagedItems, sortTableData, getOrderDate, getOrderStatusLabel, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, invoicesByOrderId]);
   const pagedFinancingOptions = useMemo(
     () => getPagedItems(financingOptions, 'financingOptions'),
     [financingOptions, getPagedItems]
@@ -3721,16 +3903,12 @@ export default function StatsReportsPage() {
   }, [filteredSpendByFinancingUsekDruhGroups, getSearchQuery]);
 
   const pagedOrdersWithoutInvoice = useMemo(
-    () => getPagedItems(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice'),
-    [reportSections.ordersWithoutInvoice, getPagedItems]
+    () => getPagedItems(sortTableData(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice', spendOrderAcc), 'ordersWithoutInvoice'),
+    [reportSections.ordersWithoutInvoice, getPagedItems, tableSorts, spendOrderAcc]
   );
   const pagedOrdersWithInvoiceNotDone = useMemo(
-    () => getPagedItems(reportSections.ordersWithInvoiceNotDone, 'ordersWithInvoiceNotDone'),
-    [reportSections.ordersWithInvoiceNotDone, getPagedItems]
-  );
-  const pagedTopSuppliers = useMemo(
-    () => getPagedItems(reportSections.topSuppliers, 'topSuppliers'),
-    [reportSections.topSuppliers, getPagedItems]
+    () => getPagedItems(sortTableData(reportSections.ordersWithInvoiceNotDone, 'ordersWithInvoiceNotDone', spendOrderAcc), 'ordersWithInvoiceNotDone'),
+    [reportSections.ordersWithInvoiceNotDone, getPagedItems, tableSorts, spendOrderAcc]
   );
 
   const statisticsCharts = useMemo(() => {
@@ -4117,8 +4295,8 @@ export default function StatsReportsPage() {
   }, [filteredInvoices, ordersById]);
 
   const pagedInvoiceAttachmentsList = useMemo(
-    () => getPagedItems(allInvoiceAttachments, 'invoiceAttachmentsList'),
-    [allInvoiceAttachments, getPagedItems, tablePaging]
+    () => getPagedItems(sortTableData(allInvoiceAttachments, 'invoiceAttachmentsList', invoiceAttachmentAcc), 'invoiceAttachmentsList'),
+    [allInvoiceAttachments, getPagedItems, tablePaging, tableSorts, invoiceAttachmentAcc]
   );
 
   const pivotStorageKey = `${LOCAL_STORAGE_PREFIX}_pivot_${userKey}`;
@@ -5277,6 +5455,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'schvalovatel')}>Schvalovatel{sortIcon('ordersOverLimit', 'schvalovatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'usek')}>Úsek{sortIcon('ordersOverLimit', 'usek')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'financovani')}>Financování{sortIcon('ordersOverLimit', 'financovani')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersOverLimit', 'detail_fin')}>Detail fin.{sortIcon('ordersOverLimit', 'detail_fin')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'druh')}>Druh{sortIcon('ordersOverLimit', 'druh')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'stav')}>Stav obj.{sortIcon('ordersOverLimit', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'stav_fa')}>Stav FA{sortIcon('ordersOverLimit', 'stav_fa')}</ThSort>
@@ -5303,7 +5482,8 @@ export default function StatsReportsPage() {
                                   <Td>{renderOrdererStack(order)}</Td>
                                   <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                   <Td>{highlightText(getOrdererUsekCode(order) || '-', 'ordersOverLimit')}</Td>
-                                  <TdNarrow>{highlightText(getOrderFinancingLabel(order), 'ordersOverLimit')}</TdNarrow>
+                                  <TdNarrow>{renderFinancingLabelCell(order, 'ordersOverLimit')}</TdNarrow>
+                                  <TdNarrow>{renderFinancingRefCell(order, 'ordersOverLimit')}</TdNarrow>
                                   <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersOverLimit')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                   <Td>{highlightText(getOrderStatusLabel(order), 'ordersOverLimit')}</Td>
                                   <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id} style={{whiteSpace:'nowrap'}}>{highlightText(getInvoiceStatusLabel(inv), 'ordersOverLimit')}</div>)}</Td>
@@ -5371,6 +5551,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'schvalovatel')}>Schvalovatel{sortIcon('ordersAfterInvoice', 'schvalovatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'usek')}>Úsek{sortIcon('ordersAfterInvoice', 'usek')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'financovani')}>Financování{sortIcon('ordersAfterInvoice', 'financovani')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersAfterInvoice', 'detail_fin')}>Detail fin.{sortIcon('ordersAfterInvoice', 'detail_fin')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'druh')}>Druh{sortIcon('ordersAfterInvoice', 'druh')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'stav')}>Stav obj.{sortIcon('ordersAfterInvoice', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'stav_fa')}>Stav FA{sortIcon('ordersAfterInvoice', 'stav_fa')}</ThSort>
@@ -5387,11 +5568,13 @@ export default function StatsReportsPage() {
                                     {renderInvoiceLink(invoice)}
                                     {(() => { const pozn = invoice.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>{highlightText(truncated, 'ordersAfterInvoice')}</div></SmartTooltip></div>); })()}
                                   </Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'ordersAfterInvoice')}</Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersAfterInvoice')}</Td>
                                   <Td>{renderOrdererStack(order)}</Td>
                                   <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                   <Td>{highlightText(getOrdererUsekCode(order) || '-', 'ordersAfterInvoice')}</Td>
-                                  <TdNarrow>{highlightText(getOrderFinancingLabel(order), 'ordersAfterInvoice')}</TdNarrow>
+                                  <TdNarrow>{renderFinancingLabelCell(order, 'ordersAfterInvoice')}</TdNarrow>
+                                  <TdNarrow>{renderFinancingRefCell(order, 'ordersAfterInvoice')}</TdNarrow>
                                   <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersAfterInvoice')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                   <Td>{highlightText(getOrderStatusLabel(order), 'ordersAfterInvoice')}</Td>
                                   <Td>{highlightText(getInvoiceStatusLabel(invoice), 'ordersAfterInvoice')}</Td>
@@ -5459,6 +5642,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'schvalovatel')}>Schvalovatel{sortIcon('ordersInvoicesWithoutAttachments', 'schvalovatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'usek')}>Úsek{sortIcon('ordersInvoicesWithoutAttachments', 'usek')}</ThSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'financovani')}>Financování{sortIcon('ordersInvoicesWithoutAttachments', 'financovani')}</ThNarrowSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'detail_fin')}>Detail fin.{sortIcon('ordersInvoicesWithoutAttachments', 'detail_fin')}</ThNarrowSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'druh')}>Druh{sortIcon('ordersInvoicesWithoutAttachments', 'druh')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'stav_obj')}>Stav OBJ{sortIcon('ordersInvoicesWithoutAttachments', 'stav_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'stav_fa')}>Stav FA{sortIcon('ordersInvoicesWithoutAttachments', 'stav_fa')}</ThSort>
@@ -5484,7 +5668,8 @@ export default function StatsReportsPage() {
                                   <Td>{renderOrdererStack(order)}</Td>
                                   <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                   <Td>{highlightText(getOrdererUsekCode(order) || '-', 'ordersInvoicesWithoutAttachments')}</Td>
-                                  <TdNarrow>{highlightText(getOrderFinancingLabel(order), 'ordersInvoicesWithoutAttachments')}</TdNarrow>
+                                  <TdNarrow>{renderFinancingLabelCell(order, 'ordersInvoicesWithoutAttachments')}</TdNarrow>
+                                  <TdNarrow>{renderFinancingRefCell(order, 'ordersInvoicesWithoutAttachments')}</TdNarrow>
                                   <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersInvoicesWithoutAttachments')}</TdNarrow>
                                   <Td>{highlightText(getOrderStatusLabel(order), 'ordersInvoicesWithoutAttachments')}</Td>
                                   <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id}>{highlightText(getInvoiceStatusLabel(inv), 'ordersInvoicesWithoutAttachments')}</div>)}</Td>
@@ -5558,6 +5743,7 @@ export default function StatsReportsPage() {
                               <ThRSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'castka')}>Částka{sortIcon('invoicesWithoutAttachments', 'castka')}</ThRSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'usek')}>Úsek{sortIcon('invoicesWithoutAttachments', 'usek')}</ThSort>
                               <ThNarrowSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'financovani')}>Financování{sortIcon('invoicesWithoutAttachments', 'financovani')}</ThNarrowSort>
+                              <ThNarrowSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'detail_fin')}>Detail fin.{sortIcon('invoicesWithoutAttachments', 'detail_fin')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'druh')}>Druh{sortIcon('invoicesWithoutAttachments', 'druh')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'stav_obj')}>Stav obj.{sortIcon('invoicesWithoutAttachments', 'stav_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'stav_fa')}>Stav FA{sortIcon('invoicesWithoutAttachments', 'stav_fa')}</ThSort>
@@ -5603,7 +5789,8 @@ export default function StatsReportsPage() {
                                   <Td>{order ? renderOrderLink(order, 'invoicesWithoutAttachments') : highlightText(invoice.cislo_smlouvy || invoice.smlouva_id || '-', 'invoicesWithoutAttachments')}</Td>
                                   <TdR>{highlightText(fmtCurrency(getInvoiceAmount(invoice)), 'invoicesWithoutAttachments')}</TdR>
                                   <Td>{order ? highlightText(getOrdererUsekCode(order) || '-', 'invoicesWithoutAttachments') : '-'}</Td>
-                                  <Td>{order ? highlightText(getOrderFinancingLabel(order), 'invoicesWithoutAttachments') : '-'}</Td>
+                                  <Td>{order ? renderFinancingLabelCell(order, 'invoicesWithoutAttachments') : '-'}</Td>
+                                  <TdNarrow>{order ? renderFinancingRefCell(order, 'invoicesWithoutAttachments') : '-'}</TdNarrow>
                                   <Td>{order ? highlightText(getOrderTypeLabel(order), 'invoicesWithoutAttachments') : '-'}</Td>
                                   <Td>{order ? highlightText(getOrderStatusLabel(order), 'invoicesWithoutAttachments') : '-'}</Td>
                                   <Td>{highlightText(getInvoiceStatusLabel(invoice), 'invoicesWithoutAttachments')}</Td>
@@ -5674,6 +5861,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'ev_cislo')}>Objednávka/Smlouva{sortIcon('overdueInvoices', 'ev_cislo')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'usek')}>Úsek{sortIcon('overdueInvoices', 'usek')}</ThSort>
                               <ThNarrowSort onClick={() => handleTableSort('overdueInvoices', 'financovani')}>Financování{sortIcon('overdueInvoices', 'financovani')}</ThNarrowSort>
+                              <ThNarrowSort onClick={() => handleTableSort('overdueInvoices', 'detail_fin')}>Detail fin.{sortIcon('overdueInvoices', 'detail_fin')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'druh')}>Druh{sortIcon('overdueInvoices', 'druh')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'stav_obj')}>Stav obj.{sortIcon('overdueInvoices', 'stav_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'stav_fa')}>Stav FA{sortIcon('overdueInvoices', 'stav_fa')}</ThSort>
@@ -5720,7 +5908,8 @@ export default function StatsReportsPage() {
                                   </Td>
                                   <Td>{order ? renderOrderLink(order, 'overdueInvoices') : highlightText(invoice.cislo_smlouvy || invoice.smlouva_id || '-', 'overdueInvoices')}</Td>
                                   <Td>{order ? highlightText(getOrdererUsekCode(order) || '-', 'overdueInvoices') : '-'}</Td>
-                                  <Td>{order ? highlightText(getOrderFinancingLabel(order), 'overdueInvoices') : '-'}</Td>
+                                  <Td>{order ? renderFinancingLabelCell(order, 'overdueInvoices') : '-'}</Td>
+                                  <TdNarrow>{order ? renderFinancingRefCell(order, 'overdueInvoices') : '-'}</TdNarrow>
                                   <Td>{order ? highlightText(getOrderTypeLabel(order), 'overdueInvoices') : '-'}</Td>
                                   <Td>{order ? highlightText(getOrderStatusLabel(order), 'overdueInvoices') : '-'}</Td>
                                   <Td>{highlightText(getInvoiceStatusLabel(invoice), 'overdueInvoices')}</Td>
@@ -5789,6 +5978,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'schvalovatel')}>Schvalovatel{sortIcon('cancelledOrders', 'schvalovatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'usek')}>Úsek{sortIcon('cancelledOrders', 'usek')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'financovani')}>Financování{sortIcon('cancelledOrders', 'financovani')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('cancelledOrders', 'detail_fin')}>Detail fin.{sortIcon('cancelledOrders', 'detail_fin')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'druh')}>Druh{sortIcon('cancelledOrders', 'druh')}</ThSort>
                               <ThSort style={{ maxWidth: '240px', width: '240px' }} onClick={() => handleTableSort('cancelledOrders', 'stav')}>Stav obj.{sortIcon('cancelledOrders', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'pocet_fa')}>Počet FA{sortIcon('cancelledOrders', 'pocet_fa')}</ThSort>
@@ -5804,7 +5994,8 @@ export default function StatsReportsPage() {
                                 <Td>{renderOrdererStack(order)}</Td>
                                 <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                 <Td>{highlightText(getOrdererUsekCode(order) || '-', 'cancelledOrders')}</Td>
-                                <TdNarrow>{highlightText(getOrderFinancingLabel(order), 'cancelledOrders')}</TdNarrow>
+                                <TdNarrow>{renderFinancingLabelCell(order, 'cancelledOrders')}</TdNarrow>
+                                <TdNarrow>{renderFinancingRefCell(order, 'cancelledOrders')}</TdNarrow>
                                 <TdNarrow>{highlightText(getOrderTypeLabel(order), 'cancelledOrders')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                 <Td style={{ maxWidth: '240px', width: '240px', overflow: 'hidden' }}>
                                   {highlightText(getOrderStatusLabel(order), 'cancelledOrders')}
@@ -5927,11 +6118,11 @@ export default function StatsReportsPage() {
                             >
                               {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? '−' : '+'}
                             </div>
-                            <div>Financování</div>
-                            <div style={{ textAlign: 'right' }}>Počet</div>
-                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                            <div onClick={() => handleTableSort('spendGrp_fin', 'label')} style={{ cursor: 'pointer' }}>Financování{sortIcon('spendGrp_fin', 'label')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_fin', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_fin', 'count')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_fin', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_fin', 'amount')}</div>
                           </div>
-                          {filteredSpendByFinancingGroups.map(group => {
+                          {sortTableData(filteredSpendByFinancingGroups, 'spendGrp_fin', { label: g => g.label || g.code || '', count: g => String(g.totalCount || 0), amount: g => String(g.totalAmount || 0) }).map(group => {
                           const finOpen = expandedSpendFinancing.has(group.code);
                           const usekyArr = Object.values(group.useky).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                           return (
@@ -5981,7 +6172,7 @@ export default function StatsReportsPage() {
                                     {usekyArr.map(usek => {
                                       const detailKey = `spendDetail_${group.code}_${usek.code}`;
                                       const usekOpen = expandedSpendUseks.has(detailKey);
-                                      const pagedDetail = getPagedItems(usek.orders, detailKey);
+                                      const pagedDetail = getPagedItems(sortTableData(usek.orders, detailKey, spendOrderAcc), detailKey);
                                       return (
                                         <React.Fragment key={`${group.code}_${usek.code}`}>
                                           <Tr
@@ -6006,17 +6197,17 @@ export default function StatsReportsPage() {
                                                   <Table>
                                                     <thead>
                                                       <tr>
-                                                        <Th>Číslo</Th>
-                                                        <Th>Dt. obj.</Th>
-                                                        <Th>Předmět</Th>
-                                                        <Th>Objednatel</Th>
-                                                        <Th>Schvalovatel</Th>
-                                                        <ThNarrow>Úsek</ThNarrow>
-                                                        <Th>Financování</Th>
-                                                        <ThNarrow>{group.code === 'LP' ? 'LP kód' : group.code === 'SMLOUVA' ? 'Č. smlouvy' : group.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : group.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
-                                                        <ThNarrow>Druh</ThNarrow>
-                                                        <ThNarrow>Stav</ThNarrow>
-                                                        <ThR>Částka</ThR>
+                                                        <ThSort onClick={() => handleTableSort(detailKey, 'ev_cislo')}>Číslo{sortIcon(detailKey, 'ev_cislo')}</ThSort>
+                                                        <ThSort onClick={() => handleTableSort(detailKey, 'dt_obj')}>Dt. obj.{sortIcon(detailKey, 'dt_obj')}</ThSort>
+                                                        <ThSort onClick={() => handleTableSort(detailKey, 'predmet')}>Předmět{sortIcon(detailKey, 'predmet')}</ThSort>
+                                                        <ThSort onClick={() => handleTableSort(detailKey, 'objednatel')}>Objednatel{sortIcon(detailKey, 'objednatel')}</ThSort>
+                                                        <ThSort onClick={() => handleTableSort(detailKey, 'schvalovatel')}>Schvalovatel{sortIcon(detailKey, 'schvalovatel')}</ThSort>
+                                                        <ThNarrowSort onClick={() => handleTableSort(detailKey, 'usek')}>Úsek{sortIcon(detailKey, 'usek')}</ThNarrowSort>
+                                                        <ThSort onClick={() => handleTableSort(detailKey, 'financovani')}>Financování{sortIcon(detailKey, 'financovani')}</ThSort>
+                                                        <ThNarrowSort onClick={() => handleTableSort(detailKey, 'detail_fin')}>{group.code === 'LP' ? 'LP kód' : group.code === 'SMLOUVA' ? 'Č. smlouvy' : group.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : group.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}{sortIcon(detailKey, 'detail_fin')}</ThNarrowSort>
+                                                        <ThNarrowSort onClick={() => handleTableSort(detailKey, 'druh')}>Druh{sortIcon(detailKey, 'druh')}</ThNarrowSort>
+                                                        <ThNarrowSort onClick={() => handleTableSort(detailKey, 'stav')}>Stav{sortIcon(detailKey, 'stav')}</ThNarrowSort>
+                                                        <ThRSort onClick={() => handleTableSort(detailKey, 'castka')}>Částka{sortIcon(detailKey, 'castka')}</ThRSort>
                                                       </tr>
                                                     </thead>
                                                     <tbody>
@@ -6028,8 +6219,8 @@ export default function StatsReportsPage() {
                                                           <Td>{renderOrdererStack(order)}</Td>
                                                           <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                           <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByFinancingUsek')}</TdNarrow>
-                                                          <Td>{highlightText(getOrderFinancingLabel(order), 'spendByFinancingUsek')}</Td>
-                                                          <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByFinancingUsek')}</TdNarrow>
+                                                          <Td>{renderFinancingLabelCell(order, 'spendByFinancingUsek')}</Td>
+                                                          <TdNarrow>{renderFinancingRefCell(order, 'spendByFinancingUsek')}</TdNarrow>
                                                           <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsek')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                           <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsek')}</TdNarrow>
                                                           <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsek')}</TdR>
@@ -6116,11 +6307,11 @@ export default function StatsReportsPage() {
                             >
                               {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? '−' : '+'}
                             </div>
-                            <div>Úsek</div>
-                            <div style={{ textAlign: 'right' }}>Počet</div>
-                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                            <div onClick={() => handleTableSort('spendGrp_usek', 'label')} style={{ cursor: 'pointer' }}>Úsek{sortIcon('spendGrp_usek', 'label')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_usek', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_usek', 'count')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_usek', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_usek', 'amount')}</div>
                           </div>
-                          {filteredSpendByUsekGroups.map(group => {
+                          {sortTableData(filteredSpendByUsekGroups, 'spendGrp_usek', { label: g => g.label || g.code || '', count: g => String(g.totalCount || 0), amount: g => String(g.totalAmount || 0) }).map(group => {
                             const grpOpen = expandedSpendUsekF.has(group.code);
                             const finArr = Object.values(group.financing).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                             return (
@@ -6166,7 +6357,7 @@ export default function StatsReportsPage() {
                                         {finArr.map(fin => {
                                           const detailKey = `spendUFDetail_${group.code}_${fin.code}`;
                                           const finOpen = expandedSpendUsekFSub.has(detailKey);
-                                          const pagedDetail = getPagedItems(fin.orders, detailKey);
+                                          const pagedDetail = getPagedItems(sortTableData(fin.orders, detailKey, spendOrderAcc), detailKey);
                                           return (
                                             <React.Fragment key={`${group.code}_${fin.code}`}>
                                               <Tr
@@ -6185,17 +6376,17 @@ export default function StatsReportsPage() {
                                                       <Table>
                                                         <thead>
                                                           <tr>
-                                                            <Th>Číslo</Th>
-                                                            <Th>Dt. obj.</Th>
-                                                            <Th>Předmět</Th>
-                                                            <Th>Objednatel</Th>
-                                                            <Th>Schvalovatel</Th>
-                                                            <ThNarrow>Úsek</ThNarrow>
-                                                            <Th>Financování</Th>
-                                                            <ThNarrow>{fin.code === 'LP' ? 'LP kód' : fin.code === 'SMLOUVA' ? 'Č. smlouvy' : fin.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : fin.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
-                                                            <ThNarrow>Druh</ThNarrow>
-                                                            <ThNarrow>Stav</ThNarrow>
-                                                            <ThR>Částka</ThR>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'ev_cislo')}>Číslo{sortIcon(detailKey, 'ev_cislo')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'dt_obj')}>Dt. obj.{sortIcon(detailKey, 'dt_obj')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'predmet')}>Předmět{sortIcon(detailKey, 'predmet')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'objednatel')}>Objednatel{sortIcon(detailKey, 'objednatel')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'schvalovatel')}>Schvalovatel{sortIcon(detailKey, 'schvalovatel')}</ThSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'usek')}>Úsek{sortIcon(detailKey, 'usek')}</ThNarrowSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'financovani')}>Financování{sortIcon(detailKey, 'financovani')}</ThSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'detail_fin')}>Detail fin.{sortIcon(detailKey, 'detail_fin')}</ThNarrowSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'druh')}>Druh{sortIcon(detailKey, 'druh')}</ThNarrowSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'stav')}>Stav{sortIcon(detailKey, 'stav')}</ThNarrowSort>
+                                                            <ThRSort onClick={() => handleTableSort(detailKey, 'castka')}>Částka{sortIcon(detailKey, 'castka')}</ThRSort>
                                                           </tr>
                                                         </thead>
                                                         <tbody>
@@ -6207,8 +6398,8 @@ export default function StatsReportsPage() {
                                                               <Td>{renderOrdererStack(order)}</Td>
                                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                               <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByUsekFinancing')}</TdNarrow>
-                                                              <Td>{highlightText(getOrderFinancingLabel(order), 'spendByUsekFinancing')}</Td>
-                                                              <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByUsekFinancing')}</TdNarrow>
+                                                              <Td>{renderFinancingLabelCell(order, 'spendByUsekFinancing')}</Td>
+                                                              <TdNarrow>{renderFinancingRefCell(order, 'spendByUsekFinancing')}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByUsekFinancing')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByUsekFinancing')}</TdNarrow>
                                                               <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByUsekFinancing')}</TdR>
@@ -6295,11 +6486,11 @@ export default function StatsReportsPage() {
                             >
                               {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? '−' : '+'}
                             </div>
-                            <div>Druh objednávky</div>
-                            <div style={{ textAlign: 'right' }}>Počet</div>
-                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                            <div onClick={() => handleTableSort('spendGrp_druh', 'label')} style={{ cursor: 'pointer' }}>Druh objednávky{sortIcon('spendGrp_druh', 'label')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_druh', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_druh', 'count')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_druh', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_druh', 'amount')}</div>
                           </div>
-                          {filteredSpendByDruhGroups.map(group => {
+                          {sortTableData(filteredSpendByDruhGroups, 'spendGrp_druh', { label: g => g.label || g.code || '', count: g => String(g.totalCount || 0), amount: g => String(g.totalAmount || 0) }).map(group => {
                             const grpOpen = expandedSpendDruh.has(group.code);
                             const finArr = Object.values(group.financing).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                             return (
@@ -6345,7 +6536,7 @@ export default function StatsReportsPage() {
                                         {finArr.map(fin => {
                                           const detailKey = `spendDFDetail_${group.code}_${fin.code}`;
                                           const finOpen = expandedSpendDruhSub.has(detailKey);
-                                          const pagedDetail = getPagedItems(fin.orders, detailKey);
+                                          const pagedDetail = getPagedItems(sortTableData(fin.orders, detailKey, spendOrderAcc), detailKey);
                                           return (
                                             <React.Fragment key={`${group.code}_${fin.code}`}>
                                               <Tr
@@ -6364,17 +6555,17 @@ export default function StatsReportsPage() {
                                                       <Table>
                                                         <thead>
                                                           <tr>
-                                                            <Th>Číslo</Th>
-                                                            <Th>Dt. obj.</Th>
-                                                            <Th>Předmět</Th>
-                                                            <Th>Objednatel</Th>
-                                                            <Th>Schvalovatel</Th>
-                                                            <ThNarrow>Úsek</ThNarrow>
-                                                            <Th>Financování</Th>
-                                                            <ThNarrow>{fin.code === 'LP' ? 'LP kód' : fin.code === 'SMLOUVA' ? 'Č. smlouvy' : fin.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : fin.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
-                                                            <ThNarrow>Druh</ThNarrow>
-                                                            <ThNarrow>Stav</ThNarrow>
-                                                            <ThR>Částka</ThR>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'ev_cislo')}>Číslo{sortIcon(detailKey, 'ev_cislo')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'dt_obj')}>Dt. obj.{sortIcon(detailKey, 'dt_obj')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'predmet')}>Předmět{sortIcon(detailKey, 'predmet')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'objednatel')}>Objednatel{sortIcon(detailKey, 'objednatel')}</ThSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'schvalovatel')}>Schvalovatel{sortIcon(detailKey, 'schvalovatel')}</ThSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'usek')}>Úsek{sortIcon(detailKey, 'usek')}</ThNarrowSort>
+                                                            <ThSort onClick={() => handleTableSort(detailKey, 'financovani')}>Financování{sortIcon(detailKey, 'financovani')}</ThSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'detail_fin')}>Detail fin.{sortIcon(detailKey, 'detail_fin')}</ThNarrowSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'druh')}>Druh{sortIcon(detailKey, 'druh')}</ThNarrowSort>
+                                                            <ThNarrowSort onClick={() => handleTableSort(detailKey, 'stav')}>Stav{sortIcon(detailKey, 'stav')}</ThNarrowSort>
+                                                            <ThRSort onClick={() => handleTableSort(detailKey, 'castka')}>Částka{sortIcon(detailKey, 'castka')}</ThRSort>
                                                           </tr>
                                                         </thead>
                                                         <tbody>
@@ -6386,8 +6577,8 @@ export default function StatsReportsPage() {
                                                               <Td>{renderOrdererStack(order)}</Td>
                                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                               <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByDruhFinancing')}</TdNarrow>
-                                                              <Td>{highlightText(getOrderFinancingLabel(order), 'spendByDruhFinancing')}</Td>
-                                                              <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByDruhFinancing')}</TdNarrow>
+                                                              <Td>{renderFinancingLabelCell(order, 'spendByDruhFinancing')}</Td>
+                                                              <TdNarrow>{renderFinancingRefCell(order, 'spendByDruhFinancing')}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByDruhFinancing')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByDruhFinancing')}</TdNarrow>
                                                               <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByDruhFinancing')}</TdR>
@@ -6469,11 +6660,11 @@ export default function StatsReportsPage() {
                             >
                               {filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? '−' : '+'}
                             </div>
-                            <div>Financování</div>
-                            <div style={{ textAlign: 'right' }}>Počet</div>
-                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                            <div onClick={() => handleTableSort('spendGrp_findrud', 'label')} style={{ cursor: 'pointer' }}>Financování{sortIcon('spendGrp_findrud', 'label')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_findrud', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_findrud', 'count')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_findrud', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_findrud', 'amount')}</div>
                           </div>
-                          {filteredSpendByFinancingUsekDruhGroups.map(group => {
+                          {sortTableData(filteredSpendByFinancingUsekDruhGroups, 'spendGrp_findrud', { label: g => g.label || g.code || '', count: g => String(g.totalCount || 0), amount: g => String(g.totalAmount || 0) }).map(group => {
                             const grpOpen = expandedSpendFinDruh.has(group.code);
                             const usekyArr = Object.values(group.useky).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
                             return (
@@ -6565,7 +6756,7 @@ export default function StatsReportsPage() {
                                                           {druhyArr.map(druh => {
                                                             const druhKey = `spendFUDD_${group.code}_${usek.code}_${druh.code}`;
                                                             const druhOpen = expandedSpendFinDruhDetail.has(druhKey);
-                                                            const pagedDetail = getPagedItems(druh.orders, druhKey);
+                                                            const pagedDetail = getPagedItems(sortTableData(druh.orders, druhKey, spendOrderAcc), druhKey);
                                                             return (
                                                               <React.Fragment key={`${group.code}_${usek.code}_${druh.code}`}>
                                                                 <Tr
@@ -6584,17 +6775,17 @@ export default function StatsReportsPage() {
                                                                         <Table>
                                                                           <thead>
                                                                             <tr>
-                                                                              <Th>Číslo</Th>
-                                                                              <Th>Dt. obj.</Th>
-                                                                              <Th>Předmět</Th>
-                                                                              <Th>Objednatel</Th>
-                                                                              <Th>Schvalovatel</Th>
-                                                                              <ThNarrow>Úsek</ThNarrow>
-                                                                              <Th>Financování</Th>
-                                                                              <ThNarrow>{group.code === 'LP' ? 'LP kód' : group.code === 'SMLOUVA' ? 'Č. smlouvy' : group.code === 'INDIVIDUALNI_SCHVALENI' ? 'Č. schválení' : group.code === 'POJISTNA_UDALOST' ? 'Č. poj. ud.' : 'Ref.'}</ThNarrow>
-                                                                              <ThNarrow>Druh</ThNarrow>
-                                                                              <ThNarrow>Stav</ThNarrow>
-                                                                              <ThR>Částka</ThR>
+                                                                              <ThSort onClick={() => handleTableSort(druhKey, 'ev_cislo')}>Číslo{sortIcon(druhKey, 'ev_cislo')}</ThSort>
+                                                                              <ThSort onClick={() => handleTableSort(druhKey, 'dt_obj')}>Dt. obj.{sortIcon(druhKey, 'dt_obj')}</ThSort>
+                                                                              <ThSort onClick={() => handleTableSort(druhKey, 'predmet')}>Předmět{sortIcon(druhKey, 'predmet')}</ThSort>
+                                                                              <ThSort onClick={() => handleTableSort(druhKey, 'objednatel')}>Objednatel{sortIcon(druhKey, 'objednatel')}</ThSort>
+                                                                              <ThSort onClick={() => handleTableSort(druhKey, 'schvalovatel')}>Schvalovatel{sortIcon(druhKey, 'schvalovatel')}</ThSort>
+                                                                              <ThNarrowSort onClick={() => handleTableSort(druhKey, 'usek')}>Úsek{sortIcon(druhKey, 'usek')}</ThNarrowSort>
+                                                                              <ThSort onClick={() => handleTableSort(druhKey, 'financovani')}>Financování{sortIcon(druhKey, 'financovani')}</ThSort>
+                                                                              <ThNarrowSort onClick={() => handleTableSort(druhKey, 'detail_fin')}>Detail fin.{sortIcon(druhKey, 'detail_fin')}</ThNarrowSort>
+                                                                              <ThNarrowSort onClick={() => handleTableSort(druhKey, 'druh')}>Druh{sortIcon(druhKey, 'druh')}</ThNarrowSort>
+                                                                              <ThNarrowSort onClick={() => handleTableSort(druhKey, 'stav')}>Stav{sortIcon(druhKey, 'stav')}</ThNarrowSort>
+                                                                              <ThRSort onClick={() => handleTableSort(druhKey, 'castka')}>Částka{sortIcon(druhKey, 'castka')}</ThRSort>
                                                                             </tr>
                                                                           </thead>
                                                                           <tbody>
@@ -6606,8 +6797,8 @@ export default function StatsReportsPage() {
                                                                                 <Td>{renderOrdererStack(order)}</Td>
                                                                                 <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                                                                 <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendByFinancingUsekDruh')}</TdNarrow>
-                                                                                <Td>{highlightText(getOrderFinancingLabel(order), 'spendByFinancingUsekDruh')}</Td>
-                                                                                <TdNarrow>{highlightText(getOrderFinancingRef(order) || '-', 'spendByFinancingUsekDruh')}</TdNarrow>
+                                                                                <Td>{renderFinancingLabelCell(order, 'spendByFinancingUsekDruh')}</Td>
+                                                                                <TdNarrow>{renderFinancingRefCell(order, 'spendByFinancingUsekDruh')}</TdNarrow>
                                                                                 <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsekDruh')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                                                 <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsekDruh')}</TdNarrow>
                                                                                 <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsekDruh')}</TdR>
@@ -6691,7 +6882,7 @@ export default function StatsReportsPage() {
                         <EmptyState>Bez objednávek LP pro zvolené filtry</EmptyState>
                       ) : (
                         <>
-                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 130px 75px 170px 70px 85px 150px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 75px 170px 120px 65px 140px 75px 150px', gap: '0.5rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             <div
                               title={filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                               onClick={() => {
@@ -6703,34 +6894,55 @@ export default function StatsReportsPage() {
                             >
                               {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? '−' : '+'}
                             </div>
-                            <div>LP kód</div>
-                            <div style={{ textAlign: 'right' }}>Budget</div>
-                            <div>Úsek</div>
-                            <div>Příkazce</div>
-                            <div style={{ textAlign: 'right' }}>Čerpání</div>
-                            <div style={{ textAlign: 'right' }}>Počet</div>
-                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'code')} style={{ cursor: 'pointer' }}>LP kód{sortIcon('spendGrp_lp', 'code')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'usek')} style={{ cursor: 'pointer' }}>Úsek{sortIcon('spendGrp_lp', 'usek')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'prikazce')} style={{ cursor: 'pointer' }}>Příkazce{sortIcon('spendGrp_lp', 'prikazce')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'krytí')} style={{ cursor: 'pointer', textAlign: 'right' }}>Fin.krytí{sortIcon('spendGrp_lp', 'krytí')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'cerpani')} style={{ cursor: 'pointer', textAlign: 'right' }}>Čerpání{sortIcon('spendGrp_lp', 'cerpani')}</div>
+                            <div style={{ textAlign: 'center' }}>Tempo čerpání</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_lp', 'count')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_lp', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_lp', 'amount')}</div>
                           </div>
-                          {filteredSpendByLpKodGroups.map(group => {
+                          {sortTableData(filteredSpendByLpKodGroups, 'spendGrp_lp', { code: g => g.code || '', usek: g => g.usek_zkr || '', prikazce: g => g.prikazce_jmeno || '', 'krytí': g => String(g.lp_limit || 0), cerpani: g => String(g.amount || 0), count: g => String(g.count || 0), amount: g => String(g.amount || 0) }).map(group => {
                             const lpOpen = expandedSpendLp.has(group.code);
-                            const pagedDetail = getPagedItems(group.orders, `spendLpKod_${group.code}`);
+                            const pagedDetail = getPagedItems(sortTableData(group.orders, `spendLpKod_${group.code}`, spendOrderAcc), `spendLpKod_${group.code}`);
                             const lpUseky = group.usek_zkr || '-';
                             const lpPrikazci = group.prikazce_jmeno || '-';
                             const lpPct = group.lp_limit > 0 ? (group.amount / group.lp_limit * 100) : null;
                             const lpPctText = lpPct !== null ? lpPct.toFixed(1) + ' %' : '-';
                             const lpPctColor = lpPct !== null ? (lpPct > 90 ? '#dc2626' : lpPct > 70 ? '#d97706' : '#059669') : '#9ca3af';
+                            const lpCurrentMonth = new Date().getMonth() + 1;
+                            const lpMonthNames = ['Led','Úno','Bře','Dub','Kvě','Čvn','Čvc','Srp','Zář','Říj','Lis','Pro'];
+                            const lpMonthSquares = Array.from({ length: 12 }, (_, i) => {
+                              const m = i + 1;
+                              if (m > lpCurrentMonth || !group.lp_limit || group.lp_limit <= 0) {
+                                return { color: '#e5e7eb', label: lpMonthNames[i] + ': budoucí' };
+                              }
+                              const threshold = group.lp_limit * m / 12;
+                              const ratio = group.amount / threshold;
+                              const pctLabel = (ratio * 100).toFixed(0) + '% z ' + fmtCurrency(threshold);
+                              if (ratio > 1) return { color: '#dc2626', label: lpMonthNames[i] + ': ' + pctLabel + ' — překročeno' };
+                              if (ratio > 0.8) return { color: '#d97706', label: lpMonthNames[i] + ': ' + pctLabel + ' — blíží se limitu' };
+                              return { color: '#059669', label: lpMonthNames[i] + ': ' + pctLabel + ' — v limitu' };
+                            });
+                            const lpLabelColor = (group.lp_limit > 0 && lpMonthSquares[lpCurrentMonth - 1]) ? lpMonthSquares[lpCurrentMonth - 1].color : '#78350f';
                             return (
                               <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                                 <div
                                   onClick={() => setExpandedSpendLp(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
-                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 130px 75px 170px 70px 85px 150px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 75px 170px 120px 65px 140px 75px 150px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '700', color: '#d97706', lineHeight: 1, textAlign: 'center' }}>{lpOpen ? '−' : '+'}</span>
-                                  <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByLpKod')}</span>
-                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.lp_limit > 0 ? fmtCurrency(group.lp_limit) : '-'}</span>
+                                  <span style={{ fontWeight: '700', color: lpLabelColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByLpKod')}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lpUseky}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lpPrikazci}</span>
+                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.lp_limit > 0 ? fmtCurrency(group.lp_limit) : '-'}</span>
                                   <span style={{ fontSize: '0.78rem', fontWeight: '600', textAlign: 'right', color: lpPctColor }}>{lpPctText}</span>
+                                  <span style={{ display: 'flex', gap: '2px', alignItems: 'center', justifyContent: 'center' }}>
+                                    {lpMonthSquares.map((sq, i) => (
+                                      <span key={i} title={sq.label} style={{ width: '9px', height: '9px', borderRadius: '2px', background: sq.color, display: 'inline-block', border: (i + 1) === lpCurrentMonth ? '1.5px solid #1e293b' : '0.5px solid rgba(0,0,0,0.1)', opacity: (i + 1) > lpCurrentMonth ? 0.35 : 1 }} />
+                                    ))}
+                                  </span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
                                 </div>
@@ -6740,16 +6952,16 @@ export default function StatsReportsPage() {
                                       <Table>
                                         <thead>
                                           <tr>
-                                            <Th>Číslo</Th>
-                                            <Th>Dt. obj.</Th>
-                                            <Th>Předmět</Th>
-                                            <Th>Objednatel</Th>
-                                            <Th>Schvalovatel</Th>
-                                            <ThNarrow>Úsek</ThNarrow>
-                                            <ThNarrow>LP kód</ThNarrow>
-                                            <ThNarrow>Druh</ThNarrow>
-                                            <ThNarrow>Stav</ThNarrow>
-                                            <ThR>Částka</ThR>
+                                            <ThSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'ev_cislo')}>Číslo{sortIcon(`spendLpKod_${group.code}`, 'ev_cislo')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'dt_obj')}>Dt. obj.{sortIcon(`spendLpKod_${group.code}`, 'dt_obj')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'predmet')}>Předmět{sortIcon(`spendLpKod_${group.code}`, 'predmet')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'objednatel')}>Objednatel{sortIcon(`spendLpKod_${group.code}`, 'objednatel')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'schvalovatel')}>Schvalovatel{sortIcon(`spendLpKod_${group.code}`, 'schvalovatel')}</ThSort>
+                                            <ThNarrowSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'usek')}>Úsek{sortIcon(`spendLpKod_${group.code}`, 'usek')}</ThNarrowSort>
+                                            <ThNarrowSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'detail_fin')}>Detail fin.{sortIcon(`spendLpKod_${group.code}`, 'detail_fin')}</ThNarrowSort>
+                                            <ThNarrowSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'druh')}>Druh{sortIcon(`spendLpKod_${group.code}`, 'druh')}</ThNarrowSort>
+                                            <ThNarrowSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'stav')}>Stav{sortIcon(`spendLpKod_${group.code}`, 'stav')}</ThNarrowSort>
+                                            <ThRSort onClick={() => handleTableSort(`spendLpKod_${group.code}`, 'castka')}>Částka{sortIcon(`spendLpKod_${group.code}`, 'castka')}</ThRSort>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -6823,7 +7035,7 @@ export default function StatsReportsPage() {
                         <EmptyState>Bez dat pro zvolené filtry (žádné objednávky typu Smlouva)</EmptyState>
                       ) : (
                         <>
-                          <div style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 130px 60px 70px 75px 140px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 60px 130px 70px 75px 140px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             <div
                               title={filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                               onClick={() => {
@@ -6835,18 +7047,18 @@ export default function StatsReportsPage() {
                             >
                               {filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? '−' : '+'}
                             </div>
-                            <div>Číslo smlouvy</div>
-                            <div>Dodavatel</div>
-                            <div>IČO</div>
-                            <div style={{ textAlign: 'right' }}>Strop. cena</div>
+                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'code')} style={{ cursor: 'pointer' }}>Číslo smlouvy{sortIcon('spendGrp_smlouvy', 'code')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'dodavatel')} style={{ cursor: 'pointer' }}>Dodavatel{sortIcon('spendGrp_smlouvy', 'dodavatel')}</div>
+                            <div>I&#268;O</div>
                             <div>Úsek</div>
-                            <div style={{ textAlign: 'right' }}>Čerpání</div>
-                            <div style={{ textAlign: 'right' }}>Počet obj.</div>
-                            <div style={{ textAlign: 'right' }}>Celkem</div>
+                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'smlouva_hodnota')} style={{ cursor: 'pointer', textAlign: 'right' }}>Poč. cena{sortIcon('spendGrp_smlouvy', 'smlouva_hodnota')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'cerpani_pct')} style={{ cursor: 'pointer', textAlign: 'right' }}>Čerpání{sortIcon('spendGrp_smlouvy', 'cerpani_pct')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet obj.{sortIcon('spendGrp_smlouvy', 'count')}</div>
+                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_smlouvy', 'amount')}</div>
                           </div>
-                          {filteredSpendBySmlouvyGroups.map(group => {
+                          {sortTableData(filteredSpendBySmlouvyGroups, 'spendGrp_smlouvy', { code: g => g.code || '', dodavatel: g => g.dodavatel || '', smlouva_hodnota: g => String(g.smlouva_hodnota || 0), cerpani_pct: g => String(g.smlouva_hodnota > 0 ? g.amount / g.smlouva_hodnota : 0), count: g => String(g.orders ? g.orders.length : g.count || 0), amount: g => String(g.amount || 0) }).map(group => {
                             const grpOpen = expandedSpendSmlouvy.has(group.code);
-                            const pagedDetail = getPagedItems(group.orders, 'spendSmlouvy_' + group.code);
+                            const pagedDetail = getPagedItems(sortTableData(group.orders, 'spendSmlouvy_' + group.code, spendOrderAcc), 'spendSmlouvy_' + group.code);
                             const smUseky = [...new Set(group.orders.map(o => getOrdererUsekCode(o)).filter(Boolean))].slice(0, 3).join(', ') || '-';
                             const smDodavatel = group.dodavatel || '-';
                             const smIco = group.ico || '-';
@@ -6857,14 +7069,14 @@ export default function StatsReportsPage() {
                               <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                                 <div
                                   onClick={() => setExpandedSpendSmlouvy(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
-                                  style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 130px 60px 70px 75px 140px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f8fafc' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 60px 130px 70px 75px 140px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f8fafc' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '700', color: '#6b7280', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={group.label}>{highlightText(group.label, 'spendBySmlouvy')}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={smDodavatel}>{highlightText(smDodavatel, 'spendBySmlouvy')}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{smIco}</span>
-                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.smlouva_hodnota > 0 ? fmtCurrency(group.smlouva_hodnota) : '-'}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{smUseky}</span>
+                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.smlouva_hodnota > 0 ? fmtCurrency(group.smlouva_hodnota) : '-'}</span>
                                   <span style={{ fontSize: '0.78rem', fontWeight: '600', textAlign: 'right', color: smPctColor }}>{smPctText}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
@@ -6875,16 +7087,16 @@ export default function StatsReportsPage() {
                                       <Table>
                                         <thead>
                                           <tr>
-                                            <Th>Číslo</Th>
-                                            <Th>Dt. obj.</Th>
-                                            <Th>Předmět</Th>
-                                            <Th>Objednatel</Th>
-                                            <Th>Schvalovatel</Th>
-                                            <ThNarrow>Úsek</ThNarrow>
-                                            <ThNarrow>Č. smlouvy</ThNarrow>
-                                            <ThNarrow>Druh</ThNarrow>
-                                            <ThNarrow>Stav</ThNarrow>
-                                            <ThR>Částka</ThR>
+                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'ev_cislo')}>Číslo{sortIcon('spendSmlouvy_' + group.code, 'ev_cislo')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'dt_obj')}>Dt. obj.{sortIcon('spendSmlouvy_' + group.code, 'dt_obj')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'predmet')}>Předmět{sortIcon('spendSmlouvy_' + group.code, 'predmet')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'objednatel')}>Objednatel{sortIcon('spendSmlouvy_' + group.code, 'objednatel')}</ThSort>
+                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'schvalovatel')}>Schvalovatel{sortIcon('spendSmlouvy_' + group.code, 'schvalovatel')}</ThSort>
+                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'usek')}>Úsek{sortIcon('spendSmlouvy_' + group.code, 'usek')}</ThNarrowSort>
+                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'detail_fin')}>Detail fin.{sortIcon('spendSmlouvy_' + group.code, 'detail_fin')}</ThNarrowSort>
+                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'druh')}>Druh{sortIcon('spendSmlouvy_' + group.code, 'druh')}</ThNarrowSort>
+                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'stav')}>Stav{sortIcon('spendSmlouvy_' + group.code, 'stav')}</ThNarrowSort>
+                                            <ThRSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'castka')}>Částka{sortIcon('spendSmlouvy_' + group.code, 'castka')}</ThRSort>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -6896,7 +7108,7 @@ export default function StatsReportsPage() {
                                               <Td>{renderOrdererStack(order)}</Td>
                                               <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
                                               <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendBySmlouvy')}</TdNarrow>
-                                              <TdNarrow style={{ fontWeight: 600, color: '#1e293b' }}>{highlightText(getOrderFinancingRef(order) || '-', 'spendBySmlouvy')}</TdNarrow>
+                                              <TdNarrow style={{ fontWeight: 600, color: '#1e293b' }}>{renderFinancingRefCell(order, 'spendBySmlouvy')}</TdNarrow>
                                               <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendBySmlouvy')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                               <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendBySmlouvy')}</TdNarrow>
                                               <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendBySmlouvy')}</TdR>
@@ -7284,32 +7496,34 @@ export default function StatsReportsPage() {
                         <Table>
                           <thead>
                             <tr>
-                              <Th>Objednávka</Th>
-                              <Th>Dt. obj.</Th>
-                              <Th>Předmět</Th>
-                              <Th>Stav</Th>
-                              <Th>Objednatel</Th>
-                              <Th>Schvalovatel</Th>
-                              <Th>Úsek</Th>
-                              <Th>Financování</Th>
-                              <ThNarrow>Druh</ThNarrow>
-                              <ThR>Částka</ThR>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'ev_cislo')}>Objednávka{sortIcon('ordersWithoutInvoice', 'ev_cislo')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'dt_obj')}>Dt. obj.{sortIcon('ordersWithoutInvoice', 'dt_obj')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'predmet')}>Předmět{sortIcon('ordersWithoutInvoice', 'predmet')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'objednatel')}>Objednatel{sortIcon('ordersWithoutInvoice', 'objednatel')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'schvalovatel')}>Schvalovatel{sortIcon('ordersWithoutInvoice', 'schvalovatel')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'usek')}>Úsek{sortIcon('ordersWithoutInvoice', 'usek')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'financovani')}>Financování{sortIcon('ordersWithoutInvoice', 'financovani')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithoutInvoice', 'detail_fin')}>Detail fin.{sortIcon('ordersWithoutInvoice', 'detail_fin')}</ThNarrowSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithoutInvoice', 'druh')}>Druh{sortIcon('ordersWithoutInvoice', 'druh')}</ThNarrowSort>
+                              <ThRSort onClick={() => handleTableSort('ordersWithoutInvoice', 'castka')}>Částka{sortIcon('ordersWithoutInvoice', 'castka')}</ThRSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithoutInvoice', 'stav')}>Stav obj.{sortIcon('ordersWithoutInvoice', 'stav')}</ThNarrowSort>
                               <Th>Poznámka</Th>
                             </tr>
                           </thead>
                           <tbody>
                             {pagedOrdersWithoutInvoice.items.map(order => (
                               <Tr key={order.id}>
-                                <Td>{renderOrderLink(order)}</Td>
-                                <Td>{formatDateCz(getOrderDate(order))}</Td>
-                                <SubjectTd>{getOrderSubject(order)}</SubjectTd>
-                                <Td>{getOrderStatusLabel(order)}</Td>
+                                <Td>{renderOrderLink(order, 'ordersWithoutInvoice')}</Td>
+                                <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersWithoutInvoice')}</Td>
+                                <SubjectTd>{highlightText(getOrderSubject(order), 'ordersWithoutInvoice')}</SubjectTd>
                                 <Td>{renderOrdererStack(order)}</Td>
                                 <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                <Td>{getOrdererUsekCode(order) || '-'}</Td>
-                                <Td>{getOrderFinancingLabel(order)}</Td>
-                                <TdNarrow>{getOrderTypeLabel(order)}</TdNarrow>
-                                <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
+                                <Td>{highlightText(getOrdererUsekCode(order) || '-', 'ordersWithoutInvoice')}</Td>
+                                <Td>{renderFinancingLabelCell(order, 'ordersWithoutInvoice')}</Td>
+                                <TdNarrow>{renderFinancingRefCell(order, 'ordersWithoutInvoice')}</TdNarrow>
+                                <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersWithoutInvoice')}</TdNarrow>
+                                <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'ordersWithoutInvoice')}</TdR>
+                                <TdNarrow>{highlightText(getOrderStatusLabel(order), 'ordersWithoutInvoice')}</TdNarrow>
                                 <Td>{renderNoteCell(`report_no_invoice_${order.id}`)}</Td>
                               </Tr>
                             ))}
@@ -7363,33 +7577,35 @@ export default function StatsReportsPage() {
                         <Table>
                           <thead>
                             <tr>
-                              <Th>Objednávka</Th>
-                              <Th>Dt. obj.</Th>
-                              <Th>Stav obj.</Th>
-                              <Th>Objednatel</Th>
-                              <Th>Schvalovatel</Th>
-                              <Th>Úsek</Th>
-                              <Th>Financování</Th>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'ev_cislo')}>Objednávka{sortIcon('ordersWithInvoiceNotDone', 'ev_cislo')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'dt_obj')}>Dt. obj.{sortIcon('ordersWithInvoiceNotDone', 'dt_obj')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'objednatel')}>Objednatel{sortIcon('ordersWithInvoiceNotDone', 'objednatel')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'schvalovatel')}>Schvalovatel{sortIcon('ordersWithInvoiceNotDone', 'schvalovatel')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'usek')}>Úsek{sortIcon('ordersWithInvoiceNotDone', 'usek')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'financovani')}>Financování{sortIcon('ordersWithInvoiceNotDone', 'financovani')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'detail_fin')}>Detail fin.{sortIcon('ordersWithInvoiceNotDone', 'detail_fin')}</ThNarrowSort>
                               <Th>VS faktur</Th>
-                              <Th>Stav FA</Th>
-                              <ThR>Částka</ThR>
-                              <ThNarrow>Druh</ThNarrow>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'druh')}>Druh{sortIcon('ordersWithInvoiceNotDone', 'druh')}</ThNarrowSort>
+                              <ThRSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'castka')}>Částka{sortIcon('ordersWithInvoiceNotDone', 'castka')}</ThRSort>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'stav')}>Stav obj.{sortIcon('ordersWithInvoiceNotDone', 'stav')}</ThNarrowSort>
+                              <ThNarrow>Stav FA</ThNarrow>
                             </tr>
                           </thead>
                           <tbody>
                             {pagedOrdersWithInvoiceNotDone.items.map(order => (
                               <Tr key={order.id}>
-                                <Td>{renderOrderLink(order)}</Td>
-                                <Td>{formatDateCz(getOrderDate(order))}</Td>
-                                <Td>{getOrderStatusLabel(order)}</Td>
+                                <Td>{renderOrderLink(order, 'ordersWithInvoiceNotDone')}</Td>
+                                <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersWithInvoiceNotDone')}</Td>
                                 <Td>{renderOrdererStack(order)}</Td>
                                 <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                <Td>{getOrdererUsekCode(order) || '-'}</Td>
-                                <Td>{getOrderFinancingLabel(order)}</Td>
+                                <Td>{highlightText(getOrdererUsekCode(order) || '-', 'ordersWithInvoiceNotDone')}</Td>
+                                <Td>{renderFinancingLabelCell(order, 'ordersWithInvoiceNotDone')}</Td>
+                                <TdNarrow>{renderFinancingRefCell(order, 'ordersWithInvoiceNotDone')}</TdNarrow>
                                 <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id}>{renderInvoiceLink(inv)}</div>)}</Td>
-                                <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id} style={{whiteSpace:'nowrap'}}>{getInvoiceStatusLabel(inv)}</div>)}</Td>
-                                <TdR>{fmtCurrency(getOrderAmount(order))}</TdR>
-                                <TdNarrow>{getOrderTypeLabel(order)}</TdNarrow>
+                                <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersWithInvoiceNotDone')}</TdNarrow>
+                                <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'ordersWithInvoiceNotDone')}</TdR>
+                                <TdNarrow>{highlightText(getOrderStatusLabel(order), 'ordersWithInvoiceNotDone')}</TdNarrow>
+                                <TdNarrow>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id} style={{whiteSpace:'nowrap'}}>{getInvoiceStatusLabel(inv)}</div>)}</TdNarrow>
                               </Tr>
                             ))}
                           </tbody>
@@ -7403,70 +7619,231 @@ export default function StatsReportsPage() {
 
                 {isBlockVisible('reports', 'topSuppliers') && (
                   <SectionCard>
-                  <SectionHeader>
-                    <SectionTitle>Top dodavatelé (LP vs smlouvy)</SectionTitle>
-                    <SectionBadge $tone="warn">TOP {reportSections.topSuppliers.length}</SectionBadge>
-                  </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
-                      <SearchInputIcon icon={faSearch} />
-                      <SearchInput
-                        type="text"
-                        placeholder="Fulltext vyhledávání ve všech zobrazených datech..."
-                        value={getSearchQuery('topSuppliers')}
-                        onChange={(e) => setSearchQuery('topSuppliers', e.target.value)}
-                      />
-                      {getSearchQuery('topSuppliers') && (
-                        <SearchClearButton
-                          onClick={() => setSearchQuery('topSuppliers', '')}
-                          title="Vyčistit vyhledávání"
+                    <SectionHeader>
+                      <SectionTitle>Dodavatelé → Financování → Objednávky</SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ExpandAllBtn
+                          onClick={() => {
+                            var allExp = reportSections.topSuppliers.length > 0 && reportSections.topSuppliers.every(function(g) { return expandedTopSuppDod.has(g.code); });
+                            if (allExp) { setExpandedTopSuppDod(new Set()); setExpandedTopSuppFin(new Set()); setExpandedTopSuppDetail(new Set()); }
+                            else { setExpandedTopSuppDod(new Set(reportSections.topSuppliers.map(function(g) { return g.code; }))); }
+                          }}
+                          title="Rozbalit / sbalit"
                         >
-                          <FontAwesomeIcon icon={faXmark} />
-                        </SearchClearButton>
-                      )}
-                    </SearchInputWrapper>
-                  </SearchBox>
-                  {pagedTopSuppliers.isFiltered && (
-                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
-                      Nalezeno {pagedTopSuppliers.total} z {pagedTopSuppliers.originalTotal} záznamů
+                          <FontAwesomeIcon icon={reportSections.topSuppliers.length > 0 && reportSections.topSuppliers.every(function(g) { return expandedTopSuppDod.has(g.code); }) ? faMinus : faPlus} />
+                          {reportSections.topSuppliers.length > 0 && reportSections.topSuppliers.every(function(g) { return expandedTopSuppDod.has(g.code); }) ? 'Sbalit vše' : 'Rozbalit vše'}
+                        </ExpandAllBtn>
+                        <SectionBadge $tone="warn">{reportSections.topSuppliers.length} dodavatelů</SectionBadge>
+                      </div>
+                    </SectionHeader>
+                    <SearchBox>
+                      <SearchInputWrapper>
+                        <SearchInputIcon><FontAwesomeIcon icon={faSearch} /></SearchInputIcon>
+                        <SearchInput
+                          type="text"
+                          placeholder="Fulltext vyhledávání (dodavatel, financování, objednávky)..."
+                          value={getSearchQuery('topSuppliers')}
+                          onChange={(e) => setSearchQuery('topSuppliers', e.target.value)}
+                        />
+                        {getSearchQuery('topSuppliers') && (
+                          <SearchClearButton onClick={() => setSearchQuery('topSuppliers', '')} title="Vymazat">
+                            <FontAwesomeIcon icon={faXmark} />
+                          </SearchClearButton>
+                        )}
+                      </SearchInputWrapper>
+                    </SearchBox>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {reportSections.topSuppliers.length === 0 ? (
+                        <EmptyState>Bez dat pro zvolené filtry</EmptyState>
+                      ) : (() => {
+                        var query = getSearchQuery('topSuppliers');
+                        var filtered = query ? reportSections.topSuppliers.filter(function(group) {
+                          if (removeDiacritics(group.label).indexOf(removeDiacritics(query)) >= 0) return true;
+                          if (group.ico && group.ico.indexOf(query) >= 0) return true;
+                          var finArr = Object.values(group.financovani || {});
+                          for (var fi = 0; fi < finArr.length; fi++) {
+                            if (removeDiacritics(finArr[fi].label).indexOf(removeDiacritics(query)) >= 0) return true;
+                            for (var oi = 0; oi < finArr[fi].orders.length; oi++) {
+                              if (searchInVisibleColumns(finArr[fi].orders[oi], query, 'topSuppliers')) return true;
+                            }
+                          }
+                          return false;
+                        }) : reportSections.topSuppliers;
+                        // Paging pro seznam dodavatelů
+                        var tsMainPaging = getTablePaging('topSuppliers_main');
+                        var tsMainTotal = filtered.length;
+                        var tsMainTotalPages = tsMainTotal > 0 ? Math.ceil(tsMainTotal / tsMainPaging.pageSize) : 0;
+                        var tsMainSafePage = tsMainTotalPages > 0 ? Math.min(tsMainPaging.page, tsMainTotalPages) : 1;
+                        var tsMainStart = (tsMainSafePage - 1) * tsMainPaging.pageSize;
+                        var tsMainEnd = tsMainStart + tsMainPaging.pageSize;
+                        var pagedFiltered = filtered.slice(tsMainStart, tsMainEnd);
+                        var tsMainPagedInfo = { page: tsMainSafePage, pageSize: tsMainPaging.pageSize, total: tsMainTotal, totalPages: tsMainTotalPages };
+                        return (
+                          <>
+                            {tsMainTotal > tsMainPagedInfo.pageSize && (
+                              <div style={{ padding: '0.25rem 1rem 0.5rem', fontSize: '0.78rem', color: '#6b7280' }}>
+                                Zobrazeno {tsMainStart + 1}–{Math.min(tsMainEnd, tsMainTotal)} z {tsMainTotal} dodavatelů
+                                {query ? ' (filtrováno)' : ''}
+                              </div>
+                            )}
+                            <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <div
+                                title="Rozbalit / sbalit vše"
+                                onClick={() => {
+                                  var allExp = pagedFiltered.length > 0 && pagedFiltered.every(function(g) { return expandedTopSuppDod.has(g.code); });
+                                  if (allExp) { setExpandedTopSuppDod(new Set()); setExpandedTopSuppFin(new Set()); setExpandedTopSuppDetail(new Set()); }
+                                  else { setExpandedTopSuppDod(new Set(pagedFiltered.map(function(g) { return g.code; }))); }
+                                }}
+                                style={{ cursor: 'pointer', color: '#b45309', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                              >
+                                {pagedFiltered.length > 0 && pagedFiltered.every(function(g) { return expandedTopSuppDod.has(g.code); }) ? '−' : '+'}
+                              </div>
+                              <div>Dodavatel</div>
+                              <div>I&#268;O</div>
+                              <div style={{ textAlign: 'right' }}>Počet</div>
+                              <div style={{ textAlign: 'right' }}>Celkem</div>
+                            </div>
+                            {pagedFiltered.map(function(group) {
+                              var grpOpen = expandedTopSuppDod.has(group.code);
+                              var finArr = Object.values(group.financovani || {}).sort(function(a, b) { return b.amount - a.amount; });
+                              var hasContracts = group.smlouvyTotal > 0;
+                              var isMixed = group.hasMixedFinancing;
+                              var noUsage = group.hasContractNoUsage;
+                              // Barvy: červená = platná smlouva ale nečerpá, oranžová = mix, zelená = čistě smlouvy, amber = bez smluv
+                              var accentColor = noUsage ? '#b91c1c' : hasContracts ? (isMixed ? '#c2410c' : '#16a34a') : '#b45309';
+                              var textColor = noUsage ? '#7f1d1d' : hasContracts ? (isMixed ? '#7c2d12' : '#15803d') : '#78350f';
+                              var bgOpen = noUsage ? '#fee2e2' : hasContracts ? (isMixed ? '#ffedd5' : '#f0fdf4') : '#fffbeb';
+                              var bgClosed = noUsage ? '#fecaca' : hasContracts ? (isMixed ? '#fed7aa' : '#f0fdf4') : '#f8fafc';
+                              var borderColor = noUsage ? '#b91c1c' : hasContracts ? (isMixed ? '#c2410c' : '#16a34a') : '#fde68a';
+                              var badgeTone = noUsage ? 'danger' : hasContracts ? (isMixed ? 'warn' : 'ok') : 'warn';
+                              return (
+                                <div key={group.code} style={{ border: '2px solid ' + borderColor, borderRadius: '10px', overflow: 'hidden' }}>
+                                  <div
+                                    onClick={() => setExpandedTopSuppDod(function(prev) { var next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
+                                    style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? bgOpen : bgClosed, cursor: 'pointer', userSelect: 'none', borderLeft: (hasContracts || noUsage) ? '4px solid ' + accentColor : 'none' }}
+                                  >
+                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: accentColor, lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                                      <span style={{ fontWeight: '700', color: textColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{highlightText(group.label, 'topSuppliers')}{(hasContracts || noUsage) ? ' (' + group.smlouvyActive + '/' + group.smlouvyTotal + ')' : ''}</span>
+                                      {group.smlouvyItems.length > 0 && (
+                                        <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace', display: 'block', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {group.smlouvyItems.map(function(si, idx) {
+                                            return (
+                                              <React.Fragment key={idx}>
+                                                {idx > 0 && ', '}
+                                                <span style={si.isValid ? { color: '#16a34a', fontWeight: 600 } : { color: '#9ca3af', textDecoration: 'line-through' }}>{si.cislo}</span>
+                                              </React.Fragment>
+                                            );
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.ico || '—'}</span>
+                                    <SectionBadge $tone={badgeTone} style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
+                                    <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
+                                  </div>
+                                  {grpOpen && (
+                                    <TableWrapper>
+                                      <Table>
+                                        <thead>
+                                          <tr>
+                                            <Th style={{ width: '24px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontSize: '0.95rem', fontWeight: '900' }}
+                                              title="Rozbalit / sbalit"
+                                              onClick={function(e) {
+                                                e.stopPropagation();
+                                                var allOpen = finArr.length > 0 && finArr.every(function(f) { return expandedTopSuppFin.has('ts_' + group.code + '_' + f.code); });
+                                                setExpandedTopSuppFin(function(prev) {
+                                                  var next = new Set(prev);
+                                                  finArr.forEach(function(f) { var k = 'ts_' + group.code + '_' + f.code; if (allOpen) next.delete(k); else next.add(k); });
+                                                  return next;
+                                                });
+                                              }}
+                                            >
+                                              {finArr.length > 0 && finArr.every(function(f) { return expandedTopSuppFin.has('ts_' + group.code + '_' + f.code); }) ? '−' : '+'}
+                                            </Th>
+                                            <Th>Financování</Th>
+                                            <ThC>Počet</ThC>
+                                            <ThR>Celkem</ThR>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {finArr.map(function(fin) {
+                                            var finKey = 'ts_' + group.code + '_' + fin.code;
+                                            var finOpen = expandedTopSuppFin.has(finKey);
+                                            var pagedDetail = getPagedItems(sortTableData(fin.orders, finKey, spendOrderAcc), finKey);
+                                            return (
+                                              <React.Fragment key={finKey}>
+                                                <Tr
+                                                  onClick={() => setExpandedTopSuppFin(function(prev) { var next = new Set(prev); if (next.has(finKey)) next.delete(finKey); else next.add(finKey); return next; })}
+                                                  style={{ cursor: 'pointer', background: finOpen ? '#f1f5f9' : undefined }}
+                                                >
+                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                  <Td>{highlightText(fin.label, 'topSuppliers')}</Td>
+                                                  <TdC>{fin.count}</TdC>
+                                                  <TdR>{fmtCurrency(fin.amount)}</TdR>
+                                                </Tr>
+                                                {finOpen && (
+                                                  <tr>
+                                                    <td colSpan={4} style={{ padding: '0.5rem 0.5rem 0.75rem 2rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                      <TableWrapper style={{ margin: 0 }}>
+                                                        <Table>
+                                                          <thead>
+                                                            <tr>
+                                                              <ThSort onClick={() => handleTableSort(finKey, 'ev_cislo')}>Číslo{sortIcon(finKey, 'ev_cislo')}</ThSort>
+                                                              <ThSort onClick={() => handleTableSort(finKey, 'dt_obj')}>Dt. obj.{sortIcon(finKey, 'dt_obj')}</ThSort>
+                                                              <ThSort onClick={() => handleTableSort(finKey, 'predmet')}>Předmět{sortIcon(finKey, 'predmet')}</ThSort>
+                                                              <ThSort onClick={() => handleTableSort(finKey, 'objednatel')}>Objednatel{sortIcon(finKey, 'objednatel')}</ThSort>
+                                                              <ThSort onClick={() => handleTableSort(finKey, 'schvalovatel')}>Schvalovatel{sortIcon(finKey, 'schvalovatel')}</ThSort>
+                                                              <Th>Příkazce</Th>
+                                                              <ThNarrowSort onClick={() => handleTableSort(finKey, 'usek')}>Úsek{sortIcon(finKey, 'usek')}</ThNarrowSort>
+                                                              <ThSort onClick={() => handleTableSort(finKey, 'financovani')}>Financování{sortIcon(finKey, 'financovani')}</ThSort>
+                                                              <ThNarrowSort onClick={() => handleTableSort(finKey, 'detail_fin')}>Detail fin.{sortIcon(finKey, 'detail_fin')}</ThNarrowSort>
+                                                              <ThNarrowSort onClick={() => handleTableSort(finKey, 'druh')}>Druh{sortIcon(finKey, 'druh')}</ThNarrowSort>
+                                                              <ThNarrowSort onClick={() => handleTableSort(finKey, 'stav')}>Stav{sortIcon(finKey, 'stav')}</ThNarrowSort>
+                                                              <ThRSort onClick={() => handleTableSort(finKey, 'castka')}>Částka{sortIcon(finKey, 'castka')}</ThRSort>
+                                                            </tr>
+                                                          </thead>
+                                                          <tbody>
+                                                            {pagedDetail.items.map(function(order) {
+                                                              return (
+                                                                <Tr key={order.id}>
+                                                                  <Td>{renderOrderLink(order, 'topSuppliers')}</Td>
+                                                                  <Td>{highlightText(formatDateCz(getOrderDate(order)), 'topSuppliers')}</Td>
+                                                                  <SubjectTd>{highlightText(getOrderSubject(order), 'topSuppliers')}</SubjectTd>
+                                                                  <Td>{renderOrdererStack(order)}</Td>
+                                                                  <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                                                  <Td>{renderPrikazceStack(order)}</Td>
+                                                                  <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'topSuppliers')}</TdNarrow>
+                                                                  <Td>{renderFinancingLabelCell(order, 'topSuppliers')}</Td>
+                                                                  <TdNarrow>{renderFinancingRefCell(order, 'topSuppliers')}</TdNarrow>
+                                                                  <TdNarrow>{highlightText(getOrderTypeLabel(order), 'topSuppliers')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                                  <TdNarrow>{highlightText(getOrderStatusLabel(order), 'topSuppliers')}</TdNarrow>
+                                                                  <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'topSuppliers')}</TdR>
+                                                                </Tr>
+                                                              );
+                                                            })}
+                                                          </tbody>
+                                                        </Table>
+                                                      </TableWrapper>
+                                                      {renderPagination(finKey, pagedDetail)}
+                                                    </td>
+                                                  </tr>
+                                                )}
+                                              </React.Fragment>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </Table>
+                                    </TableWrapper>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {renderPagination('topSuppliers_main', tsMainPagedInfo)}
+                          </>
+                        );
+                      })()}
                     </div>
-                  )}
-                  {pagedTopSuppliers.isFiltered && pagedTopSuppliers.total === 0 ? (
-                    <SearchEmptyState>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
-                    </SearchEmptyState>
-                  ) : (
-                    <>
-                      <TableWrapper>
-                        <Table>
-                          <thead>
-                            <tr>
-                              <Th>Dodavatel</Th>
-                              <ThR>Celkem</ThR>
-                              <Th>Rozpad</Th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pagedTopSuppliers.items.map(supplier => (
-                              <Tr key={supplier.name}>
-                                <Td>{supplier.name}</Td>
-                                <TdR>{fmtCurrency(supplier.total)}</TdR>
-                                <Td>
-                                  {Object.entries(supplier.split).map(([key, value]) => (
-                                    <Pill key={key} $tone="success" style={{ marginRight: '0.35rem' }}>
-                                      {key}: {fmtCurrency(value)}
-                                    </Pill>
-                                  ))}
-                                </Td>
-                              </Tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      </TableWrapper>
-                      {renderPagination('topSuppliers', pagedTopSuppliers)}
-                    </>
-                  )}
                   </SectionCard>
                 )}
               </>
@@ -7526,12 +7903,12 @@ export default function StatsReportsPage() {
                               <Table>
                                 <thead>
                                   <tr>
-                                    <Th style={{ minWidth: '200px' }}>Soubor</Th>
-                                    <Th>Typ přílohy</Th>
-                                    <Th>Faktura</Th>
-                                    <Th>Objednávka</Th>
-                                    <Th>Dodavatel</Th>
-                                    <Th>Stav FA</Th>
+                                    <ThSort style={{ minWidth: '200px' }} onClick={() => handleTableSort('invoiceAttachmentsList', 'nazev_souboru')}>Soubor{sortIcon('invoiceAttachmentsList', 'nazev_souboru')}</ThSort>
+                                    <ThSort onClick={() => handleTableSort('invoiceAttachmentsList', 'typ_prilohy')}>Typ přílohy{sortIcon('invoiceAttachmentsList', 'typ_prilohy')}</ThSort>
+                                    <ThSort onClick={() => handleTableSort('invoiceAttachmentsList', 'faktura')}>Faktura{sortIcon('invoiceAttachmentsList', 'faktura')}</ThSort>
+                                    <ThSort onClick={() => handleTableSort('invoiceAttachmentsList', 'objednavka')}>Objednávka{sortIcon('invoiceAttachmentsList', 'objednavka')}</ThSort>
+                                    <ThSort onClick={() => handleTableSort('invoiceAttachmentsList', 'dodavatel')}>Dodavatel{sortIcon('invoiceAttachmentsList', 'dodavatel')}</ThSort>
+                                    <ThSort onClick={() => handleTableSort('invoiceAttachmentsList', 'fa_stav')}>Stav FA{sortIcon('invoiceAttachmentsList', 'fa_stav')}</ThSort>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -7590,14 +7967,14 @@ export default function StatsReportsPage() {
                       <SectionTitle style={{ flex: 1 }}>
                         Přílohy objednávek podle typu
                       </SectionTitle>
-                      <SectionBadge $tone="info">{orderAttachmentsStats?.total || 0} příloh</SectionBadge>
+                      <SectionBadge $tone="info">{(orderAttachmentsStats && orderAttachmentsStats.total) || 0} příloh</SectionBadge>
                     </SectionHeader>
                     {attachmentsLoading && !orderAttachmentsStats ? (
                       <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Načítám statistiky...</div>
                     ) : (
                       <>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '1rem' }}>
-                          {(orderAttachmentsStats?.types || []).map(item => (
+                          {((orderAttachmentsStats && orderAttachmentsStats.types) || []).map(item => (
                             <Pill
                               key={item.type}
                               $tone={expandedAttachmentType.orders === item.type ? 'primary' : 'default'}
@@ -7634,7 +8011,7 @@ export default function StatsReportsPage() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {(attachmentsByType.orders?.data || []).map(att => (
+                                {((attachmentsByType.orders && attachmentsByType.orders.data) || []).map(att => (
                                   <Tr key={att.id}>
                                     <Td>
                                       <span
@@ -7655,7 +8032,7 @@ export default function StatsReportsPage() {
                                 ))}
                               </tbody>
                             </Table>
-                            {attachmentsByType.orders?.pagination && attachmentsByType.orders.pagination.total_pages > 1 && (
+                            {attachmentsByType.orders && attachmentsByType.orders.pagination && attachmentsByType.orders.pagination.total_pages > 1 && (
                               <PaginationContainer>
                                 <PaginationInfo>
                                   Zobrazeno {((attachmentsByTypePage.orders - 1) * (attachmentsByType.orders.pagination.per_page || 25)) + 1}–{Math.min(attachmentsByTypePage.orders * (attachmentsByType.orders.pagination.per_page || 25), attachmentsByType.orders.pagination.total)} z {attachmentsByType.orders.pagination.total}
@@ -7692,14 +8069,14 @@ export default function StatsReportsPage() {
                       <SectionTitle style={{ flex: 1 }}>
                         Přílohy faktur podle typu
                       </SectionTitle>
-                      <SectionBadge $tone="info">{invoiceAttachmentsStats?.total || 0} příloh</SectionBadge>
+                      <SectionBadge $tone="info">{(invoiceAttachmentsStats && invoiceAttachmentsStats.total) || 0} příloh</SectionBadge>
                     </SectionHeader>
                     {attachmentsLoading && !invoiceAttachmentsStats ? (
                       <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Načítám statistiky...</div>
                     ) : (
                       <>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '1rem' }}>
-                          {(invoiceAttachmentsStats?.types || []).map(item => (
+                          {((invoiceAttachmentsStats && invoiceAttachmentsStats.types) || []).map(item => (
                             <Pill
                               key={item.type}
                               $tone={expandedAttachmentType.invoices === item.type ? 'primary' : 'default'}
@@ -7736,7 +8113,7 @@ export default function StatsReportsPage() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {(attachmentsByType.invoices?.data || []).map(att => (
+                                {((attachmentsByType.invoices && attachmentsByType.invoices.data) || []).map(att => (
                                   <Tr key={att.id}>
                                     <Td>
                                       <span
@@ -7757,7 +8134,7 @@ export default function StatsReportsPage() {
                                 ))}
                               </tbody>
                             </Table>
-                            {attachmentsByType.invoices?.pagination && attachmentsByType.invoices.pagination.total_pages > 1 && (
+                            {attachmentsByType.invoices && attachmentsByType.invoices.pagination && attachmentsByType.invoices.pagination.total_pages > 1 && (
                               <PaginationContainer>
                                 <PaginationInfo>
                                   Zobrazeno {((attachmentsByTypePage.invoices - 1) * (attachmentsByType.invoices.pagination.per_page || 25)) + 1}–{Math.min(attachmentsByTypePage.invoices * (attachmentsByType.invoices.pagination.per_page || 25), attachmentsByType.invoices.pagination.total)} z {attachmentsByType.invoices.pagination.total}
@@ -7794,7 +8171,7 @@ export default function StatsReportsPage() {
                       <SectionTitle style={{ flex: 1 }}>
                         Objednávky bez příloh
                       </SectionTitle>
-                      <SectionBadge $tone="warn">{ordersWithoutAttachments?.pagination?.total || '...'}</SectionBadge>
+                      <SectionBadge $tone="warn">{(ordersWithoutAttachments && ordersWithoutAttachments.pagination && ordersWithoutAttachments.pagination.total) || '...'}</SectionBadge>
                     </SectionHeader>
                     {ordersWithoutAttachments && (
                       <TableWrapper>
@@ -7810,7 +8187,7 @@ export default function StatsReportsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {(ordersWithoutAttachments?.data || []).map(order => (
+                            {((ordersWithoutAttachments && ordersWithoutAttachments.data) || []).map(order => (
                               <Tr key={order.id}>
                                 <Td>{renderOrderLink(order)}</Td>
                                 <Td style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -7826,7 +8203,7 @@ export default function StatsReportsPage() {
                             ))}
                           </tbody>
                         </Table>
-                        {ordersWithoutAttachments?.pagination && ordersWithoutAttachments.pagination.total_pages > 1 && (
+                        {ordersWithoutAttachments && ordersWithoutAttachments.pagination && ordersWithoutAttachments.pagination.total_pages > 1 && (
                           <PaginationContainer>
                             <PaginationInfo>
                               Zobrazeno {((ordersWithoutAttachmentsPage - 1) * (ordersWithoutAttachments.pagination.per_page || 25)) + 1}–{Math.min(ordersWithoutAttachmentsPage * (ordersWithoutAttachments.pagination.per_page || 25), ordersWithoutAttachments.pagination.total)} z {ordersWithoutAttachments.pagination.total}
@@ -7861,7 +8238,7 @@ export default function StatsReportsPage() {
                       <SectionTitle style={{ flex: 1 }}>
                         Faktury bez příloh
                       </SectionTitle>
-                      <SectionBadge $tone="warn">{invoicesWithoutAttachments?.pagination?.total || '...'}</SectionBadge>
+                      <SectionBadge $tone="warn">{(invoicesWithoutAttachments && invoicesWithoutAttachments.pagination && invoicesWithoutAttachments.pagination.total) || '...'}</SectionBadge>
                     </SectionHeader>
                     {invoicesWithoutAttachments && (
                       <TableWrapper>
@@ -7877,7 +8254,7 @@ export default function StatsReportsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {(invoicesWithoutAttachments?.data || []).map(invoice => (
+                            {((invoicesWithoutAttachments && invoicesWithoutAttachments.data) || []).map(invoice => (
                               <Tr key={invoice.id}>
                                 <Td>{renderInvoiceLink(invoice)}</Td>
                                 <Td>
@@ -7891,7 +8268,7 @@ export default function StatsReportsPage() {
                             ))}
                           </tbody>
                         </Table>
-                        {invoicesWithoutAttachments?.pagination && invoicesWithoutAttachments.pagination.total_pages > 1 && (
+                        {invoicesWithoutAttachments && invoicesWithoutAttachments.pagination && invoicesWithoutAttachments.pagination.total_pages > 1 && (
                           <PaginationContainer>
                             <PaginationInfo>
                               Zobrazeno {((invoicesWithoutAttachmentsPage - 1) * (invoicesWithoutAttachments.pagination.per_page || 25)) + 1}–{Math.min(invoicesWithoutAttachmentsPage * (invoicesWithoutAttachments.pagination.per_page || 25), invoicesWithoutAttachments.pagination.total)} z {invoicesWithoutAttachments.pagination.total}
