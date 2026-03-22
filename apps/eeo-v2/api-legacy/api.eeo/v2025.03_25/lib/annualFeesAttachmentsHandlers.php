@@ -301,7 +301,95 @@ function handleAnnualFeeAttachmentsList($pdo, $input, $user) {
 }
 
 // ============================================================================
-// 📥 DOWNLOAD PŘÍLOHY
+// � HROMADNÝ SEZNAM VŠECH PŘÍLOH (pro statistiky)
+// ============================================================================
+
+/**
+ * Všechny přílohy ročních poplatků najednou (pro statistiky/reporty)
+ * Volitelný filtr dle roku (rok_platby ze záhlaví poplatku).
+ *
+ * @param PDO $pdo
+ * @param array $input - POST data (token, username, date_from?, date_to?, rok?)
+ * @param array $user - Uživatelská session
+ * @return array Response
+ */
+function handleAnnualFeeAttachmentsAll($pdo, $input, $user) {
+    // Kontrola oprávnění
+    if (!canViewAnnualFees($user)) {
+        return [
+            'success' => false,
+            'error' => 'Nemáte oprávnění pro zobrazení příloh ročních poplatků',
+            'error_code' => 'PERMISSION_DENIED'
+        ];
+    }
+
+    // Nastavení timezone
+    TimezoneHelper::setMysqlTimezone($pdo);
+
+    $conditions = [];
+    $params = [];
+
+    // Volitelný filtr dle roku poplatku
+    $rok = isset($input['rok']) && $input['rok'] !== '' ? intval($input['rok']) : null;
+    if ($rok) {
+        $conditions[] = 'rp.rok = ?';
+        $params[] = $rok;
+    }
+
+    // Volitelný filtr dle datumu nahrání přílohy
+    $dateFrom = isset($input['date_from']) && $input['date_from'] !== '' ? $input['date_from'] : null;
+    $dateTo   = isset($input['date_to'])   && $input['date_to']   !== '' ? $input['date_to']   : null;
+    if ($dateFrom) {
+        $conditions[] = 'p.dt_vytvoreni >= ?';
+        $params[] = $dateFrom . ' 00:00:00';
+    }
+    if ($dateTo) {
+        $conditions[] = 'p.dt_vytvoreni <= ?';
+        $params[] = $dateTo . ' 23:59:59';
+    }
+
+    $whereClause = count($conditions) > 0 ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
+    $sql = "
+        SELECT
+            p.*,
+            rp.id            AS cislo_poplatku,
+            rp.nazev         AS rocni_poplatek_nazev,
+            rp.rok           AS rok_platby,
+            rp.stav          AS rocni_poplatek_stav,
+            s.cislo_smlouvy,
+            s.nazev_smlouvy  AS smlouva_nazev,
+            CONCAT(u.jmeno, ' ', u.prijmeni) AS nahrano_jmeno
+        FROM " . TBL_ROCNI_POPLATKY_PRILOHY . " p
+        LEFT JOIN " . TBL_ROCNI_POPLATKY . " rp ON p.rocni_poplatek_id = rp.id
+        LEFT JOIN " . TBL_SMLOUVY . " s  ON rp.smlouva_id = s.id
+        LEFT JOIN " . TBL_UZIVATELE . " u ON p.nahrano_uzivatel_id = u.id
+        $whereClause
+        ORDER BY p.dt_vytvoreni DESC
+    ";
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'success' => true,
+            'data'    => $attachments,
+            'count'   => count($attachments)
+        ];
+    } catch (Exception $e) {
+        error_log('ANNUAL FEES ATTACHMENTS ALL ERROR: ' . $e->getMessage());
+        return [
+            'success'    => false,
+            'error'      => 'Chyba při načítání příloh: ' . $e->getMessage(),
+            'error_code' => 'DB_ERROR'
+        ];
+    }
+}
+
+// ============================================================================
+// �📥 DOWNLOAD PŘÍLOHY
 // ============================================================================
 
 /**

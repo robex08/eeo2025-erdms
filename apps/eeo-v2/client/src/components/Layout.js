@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -2329,6 +2329,58 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ── Scroll FAB + Quick Nav (jen na /stats-reports) ─────────────────────────
+  const [scrollFabAtBottom, setScrollFabAtBottom] = useState(false);
+  const [statsNavOpen, setStatsNavOpen] = useState(false);
+  const [statsNavPinned, setStatsNavPinned] = useState(false);
+  const [statsNavSections, setStatsNavSections] = useState([]);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/stats-reports')) return;
+    const el = document.querySelector('main');
+    if (!el) return;
+    const onScroll = () => {
+      setScrollFabAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - el.clientHeight);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handler = (e) => setStatsNavSections(e.detail?.sections || []);
+    window.addEventListener('statsNavSections', handler);
+    return () => window.removeEventListener('statsNavSections', handler);
+  }, []);
+
+  // Zavři nav popup kliknutím mimo
+  useEffect(() => {
+    if (!statsNavOpen) return;
+    const handler = (e) => {
+      if (!e.target.closest('[data-stats-nav]')) { setStatsNavOpen(false); setStatsNavPinned(false); }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [statsNavOpen]);
+
+  // Zavři nav když přejdeme pryč ze stats-reports
+  useEffect(() => {
+    if (!location.pathname.startsWith('/stats-reports')) { setStatsNavOpen(false); setStatsNavPinned(false); }
+  }, [location.pathname]);
+
+  const handleScrollFab = () => {
+    const el = document.querySelector('main');
+    if (!el) return;
+    if (scrollFabAtBottom) {
+      el.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  };
+  const handleStatsNavItem = (key) => {
+    window.dispatchEvent(new CustomEvent('statsScrollToSection', { detail: { key } }));
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Persist last top-level route (menu section) so we can restore after refresh
 
   // Reset progress bar on route change if previous route left it visible (prevence visící zelené lišty)
@@ -4395,6 +4447,74 @@ const Layout = ({ children }) => {
           </span>
         </FooterCenter>
       </Footer>
+
+      {/* Scroll FAB + Quick Nav – pouze na stránce Statistiky & Reporty */}
+      {isLoggedIn && location.pathname.startsWith('/stats-reports') && (
+        <div data-stats-nav
+          onMouseEnter={() => setStatsNavOpen(true)}
+          onMouseLeave={() => { if (!statsNavPinned) setStatsNavOpen(false); }}
+          style={{ position: 'fixed', left: '.75rem', bottom: '.75rem', zIndex: 4001, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+          {/* Quick nav popup */}
+          {statsNavOpen && statsNavSections.length > 0 && (
+            <div style={{
+              position: 'absolute', bottom: '54px', left: 0,
+              background: 'rgba(10,18,36,0.78)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              borderRadius: '12px', padding: '0.5rem 0 0',
+              minWidth: '300px', maxWidth: '420px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+              zIndex: 4002,
+            }}>
+              <div style={{ padding: '0.4rem 0.9rem 0.5rem', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid #334155', marginBottom: '0.3rem' }}>
+                Rychlá navigace
+              </div>
+              {statsNavSections.map((s, i) => (
+                <button key={s.key} onClick={() => handleStatsNavItem(s.key)} style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '0.45rem 0.9rem', background: 'transparent', border: 'none',
+                  color: '#e2e8f0', fontSize: '0.85rem', cursor: 'pointer',
+                  borderLeft: '3px solid transparent', transition: 'all 0.12s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#334155'; e.currentTarget.style.borderLeftColor = '#3b82f6'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; e.currentTarget.style.color = '#e2e8f0'; }}
+                >
+                  <span style={{ color: '#64748b', fontSize: '0.75rem', marginRight: '0.5rem' }}>{i + 1}.</span>
+                  {s.label}
+                </button>
+              ))}
+              {/* Bridge – zabraňuje mezeře mezi popupem a čepičkou při přejezdu myší */}
+              <div style={{ position: 'absolute', bottom: '-10px', left: 0, right: 0, height: '10px' }} />
+            </div>
+          )}
+          {/* Split FAB: čepička (nav) + tělo (scroll) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderRadius: '999px', overflow: 'hidden', boxShadow: '0 4px 14px rgba(29,78,216,0.45)' }}>
+            {/* Čepička – klik připne panel, hover otvírá */}
+            <div
+              onClick={() => {
+                if (statsNavPinned) { setStatsNavPinned(false); setStatsNavOpen(false); }
+                else { setStatsNavPinned(true); setStatsNavOpen(true); }
+              }}
+              style={{
+                width: '40px', height: '14px',
+                background: statsNavPinned ? '#7c3aed' : statsNavOpen ? '#1e40af' : '#2563eb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderBottom: '1px solid rgba(255,255,255,0.15)', transition: 'background 0.15s',
+                cursor: 'pointer',
+              }}
+            >
+              <span style={{ width: statsNavPinned ? '8px' : '12px', height: '1.5px', background: '#fff', borderRadius: '1px', display: 'block', transition: 'width 0.15s' }} />
+            </div>
+            {/* Tělo – scroll ↓/↑ */}
+            <RoundFab type="button" onClick={handleScrollFab} style={{
+              background: '#1d4ed8', width: '40px', height: '40px',
+              borderRadius: 0, boxShadow: 'none',
+            }}>
+              <FontAwesomeIcon icon={scrollFabAtBottom ? faChevronUp : faChevronDown} />
+            </RoundFab>
+          </div>
+        </div>
+      )}
+
       {/* DEBUG PANEL RE-ENABLED */}
       {canDebug && (
         <DebugDockWrapper>
