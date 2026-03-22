@@ -548,8 +548,47 @@ export const listAnnualFeeAttachments = async ({ token, username, rocni_poplatek
 };
 
 /**
+ * Načte VŠECHNY přílohy ročních poplatků najednou (pro statistiky/reporty)
+ *
+ * @param {Object} params - Parametry
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Uživatelské jméno
+ * @param {number} [params.rok] - Volitelný filtr dle roku
+ * @param {string} [params.date_from] - Volitelný filtr datum od
+ * @param {string} [params.date_to] - Volitelný filtr datum do
+ * @returns {Promise<Object>} { success, data[], count }
+ */
+export const getAllAnnualFeeAttachments = async ({ token, username, rok, date_from, date_to } = {}) => {
+  try {
+    const response = await fetch(`${BASE_URL}/annual-fees/attachments/all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        ...(rok != null ? { rok } : {}),
+        ...(date_from ? { date_from } : {}),
+        ...(date_to ? { date_to } : {}),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Chyba při načítání příloh ročních poplatků');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('getAllAnnualFeeAttachments error:', error);
+    throw error;
+  }
+};
+
+/**
  * Stažení přílohy
- * 
+ *
  * @param {Object} params - Parametry
  * @param {string} params.token - Auth token
  * @param {string} params.username - Uživatelské jméno
@@ -557,11 +596,11 @@ export const listAnnualFeeAttachments = async ({ token, username, rocni_poplatek
  * @param {string} params.original_name - Původní název souboru (pro download)
  * @returns {Promise<void>} Triggers download
  */
-export const downloadAnnualFeeAttachment = async ({ 
-  token, 
-  username, 
+export const downloadAnnualFeeAttachment = async ({
+  token,
+  username,
   attachment_id,
-  original_name 
+  original_name
 }) => {
   try {
     const response = await fetch(`${BASE_URL}/annual-fees/attachments/download`, {
@@ -599,6 +638,61 @@ export const downloadAnnualFeeAttachment = async ({
     return { success: true };
   } catch (error) {
     console.error('downloadAnnualFeeAttachment error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Stažení přílohy jako blob (pro preview v attachment vieweru)
+ *
+ * @param {number} attachmentId - ID přílohy
+ * @param {string} username - Uživatelské jméno
+ * @param {string} token - Auth token
+ * @returns {Promise<Blob>} Blob souboru
+ */
+export const downloadAnnualFeeAttachmentBlob = async (attachmentId, username, token) => {
+  if (!attachmentId || !username || !token) {
+    throw new Error('Missing required parameters');
+  }
+
+  try {
+    const response = await fetch(`${BASE_URL}/annual-fees/attachments/download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        attachment_id: attachmentId
+      }),
+    });
+
+    // ⚠️ Backend může vracet status 200 i s JSON errorem!
+    // Zkontroluj Content-Type PŘED parsováním jako blob
+    const contentType = response.headers.get('Content-Type') || '';
+    
+    if (contentType.includes('application/json')) {
+      // Backend vrátil JSON -> pravděpodobně error
+      const errorData = await response.json();
+      
+      if (errorData.success === false || errorData.error || errorData.error_code) {
+        // Je to error response
+        if (errorData.error_code === 'FILE_NOT_FOUND') {
+          throw new Error('FILE_NOT_FOUND: Soubor přílohy není dostupný na tomto serveru (soubor byl přesunut nebo smazán).');
+        }
+        throw new Error(errorData.error || errorData.message || 'Chyba při stahování přílohy');
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Chyba ${response.status}: ${response.statusText}`);
+    }
+
+    // Vrácení blobu pro attachment viewer
+    return await response.blob();
+  } catch (error) {
+    console.error('downloadAnnualFeeAttachmentBlob error:', error);
     throw error;
   }
 };

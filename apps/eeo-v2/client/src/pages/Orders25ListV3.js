@@ -45,6 +45,8 @@ import {
   faPlus,
   faFileExport,
   faCalendarAlt,
+  faTrash,
+  faCheckCircle,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -895,6 +897,11 @@ function Orders25ListV3() {
   // 🆕 State pro potvrzení zavření rozpracované objednávky při vytváření nové
   const [showNewOrderConfirmDialog, setShowNewOrderConfirmDialog] = useState(false);
 
+  // 🗑️ State pro mazání objednávky
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState('soft'); // 'soft' | 'hard' | 'restore'
+
   const isSelectionInsideOrdersTable = useCallback((selection) => {
     const tableElement = document.querySelector('[data-orders-v3-table="true"]');
     if (!tableElement || !selection) return false;
@@ -1721,25 +1728,76 @@ function Orders25ListV3() {
     }
   };
 
-  // Handler pro smazání objednávky
-  const handleDeleteOrder = (order) => {
-    const isHardDelete = canHardDelete(order);
-    const deleteType = isHardDelete ? 'HARD DELETE' : 'SOFT DELETE (deaktivace)';
-    
-    // TODO: Zobrazit custom dialog s volbou hard/soft delete
-    const confirmMessage = isHardDelete
-      ? `Opravdu chcete NATRVALO SMAZAT objednávku ${order.cislo_objednavky}?\n\nADMIN MODE: Můžete zvolit:\n- HARD DELETE (natrvalo)\n- SOFT DELETE (deaktivovat)\n\nTato akce je nevratná!`
-      : `Opravdu chcete DEAKTIVOVAT objednávku ${order.cislo_objednavky}?\n\nObjednávka bude skryta, ale data zůstanou v systému.`;
-    
-    if (window.confirm(confirmMessage)) {
-      // TODO: Implementovat API volání pro delete/deactivate
-      // if (isHardDelete) {
-      //   await deleteOrder(order.id, 'hard');
-      // } else {
-      //   await deleteOrder(order.id, 'soft');
-      // }
+  // Handler pro smazání objednávky – otevře custom dialog
+  const handleDeleteOrder = useCallback((order) => {
+    if (!canDelete(order)) {
+      showToast && showToast('Nemáte oprávnění ke smazání této objednávky.', { type: 'error' });
+      return;
     }
-  };
+
+    // Neaktivní objednávka + admin = možnost obnovy nebo hard delete
+    if (order.aktivni === 0 && isAdmin) {
+      setDeleteType('restore');
+    } else {
+      setDeleteType('soft');
+    }
+
+    setOrderToDelete(order);
+    setShowDeleteConfirmModal(true);
+  }, [canDelete, isAdmin, showToast]);
+
+  // Potvrzení mazání
+  const handleDeleteConfirm = useCallback(async (type) => {
+    if (!orderToDelete) return;
+    
+    const orderName = orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`;
+    
+    try {
+      if (type === 'restore') {
+        // V2 API – soft delete na neaktivní = obnova není v API, použijeme 'restore' endpoint pokud existuje
+        // Fallback: jen oznámíme a zavřeme
+        showToast && showToast('Funkce obnovení není v tomto rozhraní momentálně dostupná. Kontaktujte administrátora.', { type: 'warning' });
+        setShowDeleteConfirmModal(false);
+        setOrderToDelete(null);
+        return;
+      }
+
+      // 🛠️ Toast "Mazání..." okamžitě
+      showToast && showToast(`🗑️ Mazání objednávky ${orderName}...`, { type: 'info' });
+      
+      // Zavřít dialog okamžitě (animace)
+      setShowDeleteConfirmModal(false);
+      setOrderToDelete(null);
+
+      // API volání
+      const snapshot = orderToDelete;
+
+      if (type === 'hard') {
+        await deleteOrderV2(snapshot.id, token, username, true);
+        showToast && showToast(`✅ Objednávka ${orderName} byla úplně smazána včetně všech příloh.`, { type: 'success' });
+      } else {
+        await deleteOrderV2(snapshot.id, token, username);
+        showToast && showToast(`✅ Objednávka ${orderName} byla označena jako neaktivní.`, { type: 'success' });
+      }
+      
+      // 🔄 Refresh dat na pozadí (vymáže cache a načte aktuální data)
+      if (clearCache) clearCache();
+      if (loadOrders) {
+        // Silent refresh (bez toast "Načítání...") - uživatel viděl success toast
+        await loadOrders(globalFilter, { forceRefresh: true, silent: true });
+      }
+      
+    } catch (err) {
+      showToast && showToast(`❌ Chyba při mazání objednávky ${orderName}: ${err.message}`, { type: 'error' });
+      // Nemusíme rollback - data se refreshnou při příštím load
+    }
+  }, [orderToDelete, token, username, showToast, clearCache, loadOrders, globalFilter]);
+
+  // Zrušení mazání
+  const handleDeleteCancel = useCallback(() => {
+    setShowDeleteConfirmModal(false);
+    setOrderToDelete(null);
+  }, []);
 
   // Handler pro rozbalení řádku
   const handleRowExpand = (order) => {
@@ -2492,6 +2550,208 @@ function Orders25ListV3() {
           Máte rozpracovanou objednávku v Order formuláři.
           <br />
           Pokud budete pokračovat, rozpracovaná data se zavřou a otevře se nová objednávka.
+        </ConfirmDialog>,
+        document.body
+      )}
+
+      {/* 🗑️ Dialog pro smazání / deaktivaci objednávky */}
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showDeleteConfirmModal}
+          onClose={handleDeleteCancel}
+          onConfirm={() => handleDeleteConfirm(deleteType)}
+          title={
+            orderToDelete && orderToDelete.aktivni === 0 && isAdmin
+              ? (deleteType === 'restore' ? 'Obnovení objednávky' : 'Úplné smazání objednávky')
+              : 'Smazání objednávky'
+          }
+          icon={
+            orderToDelete && orderToDelete.aktivni === 0 && isAdmin
+              ? (deleteType === 'restore' ? faCheckCircle : faTrash)
+              : faTrash
+          }
+          variant={
+            orderToDelete && orderToDelete.aktivni === 0 && isAdmin
+              ? (deleteType === 'restore' ? 'success' : 'danger')
+              : 'danger'
+          }
+          confirmText={
+            orderToDelete && orderToDelete.aktivni === 0 && isAdmin
+              ? (deleteType === 'restore' ? '✅ Obnovit objednávku' : '⚠️ Smazat úplně')
+              : isAdmin
+                ? 'Smazat úplně'
+                : 'Označit neaktivní'
+          }
+          cancelText="Zrušit"
+          showCancel={true}
+          onCancel={handleDeleteCancel}
+          key={deleteType + (orderToDelete?.aktivni ? '-active' : '-inactive')}
+        >
+          {orderToDelete && orderToDelete.aktivni === 0 && isAdmin ? (
+            /* NEAKTIVNÍ objednávka – volba: obnovit nebo hard delete */
+            <>
+              <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                Co chcete udělat s neaktivní objednávkou{' '}
+                <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>?
+              </p>
+              <div style={{ background: '#f8fafc', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '1rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>🔧 Vyberte akci:</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <label
+                    onClick={() => setDeleteType('restore')}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer',
+                      padding: '0.75rem', borderRadius: '6px', transition: 'all 0.2s',
+                      border: `2px solid ${deleteType === 'restore' ? '#10b981' : '#e2e8f0'}`,
+                      background: deleteType === 'restore' ? '#f0fdf4' : 'white',
+                    }}
+                  >
+                    <input type="radio" name="v3DeleteType" value="restore" checked={deleteType === 'restore'}
+                      onChange={e => { e.stopPropagation(); setDeleteType('restore'); }}
+                      style={{ marginTop: '0.25rem', cursor: 'pointer' }} />
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem', color: deleteType === 'restore' ? '#166534' : '#475569' }}>
+                        🔄 Obnovit objednávku
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: deleteType === 'restore' ? '#166534' : '#64748b', lineHeight: '1.4' }}>
+                        Objednávka bude znovu <strong>aktivní</strong> a objeví se v přehledu.
+                      </div>
+                    </div>
+                  </label>
+                  <label
+                    onClick={() => setDeleteType('hard')}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer',
+                      padding: '0.75rem', borderRadius: '6px', transition: 'all 0.2s',
+                      border: `2px solid ${deleteType === 'hard' ? '#ef4444' : '#e2e8f0'}`,
+                      background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                    }}
+                  >
+                    <input type="radio" name="v3DeleteType" value="hard" checked={deleteType === 'hard'}
+                      onChange={e => { e.stopPropagation(); setDeleteType('hard'); }}
+                      style={{ marginTop: '0.25rem', cursor: 'pointer' }} />
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem', color: deleteType === 'hard' ? '#dc2626' : '#475569' }}>
+                        ⚠️ Smazat úplně (HARD DELETE)
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: deleteType === 'hard' ? '#dc2626' : '#64748b', lineHeight: '1.4' }}>
+                        Objednávka bude <strong>fyzicky smazána z databáze</strong> včetně všech položek a příloh. Tuto akci nelze vrátit zpět!
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* AKTIVNÍ objednávka – soft delete (nebo hard pro admina) */
+            <>
+              <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                Chystáte se smazat objednávku{' '}
+                <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>.
+              </p>
+              {isAdmin ? (
+                <div>
+                  <p><strong>Máte administrátorská práva. Vyberte způsob smazání:</strong></p>
+                  <div style={{
+                    background: '#f8fafc',
+                    border: '2px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    marginTop: '1rem'
+                  }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                      🔧 Vyberte akci:
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {/* SOFT DELETE */}
+                      <label
+                        onClick={() => setDeleteType('soft')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: 'pointer',
+                          padding: '0.75rem',
+                          borderRadius: '6px',
+                          transition: 'all 0.2s',
+                          border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
+                          background: deleteType === 'soft' ? '#eff6ff' : 'white',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="v3DeleteTypeActive"
+                          value="soft"
+                          checked={deleteType === 'soft'}
+                          onChange={e => { e.stopPropagation(); setDeleteType('soft'); }}
+                          style={{ marginTop: '0.25rem', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <div style={{
+                            fontWeight: 600,
+                            marginBottom: '0.25rem',
+                            color: deleteType === 'soft' ? '#1e40af' : '#475569'
+                          }}>
+                            🔒 Označit jako neaktivní
+                          </div>
+                          <div style={{
+                            fontSize: '0.85rem',
+                            color: deleteType === 'soft' ? '#1e40af' : '#64748b',
+                            lineHeight: '1.4'
+                          }}>
+                            Objednávka zůstane v databázi, ale <strong>nebude se zobrazovat v seznamech</strong>.
+                          </div>
+                        </div>
+                      </label>
+
+                      {/* HARD DELETE */}
+                      <label
+                        onClick={() => setDeleteType('hard')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: 'pointer',
+                          padding: '0.75rem',
+                          borderRadius: '6px',
+                          transition: 'all 0.2s',
+                          border: `2px solid ${deleteType === 'hard' ? '#ef4444' : '#e2e8f0'}`,
+                          background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="v3DeleteTypeActive"
+                          value="hard"
+                          checked={deleteType === 'hard'}
+                          onChange={e => { e.stopPropagation(); setDeleteType('hard'); }}
+                          style={{ marginTop: '0.25rem', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <div style={{
+                            fontWeight: 600,
+                            marginBottom: '0.25rem',
+                            color: deleteType === 'hard' ? '#dc2626' : '#475569'
+                          }}>
+                            ⚠️ Smazat úplně (HARD DELETE)
+                          </div>
+                          <div style={{
+                            fontSize: '0.85rem',
+                            color: deleteType === 'hard' ? '#dc2626' : '#64748b',
+                            lineHeight: '1.4'
+                          }}>
+                            Objednávka bude <strong>fyzicky smazána z databáze</strong> včetně všech položek a příloh. Tuto akci nelze vrátit zpět!
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p>Objednávka bude označena jako neaktivní. Zůstane v databázi, ale nebude se zobrazovat v seznamech.</p>
+              )}
+            </>
+          )}
         </ConfirmDialog>,
         document.body
       )}

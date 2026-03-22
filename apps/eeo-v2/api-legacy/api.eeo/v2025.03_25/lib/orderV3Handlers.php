@@ -1566,6 +1566,9 @@ function handle_order_v3_list($input, $config, $queries) {
                 (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as pocet_faktur,
                 (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph,
                 
+                -- Střediska (JSON array kódů)
+                o.strediska_kod,
+                
                 -- 🆕 Kontrola a komentáře (Order V3)
                 o.kontrola_metadata,
                 (SELECT COUNT(*) FROM 25a_objednavky_komentare kom WHERE kom.objednavka_id = o.id AND kom.smazano = 0) as comments_count,
@@ -1645,11 +1648,20 @@ function handle_order_v3_list($input, $config, $queries) {
                 $order['stav_workflow_kod'] = safeJsonDecode($order['stav_workflow_kod'], array());
             }
             
+            // Parsovat strediska_kod z JSON string na array
+            if (isset($order['strediska_kod']) && is_string($order['strediska_kod']) && $order['strediska_kod'] !== '') {
+                $decoded = json_decode($order['strediska_kod'], true);
+                $order['strediska_kod'] = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
+            } elseif (!isset($order['strediska_kod'])) {
+                $order['strediska_kod'] = [];
+            }
+            
             // ENRICHMENT - obohacení dat z dalších tabulek
             enrichFinancovaniV3($db, $order);
             enrichDodavatelV3($db, $order);
             enrichRegistrZverejneniV3($db, $order);
             enrichOrderWithInvoices($db, $order); // ✅ Přidáno načítání faktur pro workflow tooltip
+            enrichOrderWithAttachmentStatus($db, $order); // 🎨 Přidáno načítání stavu příloh pro barevnou ikonu
         }
         unset($order);
 
@@ -2964,5 +2976,91 @@ function handle_orderV3_timeline($input, $config) {
             'status' => 'error',
             'message' => 'Chyba při načítání timeline dat: ' . $e->getMessage()
         ));
+    }
+}
+
+/**
+ * 🎨 ENRICHMENT: Vypočítá barvu ikony přílohy podle klasifikací (pro vzdělávání tab)
+ * 
+ * Logika barev:
+ * - 🔴 Červená (#dc2626): 0 příloh NEBO chybí základní OBJ příloha (PODKLADY nebo CESTOVNI_PRIKAZ)
+ * - 🟢 Zelená (#16a34a): Kompletní - 2+ FAKTURA + (2+ PODKLADY NEBO CESTOVNI_PRIKAZ + CERTIFIKAT)
+ * - 🟡 Žlutá (#fbbf24): Má 2+ FAKTURA příloh z faktur
+ * - 🟠 Oranžová (#f97316): Má základní OBJ přílohy, ale chybí/neúplné faktury
+ * - ⚪ Světle šedá (#cbd5e1): 0 příloh celkem
+ * 
+ * @param PDO $db
+ * @param array &$order - Reference na objednávku (bude doplněno pole attachment_color)
+ */
+function enrichOrderWithAttachmentStatus($db, &$order) {
+    try {
+        $order_id = (int)$order['id'];
+        
+        // 1. Načti přílohy objednávky
+        $sql_order = "SELECT typ_prilohy FROM " . TBL_OBJEDNAVKY_PRILOHY . " 
+                      WHERE objednavka_id = ?";
+        $stmt = $db->prepare($sql_order);
+        $stmt->execute([$order_id]);
+        $order_attachments = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        // 2. Načti přílohy všech faktur objednávky
+        $sql_invoices = "SELECT id FROM " . TBL_FAKTURY . " 
+                         WHERE objednavka_id = ? AND aktivni = 1";
+        $stmt = $db->prepare($sql_invoices);
+        $stmt->execute([$order_id]);
+        $invoice_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        $invoice_attachments = [];
+        if (!empty($invoice_ids)) {
+            $placeholders = implode(',', array_fill(0, count($invoice_ids), '?'));
+            $sql_fa_prilohy = "SELECT typ_prilohy FROM " . TBL_FAKTURY_PRILOHY . " 
+                               WHERE faktura_id IN ($placeholders)";
+            $stmt = $db->prepare($sql_fa_prilohy);
+            $stmt->execute($invoice_ids);
+            $invoice_attachments = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        }
+        
+        // 3. Spočítej klasifikace
+        $total_count = count($order_attachments) + count($invoice_attachments);
+        $obj_podklady = count(array_filter($order_attachments, fn($t) => $t === 'PODKLADY'));
+        $obj_cestovni_prikaz = count(array_filter($order_attachments, fn($t) => $t === 'CESTOVNI_PRIKAZ'));
+        $obj_certifikat = count(array_filter($order_attachments, fn($t) => $t === 'CERTIFIKAT'));
+        $fa_faktura = count(array_filter($invoice_attachments, fn($t) => $t === 'FAKTURA'));
+        
+        // 4. Vyhodnoť barvu podle logiky
+        if ($total_count === 0) {
+            $order['attachment_color'] = '#cbd5e1'; // Světle šedá - žádné přílohy
+            return;
+        }
+        
+        // Kontrola základních OBJ příloh
+        $has_basic_obj = $obj_podklady >= 1 || $obj_cestovni_prikaz >= 1;
+        
+        // Červená - chybí základní OBJ přílohy
+        if (!$has_basic_obj) {
+            $order['attachment_color'] = '#dc2626';
+            return;
+        }
+        
+        // Zelená - kompletní: 2+ FAKTURA + (2+ PODKLADY NEBO CESTOVNI_PRIKAZ + CERTIFIKAT)
+        $has_complete_fa = $fa_faktura >= 2;
+        $has_complete_obj = $obj_podklady >= 2 || ($obj_cestovni_prikaz >= 1 && $obj_certifikat >= 1);
+        if ($has_complete_fa && $has_complete_obj) {
+            $order['attachment_color'] = '#16a34a';
+            return;
+        }
+        
+        // Žlutá - má 2+ faktury
+        if ($fa_faktura >= 2) {
+            $order['attachment_color'] = '#fbbf24';
+            return;
+        }
+        
+        // Oranžová - má základní OBJ přílohy, ale chybí faktury
+        $order['attachment_color'] = '#f97316';
+        
+    } catch (Exception $e) {
+        error_log('[OrderV3] enrichOrderWithAttachmentStatus error: ' . $e->getMessage());
+        $order['attachment_color'] = '#64748b'; // Šedá - chyba
     }
 }
