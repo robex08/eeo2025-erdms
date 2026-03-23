@@ -283,6 +283,9 @@ require_once __DIR__ . '/v2025.03_25/lib/orderV2PolozkyLPHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/fakturyLpCerpaniHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
 
+// FK SLEDOVANI - Finanční kontrola: sledování případů
+require_once __DIR__ . '/v2025.03_25/lib/fkSledovaniHandlers.php';
+
 // CASHBOOK - Pokladní knihy
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlersExtended.php';
@@ -2720,6 +2723,46 @@ switch ($endpoint) {
         if ($request_method === 'POST') {
             require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
             handle_invoice_get_checks($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    // ========================================
+    // FK SLEDOVANI - Finanční kontrola (2026-03-23)
+    // ========================================
+
+    case 'fk/get-by-entity':
+        if ($request_method === 'POST') {
+            handle_fk_get_by_entity($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'fk/upsert':
+        if ($request_method === 'POST') {
+            handle_fk_upsert($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'fk/add-komentar':
+        if ($request_method === 'POST') {
+            handle_fk_add_komentar($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'fk/set-stav':
+        if ($request_method === 'POST') {
+            handle_fk_set_stav($input, $config);
         } else {
             http_response_code(405);
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));

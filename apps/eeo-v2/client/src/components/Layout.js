@@ -4461,7 +4461,7 @@ const Layout = ({ children }) => {
               background: 'rgba(10,18,36,0.78)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
               border: '1px solid rgba(255,255,255,0.10)',
               borderRadius: '12px', padding: '0.5rem 0 0',
-              minWidth: '300px', maxWidth: '420px',
+              width: 'max-content', minWidth: '220px', maxWidth: '520px',
               boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
               zIndex: 4002,
             }}>
@@ -4474,6 +4474,7 @@ const Layout = ({ children }) => {
                   padding: '0.45rem 0.9rem', background: 'transparent', border: 'none',
                   color: '#e2e8f0', fontSize: '0.85rem', cursor: 'pointer',
                   borderLeft: '3px solid transparent', transition: 'all 0.12s',
+                  whiteSpace: 'nowrap',
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = '#334155'; e.currentTarget.style.borderLeftColor = '#3b82f6'; e.currentTarget.style.color = '#fff'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; e.currentTarget.style.color = '#e2e8f0'; }}

@@ -26,8 +26,8 @@ const TooltipBubble = styled.div`
   border: 1px solid rgba(255, 255, 255, 0.4);
   font-size: 0.85rem;
   font-weight: 600;
-  white-space: ${props => props.$multiline ? 'normal' : 'nowrap'};
-  max-width: ${props => props.$multiline ? '300px' : 'none'};
+  white-space: ${props => props.$multiline ? 'pre-line' : 'nowrap'};
+  max-width: ${props => props.$multiline ? '340px' : 'none'};
   box-shadow:
     0 6px 20px rgba(0, 0, 0, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.25),

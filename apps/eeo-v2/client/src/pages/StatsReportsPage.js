@@ -958,7 +958,7 @@ const Table = styled.table`
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: -0.01em;
 
-  a {
+  a, button {
     font: inherit;
     letter-spacing: inherit;
   }
@@ -1357,7 +1357,7 @@ const toDateOnly = (value) => {
 
 const formatDateCz = (value) => {
   const date = toDate(value);
-  return date ? date.toLocaleDateString('cs-CZ') : '-';
+  return date ? date.toLocaleDateString('cs-CZ').replace(/ /g, '') : '-';
 };
 
 const daysBetween = (fromDate, toDateValue) => {
@@ -1996,6 +1996,8 @@ export default function StatsReportsPage() {
   const [completionInProgress, setCompletionInProgress] = useState(false);
   // Vzdělávání – zobrazit i dokončené objednávky
   const [showVzdelDokoncene, setShowVzdelDokoncene] = useState(false);
+  const [showFkIgnorovano, setShowFkIgnorovano] = useState(false);
+  const [showFkVyreseno,   setShowFkVyreseno]   = useState(false);
   const [fullscreenChart, setFullscreenChart] = useState(null);
   useEffect(() => {
     if (!fullscreenChart) return;
@@ -2052,7 +2054,15 @@ export default function StatsReportsPage() {
   const [tableSorts, setTableSorts] = useState({});
   // FK stav mapa pro řazení dle FK sloupce (ref – nepotřebuje re-render)
   const fkStavMapRef = useRef({});
-  const handleFkLoad = useCallback((key, stav) => { fkStavMapRef.current[key] = stav || null; }, []);
+  // Verze pro triggering useMemo filtrů po asynchronním načtení FK stavů
+  const [fkStavVersion, setFkStavVersion] = useState(0);
+  const fkStavVersionTimer = useRef(null);
+  const handleFkLoad = useCallback((key, stav) => {
+    fkStavMapRef.current[key] = stav || null;
+    // Debounce – přepočítáme filtry až po ustálení všech FK loadů
+    if (fkStavVersionTimer.current) clearTimeout(fkStavVersionTimer.current);
+    fkStavVersionTimer.current = setTimeout(() => setFkStavVersion(v => v + 1), 120);
+  }, []);
   const blockSelectRef = useRef(null);
   const [blockSelectOpen, setBlockSelectOpen] = useState(false);
   const [visibleBlocks, setVisibleBlocks] = useState(() => {
@@ -3678,6 +3688,12 @@ export default function StatsReportsPage() {
   }, [filteredOrders, invoicesByOrderId, getOrderStatusCode, getOrderTypeLabel, getOrderFinancingCode, getOrderFinancingLabel, getOrderAmount, contracts]);
 
   const pagedOrdersOverLimit = useMemo(() => {
+    const fkFilter = o => {
+      const stav = fkStavMapRef.current[`ordersOverLimit_${o.id}_0`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
     const acc = {
       ev_cislo:    o => o.ev_cislo || o.cislo_objednavky || '',
       fa_vs:       o => (invoicesByOrderId[String(o.id)] || [])[0]?.cislo_faktury || '',
@@ -3698,10 +3714,16 @@ export default function StatsReportsPage() {
       vecna_poznamka: o => (invoicesByOrderId[String(o.id)] || [])[0]?.vecna_spravnost_poznamka || '',
       fk_stav:        o => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`ordersOverLimit_${o.id}_0`]] || '0',
     };
-    return getPagedItems(sortTableData(controlSections.ordersOverLimit, 'ordersOverLimit', acc), 'ordersOverLimit');
-  }, [controlSections.ordersOverLimit, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, invoicesByOrderId, getInvoiceStatusLabel]);
+    return getPagedItems(sortTableData(controlSections.ordersOverLimit.filter(fkFilter), 'ordersOverLimit', acc), 'ordersOverLimit');
+  }, [controlSections.ordersOverLimit, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, invoicesByOrderId, getInvoiceStatusLabel]);
 
   const pagedOrdersAfterInvoice = useMemo(() => {
+    const fkFilter = item => {
+      const stav = fkStavMapRef.current[`ordersAfterInvoice_${item.order?.id}_${item.invoice?.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
     const acc = {
       ev_cislo:       item => item.order?.ev_cislo || item.order?.cislo_objednavky || '',
       fa_vs:          item => item.invoice?.cislo_faktury || '',
@@ -3717,9 +3739,15 @@ export default function StatsReportsPage() {
       stav_fa:        item => getInvoiceStatusLabel(item.invoice) || '',
       fk_stav:        item => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`ordersAfterInvoice_${item.order?.id}_${item.invoice?.id}`]] || '0',
     };
-    return getPagedItems(sortTableData(controlSections.ordersAfterInvoice, 'ordersAfterInvoice', acc), 'ordersAfterInvoice');
-  }, [controlSections.ordersAfterInvoice, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel]);
+    return getPagedItems(sortTableData(controlSections.ordersAfterInvoice.filter(fkFilter), 'ordersAfterInvoice', acc), 'ordersAfterInvoice');
+  }, [controlSections.ordersAfterInvoice, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel]);
   const pagedOrdersInvoicesWithoutAttachments = useMemo(() => {
+    const fkFilter = o => {
+      const stav = fkStavMapRef.current[`ordersInvoicesWithoutAttachments_${o.id}_0`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
     const acc = {
       ev_cislo:     o => o.ev_cislo || o.cislo_objednavky || '',
       fa_vs:        o => (invoicesByOrderId[String(o.id)] || [])[0]?.cislo_faktury || '',
@@ -3737,9 +3765,15 @@ export default function StatsReportsPage() {
       prilohy_fa:   o => (invoicesByOrderId[String(o.id)] || []).reduce((s, inv) => s + (Number(inv.pocet_priloh) || 0), 0),
       fk_stav:      o => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`ordersInvoicesWithoutAttachments_${o.id}_0`]] || '0',
     };
-    return getPagedItems(sortTableData(controlSections.ordersInvoicesWithoutAttachments, 'ordersInvoicesWithoutAttachments', acc), 'ordersInvoicesWithoutAttachments');
-  }, [controlSections.ordersInvoicesWithoutAttachments, getPagedItems, sortTableData, invoicesByOrderId, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel]);
+    return getPagedItems(sortTableData(controlSections.ordersInvoicesWithoutAttachments.filter(fkFilter), 'ordersInvoicesWithoutAttachments', acc), 'ordersInvoicesWithoutAttachments');
+  }, [controlSections.ordersInvoicesWithoutAttachments, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, invoicesByOrderId, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel]);
   const pagedInvoicesWithoutAttachments = useMemo(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`invoicesWithoutAttachments_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
     const acc = {
       fa_vs:        inv => inv.cislo_faktury || '',
       dt_dorucena:  inv => inv.datum_doruceni || inv.datum_vystaveni || '',
@@ -3756,9 +3790,15 @@ export default function StatsReportsPage() {
       prilohy_fa:   inv => Number(inv.pocet_priloh ?? (Array.isArray(inv.prilohy) ? inv.prilohy.length : 0)),
       fk_stav:      inv => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`invoicesWithoutAttachments_0_${inv.id}`]] || '0',
     };
-    return getPagedItems(sortTableData(controlSections.invoicesWithoutAttachments, 'invoicesWithoutAttachments', acc), 'invoicesWithoutAttachments');
-  }, [controlSections.invoicesWithoutAttachments, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode]);
+    return getPagedItems(sortTableData(controlSections.invoicesWithoutAttachments.filter(fkFilter), 'invoicesWithoutAttachments', acc), 'invoicesWithoutAttachments');
+  }, [controlSections.invoicesWithoutAttachments, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode]);
   const pagedOverdueInvoices = useMemo(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`overdueInvoices_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
     const acc = {
       fa_vs:        inv => inv.cislo_faktury || '',
       dt_dorucena:  inv => inv.datum_doruceni || inv.datum_vystaveni || '',
@@ -3777,8 +3817,8 @@ export default function StatsReportsPage() {
       prilohy_fa:   inv => Number(inv.pocet_priloh ?? (Array.isArray(inv.prilohy) ? inv.prilohy.length : 0)),
       fk_stav:      inv => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`overdueInvoices_0_${inv.id}`]] || '0',
     };
-    return getPagedItems(sortTableData(controlSections.overdueInvoices, 'overdueInvoices', acc), 'overdueInvoices');
-  }, [controlSections.overdueInvoices, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode]);
+    return getPagedItems(sortTableData(controlSections.overdueInvoices.filter(fkFilter), 'overdueInvoices', acc), 'overdueInvoices');
+  }, [controlSections.overdueInvoices, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode]);
   const pagedCancelledOrders = useMemo(() => {
     const acc = {
       ev_cislo:    o => o.ev_cislo || o.cislo_objednavky || '',
@@ -3792,7 +3832,6 @@ export default function StatsReportsPage() {
       detail_fin:  o => getOrderFinancingRef(o),
       druh:        o => getOrderTypeLabel(o),
       pocet_fa:    o => (invoicesByOrderId[String(o.id)] || []).length,
-      fk_stav:     o => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`cancelledOrders_${o.id}_0`]] || '0',
     };
     return getPagedItems(sortTableData(controlSections.cancelledOrders, 'cancelledOrders', acc), 'cancelledOrders');
   }, [controlSections.cancelledOrders, getPagedItems, sortTableData, getOrderDate, getOrderStatusLabel, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, invoicesByOrderId]);
@@ -4245,10 +4284,15 @@ export default function StatsReportsPage() {
     setExpandedSpendFinDruhDetail(newDruhy);
   }, [filteredSpendByFinancingUsekDruhGroups, getSearchQuery]);
 
-  const pagedOrdersWithoutInvoice = useMemo(
-    () => getPagedItems(sortTableData(reportSections.ordersWithoutInvoice, 'ordersWithoutInvoice', spendOrderAcc), 'ordersWithoutInvoice'),
-    [reportSections.ordersWithoutInvoice, getPagedItems, tableSorts, spendOrderAcc]
-  );
+  const pagedOrdersWithoutInvoice = useMemo(() => {
+    const fkFilter = o => {
+      const stav = fkStavMapRef.current[`ordersWithoutInvoice_${o.id}_0`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    return getPagedItems(sortTableData(reportSections.ordersWithoutInvoice.filter(fkFilter), 'ordersWithoutInvoice', spendOrderAcc), 'ordersWithoutInvoice');
+  }, [reportSections.ordersWithoutInvoice, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, tableSorts, spendOrderAcc]);
   const pagedOrdersWithInvoiceNotDone = useMemo(
     () => getPagedItems(sortTableData(reportSections.ordersWithInvoiceNotDone, 'ordersWithInvoiceNotDone', spendOrderAcc), 'ordersWithInvoiceNotDone'),
     [reportSections.ordersWithInvoiceNotDone, getPagedItems, tableSorts, spendOrderAcc]
@@ -5448,10 +5492,20 @@ export default function StatsReportsPage() {
 
     // Objednávka již dokončena → zobrazit badge (funguje i po bg reloadu)
     if (isDokoncena) {
+      const dtDokonceni = order.dt_dokonceni;
+      const dokoncilJmeno = [order.dokoncil_titul_pred, order.dokoncil_jmeno, order.dokoncil_prijmeni, order.dokoncil_titul_za].filter(Boolean).join(' ') || order.dokoncil_zkr || null;
+      const datumStr = dtDokonceni ? formatDateCz(dtDokonceni) : null;
+      const tooltipText = [
+        'Objednávka je dokončena',
+        datumStr ? `Datum: ${datumStr}` : null,
+        dokoncilJmeno ? `Dokončil/a: ${dokoncilJmeno}` : null,
+      ].filter(Boolean).join('\n');
       return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1rem', color: '#64748b' }} title="Objednávka je dokončena">
-          <FontAwesomeIcon icon={faLock} />
-        </div>
+        <SmartTooltip text={tooltipText} preferredPosition="left" icon="none" multiline={true}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1rem', color: '#64748b', cursor: 'default' }}>
+            <FontAwesomeIcon icon={faLock} />
+          </div>
+        </SmartTooltip>
       );
     }
 
@@ -5464,30 +5518,51 @@ export default function StatsReportsPage() {
       if (!isEnabled || completionInProgress) return;
       handleOrderCompletionClick(order);
     };
-    
+
+    // Sestavení SmartTooltip textu dle stavu podmínek
+    const condZkontrolovana = isZkontrolovana;
+    const condFaktury       = isHighlighted;
+    const condPrilohy       = order.attachment_color === '#16a34a';
+
+    let tooltipLines;
+    if (isThisInProgress) {
+      tooltipLines = 'Načítám data objednávky…';
+    } else if (isEnabled) {
+      tooltipLines = [
+        'Všechny podmínky jsou splněny:',
+        `✓ Stav: Zkontrolována`,
+        `✓ Zálohová faktura přiložena`,
+        `✓ Vyúčtovací faktura přiložena`,
+        `✓ Přílohy: cestovní příkaz + certifikát / podklady`,
+        '',
+        '→ Kliknutím dokončíte objednávku',
+      ].join('\n');
+    } else {
+      tooltipLines = [
+        'Nelze dokončit – nesplněné podmínky:',
+        `${condZkontrolovana ? '✓' : '✗'} Stav: Zkontrolována`,
+        `${condFaktury    ? '✓' : '✗'} Zálohová + vyúčtovací faktura`,
+        `${condPrilohy    ? '✓' : '✗'} Přílohy: cestovní příkaz + certifikát / podklady`,
+      ].join('\n');
+    }
+
     return (
-      <div
-        onClick={handleClick}
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          cursor: isEnabled && !completionInProgress ? 'pointer' : 'not-allowed',
-          opacity: isEnabled ? 1 : 0.3,
-          fontSize: '1.25rem',
-          color: isThisInProgress ? '#f59e0b' : (isEnabled ? '#16a34a' : '#94a3b8'),
-        }}
-        title={
-          isThisInProgress ? 'Načítám data objednávky…'
-          : !canCompleteVzdel ? 'Nedostupné – nemáte oprávnění dokončit objednávku (vyžaduje roli ADMINISTRATOR nebo právo ORDER_MANAGE / ORDER_COMPLETE)'
-          : isEnabled ? 'Dokončit objednávku'
-          : !isZkontrolovana ? 'Nedostupné – objednávka musí být ve stavu Zkontrolována'
-          : !isHighlighted ? 'Nedostupné – chybí ZÁLOHOVÁ nebo VYÚČTOVACÍ faktura'
-          : 'Nedostupné – nejsou dodány veškeré přílohy'
-        }
-      >
-        <FontAwesomeIcon icon={isThisInProgress ? faSpinner : faCheckCircle} spin={isThisInProgress} />
-      </div>
+      <SmartTooltip text={tooltipLines} preferredPosition="left" icon="none" multiline={true}>
+        <div
+          onClick={handleClick}
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            cursor: isEnabled && !completionInProgress ? 'pointer' : 'not-allowed',
+            opacity: isEnabled ? 1 : 0.3,
+            fontSize: '1.25rem',
+            color: isThisInProgress ? '#f59e0b' : (isEnabled ? '#16a34a' : '#94a3b8'),
+          }}
+        >
+          <FontAwesomeIcon icon={isThisInProgress ? faSpinner : faCheckCircle} spin={isThisInProgress} />
+        </div>
+      </SmartTooltip>
     );
   };
 
@@ -5562,7 +5637,7 @@ export default function StatsReportsPage() {
             </div>
           )}
         </Td>
-        <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersOverLimit')}</Td>
+        <Td style={{ width: '100px' }}>{highlightText(formatDateCz(getOrderDate(order)), 'ordersOverLimit')}</Td>
         <TdR>{highlightText(fmtCurrency(getOrderLimit(order)), 'ordersOverLimit')}</TdR>
         {/* Částka FA DPH – součet všech faktur */}
         <TdR>{highlightText(fmtCurrency(invoiceSum), 'ordersOverLimit')}</TdR>
@@ -5599,14 +5674,14 @@ export default function StatsReportsPage() {
             );
           })()}
         </Td>
-        <Td>{highlightText(getOrdererUsekCode(order) || '-', 'ordersOverLimit')}</Td>
+        <Td style={{ paddingLeft: '1em' }}>{highlightText(getOrdererUsekCode(order) || '-', 'ordersOverLimit')}</Td>
         <TdNarrow>{renderFinancingLabelCell(order, 'ordersOverLimit')}</TdNarrow>
         <TdNarrow>{renderFinancingRefCell(order, 'ordersOverLimit')}</TdNarrow>
         <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersOverLimit')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
         <Td>{highlightText(getOrderStatusLabel(order), 'ordersOverLimit')}</Td>
         {/* Stav FA – poslední doručená faktura */}
         <Td>{lastInv ? highlightText(getInvoiceStatusLabel(lastInv), 'ordersOverLimit') : '—'}</Td>
-        <Td><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="ordersOverLimit" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+        <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="ordersOverLimit" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
       </Tr>
     );
   };
@@ -6335,10 +6410,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-ordersOverLimit">
                   <SectionHeader>
                     <SectionTitle>Faktury vyšší než schválená objednávka</SectionTitle>
-                    <SectionBadge $tone="danger">{controlSections.ordersOverLimit.length}</SectionBadge>
+                    <SectionBadge $tone="danger">{pagedOrdersOverLimit.total}</SectionBadge>
                   </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
                       <SearchInputIcon>
                         <FontAwesomeIcon icon={faSearch} />
                       </SearchInputIcon>
@@ -6357,6 +6432,15 @@ export default function StatsReportsPage() {
                         </SearchClearButton>
                       )}
                     </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
                   </SearchBox>
                   {pagedOrdersOverLimit.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -6376,19 +6460,19 @@ export default function StatsReportsPage() {
                             <tr>
                               <ThSort style={{ minWidth: '250px', width: '250px' }} onClick={() => handleTableSort('ordersOverLimit', 'ev_cislo')}>Ev.číslo obj.{sortIcon('ordersOverLimit', 'ev_cislo')}</ThSort>
                               <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('ordersOverLimit', 'fa_vs')}>Fa VS{sortIcon('ordersOverLimit', 'fa_vs')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersOverLimit', 'dt_obj')}>Dt. obj.{sortIcon('ordersOverLimit', 'dt_obj')}</ThSort>
+                              <ThSort style={{ width: '100px', minWidth: '100px' }} onClick={() => handleTableSort('ordersOverLimit', 'dt_obj')}>Dt. obj.{sortIcon('ordersOverLimit', 'dt_obj')}</ThSort>
                               <ThRSort onClick={() => handleTableSort('ordersOverLimit', 'limit')}>Max cena DPH{sortIcon('ordersOverLimit', 'limit')}</ThRSort>
                               <ThRSort onClick={() => handleTableSort('ordersOverLimit', 'fa_castka')}>Částka FA DPH{sortIcon('ordersOverLimit', 'fa_castka')}</ThRSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'objednatel')}>Objednatel{sortIcon('ordersOverLimit', 'objednatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'schvalovatel')}>Schvalovatel{sortIcon('ordersOverLimit', 'schvalovatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'vecna_spravnost')}>Věcná správnost{sortIcon('ordersOverLimit', 'vecna_spravnost')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersOverLimit', 'usek')}>Úsek{sortIcon('ordersOverLimit', 'usek')}</ThSort>
+                              <ThSort style={{ paddingLeft: '1em' }} onClick={() => handleTableSort('ordersOverLimit', 'usek')}>Úsek{sortIcon('ordersOverLimit', 'usek')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'financovani')}>Financování{sortIcon('ordersOverLimit', 'financovani')}</ThSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersOverLimit', 'detail_fin')}>Detail fin.{sortIcon('ordersOverLimit', 'detail_fin')}</ThNarrowSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'druh')}>Druh{sortIcon('ordersOverLimit', 'druh')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'stav')}>Stav obj.{sortIcon('ordersOverLimit', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'stav_fa')}>Stav FA{sortIcon('ordersOverLimit', 'stav_fa')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersOverLimit', 'fk_stav')}>Poznámka{sortIcon('ordersOverLimit', 'fk_stav')}</ThSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('ordersOverLimit', 'fk_stav')}>Kontrola{sortIcon('ordersOverLimit', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -6409,10 +6493,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-ordersAfterInvoice">
                   <SectionHeader>
                     <SectionTitle>Objednávka vytvořená po doručení faktury</SectionTitle>
-                    <SectionBadge $tone="warn">{controlSections.ordersAfterInvoice.length}</SectionBadge>
+                    <SectionBadge $tone="warn">{pagedOrdersAfterInvoice.total}</SectionBadge>
                   </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
                       <SearchInputIcon>
                         <FontAwesomeIcon icon={faSearch} />
                       </SearchInputIcon>
@@ -6431,6 +6515,15 @@ export default function StatsReportsPage() {
                         </SearchClearButton>
                       )}
                     </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
                   </SearchBox>
                   {pagedOrdersAfterInvoice.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -6461,7 +6554,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'druh')}>Druh{sortIcon('ordersAfterInvoice', 'druh')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'stav')}>Stav obj.{sortIcon('ordersAfterInvoice', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'stav_fa')}>Stav FA{sortIcon('ordersAfterInvoice', 'stav_fa')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'fk_stav')}>Poznámka{sortIcon('ordersAfterInvoice', 'fk_stav')}</ThSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('ordersAfterInvoice', 'fk_stav')}>Kontrola{sortIcon('ordersAfterInvoice', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -6484,7 +6577,7 @@ export default function StatsReportsPage() {
                                   <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersAfterInvoice')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                   <Td>{highlightText(getOrderStatusLabel(order), 'ordersAfterInvoice')}</Td>
                                   <Td>{highlightText(getInvoiceStatusLabel(invoice), 'ordersAfterInvoice')}</Td>
-                                  <Td><FkInlineCell objednavkaId={order.id} fakturaId={invoice.id} entityType="OBJ_FA" sectionKey="ordersAfterInvoice" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={order.id} fakturaId={invoice.id} entityType="OBJ_FA" sectionKey="ordersAfterInvoice" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
                                 </Tr>
                               );
                             })}
@@ -6501,10 +6594,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-ordersInvoicesWithoutAttachments">
                   <SectionHeader>
                     <SectionTitle>Objednávky s fakturami bez příloh</SectionTitle>
-                    <SectionBadge $tone="warn">{controlSections.ordersInvoicesWithoutAttachments.length}</SectionBadge>
+                    <SectionBadge $tone="warn">{pagedOrdersInvoicesWithoutAttachments.total}</SectionBadge>
                   </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
                       <SearchInputIcon>
                         <FontAwesomeIcon icon={faSearch} />
                       </SearchInputIcon>
@@ -6523,6 +6616,15 @@ export default function StatsReportsPage() {
                         </SearchClearButton>
                       )}
                     </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
                   </SearchBox>
                   {pagedOrdersInvoicesWithoutAttachments.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -6553,7 +6655,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'stav_fa')}>Stav FA{sortIcon('ordersInvoicesWithoutAttachments', 'stav_fa')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'prilohy_obj')}>Příl. OBJ{sortIcon('ordersInvoicesWithoutAttachments', 'prilohy_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'prilohy_fa')}>Příl. FA{sortIcon('ordersInvoicesWithoutAttachments', 'prilohy_fa')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'fk_stav')}>Poznámka{sortIcon('ordersInvoicesWithoutAttachments', 'fk_stav')}</ThSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'fk_stav')}>Kontrola{sortIcon('ordersInvoicesWithoutAttachments', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -6583,7 +6685,7 @@ export default function StatsReportsPage() {
                                       <div key={inv.id}>{renderAttachBadge(inv.id, 'invoice', inv.pocet_priloh ?? inv.prilohy?.length)}</div>
                                     ))}
                                   </TdC>
-                                  <Td><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="ordersInvoicesWithoutAttachments" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="ordersInvoicesWithoutAttachments" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
                                 </Tr>
                               );
                             })}
@@ -6600,10 +6702,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-invoicesWithoutAttachments">
                   <SectionHeader>
                     <SectionTitle>Faktury bez přílohy</SectionTitle>
-                    <SectionBadge $tone="warn">{controlSections.invoicesWithoutAttachments.length}</SectionBadge>
+                    <SectionBadge $tone="warn">{pagedInvoicesWithoutAttachments.total}</SectionBadge>
                   </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
                       <SearchInputIcon>
                         <FontAwesomeIcon icon={faSearch} />
                       </SearchInputIcon>
@@ -6622,6 +6724,15 @@ export default function StatsReportsPage() {
                         </SearchClearButton>
                       )}
                     </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
                   </SearchBox>
                   {pagedInvoicesWithoutAttachments.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -6653,7 +6764,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'stav_fa')}>Stav FA{sortIcon('invoicesWithoutAttachments', 'stav_fa')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'prilohy_obj')}>Příl. OBJ{sortIcon('invoicesWithoutAttachments', 'prilohy_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'prilohy_fa')}>Příl. FA{sortIcon('invoicesWithoutAttachments', 'prilohy_fa')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'fk_stav')}>Poznámka{sortIcon('invoicesWithoutAttachments', 'fk_stav')}</ThSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('invoicesWithoutAttachments', 'fk_stav')}>Kontrola{sortIcon('invoicesWithoutAttachments', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -6700,7 +6811,7 @@ export default function StatsReportsPage() {
                                   <Td>{highlightText(getInvoiceStatusLabel(invoice), 'invoicesWithoutAttachments')}</Td>
                                   <TdC>{order ? renderAttachBadge(order.id, 'order', order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length) : '-'}</TdC>
                                   <TdC>{renderAttachBadge(invoice.id, 'invoice', invoice.pocet_priloh ?? invoice.prilohy?.length)}</TdC>
-                                  <Td><FkInlineCell objednavkaId={0} fakturaId={invoice.id} entityType="FA" sectionKey="invoicesWithoutAttachments" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={0} fakturaId={invoice.id} entityType="FA" sectionKey="invoicesWithoutAttachments" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
                                 </Tr>
                               );
                             })}
@@ -6717,10 +6828,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-overdueInvoices">
                   <SectionHeader>
                     <SectionTitle>Faktury po splatnosti 14+ dní</SectionTitle>
-                    <SectionBadge $tone="danger">{controlSections.overdueInvoices.length}</SectionBadge>
+                    <SectionBadge $tone="danger">{pagedOverdueInvoices.total}</SectionBadge>
                   </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
                       <SearchInputIcon>
                         <FontAwesomeIcon icon={faSearch} />
                       </SearchInputIcon>
@@ -6739,6 +6850,15 @@ export default function StatsReportsPage() {
                         </SearchClearButton>
                       )}
                     </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
                   </SearchBox>
                   {pagedOverdueInvoices.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -6771,7 +6891,7 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'stav_fa')}>Stav FA{sortIcon('overdueInvoices', 'stav_fa')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'prilohy_obj')}>Příl. OBJ{sortIcon('overdueInvoices', 'prilohy_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'prilohy_fa')}>Příl. FA{sortIcon('overdueInvoices', 'prilohy_fa')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('overdueInvoices', 'fk_stav')}>Poznámka{sortIcon('overdueInvoices', 'fk_stav')}</ThSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('overdueInvoices', 'fk_stav')}>Kontrola{sortIcon('overdueInvoices', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -6819,7 +6939,7 @@ export default function StatsReportsPage() {
                                   <Td>{highlightText(getInvoiceStatusLabel(invoice), 'overdueInvoices')}</Td>
                                   <TdC>{order ? renderAttachBadge(order.id, 'order', order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length) : '-'}</TdC>
                                   <TdC>{renderAttachBadge(invoice.id, 'invoice', invoice.pocet_priloh ?? invoice.prilohy?.length)}</TdC>
-                                  <Td><FkInlineCell objednavkaId={0} fakturaId={invoice.id} entityType="FA" sectionKey="overdueInvoices" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={0} fakturaId={invoice.id} entityType="FA" sectionKey="overdueInvoices" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
                                 </Tr>
                               );
                             })}
@@ -6836,7 +6956,7 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-cancelledOrders">
                   <SectionHeader>
                     <SectionTitle>Zrušené a zamítnuté objednávky</SectionTitle>
-                    <SectionBadge $tone="danger">{controlSections.cancelledOrders.length}</SectionBadge>
+                    <SectionBadge $tone="danger">{pagedCancelledOrders.total}</SectionBadge>
                   </SectionHeader>
                   <SearchBox>
                     <SearchInputWrapper>
@@ -6885,7 +7005,6 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'druh')}>Druh{sortIcon('cancelledOrders', 'druh')}</ThSort>
                               <ThSort style={{ maxWidth: '240px', width: '240px' }} onClick={() => handleTableSort('cancelledOrders', 'stav')}>Stav obj.{sortIcon('cancelledOrders', 'stav')}</ThSort>
                               <ThSort onClick={() => handleTableSort('cancelledOrders', 'pocet_fa')}>Počet FA{sortIcon('cancelledOrders', 'pocet_fa')}</ThSort>
-                              <ThSort onClick={() => handleTableSort('cancelledOrders', 'fk_stav')}>Poznámka{sortIcon('cancelledOrders', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -6946,7 +7065,6 @@ export default function StatsReportsPage() {
                                     );
                                   })()}
                                 </Td>
-                                <Td><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="cancelledOrders" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
                               </Tr>
                             ))}
                           </tbody>
@@ -8671,8 +8789,8 @@ export default function StatsReportsPage() {
                     <SectionTitle>Objednávky bez faktury 2+ měsíce (schváleno+)</SectionTitle>
                     <SectionBadge $tone="warn">{reportSections.ordersWithoutInvoice.length}</SectionBadge>
                   </SectionHeader>
-                  <SearchBox>
-                    <SearchInputWrapper>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
                       <SearchInputIcon icon={faSearch} />
                       <SearchInput
                         type="text"
@@ -8689,6 +8807,15 @@ export default function StatsReportsPage() {
                         </SearchClearButton>
                       )}
                     </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
                   </SearchBox>
                   {pagedOrdersWithoutInvoice.isFiltered && (
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -8717,7 +8844,7 @@ export default function StatsReportsPage() {
                               <ThNarrowSort onClick={() => handleTableSort('ordersWithoutInvoice', 'druh')}>Druh{sortIcon('ordersWithoutInvoice', 'druh')}</ThNarrowSort>
                               <ThRSort onClick={() => handleTableSort('ordersWithoutInvoice', 'castka')}>Částka{sortIcon('ordersWithoutInvoice', 'castka')}</ThRSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersWithoutInvoice', 'stav')}>Stav obj.{sortIcon('ordersWithoutInvoice', 'stav')}</ThNarrowSort>
-                              <ThSort onClick={() => handleTableSort('ordersWithoutInvoice', 'fk_stav')}>Poznámka{sortIcon('ordersWithoutInvoice', 'fk_stav')}</ThSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('ordersWithoutInvoice', 'fk_stav')}>Kontrola{sortIcon('ordersWithoutInvoice', 'fk_stav')}</ThSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -8734,7 +8861,7 @@ export default function StatsReportsPage() {
                                 <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersWithoutInvoice')}</TdNarrow>
                                 <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'ordersWithoutInvoice')}</TdR>
                                 <TdNarrow>{highlightText(getOrderStatusLabel(order), 'ordersWithoutInvoice')}</TdNarrow>
-                                <Td><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="ordersWithoutInvoice" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={order.id} fakturaId={0} entityType="OBJ" sectionKey="ordersWithoutInvoice" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
                               </Tr>
                             ))}
                           </tbody>
