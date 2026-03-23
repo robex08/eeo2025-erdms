@@ -47,6 +47,8 @@ const Popover = styled.div`
   z-index: 9999;
   min-width: 320px;
   max-width: 380px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -297,27 +299,35 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
     setOpen(true);
   }, []);
 
-  // Po vykreslení popoveru změřím jeho skutečnou výšku a flipnu pokud je třeba
+  // Po vykreslení popoveru (nebo změně obsahu) přepočítám pozici
   useEffect(() => {
     if (!open || !popoverRef.current || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const vpH = window.innerHeight;
-    const pH = popoverRef.current.offsetHeight;
-    const MARGIN = 10;
+    const MARGIN = 12;
+    // Skutečná výška popovreru – max ohraničena viewportem
+    const maxH = vpH - 2 * MARGIN;
+    const pH = Math.min(popoverRef.current.scrollHeight, maxH);
+    // Místo dole: od bottom buttonu do spodního okraje
+    const spaceBelow = vpH - rect.bottom - MARGIN;
+    // Místo nahoře: od horního okraje do top buttonu
+    const spaceAbove = rect.top - MARGIN;
     let style;
-    if (rect.bottom + pH + MARGIN > vpH && rect.top - pH - MARGIN > 0) {
-      // Otevřít nahoru – ukotvit bottom k top tlačítka
-      style = { left: popoverStyle.left, bottom: vpH - rect.top + MARGIN, top: 'auto', visibility: 'visible' };
-    } else {
-      // Otevřít dolů – ukotvit top, zajistit aby nevylézal dole
-      let top = rect.top;
-      if (top + pH + MARGIN > vpH) top = vpH - pH - MARGIN;
+    if (spaceBelow >= pH || spaceBelow >= spaceAbove) {
+      // Otevřít dolů
+      let top = rect.bottom + 4;
+      if (top + pH > vpH - MARGIN) top = vpH - pH - MARGIN;
       if (top < MARGIN) top = MARGIN;
       style = { left: popoverStyle.left, top, bottom: 'auto', visibility: 'visible' };
+    } else {
+      // Otevřít nahoru
+      let bottom = vpH - rect.top + 4;
+      if (bottom + pH > vpH - MARGIN) bottom = vpH - MARGIN - (rect.top - pH - 4 < MARGIN ? -(MARGIN - (rect.top - pH - 4)) : 0);
+      style = { left: popoverStyle.left, bottom, top: 'auto', visibility: 'visible' };
     }
     setPopoverStyle(style);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, popoverRef.current]);
+  }, [open, fkData, loading]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -338,12 +348,16 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
       const updated = await fkSetStav(entity, pendingStav, token, username);
       setFkData(updated);
       setPendingPriority(updated.case.priorita || 1);
+      // Aktualizuj fkStavMapRef v rodiči → přepočítá filtry (Ignorováno/Vyřešeno)
+      if (onFkLoad) onFkLoad(`${sectionKey}_${objednavkaId}_${fakturaId}`, updated.case.stav || null);
+      // Zavři popover – řádek může zmizet z tabulky pokud nový stav neodpovídá filtru
+      handleClose();
     } catch (e) {
       setErr(e.message || 'Chyba při změně stavu');
     } finally {
       setSaving(false);
     }
-  }, [pendingStav, fkData, entity, token, username, handleClose]);
+  }, [pendingStav, fkData, entity, token, username, handleClose, onFkLoad, sectionKey, objednavkaId, fakturaId]);
 
   // ── Save priority change ──────────────────────────────────────────────────
   const handleSavePriority = useCallback(async () => {
@@ -414,12 +428,14 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
       setFkData(created);
       setPendingStav(created.case.stav);
       setPendingPriority(created.case.priorita || 1);
+      // Aktualizuj ref v rodiči → přepočítá filtry
+      if (onFkLoad) onFkLoad(`${sectionKey}_${objednavkaId}_${fakturaId}`, created.case.stav || null);
     } catch (e) {
       setErr(e.message || 'Chyba při vytváření případu');
     } finally {
       setSaving(false);
     }
-  }, [entity, entityType, sectionKey, token, username]);
+  }, [entity, entityType, sectionKey, token, username, onFkLoad, objednavkaId, fakturaId]);
 
   // ── Trigger badge ─────────────────────────────────────────────────────────
   const renderTrigger = () => {
