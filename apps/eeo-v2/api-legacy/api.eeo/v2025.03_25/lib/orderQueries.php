@@ -501,7 +501,8 @@ function updateOrderCompleteQuery() {
                 dokoncil_id = :dokoncil_id,
                 dokonceni_poznamka = :dokonceni_poznamka,
                 stav_workflow_kod = :stav_workflow_kod,
-                stav_objednavky = 'DOKONCENA',
+                stav_objednavky = 'Dokončená',
+                potvrzeni_dokonceni_objednavky = 1,
                 dt_aktualizace = NOW(),
                 uzivatel_akt_id = :uzivatel_akt_id
             WHERE id = :id AND aktivni = 1";

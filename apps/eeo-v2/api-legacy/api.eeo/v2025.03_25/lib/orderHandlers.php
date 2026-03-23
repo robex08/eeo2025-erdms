@@ -5863,10 +5863,56 @@ function handle_orders25_complete_order($input, $config, $queries) {
             return;
         }
         
-        // Kontrola oprávnění - pouze tvůrce nebo garant může dokončit
-        if ($order['uzivatel_id'] != $current_user_id && $order['garant_uzivatel_id'] != $current_user_id) {
+        // Oprávnění: pouze role SUPERADMIN/ADMINISTRATOR nebo právo ORDER_MANAGE/ORDER_COMPLETE
+        // Běžní uživatelé (tvůrce, garant, příkazce) nemohou dokončit objednávku z přehledu
+        $can_complete = false;
+
+        // Kontrola práv ORDER_MANAGE nebo ORDER_COMPLETE (přímé nebo přes roli)
+        $perm_stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM 25_prava p
+            WHERE p.kod_prava IN ('ORDER_MANAGE', 'ORDER_COMPLETE')
+              AND p.aktivni = 1
+              AND (
+                p.id IN (
+                    SELECT rp.pravo_id
+                    FROM 25_role_prava rp
+                    WHERE rp.user_id = ? AND rp.aktivni = 1
+                )
+                OR p.id IN (
+                    SELECT rp.pravo_id
+                    FROM 25_uzivatele_role ur
+                    JOIN 25_role_prava rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                    WHERE ur.uzivatel_id = ? AND rp.aktivni = 1
+                )
+              )
+        ");
+        $perm_stmt->execute(array($current_user_id, $current_user_id));
+        $perm_row = $perm_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($perm_row && (int)$perm_row['cnt'] > 0) {
+            $can_complete = true;
+        }
+
+        // Kontrola role SUPERADMIN nebo ADMINISTRATOR
+        if (!$can_complete) {
+            $role_stmt = $db->prepare("
+                SELECT COUNT(*) as cnt
+                FROM 25_uzivatele_role ur
+                JOIN 25_role r ON ur.role_id = r.id
+                WHERE ur.uzivatel_id = ?
+                  AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
+                  AND r.aktivni = 1
+            ");
+            $role_stmt->execute(array($current_user_id));
+            $role_row = $role_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($role_row && (int)$role_row['cnt'] > 0) {
+                $can_complete = true;
+            }
+        }
+
+        if (!$can_complete) {
             http_response_code(403);
-            echo json_encode(['err' => 'Nemáte oprávnění dokončit tuto objednávku']);
+            echo json_encode(['err' => 'Nemáte oprávnění dokončit tuto objednávku (vyžaduje roli ADMINISTRATOR nebo právo ORDER_MANAGE / ORDER_COMPLETE)']);
             return;
         }
         
@@ -5883,8 +5929,20 @@ function handle_orders25_complete_order($input, $config, $queries) {
             return;
         }
         
-        // Aktualizace workflow stavu
-        $new_workflow_code = addWorkflowState($order['stav_workflow_kod'], 'DOKONCENA');
+        // Aktualizace workflow stavu - správně zpracovat JSON array formát
+        $current_wf = $order['stav_workflow_kod'];
+        if (!empty($current_wf) && substr(ltrim($current_wf), 0, 1) === '[') {
+            // DB ukládá JSON pole: ["STATE1","STATE2",...]
+            $states = json_decode($current_wf, true);
+            if (!is_array($states)) $states = [];
+            if (!in_array('DOKONCENA', $states)) {
+                $states[] = 'DOKONCENA';
+            }
+            $new_workflow_code = json_encode($states, JSON_UNESCAPED_UNICODE);
+        } else {
+            // Starý formát: STATE1+STATE2
+            $new_workflow_code = addWorkflowState($current_wf, 'DOKONCENA');
+        }
         
         // Uložení změn
         $stmt = $db->prepare(updateOrderCompleteQuery());
