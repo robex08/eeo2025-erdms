@@ -2593,5 +2593,40 @@ export async function importOldOrders25Streaming({
   });
 }
 
+/**
+ * Dokončení objednávky (stav DOKONCENA)
+ * POST: orders25/complete-order
+ *
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {number} params.orderId
+ * @param {string} [params.note]
+ * @returns {Promise<{status, message, new_workflow_code}>}
+ */
+export async function completeOrder25({ token, username, orderId, note = '' }) {
+  try {
+    const response = await api25orders.post('orders25/complete-order', {
+      token,
+      username,
+      id: orderId,
+      note
+    });
+    const data = response.data;
+    if (data?.err || data?.error) {
+      throw new Error(data.err || data.error);
+    }
+    return data;
+  } catch (err) {
+    const msg =
+      err.response?.data?.err ||
+      err.response?.data?.error ||
+      err.response?.data?.message ||
+      err.message ||
+      'Chyba při dokončení objednávky';
+    throw new Error(msg);
+  }
+}
+
 // Export axios instance for direct use
 export { api25orders };
