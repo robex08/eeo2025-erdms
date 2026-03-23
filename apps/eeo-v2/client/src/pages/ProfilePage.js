@@ -6,7 +6,7 @@ import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { loadAuthData } from '../utils/authStorage';
-import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send } from 'lucide-react';
+import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send, ShoppingCart, Bell } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
 import { fetchFreshUserDetail, fetchCiselniky, fetchAllUsers, fetchApprovers } from '../services/api2auth';
@@ -836,6 +836,161 @@ const SaveButton = styled.button`
   }
 `;
 
+// 🔔 Styled komponenty pro notifikační matici
+const NotifMatrixCategory = styled.div`
+  margin-bottom: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+`;
+
+const NotifCategoryHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: ${props => props.$expanded ? '#f1f5f9' : '#f8fafc'};
+  cursor: pointer;
+  user-select: none;
+  border-bottom: ${props => props.$expanded ? '1px solid #e2e8f0' : 'none'};
+  transition: background 0.2s ease;
+  
+  &:hover {
+    background: #f1f5f9;
+  }
+`;
+
+const NotifCategoryTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #1e293b;
+  
+  svg:first-of-type {
+    transition: transform 0.3s ease;
+    transform: ${props => props.$expanded ? 'rotate(180deg)' : 'rotate(0deg)'};
+  }
+`;
+
+const NotifCategoryHeaderCheckboxes = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+`;
+
+const NotifHeaderCheckbox = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  cursor: pointer;
+  white-space: nowrap;
+  
+  input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #3b82f6;
+  }
+  
+  &:hover {
+    color: #3b82f6;
+  }
+`;
+
+const NotifEventsContainer = styled.div`
+  max-height: ${props => props.$expanded ? '2000px' : '0'};
+  overflow: hidden;
+  transition: max-height 0.3s ease-in-out;
+`;
+
+const NotifEventRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  align-items: center;
+  padding: 0.45rem 1rem 0.45rem 2.25rem;
+  border-bottom: 1px solid #f1f5f9;
+  min-height: 36px;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+  
+  &:hover {
+    background: #fafbfc;
+  }
+`;
+
+const NotifEventLabel = styled.div`
+  font-size: 0.88rem;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  .notif-event-desc {
+    font-size: 0.78rem;
+    color: #94a3b8;
+  }
+`;
+
+const NotifCheckboxCell = styled.label`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.$disabled ? '0.4' : '1'};
+  
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
+    accent-color: #3b82f6;
+  }
+`;
+
+const NotifColumnHeaders = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  align-items: center;
+  padding: 0.4rem 1rem 0.4rem 2.25rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const NotifInfoBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  
+  svg {
+    flex-shrink: 0;
+    color: #3b82f6;
+    margin-top: 1px;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #1e40af;
+  }
+`;
+
 const RolesTable = styled.div`
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -1383,6 +1538,68 @@ const PERIOD_OPTIONS = [
 // 🎯 USEREDUCER: Actions a Reducer pro userSettings
 // ============================================================================
 
+// Konfigurace typů notifikačních událostí — POUZE reálně triggerované v systému
+// Audit 2026-03-23: Ověřeno oproti OrderForm25.js, invoiceHandlers.php, CashbookService.php, notificationHandlers.php
+const NOTIFICATION_EVENT_TYPES_CONFIG = {
+  // ── Objednávky (OrderForm25.js → triggerNotification) ──
+  ORDER_PENDING_APPROVAL: { label: 'Ke schválení', category: 'objednavky', description: 'Objednávka odeslána ke schválení příkazcem' },
+  ORDER_APPROVED: { label: 'Schválena', category: 'objednavky', description: 'Objednávka byla schválena příkazcem' },
+  ORDER_REJECTED: { label: 'Zamítnuta', category: 'objednavky', description: 'Objednávka byla zamítnuta příkazcem' },
+  ORDER_AWAITING_CHANGES: { label: 'Vrácena k doplnění', category: 'objednavky', description: 'Objednávka vrácena objednateli k přepracování' },
+  ORDER_SENT_TO_SUPPLIER: { label: 'Odeslána dodavateli', category: 'objednavky', description: 'Objednávka odeslána dodavateli' },
+  ORDER_CONFIRMED_BY_SUPPLIER: { label: 'Potvrzena dodavatelem', category: 'objednavky', description: 'Dodavatel potvrdil přijetí objednávky' },
+  ORDER_REGISTRY_PENDING: { label: 'K uveřejnění v registru', category: 'objednavky', description: 'Objednávka čeká na uveřejnění v registru smluv' },
+  ORDER_REGISTRY_PUBLISHED: { label: 'Uveřejněna v registru', category: 'objednavky', description: 'Objednávka uveřejněna v registru smluv' },
+  ORDER_COMPLETED: { label: 'Dokončena', category: 'objednavky', description: 'Objednávka byla dokončena (věcná správnost potvrzena)' },
+  ORDER_CANCELLED: { label: 'Zrušena', category: 'objednavky', description: 'Objednávka byla zrušena / stornována' },
+  ORDER_COMMENT_ADDED: { label: 'Nový komentář', category: 'objednavky', description: 'K objednávce byl přidán komentář' },
+  // ── Faktury (invoiceHandlers.php → notificationRouter) ──
+  INVOICE_UPDATED: { label: 'Faktura upravena', category: 'faktury', description: 'Faktura byla aktualizována' },
+  INVOICE_SUBMITTED: { label: 'Faktura předána', category: 'faktury', description: 'Faktura předána ke kontrole' },
+  INVOICE_RETURNED: { label: 'Faktura vrácena', category: 'faktury', description: 'Faktura vrácena k přepracování' },
+  INVOICE_REGISTRY_PUBLISHED: { label: 'Uveřejněna v registru', category: 'faktury', description: 'Faktura uveřejněna v registru' },
+  INVOICE_MATERIAL_CHECK_REQUESTED: { label: 'Kontrola věcné správnosti', category: 'faktury', description: 'Vyžádána kontrola věcné správnosti faktury' },
+  INVOICE_MATERIAL_CHECK_APPROVED: { label: 'Věcná správnost OK', category: 'faktury', description: 'Věcná správnost faktury potvrzena' },
+  // ── Pokladna (CashbookService.php → notificationRouter) ──
+  CASHBOOK_MONTH_CLOSED: { label: 'Měsíc uzavřen', category: 'pokladna', description: 'Pokladní měsíc uzavřen uživatelem' },
+  CASHBOOK_MONTH_LOCKED: { label: 'Měsíc zamknut', category: 'pokladna', description: 'Pokladní měsíc zamknut správcem' }
+};
+
+// Konfigurace kategorií notifikací (pro UI matici)
+// Smlouvy odstraněny — nemají žádný reálný trigger v systému
+const NOTIFICATION_CATEGORIES_CONFIG = {
+  objednavky: {
+    label: 'Objednávky',
+    icon: 'ShoppingCart',
+    prefix: 'ORDER_',
+    color: '#3b82f6',
+    permissionCheck: (hasPermission) => hasPermission && (
+      hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025') ||
+      hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') ||
+      hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN')
+    )
+  },
+  faktury: {
+    label: 'Faktury',
+    icon: 'FileText',
+    prefix: 'INVOICE_',
+    color: '#10b981',
+    permissionCheck: (hasPermission) => hasPermission && (
+      hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')
+    )
+  },
+  pokladna: {
+    label: 'Pokladna',
+    icon: 'Coins',
+    prefix: 'CASHBOOK_',
+    color: '#f59e0b',
+    permissionCheck: (hasPermission) => hasPermission && (
+      hasPermission('CASH_BOOK_MANAGE') || hasPermission('CASH_BOOK_READ_ALL') ||
+      hasPermission('CASH_BOOK_READ_OWN')
+    )
+  }
+};
+
 // Akce pro reducer
 const SETTINGS_ACTIONS = {
   LOAD_FROM_DB: 'load_from_db',
@@ -1393,7 +1610,9 @@ const SETTINGS_ACTIONS = {
   TOGGLE_ICON: 'toggle_icon',
   TOGGLE_NOTIFICATION: 'toggle_notification',
   UPDATE_CSV_COLUMN: 'update_csv_column',
-  RESET_TO_DEFAULT: 'reset_to_default'
+  RESET_TO_DEFAULT: 'reset_to_default',
+  UPDATE_WORKFLOW_DETAIL: 'update_workflow_detail',
+  TOGGLE_ALL_WORKFLOW_CATEGORY: 'toggle_all_workflow_category'
 };
 
 // Výchozí nastavení (extrahováno do konstanty pro reuse)
@@ -1461,6 +1680,7 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       stav_objednavky: true,
       stav_workflow: false,
       stav_workflow_kod: false,
+      stav_komentar: false,
       
       // Datumy
       dt_objednavky: true,
@@ -1545,7 +1765,7 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       
       // Faktury (z 25a_objednavky_faktury)
       faktury_count: false,
-      faktury_celkova_castka: false,
+      faktury_celkova_castka_s_dph: false,
       faktury_cisla_vema: false,
       faktury_stav: false,
       faktury_datum_vystaveni: false,
@@ -1581,7 +1801,12 @@ const getDefaultSettings = (hasPermission, userDetail) => {
         faktury: true,
         smlouvy: true,
         pokladna: true
-      }
+      },
+      // Granulní nastavení per workflow stav × kanál (vše zapnuto = backward compatible)
+      workflow_detaily: Object.keys(NOTIFICATION_EVENT_TYPES_CONFIG).reduce((acc, key) => {
+        acc[key] = { email: true, inapp: true };
+        return acc;
+      }, {})
     },
     
     // Profil
@@ -1681,6 +1906,43 @@ const userSettingsReducer = (state, action) => {
         };
       }
       
+    case SETTINGS_ACTIONS.UPDATE_WORKFLOW_DETAIL:
+      // Aktualizace jednoho workflow detailu (event_type + channel)
+      return {
+        ...state,
+        notifikace: {
+          ...state.notifikace,
+          workflow_detaily: {
+            ...(state.notifikace.workflow_detaily || {}),
+            [action.payload.eventType]: {
+              ...(state.notifikace.workflow_detaily?.[action.payload.eventType] || { email: true, inapp: true }),
+              [action.payload.channel]: action.payload.value
+            }
+          }
+        }
+      };
+      
+    case SETTINGS_ACTIONS.TOGGLE_ALL_WORKFLOW_CATEGORY: {
+      // Toggle všech událostí v kategorii (prefix) pro konkrétní kanál
+      const { prefix: catPrefix, channel: catChannel, value: catValue } = action.payload;
+      const updatedWorkflowDetaily = { ...(state.notifikace.workflow_detaily || {}) };
+      Object.keys(NOTIFICATION_EVENT_TYPES_CONFIG).forEach(evtKey => {
+        if (evtKey.startsWith(catPrefix)) {
+          updatedWorkflowDetaily[evtKey] = {
+            ...(updatedWorkflowDetaily[evtKey] || { email: true, inapp: true }),
+            [catChannel]: catValue
+          };
+        }
+      });
+      return {
+        ...state,
+        notifikace: {
+          ...state.notifikace,
+          workflow_detaily: updatedWorkflowDetaily
+        }
+      };
+    }
+      
     case SETTINGS_ACTIONS.UPDATE_CSV_COLUMN:
       // Aktualizace CSV sloupce - pokud není hodnota zadaná, toggle aktuální hodnotu
       const currentValue = state.export_csv_sloupce[action.payload.column];
@@ -1713,6 +1975,31 @@ const mergeSettingsForReducer = (defaultSettings, loadedSettings) => {
       merged[key] = loadedSettings[key];
     }
   });
+  
+  // 🔔 Deep merge pro notifikace (kategorie + workflow_detaily)
+  if (loadedSettings.notifikace) {
+    merged.notifikace = {
+      ...defaultSettings.notifikace,
+      ...loadedSettings.notifikace,
+      kategorie: {
+        ...(defaultSettings.notifikace?.kategorie || {}),
+        ...(loadedSettings.notifikace?.kategorie || {})
+      },
+      workflow_detaily: {
+        ...(defaultSettings.notifikace?.workflow_detaily || {}),
+        ...(loadedSettings.notifikace?.workflow_detaily || {})
+      }
+    };
+    // Deep merge každého workflow_detaily záznamu (email/inapp)
+    if (loadedSettings.notifikace?.workflow_detaily) {
+      Object.keys(loadedSettings.notifikace.workflow_detaily).forEach(eventType => {
+        merged.notifikace.workflow_detaily[eventType] = {
+          ...(defaultSettings.notifikace?.workflow_detaily?.[eventType] || { email: true, inapp: true }),
+          ...loadedSettings.notifikace.workflow_detaily[eventType]
+        };
+      });
+    }
+  }
   
   // Extrakuj .value z objektů
   if (loadedSettings.vychozi_rok && typeof loadedSettings.vychozi_rok === 'object' && loadedSettings.vychozi_rok.value) {
@@ -1836,6 +2123,13 @@ const ProfilePage = () => {
   const MENU_TAB_OPTIONS = useMemo(() => {
     return getAvailableSections(hasPermission, userDetail);
   }, [hasPermission, userDetail]);
+
+  // 🔒 Admin role check (pro notifikační matici, chat ikonu, apod.)
+  const isAdmin = useMemo(() => {
+    return userDetail?.roles && userDetail.roles.some(role =>
+      role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+    );
+  }, [userDetail]);
 
   // 🎯 USEREDUCER: User Settings State Management
   // Místo useState používáme useReducer pro lepší správu komplexního state
@@ -2182,6 +2476,10 @@ const ProfilePage = () => {
         })(),
         viditelne_dlazdice: userSettings.viditelne_dlazdice,
         export_pokladna_format: userSettings.export_pokladna_format,
+        exportCsvDelimiter: userSettings.exportCsvDelimiter,
+        exportCsvCustomDelimiter: userSettings.exportCsvCustomDelimiter,
+        exportCsvListDelimiter: userSettings.exportCsvListDelimiter,
+        exportCsvListCustomDelimiter: userSettings.exportCsvListCustomDelimiter,
         export_csv_sloupce: userSettings.export_csv_sloupce,
         notifikace: userSettings.notifikace,
         profil: userSettings.profil,
@@ -4069,11 +4367,11 @@ const ProfilePage = () => {
                 </CollapsibleContent>
               </SettingsSection>
 
-              {/* Sekce 2: Notifikace */}
+              {/* Sekce 2: Notifikace - granulární matice per workflow stav × kanál */}
               <SettingsSection>
                 <SettingsSectionTitle>
                   <SettingsSectionTitleContent>
-                    <MessageSquare size={22} />
+                    <Bell size={22} />
                     Nastavení notifikací
                   </SettingsSectionTitleContent>
                   <CollapseIconButton onClick={() => toggleSection('notifikace')} $collapsed={collapsedSections.notifikace}>
@@ -4081,20 +4379,55 @@ const ProfilePage = () => {
                   </CollapseIconButton>
                 </SettingsSectionTitle>
                 <CollapsibleContent $collapsed={collapsedSections.notifikace}>
-                  <SettingDescription style={{ marginBottom: '1.5rem' }}>
-                    Vyberte, jakým způsobem chcete dostávat oznámení o důležitých událostech v aplikaci.
+
+                  {/* 🚧 VÝRAZNÉ INFO - NEIMPLEMENTOVÁNO */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '1rem 1.25rem',
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    border: '2px solid #f59e0b',
+                    borderRadius: '10px',
+                    marginBottom: '1.25rem',
+                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)'
+                  }}>
+                    <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚧</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#92400e', marginBottom: '0.25rem' }}>
+                        Tato sekce je zatím pouze vizuální náhled
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#a16207', lineHeight: 1.4 }}>
+                        Granulární nastavení notifikací podle typu události <strong>není dosud propojeno s backendem</strong>.
+                        Změny se uloží do vašeho profilu, ale zatím neovlivní doručování notifikací.
+                        Plná implementace bude nasazena v příští verzi.
+                      </div>
+                    </div>
+                  </div>
+
+                  <SettingDescription style={{ marginBottom: '1rem' }}>
+                    Nastavte si, jaké notifikace chcete dostávat. Vaše preference mohou pouze omezit notifikace,
+                    které vám systém odesílá na základě organizační hierarchie — nemohou přidat nové.
                   </SettingDescription>
 
-                  {/* Kanály notifikací */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+                  <NotifInfoBanner>
+                    <Info size={18} />
+                    <p>
+                      Notifikace jsou primárně řízeny <strong>organizační hierarchií</strong> vaší organizace.
+                      Tato nastavení vám umožňují ztišit konkrétní typy událostí nebo kanály.
+                      Pokud vám systém neposílá notifikace pro určitý modul, zapnutí zde nic nezmění.
+                    </p>
+                  </NotifInfoBanner>
+
+                  {/* Hlavní přepínače kanálů */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '1.5rem' }}>
                     
                     {/* In-app notifikace */}
                     <ToggleSettingItem>
                       <ToggleSettingLabel>
-                        <ToggleSettingTitle>Zobrazovat notifikace v aplikaci</ToggleSettingTitle>
+                        <ToggleSettingTitle>Notifikace v aplikaci</ToggleSettingTitle>
                         <SettingDescription>
-                          Notifikace se zobrazí v aplikaci v horním pravém rohu s ikonou zvonečku. 
-                          Informují o změnách stavů objednávek, nových komentářích a dalších událostech.
+                          Zobrazovat v aplikaci (ikona zvonečku vpravo nahoře).
                         </SettingDescription>
                       </ToggleSettingLabel>
                       <ToggleSwitch>
@@ -4110,9 +4443,9 @@ const ProfilePage = () => {
                     {/* Email notifikace */}
                     <ToggleSettingItem>
                       <ToggleSettingLabel>
-                        <ToggleSettingTitle>Zasílat notifikace emailem</ToggleSettingTitle>
+                        <ToggleSettingTitle>Notifikace emailem</ToggleSettingTitle>
                         <SettingDescription>
-                          Důležité události budou zasílány také na váš registrovaný email: <strong>{userDetail?.email || 'není k dispozici'}</strong>.
+                          Zasílat na: <strong>{userDetail?.email || 'není k dispozici'}</strong>
                         </SettingDescription>
                       </ToggleSettingLabel>
                       <ToggleSwitch>
@@ -4127,86 +4460,132 @@ const ProfilePage = () => {
 
                   </div>
 
-                  {/* Kategorie notifikací */}
+                  {/* Detailní matice per workflow stav × kanál */}
                   <div style={{ borderTop: '2px solid #e9ecef', paddingTop: '1.5rem' }}>
-                    <SettingDescription style={{ marginBottom: '1rem', fontWeight: 600 }}>
-                      Vyberte, ze kterých modulů chcete dostávat notifikace:
+                    <SettingDescription style={{ marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.95rem', color: '#1e293b' }}>
+                      Detailní nastavení podle typu události
                     </SettingDescription>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                      
-                      {/* Objednávky */}
-                      <ToggleSettingItem>
-                        <ToggleSettingLabel>
-                          <ToggleSettingTitle>Objednávky</ToggleSettingTitle>
-                          <SettingDescription style={{ fontSize: '0.85rem' }}>
-                            Změny stavů, schvalování, komentáře
-                          </SettingDescription>
-                        </ToggleSettingLabel>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={userSettings.notifikace.kategorie.objednavky}
-                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'objednavky', value: e.target.checked } })}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                      </ToggleSettingItem>
+                    <SettingDescription style={{ marginBottom: '1rem' }}>
+                      Rozbalte kategorii a zvolte, které konkrétní události chcete sledovat.
+                      Vypnutý hlavní kanál (výše) automaticky zablokuje všechny události v daném kanálu.
+                    </SettingDescription>
 
-                      {/* Faktury */}
-                      <ToggleSettingItem>
-                        <ToggleSettingLabel>
-                          <ToggleSettingTitle>Faktury</ToggleSettingTitle>
-                          <SettingDescription style={{ fontSize: '0.85rem' }}>
-                            Nové faktury, schválení, zamítnutí
-                          </SettingDescription>
-                        </ToggleSettingLabel>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={userSettings.notifikace.kategorie.faktury}
-                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'faktury', value: e.target.checked } })}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                      </ToggleSettingItem>
+                    {Object.entries(NOTIFICATION_CATEGORIES_CONFIG).map(([catKey, catConfig]) => {
+                      // Filtruj podle oprávnění uživatele (admin vidí vše)
+                      const hasAccess = catConfig.permissionCheck(hasPermission);
+                      if (!hasAccess && !isAdmin) return null;
 
-                      {/* Smlouvy */}
-                      <ToggleSettingItem>
-                        <ToggleSettingLabel>
-                          <ToggleSettingTitle>Smlouvy</ToggleSettingTitle>
-                          <SettingDescription style={{ fontSize: '0.85rem' }}>
-                            Nové smlouvy, změny, komentáře
-                          </SettingDescription>
-                        </ToggleSettingLabel>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={userSettings.notifikace.kategorie.smlouvy}
-                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'smlouvy', value: e.target.checked } })}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                      </ToggleSettingItem>
+                      const isCatExpanded = !collapsedSections[`notif_${catKey}`];
+                      const categoryEvents = Object.entries(NOTIFICATION_EVENT_TYPES_CONFIG)
+                        .filter(([, evt]) => evt.category === catKey);
 
-                      {/* Pokladna */}
-                      <ToggleSettingItem>
-                        <ToggleSettingLabel>
-                          <ToggleSettingTitle>Pokladna</ToggleSettingTitle>
-                          <SettingDescription style={{ fontSize: '0.85rem' }}>
-                            Nové doklady, kontroly, schvalování
-                          </SettingDescription>
-                        </ToggleSettingLabel>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={userSettings.notifikace.kategorie.pokladna}
-                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY, payload: { category: 'pokladna', value: e.target.checked } })}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                      </ToggleSettingItem>
+                      // Stav "toggle all" pro každý kanál v kategorii
+                      const allEmailChecked = categoryEvents.every(([evtKey]) =>
+                        userSettings.notifikace.workflow_detaily?.[evtKey]?.email !== false
+                      );
+                      const allInappChecked = categoryEvents.every(([evtKey]) =>
+                        userSettings.notifikace.workflow_detaily?.[evtKey]?.inapp !== false
+                      );
+                      const someEmailChecked = categoryEvents.some(([evtKey]) =>
+                        userSettings.notifikace.workflow_detaily?.[evtKey]?.email !== false
+                      );
+                      const someInappChecked = categoryEvents.some(([evtKey]) =>
+                        userSettings.notifikace.workflow_detaily?.[evtKey]?.inapp !== false
+                      );
 
-                    </div>
+                      const categoryIcon =
+                        catConfig.icon === 'ShoppingCart' ? <ShoppingCart size={16} style={{ color: catConfig.color }} /> :
+                        catConfig.icon === 'FileText' ? <FileText size={16} style={{ color: catConfig.color }} /> :
+                        catConfig.icon === 'Shield' ? <Shield size={16} style={{ color: catConfig.color }} /> :
+                        catConfig.icon === 'Coins' ? <Coins size={16} style={{ color: catConfig.color }} /> :
+                        null;
+
+                      return (
+                        <NotifMatrixCategory key={catKey}>
+                          <NotifCategoryHeader
+                            $expanded={isCatExpanded}
+                            onClick={() => toggleSection(`notif_${catKey}`)}
+                          >
+                            <NotifCategoryTitle $expanded={isCatExpanded}>
+                              <ChevronDown size={14} />
+                              {categoryIcon}
+                              {catConfig.label}
+                              <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 400 }}>
+                                ({categoryEvents.length})
+                              </span>
+                            </NotifCategoryTitle>
+                            <NotifCategoryHeaderCheckboxes onClick={(e) => e.stopPropagation()}>
+                              <NotifHeaderCheckbox>
+                                <input
+                                  type="checkbox"
+                                  checked={allEmailChecked}
+                                  ref={(el) => { if (el) el.indeterminate = !allEmailChecked && someEmailChecked; }}
+                                  disabled={!userSettings.notifikace.email_povoleny}
+                                  onChange={(e) => dispatch({
+                                    type: SETTINGS_ACTIONS.TOGGLE_ALL_WORKFLOW_CATEGORY,
+                                    payload: { prefix: catConfig.prefix, channel: 'email', value: e.target.checked }
+                                  })}
+                                />
+                                Email
+                              </NotifHeaderCheckbox>
+                              <NotifHeaderCheckbox>
+                                <input
+                                  type="checkbox"
+                                  checked={allInappChecked}
+                                  ref={(el) => { if (el) el.indeterminate = !allInappChecked && someInappChecked; }}
+                                  disabled={!userSettings.notifikace.inapp_povoleny}
+                                  onChange={(e) => dispatch({
+                                    type: SETTINGS_ACTIONS.TOGGLE_ALL_WORKFLOW_CATEGORY,
+                                    payload: { prefix: catConfig.prefix, channel: 'inapp', value: e.target.checked }
+                                  })}
+                                />
+                                V app
+                              </NotifHeaderCheckbox>
+                            </NotifCategoryHeaderCheckboxes>
+                          </NotifCategoryHeader>
+
+                          <NotifEventsContainer $expanded={isCatExpanded}>
+                            <NotifColumnHeaders>
+                              <div>Událost</div>
+                              <div style={{ textAlign: 'center' }}>Email</div>
+                              <div style={{ textAlign: 'center' }}>V app</div>
+                            </NotifColumnHeaders>
+                            {categoryEvents.map(([evtKey, evtConfig]) => {
+                              const detail = userSettings.notifikace.workflow_detaily?.[evtKey] || { email: true, inapp: true };
+                              return (
+                                <NotifEventRow key={evtKey}>
+                                  <NotifEventLabel title={evtConfig.description}>
+                                    {evtConfig.label}
+                                  </NotifEventLabel>
+                                  <NotifCheckboxCell $disabled={!userSettings.notifikace.email_povoleny}>
+                                    <input
+                                      type="checkbox"
+                                      checked={detail.email !== false}
+                                      disabled={!userSettings.notifikace.email_povoleny}
+                                      onChange={(e) => dispatch({
+                                        type: SETTINGS_ACTIONS.UPDATE_WORKFLOW_DETAIL,
+                                        payload: { eventType: evtKey, channel: 'email', value: e.target.checked }
+                                      })}
+                                    />
+                                  </NotifCheckboxCell>
+                                  <NotifCheckboxCell $disabled={!userSettings.notifikace.inapp_povoleny}>
+                                    <input
+                                      type="checkbox"
+                                      checked={detail.inapp !== false}
+                                      disabled={!userSettings.notifikace.inapp_povoleny}
+                                      onChange={(e) => dispatch({
+                                        type: SETTINGS_ACTIONS.UPDATE_WORKFLOW_DETAIL,
+                                        payload: { eventType: evtKey, channel: 'inapp', value: e.target.checked }
+                                      })}
+                                    />
+                                  </NotifCheckboxCell>
+                                </NotifEventRow>
+                              );
+                            })}
+                          </NotifEventsContainer>
+                        </NotifMatrixCategory>
+                      );
+                    })}
                   </div>
                 </CollapsibleContent>
               </SettingsSection>
@@ -4568,6 +4947,13 @@ const ProfilePage = () => {
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Datum poslední aktualizace</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_aktualizace {'}'} = "2025-11-16 19:23:44"</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dt_dokonceni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dt_dokonceni' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Datum dokončení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dt_dokonceni {'}'} = "2026-01-15 10:30:00"</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
@@ -5229,6 +5615,41 @@ const ProfilePage = () => {
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Místo dodání</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} misto_dodani {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvaleni_komentar} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvaleni_komentar' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Komentář ke schválení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} schvaleni_komentar {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dokonceni_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dokonceni_poznamka' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Poznámka k dokončení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dokonceni_poznamka {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.potvrzeni_dokonceni_objednavky} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'potvrzeni_dokonceni_objednavky' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Potvrzení dokončení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} potvrzeni_dokonceni_objednavky {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.potvrzeni_vecne_spravnosti} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'potvrzeni_vecne_spravnosti' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Potvrzení věcné správnosti</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} potvrzeni_vecne_spravnosti {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.vecna_spravnost_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'vecna_spravnost_poznamka' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Poznámka k věcné správnosti</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} vecna_spravnost_poznamka {'}'}</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>

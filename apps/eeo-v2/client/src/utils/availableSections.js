@@ -97,13 +97,41 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'orders-old', label: 'Objednávky (<2026)' });
   }
   
-  // REPORTY - pouze pro ADMIN (v menu Layout je to hasAdminRole())
-  if (isAdmin) {
+  // 🚀 BETA SEKCE - dostupné pro admin a BETA_TESTER
+  // (hasBetaTesterPermission je definováno výše u V3 logiky)
+  const hasBetaAccess = isAdmin || hasBetaTesterPermission;
+  
+  // PŘEHLED MAJETKU - BETA (pouze admin/BETA_TESTER)
+  if (hasBetaAccess) {
+    sections.push({ value: 'majetek-overview', label: 'Přehled majetku (BETA)' });
+  }
+  
+  // STATISTIKA A REPORTY - BETA (pouze admin/BETA_TESTER)
+  if (hasBetaAccess) {
+    sections.push({ value: 'stats-reports', label: 'Statistika a reporty (BETA)' });
+  }
+  
+  // ČERPÁNÍ - admin NEBO uživatel s oprávněním SPENDING/LP/CONTRACT
+  const canAccessCerpani = isAdmin || (hasPermission && (
+    hasPermission('SPENDING_MANAGE') || hasPermission('LP_MANAGE') || hasPermission('CONTRACT_MANAGE') ||
+    hasPermission('SPEDNIG_MANAGE') || hasPermission('SPNDING_MANAGE') ||
+    hasPermission('SPEDNIG_VIEW_ALL') || hasPermission('SPNDING_VIEW_ALL') ||
+    hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') ||
+    hasPermission('LP_VIEW_ALL') || hasPermission('LP_VIEW_OWN') ||
+    hasPermission('CONTRACT_VIEW_ALL') || hasPermission('CONTRACT_VIEW_OWN')
+  ));
+  
+  if (canAccessCerpani) {
+    sections.push({ value: 'cerpani', label: 'Čerpání' });
+  }
+  
+  // REPORTY - pouze pro ADMIN nebo uživatele s REPORT oprávněním
+  if (isAdmin || (hasPermission && (hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')))) {
     sections.push({ value: 'reports', label: 'Reporty' });
   }
   
-  // STATISTIKY - pouze pro ADMIN (v menu Layout je to hasAdminRole())
-  if (isAdmin) {
+  // STATISTIKY - pouze pro ADMIN nebo uživatele se STATISTICS oprávněním
+  if (isAdmin || (hasPermission && (hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')))) {
     sections.push({ value: 'statistics', label: 'Statistiky' });
   }
   
