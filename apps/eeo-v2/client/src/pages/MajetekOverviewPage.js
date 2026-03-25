@@ -1,11 +1,14 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar } from '@fortawesome/free-solid-svg-icons';
+import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown } from '@fortawesome/free-solid-svg-icons';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { AuthContext } from '../context/AuthContext';
+import { ToastContext } from '../context/ToastContext';
+import { getOrderV2, lockOrderV2 } from '../services/apiOrderV2';
 import { listMajetekOrdersV3 } from '../services/apiOrdersV3';
 import { formatDateOnly } from '../utils/format';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
@@ -196,6 +199,14 @@ const PeriodSelector = styled.select`
   }
 `;
 
+const ClickableOrderNumber = styled.span`
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+`;
+
 const ReloadButton = styled.button`
   display: flex;
   align-items: center;
@@ -273,53 +284,85 @@ const SummaryValue = styled.div`
 const TableWrapper = styled.div`
   width: 100%;
   overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
 `;
 
 const Table = styled.table`
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   min-width: 900px;
-  font-family: "Roboto Condensed", "Roboto", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.88rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.01em;
 
-  th, td {
-    padding: 0.75rem 0.85rem;
-    border-bottom: 1px solid #e2e8f0;
-    text-align: left;
-    font-size: 0.9rem;
+  a, button {
+    font: inherit;
+    letter-spacing: inherit;
   }
 
   th {
-    background: #f8fafc;
-    color: #1e293b;
-    font-weight: 700;
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    color: #334155;
+    font-weight: 600;
+    border-bottom: 2px solid #cbd5e1;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    font-size: 0.8rem;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background: #e2e8f0;
+    }
   }
 
-  tbody tr:hover {
-    background: #f1f5f9;
+  td {
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid #f1f5f9;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
-  tbody tr.base-row:hover {
-    background: #eef2ff;
+  tbody tr {
+    border-bottom: 1px solid #f1f5f9;
+    transition: background-color 0.15s ease;
+
+    &:nth-of-type(even) {
+      background-color: #f8fafc;
+    }
+
+    &:hover {
+      background-color: #e8f0fe !important;
+    }
   }
 
-  tbody tr.group-row:hover {
-    background: #e0e7ff;
-  }
+  tbody tr.base-row {
+    &:nth-of-type(even) {
+      background-color: #f8fafc;
+    }
 
-  tbody tr.child-row:hover {
-    background: #f1f5f9;
-  }
-
-  tbody tr.base-row:nth-of-type(even) {
-    background: #fbfdff;
+    &:hover {
+      background-color: #e8f0fe !important;
+    }
   }
 
   tbody tr.group-row {
     background: #f1f5ff;
     font-weight: 600;
     color: #1e3a8a;
+
+    &:hover {
+      background: #dbeafe !important;
+    }
   }
 
   tbody tr.group-row.group-depth-0 { background: #eef2ff; }
@@ -330,6 +373,14 @@ const Table = styled.table`
   tbody tr.child-row {
     background: #f8fafc;
     color: #334155;
+    
+    &:nth-of-type(even) {
+      background-color: #f1f5f9;
+    }
+
+    &:hover {
+      background-color: #e8f0fe !important;
+    }
   }
 `;
 
@@ -525,7 +576,9 @@ const PlaceholderText = styled.p`
 `;
 
 export default function MajetekOverviewPage() {
+  const navigate = useNavigate();
   const { token, username, userDetail } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext) || {};
   const isMountedRef = useRef(false);
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
@@ -568,6 +621,7 @@ export default function MajetekOverviewPage() {
   const [expanded, setExpanded] = useState({});
   const [selectStates, setSelectStates] = useState({});
   const [searchStates, setSearchStates] = useState({});
+  const [sorting, setSorting] = useState([]);
 
   const handleStatusFilterChange = useCallback((value) => {
     if (Array.isArray(value)) {
@@ -839,71 +893,158 @@ export default function MajetekOverviewPage() {
 
   const columnHelper = useMemo(() => createColumnHelper(), []);
 
+  const handleEditOrder = useCallback(async (order) => {
+    if (!order?.id) return;
+
+    try {
+      // ✅ V2 API - načti aktuální data z DB pro kontrolu lock_info
+      const dbOrder = await getOrderV2(
+        order.id,
+        token,
+        username,
+        true // enriched = true
+      );
+
+      if (!dbOrder) {
+        showToast?.('Nepodařilo se načíst objednávku z databáze', { type: 'error' });
+        return;
+      }
+
+      // 🔒 Kontrola zamčení jiným uživatelem
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
+        const lockInfo = dbOrder.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+        showToast?.(
+          `Objednávka je zamčená uživatelem ${lockedByUserName}`,
+          { type: 'warning' }
+        );
+        return;
+      }
+
+      // 🔒 Zamkni objednávku před navigací
+      if (dbOrder.lock_info?.is_owned_by_me !== true) {
+        try {
+          await lockOrderV2({ orderId: order.id, token, username });
+        } catch (lockError) {
+          console.warn('⚠️ [MajetekOverview] Nepodařilo se zamknout objednávku před navigací:', lockError);
+        }
+      }
+
+      // ✅ Naviguj na formulář
+      navigate(`/order-form-25?edit=${order.id}`, {
+        state: {
+          returnTo: '/majetek-overview',
+          highlightOrderId: order.id
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ [MajetekOverview] Chyba při kontrole dostupnosti objednávky:', error);
+      showToast?.('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
+    }
+  }, [token, username, navigate, showToast]);
+
   const columns = useMemo(() => [
     columnHelper.accessor('budova_kod', {
       header: 'Budova',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('usek_kod', {
       header: 'Úsek',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('mistnost_kod', {
       header: 'Místnost',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('dt_objednavky', {
       header: 'Datum obj.',
+      enableSorting: true,
       cell: info => formatDateOnly(info.getValue()),
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('cislo_objednavky', {
       header: 'Ev. číslo',
+      enableSorting: true,
+      cell: info => {
+        const row = info.row.original;
+        const cislo = info.getValue();
+        return (
+          <ClickableOrderNumber
+            onClick={() => handleEditOrder(row)}
+            title="Kliknutím otevřete detail objednávky"
+          >
+            {cislo || '-'}
+          </ClickableOrderNumber>
+        );
+      },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('dodavatel_nazev', {
       header: 'Dodavatel',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('predmet', {
       header: 'Předmět',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('workflow_last', {
       header: 'Stav',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('druh_objednavky_nazev', {
       header: 'Druh objednávky',
+      enableSorting: true,
+      cell: info => {
+        const nazev = info.getValue();
+        return (
+          <span>
+            {nazev || '-'}
+            <sup style={{ 
+              fontSize: '0.7em', 
+              fontWeight: '700', 
+              marginLeft: '4px',
+              color: '#1e40af',
+              backgroundColor: '#dbeafe',
+              padding: '2px 4px',
+              borderRadius: '3px'
+            }}>MAJ</sup>
+          </span>
+        );
+      },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('strediska_nazvy', {
       header: 'Střediska',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('rok', {
       header: 'Rok',
-      aggregationFn: () => null,
-      aggregatedCell: () => ''
-    }),
-    columnHelper.accessor('umisteni_summary', {
-      header: 'Umístění',
+      enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor(row => Number(row.max_cena_s_dph || 0), {
       id: 'max_cena_s_dph',
       header: 'Max cena s DPH',
+      enableSorting: true,
       cell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
@@ -919,6 +1060,7 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor(row => Number(row.polozky_celkova_cena_s_dph || 0), {
       id: 'polozky_celkova_cena_s_dph',
       header: 'Součet položek (s DPH)',
+      enableSorting: true,
       cell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
@@ -934,6 +1076,7 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor(row => Number(row.pocet_faktur || 0), {
       id: 'pocet_faktur',
       header: 'Faktury (ks)',
+      enableSorting: true,
       aggregationFn: 'sum',
       cell: info => (
         <span style={{ display: 'block', textAlign: 'center' }}>
@@ -949,6 +1092,7 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor(row => Number(row.faktury_celkova_castka_s_dph || 0), {
       id: 'faktury_celkova_castka_s_dph',
       header: 'Faktury (s DPH)',
+      enableSorting: true,
       cell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
@@ -961,24 +1105,27 @@ export default function MajetekOverviewPage() {
         </span>
       )
     })
-  ], [columnHelper]);
+  ], [columnHelper, handleEditOrder]);
 
   const table = useReactTable({
     data: pagedTableData,
     columns,
     state: {
       grouping: groupFields,
-      expanded
+      expanded,
+      sorting
     },
     autoResetPageIndex: false,
     onGroupingChange: setGroupFields,
     onExpandedChange: setExpanded,
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getGroupedRowModel: getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    enableGrouping: true
+    enableGrouping: true,
+    enableSorting: true
   });
 
   const chartInfo = useMemo(() => {
@@ -1226,47 +1373,6 @@ export default function MajetekOverviewPage() {
         <Card>
           <AggregationPanel>
             <FiltersAndAggregation>
-              <FilterPanel>
-                <FilterHeader>
-                  <FilterTitle>
-                    <FontAwesomeIcon icon={faFilter} /> Filtry
-                  </FilterTitle>
-                </FilterHeader>
-
-                <FilterGrid>
-                  <FilterItem>
-                    <FilterLabel>Hledání</FilterLabel>
-                    <SearchField>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <SearchInput
-                        value={globalSearch}
-                        onChange={(e) => setGlobalSearch(e.target.value)}
-                        placeholder="Hledat v tabulce"
-                      />
-                    </SearchField>
-                  </FilterItem>
-                  <FilterItem>
-                    <FilterLabel>Stavy</FilterLabel>
-                    <CustomSelect
-                      field="majetek_stavy"
-                      value={selectedStatuses}
-                      onChange={handleStatusFilterChange}
-                      options={statusOptions}
-                      placeholder="Vyber stavy"
-                      multiple
-                      isClearable
-                      enableSearch
-                      selectStates={selectStates}
-                      setSelectStates={setSelectStates}
-                      searchStates={searchStates}
-                      setSearchStates={setSearchStates}
-                      toggleSelect={toggleSelect}
-                      getOptionLabel={(option) => option?.label || option?.id || ''}
-                    />
-                  </FilterItem>
-                </FilterGrid>
-              </FilterPanel>
-
               <AggregationLeft>
                 <AggregationBox onDragOver={(e) => e.preventDefault()} onDrop={handleDropGroup}>
                   <AggregationTitle>
@@ -1360,6 +1466,46 @@ export default function MajetekOverviewPage() {
                   <SummaryValue>{formatCurrency(summary.totalInvoices)}</SummaryValue>
                 </SummaryCard>
               </SummaryRow>
+              <FilterPanel>
+                <FilterHeader>
+                  <FilterTitle>
+                    <FontAwesomeIcon icon={faFilter} /> Filtry
+                  </FilterTitle>
+                </FilterHeader>
+
+                <FilterGrid>
+                  <FilterItem>
+                    <FilterLabel>Hledání</FilterLabel>
+                    <SearchField>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <SearchInput
+                        value={globalSearch}
+                        onChange={(e) => setGlobalSearch(e.target.value)}
+                        placeholder="Hledat v tabulce"
+                      />
+                    </SearchField>
+                  </FilterItem>
+                  <FilterItem>
+                    <FilterLabel>Stavy</FilterLabel>
+                    <CustomSelect
+                      field="majetek_stavy"
+                      value={selectedStatuses}
+                      onChange={handleStatusFilterChange}
+                      options={statusOptions}
+                      placeholder="Vyber stavy"
+                      multiple
+                      isClearable
+                      enableSearch
+                      selectStates={selectStates}
+                      setSelectStates={setSelectStates}
+                      searchStates={searchStates}
+                      setSearchStates={setSearchStates}
+                      toggleSelect={toggleSelect}
+                      getOptionLabel={(option) => option?.label || option?.id || ''}
+                    />
+                  </FilterItem>
+                </FilterGrid>
+              </FilterPanel>
             </FiltersAndAggregation>
             <AggregationChartPanel>
               <AggregationTitle>
@@ -1392,10 +1538,27 @@ export default function MajetekOverviewPage() {
                     {table.getHeaderGroups().map(headerGroup => (
                       <tr key={headerGroup.id}>
                         {headerGroup.headers.map(header => (
-                          <th key={header.id}>
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          <th
+                            key={header.id}
+                            onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+                            style={{ cursor: header.column.getCanSort() ? 'pointer' : 'default' }}
+                          >
+                            {header.isPlaceholder ? null : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                {flexRender(header.column.columnDef.header, header.getContext())}
+                                {header.column.getCanSort() && (
+                                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                    {header.column.getIsSorted() === 'asc' ? (
+                                      <FontAwesomeIcon icon={faSortUp} />
+                                    ) : header.column.getIsSorted() === 'desc' ? (
+                                      <FontAwesomeIcon icon={faSortDown} />
+                                    ) : (
+                                      <FontAwesomeIcon icon={faSort} />
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </th>
                         ))}
                       </tr>
