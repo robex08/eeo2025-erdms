@@ -1872,6 +1872,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     (SELECT COALESCE(SUM(f2.fa_castka), 0) FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1) as faktury_celkova_castka_s_dph,
                     (SELECT f2.vecna_spravnost_umisteni_majetku FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.vecna_spravnost_umisteni_majetku IS NOT NULL ORDER BY f2.id DESC LIMIT 1) as umisteni_majetku,
                     NULL as cislo_smlouvy,
+                    NULL as fa_cislo_vema,
                     'ORDER' as source_type
                 FROM " . TBL_OBJEDNAVKY . " o
                 LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
@@ -1881,7 +1882,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                 
                 SELECT 
                     CONCAT('F', f.id) as id,
-                    f.fa_cislo_vema as cislo_objednavky,
+                    NULL as cislo_objednavky,
                     CONCAT('Faktura - ', COALESCE(s.nazev_smlouvy, 'Nezařazeno')) as predmet,
                     f.fa_datum_vystaveni as datum,
                     NULL as stav_workflow_kod,
@@ -1894,6 +1895,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     f.fa_castka as faktury_celkova_castka_s_dph,
                     f.vecna_spravnost_umisteni_majetku as umisteni_majetku,
                     s.cislo_smlouvy,
+                    f.fa_cislo_vema,
                     'INVOICE' as source_type
                 FROM " . TBL_FAKTURY . " f
                 LEFT JOIN 25_smlouvy s ON f.smlouva_id = s.id
