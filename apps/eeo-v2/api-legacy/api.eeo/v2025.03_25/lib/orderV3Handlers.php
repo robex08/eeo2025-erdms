@@ -1701,14 +1701,20 @@ function handle_order_v3_list($input, $config, $queries) {
 }
 
 /**
- * Načte přehled majetkových objednávek (MAJETEK) pro přehled majetku
+ * Načte přehled majetku (rozšířený majetek + faktury s umístěním)
  * POST /order-v3/majetek-list
  *
+ * Vrací:
+ * 1. Všechny objednávky klasifikované jako MAJETEK (ELEKTRONIKA, FKSP, MAJETEK, NABYTEK, VZDELAVANI_VYBAVENI)
+ * 2. PLUS všechny faktury s vyplněným vecna_spravnost_umisteni_majetku (bez ohledu na vazbu)
+ * 
  * Podporuje period + filtr stav[] (workflow) a vrací rozšířená data:
  * - polozky_celkova_cena_s_dph
- * - umisteni_polozky (usek/budova/mistnost)
+ * - umisteni_polozky (usek/budova/mistnost) - z položek objednávky
+ * - umisteni_majetku - z faktury (věcná správnost)
  * - strediska_nazvy
  * - druh_objednavky_nazev
+ * - cislo_smlouvy
  */
 function handle_order_v3_majetek_list($input, $config, $queries) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -1751,52 +1757,30 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
         $period = isset($input['period']) ? $input['period'] : 'last-month';
         $filters = isset($input['filters']) ? $input['filters'] : array();
 
-        $where_conditions = array();
-        $where_params = array();
+        // MAJETEK kódy druhu objednávky
+        $majetek_codes = array('ELEKTRONIKA', 'FKSP', 'MAJETEK', 'NABYTEK', 'VZDELAVANI_VYBAVENI');
 
-        $where_conditions[] = "o.aktivni = 1";
-        $where_conditions[] = "o.id != 1";
+        // Podmínky pro OBJEDNÁVKY MAJETEK
+        $where_orders = array();
+        $params_orders = array();
+        $where_orders[] = "o.aktivni = 1";
+        $where_orders[] = "o.id != 1";
+        
+        // Druh objednávky - MAJETEK
+        $majetek_placeholders = implode(',', array_fill(0, count($majetek_codes), '?'));
+        $where_orders[] = "(JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu')) IN ($majetek_placeholders))";
+        $params_orders = array_merge($params_orders, $majetek_codes);
 
         $period_range = calculatePeriodRange($period);
         if ($period_range !== null) {
-            $where_conditions[] = "o.dt_objednavky BETWEEN ? AND ?";
-            $where_params[] = $period_range['date_from'];
-            $where_params[] = $period_range['date_to'];
+            $where_orders[] = "o.dt_objednavky BETWEEN ? AND ?";
+            $params_orders[] = $period_range['date_from'];
+            $params_orders[] = $period_range['date_to'];
         }
 
-        // Filtr: pouze MAJETEK druhy (atribut_objektu = 1)
-        $sql_majetek_codes = "SELECT kod_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND atribut_objektu = 1";
-        $stmt_majetek = $db->prepare($sql_majetek_codes);
-        $stmt_majetek->execute();
-        $majetek_codes = $stmt_majetek->fetchAll(PDO::FETCH_COLUMN);
-        error_log('[OrderV3 MAJETEK] Majetek codes count=' . count($majetek_codes));
-
-        if (empty($majetek_codes)) {
-            http_response_code(200);
-            echo json_encode(array(
-                'status' => 'success',
-                'data' => array(
-                    'orders' => array(),
-                    'pagination' => array(
-                        'page' => $page,
-                        'per_page' => $per_page,
-                        'total' => 0,
-                        'total_pages' => 0
-                    )
-                ),
-                'message' => 'Data načtena úspěšně'
-            ));
-            return;
-        }
-
-        $placeholders = implode(',', array_fill(0, count($majetek_codes), '?'));
-        $where_conditions[] = "(CASE 
-            WHEN o.druh_objednavky_kod LIKE '{%' THEN JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu'))
-            ELSE o.druh_objednavky_kod
-        END) IN ($placeholders)";
-        $where_params = array_merge($where_params, $majetek_codes);
-
-        // Filtr: stav workflow (poslední stav)
+        // Filtr: stav workflow
+        $workflow_condition = '';
+        $workflow_params = array();
         if (!empty($filters['stav']) && is_array($filters['stav'])) {
             $stav_map = array(
                 'NOVA' => 'NOVA',
@@ -1824,81 +1808,143 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
             $workflow_codes = array_values(array_unique(array_filter($workflow_codes)));
             if (!empty($workflow_codes)) {
                 $wf_placeholders = implode(',', array_fill(0, count($workflow_codes), '?'));
-                $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) IN ($wf_placeholders)";
-                $where_params = array_merge($where_params, $workflow_codes);
+                $workflow_condition = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) IN ($wf_placeholders)";
+                $workflow_params = $workflow_codes;
+                $where_orders[] = $workflow_condition;
+                $params_orders = array_merge($params_orders, $workflow_params);
             }
         }
 
-        // Permissions
-        applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+        // Permissions pro objednávky
+        applyOrderV3UserPermissions($user_id, $db, $where_orders, $params_orders);
 
-        $where_sql = implode(' AND ', $where_conditions);
+        $where_orders_sql = implode(' AND ', $where_orders);
 
+        // Podmínky pro FAKTURY s umístěním
+        $where_faktury = array();
+        $params_faktury = array();
+        $where_faktury[] = "f.aktivni = 1";
+        $where_faktury[] = "f.vecna_spravnost_umisteni_majetku IS NOT NULL";
+        $where_faktury[] = "f.vecna_spravnost_umisteni_majetku != ''";
+
+        if ($period_range !== null) {
+            $where_faktury[] = "f.fa_datum_vystaveni BETWEEN ? AND ?";
+            $params_faktury[] = $period_range['date_from'];
+            $params_faktury[] = $period_range['date_to'];
+        }
+
+        $where_faktury_sql = implode(' AND ', $where_faktury);
+
+        // COUNT - celkový počet záznamů (objednávky MAJETEK + faktury s umístěním)
         $sql_count = "
-            SELECT COUNT(DISTINCT o.id) as total
-            FROM " . TBL_OBJEDNAVKY . " o
-            LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
-            WHERE $where_sql
+            SELECT COUNT(*) as total FROM (
+                SELECT o.id FROM " . TBL_OBJEDNAVKY . " o
+                LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+                WHERE $where_orders_sql
+                UNION
+                SELECT CONCAT('F', f.id) as id FROM " . TBL_FAKTURY . " f
+                WHERE $where_faktury_sql
+            ) combined
         ";
+        
+        $all_params = array_merge($params_orders, $params_faktury);
         $stmt_count = $db->prepare($sql_count);
-        $stmt_count->execute($where_params);
+        $stmt_count->execute($all_params);
         $total_count = (int)$stmt_count->fetchColumn();
         $total_pages = $total_count > 0 ? ceil($total_count / $per_page) : 0;
-        error_log('[OrderV3 MAJETEK] Count=' . $total_count . ', pages=' . $total_pages);
+        error_log('[OrderV3 MAJETEK] Count=' . $total_count . ' (orders+invoices), pages=' . $total_pages);
 
-        $sql_orders = "
-            SELECT 
-                o.id,
-                o.cislo_objednavky,
-                o.predmet,
-                o.dt_objednavky,
-                o.stav_workflow_kod,
-                o.max_cena_s_dph,
-                o.druh_objednavky_kod,
-                o.strediska_kod,
-                COALESCE(o.dodavatel_nazev, d.nazev) as dodavatel_nazev,
-                (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as polozky_celkova_cena_s_dph,
-                (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as pocet_faktur,
-                (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph
-            FROM " . TBL_OBJEDNAVKY . " o
-            LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
-            WHERE $where_sql
-            ORDER BY o.dt_objednavky DESC
+        // Hlavní UNION dotaz - objednávky MAJETEK + faktury s umístěním
+        $sql_combined = "
+            SELECT * FROM (
+                SELECT 
+                    o.id,
+                    o.cislo_objednavky,
+                    o.predmet,
+                    o.dt_objednavky as datum,
+                    o.stav_workflow_kod,
+                    o.max_cena_s_dph,
+                    o.druh_objednavky_kod,
+                    o.strediska_kod,
+                    COALESCE(o.dodavatel_nazev, d.nazev) as dodavatel_nazev,
+                    (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " p WHERE p.objednavka_id = o.id) as polozky_celkova_cena_s_dph,
+                    (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1) as pocet_faktur,
+                    (SELECT COALESCE(SUM(f2.fa_castka), 0) FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1) as faktury_celkova_castka_s_dph,
+                    (SELECT f2.vecna_spravnost_umisteni_majetku FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.vecna_spravnost_umisteni_majetku IS NOT NULL ORDER BY f2.id DESC LIMIT 1) as umisteni_majetku,
+                    NULL as cislo_smlouvy,
+                    'ORDER' as source_type
+                FROM " . TBL_OBJEDNAVKY . " o
+                LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+                WHERE $where_orders_sql
+                
+                UNION ALL
+                
+                SELECT 
+                    CONCAT('F', f.id) as id,
+                    f.fa_cislo_vema as cislo_objednavky,
+                    CONCAT('Faktura - ', COALESCE(s.nazev_smlouvy, 'Nezařazeno')) as predmet,
+                    f.fa_datum_vystaveni as datum,
+                    NULL as stav_workflow_kod,
+                    f.fa_castka as max_cena_s_dph,
+                    NULL as druh_objednavky_kod,
+                    f.fa_strediska_kod as strediska_kod,
+                    COALESCE(s.nazev_firmy, '') as dodavatel_nazev,
+                    0 as polozky_celkova_cena_s_dph,
+                    1 as pocet_faktur,
+                    f.fa_castka as faktury_celkova_castka_s_dph,
+                    f.vecna_spravnost_umisteni_majetku as umisteni_majetku,
+                    s.cislo_smlouvy,
+                    'INVOICE' as source_type
+                FROM " . TBL_FAKTURY . " f
+                LEFT JOIN 25_smlouvy s ON f.smlouva_id = s.id
+                WHERE $where_faktury_sql
+                AND f.objednavka_id IS NULL
+            ) combined
+            ORDER BY datum DESC
             LIMIT $per_page OFFSET $offset
         ";
 
-        $stmt_orders = $db->prepare($sql_orders);
-        $stmt_orders->execute($where_params);
-        $orders = $stmt_orders->fetchAll(PDO::FETCH_ASSOC);
-        error_log('[OrderV3 MAJETEK] Orders loaded=' . count($orders));
+        $stmt_combined = $db->prepare($sql_combined);
+        $stmt_combined->execute($all_params);
+        $orders = $stmt_combined->fetchAll(PDO::FETCH_ASSOC);
+        error_log('[OrderV3 MAJETEK] Combined loaded=' . count($orders));
 
         if (!empty($orders)) {
-            $order_ids = array_column($orders, 'id');
-            $order_placeholders = implode(',', array_fill(0, count($order_ids), '?'));
-
-            // Načíst umístění položek pro všechny objednávky v dávce
-            $sql_items = "
-                SELECT objednavka_id, usek_kod, budova_kod, mistnost_kod, poznamka
-                FROM " . TBL_OBJEDNAVKY_POLOZKY . "
-                WHERE objednavka_id IN ($order_placeholders)
-                ORDER BY id ASC
-            ";
-            $stmt_items = $db->prepare($sql_items);
-            $stmt_items->execute($order_ids);
-            $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+            // Separovat skutečné order IDs (ne faktury s prefixem "F")
+            $real_order_ids = array();
+            foreach ($orders as $row) {
+                if ($row['source_type'] === 'ORDER') {
+                    $real_order_ids[] = (int)$row['id'];
+                }
+            }
 
             $items_by_order = array();
-            foreach ($items as $item) {
-                $oid = (int)$item['objednavka_id'];
-                if (!isset($items_by_order[$oid])) {
-                    $items_by_order[$oid] = array();
+            
+            // Načíst položky s umístěním pouze pro skutečné objednávky
+            if (!empty($real_order_ids)) {
+                $order_placeholders = implode(',', array_fill(0, count($real_order_ids), '?'));
+                $sql_items = "
+                    SELECT objednavka_id, usek_kod, budova_kod, mistnost_kod, poznamka
+                    FROM " . TBL_OBJEDNAVKY_POLOZKY . "
+                    WHERE objednavka_id IN ($order_placeholders)
+                    ORDER BY id ASC
+                ";
+                $stmt_items = $db->prepare($sql_items);
+                $stmt_items->execute($real_order_ids);
+                $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($items as $item) {
+                    $oid = (int)$item['objednavka_id'];
+                    if (!isset($items_by_order[$oid])) {
+                        $items_by_order[$oid] = array();
+                    }
+                    $items_by_order[$oid][] = array(
+                        'usek_kod' => $item['usek_kod'],
+                        'budova_kod' => $item['budova_kod'],
+                        'mistnost_kod' => $item['mistnost_kod'],
+                        'poznamka' => $item['poznamka']
+                    );
                 }
-                $items_by_order[$oid][] = array(
-                    'usek_kod' => $item['usek_kod'],
-                    'budova_kod' => $item['budova_kod'],
-                    'mistnost_kod' => $item['mistnost_kod'],
-                    'poznamka' => $item['poznamka']
-                );
             }
 
             // Přednačíst druhy objednávek (kod -> nazev)
@@ -1930,17 +1976,22 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
             $strediska_cache = array();
 
             foreach ($orders as &$order) {
-                $order_id = (int)$order['id'];
+                $source_type = $order['source_type'] ?? 'ORDER';
+                $order_id = ($source_type === 'ORDER') ? (int)$order['id'] : null;
 
-                // workflow JSON -> array
-                if (isset($order['stav_workflow_kod'])) {
+                // Pro objednávky: workflow JSON -> array
+                if ($source_type === 'ORDER' && isset($order['stav_workflow_kod'])) {
                     $order['stav_workflow_kod'] = safeJsonDecode($order['stav_workflow_kod'], array());
                 }
 
-                // Umístění položek
-                $order['umisteni_polozky'] = isset($items_by_order[$order_id]) ? $items_by_order[$order_id] : array();
+                // Umístění položek (pouze pro objednávky)
+                if ($source_type === 'ORDER' && $order_id) {
+                    $order['umisteni_polozky'] = isset($items_by_order[$order_id]) ? $items_by_order[$order_id] : array();
+                } else {
+                    $order['umisteni_polozky'] = array();
+                }
 
-                // Střediska - názvy
+                // Střediska - názvy (může být i pro faktury)
                 if (!empty($order['strediska_kod'])) {
                     $cache_key = $order['strediska_kod'];
                     if (isset($strediska_cache[$cache_key])) {
@@ -1956,8 +2007,8 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     }
                 }
 
-                // Druh objednávky - název
-                if (!empty($order['druh_objednavky_kod'])) {
+                // Druh objednávky - název (pouze pro objednávky)
+                if ($source_type === 'ORDER' && !empty($order['druh_objednavky_kod'])) {
                     $druh_kod = $order['druh_objednavky_kod'];
                     $decoded = json_decode($druh_kod, true);
                     if (json_last_error() === JSON_ERROR_NONE && is_array($decoded) && isset($decoded['kod_stavu'])) {
@@ -1967,6 +2018,10 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                         $order['druh_objednavky_nazev'] = $druh_map[$druh_kod]['nazev_stavu'];
                         $order['druh_objednavky_atribut'] = isset($druh_map[$druh_kod]['atribut_objektu']) ? (int)$druh_map[$druh_kod]['atribut_objektu'] : 0;
                     }
+                } elseif ($source_type === 'INVOICE') {
+                    // Pro faktury nastavit fake druh
+                    $order['druh_objednavky_nazev'] = 'Faktura (samostatná)';
+                    $order['druh_objednavky_atribut'] = 1; // MAJETEK atribut
                 }
             }
             unset($order);
