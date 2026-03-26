@@ -854,26 +854,31 @@ export default function MajetekOverviewPage() {
   };
 
   const tableData = useMemo(() => {
-    const normalized = aggregationSource.map(order => ({
-      ...order,
-      workflow_last: getWorkflowLabel(getWorkflowLast(order.stav_workflow_kod)),
-      umisteni_summary: getLocationSummary(order.umisteni_polozky),
-      usek_kod: getUniqueCode(order.umisteni_polozky, 'usek_kod'),
-      budova_kod: getUniqueCode(order.umisteni_polozky, 'budova_kod'),
-      mistnost_kod: getUniqueCode(order.umisteni_polozky, 'mistnost_kod'),
-      rok: order.dt_objednavky ? new Date(order.dt_objednavky).getFullYear() : ''
-    }));
+    const normalized = aggregationSource.map(order => {
+      // Pro faktury je datum v "datum" sloupci (z UNION), pro objednávky v "dt_objednavky"
+      const datum = order.datum || order.dt_objednavky;
+      return {
+        ...order,
+        dt_objednavky: datum, // Normalizace datumu
+        workflow_last: getWorkflowLabel(getWorkflowLast(order.stav_workflow_kod)),
+        usek_kod: getUniqueCode(order.umisteni_polozky, 'usek_kod'),
+        budova_kod: getUniqueCode(order.umisteni_polozky, 'budova_kod'),
+        mistnost_kod: getUniqueCode(order.umisteni_polozky, 'mistnost_kod'),
+        rok: datum ? new Date(datum).getFullYear() : ''
+      };
+    });
 
     if (!globalSearch) return normalized;
     const needle = globalSearch.toLowerCase();
     return normalized.filter(row => {
       return [
         row.cislo_objednavky,
+        row.cislo_smlouvy,
         row.predmet,
         row.dodavatel_nazev,
         row.workflow_last,
         row.strediska_nazvy,
-        row.umisteni_summary,
+        row.umisteni_majetku,
         row.usek_kod,
         row.budova_kod,
         row.mistnost_kod
@@ -895,6 +900,12 @@ export default function MajetekOverviewPage() {
 
   const handleEditOrder = useCallback(async (order) => {
     if (!order?.id) return;
+
+    // Neklikat na faktury (ID začíná "F")
+    if (String(order.id).startsWith('F')) {
+      console.log('ℹ️ [MajetekOverview] Faktura - nelze editovat jako objednávku');
+      return;
+    }
 
     try {
       // ✅ V2 API - načti aktuální data z DB pro kontrolu lock_info
@@ -971,17 +982,25 @@ export default function MajetekOverviewPage() {
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('cislo_objednavky', {
-      header: 'Ev. číslo',
+      header: 'Ev. číslo / Smlouva',
       enableSorting: true,
       cell: info => {
         const row = info.row.original;
         const cislo = info.getValue();
+        const smlouva = row.cislo_smlouvy;
+        const displayValue = cislo || smlouva || '-';
+        const isInvoice = String(row.id || '').startsWith('F');
+
+        if (isInvoice) {
+          return <span style={{ whiteSpace: 'nowrap' }}>{displayValue}</span>;
+        }
+
         return (
           <ClickableOrderNumber
             onClick={() => handleEditOrder(row)}
             title="Kliknutím otevřete detail objednávky"
           >
-            {cislo || '-'}
+            {displayValue}
           </ClickableOrderNumber>
         );
       },
@@ -1031,6 +1050,12 @@ export default function MajetekOverviewPage() {
     }),
     columnHelper.accessor('strediska_nazvy', {
       header: 'Střediska',
+      enableSorting: true,
+      aggregationFn: () => null,
+      aggregatedCell: () => ''
+    }),
+    columnHelper.accessor('umisteni_majetku', {
+      header: 'Umístění',
       enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
