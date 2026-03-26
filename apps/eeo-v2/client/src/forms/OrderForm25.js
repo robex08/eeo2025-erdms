@@ -4478,8 +4478,13 @@ function OrderForm25() {
   const loadedFakturyRef = useRef(new Set());
   
   // ✅ Funkce pro načtení LP čerpání faktury
-  const loadFakturaLPCerpani = useCallback(async (fakturaId) => {
-    if (!fakturaId || loadedFakturyRef.current.has(fakturaId) || !token || !username) return;
+  const loadFakturaLPCerpani = useCallback(async (fakturaId, forceReload = false) => {
+    // 🔥 FIX: Pokud není force reload, zkontrolovat jestli už není načteno
+    if (!forceReload && loadedFakturyRef.current.has(fakturaId)) {
+      return;
+    }
+    
+    if (!fakturaId || !token || !username) return;
     
     try {
       loadedFakturyRef.current.add(fakturaId);
@@ -4487,6 +4492,8 @@ function OrderForm25() {
       
       // 🔥 FIX: API vrací {status: 'ok', data: {faktura_id, lp_cerpani: [...], suma, fa_castka}}
       const lpCerpaniData = response?.data?.lp_cerpani || [];
+      
+      console.debug('[LP] Načteno LP čerpání pro fakturu', fakturaId, ':', lpCerpaniData);
       
       setFakturyLPCerpani(prev => ({
         ...prev,
@@ -7316,6 +7323,11 @@ function OrderForm25() {
       setIsInitialized(false);
       // 🔧 KRITICKÉ: Reset protection flag aby se při F5 správně načetl draft
       onDataLoadedCalledRef.current = null;
+      
+      // 🔥 FIX: Reset LP čerpání cache při změně objednávky
+      setFakturyLPCerpani({});
+      loadedFakturyRef.current.clear();
+      console.debug('[LP] Cache resetována při změně editOrderId:', editOrderId);
     }
     
     // Zapamatuj si current ID
@@ -7885,6 +7897,7 @@ function OrderForm25() {
         draftManager.saveDraft(currentFormData, {
           orderId: currentFormData.id || null,
           attachments: currentAttachments || [],
+          fakturyLPCerpani: fakturyLPCerpani, // 🔥 FIX: Ukládat LP čerpání do draftu
           metadata: {
             isChanged: true, // Označit jako změněné aby se v seznamu zobrazilo
             isEditMode: !!currentFormData.id,
@@ -8648,14 +8661,12 @@ function OrderForm25() {
     try {
       await saveFakturaLPCerpani(fakturaId, validRows, token, username);
       
-      // Aktualizovat lokální state
-      setFakturyLPCerpani(prev => ({
-        ...prev,
-        [fakturaId]: {
-          lpCerpani: lpCerpaniData,
-          loaded: true
-        }
-      }));
+      // 🔥 FIX: Po uložení znovu načíst data z DB pro kontrolu
+      // Tím zajistíme, že zobrazujeme přesně to, co je v databázi
+      loadedFakturyRef.current.delete(fakturaId); // Odstranit z cache
+      await loadFakturaLPCerpani(fakturaId, true); // Force reload z DB
+      
+      console.debug('[LP] Úspěšně uloženo a znovu načteno LP čerpání pro fakturu', fakturaId);
       
       return true;
     } catch (error) {
@@ -8664,7 +8675,7 @@ function OrderForm25() {
       console.error('❌ [LP] Odeslané data byly:', JSON.stringify(validRows, null, 2));
       throw error;
     }
-  }, [token, username]);
+  }, [token, username, loadFakturaLPCerpani]);
 
   // 💰 LP ČERPÁNÍ: Uložit všechny LP čerpání při zavření objednávky
   const saveAllFakturyLPCerpani = useCallback(async () => {
@@ -13292,6 +13303,11 @@ function OrderForm25() {
       setIsFormInitializing(true);
       setIsLoadingCiselniky(true); // 🎯 NOVÉ: Začínáme načítat číselníky
       setInitializationError(null);
+      
+      // 🔥 FIX: Reset LP čerpání cache při inicializaci formuláře
+      setFakturyLPCerpani({});
+      loadedFakturyRef.current.clear();
+      console.debug('[LP] Cache resetována při inicializaci formuláře');
 
       // Start progress bar
       if (startGlobalProgress) startGlobalProgress();
@@ -25155,7 +25171,8 @@ function OrderForm25() {
                                       const lpData = fakturyLPCerpani[fakturaId] || { lpCerpani: [], loaded: false };
                                       
                                       // 🔄 Načíst LP čerpání pokud ještě není načtené
-                                      if (isRealInvoice && !lpData.loaded && !loadedFakturyRef.current.has(fakturaId)) {
+                                      // 🔥 FIX: Používat POUZE lpData.loaded, ne loadedFakturyRef (který se neresetuje)
+                                      if (isRealInvoice && !lpData.loaded) {
                                         loadFakturaLPCerpani(fakturaId);
                                       }
                                       

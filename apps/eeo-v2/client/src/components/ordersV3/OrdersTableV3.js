@@ -2807,6 +2807,26 @@ const OrdersTableV3 = ({
       return;
     }
 
+    // 🔒 VALIDACE ÚSEKU: Kontrola zda může uživatel schvalovat objednávku
+    const isPrikazce = String(orderToApprove.prikazce_id) === String(userId);
+    const isAdmin = userDetail?.roles?.some(role => 
+      role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+    ) || hasPermission?.('ORDER_MANAGE');
+    
+    if (!isPrikazce && !isAdmin) {
+      // Uživatel není přímo příkazce ani admin - zkontroluj úsek
+      const myUsekId = userDetail?.usek_id || userDetail?.usek;
+      const prikazceUsekId = orderToApprove?.prikazce_usek_id || orderToApprove?.prikazce?.usek_id;
+      
+      if (!myUsekId || !prikazceUsekId || String(myUsekId) !== String(prikazceUsekId)) {
+        setApprovalCommentError('❌ Nemáte oprávnění schvalovat tuto objednávku. Příkazce je z jiného úseku.');
+        if (showToast) {
+          showToast('Nemáte oprávnění schvalovat objednávky z jiného úseku', { type: 'error' });
+        }
+        return;
+      }
+    }
+
     // Vymaž validaci pokud je vše OK
     setApprovalCommentError('');
 
