@@ -878,10 +878,13 @@ export default function MajetekOverviewPage() {
         row.dodavatel_nazev,
         row.workflow_last,
         row.strediska_nazvy,
+        row.druh_objednavky_nazev,
         row.umisteni_majetku,
+        row.fa_cislo_vema,
         row.usek_kod,
         row.budova_kod,
-        row.mistnost_kod
+        row.mistnost_kod,
+        row.rok
       ]
         .filter(Boolean)
         .some(value => String(value).toLowerCase().includes(needle));
@@ -988,13 +991,16 @@ export default function MajetekOverviewPage() {
         const row = info.row.original;
         const cislo = info.getValue();
         const smlouva = row.cislo_smlouvy;
-        const displayValue = cislo || smlouva || '-';
         const isInvoice = String(row.id || '').startsWith('F');
 
         if (isInvoice) {
+          // Pro faktury: zobrazit pouze smlouvu nebo prázdné
+          const displayValue = smlouva || '';
           return <span style={{ whiteSpace: 'nowrap' }}>{displayValue}</span>;
         }
 
+        // Pro objednávky: zobrazit číslo nebo smlouvu
+        const displayValue = cislo || smlouva || '-';
         return (
           <ClickableOrderNumber
             onClick={() => handleEditOrder(row)}
@@ -1026,10 +1032,20 @@ export default function MajetekOverviewPage() {
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('druh_objednavky_nazev', {
-      header: 'Druh objednávky',
+      header: 'Druh obj. / FA VS',
       enableSorting: true,
       cell: info => {
+        const row = info.row.original;
         const nazev = info.getValue();
+        const isInvoice = String(row.id || '').startsWith('F');
+        
+        if (isInvoice) {
+          // Pro faktury: zobrazit "Faktura VS:" + číslo faktury
+          const faCislo = row.fa_cislo_vema || '';
+          return <span>Faktura VS: {faCislo}</span>;
+        }
+        
+        // Pro objednávky: zobrazit druh + MAJ badge
         return (
           <span>
             {nazev || '-'}
@@ -1055,7 +1071,7 @@ export default function MajetekOverviewPage() {
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('umisteni_majetku', {
-      header: 'Umístění',
+      header: 'FA umístění',
       enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
