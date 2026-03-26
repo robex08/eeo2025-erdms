@@ -1325,6 +1325,47 @@ function handle_order_v2_update($input, $config, $queries) {
             // Pokud se přidává SCHVALENA stav (dříve nebyl, teď je)
             if (is_array($new_workflow_decoded) && in_array('SCHVALENA', $new_workflow_decoded) &&
                 !in_array('SCHVALENA', $old_workflow_array)) {
+                
+                // 🔒 VALIDACE ÚSEKU: Kontrola zda uživatel může schvalovat tuto objednávku
+                $is_admin = check_permission($current_user_id, 'ORDER_MANAGE') || 
+                           check_user_role($current_user_id, 'ADMINISTRATOR') || 
+                           check_user_role($current_user_id, 'SUPERADMIN');
+                
+                $is_prikazce = isset($existingOrder['prikazce_id']) && 
+                              (int)$existingOrder['prikazce_id'] === (int)$current_user_id;
+                
+                if (!$is_admin && !$is_prikazce) {
+                    // Není admin ani přímo příkazce - zkontroluj úsek
+                    $sql_check_usek = "SELECT 
+                        u1.usek_id as current_user_usek,
+                        u2.usek_id as prikazce_usek
+                    FROM 25_uzivatele u1
+                    LEFT JOIN 25_uzivatele u2 ON u2.id = :prikazce_id
+                    WHERE u1.id = :current_user_id";
+                    
+                    $stmt_usek = $db->prepare($sql_check_usek);
+                    $stmt_usek->execute([
+                        ':current_user_id' => $current_user_id,
+                        ':prikazce_id' => $existingOrder['prikazce_id']
+                    ]);
+                    $usek_check = $stmt_usek->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$usek_check || 
+                        !$usek_check['current_user_usek'] || 
+                        !$usek_check['prikazce_usek'] ||
+                        $usek_check['current_user_usek'] != $usek_check['prikazce_usek']) {
+                        
+                        $db->rollBack();
+                        error_log("Order V2 UPDATE: PERMISSION DENIED - User $current_user_id cannot approve order $order_id (different usek). Current: {$usek_check['current_user_usek']}, Prikazce: {$usek_check['prikazce_usek']}");
+                        http_response_code(403);
+                        echo json_encode(array(
+                            'status' => 'error',
+                            'message' => 'Nemáte oprávnění schvalovat objednávky z jiného úseku. Pouze příkazce ze stejného úseku může schválit tuto objednávku.'
+                        ));
+                        return;
+                    }
+                }
+                
                 $dbData['dt_schvaleni'] = TimezoneHelper::getCzechDateTime();
                 $dbData['schvalovatel_id'] = $current_user_id; // Nastavit schvalovatele
                 error_log("Order V2 UPDATE: Auto-setting dt_schvaleni=" . $dbData['dt_schvaleni'] . " and schvalovatel_id=$current_user_id for order $order_id");

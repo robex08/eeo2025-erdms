@@ -2070,7 +2070,7 @@ function Orders25ListV3() {
            hasPermission('KONTROLOR_OBJEDNAVEK');
   }, [hasPermission]);
 
-  // canApprove - příkazce nebo admin + workflow stav
+  // canApprove - příkazce nebo admin + workflow stav + KONTROLA ÚSEKU
   const canApprove = useCallback((order) => {
     if (!order) return false;
     
@@ -2103,6 +2103,40 @@ function Orders25ListV3() {
     // 🎯 ADMINI mohou vždy schvalovat (pokud je správný stav)
     if (isAdminRole) {
       return isAllowedState;
+    }
+    
+    // 🔒 KONTROLA ÚSEKU: Příkazce může schvalovat pouze objednávky ze svého úseku
+    if (!isPrikazce && (isBudgetManagerRole || userDetail?.roles?.some(r => r.kod_role === 'PRIKAZCE'))) {
+      // Uživatel je příkazce, ale NE této konkrétní objednávky
+      // Zkontroluj zda je ze stejného úseku jako příkazce objednávky
+      try {
+        const myUsekId = userDetail?.usek_id || userDetail?.usek;
+        const prikazceUsekId = order?.prikazce_usek_id || order?.prikazce?.usek_id;
+        
+        // Pokud máme usek_id obou, porovnej je
+        if (myUsekId && prikazceUsekId && String(myUsekId) === String(prikazceUsekId)) {
+          return isAllowedState; // Stejný úsek → může schválit
+        }
+        
+        // Fallback: zkrátka zkontroluj usek_zkr pokud není usek_id
+        const myUsekZkr = userDetail?.usek_zkr || [];
+        const prikazceUsekZkr = order?.prikazce_usek_zkr || [];
+        const myUsekyArray = Array.isArray(myUsekZkr) ? myUsekZkr : (typeof myUsekZkr === 'string' ? [myUsekZkr] : []);
+        const prikazceUsekyArray = Array.isArray(prikazceUsekZkr) ? prikazceUsekZkr : (typeof prikazceUsekZkr === 'string' ? [prikazceUsekZkr] : []);
+        
+        if (myUsekyArray.length > 0 && prikazceUsekyArray.length > 0) {
+          const hasSameUsek = myUsekyArray.some(zkr => prikazceUsekyArray.includes(zkr));
+          if (hasSameUsek) {
+            return isAllowedState; // Stejný úsek → může schválit
+          }
+        }
+        
+        // Jiný úsek → NEMŮŽE schválit
+        return false;
+      } catch (e) {
+        console.error('[canApprove] Chyba při kontrole úseku:', e);
+        return false; // Při chybě raději NEPOVOLIT
+      }
     }
     
     // 🎯 Správce rozpočtu a příkazci mohou schvalovat pouze SVOJE objednávky
