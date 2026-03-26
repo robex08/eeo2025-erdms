@@ -1051,6 +1051,20 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('workflow_last', {
       header: 'Stav',
       enableSorting: true,
+      cell: info => {
+        const row = info.row.original;
+        const stav = info.getValue();
+        const isInvoice = String(row.id || '').startsWith('F');
+        
+        // Pro samostatné faktury zobrazit jen "-"
+        if (isInvoice) {
+          return '-';
+        }
+        
+        // Pro objednávky: stav + " / Faktura" pokud má fakturu
+        const hasFaktura = Number(row.pocet_faktur || 0) > 0;
+        return hasFaktura ? `${stav} / Faktura` : stav;
+      },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
