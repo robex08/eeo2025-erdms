@@ -982,14 +982,14 @@ export default function MajetekOverviewPage() {
   }, [token, username, navigate, showToast]);
 
   const columns = useMemo(() => [
-    columnHelper.accessor('budova_kod', {
-      header: 'Budova',
+    columnHelper.accessor('usek_kod', {
+      header: 'Úsek',
       enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
-    columnHelper.accessor('usek_kod', {
-      header: 'Úsek',
+    columnHelper.accessor('budova_kod', {
+      header: 'Budova',
       enableSorting: true,
       aggregationFn: () => null,
       aggregatedCell: () => ''
