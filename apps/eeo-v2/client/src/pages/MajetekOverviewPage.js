@@ -250,6 +250,34 @@ const FilterLabel = styled.div`
   margin-right: 0.35rem;
 `;
 
+const CheckboxGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const CheckboxLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #334155;
+  user-select: none;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: #1e293b;
+  }
+
+  input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: #3b82f6;
+  }
+`;
+
 const SummaryRow = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -613,7 +641,7 @@ export default function MajetekOverviewPage() {
     total_pages: 0
   }));
   const [period, setPeriod] = useState(() => getUserStorage('majetek_period', 'last-month'));
-  const [selectedStatuses, setSelectedStatuses] = useState(() => getUserStorage('majetek_statuses', []));
+  const [invoiceFilter, setInvoiceFilter] = useState(() => getUserStorage('majetek_invoice_filter', { withInvoice: true, withoutInvoice: true }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [groupFields, setGroupFields] = useState(() => getUserStorage('majetek_group_fields', []));
@@ -623,32 +651,13 @@ export default function MajetekOverviewPage() {
   const [searchStates, setSearchStates] = useState({});
   const [sorting, setSorting] = useState([]);
 
-  const handleStatusFilterChange = useCallback((value) => {
-    if (Array.isArray(value)) {
-      setSelectedStatuses(value);
-      return;
-    }
-    if (Array.isArray(value?.target?.value)) {
-      setSelectedStatuses(value.target.value);
-      return;
-    }
-    setSelectedStatuses([]);
+  const handleInvoiceFilterChange = useCallback((field, checked) => {
+    setInvoiceFilter(prev => ({ ...prev, [field]: checked }));
   }, []);
 
   const handleItemsPerPageChange = (value) => {
     setPagination(prev => ({ ...prev, per_page: Number(value) }));
   };
-
-  const statusOptions = [
-    { id: 'ROZPRACOVANA', label: 'Rozpracovaná' },
-    { id: 'ODESLANA', label: 'Odeslaná' },
-    { id: 'POTVRZENA', label: 'Potvrzená' },
-    { id: 'K_UVEREJNENI_DO_REGISTRU', label: 'K uveřejnění' },
-    { id: 'FAKTURACE', label: 'Fakturace' },
-    { id: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
-    { id: 'ZKONTROLOVANA', label: 'Zkontrolovaná' },
-    { id: 'DOKONCENA', label: 'Dokončená' }
-  ];
 
   const periodOptions = [
     { value: 'last-month', label: 'Poslední měsíc' },
@@ -681,7 +690,7 @@ export default function MajetekOverviewPage() {
         page,
         per_page: pagination.per_page,
         period,
-        filters: selectedStatuses.length ? { stav: selectedStatuses } : {}
+        filters: {}
       });
 
       if (!isMountedRef.current) return;
@@ -700,7 +709,7 @@ export default function MajetekOverviewPage() {
             page: 1,
             per_page: totalCount,
             period,
-            filters: selectedStatuses.length ? { stav: selectedStatuses } : {}
+            filters: {}
           });
           if (!isMountedRef.current) return;
           setAllOrders(allResponse?.data?.orders || pageOrders);
@@ -718,7 +727,7 @@ export default function MajetekOverviewPage() {
       if (!isMountedRef.current) return;
       setLoading(false);
     }
-  }, [token, username, period, selectedStatuses, pagination.per_page]);
+  }, [token, username, period, pagination.per_page]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -730,7 +739,7 @@ export default function MajetekOverviewPage() {
   useEffect(() => {
     if (!token || !username) return;
     fetchData(1);
-  }, [period, selectedStatuses, fetchData, token, username]);
+  }, [period, fetchData, token, username]);
 
   useEffect(() => {
     if (!token || !username) return;
@@ -742,8 +751,8 @@ export default function MajetekOverviewPage() {
   }, [period, setUserStorage]);
 
   useEffect(() => {
-    setUserStorage('majetek_statuses', selectedStatuses);
-  }, [selectedStatuses, setUserStorage]);
+    setUserStorage('majetek_invoice_filter', invoiceFilter);
+  }, [invoiceFilter, setUserStorage]);
 
   useEffect(() => {
     setUserStorage('majetek_global_search', globalSearch);
@@ -868,9 +877,23 @@ export default function MajetekOverviewPage() {
       };
     });
 
-    if (!globalSearch) return normalized;
+    // Filtr podle přítomnosti faktur
+    let filtered = normalized;
+    const { withInvoice, withoutInvoice } = invoiceFilter;
+    
+    if (!withInvoice || !withoutInvoice) {
+      filtered = normalized.filter(row => {
+        const hasFaktura = Number(row.pocet_faktur || 0) > 0;
+        if (withInvoice && !withoutInvoice) return hasFaktura;
+        if (!withInvoice && withoutInvoice) return !hasFaktura;
+        return true;
+      });
+    }
+
+    // Globální vyhledávání
+    if (!globalSearch) return filtered;
     const needle = globalSearch.toLowerCase();
-    return normalized.filter(row => {
+    return filtered.filter(row => {
       return [
         row.cislo_objednavky,
         row.cislo_smlouvy,
@@ -889,7 +912,7 @@ export default function MajetekOverviewPage() {
         .filter(Boolean)
         .some(value => String(value).toLowerCase().includes(needle));
     });
-  }, [aggregationSource, globalSearch]);
+  }, [aggregationSource, globalSearch, invoiceFilter]);
 
   const aggregationData = tableData;
 
@@ -1527,23 +1550,25 @@ export default function MajetekOverviewPage() {
                     </SearchField>
                   </FilterItem>
                   <FilterItem>
-                    <FilterLabel>Stavy</FilterLabel>
-                    <CustomSelect
-                      field="majetek_stavy"
-                      value={selectedStatuses}
-                      onChange={handleStatusFilterChange}
-                      options={statusOptions}
-                      placeholder="Vyber stavy"
-                      multiple
-                      isClearable
-                      enableSearch
-                      selectStates={selectStates}
-                      setSelectStates={setSelectStates}
-                      searchStates={searchStates}
-                      setSearchStates={setSearchStates}
-                      toggleSelect={toggleSelect}
-                      getOptionLabel={(option) => option?.label || option?.id || ''}
-                    />
+                    <FilterLabel>Přítomnost faktury</FilterLabel>
+                    <CheckboxGroup>
+                      <CheckboxLabel>
+                        <input
+                          type="checkbox"
+                          checked={invoiceFilter.withInvoice}
+                          onChange={(e) => handleInvoiceFilterChange('withInvoice', e.target.checked)}
+                        />
+                        S fakturou
+                      </CheckboxLabel>
+                      <CheckboxLabel>
+                        <input
+                          type="checkbox"
+                          checked={invoiceFilter.withoutInvoice}
+                          onChange={(e) => handleInvoiceFilterChange('withoutInvoice', e.target.checked)}
+                        />
+                        Bez faktury
+                      </CheckboxLabel>
+                    </CheckboxGroup>
                   </FilterItem>
                 </FilterGrid>
               </FilterPanel>
