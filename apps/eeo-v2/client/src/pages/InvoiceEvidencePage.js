@@ -1839,7 +1839,6 @@ export default function InvoiceEvidencePage() {
         return { ...defaultStates, ...parsed };
       }
     } catch (e) {
-      console.warn('⚠️ Chyba při načítání stavu sekcí z localStorage:', e);
     }
 
     return defaultStates;
@@ -1963,14 +1962,6 @@ export default function InvoiceEvidencePage() {
     setSpisovkaRefreshCounter(prev => prev + 1);
   }, []);
 
-  // �🚨🚨 DEBUG - SUPER VIDITELNÝ TEST PŘI MOUNT KOMPONENTY 🚨🚨🚨
-  useEffect(() => {
-    console.log('═══════════════════════════════════════════════════════════════════');
-    console.log('🚨 INVOICE EVIDENCE PAGE - KOMPONENTA NAČTENA! 🚨');
-    console.log('🔵 URL params:', { orderId });
-    console.log('🔵 User:', { username, user_id });
-    console.log('═══════════════════════════════════════════════════════════════════');
-  }, []); // Spustí se JEDNOU při mount
 
   // �🔄 Resize handler - kontrola pozice panelu při změně velikosti okna
   useEffect(() => {
@@ -2349,7 +2340,6 @@ export default function InvoiceEvidencePage() {
           }
         }
       } catch (err) {
-        console.warn('⚠️ Chyba při načítání draftu:', err);
       }
       
       setLsLoaded(true);
@@ -2467,7 +2457,6 @@ export default function InvoiceEvidencePage() {
           setDuplicateWarning(null);
         }
       } catch (err) {
-        console.warn('⚠️ Chyba při kontrole duplicity čísla faktury:', err);
         // Při chybě nevypisovat varování, pouze logovat
       }
     }, 800); // 800ms debounce
@@ -2579,14 +2568,6 @@ export default function InvoiceEvidencePage() {
         const invoiceData = await getInvoiceById25({ token, username, id: editIdToLoad });
         
         // 🔍 DEBUG - Výpis načtené faktury
-        console.log('═══════════════════════════════════════════════════════════════════');
-        console.log('📄 NAČTENA FAKTURA Z DB - ID:', editIdToLoad);
-        console.log('🔵 Cislo faktury:', invoiceData.fa_cislo_vema);
-        console.log('🔵 Objednávka ID:', invoiceData.objednavka_id);
-        console.log('🔵 Částka:', invoiceData.fa_castka, 'Kč');
-        console.log('🔵 Věcná správnost potvrzena:', invoiceData.vecna_spravnost_potvrzeno);
-        console.log('🔵 Celá faktura:', invoiceData);
-        console.log('═══════════════════════════════════════════════════════════════════');
         
         // Naplnit formulář daty faktury
         if (invoiceData) {
@@ -2698,17 +2679,6 @@ export default function InvoiceEvidencePage() {
               const lpResponse = await getFakturaLPCerpani(editIdToLoad, token, username);
               
               // 🔍 DEBUG - LP čerpání z DB
-              console.log('───────────────────────────────────────────────────────────────────');
-              console.log('💰 NAČÍTÁNÍ LP ČERPÁNÍ Z DB');
-              console.log('🔵 Faktura ID:', editIdToLoad);
-              console.log('🔵 Response:', lpResponse);
-              if (lpResponse && lpResponse.status === 'ok' && lpResponse.data) {
-                console.log('🔵 LP čerpání entries:', lpResponse.data.lp_cerpani?.length || 0);
-                console.log('🔵 LP čerpání data:', lpResponse.data.lp_cerpani);
-                console.log('🔵 Suma LP:', lpResponse.data.suma);
-              }
-              console.log('───────────────────────────────────────────────────────────────────');
-              
               // ✅ Backend vrací: { status: "ok", data: { lp_cerpani: [...], suma, fa_castka } }
               if (lpResponse && lpResponse.status === 'ok' && lpResponse.data && lpResponse.data.lp_cerpani) {
                 setLpCerpani(lpResponse.data.lp_cerpani);
@@ -2802,7 +2772,6 @@ export default function InvoiceEvidencePage() {
       } else {
         setError('Nepodařilo se načíst data objednávky');
         // Odemkni pokud se načtení nezdařilo
-        await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
       }
     } catch (err) {
       console.error('❌ Chyba při načítání objednávky:', err);
@@ -2832,7 +2801,6 @@ export default function InvoiceEvidencePage() {
       showToast && showToast(err.message || 'Chyba při načítání objednávky', 'error');
       // ⚠️ Odemkni POUZE pokud to NENÍ 423 (lock error)
       if (!is423Error) {
-        await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
       }
     } finally {
       setOrderLoading(false);
@@ -2912,9 +2880,7 @@ export default function InvoiceEvidencePage() {
           if (user_id) {
             try {
               draftManager.setCurrentUser(user_id);
-              draftManager.deleteDraft().catch(e => console.warn('⚠️ Chyba při mazání invoice draftu:', e));
             } catch (e) {
-              console.warn('⚠️ Chyba při mazání invoice draftu:', e);
             }
           }
           
@@ -2939,7 +2905,6 @@ export default function InvoiceEvidencePage() {
       // Cleanup při unmount - odemkni objednávku pokud byla zamčená
       if (formData.order_id && token && username) {
         unlockOrderV2({ orderId: formData.order_id, token, username })
-          .catch(err => console.warn('⚠️ Nepodařilo se odemknout objednávku:', err));
       }
     };
   }, [formData.order_id, token, username, user_id]); // Aktuální hodnoty pro unlock a cleanup
@@ -3017,7 +2982,6 @@ export default function InvoiceEvidencePage() {
             smlouva_id: null
           }));
         } catch (err) {
-          console.warn('⚠️ Chyba při kontrole LOCK:', err);
           // I při chybě zkusit načíst
           loadOrderData(orderIdForLoad);
           setSelectedType('order');
@@ -3322,7 +3286,6 @@ export default function InvoiceEvidencePage() {
         return;
       }
     } catch (err) {
-      console.warn('⚠️ Nepodařilo se zkontrolovat lock status:', err);
     } finally {
       setOrderLoading(false);
     }
@@ -3359,7 +3322,6 @@ export default function InvoiceEvidencePage() {
         return;
       }
     } catch (err) {
-      console.warn('⚠️ Nepodařilo se zkontrolovat lock status:', err);
     } finally {
       setOrderLoading(false);
     }
@@ -3458,7 +3420,6 @@ export default function InvoiceEvidencePage() {
   // � Handler: Odpojit fakturu od objednávky
   const handleUnlinkInvoice = useCallback((faktura) => {
     // DEBUG: handleUnlinkInvoice
-    // console.log('🔍 UNLINK DEBUG - handleUnlinkInvoice volán pro fakturu:', faktura);
     setConfirmDialog({
       isOpen: true,
       title: '⚠️ Odpojit fakturu od objednávky?',
@@ -3471,14 +3432,12 @@ export default function InvoiceEvidencePage() {
         `⚠️ Tuto akci NELZE vzít zpět!`,
       onConfirm: async () => {
         // DEBUG: onConfirm callback
-        // console.log('🔍 UNLINK DEBUG - onConfirm callback spuštěn pro fakturu ID:', faktura.id);
         try {
           // Zavřít dialog
           setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
           
           // Zavolat API pro odpojení faktury
           // DEBUG: Odesílám updateData
-          // console.log('🔍 UNLINK DEBUG - Odesílám updateData:', {
           //   objednavka_id: null,
           //   vecna_spravnost_potvrzeno: 0,
           //   potvrdil_vecnou_spravnost_id: null,
@@ -3624,7 +3583,6 @@ export default function InvoiceEvidencePage() {
   const handleAttachmentRemoved = useCallback((removedAttachment) => {
     // ⚠️ Guard: Zkontrolovat, že removedAttachment existuje
     if (!removedAttachment) {
-      console.warn('⚠️ handleAttachmentRemoved: removedAttachment je undefined');
       return;
     }
 
@@ -3702,7 +3660,6 @@ export default function InvoiceEvidencePage() {
               // 🔄 REFRESH Spisovka panelu po force tracking
               handleSpisovkaRefresh();
             } else {
-              console.warn('⚠️ Force tracking se nezdařil:', result);
             }
           } catch (err) {
             console.error('❌ Force tracking error:', err);
@@ -3759,7 +3716,6 @@ export default function InvoiceEvidencePage() {
           handleSpisovkaRefresh();
         } else if (result.conflict) {
           // 🚨 CONFLICT - zobrazit dialog uživateli
-          console.warn('⚠️ Conflict detekován:', result);
           await handleSpisovkaConflict(metadata, fakturaId, result.existingRecord);
           // Vyčistit metadata i po confliktu (dialog už byl zobrazen)
           pendingSpisovkaMetadataRef.current = null;
@@ -3988,9 +3944,7 @@ export default function InvoiceEvidencePage() {
       );
 
       if (result.errors && result.errors.length > 0) {
-        console.warn('⚠️ Některé notifikace se nepodařilo odeslat:', result.errors);
       } else {
-        console.log('✅ Notifikace odeslána úspěšně');
       }
 
     } catch (error) {
@@ -4103,52 +4057,6 @@ export default function InvoiceEvidencePage() {
       return;
     }
 
-    // 🔍🔍🔍 DEBUG LOGGING - KOMPLETNÍ PŘEHLED FAKTURY 🔍🔍🔍
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('🔵 ZAČÁTEK UKLÁDÁNÍ VĚCNÉ SPRÁVNOSTI FAKTURY');
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('📄 FAKTURA DATA:');
-    console.log('  - ID faktury:', editingInvoiceId);
-    console.log('  - Číslo faktury:', formData.fa_cislo_vema || '(není)');
-    console.log('  - Částka faktury:', formData.fa_castka, 'Kč');
-    console.log('  - Objednávka ID:', formData.order_id || orderData?.id || '(není)');
-    console.log('  - Název faktury/poznámka:', formData.fa_poznamka || '(není)');
-    console.log('');
-    console.log('✅ VĚCNÁ SPRÁVNOST - AKTUÁLNÍ STAV:');
-    console.log('  - vecna_spravnost_potvrzeno:', formData.vecna_spravnost_potvrzeno);
-    console.log('  - potvrdil_vecnou_spravnost_id:', formData.potvrdil_vecnou_spravnost_id);
-    console.log('  - dt_potvrzeni_vecne_spravnosti:', formData.dt_potvrzeni_vecne_spravnosti);
-    console.log('  - Umístění majetku:', formData.vecna_spravnost_umisteni_majetku || '(není)');
-    console.log('  - Poznámka:', formData.vecna_spravnost_poznamka || '(není)');
-    console.log('');
-    console.log('👤 UŽIVATEL KDO POTVRZUJE:');
-    console.log('  - user_id:', user_id);
-    console.log('  - username:', username);
-    console.log('  - jméno:', userDetail?.jmeno || '(není)');
-    console.log('');
-    console.log('📦 OBJEDNÁVKA DATA:');
-    console.log('  - orderData existuje:', !!orderData);
-    if (orderData) {
-      console.log('  - Číslo objednávky:', orderData.cislo_objednavky);
-      console.log('  - Max cena s DPH:', orderData.max_cena_s_dph);
-      console.log('  - Financování (raw):', orderData.financovani);
-      try {
-        const fin = typeof orderData.financovani === 'string' 
-          ? JSON.parse(orderData.financovani) 
-          : orderData.financovani;
-        console.log('  - Financování (parsed):', fin);
-        console.log('  - Typ financování:', fin?.typ);
-        console.log('  - LP kódy:', fin?.lp_kody);
-      } catch (e) {
-        console.log('  - Chyba při parsování financování:', e);
-      }
-    }
-    console.log('');
-    console.log('💰 LP ČERPÁNÍ DATA:');
-    console.log('  - lpCerpani (state):', lpCerpani);
-    console.log('  - lpCerpaniRef.current:', lpCerpaniRef.current);
-    console.log('  - Použije se:', lpCerpaniRef.current || lpCerpani);
-    console.log('═══════════════════════════════════════════════════════════════');
 
     setLoading(true);
     setError(null);
@@ -4282,40 +4190,11 @@ export default function InvoiceEvidencePage() {
 
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP po úspěšné aktualizaci věcné správnosti
         // 🔥 KONTROLA: Ukládat LP čerpání JEN pokud je objednávka financována z LP
-        console.log('🔍 [LP DEBUG] orderData:', orderData);
-        console.log('🔍 [LP DEBUG] orderData.financovani (raw):', orderData?.financovani);
-        
-        // 🔥 FIX: Parsovat financovani pokud je string
-        let financovaniObj = null;
-        try {
-          if (orderData?.financovani) {
-            financovaniObj = typeof orderData.financovani === 'string' 
-              ? JSON.parse(orderData.financovani) 
-              : orderData.financovani;
-          }
-        } catch (e) {
-          console.error('❌ [LP DEBUG] Chyba při parsování financovani:', e);
-        }
-        
-        console.log('🔍 [LP DEBUG] financovaniObj:', financovaniObj);
-        console.log('🔍 [LP DEBUG] financovaniObj.typ:', financovaniObj?.typ);
-        
-        const isLPFinancing = financovaniObj?.typ === 'LP' || 
-                             (orderData?.zpusob_financovani && String(orderData.zpusob_financovani).toLowerCase().includes('lp'));
-        
-        console.log('🔍 [LP DEBUG] isLPFinancing:', isLPFinancing);
         
         if (isLPFinancing) {
           let validLpCerpani = [];
           try {
             // 🔥 FIX: Získat LP čerpání - VŽDY používat lpCerpaniRef.current (aktuální hodnota z UI)
-            // lpCerpani může být zastaralá hodnota z closure, lpCerpaniRef.current je vždy aktuální
-            let lpCerpaniToSave = lpCerpaniRef.current || lpCerpani || [];
-            
-            console.debug('[LP Save] lpCerpaniRef.current:', lpCerpaniRef.current);
-            console.debug('[LP Save] lpCerpani state:', lpCerpani);
-            console.debug('[LP Save] Použijeme:', lpCerpaniToSave);
-            
             // 🔥 AUTO-FILL FALLBACK: Pokud je lpCerpani prázdné ale máme jen 1 LP kód
             if (lpCerpaniToSave.length === 0) {
               const fin = typeof orderData.financovani === 'string' 
@@ -4335,69 +4214,8 @@ export default function InvoiceEvidencePage() {
                 // Vytvořit auto-fill záznam (i pro 0 Kč u zálohových faktur)
                 lpCerpaniToSave = [{
                   lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
-                  lp_id: filteredLPCodes[0].id,
-                  castka: faCastka,
-                  poznamka: ''
-                }];
-                console.debug('[LP auto-fill] Vytvořen záznam pro uložení:', lpCerpaniToSave);
-              }
-            }
-            
-            // Filtrovat a mapovat data
-            console.log('🔍 [LP Validace] lpCerpaniToSave PŘED filtrací:', JSON.stringify(lpCerpaniToSave, null, 2));
-            
-            validLpCerpani = lpCerpaniToSave.filter(row => {
-              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
-              const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
-              // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
-              const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
-              
-              console.log(`🔍 [LP Validace Row] lp_id=${row.lp_id}, lp_cislo=${row.lp_cislo}, castka=${row.castka}`);
-              console.log(`   hasLpId=${hasLpId}, hasLpCislo=${hasLpCislo}, hasCastka=${hasCastka}, VALID=${hasLpId && hasLpCislo && hasCastka}`);
-              
-              return hasLpId && hasLpCislo && hasCastka;
-            }).map(row => ({
-              // ✅ FIX: Backend validuje lp_cislo proti financovani.lp_kody = [140, 142] (číselné ID!)
-              // Frontend má textový kód "LPIT1", ale backend chce číselné ID
-              lp_cislo: parseInt(row.lp_id, 10), // ✅ Pošli číselné ID (např. 140)
-              lp_id: parseInt(row.lp_id, 10),
-              castka: parseFloat(row.castka),
-              poznamka: row.poznamka || ''
-            }));
-            
-            console.log('🔍 [LP Validace] validLpCerpani PO filtraci:', JSON.stringify(validLpCerpani, null, 2));
-            console.log('🔍 [LP Validace] Počet validních záznamů:', validLpCerpani.length);
-            
-            if (validLpCerpani.length > 0) {
-              console.log('═══════════════════════════════════════════════════════════════');
-              console.log('💾 VOLÁM saveFakturaLPCerpani()');
-              console.log('  - faktura_id:', editingInvoiceId);
-              console.log('  - validLpCerpani:', validLpCerpani);
-              console.log('  - token:', token ? '✅ existuje' : '❌ chybí');
-              console.log('  - username:', username || '❌ chybí');
-              console.log('───────────────────────────────────────────────────────────────');
-              console.log('📡 PAYLOAD POSÍLÁN NA BE API:');
-              console.log('  endpoint: /faktury/lp-cerpani/save');
-              console.log('  method: POST');
-              console.log('  body:', {
-                faktura_id: editingInvoiceId,
-                lp_cerpani: validLpCerpani,
-                token,
-                username
-              });
-              console.log('═══════════════════════════════════════════════════════════════');
-              
-              await saveFakturaLPCerpani(editingInvoiceId, validLpCerpani, token, username);
-              
-              console.log('═══════════════════════════════════════════════════════════════');
-              console.log('✅ saveFakturaLPCerpani() ÚSPĚŠNĚ DOKONČENO!');
-              console.log('═══════════════════════════════════════════════════════════════');
-            } else {
-              console.warn('═══════════════════════════════════════════════════════════════');
-              console.warn('⚠️ ŽÁDNÉ VALIDNÍ LP ZÁZNAMY K ULOŽENÍ!');
               console.warn('  - lpCerpaniToSave:', lpCerpaniToSave);
               console.warn('  - Důvod: Neprošly validací (hasLpId && hasLpCislo && hasCastka)');
-              console.warn('═══════════════════════════════════════════════════════════════');
             }
           } catch (lpError) {
             console.error('═══════════════════════════════════════════════════════════════');
@@ -4831,10 +4649,6 @@ export default function InvoiceEvidencePage() {
         // 🔥 FIX: Použít lpCerpaniRef.current místo lpCerpani (aktuální hodnota z UI)
         const currentLpCerpani = lpCerpaniRef.current || lpCerpani || [];
         
-        console.debug('[LP Save CREATE] newInvoiceId:', newInvoiceId);
-        console.debug('[LP Save CREATE] lpCerpaniRef.current:', lpCerpaniRef.current);
-        console.debug('[LP Save CREATE] lpCerpani state:', lpCerpani);
-        console.debug('[LP Save CREATE] Použijeme:', currentLpCerpani);
         
         if (newInvoiceId && currentLpCerpani && currentLpCerpani.length > 0) {
           try {
@@ -5205,7 +5019,6 @@ export default function InvoiceEvidencePage() {
           }
         } catch (spisovkaErr) {
           // Neblokujeme úspěch faktury - jen logujeme
-          console.warn('⚠️ Nepodařilo se označit Spisovka dokument jako zpracovaný:', spisovkaErr);
         }
       }
 

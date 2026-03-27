@@ -7542,16 +7542,12 @@ function OrderForm25() {
           // ✅ V2 API: Načti objednávku s enriched daty
           let dbOrder;
           try {
-            console.log('🔥🔥🔥 VOLÁM getOrderV2 s ID:', editOrderId);
             dbOrder = await getOrderV2(editOrderId, token, username, true);
-            console.log('🔥🔥🔥 ODPOVĚĎ Z getOrderV2:', dbOrder);
             if (dbOrder && dbOrder.polozky) {
-              console.log('🔥🔥🔥 POLOŽKY Z API - RAW DATA:', dbOrder.polozky);
               dbOrder.polozky.forEach((item, idx) => {
                 console.log(`🔥🔥🔥 POLOŽKA ${idx + 1}:`, item);
               });
             } else {
-              console.log('⚠️⚠️⚠️ ŽÁDNÉ POLOŽKY V ODPOVĚDI Z API!');
             }
           } catch (error) {
             console.error('❌❌❌ CHYBA PŘI VOLÁNÍ getOrderV2:', error);
@@ -8754,7 +8750,6 @@ function OrderForm25() {
           castka: parseFloat(faCastkaRaw) || 0,
           poznamka: ''
         }];
-        console.debug('[LP auto-fill] Vytvořen záznam pro uložení:', lpDataToSave);
       }
     }
 
@@ -8856,7 +8851,6 @@ function OrderForm25() {
             castka: fakturaCastka,
             poznamka: ''
           }];
-          console.debug('[LP auto-fill saveAll] Vytvořen záznam pro fakturu:', fakturaId, lpRows);
         } else {
           // Fallback pro 0 Kč faktury s více LP
           const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
@@ -10749,7 +10743,6 @@ function OrderForm25() {
       let workflowStates = [...existingStates]; // Zachovat existující stavy z DB
 
       // 🔍 DEBUG: Výpis workflow stavu na začátku
-      console.log('🔍 WORKFLOW DEBUG - ZAČÁTEK ULOŽENÍ:', {
         původní_workflow: formData.stav_workflow_kod,
         workflowStates: [...workflowStates],
         ma_byt_zverejnena: formData.ma_byt_zverejnena,
@@ -10860,7 +10853,6 @@ function OrderForm25() {
         const hasIddt = formData.registr_iddt;
         
         // DEBUG: Zveřejnění check
-        // console.log('🔍 ZVEŘEJNĚNÍ CHECK:', {
         //   maBytZverejnena, dt_zverejneni: hasDatum, registr_iddt: hasIddt, workflow: workflowStates
         // });
         
@@ -10872,7 +10864,6 @@ function OrderForm25() {
         if (maBytZverejnena && hasDatum && hasIddt && workflowStates.includes('UVEREJNIT')) {
           workflowStates = workflowManager.handlePublishing(workflowStates, hasDatum, hasIddt);
           addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handlePublishing() - UVEREJNIT → UVEREJNENA + FAKTURACE');
-          console.log('✅ ZVEŘEJNĚNÍ DOKONČENO přes WorkflowManager:', workflowStates);
         }
         // Cleanup pokud byla data smazána
         else if (maBytZverejnena && (!hasDatum || !hasIddt) && workflowStates.includes('UVEREJNENA')) {
@@ -10898,7 +10889,6 @@ function OrderForm25() {
         formData.faktury.some(f => f.id || f.fa_cislo || f.fa_castka);
       
       // DEBUG: Fakturace check
-      // console.log('🔍 FAKTURACE CHECK:', { faktury_count, má_reálné_faktury: hasRealInvoices });
       
       // Nepřidávat faktury pokud jsme ve fázi UVEREJNIT bez dat
       const jeVeFaziUverejnit = workflowStates.includes('UVEREJNIT') && 
@@ -10940,7 +10930,6 @@ function OrderForm25() {
       workflowStates = [...new Set(workflowStates)];
 
       // � DEBUG: Výpis workflow stavu před seřazením
-      console.log('🔍 WORKFLOW DEBUG - PŘED SEŘAZENÍM:', {
         workflowStates: [...workflowStates],
         isPokladna: isPokladna,
         financovani_platba: formData.financovani?.platba,
@@ -10970,7 +10959,6 @@ function OrderForm25() {
       });
 
       // 🔍 DEBUG: Finální workflow před uložením
-      console.log('🔍 WORKFLOW DEBUG - FINÁLNÍ PŘED ULOŽENÍM:', {
         workflowStates: [...workflowStates],
         poslední_stav: workflowStates[workflowStates.length - 1],
         jako_string: JSON.stringify(workflowStates)
