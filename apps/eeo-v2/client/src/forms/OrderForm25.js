@@ -2870,13 +2870,15 @@ const IcoNotification = styled.div`
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  right: 0;
+  width: 420px;
   background: white;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
   z-index: 100;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Condensed", "Segoe UI", "Roboto Condensed", "Roboto", sans-serif;
 
   &[data-status="checking"] {
     border-color: #3b82f6;
@@ -2891,66 +2893,208 @@ const IcoNotification = styled.div`
   }
 `;
 
-const IcoNotificationTitle = styled.h4`
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: ${props =>
-    props.status === 'checking' ? '#3b82f6' :
-    props.status === 'found' ? '#10b981' :
-    props.status === 'not-found' ? '#ef4444' : '#111827'
+const IcoNotificationHeader = styled.div`
+  padding: 0.75rem 1rem;
+  padding-right: 2.5rem;
+  position: relative;
+  background: ${props =>
+    props.status === 'checking' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' :
+    props.status === 'found' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
+    props.status === 'not-found' ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : '#f8fafc'
   };
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+`;
+
+const IcoNotificationClose = styled.button`
+  position: absolute;
+  top: 50%;
+  right: 0.625rem;
+  transform: translateY(-50%);
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  line-height: 1;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%) scale(1.1);
+  }
+  
+  &:active {
+    transform: translateY(-50%) scale(0.95);
+  }
+`;
+
+const IcoNotificationTitle = styled.h4`
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: ${props =>
+    props.status === 'checking' || props.status === 'found' || props.status === 'not-found' 
+      ? 'white' 
+      : '#111827'
+  };
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-shadow: ${props =>
+    props.status === 'checking' || props.status === 'found' || props.status === 'not-found'
+      ? '0 1px 2px rgba(0, 0, 0, 0.2)'
+      : 'none'
+  };
+
+  &:before {
+    content: ${props =>
+      props.status === 'checking' ? '"⏳"' :
+      props.status === 'found' ? '"✅"' :
+      props.status === 'not-found' ? '"⚠️"' : '""'
+    };
+    font-size: 1rem;
+  }
+`;
+
+const IcoNotificationBody = styled.div`
+  padding: 0.875rem 1rem;
 `;
 
 const IcoNotificationMessage = styled.div`
-  font-size: 13px;
-  color: #6b7280;
-  margin-bottom: 12px;
+  font-size: 0.8125rem;
+  color: #374151;
   line-height: 1.4;
+  
+  strong {
+    color: #111827;
+    font-weight: 600;
+    font-size: 0.875rem;
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+`;
+
+const IcoNotificationMeta = styled.div`
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.375rem 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  
+  > span:nth-child(odd) {
+    color: #64748b;
+    font-weight: 500;
+  }
+  
+  > span:nth-child(even) {
+    color: #1e293b;
+    font-weight: 400;
+  }
+`;
+
+const IcoNotificationMetaRow = styled.div`
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 0.375rem 0.75rem;
+  grid-column: 1 / -1;
+  
+  > span:nth-child(odd) {
+    color: #64748b;
+    font-weight: 500;
+  }
+  
+  > span:nth-child(even) {
+    color: #1e293b;
+    font-weight: 400;
+  }
+`;
+
+const IcoNotificationSource = styled.div`
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.6875rem;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-weight: 500;
+  
+  &:before {
+    content: "📋";
+    font-size: 0.875rem;
+  }
 `;
 
 const IcoNotificationActions = styled.div`
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
 `;
 
 const IcoActionButton = styled.button`
-  padding: 6px 12px;
+  padding: 0.5rem 0.875rem;
   border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
 
   &.primary {
-    background: #10b981;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
-    border: 1px solid #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 
     &:hover {
-      background: #059669;
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+      transform: translateY(-1px);
     }
   }
 
   &.fill-form {
-    background: #3b82f6;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
     color: white;
-    border: 1px solid #3b82f6;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 
     &:hover {
-      background: #2563eb;
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+      transform: translateY(-1px);
     }
   }
 
   &.secondary {
     background: white;
-    color: #6b7280;
-    border: 1px solid #d1d5db;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
     &:hover {
-      background: #f9fafb;
-      color: #374151;
+      background: #f8fafc;
+      color: #475569;
+      border-color: #94a3b8;
     }
   }
 `;
@@ -4478,13 +4622,8 @@ function OrderForm25() {
   const loadedFakturyRef = useRef(new Set());
   
   // ✅ Funkce pro načtení LP čerpání faktury
-  const loadFakturaLPCerpani = useCallback(async (fakturaId, forceReload = false) => {
-    // 🔥 FIX: Pokud není force reload, zkontrolovat jestli už není načteno
-    if (!forceReload && loadedFakturyRef.current.has(fakturaId)) {
-      return;
-    }
-    
-    if (!fakturaId || !token || !username) return;
+  const loadFakturaLPCerpani = useCallback(async (fakturaId) => {
+    if (!fakturaId || loadedFakturyRef.current.has(fakturaId) || !token || !username) return;
     
     try {
       loadedFakturyRef.current.add(fakturaId);
@@ -4492,8 +4631,6 @@ function OrderForm25() {
       
       // 🔥 FIX: API vrací {status: 'ok', data: {faktura_id, lp_cerpani: [...], suma, fa_castka}}
       const lpCerpaniData = response?.data?.lp_cerpani || [];
-      
-      console.debug('[LP] Načteno LP čerpání pro fakturu', fakturaId, ':', lpCerpaniData);
       
       setFakturyLPCerpani(prev => ({
         ...prev,
@@ -7323,11 +7460,6 @@ function OrderForm25() {
       setIsInitialized(false);
       // 🔧 KRITICKÉ: Reset protection flag aby se při F5 správně načetl draft
       onDataLoadedCalledRef.current = null;
-      
-      // 🔥 FIX: Reset LP čerpání cache při změně objednávky
-      setFakturyLPCerpani({});
-      loadedFakturyRef.current.clear();
-      console.debug('[LP] Cache resetována při změně editOrderId:', editOrderId);
     }
     
     // Zapamatuj si current ID
@@ -7897,7 +8029,6 @@ function OrderForm25() {
         draftManager.saveDraft(currentFormData, {
           orderId: currentFormData.id || null,
           attachments: currentAttachments || [],
-          fakturyLPCerpani: fakturyLPCerpani, // 🔥 FIX: Ukládat LP čerpání do draftu
           metadata: {
             isChanged: true, // Označit jako změněné aby se v seznamu zobrazilo
             isEditMode: !!currentFormData.id,
@@ -8636,13 +8767,11 @@ function OrderForm25() {
       return hasLpRef && hasCastka;
     }).map(row => ({
       // Backend validuje lp_cislo (string) vůči financovani.lp_kody.
-      // lp_id je volitelný int (pokud je k dispozici a je číselný).
+      // ✅ FIX: Backend validuje lp_cislo proti financovani.lp_kody = [140, 142] (číselné ID!)
+      // lp_id je primary, lp_cislo je textový (LPIT1) - ale backend chce číselné ID v lp_cislo
       lp_cislo: (() => {
-        const lpIdValue = row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== ''
-          ? String(row.lp_id).trim()
-          : '';
-        const lpCisloValue = String(row.lp_cislo || '').trim();
-        return lpIdValue || lpCisloValue;
+        const lpId = parseInt(row.lp_id, 10);
+        return Number.isFinite(lpId) && lpId > 0 ? lpId : null;
       })(),
       lp_id: (() => {
         const n = parseInt(row.lp_id, 10);
@@ -8661,12 +8790,14 @@ function OrderForm25() {
     try {
       await saveFakturaLPCerpani(fakturaId, validRows, token, username);
       
-      // 🔥 FIX: Po uložení znovu načíst data z DB pro kontrolu
-      // Tím zajistíme, že zobrazujeme přesně to, co je v databázi
-      loadedFakturyRef.current.delete(fakturaId); // Odstranit z cache
-      await loadFakturaLPCerpani(fakturaId, true); // Force reload z DB
-      
-      console.debug('[LP] Úspěšně uloženo a znovu načteno LP čerpání pro fakturu', fakturaId);
+      // Aktualizovat lokální state
+      setFakturyLPCerpani(prev => ({
+        ...prev,
+        [fakturaId]: {
+          lpCerpani: lpCerpaniData,
+          loaded: true
+        }
+      }));
       
       return true;
     } catch (error) {
@@ -8675,7 +8806,7 @@ function OrderForm25() {
       console.error('❌ [LP] Odeslané data byly:', JSON.stringify(validRows, null, 2));
       throw error;
     }
-  }, [token, username, loadFakturaLPCerpani]);
+  }, [token, username]);
 
   // 💰 LP ČERPÁNÍ: Uložit všechny LP čerpání při zavření objednávky
   const saveAllFakturyLPCerpani = useCallback(async () => {
@@ -13303,11 +13434,6 @@ function OrderForm25() {
       setIsFormInitializing(true);
       setIsLoadingCiselniky(true); // 🎯 NOVÉ: Začínáme načítat číselníky
       setInitializationError(null);
-      
-      // 🔥 FIX: Reset LP čerpání cache při inicializaci formuláře
-      setFakturyLPCerpani({});
-      loadedFakturyRef.current.clear();
-      console.debug('[LP] Cache resetována při inicializaci formuláře');
 
       // Start progress bar
       if (startGlobalProgress) startGlobalProgress();
@@ -22382,61 +22508,102 @@ function OrderForm25() {
                       <IcoNotification data-status={icoCheckStatus}>
                         {icoCheckStatus === 'checking' && (
                           <>
-                            <IcoNotificationTitle status="checking">Kontroluji IČO...</IcoNotificationTitle>
-                            <IcoNotificationMessage status="checking">
-                              Vyhledávám dodavatele podle IČO v databázi a ARES.
-                            </IcoNotificationMessage>
+                            <IcoNotificationHeader status="checking">
+                              <IcoNotificationTitle status="checking">
+                                Kontroluji IČO...
+                              </IcoNotificationTitle>
+                              <IcoNotificationClose onClick={handleIcoCancel}>×</IcoNotificationClose>
+                            </IcoNotificationHeader>
+                            <IcoNotificationBody>
+                              <IcoNotificationMessage>
+                                Vyhledávám dodavatele podle IČO v lokální databázi a ARES registru.
+                              </IcoNotificationMessage>
+                            </IcoNotificationBody>
                           </>
                         )}
 
                         {(icoCheckStatus === 'found-local' || icoCheckStatus === 'found-ares') && icoCheckData && (
                           <>
-                            <IcoNotificationTitle status="found">
-                              {icoCheckStatus === 'found-local' ? 'Dodavatel v databázi!' : 'Dodavatel nalezen v ARES!'}
-                            </IcoNotificationTitle>
-                            <IcoNotificationMessage status="found">
-                              <strong>{icoCheckData.nazev || icoCheckData.name || 'Název není k dispozici'}</strong><br/>
-                              IČO: {icoCheckData.ico}<br/>
-                              {icoCheckData.dic && (<>DIČ: {icoCheckData.dic}<br/></>)}
-                              {(icoCheckData.adresa || icoCheckData.address) && <>{icoCheckData.adresa || icoCheckData.address}<br/></>}
-                              {icoCheckData.zastoupeny && (<>Zastoupený: {icoCheckData.zastoupeny}<br/></>)}
-                              {icoCheckData.kontakt_jmeno && (
-                                <>Kontakt: {icoCheckData.kontakt_jmeno}
-                                {icoCheckData.kontakt_email && (<>, {icoCheckData.kontakt_email}</>)}
-                                {icoCheckData.kontakt_telefon && (<>, {icoCheckData.kontakt_telefon}</>)}
-                                <br/></>
-                              )}
-                              <div style={{fontSize: '11px', color: '#666', marginTop: '8px'}}>
-                                Zdroj: {icoCheckData.source === 'local' ? 'Lokální databáze' : 'ARES registr'}
-                              </div>
-                            </IcoNotificationMessage>
+                            <IcoNotificationHeader status="found">
+                              <IcoNotificationTitle status="found">
+                                {icoCheckStatus === 'found-local' ? 'Dodavatel v databázi!' : 'Dodavatel nalezen v ARES!'}
+                              </IcoNotificationTitle>
+                              <IcoNotificationClose onClick={handleIcoCancel}>×</IcoNotificationClose>
+                            </IcoNotificationHeader>
+                            <IcoNotificationBody>
+                              <IcoNotificationMessage>
+                                <strong>{icoCheckData.nazev || icoCheckData.name || 'Název není k dispozici'}</strong>
+                              </IcoNotificationMessage>
+                              
+                              <IcoNotificationMeta>
+                                <IcoNotificationMetaRow>
+                                  <span>IČO:</span>
+                                  <span>{icoCheckData.ico}</span>
+                                  {icoCheckData.dic && (
+                                    <>
+                                      <span>DIČ:</span>
+                                      <span>{icoCheckData.dic}</span>
+                                    </>
+                                  )}
+                                </IcoNotificationMetaRow>
+                                
+                                {(icoCheckData.adresa || icoCheckData.address) && (
+                                  <>
+                                    <span>Adresa:</span>
+                                    <span>{icoCheckData.adresa || icoCheckData.address}</span>
+                                  </>
+                                )}
+                                
+                                {icoCheckData.zastoupeny && (
+                                  <>
+                                    <span>Zastoupený:</span>
+                                    <span>{icoCheckData.zastoupeny}</span>
+                                  </>
+                                )}
+                                
+                                {icoCheckData.kontakt_jmeno && (
+                                  <>
+                                    <span>Kontakt:</span>
+                                    <span>
+                                      {icoCheckData.kontakt_jmeno}
+                                      {icoCheckData.kontakt_email && (<>, {icoCheckData.kontakt_email}</>)}
+                                      {icoCheckData.kontakt_telefon && (<>, {icoCheckData.kontakt_telefon}</>)}
+                                    </span>
+                                  </>
+                                )}
+                              </IcoNotificationMeta>
+                              
+                              <IcoNotificationSource>
+                                {icoCheckData.source === 'local' ? 'Lokální databáze dodavatelů' : 'ARES registr'}
+                              </IcoNotificationSource>
+                            </IcoNotificationBody>
                             <IcoNotificationActions>
                               <IcoActionButton className="fill-form" onClick={handleIcoFillForm}>
-                                Vyplnit formulář
+                                ✏️ Vyplnit formulář
                               </IcoActionButton>
                               {icoCheckStatus === 'found-ares' && (
                                 <IcoActionButton className="primary" onClick={handleIcoUpdate}>
-                                  Přidat do osobních kontaktů
+                                  ✅ Přidat do kontaktů
                                 </IcoActionButton>
                               )}
-                              <IcoActionButton className="secondary" onClick={handleIcoCancel}>
-                                Zrušit
-                              </IcoActionButton>
                             </IcoNotificationActions>
                           </>
                         )}
 
                         {icoCheckStatus === 'not-found' && (
                           <>
-                            <IcoNotificationTitle status="not-found">Dodavatel nebyl nalezen</IcoNotificationTitle>
-                            <IcoNotificationMessage status="not-found">
-                              Dodavatel s tímto IČO není v lokální databázi ani v ARES. Můžete pokračovat s ručním zadáním.
-                            </IcoNotificationMessage>
-                            <IcoNotificationActions>
-                              <IcoActionButton className="secondary" onClick={handleIcoCancel}>
-                                Pokračovat ručně
-                              </IcoActionButton>
-                            </IcoNotificationActions>
+                            <IcoNotificationHeader status="not-found">
+                              <IcoNotificationTitle status="not-found">
+                                Dodavatel nebyl nalezen
+                              </IcoNotificationTitle>
+                              <IcoNotificationClose onClick={handleIcoCancel}>×</IcoNotificationClose>
+                            </IcoNotificationHeader>
+                            <IcoNotificationBody>
+                              <IcoNotificationMessage>
+                                Dodavatel s tímto IČO není v lokální databázi ani v ARES registru.<br/>
+                                Můžete pokračovat s ručním zadáním údajů.
+                              </IcoNotificationMessage>
+                            </IcoNotificationBody>
                           </>
                         )}
                       </IcoNotification>
@@ -25171,8 +25338,7 @@ function OrderForm25() {
                                       const lpData = fakturyLPCerpani[fakturaId] || { lpCerpani: [], loaded: false };
                                       
                                       // 🔄 Načíst LP čerpání pokud ještě není načtené
-                                      // 🔥 FIX: Používat POUZE lpData.loaded, ne loadedFakturyRef (který se neresetuje)
-                                      if (isRealInvoice && !lpData.loaded) {
+                                      if (isRealInvoice && !lpData.loaded && !loadedFakturyRef.current.has(fakturaId)) {
                                         loadFakturaLPCerpani(fakturaId);
                                       }
                                       

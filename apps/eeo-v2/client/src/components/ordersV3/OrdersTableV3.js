@@ -1431,10 +1431,11 @@ const ApprovalDialogOverlay = styled.div`
 const ApprovalDialog = styled.div`
   background: white;
   border-radius: 12px;
-  max-width: ${props => props.$narrow ? '90vw' : '1200px'};
-  width: ${props => props.$narrow ? '520px' : '95%'};
-  max-height: 90vh;
-  overflow-y: auto;
+  max-width: ${props => props.$narrow ? '90vw' : '980px'};
+  width: ${props => props.$narrow ? '520px' : '90%'};
+  max-height: calc(85vh + 1em);
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   animation: slideUp 0.3s ease;
 
@@ -1474,15 +1475,18 @@ const ApprovalDialogTitle = styled.h3`
 `;
 
 const ApprovalDialogContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 1.25rem;
-  max-height: calc(90vh - 120px);
-  overflow-y: auto;
+  padding-bottom: 0;
 `;
 
 const ApprovalTwoColumnLayout = styled.div`
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
+  padding-bottom: 1.25rem;
   
   @media (max-width: 968px) {
     grid-template-columns: 1fr;
@@ -1500,7 +1504,35 @@ const ApprovalRightColumn = styled.div`
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 1rem;
-  height: fit-content;
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* Custom scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 8px;
+    margin: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #10b981, #059669);
+    border-radius: 8px;
+    border: 2px solid #f1f5f9;
+    transition: background 0.2s;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #059669, #047857);
+  }
+  
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #10b981 #f1f5f9;
 `;
 
 const ApprovalCompactList = styled.div`
@@ -1647,10 +1679,13 @@ const ApprovalDialogError = styled.div`
 const ApprovalDialogActions = styled.div`
   display: flex;
   gap: 0.625rem;
-  margin-top: 1.25rem;
   justify-content: flex-end;
-  padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  padding: 1rem 1.25rem;
+  border-top: 2px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0 0 12px 12px;
+  flex-shrink: 0;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
 `;
 
 const ApprovalDialogButton = styled.button`
@@ -2185,6 +2220,7 @@ const OrdersTableV3 = ({
   onColumnFiltersChange, // Callback pro změny filtrů
   orderStatesList = [], // ✅ Číselník stavů z API
   userId, // Přidáno pro localStorage per user
+  userDetail, // 🆕 Detaily přihlášeného uživatele (pro kontrolu úseku)
   token, // 🆕 Pro API volání
   username, // 🆕 Pro API volání
   isLoading = false,
@@ -2809,9 +2845,7 @@ const OrdersTableV3 = ({
 
     // 🔒 VALIDACE ÚSEKU: Kontrola zda může uživatel schvalovat objednávku
     const isPrikazce = String(orderToApprove.prikazce_id) === String(userId);
-    const isAdmin = userDetail?.roles?.some(role => 
-      role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-    ) || hasPermission?.('ORDER_MANAGE');
+    // Použij již existující isAdmin prop
     
     if (!isPrikazce && !isAdmin) {
       // Uživatel není přímo příkazce ani admin - zkontroluj úsek
@@ -4992,7 +5026,6 @@ const OrdersTableV3 = ({
         <ApprovalDialogOverlay>
           <ApprovalDialog onClick={(e) => e.stopPropagation()}>
             <ApprovalDialogHeader>
-              <ApprovalDialogIcon>✅</ApprovalDialogIcon>
               <ApprovalDialogTitle>
                 Schválení objednávky
                 <span style={{ 
@@ -5136,19 +5169,49 @@ const OrdersTableV3 = ({
                 {/* PRAVÝ SLOUPEC - Financování (LP/Smlouvy) */}
                 <ApprovalRightColumn>
                   {/* LP */}
-                  {orderToApprove.financovani?.lp_kody && Array.isArray(orderToApprove.financovani.lp_kody) && orderToApprove.financovani.lp_kody.length > 0 && (
+                  {orderToApprove.financovani?.lp_kody && Array.isArray(orderToApprove.financovani.lp_kody) && orderToApprove.financovani.lp_kody.length > 0 && (() => {
+                    // 🎯 SIMULACE čerpání - připočíst aktuální objednávku (pokud není schválená)
+                    const maxCena = parseFloat(orderToApprove.max_cena_s_dph) || 0;
+                    const lpKody = orderToApprove.financovani?.lp_kody || [];
+                    const lpInfo = orderToApprove._enriched?.lp_info || [];
+                    
+                    return (
                     <>
                       <ApprovalSectionTitle>💰 Limitované přísliby</ApprovalSectionTitle>
+                      {maxCena > 0 && lpKody.length > 0 && (
+                        <div style={{
+                          background: '#ecfdf5',
+                          border: '1px solid #6ee7b7',
+                          borderRadius: '6px',
+                          padding: '0.5rem 0.75rem',
+                          marginBottom: '0.75rem',
+                          fontSize: '0.8125rem',
+                          color: '#047857',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          <span style={{ fontSize: '1rem' }}>ℹ️</span>
+                          <span>
+                            Čerpání zahrnuje simulaci schválení této objednávky (+{maxCena.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)
+                          </span>
+                        </div>
+                      )}
                       {(() => {
-                        const lpInfo = orderToApprove._enriched?.lp_info || [];
+                        const pocetLP = lpKody.length || 1;
+                        const castkaProKazdyLP = maxCena / pocetLP; // Rovnoměrné rozdělení pro jednoduchost
                         
                         if (lpInfo.length > 0) {
                           return lpInfo.map((lp, idx) => {
                             // Výpočet procenta čerpání (plánovaného)
                             const hodnotaLP = parseFloat(lp.total_limit) || 0;
-                            const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                            let cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
                             const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
-                            const percentCerpani = hodnotaLP > 0 ? Math.round((cerpanoPredpoklad / hodnotaLP) * 100) : 0;
+                            
+                            // ✅ Připočíst aktuální objednávku k simulaci (pokud patří k tomuto LP)
+                            const jsmeVLpKodech = lpKody.includes(lp.id);
+                            const simulovaneCerpani = jsmeVLpKodech ? cerpanoPredpoklad + castkaProKazdyLP : cerpanoPredpoklad;
+                            const percentCerpani = hodnotaLP > 0 ? Math.round((simulovaneCerpani / hodnotaLP) * 100) : 0;
                             const hasLimit = hodnotaLP > 0;
                             
                             return (
@@ -5177,12 +5240,28 @@ const OrdersTableV3 = ({
                                 </ApprovalLPRow>
                                 <ApprovalLPRow>
                                   <span>Čerpáno (předpokl.):</span>
-                                  <strong>{cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                  <strong>
+                                    {cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                    {jsmeVLpKodech && castkaProKazdyLP > 0 && (
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        color: '#10b981', 
+                                        fontWeight: 600,
+                                        marginLeft: '0.5rem',
+                                        background: '#d1fae5',
+                                        padding: '2px 6px',
+                                        borderRadius: '3px',
+                                        border: '1px solid #6ee7b7'
+                                      }}>
+                                        +{castkaProKazdyLP.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                      </span>
+                                    )}
+                                  </strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow $highlight>
                                   <span>Zbývá (předpokl.):</span>
-                                  <strong style={{ color: lp.remaining_budget && parseFloat(lp.remaining_budget) < 0 ? '#dc2626' : '#059669' }}>
-                                    {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                  <strong style={{ color: (hodnotaLP - simulovaneCerpani) < 0 ? '#dc2626' : '#059669' }}>
+                                    {(hodnotaLP - simulovaneCerpani).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                   </strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow>
@@ -5292,7 +5371,8 @@ const OrdersTableV3 = ({
                         </div>
                       )}
                     </>
-                  )}
+                    );
+                  })()}
 
                   {/* Smlouva */}
                   {(orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy) && (
@@ -5302,10 +5382,16 @@ const OrdersTableV3 = ({
                         const smlouvaInfo = orderToApprove._enriched?.smlouva_info;
                         const cisloSmlouvy = orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy;
                         
+                        // 🎯 SIMULACE - připočíst aktuální objednávku
+                        const maxCenaSmlouva = parseFloat(orderToApprove.max_cena_s_dph) || 0;
+                        
                         if (smlouvaInfo && smlouvaInfo.hodnota) {
                           const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
-                          const cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
-                          const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((cerpanoPozadovano / hodnotaSmlouvy) * 100) : 0;
+                          let cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+                          
+                          // ✅ Připočíst aktuální objednávku k simulaci
+                          const simulovaneCerpaniSmlouva = cerpanoPozadovano + maxCenaSmlouva;
+                          const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100) : 0;
                           const hasStropovaCena = hodnotaSmlouvy > 0;
                           
                           return (
@@ -5336,12 +5422,28 @@ const OrdersTableV3 = ({
                               </ApprovalLPRow>
                               <ApprovalLPRow>
                                 <span>Čerpáno (požad.):</span>
-                                <strong>{smlouvaInfo.cerpano_pozadovano ? parseFloat(smlouvaInfo.cerpano_pozadovano).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                                <strong>
+                                  {cerpanoPozadovano.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                  {maxCenaSmlouva > 0 && (
+                                    <span style={{ 
+                                      fontSize: '0.75rem', 
+                                      color: '#10b981', 
+                                      fontWeight: 600,
+                                      marginLeft: '0.5rem',
+                                      background: '#d1fae5',
+                                      padding: '2px 6px',
+                                      borderRadius: '3px',
+                                      border: '1px solid #6ee7b7'
+                                    }}>
+                                      +{maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                    </span>
+                                  )}
+                                </strong>
                               </ApprovalLPRow>
                               <ApprovalLPRow $highlight>
                                 <span>Zbývá (požad.):</span>
-                                <strong style={{ color: smlouvaInfo.zbyva_pozadovano && parseFloat(smlouvaInfo.zbyva_pozadovano) < 0 ? '#dc2626' : '#059669' }}>
-                                  {smlouvaInfo.zbyva_pozadovano ? parseFloat(smlouvaInfo.zbyva_pozadovano).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč
+                                <strong style={{ color: (hodnotaSmlouvy - simulovaneCerpaniSmlouva) < 0 ? '#dc2626' : '#059669' }}>
+                                  {(hodnotaSmlouvy - simulovaneCerpaniSmlouva).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                 </strong>
                               </ApprovalLPRow>
                               <ApprovalLPRow>
@@ -5452,39 +5554,39 @@ const OrdersTableV3 = ({
                   )}
                 </ApprovalRightColumn>
               </ApprovalTwoColumnLayout>
-
-              <ApprovalDialogActions>
-                <ApprovalDialogButton onClick={() => {
-                  setShowApprovalDialog(false);
-                  setOrderToApprove(null);
-                  setApprovalComment('');
-                  setApprovalCommentError('');
-                }}>
-                  Storno
-                </ApprovalDialogButton>
-
-                <ApprovalDialogButton 
-                  $postpone
-                  onClick={() => handleApprovalAction('postpone')}
-                >
-                  ⏰ Odložit
-                </ApprovalDialogButton>
-
-                <ApprovalDialogButton 
-                  $reject
-                  onClick={() => handleApprovalAction('reject')}
-                >
-                  ❌ Zamítnout
-                </ApprovalDialogButton>
-
-                <ApprovalDialogButton 
-                  $approve
-                  onClick={() => handleApprovalAction('approve')}
-                >
-                  ✅ Schválit
-                </ApprovalDialogButton>
-              </ApprovalDialogActions>
             </ApprovalDialogContent>
+
+            <ApprovalDialogActions>
+              <ApprovalDialogButton onClick={() => {
+                setShowApprovalDialog(false);
+                setOrderToApprove(null);
+                setApprovalComment('');
+                setApprovalCommentError('');
+              }}>
+                Storno
+              </ApprovalDialogButton>
+
+              <ApprovalDialogButton 
+                $postpone
+                onClick={() => handleApprovalAction('postpone')}
+              >
+                ⏰ Odložit
+              </ApprovalDialogButton>
+
+              <ApprovalDialogButton 
+                $reject
+                onClick={() => handleApprovalAction('reject')}
+              >
+                ❌ Zamítnout
+              </ApprovalDialogButton>
+
+              <ApprovalDialogButton 
+                $approve
+                onClick={() => handleApprovalAction('approve')}
+              >
+                ✅ Schválit
+              </ApprovalDialogButton>
+            </ApprovalDialogActions>
           </ApprovalDialog>
         </ApprovalDialogOverlay>,
         document.body
@@ -5532,22 +5634,22 @@ const OrdersTableV3 = ({
                   <ApprovalDialogError>{cancelReasonError}</ApprovalDialogError>
                 )}
               </ApprovalDialogSection>
-
-              <ApprovalDialogActions>
-                <ApprovalDialogButton onClick={() => {
-                  setShowCancelDialog(false);
-                  setOrderToCancel(null);
-                  setCancelReason('');
-                  setCancelReasonError('');
-                }}>
-                  Zrušit
-                </ApprovalDialogButton>
-
-                <ApprovalDialogButton $reject onClick={handleCancelOrder}>
-                  Storno objednávky
-                </ApprovalDialogButton>
-              </ApprovalDialogActions>
             </ApprovalDialogContent>
+
+            <ApprovalDialogActions>
+              <ApprovalDialogButton onClick={() => {
+                setShowCancelDialog(false);
+                setOrderToCancel(null);
+                setCancelReason('');
+                setCancelReasonError('');
+              }}>
+                Zrušit
+              </ApprovalDialogButton>
+
+              <ApprovalDialogButton $reject onClick={handleCancelOrder}>
+                Storno objednávky
+              </ApprovalDialogButton>
+            </ApprovalDialogActions>
           </ApprovalDialog>
         </ApprovalDialogOverlay>,
         document.body
