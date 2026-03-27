@@ -80,35 +80,49 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
         $db->beginTransaction();
         
         // 1. Načíst fakturu + objednávku (potřebujeme fa_castka + financování)
+        error_log("🔍 [LP CERPANI SAVE] Začátek - faktura_id=$faktura_id, user_id=$user_id");
+        error_log("🔍 [LP CERPANI SAVE] Počet LP záznamů: " . count($lp_cerpani));
+        
         $sql_faktura = "SELECT 
             f.id, 
             f.fa_castka, 
             f.objednavka_id,
             o.financovani
         FROM " . TBL_FAKTURY . " f
-        LEFT JOIN 25a_objednavky o ON f.objednavka_id = o.id
+        LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
         WHERE f.id = ? AND f.aktivni = 1";
+        
+        error_log("🔍 [LP CERPANI SAVE] SQL: " . str_replace('?', $faktura_id, $sql_faktura));
         
         $stmt_faktura = $db->prepare($sql_faktura);
         $stmt_faktura->execute(array($faktura_id));
         $faktura = $stmt_faktura->fetch(PDO::FETCH_ASSOC);
         
         if (!$faktura) {
+            error_log("❌ [LP CERPANI SAVE] Faktura ID $faktura_id nenalezena v DB");
             $db->rollBack();
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nenalezena'));
             return;
         }
         
+        error_log("✅ [LP CERPANI SAVE] Faktura načtena: fa_castka=" . $faktura['fa_castka'] . ", objednavka_id=" . $faktura['objednavka_id']);
+        
         // 2. Parse financování
         $financovani = null;
         if ($faktura['financovani']) {
             $financovani = json_decode($faktura['financovani'], true);
+            error_log("🔍 [LP CERPANI SAVE] Financování: " . json_encode($financovani));
+        } else {
+            error_log("⚠️ [LP CERPANI SAVE] Objednávka NEMÁ financování!");
         }
         
         // 3. Validace: pokud je LP financování, MUSÍ být min. 1 LP kód
         if ($financovani && isset($financovani['typ']) && $financovani['typ'] === 'LP') {
+            error_log("✅ [LP CERPANI SAVE] Detekováno LP financování - validace povinná");
+            
             if (empty($lp_cerpani)) {
+                error_log("❌ [LP CERPANI SAVE] Pole lp_cerpani je PRÁZDNÉ - chyba validace!");
                 $db->rollBack();
                 http_response_code(400);
                 echo json_encode(array(
@@ -170,12 +184,16 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
         }
         
         // 5. Smazat stávající záznamy pro tuto fakturu
-        $sql_delete = "DELETE FROM 25a_faktury_lp_cerpani WHERE faktura_id = ?";
+        error_log("🔍 [LP CERPANI SAVE] Mažu existující LP čerpání pro fakturu $faktura_id");
+        $sql_delete = "DELETE FROM " . TBL_FAKTURY_LP_CERPANI . " WHERE faktura_id = ?";
         $stmt_delete = $db->prepare($sql_delete);
         $stmt_delete->execute(array($faktura_id));
+        $deleted_count = $stmt_delete->rowCount();
+        error_log("✅ [LP CERPANI SAVE] Smazáno $deleted_count starých záznamů");
         
         // 6. Vložit nové záznamy
-        $sql_insert = "INSERT INTO 25a_faktury_lp_cerpani (
+        error_log("🔍 [LP CERPANI SAVE] Vkládám " . count($lp_cerpani) . " nových LP záznamů");
+        $sql_insert = "INSERT INTO " . TBL_FAKTURY_LP_CERPANI . " (
             faktura_id, lp_cislo, lp_id, castka, poznamka, 
             datum_pridani, pridal_user_id
         ) VALUES (?, ?, ?, ?, ?, NOW(), ?)";
@@ -183,7 +201,8 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
         $stmt_insert = $db->prepare($sql_insert);
         
         $inserted_ids = array();
-        foreach ($lp_cerpani as $item) {
+        foreach ($lp_cerpani as $idx => $item) {
+            error_log("🔍 [LP Row $idx] lp_cislo={$item['lp_cislo']}, lp_id={$item['lp_id']}, castka={$item['castka']}");
             $lp_id = isset($item['lp_id']) && (int)$item['lp_id'] > 0 ? (int)$item['lp_id'] : null;
             $poznamka = isset($item['poznamka']) && !empty($item['poznamka']) ? $item['poznamka'] : null;
             
@@ -196,16 +215,24 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
                 $user_id
             ));
             
-            $inserted_ids[] = $db->lastInsertId();
+            $new_id = $db->lastInsertId();
+            $inserted_ids[] = $new_id;
+            error_log("✅ [LP Row $idx] Vloženo s ID=$new_id");
         }
+        
+        error_log("✅ [LP CERPANI SAVE] Celkem vloženo: " . count($inserted_ids) . " záznamů");
         
         $db->commit();
         
         // 7. Načíst zpět uložená data
-        $sql_select = "SELECT * FROM 25a_faktury_lp_cerpani WHERE faktura_id = ? ORDER BY id";
+        error_log("🔍 [LP CERPANI SAVE] Načítám zpět uložená data pro ověření");
+        $sql_select = "SELECT * FROM " . TBL_FAKTURY_LP_CERPANI . " WHERE faktura_id = ? ORDER BY id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->execute(array($faktura_id));
         $saved_data = $stmt_select->fetchAll(PDO::FETCH_ASSOC);
+        error_log("✅ [LP CERPANI SAVE] Načteno " . count($saved_data) . " záznamů z DB");
+        
+        error_log("✅ [LP CERPANI SAVE] ÚSPĚCH - Vracím response s " . count($saved_data) . " záznamy");
         
         http_response_code(200);
         echo json_encode(array(
@@ -220,8 +247,12 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
         ));
         
     } catch (PDOException $e) {
+        error_log("❌ [LP CERPANI SAVE] PDOException: " . $e->getMessage());
+        error_log("❌ [LP CERPANI SAVE] Stack trace: " . $e->getTraceAsString());
+        
         if (isset($db) && $db->inTransaction()) {
             $db->rollBack();
+            error_log("🔄 [LP CERPANI SAVE] Transaction rollback proveden");
         }
         
         http_response_code(500);
@@ -294,7 +325,7 @@ function handle_get_faktura_lp_cerpani($input, $config, $queries) {
         $sql_cerpani = "SELECT 
             id, faktura_id, lp_cislo, lp_id, castka, poznamka,
             datum_pridani, pridal_user_id, datum_upravy, upravil_user_id
-        FROM 25a_faktury_lp_cerpani 
+        FROM " . TBL_FAKTURY_LP_CERPANI . " 
         WHERE faktura_id = ? 
         ORDER BY id";
         

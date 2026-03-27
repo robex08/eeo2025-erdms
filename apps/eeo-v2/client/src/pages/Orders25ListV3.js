@@ -2399,6 +2399,7 @@ function Orders25ListV3() {
         onColumnFiltersChange={handleColumnFilterChange}
         orderStatesList={orderStatesList} // ✅ Options pro stavový filtr
         userId={user_id}
+        userDetail={userDetail} // 🔒 Pro kontrolu úseku při schvalování
         token={token}
         username={username}
         isLoading={loading}

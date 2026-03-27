@@ -25,7 +25,7 @@ module.exports = function override(config, env) {
     config.devServer = {
       ...config.devServer,
       host: '0.0.0.0', // Allow connections from any host
-      port: 3000,
+      port: parseInt(process.env.PORT) || 3001, // ✅ ČTEME Z .env místo hardcoded 3000!
       allowedHosts: 'all', // Allow all hosts (no origin check)
       // WebSocket se řídí WDS_SOCKET_HOST z .env.development
       webSocketServer: 'ws',
@@ -55,6 +55,12 @@ module.exports = function override(config, env) {
         overlay: {
           errors: true,
           warnings: false, // Skrýt warnings overlay
+        },
+        // ✅ FORCE WebSocket na localhost když přistupuješ přes localhost
+        webSocketURL: {
+          hostname: process.env.WDS_SOCKET_HOST || 'localhost',
+          port: process.env.WDS_SOCKET_PORT || parseInt(process.env.PORT) || 3001,
+          protocol: 'ws',
         },
       },
       

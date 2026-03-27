@@ -25,6 +25,10 @@
 require_once __DIR__ . '/orderHandlers.php';
 // Order V3 helpery (permissions, period, parsování filtrů)
 require_once __DIR__ . '/orderV3Handlers.php';
+// Smlouvy handlers (pro přepočet čerpání smlouvy)
+require_once __DIR__ . '/smlouvyHandlers.php';
+// LP čerpání handlers (pro přepočet LP čerpání)
+require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
 
 /**
  * 📋 Handler: GET ORDER DETAIL V3
@@ -1459,6 +1463,69 @@ function handle_orders_v3_update($input, $config) {
 
         if ($stmt->rowCount() > 0) {
             error_log("✅ [V3 ORDER UPDATE] Order #$order_id updated successfully");
+            
+            // 🎯 PŘEPOČET LP A SMLUV - pouze při schválení
+            if (isset($payload['stav_workflow_kod'])) {
+                $workflow_states = json_decode($payload['stav_workflow_kod'], true);
+                if (is_array($workflow_states) && in_array('SCHVALENA', $workflow_states)) {
+                    error_log("🔄 [V3 ORDER UPDATE] Objednávka schválena - spouštím přepočet LP a smluv...");
+                    
+                    try {
+                        // Načíst objednávku pro získání financování
+                        $stmt_order = $db->prepare("SELECT financovani, cislo_smlouvy FROM " . TBL_OBJEDNAVKY . " WHERE id = ? LIMIT 1");
+                        $stmt_order->execute([$order_id]);
+                        $order_data = $stmt_order->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($order_data) {
+                            // 1️⃣ Přepočet LP čerpání
+                            if (!empty($order_data['financovani'])) {
+                                $financovani = json_decode($order_data['financovani'], true);
+                                if (json_last_error() === JSON_ERROR_NONE && isset($financovani['lp_kody']) && is_array($financovani['lp_kody'])) {
+                                    foreach ($financovani['lp_kody'] as $lp_id) {
+                                        try {
+                                            error_log("🔄 [LP PREPOCET] Přepočítávám LP ID: $lp_id pro objednávku #$order_id");
+                                            prepocetCerpaniPodleIdLP_PDO($db, $lp_id);
+                                            error_log("✅ [LP PREPOCET] LP ID $lp_id úspěšně přepočteno");
+                                        } catch (Exception $lp_error) {
+                                            error_log("❌ [LP PREPOCET] Chyba při přepočtu LP $lp_id: " . $lp_error->getMessage());
+                                            // Neblokující - pokračuj dál
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 2️⃣ Přepočet smlouvy čerpání
+                            $cislo_smlouvy = null;
+                            // Zkontroluj přímou vazbu
+                            if (!empty($order_data['cislo_smlouvy'])) {
+                                $cislo_smlouvy = $order_data['cislo_smlouvy'];
+                            }
+                            // Zkontroluj vazbu přes financování
+                            elseif (!empty($order_data['financovani'])) {
+                                $financovani = json_decode($order_data['financovani'], true);
+                                if (json_last_error() === JSON_ERROR_NONE && isset($financovani['cislo_smlouvy'])) {
+                                    $cislo_smlouvy = $financovani['cislo_smlouvy'];
+                                }
+                            }
+                            
+                            if ($cislo_smlouvy) {
+                                try {
+                                    error_log("🔄 [SMLOUVA PREPOCET] Přepočítávám smlouvu: $cislo_smlouvy pro objednávku #$order_id");
+                                    prepocetCerpaniSmlouvyAuto($cislo_smlouvy);
+                                    error_log("✅ [SMLOUVA PREPOCET] Smlouva $cislo_smlouvy úspěšně přepočtena");
+                                } catch (Exception $smlouva_error) {
+                                    error_log("❌ [SMLOUVA PREPOCET] Chyba při přepočtu smlouvy $cislo_smlouvy: " . $smlouva_error->getMessage());
+                                    // Neblokující - pokračuj dál
+                                }
+                            }
+                        }
+                    } catch (Exception $prepocet_error) {
+                        error_log("❌ [V3 ORDER UPDATE] Chyba při přepočtu LP/smlouvy: " . $prepocet_error->getMessage());
+                        // Neblokující - objednávka byla úspěšně aktualizována, chyba je jen v přepočtu
+                    }
+                }
+            }
+            
             api_ok('Objednávka byla aktualizována', [
                 'order_id' => $order_id,
                 'updated_fields' => array_keys(array_filter($payload, function($key) use ($allowed_fields) {
