@@ -10742,19 +10742,6 @@ function OrderForm25() {
       // Workflow pořadí: KE_SCHVALENI → SCHVALENA → ROZPRACOVANA → ODESLANA → POTVRZENA → UVEREJNENA → FAKTURACE → DOKONCENA
       let workflowStates = [...existingStates]; // Zachovat existující stavy z DB
 
-      // 🔍 DEBUG: Výpis workflow stavu na začátku
-        původní_workflow: formData.stav_workflow_kod,
-        workflowStates: [...workflowStates],
-        ma_byt_zverejnena: formData.ma_byt_zverejnena,
-        dt_zverejneni: formData.dt_zverejneni,
-        registr_iddt: formData.registr_iddt,
-        dodavatel_potvrzeni: formData.dodavatel_zpusob_potvrzeni?.potvrzeni,
-        financovani_platba: formData.financovani?.platba,
-        dodavatel_platba: formData.dodavatel_zpusob_potvrzeni?.platba,
-        faktury_count: formData.faktury?.length || 0,
-        faktury_ids: formData.faktury?.map(f => f.id || 'NEW') || []
-      });
-
       // ✅ KRITICKÉ: Kontrolovat formData.id NEBO formData.id pro rozhodnutí INSERT vs UPDATE
       const hasOrderId = formData.id || formData.id;
 
@@ -10929,12 +10916,6 @@ function OrderForm25() {
       // Odstraň duplicity (zachovej pořadí)
       workflowStates = [...new Set(workflowStates)];
 
-      // � DEBUG: Výpis workflow stavu před seřazením
-        workflowStates: [...workflowStates],
-        isPokladna: isPokladna,
-        financovani_platba: formData.financovani?.platba,
-        dodavatel_platba: formData.dodavatel_zpusob_potvrzeni?.platba
-      });
 
       // �🔧 KRITICKÁ OPRAVA: Odstranit STARÉ/NEPLATNÉ workflow stavy
       // Odstranit K_DOKONCENI - již se nepoužívá, nahrazeno ZKONTROLOVANA + DOKONCENA
@@ -10958,11 +10939,6 @@ function OrderForm25() {
         return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
       });
 
-      // 🔍 DEBUG: Finální workflow před uložením
-        workflowStates: [...workflowStates],
-        poslední_stav: workflowStates[workflowStates.length - 1],
-        jako_string: JSON.stringify(workflowStates)
-      });
 
       orderData.stav_workflow_kod = JSON.stringify(workflowStates);
 

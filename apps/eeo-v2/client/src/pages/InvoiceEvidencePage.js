@@ -4191,10 +4191,27 @@ export default function InvoiceEvidencePage() {
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP po úspěšné aktualizaci věcné správnosti
         // 🔥 KONTROLA: Ukládat LP čerpání JEN pokud je objednávka financována z LP
         
+        // 🔥 FIX: Parsovat financovani pokud je string
+        let financovaniObj = null;
+        try {
+          if (orderData?.financovani) {
+            financovaniObj = typeof orderData.financovani === 'string' 
+              ? JSON.parse(orderData.financovani) 
+              : orderData.financovani;
+          }
+        } catch (e) {
+          console.error('❌ Chyba při parsování financovani:', e);
+        }
+        
+        const isLPFinancing = financovaniObj?.typ === 'LP' || 
+                             (orderData?.zpusob_financovani && String(orderData.zpusob_financovani).toLowerCase().includes('lp'));
+        
         if (isLPFinancing) {
           let validLpCerpani = [];
           try {
             // 🔥 FIX: Získat LP čerpání - VŽDY používat lpCerpaniRef.current (aktuální hodnota z UI)
+            let lpCerpaniToSave = lpCerpaniRef.current || lpCerpani || [];
+            
             // 🔥 AUTO-FILL FALLBACK: Pokud je lpCerpani prázdné ale máme jen 1 LP kód
             if (lpCerpaniToSave.length === 0) {
               const fin = typeof orderData.financovani === 'string' 
@@ -4214,17 +4231,14 @@ export default function InvoiceEvidencePage() {
                 // Vytvořit auto-fill záznam (i pro 0 Kč u zálohových faktur)
                 lpCerpaniToSave = [{
                   lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
-              console.warn('  - lpCerpaniToSave:', lpCerpaniToSave);
-              console.warn('  - Důvod: Neprošly validací (hasLpId && hasLpCislo && hasCastka)');
+                  lp_id: filteredLPCodes[0].id,
+                  castka: faCastka,
+                  poznamka: ''
+                }];
+              }
             }
           } catch (lpError) {
-            console.error('═══════════════════════════════════════════════════════════════');
-            console.error('❌ CHYBA PŘI UKLÁDÁNÍ LP ČERPÁNÍ!');
-            console.error('  - Chyba:', lpError);
-            console.error('  - Message:', lpError?.message);
-            console.error('  - Response:', lpError?.response?.data);
-            console.error('  - LP čerpání data:', validLpCerpani);
-            console.error('═══════════════════════════════════════════════════════════════');
+            console.error('❌ CHYBA PŘI UKLÁDÁNÍ LP ČERPÁNÍ:', lpError);
             const errorMsg = lpError?.response?.data?.message || lpError.message || 'Neznámá chyba';
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
             showToast && showToast('Věcná správnost uložena, ale čerpání LP se nepodařilo uložit: ' + errorMsg, 'warning');
