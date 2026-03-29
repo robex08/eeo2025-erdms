@@ -244,6 +244,34 @@ cd /var/www/erdms-dev/docs/scripts-shell
 # Po deployu OVĚŘ:
 curl https://erdms.zachranka.cz/eeo-v2/version.json
 # → Hash MUSÍ odpovídat buildu!
+
+# ⚠️ KRITICKÉ - KONTROLA VERSION.JSON PO PRODUCTION BUILDU!
+# ============================================
+# Po každém production buildu ZKONTROLUJ version.json:
+
+cat build-prod/version.json
+# → "version": "2.37"  ← NESMÍ BÝT PRÁZDNÉ!
+
+# POKUD JE "version": "" (prázdné):
+cat > build-prod/version.json << EOF
+{
+  "buildHash": "HASH_Z_BUILDU",
+  "buildTime": "CAS_Z_BUILDU",
+  "version": "2.37",
+  "generated": "DATUM_Z_BUILDU"
+}
+EOF
+
+# Po rsync do produkce OVĚŘ i produkční version.json:
+curl https://erdms.zachranka.cz/eeo-v2/version.json
+# → "version": "2.37"  ← MUSÍ obsahovat číslo verze!
+
+# DŮVOD: Pokud "version" je prázdné, notifikace zobrazí starou verzi!
+# 
+# OPRAVA (2026-03-29): generate-build-info.sh byl opraven aby
+# spolehlivě načetl REACT_APP_VERSION z .env.production při prod buildu.
+# V budoucích buildech by už tento problém neměl nastat.
+# ============================================
 ```
 
 ### � KRITICKÉ: MANUÁLNÍ PROD FE DEPLOYMENT (POUZE FE, BEZ API)
