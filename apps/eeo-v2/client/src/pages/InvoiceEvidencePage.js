@@ -5219,12 +5219,17 @@ export default function InvoiceEvidencePage() {
         console.warn('Chyba při mazání localStorage:', err);
       }
       
-      // ✅ OPRAVA: Pokud uživatel přišel z emailu (?edit= v URL), navigovat na seznam faktur
-      // Jinak použít navigate(-1) pro návrat zpět v historii
+      // ✅ OPRAVA: Pokud máme returnTo z location.state, použít jej
+      // Jinak pokud přišel z emailu (?edit= v URL), navigovat na seznam faktur
+      // Jinak navigate(-1) pro návrat zpět v historii
+      const returnTo = location.state?.returnTo;
       const urlParams = new URLSearchParams(location.search);
       const editFromUrl = urlParams.get('edit');
       
-      if (editFromUrl) {
+      if (returnTo) {
+        // Přišel z konkrétní stránky (LP Manager, SmlouvyTab apod.) - vrátit se tam
+        navigate(returnTo, { state: { forceReload: true }, replace: true });
+      } else if (editFromUrl) {
         // Přišel z externího odkazu (email) - navigovat na seznam faktur
         navigate('/invoices25-list');
       } else {
@@ -5312,16 +5317,16 @@ export default function InvoiceEvidencePage() {
           console.warn('Chyba při mazání localStorage:', err);
         }
         
-        // ✅ OPRAVA: Pokud uživatel přišel z emailu (?edit= v URL), navigovat na seznam faktur
-        // Jinak použít navigate(-1) pro návrat zpět v historii
+        // ✅ OPRAVA: Pokud máme returnTo, použít jej; jinak email→seznam; jinak zpět
+        const returnTo = location.state?.returnTo;
         const urlParams = new URLSearchParams(location.search);
         const editFromUrl = urlParams.get('edit');
         
-        if (editFromUrl) {
-          // Přišel z externího odkazu (email) - navigovat na seznam faktur
+        if (returnTo) {
+          navigate(returnTo, { state: { forceReload: true }, replace: true });
+        } else if (editFromUrl) {
           navigate('/invoices25-list');
         } else {
-          // Přišel z interní navigace - vrátit se zpět
           navigate(-1);
         }
       },

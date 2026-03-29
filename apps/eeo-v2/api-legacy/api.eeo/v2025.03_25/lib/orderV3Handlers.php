@@ -868,9 +868,9 @@ function handle_order_v3_list($input, $config, $queries) {
             $lp_conditions = array();
             
             foreach ($lp_ids as $lp_id) {
-                // Hledej LP ID v JSON poli financovani.lp_kody
-                $lp_conditions[] = "JSON_SEARCH(JSON_EXTRACT(o.financovani, '$.lp_kody'), 'one', CAST(? AS CHAR)) IS NOT NULL";
-                $where_params[] = $lp_id;
+                // lp_kody jsou integer pole v JSON → JSON_CONTAINS(financovani, id, '$.lp_kody')
+                $lp_conditions[] = "JSON_CONTAINS(o.financovani, ?, '$.lp_kody')";
+                $where_params[] = (string)$lp_id;
             }
             
             if (!empty($lp_conditions)) {
@@ -3150,5 +3150,279 @@ function enrichOrderWithAttachmentStatus($db, &$order) {
     } catch (Exception $e) {
         error_log('[OrderV3] enrichOrderWithAttachmentStatus error: ' . $e->getMessage());
         $order['attachment_color'] = '#64748b'; // Šedá - chyba
+    }
+}
+
+/**
+ * POST - Expand objednávek + faktur pro LP kód
+ * Endpoint: order-v3/lp-expand
+ * POST: {token, username, lp_master_id}
+ * Vrací objednávky s přiřazenými fakturami pro dané LP (dle lp_master_id v financovani.lp_kody)
+ */
+function handle_orderV3_lp_expand($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $lp_master_id = isset($input['lp_master_id']) ? (int)$input['lp_master_id'] : 0;
+
+    if (!$token || !$username || !$lp_master_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token, username nebo lp_master_id']);
+        return;
+    }
+
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) throw new Exception('Chyba připojení k databázi');
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $user_id = (int)($token_data['user_id'] ?? $token_data['id'] ?? 0);
+
+        // Objednávky které mají v financovani.lp_kody tento lp_master_id
+        $sql = "
+            SELECT 
+                o.id,
+                o.cislo_objednavky,
+                o.predmet,
+                o.stav_objednavky,
+                o.dodavatel_nazev,
+                o.max_cena_s_dph,
+                o.dt_vytvoreni,
+                o.uzivatel_id,
+                CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
+            WHERE JSON_CONTAINS(o.financovani, ?, '$.lp_kody')
+              AND o.aktivni = 1
+              AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+            ORDER BY o.dt_vytvoreni DESC
+        ";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([(string)$lp_master_id]);
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Pro každou objednávku načteme faktury
+        $order_ids = array_column($orders, 'id');
+        $faktury_map = [];
+        if (!empty($order_ids)) {
+            $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+            $sql_fa = "
+                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_castka, f.stav, 
+                       f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
+                FROM " . TBL_FAKTURY . " f
+                WHERE f.objednavka_id IN ($placeholders) AND f.aktivni = 1
+                ORDER BY f.fa_datum_vystaveni DESC
+            ";
+            $stmt_fa = $db->prepare($sql_fa);
+            $stmt_fa->execute($order_ids);
+            foreach ($stmt_fa->fetchAll(PDO::FETCH_ASSOC) as $fa) {
+                $faktury_map[(int)$fa['objednavka_id']][] = [
+                    'id' => (int)$fa['id'],
+                    'fa_cislo_vema' => $fa['fa_cislo_vema'],
+                    'fa_castka' => (float)$fa['fa_castka'],
+                    'stav' => $fa['stav'],
+                    'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
+                    'fa_datum_splatnosti' => $fa['fa_datum_splatnosti'],
+                    'fa_zaplacena' => (bool)$fa['fa_zaplacena']
+                ];
+            }
+        }
+
+        // Sestavit výstup
+        $result = [];
+        foreach ($orders as $ord) {
+            $oid = (int)$ord['id'];
+            $result[] = [
+                'id' => $oid,
+                'cislo_objednavky' => $ord['cislo_objednavky'],
+                'predmet' => $ord['predmet'],
+                'stav' => $ord['stav_objednavky'],
+                'dodavatel_nazev' => $ord['dodavatel_nazev'],
+                'max_cena_s_dph' => (float)$ord['max_cena_s_dph'],
+                'dt_vytvoreni' => $ord['dt_vytvoreni'],
+                'objednatel_jmeno' => $ord['objednatel_jmeno'],
+                'faktury' => $faktury_map[$oid] ?? [],
+                'pocet_faktur' => count($faktury_map[$oid] ?? []),
+                'suma_faktur' => array_sum(array_column($faktury_map[$oid] ?? [], 'fa_castka'))
+            ];
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $result,
+            'count' => count($result)
+        ]);
+
+    } catch (Exception $e) {
+        error_log("[OrderV3 LP-Expand] Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * POST - Expand objednávek + faktur pro smlouvu
+ * Endpoint: order-v3/smlouva-expand
+ * POST: {token, username, smlouva_id}
+ * Vrací: objednávky které odkazují na smlouvu (financovani.cislo_smlouvy) + přímé faktury na smlouvu
+ */
+function handle_orderV3_smlouva_expand($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $smlouva_id = isset($input['smlouva_id']) ? (int)$input['smlouva_id'] : 0;
+
+    if (!$token || !$username || !$smlouva_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token, username nebo smlouva_id']);
+        return;
+    }
+
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) throw new Exception('Chyba připojení k databázi');
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // Nejprve získat cislo_smlouvy z ID
+        $stmt_s = $db->prepare("SELECT id, cislo_smlouvy FROM " . TBL_SMLOUVY . " WHERE id = ? LIMIT 1");
+        $stmt_s->execute([$smlouva_id]);
+        $smlouva = $stmt_s->fetch(PDO::FETCH_ASSOC);
+        if (!$smlouva) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Smlouva nenalezena']);
+            return;
+        }
+        $cislo_smlouvy = $smlouva['cislo_smlouvy'];
+
+        // 1) Objednávky které mají financovani.cislo_smlouvy = cislo_smlouvy
+        $sql = "
+            SELECT 
+                o.id,
+                o.cislo_objednavky,
+                o.predmet,
+                o.stav_objednavky,
+                o.dodavatel_nazev,
+                o.max_cena_s_dph,
+                o.dt_vytvoreni,
+                o.uzivatel_id,
+                CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
+            FROM " . TBL_OBJEDNAVKY . " o
+            LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
+            WHERE JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = ?
+              AND o.aktivni = 1
+              AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+            ORDER BY o.dt_vytvoreni DESC
+        ";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$cislo_smlouvy]);
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Faktury na objednávkách
+        $order_ids = array_column($orders, 'id');
+        $faktury_obj_map = [];
+        if (!empty($order_ids)) {
+            $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+            $sql_fa = "
+                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_castka, f.stav,
+                       f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
+                FROM " . TBL_FAKTURY . " f
+                WHERE f.objednavka_id IN ($placeholders) AND f.aktivni = 1
+                ORDER BY f.fa_datum_vystaveni DESC
+            ";
+            $stmt_fa = $db->prepare($sql_fa);
+            $stmt_fa->execute($order_ids);
+            foreach ($stmt_fa->fetchAll(PDO::FETCH_ASSOC) as $fa) {
+                $faktury_obj_map[(int)$fa['objednavka_id']][] = [
+                    'id' => (int)$fa['id'],
+                    'fa_cislo_vema' => $fa['fa_cislo_vema'],
+                    'fa_castka' => (float)$fa['fa_castka'],
+                    'stav' => $fa['stav'],
+                    'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
+                    'fa_datum_splatnosti' => $fa['fa_datum_splatnosti'],
+                    'fa_zaplacena' => (bool)$fa['fa_zaplacena']
+                ];
+            }
+        }
+
+        $orders_result = [];
+        foreach ($orders as $ord) {
+            $oid = (int)$ord['id'];
+            $orders_result[] = [
+                'id' => $oid,
+                'cislo_objednavky' => $ord['cislo_objednavky'],
+                'predmet' => $ord['predmet'],
+                'stav' => $ord['stav_objednavky'],
+                'dodavatel_nazev' => $ord['dodavatel_nazev'],
+                'max_cena_s_dph' => (float)$ord['max_cena_s_dph'],
+                'dt_vytvoreni' => $ord['dt_vytvoreni'],
+                'objednatel_jmeno' => $ord['objednatel_jmeno'],
+                'faktury' => $faktury_obj_map[$oid] ?? [],
+                'pocet_faktur' => count($faktury_obj_map[$oid] ?? []),
+                'suma_faktur' => array_sum(array_column($faktury_obj_map[$oid] ?? [], 'fa_castka'))
+            ];
+        }
+
+        // 2) Přímé faktury na smlouvu (bez objednávky)
+        $sql_direct = "
+            SELECT f.id, f.fa_cislo_vema, f.fa_castka, f.stav,
+                   f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
+            FROM " . TBL_FAKTURY . " f
+            WHERE f.smlouva_id = ? AND f.objednavka_id IS NULL AND f.aktivni = 1
+            ORDER BY f.fa_datum_vystaveni DESC
+        ";
+        $stmt_direct = $db->prepare($sql_direct);
+        $stmt_direct->execute([$smlouva_id]);
+        $direct_faktury = [];
+        foreach ($stmt_direct->fetchAll(PDO::FETCH_ASSOC) as $fa) {
+            $direct_faktury[] = [
+                'id' => (int)$fa['id'],
+                'fa_cislo_vema' => $fa['fa_cislo_vema'],
+                'fa_castka' => (float)$fa['fa_castka'],
+                'stav' => $fa['stav'],
+                'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
+                'fa_datum_splatnosti' => $fa['fa_datum_splatnosti'],
+                'fa_zaplacena' => (bool)$fa['fa_zaplacena']
+            ];
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => [
+                'objednavky' => $orders_result,
+                'prime_faktury' => $direct_faktury,
+                'cislo_smlouvy' => $cislo_smlouvy
+            ],
+            'count_objednavky' => count($orders_result),
+            'count_prime_faktury' => count($direct_faktury)
+        ]);
+
+    } catch (Exception $e) {
+        error_log("[OrderV3 Smlouva-Expand] Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
     }
 }

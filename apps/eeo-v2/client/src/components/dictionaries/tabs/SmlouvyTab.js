@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -388,6 +389,9 @@ const TableContainer = styled.div`
 const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.88rem;
+  letter-spacing: -0.01em;
 `;
 
 const Thead = styled.thead`
@@ -395,10 +399,10 @@ const Thead = styled.thead`
 `;
 
 const TableHeaderCell = styled.th`
-  padding: 1rem 0.75rem;
+  padding: 0.5rem 0.5rem;
   text-align: center;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: white;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   position: sticky;
@@ -406,6 +410,9 @@ const TableHeaderCell = styled.th`
   z-index: 10;
   user-select: none;
   cursor: ${props => props.$sortable ? 'pointer' : 'default'};
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 
   &:first-of-type {
     text-align: left;
@@ -492,6 +499,10 @@ const Tbody = styled.tbody``;
 const TableRow = styled.tr`
   background: ${props => props.$isEven ? '#f8fafc' : 'white'};
   transition: all 0.2s ease;
+  ${props => props.$hasUserDrawn && `
+    border-left: 3px solid #22c55e;
+    background: linear-gradient(90deg, #f0fdf4 0%, ${props.$isEven ? '#f8fafc' : 'white'} 60%) !important;
+  `}
 
   &:hover {
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
@@ -499,11 +510,12 @@ const TableRow = styled.tr`
 `;
 
 const TableCell = styled.td`
-  padding: 1rem 0.75rem;
+  padding: 0.5rem 0.5rem;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   text-align: center;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 
   &:first-of-type {
     text-align: left;
@@ -798,16 +810,16 @@ const saveShowFiltersToStorage = (show) => {
 // =============================================================================
 
 const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => {
-  const { user, token, userDetail, expandedPermissions, hasAdminRole } = useContext(AuthContext);
+  const { user, token, userDetail, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
   // Režim omezení pouze pro menubar "Čerpání smluv" (readOnly varianta)
+  // forceUnrestrictedReadOnly = contractsUnrestricted z App.js (tam se již správně
+  // kontrolují SPENDING/CONTRACT/LP _MANAGE a _VIEW_ALL práva)
   const userUsekId = user?.usek_id || userDetail?.usek_id || null;
   const userUsekZkr = String(user?.usek_zkr || userDetail?.usek_zkr || '').trim().toUpperCase();
-  const hasAnyManagePermission = Array.isArray(expandedPermissions) &&
-    expandedPermissions.some((p) => /_MANAGE$/i.test(String(p || '')));
   const isAdminUser = typeof hasAdminRole === 'function' ? hasAdminRole() : false;
-  const isRestrictedCerpaniUser = readOnly && !forceUnrestrictedReadOnly && !isAdminUser && !hasAnyManagePermission;
+  const isRestrictedCerpaniUser = readOnly && !forceUnrestrictedReadOnly && !isAdminUser;
 
   // State
   const [smlouvy, setSmlouvy] = useState([]);
@@ -870,6 +882,93 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     onConfirm: null
   });
 
+  // State pro expand řádků smluv (lazy-load objednávek)
+  const navigate = useNavigate();
+  const [expandedContracts, setExpandedContracts] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`smlouvy_expanded_${user?.id || 'default'}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const [contractExpandOrders, setContractExpandOrders] = useState({});
+  const [contractExpandLoading, setContractExpandLoading] = useState({});
+  // Sort state pro expand sub-tabulky: { [key]: { col: string, dir: 'asc'|'desc'|null } }
+  const [contractExpandSort, setContractExpandSort] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`smlouvy_expand_sort_${user?.id || 'default'}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  // Paging state pro expand sub-tabulky: { [key]: { page: number, pageSize: number } }
+  const [contractExpandPage, setContractExpandPage] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`smlouvy_expand_page_${user?.id || 'default'}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  // Persist expand/sort/paging do LS
+  useEffect(() => {
+    try { localStorage.setItem(`smlouvy_expanded_${user?.id || 'default'}`, JSON.stringify(expandedContracts)); } catch {}
+  }, [expandedContracts, user?.id]);
+  useEffect(() => {
+    try { localStorage.setItem(`smlouvy_expand_sort_${user?.id || 'default'}`, JSON.stringify(contractExpandSort)); } catch {}
+  }, [contractExpandSort, user?.id]);
+  useEffect(() => {
+    try { localStorage.setItem(`smlouvy_expand_page_${user?.id || 'default'}`, JSON.stringify(contractExpandPage)); } catch {}
+  }, [contractExpandPage, user?.id]);
+
+  const toggleContractExpand = useCallback(async (smlouvaId) => {
+    const isExpanding = !expandedContracts[smlouvaId];
+    setExpandedContracts(prev => ({ ...prev, [smlouvaId]: isExpanding }));
+    if (isExpanding && !contractExpandOrders[smlouvaId]) {
+      setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: true }));
+      try {
+        const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const resp = await fetch(`${API_BASE_URL}order-v3/smlouva-expand`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username: user.username,
+            smlouva_id: smlouvaId
+          })
+        });
+        const json = await resp.json();
+        // Endpoint vrací { objednavky: [...], prime_faktury: [...] }
+        setContractExpandOrders(prev => ({ ...prev, [smlouvaId]: json.data || { objednavky: [], prime_faktury: [] } }));
+      } catch {
+        setContractExpandOrders(prev => ({ ...prev, [smlouvaId]: { objednavky: [], prime_faktury: [] } }));
+      }
+      setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: false }));
+    }
+  }, [expandedContracts, contractExpandOrders, token, user]);
+
+  // Auto-načtení dat pro rozbalené řádky z LS (po mount)
+  useEffect(() => {
+    if (!token || !user?.username) return;
+    const expandedKeys = Object.keys(expandedContracts).filter(k => expandedContracts[k]);
+    if (expandedKeys.length === 0) return;
+    expandedKeys.forEach(async (smlouvaId) => {
+      if (contractExpandOrders[smlouvaId]) return;
+      setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: true }));
+      try {
+        const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const resp = await fetch(`${API_BASE_URL}order-v3/smlouva-expand`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, username: user.username, smlouva_id: smlouvaId })
+        });
+        const json = await resp.json();
+        setContractExpandOrders(prev => ({ ...prev, [smlouvaId]: json.data || { objednavky: [], prime_faktury: [] } }));
+      } catch {
+        setContractExpandOrders(prev => ({ ...prev, [smlouvaId]: { objednavky: [], prime_faktury: [] } }));
+      }
+      setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: false }));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.username]);
+
   // =============================================================================
   // DATA LOADING
   // =============================================================================
@@ -930,23 +1029,17 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   const filteredSmlouvy = useMemo(() => {
     const result = smlouvy.filter(smlouva => {
       // 🎯 OMEZENÍ POUZE PRO MENUBAR "ČERPÁNÍ":
-      // Běžný uživatel bez *_MANAGE a bez admin role vidí jen:
-      // 1) smlouvy z jeho úseku + klasifikované jako "Použití v OBJ"
-      // 2) případně i jiné smlouvy, pokud z nich uživatel osobně čerpal
+      // Běžný uživatel (VIEW_OWN) vidí:
+      // 1) VŠECHNY smlouvy svého úseku
+      // 2) Smlouvy z jiných úseků pouze pokud z nich osobně čerpal
       if (isRestrictedCerpaniUser) {
         const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
         const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
-
         const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
         const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
         const jeMujUsek = matchByZkr || matchById;
-        const jePouzitiVObj = Number(smlouva.pouzit_v_obj_formu || 0) === 1;
         const cerpalUzivatel = Number(smlouva.pocet_objednavek_uzivatel || 0) > 0;
-
-        const splnujeSkupinu1 = jeMujUsek && jePouzitiVObj;
-        const splnujeSkupinu2 = cerpalUzivatel;
-
-        if (!splnujeSkupinu1 && !splnujeSkupinu2) {
+        if (!jeMujUsek && !cerpalUzivatel) {
           return false;
         }
       }
@@ -1040,27 +1133,18 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     }
 
     // Pořadí pro menubar Čerpání smluv:
-    // 1) Můj úsek + Použití v OBJ
-    // 2) Ostatní, kde uživatel čerpal
+    // 1) Smlouvy vlastního úseku první, 2) ostatní (osobně čerpané z cizích úseků)
     return [...result].sort((a, b) => {
       const getPriority = (smlouva) => {
         const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
         const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
         const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
         const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
-        const jeMujUsek = matchByZkr || matchById;
-        const jePouzitiVObj = Number(smlouva.pouzit_v_obj_formu || 0) === 1;
-        const cerpalUzivatel = Number(smlouva.pocet_objednavek_uzivatel || 0) > 0;
-
-        if (jeMujUsek && jePouzitiVObj) return 1;
-        if (cerpalUzivatel) return 2;
-        return 3;
+        return (matchByZkr || matchById) ? 1 : 2;
       };
-
       const pa = getPriority(a);
       const pb = getPriority(b);
       if (pa !== pb) return pa - pb;
-
       return String(a.cislo_smlouvy || '').localeCompare(String(b.cislo_smlouvy || ''), 'cs', {
         numeric: true,
         sensitivity: 'base'
@@ -1321,7 +1405,83 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   const columns = useMemo(() => [
     columnHelper.accessor('cislo_smlouvy', {
       header: 'Číslo smlouvy',
-      cell: info => <strong>{info.getValue()}</strong>,
+      cell: info => {
+        const row = info.row.original;
+        const pocet = Number(row?.pocet_objednavek_uzivatel || 0);
+        // +/- jen kde jsou objednávky
+        const totalOrders = Number(row?.pocet_objednavek || 0);
+        const canExpand = isAdminUser ? (totalOrders > 0) : (pocet > 0 || totalOrders > 0);
+        const isExpanded = expandedContracts[row.id];
+        // Počet nad ikonou: admin vidí celkové, uživatel své
+        const expandCount = isAdminUser
+          ? totalOrders
+          : pocet;
+        const expandBtn = canExpand ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleContractExpand(row.id); }}
+            title={isExpanded ? 'Skrýt objednávky' : 'Zobrazit objednávky'}
+            style={{
+              background: isExpanded ? '#fee2e2' : '#eff6ff',
+              border: `1px solid ${isExpanded ? '#fca5a5' : '#93c5fd'}`,
+              borderRadius: '4px',
+              width: '22px',
+              cursor: 'pointer',
+              display: 'inline-flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              color: isExpanded ? '#dc2626' : '#3b82f6',
+              flexShrink: 0, padding: '1px 0', gap: 0,
+              lineHeight: 1, verticalAlign: 'middle', marginRight: '0.4rem'
+            }}
+          >
+            <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: isExpanded ? '#dc2626' : '#1e40af', opacity: 0.85 }}>
+              {expandCount}
+            </span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
+              {isExpanded ? '−' : '+'}
+            </span>
+          </button>
+        ) : (
+          <button
+            disabled
+            title="Žádné objednávky"
+            style={{
+              background: '#f3f4f6',
+              border: '1px solid #d1d5db',
+              borderRadius: '4px',
+              width: '22px',
+              cursor: 'not-allowed',
+              display: 'inline-flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              color: '#9ca3af',
+              flexShrink: 0, padding: '1px 0', gap: 0,
+              lineHeight: 1, verticalAlign: 'middle', marginRight: '0.4rem',
+              opacity: 0.5
+            }}
+          >
+            <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1 }}>0</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>+</span>
+          </button>
+        );
+        if (pocet > 0) {
+          return (
+            <span style={{ display: 'flex', alignItems: 'center' }}>
+              {expandBtn}
+              <SmartTooltip
+                text={`Vaše čerpání: ${pocet} objednávek`}
+                icon="success"
+              >
+                <strong style={{ cursor: 'help', borderBottom: '2px dotted #22c55e' }}>{info.getValue()}</strong>
+              </SmartTooltip>
+            </span>
+          );
+        }
+        return (
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            {expandBtn}
+            <strong>{info.getValue()}</strong>
+          </span>
+        );
+      },
       enableSorting: true
     }),
     columnHelper.accessor('nazev_firmy', {
@@ -1553,7 +1713,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         </ActionCell>
       )
     })
-  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly]);
+  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, expandedContracts, toggleContractExpand, isAdminUser]);
 
   const table = useReactTable({
     data: filteredSmlouvy,
@@ -1977,13 +2137,213 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                 </tr>
               ) : (
                 paginatedRows.map((row, index) => (
-                  <TableRow key={row.id} $isEven={index % 2 === 0}>
+                  <React.Fragment key={row.id}>
+                  <TableRow
+                    $isEven={index % 2 === 0}
+                    $hasUserDrawn={Number(row.original?.pocet_objednavek_uzivatel || 0) > 0}
+                    title={Number(row.original?.pocet_objednavek_uzivatel || 0) > 0
+                      ? `Vaše čerpání: ${row.original.pocet_objednavek_uzivatel} objednávek`
+                      : undefined
+                    }
+                  >
                     {row.getVisibleCells().map(cell => (
                       <TableCell key={cell.id}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
                     ))}
                   </TableRow>
+                  {expandedContracts[row.original.id] && (
+                    <tr style={{ background: '#f8fafc' }}>
+                      <TableCell colSpan={columns.length} style={{ padding: '0.5rem 1rem 0.75rem 2rem', borderBottom: '2px solid #cbd5e1' }}>
+                        {contractExpandLoading[row.original.id] ? (
+                          <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '0.5rem 0', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif" }}>Načítám objednávky…</div>
+                        ) : (() => {
+                          const expandData = contractExpandOrders[row.original.id] || {};
+                          const objednavky = Array.isArray(expandData.objednavky) ? expandData.objednavky : [];
+                          const primeFaktury = Array.isArray(expandData.prime_faktury) ? expandData.prime_faktury : [];
+                          if (objednavky.length === 0 && primeFaktury.length === 0) {
+                            return <div style={{ color: '#94a3b8', fontSize: '0.82rem', padding: '0.5rem 0', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif" }}>Žádné objednávky ani faktury k této smlouvě</div>;
+                          }
+                          const rowKey = row.original.id;
+                          const sortState = contractExpandSort[rowKey] || { col: null, dir: null };
+                          const pageState = contractExpandPage[rowKey] || { page: 1, pageSize: 25 };
+                          const PAGE_SIZES = [5, 10, 25, 50, 100];
+                          const toggleSort = (col) => {
+                            setContractExpandSort(prev => {
+                              const cur = prev[rowKey] || { col: null, dir: null };
+                              let newDir = null;
+                              if (cur.col !== col) newDir = 'asc';
+                              else if (cur.dir === 'asc') newDir = 'desc';
+                              else if (cur.dir === 'desc') newDir = null;
+                              return { ...prev, [rowKey]: { col: newDir ? col : null, dir: newDir } };
+                            });
+                            setContractExpandPage(prev => ({ ...prev, [rowKey]: { ...pageState, page: 1 } }));
+                          };
+                          const sortIcon = (col) => (
+                            <span style={{ marginLeft: '0.2rem', fontSize: '0.65rem', opacity: sortState.col === col ? 1 : 0.3, color: sortState.col === col ? '#2563eb' : 'inherit' }}>
+                              {sortState.col !== col ? '⇅' : sortState.dir === 'asc' ? '↑' : '↓'}
+                            </span>
+                          );
+                          const sortRows = (arr) => [...arr].sort((a, b) => {
+                            if (!sortState.col || !sortState.dir) return 0;
+                            const m = sortState.dir === 'asc' ? 1 : -1;
+                            switch (sortState.col) {
+                              case 'cislo': return m * (a.cislo_objednavky || a.fa_cislo_vema || '').localeCompare(b.cislo_objednavky || b.fa_cislo_vema || '', 'cs');
+                              case 'datum': return m * (a.dt_vytvoreni || a.fa_datum_vystaveni || '').localeCompare(b.dt_vytvoreni || b.fa_datum_vystaveni || '');
+                              case 'stav': return m * (a.stav || '').localeCompare(b.stav || '', 'cs');
+                              case 'dodavatel': return m * (a.dodavatel_nazev || '').localeCompare(b.dodavatel_nazev || '', 'cs');
+                              case 'cena': return m * ((a.max_cena_s_dph || a.fa_castka || 0) - (b.max_cena_s_dph || b.fa_castka || 0));
+                              case 'faktury': return m * ((a.pocet_faktur || 0) - (b.pocet_faktur || 0));
+                              case 'splatnost': return m * (a.fa_datum_splatnosti || '').localeCompare(b.fa_datum_splatnosti || '');
+                              default: return 0;
+                            }
+                          });
+                          const thBase = { padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.75rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.025em', borderBottom: '2px solid #cbd5e1', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
+                          const czFormat = (v) => new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
+                          const czDate = (d) => { if (!d) return '—'; const s = d.substring(0,10); const p = s.split('-'); return p.length === 3 ? `${parseInt(p[2])}.${parseInt(p[1])}.${p[0]}` : s; };
+                          const allRows = [...objednavky, ...primeFaktury];
+                          const totalRows = allRows.length;
+                          const totalPages = Math.ceil(totalRows / pageState.pageSize);
+                          const startIdx = (pageState.page - 1) * pageState.pageSize;
+                          const setPage = (p) => setContractExpandPage(prev => ({ ...prev, [rowKey]: { ...pageState, page: p } }));
+                          const setPageSize = (ps) => setContractExpandPage(prev => ({ ...prev, [rowKey]: { page: 1, pageSize: ps } }));
+                          // Paging applied per-section
+                          const sortedObj = sortRows(objednavky);
+                          const sortedPf = sortRows(primeFaktury);
+                          return (
+                            <>
+                              {sortedObj.length > 0 && (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em', marginBottom: sortedPf.length > 0 ? '0.75rem' : 0 }}>
+                                  <thead>
+                                    <tr style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
+                                      <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('cislo')}>Č. obj.{sortIcon('cislo')}</th>
+                                      <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
+                                      <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
+                                      <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
+                                      <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('cena')}>Cena s DPH{sortIcon('cena')}</th>
+                                      <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('faktury')}>Faktury{sortIcon('faktury')}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {sortedObj.map((ord, oi) => (
+                                      <React.Fragment key={ord.id || oi}>
+                                      <tr style={{ borderBottom: ord.faktury?.length ? 'none' : '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc', transition: 'background-color 0.15s ease' }}>
+                                        <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
+                                          <button
+                                            onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: window.location.pathname } })}
+                                            style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #93c5fd' }}
+                                            title="Otevřít objednávku"
+                                          >
+                                            {ord.cislo_objednavky || '—'}
+                                          </button>
+                                        </td>
+                                        <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(ord.dt_vytvoreni)}</td>
+                                        <td style={{ padding: '0.25rem 0.5rem' }}>
+                                          <span style={{
+                                            background: ord.stav === 'AKTIVNI' ? '#dcfce7' : ord.stav === 'FAKTURACE' ? '#dbeafe' : ord.stav === 'DOKONCENA' ? '#f0fdf4' : '#f1f5f9',
+                                            color: ord.stav === 'AKTIVNI' ? '#16a34a' : ord.stav === 'FAKTURACE' ? '#1d4ed8' : ord.stav === 'DOKONCENA' ? '#059669' : '#64748b',
+                                            borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em'
+                                          }}>{ord.stav || '?'}</span>
+                                        </td>
+                                        <td style={{ padding: '0.25rem 0.5rem', color: '#374151', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ord.dodavatel_nazev || '—'}</td>
+                                        <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{czFormat(ord.max_cena_s_dph)}</td>
+                                        <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontSize: '0.75rem', color: '#6b7280' }}>
+                                          {ord.pocet_faktur > 0 ? `${ord.pocet_faktur}× / ${czFormat(ord.suma_faktur)}` : '—'}
+                                        </td>
+                                      </tr>
+                                      {ord.faktury?.length > 0 && ord.faktury.map((fa, fi) => (
+                                        <tr key={`fa-${fa.id}`} style={{ background: '#fffbeb', borderBottom: fi === ord.faktury.length - 1 ? '1px solid #f1f5f9' : '1px dashed #fde68a' }}>
+                                          <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.75rem', fontSize: '0.75rem', color: '#92400e' }}>
+                                            ↳{' '}
+                                            <button
+                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: window.location.pathname } })}
+                                              style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
+                                              title="Otevřít fakturu"
+                                            >
+                                              {fa.fa_cislo_vema || '—'}
+                                            </button>
+                                          </td>
+                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c' }}>{czDate(fa.fa_datum_vystaveni)}</td>
+                                          <td style={{ padding: '0.2rem 0.5rem' }}>
+                                            <span style={{
+                                              background: fa.stav === 'DOKONCENA' ? '#dcfce7' : fa.stav === 'ZAPLACENO' ? '#dbeafe' : '#fef3c7',
+                                              color: fa.stav === 'DOKONCENA' ? '#16a34a' : fa.stav === 'ZAPLACENO' ? '#1d4ed8' : '#92400e',
+                                              borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em'
+                                            }}>{fa.stav}</span>
+                                          </td>
+                                          <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }} colSpan={2}>
+                                            {czFormat(fa.fa_castka)}
+                                          </td>
+                                          <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: '#78716c' }}>
+                                            {fa.fa_datum_splatnosti ? `Splat: ${czDate(fa.fa_datum_splatnosti)}` : ''}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      </React.Fragment>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              {sortedPf.length > 0 && (
+                                <>
+                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7c3aed', marginBottom: '0.3rem', borderTop: sortedObj.length > 0 ? '1px dashed #c4b5fd' : 'none', paddingTop: sortedObj.length > 0 ? '0.5rem' : 0, fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                                    Přímé faktury (bez objednávky): {sortedPf.length}
+                                  </div>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em' }}>
+                                    <thead>
+                                      <tr style={{ background: 'linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%)' }}>
+                                        <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('cislo')}>Č. faktury{sortIcon('cislo')}</th>
+                                        <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('datum')}>Datum vystavení{sortIcon('datum')}</th>
+                                        <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
+                                        <th style={{ ...thBase, textAlign: 'right', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('cena')}>Částka{sortIcon('cena')}</th>
+                                        <th style={{ ...thBase, textAlign: 'right', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('splatnost')}>Splatnost{sortIcon('splatnost')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {sortedPf.map((fa, fi) => (
+                                        <tr key={fa.id || fi} style={{ borderBottom: '1px solid #f1f5f9', background: fi % 2 === 0 ? 'white' : '#faf5ff', transition: 'background-color 0.15s ease' }}>
+                                          <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
+                                            <button
+                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, returnTo: window.location.pathname } })}
+                                              style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
+                                              title="Otevřít fakturu"
+                                            >
+                                              {fa.fa_cislo_vema || '—'}
+                                            </button>
+                                          </td>
+                                          <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(fa.fa_datum_vystaveni)}</td>
+                                          <td style={{ padding: '0.25rem 0.5rem' }}>
+                                            <span style={{
+                                              background: fa.stav === 'DOKONCENA' ? '#dcfce7' : fa.stav === 'ZAPLACENO' ? '#dbeafe' : '#fef3c7',
+                                              color: fa.stav === 'DOKONCENA' ? '#16a34a' : fa.stav === 'ZAPLACENO' ? '#1d4ed8' : '#92400e',
+                                              borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em'
+                                            }}>{fa.stav}</span>
+                                          </td>
+                                          <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{czFormat(fa.fa_castka)}</td>
+                                          <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontSize: '0.8rem', color: '#78716c' }}>{czDate(fa.fa_datum_splatnosti)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </>
+                              )}
+                              {totalRows > PAGE_SIZES[0] && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.25rem 0', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.75rem', color: '#64748b' }}>
+                                  <span>Celkem {objednavky.length} obj. + {primeFaktury.length} přímých FA</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <select value={pageState.pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={{ padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem', fontFamily: 'inherit', cursor: 'pointer', background: 'white' }}>
+                                      {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </TableCell>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))
               )}
             </Tbody>

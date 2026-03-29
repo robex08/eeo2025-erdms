@@ -422,7 +422,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                     FROM " . TBL_OBJEDNAVKY . " o
                     WHERE o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
                       AND o.aktivni = 1
-                      AND o.stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
+                      AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                 ) AS pocet_objednavek
                                 ,
                                 (
@@ -430,7 +430,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                         FROM " . TBL_OBJEDNAVKY . " o
                                         WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
                                             AND o.aktivni = 1
-                                            AND o.stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
+                                            AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                                             AND o.objednatel_id = :current_user_id
                                 ) AS pocet_objednavek_uzivatel
             FROM " . TBL_SMLOUVY . " s
@@ -586,7 +586,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
             FROM " . TBL_OBJEDNAVKY . "
             WHERE financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
               AND aktivni = 1
-              AND stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
+              AND stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
         ";
         
         $stmt = $db->prepare($sql_stats);

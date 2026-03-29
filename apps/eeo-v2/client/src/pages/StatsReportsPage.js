@@ -46,6 +46,7 @@ import {
   faPen
 } from '@fortawesome/free-solid-svg-icons';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
@@ -144,7 +145,9 @@ const SECTION_BLOCKS = {
     { key: 'chartDruh', label: 'Druhy objednávek – počet a částka' },
     { key: 'chartLpKod', label: 'LP kódy – počet a částka' },
     { key: 'chartTopSuppliers', label: 'Top dodavatelé (částka)' },
-    { key: 'chartTopBuyers', label: 'Top objednatelé (počet a částka)' }
+    { key: 'chartTopBuyers', label: 'Top objednatelé (počet a částka)' },
+    { key: 'chartDonutFinancing', label: 'Koláčový: členění dle financování' },
+    { key: 'chartDonutStav', label: 'Koláčový: členění dle stavu objednávek' }
   ],
   attachments: [
     { key: 'orderAttachmentsByType', label: 'Přílohy objednávek podle typu' },
@@ -503,8 +506,16 @@ const TabsBar = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 0;
   flex-wrap: wrap;
+  position: sticky;
+  top: -1em;
+  z-index: 50;
+  background: #f1f5f9;
+  padding: 0.75rem 1.5rem 1rem;
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.10);
 `;
 
 const Tabs = styled.div`
@@ -537,6 +548,7 @@ const ContentGrid = styled.div`
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 1.5rem;
+  align-items: start;
 
   @media (max-width: 1100px) {
     grid-template-columns: 1fr;
@@ -546,9 +558,12 @@ const ContentGrid = styled.div`
 const Panel = styled.div`
   background: rgba(255, 255, 255, 0.96);
   border-radius: 16px;
-  padding: 1.5rem 1.4rem 1.75rem;
+  padding: 1.5rem 1.4rem 3rem;
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
   border: 1px solid rgba(148, 163, 184, 0.2);
+  position: sticky;
+  top: 4.5rem;
+  margin-bottom: 3rem;
 `;
 const PivotPanel = styled.div`
   margin-bottom: 1.5rem;
@@ -1153,6 +1168,7 @@ const ChartGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 1.25rem;
+  padding-bottom: 3rem;
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
   }
@@ -2046,6 +2062,33 @@ export default function StatsReportsPage() {
   const navigate = useNavigate();
   const userKey = user_id || user?.id || username || 'guest';
 
+  // Viditelné taby dle oprávnění uživatele – admin vidí vše
+  const isAdminUser = typeof hasAdminRole === 'function' && hasAdminRole();
+  const visibleTabs = useMemo(() => {
+    if (isAdminUser) return PAGE_TABS;
+    if (typeof hasPermission !== 'function') return [];
+    return PAGE_TABS.filter(tab => {
+      switch (tab.id) {
+        case 'control':
+          return hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE');
+        case 'vzdel':
+          return hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE');
+        case 'spend':
+          return hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE');
+        case 'reports':
+          return hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE');
+        case 'stats':
+          return hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE');
+        case 'attachments':
+          return hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE');
+        case 'pivot':
+          return hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE');
+        default:
+          return false;
+      }
+    });
+  }, [isAdminUser, hasPermission]);
+
   const activeTabLsKey = `${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`;
   const filterLsKey = `${LOCAL_STORAGE_PREFIX}_filters_${userKey}`;
   // Lazy init — načte tab přímo z LS při prvním renderu (synchronně), takže F5 nevyžaduje async useEffect
@@ -2058,6 +2101,13 @@ export default function StatsReportsPage() {
     } catch (e) {}
     return 'control';
   });
+
+  // Pokud aktuálně aktivní tab není ve visibleTabs (nemá oprávnění), přepni na první dostupný
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some(t => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, activeTab]);
   // Ref pro detekci prvního načtení per-user dat (fallback pro async auth)
   const lsLoadedForKey = useRef(null);
   const [loading, setLoading] = useState(false);
@@ -4566,19 +4616,45 @@ export default function StatsReportsPage() {
       .sort((a, b) => b[1].amount - a[1].amount)
       .slice(0, 15);
 
+    // Stav objednávek - počty + částky pro koláčový graf
+    // Merge duplicit lišících se pouze diakritikou ("Zkontrolovaná" vs "Zkontrolována")
+    const byStavRaw = {}; // normKey → { label, count, amount }
+    const stripDia = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    filteredOrders.forEach(order => {
+      const statusLabel = (getOrderStatusLabel(order) || 'Neurčeno').trim();
+      const normKey = stripDia(statusLabel);
+      if (!byStavRaw[normKey]) byStavRaw[normKey] = { label: statusLabel, count: 0, amount: 0 };
+      byStavRaw[normKey].count += 1;
+      byStavRaw[normKey].amount += getOrderAmount(order);
+    });
+    // Výsledný objekt: label → {count, amount}
+    const byStav = {};
+    Object.values(byStavRaw).forEach(({ label, count, amount }) => {
+      byStav[label] = { count, amount };
+    });
+
+    // Financování - počty pro koláčový graf (bez STORNO/SMAZ)
+    const byFinancingCount = {};
+    filteredOrders.forEach(order => {
+      const finKey = getOrderFinancingLabel(order) || 'Neurčeno';
+      byFinancingCount[finKey] = (byFinancingCount[finKey] || 0) + 1;
+    });
+
     const sortByKey = obj => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b, 'cs-CZ')));
 
     return {
       ordersByType,
       ordersByUsek: Object.fromEntries(Object.entries(byUsek).sort(([a], [b]) => a.localeCompare(b, 'cs-CZ'))),
       byFinancing: sortByKey(byFinancing),
+      byFinancingCount: sortByKey(byFinancingCount),
       byUsek: sortByKey(byUsek),
       byDruh: sortByKey(byDruh),
       byLpKod: sortByKey(byLpKod),
+      byStav,
       topSuppliers,
       topBuyers
     };
-  }, [filteredOrders, getOrderTypeLabel, getOrderFinancingLabel, getOrdererUsekCode, getOrderAmount, parseFinancing, getOrdererName]);
+  }, [filteredOrders, getOrderTypeLabel, getOrderFinancingLabel, getOrdererUsekCode, getOrderAmount, parseFinancing, getOrdererName, getOrderStatusLabel]);
 
   const pivotData = useMemo(() => {
     const normalizeAttachmentTypes = (items = []) => {
@@ -6565,7 +6641,7 @@ export default function StatsReportsPage() {
 
         <TabsBar>
           <Tabs>
-            {PAGE_TABS.map(tab => (
+            {visibleTabs.map(tab => (
               <TabButton
                 key={tab.id}
                 $active={activeTab === tab.id}
@@ -9328,6 +9404,188 @@ export default function StatsReportsPage() {
                       <SectionTitle>Top objednatelé (částka)</SectionTitle>
                       <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Top objednatelé (částka)', el: <Bar data={buyerData} options={withFsFont(buyerOpts)} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
                       {buyerEl}
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* Koláčový: členění dle financování */}
+                {isBlockVisible('stats', 'chartDonutFinancing') && (() => {
+                  const entries = Object.entries(statisticsCharts.byFinancing || {});
+                  if (entries.length === 0) return null;
+                  const fmtAmtShort = (v) => {
+                    if (v >= 1e6) return (v / 1e6).toLocaleString('cs-CZ', { maximumFractionDigits: 1 }) + ' mil. Kč';
+                    if (v >= 1000) return Math.round(v / 1000).toLocaleString('cs-CZ') + ' tis. Kč';
+                    return Math.round(v).toLocaleString('cs-CZ') + ' Kč';
+                  };
+                  const sorted = [...entries].sort((a, b) => b[1].amount - a[1].amount);
+                  const labels = sorted.map(([k]) => k);
+                  const counts = sorted.map(([, v]) => v.count);
+                  const amounts = sorted.map(([, v]) => v.amount);
+                  const totalCount = counts.reduce((a, b) => a + b, 0);
+                  const colors = buildChartColors(labels.length, CHART_COLORS);
+                  const donutFinData = {
+                    labels,
+                    datasets: [{
+                      data: counts,
+                      backgroundColor: colors,
+                      borderColor: '#fff',
+                      borderWidth: 2
+                    }]
+                  };
+                  const donutFinOpts = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      datalabels: {
+                        display: ctx => totalCount > 0 && (ctx.dataset.data[ctx.dataIndex] * 100 / totalCount) >= 5,
+                        formatter: (value) => (totalCount > 0 ? Math.round(value * 100 / totalCount) : 0) + ' %',
+                        color: '#fff',
+                        font: { size: 11, weight: 'bold' },
+                        textShadowColor: 'rgba(0,0,0,0.4)',
+                        textShadowBlur: 3,
+                      },
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          label: ctx => {
+                            const pct = totalCount > 0 ? Math.round(ctx.parsed * 100 / totalCount) : 0;
+                            return ` ${ctx.label}: ${ctx.parsed} ks (${pct} %), ${fmtAmtShort(amounts[ctx.dataIndex])}`;
+                          }
+                        }
+                      }
+                    }
+                  };
+                  const finLegendItems = labels.map((lbl, i) => ({ label: lbl, color: colors[i], amountStr: fmtAmtShort(amounts[i]) }));
+                  return (
+                    <ChartCard id="section-chartDonutFinancing">
+                      <SectionTitle>Financování – členění (počty)</SectionTitle>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Financování – členění (počty)', el: <Doughnut data={donutFinData} options={withFsFont(donutFinOpts)} plugins={[ChartDataLabels]} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <div style={{ display: 'flex', gap: '1rem', height: '380px', alignItems: 'center' }}>
+                        <div style={{ flex: '0 0 52%', position: 'relative', height: '100%' }}>
+                          <Doughnut data={donutFinData} options={donutFinOpts} plugins={[ChartDataLabels]} />
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.55rem', paddingRight: '0.25rem' }}>
+                          {finLegendItems.map((item, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                              <div style={{ width: 13, height: 13, background: item.color, borderRadius: 3, flexShrink: 0, marginTop: 3 }} />
+                              <div style={{ lineHeight: 1.35 }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{item.label}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{item.amountStr}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </ChartCard>
+                  );
+                })()}
+
+                {/* Koláčový: členění dle stavu objednávek */}
+                {isBlockVisible('stats', 'chartDonutStav') && (() => {
+                  const rawEntries = Object.entries(statisticsCharts.byStav || {});
+                  if (rawEntries.length === 0) return null;
+                  const fmtAmtShort = (v) => {
+                    if (v >= 1e6) return (v / 1e6).toLocaleString('cs-CZ', { maximumFractionDigits: 1 }) + ' mil. Kč';
+                    if (v >= 1000) return Math.round(v / 1000).toLocaleString('cs-CZ') + ' tis. Kč';
+                    return Math.round(v).toLocaleString('cs-CZ') + ' Kč';
+                  };
+                  // Sémantické barvy dle workflow kódu (z OrderForm25)
+                  const STAV_COLORS = {
+                    'NOVA':                  '#94a3b8',
+                    'ODESLANA_KE_SCHVALENI': '#f59e0b',
+                    'CEKA_SE':               '#fbbf24',
+                    'SCHVALENA':             '#10b981',
+                    'ZAMITNUTA':             '#ef4444',
+                    'NESCHVALENA':           '#dc2626',
+                    'ROZPRACOVANA':          '#3b82f6',
+                    'ODESLANA':              '#0ea5e9',
+                    'POTVRZENA':             '#059669',
+                    'UVEREJNIT':             '#a855f7',
+                    'NEUVEREJNIT':           '#9ca3af',
+                    'UVEREJNENA':            '#7c3aed',
+                    'FAKTURACE':             '#6366f1',
+                    'VECNA_SPRAVNOST':       '#8b5cf6',
+                    'ZKONTROLOVANA':         '#14b8a6',
+                    'DOKONCENA':             '#22c55e',
+                    'ZRUSENA':               '#ef4444',
+                  };
+                  // Reverzní mapa label → kód (z orderStatesMap)
+                  const labelToCode = Object.fromEntries(Object.entries(orderStatesMap).map(([code, label]) => [label, code]));
+                  // Pořadí dle workflow manageru (OrderForm25)
+                  const WORKFLOW_ORDER = [
+                    'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'NESCHVALENA', 'SCHVALENA',
+                    'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 'UVEREJNENA',
+                    'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA', 'ZRUSENA'
+                  ];
+                  // Chart data seřazena dle počtu (vizuální koláč)
+                  const sorted = [...rawEntries].sort((a, b) => b[1].count - a[1].count);
+                  const labels = sorted.map(([k]) => k);
+                  const counts = sorted.map(([, v]) => v.count);
+                  const amounts = sorted.map(([, v]) => v.amount);
+                  const total = counts.reduce((a, b) => a + b, 0);
+                  const stavColors = labels.map((lbl, i) => {
+                    const code = labelToCode[lbl];
+                    return STAV_COLORS[code] || CHART_COLORS[i % CHART_COLORS.length];
+                  });
+                  const donutStavData = {
+                    labels,
+                    datasets: [{
+                      data: counts,
+                      backgroundColor: stavColors,
+                      borderColor: '#fff',
+                      borderWidth: 2
+                    }]
+                  };
+                  const donutStavOpts = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      datalabels: {
+                        display: ctx => total > 0 && (ctx.dataset.data[ctx.dataIndex] * 100 / total) >= 5,
+                        formatter: (value) => (total > 0 ? Math.round(value * 100 / total) : 0) + ' %',
+                        color: '#fff',
+                        font: { size: 11, weight: 'bold' },
+                        textShadowColor: 'rgba(0,0,0,0.4)',
+                        textShadowBlur: 3,
+                      },
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          label: ctx => {
+                            const pct = total > 0 ? Math.round(ctx.parsed * 100 / total) : 0;
+                            return ` ${ctx.label}: ${ctx.parsed} ks (${pct} %), ${fmtAmtShort(amounts[ctx.dataIndex])}`;
+                          }
+                        }
+                      }
+                    }
+                  };
+                  const stavLegendItems = labels
+                    .map((lbl, i) => ({ label: lbl, color: stavColors[i], amountStr: fmtAmtShort(amounts[i]), code: labelToCode[lbl] || '' }))
+                    .sort((a, b) => {
+                      const ia = WORKFLOW_ORDER.indexOf(a.code);
+                      const ib = WORKFLOW_ORDER.indexOf(b.code);
+                      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+                    });
+                  return (
+                    <ChartCard id="section-chartDonutStav">
+                      <SectionTitle>Stavy objednávek vč. stornovaných</SectionTitle>
+                      <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: 'Stavy objednávek vč. stornovaných', el: <Doughnut data={donutStavData} options={withFsFont(donutStavOpts)} plugins={[ChartDataLabels]} /> })}><FontAwesomeIcon icon={faExpand} /></ChartExpandBtn>
+                      <div style={{ display: 'flex', gap: '1rem', height: '380px', alignItems: 'center' }}>
+                        <div style={{ flex: '0 0 52%', position: 'relative', height: '100%' }}>
+                          <Doughnut data={donutStavData} options={donutStavOpts} plugins={[ChartDataLabels]} />
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem 0.75rem', paddingRight: '0.25rem', alignContent: 'start' }}>
+                          {stavLegendItems.map((item, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
+                              <div style={{ width: 12, height: 12, background: item.color, borderRadius: 3, flexShrink: 0, marginTop: 3 }} />
+                              <div style={{ lineHeight: 1.3 }}>
+                                <div style={{ fontSize: '0.73rem', fontWeight: 600, color: '#1e293b' }}>{item.label}</div>
+                                <div style={{ fontSize: '0.67rem', color: '#64748b' }}>{item.amountStr}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </ChartCard>
                   );
                 })()}

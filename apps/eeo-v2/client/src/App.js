@@ -492,6 +492,8 @@ function App() {
       mode: canContracts && canLp ? 'all' : (canContracts ? 'contracts' : 'lp'),
       contractsUnrestricted: hasGlobalViewAll || hasContractViewAll,
       lpUnrestricted: hasGlobalViewAll || hasLpViewAll,
+      // VIEW_OWN bez VIEW_ALL/MANAGE → vidí jen LP ze kterých osobně čerpal
+      lpViewOwnOnly: hasLpViewOwn && !hasGlobalViewAll && !hasLpViewAll,
     };
   }, [isLoggedIn, expandedPermissions, hasAdminRole, hasPermission]);
 
@@ -974,6 +976,7 @@ function App() {
                           mode={cerpaniAccessMode.mode}
                           contractsUnrestricted={cerpaniAccessMode.contractsUnrestricted}
                           lpUnrestricted={cerpaniAccessMode.lpUnrestricted}
+                          lpViewOwnOnly={cerpaniAccessMode.lpViewOwnOnly || false}
                         />
                       : <Navigate to="/access-denied" replace />
                   } />}

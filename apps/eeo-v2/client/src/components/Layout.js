@@ -1879,8 +1879,21 @@ const Layout = ({ children }) => {
 
     return (
       (typeof hasAdminRole === 'function' && hasAdminRole()) ||
-      hasPermission('REPORT_MANAGE') ||
-      hasPermission('STATISTICS_MANAGE')
+      hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
+      hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
+      hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
+      hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
+      hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE') ||
+      hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
+      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
+    );
+  }, [hasPermission, hasAdminRole]);
+
+  const hasAssetMenuAccess = useMemo(() => {
+    if (!hasPermission) return false;
+    return (
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
     );
   }, [hasPermission, hasAdminRole]);
 
@@ -3423,7 +3436,7 @@ const Layout = ({ children }) => {
                         to="/orders25-list" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} /> Objednávky
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky
                       </MenuDropdownItem>
                     )}
                     
@@ -3433,7 +3446,7 @@ const Layout = ({ children }) => {
                         to="/orders25-list-v3" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3)
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#3b82f6'}} /> Objednávky (V3)
                       </MenuDropdownItem>
                     )}
                     
@@ -3443,7 +3456,17 @@ const Layout = ({ children }) => {
                         to="/invoices25-list" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} /> Faktury
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Faktury
+                      </MenuDropdownItem>
+                    )}
+                    
+                    {/* Majetek - pro uživatele s ASSET oprávněním (v submenu = jen "Majetek") */}
+                    {((hasAdminRole && hasAdminRole()) || hasAssetMenuAccess) && (
+                      <MenuDropdownItem 
+                        to="/majetek-overview" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faList} fixedWidth style={{color: '#6366f1'}} /> Majetek
                       </MenuDropdownItem>
                     )}
                     
@@ -3453,17 +3476,25 @@ const Layout = ({ children }) => {
                         to="/annual-fees" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky
+                        <FontAwesomeIcon icon={faMoneyBill} fixedWidth style={{color: '#10b981'}} /> Roční poplatky
                       </MenuDropdownItem>
                     )}
-                    
-                    {/* --- DISABLED MODULY (jen pro admin/BETA_TESTER) --- */}
+
+                    {/* Staré objednávky - vždy zobrazit */}
+                    <MenuDropdownItem 
+                      to="/orders" 
+                      onClick={() => setPrehledMenuOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky (&lt; 2026)
+                    </MenuDropdownItem>
+
+                    {/* --- DISABLED MODULY (jen pro admin/BETA_TESTER) - na konci --- */}
                     {!moduleSettings.module_orders_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
                       <MenuDropdownItem 
                         to="/orders25-list" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#f59e0b'}} /> Objednávky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     
@@ -3472,7 +3503,7 @@ const Layout = ({ children }) => {
                         to="/orders25-list-v3" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3) <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#3b82f6'}} /> Objednávky (V3) <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     
@@ -3481,7 +3512,7 @@ const Layout = ({ children }) => {
                         to="/invoices25-list" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#10b981'}} /> Faktury <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#10b981'}} /> Faktury <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     
@@ -3490,17 +3521,9 @@ const Layout = ({ children }) => {
                         to="/annual-fees" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faMoneyBill} style={{color: '#10b981'}} /> Roční poplatky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                        <FontAwesomeIcon icon={faMoneyBill} fixedWidth style={{color: '#10b981'}} /> Roční poplatky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
-                    
-                    {/* Staré objednávky - vždy zobrazit */}
-                    <MenuDropdownItem 
-                      to="/orders" 
-                      onClick={() => setPrehledMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt; 2026)
-                    </MenuDropdownItem>
                   </MenuDropdownContent>,
                   document.body
                 )}
@@ -3532,6 +3555,13 @@ const Layout = ({ children }) => {
             {!hasAnalyticsManagePermission && canAccessCerpani && (
               <MenuLinkLeft to="/cerpani" $active={isActive('/cerpani')}>
                 <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
+              </MenuLinkLeft>
+            )}
+
+            {/* Přehled majetku - standalone link pro uživatele bez Přehled dropdown */}
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasAssetMenuAccess && (
+              <MenuLinkLeft to="/majetek-overview" $active={isActive('/majetek-overview')}>
+                <FontAwesomeIcon icon={faList} style={{color: '#6366f1'}} /> Přehled majetku
               </MenuLinkLeft>
             )}
             
@@ -3576,22 +3606,21 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
                       </MenuDropdownItem>
                     )}
-                    {/* Reporty - zobrazit pokud má právo */}
-                    {(hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')) && (
+                    {/* Statistika a reporty - nový modul nahrazující Reporty + Statistiky */}
+                    {((typeof hasAdminRole === 'function' && hasAdminRole()) || (
+                      hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
+                      hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
+                      hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE') ||
+                      hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
+                      hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
+                      hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
+                      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
+                    )) && (
                       <MenuDropdownItem 
-                        to="/reports" 
+                        to="/stats-reports" 
                         onClick={() => setAnalyticsMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faChartBar} /> Reporty
-                      </MenuDropdownItem>
-                    )}
-                    {/* Statistiky - zobrazit pokud má právo */}
-                    {(hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')) && (
-                      <MenuDropdownItem 
-                        to="/statistics" 
-                        onClick={() => setAnalyticsMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faChartLine} /> Statistiky
+                        <FontAwesomeIcon icon={faChartBar} /> Statistika a reporty
                       </MenuDropdownItem>
                     )}
                   </MenuDropdownContent>,
@@ -3653,22 +3682,6 @@ const Layout = ({ children }) => {
                       minWidth: `${betaDropdownPosition.width}px`
                     }}
                   >
-                    {hasBetaMenuAccess && (
-                      <MenuDropdownItem 
-                        to="/majetek-overview" 
-                        onClick={() => setBetaMenuOpen(false)}
-                      >
-                      <FontAwesomeIcon icon={faList} style={{color: '#6366f1'}} /> Přehled majetku
-                      </MenuDropdownItem>
-                    )}
-                    {hasBetaMenuAccess && (
-                      <MenuDropdownItem
-                        to="/stats-reports"
-                        onClick={() => setBetaMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faChartBar} style={{color: '#2563eb'}} /> Statistika a reporty (BETA)
-                      </MenuDropdownItem>
-                    )}
                     {hasBetaMenuAccess && !moduleSettings.module_orders_v3_visible && (
                       <MenuDropdownItem 
                         to="/orders25-list-v3" 
