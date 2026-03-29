@@ -1,14 +1,17 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown } from '@fortawesome/free-solid-svg-icons';
+import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown, faPaperclip, faExternalLinkAlt, faFile, faFilePdf, faFileWord, faFileExcel, faFileImage, faFileArchive, faFileAlt } from '@fortawesome/free-solid-svg-icons';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
-import { getOrderV2, lockOrderV2 } from '../services/apiOrderV2';
+import { getOrderV2, lockOrderV2, listInvoiceAttachmentsV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2';
+import { getOrderAttachmentsV3 } from '../services/apiOrderV3';
+import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { listMajetekOrdersV3 } from '../services/apiOrdersV3';
 import { formatDateOnly } from '../utils/format';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
@@ -25,6 +28,193 @@ import {
 } from '@tanstack/react-table';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartDataLabels);
+
+// ─── Přílohy - konstanty a utility ───────────────────────────────────────────
+const ATTACHMENT_TYPE_LABELS = {
+  OBJEDNAVKA:            'Objednávka',
+  POTVRZENA_OBJEDNAVKA:  'Potvrzená objednávka',
+  KOSILKA:               'Košilka',
+  CESTOVNI_PRIKAZ:       'Cestovní příkaz',
+  FAKTURA:               'Faktura',
+  FAKTURA_OBJEDNAVKA:    'Faktura k objednávce',
+  CENOVA_NABIDKA:        'Cenová nabídka',
+  DOKLAD:                'Doklad',
+  ROCNI_POPLATEK:        'Roční poplatek',
+  DODACI_LIST:           'Dodací list',
+  PODKLADY:              'Podklady',
+  KOMUNIKACE_DODAVATEL:  'Komunikace s dodavatelem',
+  CERTIFIKAT:            'Certifikát',
+  TECHNICKA_DOKUMENTACE: 'Technická dokumentace',
+  JINE:                  'Jiné',
+  KOMUNIKACE:            'Komunikace',
+  OBJ:                   'Objednávka',
+  FA:                    'Faktura',
+};
+const prettyAttachType = (code) => {
+  if (!code) return code;
+  if (ATTACHMENT_TYPE_LABELS[code]) return ATTACHMENT_TYPE_LABELS[code];
+  return code.split('_').filter(Boolean).map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+};
+const ATTACH_FILE_ICONS = {
+  pdf:  { icon: faFilePdf,     color: '#dc2626', bg: 'linear-gradient(135deg,#fee2e2 0%,#fecaca 100%)' },
+  doc:  { icon: faFileWord,    color: '#1d4ed8', bg: 'linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%)' },
+  docx: { icon: faFileWord,    color: '#1d4ed8', bg: 'linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%)' },
+  xls:  { icon: faFileExcel,   color: '#047857', bg: 'linear-gradient(135deg,#d1fae5 0%,#a7f3d0 100%)' },
+  xlsx: { icon: faFileExcel,   color: '#047857', bg: 'linear-gradient(135deg,#d1fae5 0%,#a7f3d0 100%)' },
+  png:  { icon: faFileImage,   color: '#7e22ce', bg: 'linear-gradient(135deg,#f3e8ff 0%,#e9d5ff 100%)' },
+  jpg:  { icon: faFileImage,   color: '#7e22ce', bg: 'linear-gradient(135deg,#f3e8ff 0%,#e9d5ff 100%)' },
+  jpeg: { icon: faFileImage,   color: '#7e22ce', bg: 'linear-gradient(135deg,#f3e8ff 0%,#e9d5ff 100%)' },
+  gif:  { icon: faFileImage,   color: '#7e22ce', bg: 'linear-gradient(135deg,#f3e8ff 0%,#e9d5ff 100%)' },
+  zip:  { icon: faFileArchive, color: '#c2410c', bg: 'linear-gradient(135deg,#ffedd5 0%,#fed7aa 100%)' },
+  rar:  { icon: faFileArchive, color: '#c2410c', bg: 'linear-gradient(135deg,#ffedd5 0%,#fed7aa 100%)' },
+  txt:  { icon: faFileAlt,     color: '#374151', bg: 'linear-gradient(135deg,#f9fafb 0%,#f3f4f6 100%)' },
+};
+const getAttachFileInfo = (name) => {
+  const ext = (name || '').split('.').pop().toLowerCase();
+  return ATTACH_FILE_ICONS[ext] || { icon: faFile, color: '#64748b', bg: 'linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%)' };
+};
+const getAttachExt = (name) => ((name || '').split('.').pop().toUpperCase()) || 'FILE';
+const fmtAttachSize = (b) => {
+  if (!b) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+};
+const getAttachUser = (a) => {
+  if (a.nahral_jmeno && a.nahral_prijmeni) return `${a.nahral_jmeno} ${a.nahral_prijmeni}`.trim();
+  if (a.nahrano_jmeno && a.nahrano_prijmeni) return `${a.nahrano_jmeno} ${a.nahrano_prijmeni}`.trim();
+  if (a.nahrano_uzivatel) {
+    if (typeof a.nahrano_uzivatel === 'object') {
+      const u = a.nahrano_uzivatel;
+      if (u.jmeno || u.prijmeni) return `${u.jmeno || ''} ${u.prijmeni || ''}`.trim();
+      return null;
+    }
+    return a.nahrano_uzivatel;
+  }
+  return null;
+};
+
+// ─── Styled: Attach Popup ─────────────────────────────────────────────────────
+const AttachPopupContainer = styled.div`
+  position: fixed;
+  z-index: 10000;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+  min-width: 280px;
+  max-width: min(400px, calc(100vw - 40px));
+  overflow: hidden;
+  font-family: 'Roboto Condensed','Roboto',-apple-system,BlinkMacSystemFont,sans-serif;
+  animation: apFadeIn 0.15s ease-out;
+  @keyframes apFadeIn { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+`;
+const AttachPopupHeader = styled.div`
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1e293b;
+  letter-spacing: 0.01em;
+  border-radius: 8px 8px 0 0;
+`;
+const AttachPopupList = styled.div`
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+`;
+const AttachPopupItem = styled.div`
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: default;
+  transition: background-color 0.15s;
+  &:hover { background: #f8fafc; }
+  &:not(:last-child) { border-bottom: 1px solid #f1f5f9; }
+`;
+const AttachPopupFileIconBox = styled.div`
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: ${props => props.$bg || 'linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%)'};
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  svg { color: ${props => props.$ic || '#64748b'}; font-size: 1.25rem; }
+`;
+const AttachPopupFileInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+`;
+const AttachPopupFileName = styled.div`
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+`;
+const AttachPopupFileMeta = styled.div`
+  font-size: 0.8rem;
+  color: #64748b;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+const AttachPopupExtBadge = styled.span`
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: ${props => props.$bg || 'linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%)'};
+  color: ${props => props.$cl || '#64748b'};
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+`;
+const AttachPopupClassificationTag = styled.span`
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  margin-top: 0.25rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  letter-spacing: 0.02em;
+  align-self: flex-start;
+`;
+const AttachPopupOpenBtn = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2563eb;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  svg { font-size: 0.9rem; }
+  &:hover { background: #eff6ff; color: #1d4ed8; transform: translateY(-1px); }
+  &:active { transform: translateY(0); }
+`;
 
 const PageWrapper = styled.div`
   width: 100%;
@@ -640,7 +830,7 @@ export default function MajetekOverviewPage() {
     total: 0,
     total_pages: 0
   }));
-  const [period, setPeriod] = useState(() => getUserStorage('majetek_period', 'last-month'));
+  const [period, setPeriod] = useState(() => getUserStorage('majetek_period', 'all'));
   const [invoiceFilter, setInvoiceFilter] = useState(() => getUserStorage('majetek_invoice_filter', { withInvoice: true, withoutInvoice: true }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -650,6 +840,25 @@ export default function MajetekOverviewPage() {
   const [selectStates, setSelectStates] = useState({});
   const [searchStates, setSearchStates] = useState({});
   const [sorting, setSorting] = useState([]);
+
+  // Přílohy - stav
+  const [viewerAttachment, setViewerAttachment] = useState(null);
+  const lastViewerCloseAtRef = useRef(0);
+  const attachCacheRef = useRef({});
+  const [badgeColors, setBadgeColors] = useState({});
+  const [attachPopup, setAttachPopup] = useState(null);
+
+  // Zavřít attach popup při kliknutí mimo popup nebo mimo badge
+  useEffect(() => {
+    if (!attachPopup) return;
+    const handleOutside = (e) => {
+      if (!e.target.closest('[data-attach-popup]') && !e.target.closest('[data-attach-badge]')) {
+        setAttachPopup(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [attachPopup]);
 
   const handleInvoiceFilterChange = useCallback((field, checked) => {
     setInvoiceFilter(prev => ({ ...prev, [field]: checked }));
@@ -675,7 +884,9 @@ export default function MajetekOverviewPage() {
     { id: 'usek', columnId: 'usek_kod', label: 'Úsek' },
     { id: 'budova', columnId: 'budova_kod', label: 'Budova' },
     { id: 'mistnost', columnId: 'mistnost_kod', label: 'Místnost' },
-    { id: 'rok', columnId: 'rok', label: 'Rok' }
+    { id: 'rok', columnId: 'rok', label: 'Rok' },
+    { id: 'objednatel', columnId: 'objednatel_zkr', label: 'Objednatel' },
+    { id: 'schvalovatel', columnId: 'schvalovatel_zkr', label: 'Schvalovatel' }
   ];
 
   const fetchData = useCallback(async (page = 1) => {
@@ -873,7 +1084,16 @@ export default function MajetekOverviewPage() {
         usek_kod: getUniqueCode(order.umisteni_polozky, 'usek_kod'),
         budova_kod: getUniqueCode(order.umisteni_polozky, 'budova_kod'),
         mistnost_kod: getUniqueCode(order.umisteni_polozky, 'mistnost_kod'),
-        rok: datum ? new Date(datum).getFullYear() : ''
+        rok: datum ? new Date(datum).getFullYear() : '',
+        usek_zkr: order.usek_zkr || '',
+        objednatel_zkr: (() => {
+          const p = order.objednatel_prijmeni || ''; const i = order.objednatel_jmeno_init || '';
+          return p ? (i ? `${p} ${i}.` : p) : '';
+        })(),
+        schvalovatel_zkr: (() => {
+          const p = order.schvalovatel_prijmeni || ''; const i = order.schvalovatel_jmeno_init || '';
+          return p ? (i ? `${p} ${i}.` : p) : '';
+        })()
       };
     });
 
@@ -981,28 +1201,279 @@ export default function MajetekOverviewPage() {
     }
   }, [token, username, navigate, showToast]);
 
+  // ─── Přílohy - callbacks ──────────────────────────────────────────────────
+  const calculateBadgeColor = useCallback((items) => {
+    if (!items || items.length === 0) return '#dc2626';
+    const orderAttachments = items.filter(a => a.attachmentSource === 'ORDER');
+    const invoiceAttachments = items.filter(a => a.attachmentSource === 'INVOICE');
+    const objPodklady = orderAttachments.filter(a => a.typ_prilohy === 'PODKLADY' || a.attachment_type === 'PODKLADY').length;
+    const objCestovniPrikaz = orderAttachments.filter(a => a.typ_prilohy === 'CESTOVNI_PRIKAZ' || a.attachment_type === 'CESTOVNI_PRIKAZ').length;
+    const objCertifikat = orderAttachments.filter(a => a.typ_prilohy === 'CERTIFIKAT' || a.attachment_type === 'CERTIFIKAT').length;
+    const faFaktura = invoiceAttachments.filter(a => a.typ_prilohy === 'FAKTURA' || a.attachment_type === 'FAKTURA').length;
+    const hasBasicObjAttach = objPodklady >= 1 || objCestovniPrikaz >= 1;
+    if (!hasBasicObjAttach) return '#dc2626';
+    const hasCompleteFaktura = faFaktura >= 2;
+    const hasCompleteObj = objPodklady >= 2 || (objCestovniPrikaz >= 1 && objCertifikat >= 1);
+    if (hasCompleteFaktura && hasCompleteObj) return '#16a34a';
+    if (faFaktura >= 2) return '#fbbf24';
+    return '#f97316';
+  }, []);
+
+  const handleAttachBadgeClick = useCallback(async (entityId, entityType, e, invoiceIds = null, knownCount = null) => {
+    e.stopPropagation();
+    const key = `${entityType}_${entityId}`;
+    if (attachPopup?.key === key) { setAttachPopup(null); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const POPUP_W = 360, MARGIN = 16;
+    const itemCount = (knownCount != null && knownCount > 0) ? knownCount : 3;
+    const POPUP_H_EST = 50 + Math.min(itemCount * 72, 300) + 8;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // Pokud je více místa vlevo (tj. ikona blíže pravému okraji), otevři popup doleva
+    // (pravý okraj popupu = pravý okraj ikony). Jinak standardně doleva od levého okraje ikony.
+    const spaceRight = vw - rect.left - POPUP_W - MARGIN;
+    const spaceLeft  = rect.right - POPUP_W - MARGIN;
+    let left;
+    if (spaceRight < 0 && spaceLeft >= 0) {
+      // Ikona blíže pravému okraji — popup otevřít doleva od prvku
+      left = rect.right - POPUP_W;
+    } else {
+      left = rect.left;
+    }
+    // Závěrečné oříznutí tak, aby popup nikdy nepřesáhl viewport
+    if (left + POPUP_W + MARGIN > vw) left = vw - POPUP_W - MARGIN;
+    if (left < MARGIN) left = MARGIN;
+    const spaceBelow = vh - rect.bottom - MARGIN;
+    const spaceAbove = rect.top - MARGIN;
+    let top;
+    if (spaceBelow >= POPUP_H_EST) {
+      top = rect.bottom + 6;
+    } else if (spaceAbove >= POPUP_H_EST) {
+      top = rect.top - POPUP_H_EST - 6;
+    } else {
+      top = spaceBelow > spaceAbove ? rect.bottom + 6 : Math.max(MARGIN, rect.top - POPUP_H_EST - 6);
+    }
+    const popupPos = { top, left };
+    if (attachCacheRef.current[key]) {
+      const cachedItems = attachCacheRef.current[key];
+      const badgeColor = calculateBadgeColor(cachedItems);
+      setBadgeColors(prev => ({ ...prev, [key]: badgeColor }));
+      setAttachPopup({ key, entityId, entityType, items: cachedItems, loading: false, rect, popupPos, badgeColor });
+      return;
+    }
+    setAttachPopup({ key, entityId, entityType, items: [], loading: true, rect, popupPos });
+    try {
+      let rawItems;
+      if (entityType === 'order-combined') {
+        const orderAttachments = await getOrderAttachmentsV3({ token, username, orderId: entityId });
+        const orderArr = Array.isArray(orderAttachments) ? orderAttachments : (orderAttachments?.attachments || orderAttachments?.data || []);
+        const invoiceAttachments = [];
+        if (invoiceIds && invoiceIds.length > 0) {
+          for (const invId of invoiceIds) {
+            const invAtt = await listInvoiceAttachmentsV2(invId, token, username);
+            const invArr = Array.isArray(invAtt) ? invAtt : (invAtt?.attachments || invAtt?.data || []);
+            invoiceAttachments.push(...invArr.map(a => ({ ...a, invoice_id: invId })));
+          }
+        }
+        rawItems = [
+          ...orderArr.map(a => ({ ...a, attachmentSource: 'ORDER', order_id: entityId })),
+          ...invoiceAttachments.map(a => ({ ...a, attachmentSource: 'INVOICE' }))
+        ];
+      } else if (entityType === 'order') {
+        rawItems = await getOrderAttachmentsV3({ token, username, orderId: entityId });
+      } else {
+        rawItems = await listInvoiceAttachmentsV2(entityId, token, username);
+      }
+      const rawArr = Array.isArray(rawItems) ? rawItems : (rawItems?.attachments || rawItems?.data || []);
+      const items = rawArr.map(a => ({
+        ...a,
+        attachmentSource: a.attachmentSource || (entityType === 'order' ? 'ORDER' : (entityType === 'invoice' ? 'INVOICE' : null)),
+        order_id:   a.order_id || (entityType === 'order' ? entityId : (a.objednavka_id || null)),
+        invoice_id: a.invoice_id || (entityType === 'invoice' ? entityId : (a.faktura_id || null)),
+        original_name: a.originalni_nazev_souboru || a.original_name || a.nazev_souboru || `Příloha ${a.id}`,
+      }));
+      attachCacheRef.current[key] = items;
+      const badgeColor = calculateBadgeColor(items);
+      setBadgeColors(prev => ({ ...prev, [key]: badgeColor }));
+      setAttachPopup(prev => prev?.key === key ? { ...prev, items, loading: false, badgeColor } : prev);
+    } catch (err) {
+      setAttachPopup(prev => prev?.key === key ? { ...prev, loading: false, error: true } : prev);
+    }
+  }, [attachPopup, token, username, calculateBadgeColor]);
+
+  const handleOpenAttachment = useCallback(async (att, entityType) => {
+    const now = Date.now();
+    if (now - lastViewerCloseAtRef.current < 300) return;
+    const fileName = att.original_name || att.originalni_nazev_souboru || att.nazev_souboru || `priloha_${att.id}`;
+    if (!att.id || !token || !username) return;
+    try {
+      let blob;
+      if (att.attachmentSource === 'INVOICE' || (entityType === 'invoice' && att.invoice_id)) {
+        if (!att.invoice_id) throw new Error('Chybí ID faktury');
+        blob = await downloadInvoiceAttachment(att.invoice_id, att.id, username, token);
+      } else {
+        const orderId = att.order_id || att.objednavka_id;
+        if (!orderId) throw new Error('Chybí ID objednávky');
+        blob = await downloadOrderAttachment(orderId, att.id, username, token);
+      }
+      const ext = fileName.toLowerCase().split('.').pop();
+      const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+      const isPdf = ext === 'pdf';
+      const isPreviewable = previewableTypes.includes(ext);
+      setViewerAttachment({
+        ...att,
+        blob,
+        blobUrl: window.URL.createObjectURL(blob),
+        filename: fileName,
+        nazev_souboru: fileName,
+        originalni_nazev_souboru: fileName,
+        fileType: isPdf ? 'pdf' : (isPreviewable ? 'image' : 'other')
+      });
+    } catch (err) {
+      showToast?.(`Chyba při otevírání přílohy: ${err?.message || 'Neznámá chyba'}`, 'error');
+    }
+  }, [token, username, showToast]);
+
+  const renderAttachBadge = useCallback((entityId, entityType, knownCount, invoiceIds = null, backendColor = null) => {
+    const key = `${entityType}_${entityId}`;
+    const isOpen = attachPopup?.key === key;
+    const count = (knownCount != null && knownCount !== '') ? Number(knownCount) : null;
+    const badgeColor = backendColor || badgeColors[key] || (count > 0 ? '#64748b' : '#cbd5e1');
+    return (
+      <>
+        <div
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+            color: isOpen ? '#2563eb' : badgeColor,
+            cursor: 'pointer', transition: 'color 0.2s', userSelect: 'none',
+          }}
+          onClick={(e) => handleAttachBadgeClick(entityId, entityType, e, invoiceIds, count)}
+          data-attach-badge="1"
+          title={`Přílohy${count != null ? ` (${count})` : ''}`}
+        >
+          <FontAwesomeIcon icon={faPaperclip} />
+          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{count != null ? count : '?'}</span>
+        </div>
+        {isOpen && ReactDOM.createPortal(
+          <AttachPopupContainer data-attach-popup="1" style={{ top: `${attachPopup.popupPos?.top ?? 0}px`, left: `${attachPopup.popupPos?.left ?? 0}px` }}>
+            <AttachPopupHeader>
+              {attachPopup.loading ? 'Přílohy' : `Přílohy (${attachPopup.items.length})`}
+            </AttachPopupHeader>
+            {attachPopup.loading ? (
+              <div style={{ padding: '1rem', fontSize: '0.85rem', color: '#64748b' }}>Načítám...</div>
+            ) : attachPopup.error ? (
+              <div style={{ padding: '1rem', fontSize: '0.85rem', color: '#ef4444' }}>Chyba při načítání</div>
+            ) : attachPopup.items.length === 0 ? (
+              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>Žádné přílohy</div>
+            ) : (
+              <AttachPopupList>
+                {(() => {
+                  const orderAttachments = attachPopup.items.filter(a => a.attachmentSource === 'ORDER');
+                  const invoiceAttachments = attachPopup.items.filter(a => a.attachmentSource === 'INVOICE');
+                  const renderAttachmentItem = (att) => {
+                    const name = att.original_name || att.originalni_nazev_souboru || att.nazev_souboru || `Příloha ${att.id}`;
+                    const fi = getAttachFileInfo(name);
+                    const ext = getAttachExt(name);
+                    const size = fmtAttachSize(att.velikost_souboru_b || att.velikost_b || att.velikost);
+                    const user = getAttachUser(att);
+                    return (
+                      <AttachPopupItem key={att.id}>
+                        <AttachPopupFileIconBox $bg={fi.bg} $ic={fi.color}>
+                          <FontAwesomeIcon icon={fi.icon} />
+                        </AttachPopupFileIconBox>
+                        <AttachPopupFileInfo>
+                          <AttachPopupFileName title={name}>{name}</AttachPopupFileName>
+                          {(att.typ_prilohy || att.attachment_type) && (
+                            <AttachPopupClassificationTag>
+                              {prettyAttachType(att.typ_prilohy || att.attachment_type)}
+                            </AttachPopupClassificationTag>
+                          )}
+                          <AttachPopupFileMeta>
+                            <AttachPopupExtBadge $bg={fi.bg} $cl={fi.color}>{ext}</AttachPopupExtBadge>
+                            <span>{size}</span>
+                            {user && <span>• {user}</span>}
+                          </AttachPopupFileMeta>
+                        </AttachPopupFileInfo>
+                        <AttachPopupOpenBtn
+                          onClick={(e) => { e.stopPropagation(); handleOpenAttachment(att, entityType); }}
+                          title="Otevřít náhled"
+                        >
+                          <FontAwesomeIcon icon={faExternalLinkAlt} />
+                        </AttachPopupOpenBtn>
+                      </AttachPopupItem>
+                    );
+                  };
+                  return (
+                    <>
+                      {orderAttachments.length > 0 && (
+                        <>
+                          <div style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f1f5f9', borderTop: '1px solid #e2e8f0' }}>Objednávka ({orderAttachments.length})</div>
+                          {orderAttachments.map(renderAttachmentItem)}
+                        </>
+                      )}
+                      {invoiceAttachments.length > 0 && (
+                        <>
+                          <div style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#fef3c7', borderTop: '1px solid #fde047' }}>Faktury ({invoiceAttachments.length})</div>
+                          {invoiceAttachments.map(renderAttachmentItem)}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              </AttachPopupList>
+            )}
+          </AttachPopupContainer>,
+          document.body
+        )}
+      </>
+    );
+  }, [attachPopup, handleAttachBadgeClick, handleOpenAttachment, badgeColors]);
+
   const columns = useMemo(() => [
     columnHelper.accessor('usek_kod', {
-      header: 'Úsek',
+      header: 'Inv. úsek',
       enableSorting: true,
+      size: 70,
+      meta: { style: { width: '70px', minWidth: '60px', maxWidth: '80px' } },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('budova_kod', {
       header: 'Budova',
       enableSorting: true,
+      size: 65,
+      meta: { style: { width: '65px', minWidth: '55px', maxWidth: '75px' } },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('mistnost_kod', {
       header: 'Místnost',
       enableSorting: true,
+      size: 75,
+      meta: { style: { width: '75px', minWidth: '60px', maxWidth: '90px' } },
+      aggregationFn: () => null,
+      aggregatedCell: () => ''
+    }),
+    columnHelper.accessor('umisteni_majetku', {
+      header: 'FA umístění',
+      enableSorting: true,
+      size: 100,
+      meta: { style: { width: '100px', minWidth: '80px', maxWidth: '120px' } },
+      aggregationFn: () => null,
+      aggregatedCell: () => ''
+    }),
+    columnHelper.accessor('rok', {
+      header: 'Rok',
+      enableSorting: true,
+      size: 50,
+      meta: { style: { width: '50px', minWidth: '45px', maxWidth: '60px' } },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('dt_objednavky', {
       header: 'Datum obj.',
       enableSorting: true,
+      size: 90,
+      meta: { style: { width: '90px', minWidth: '80px', maxWidth: '100px' } },
       cell: info => formatDateOnly(info.getValue()),
       aggregationFn: () => null,
       aggregatedCell: () => ''
@@ -1010,6 +1481,8 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('cislo_objednavky', {
       header: 'Ev. číslo / Smlouva',
       enableSorting: true,
+      size: 110,
+      meta: { style: { width: '110px', minWidth: '90px', maxWidth: '130px' } },
       cell: info => {
         const row = info.row.original;
         const cislo = info.getValue();
@@ -1039,18 +1512,34 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('dodavatel_nazev', {
       header: 'Dodavatel',
       enableSorting: true,
+      size: 130,
+      meta: { style: { width: '130px', minWidth: '100px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('predmet', {
       header: 'Předmět',
       enableSorting: true,
+      size: 150,
+      meta: { style: { width: '150px', minWidth: '120px', maxWidth: '200px', overflow: 'hidden' } },
+      cell: info => (
+        <span style={{
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          wordBreak: 'break-word',
+          lineHeight: '1.3'
+        }}>{info.getValue()}</span>
+      ),
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('workflow_last', {
       header: 'Stav',
       enableSorting: true,
+      size: 120,
+      meta: { style: { width: '120px', minWidth: '100px', maxWidth: '140px' } },
       cell: info => {
         const row = info.row.original;
         const stav = info.getValue();
@@ -1071,6 +1560,8 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('druh_objednavky_nazev', {
       header: 'Druh obj. / FA VS',
       enableSorting: true,
+      size: 130,
+      meta: { style: { width: '130px', minWidth: '110px', maxWidth: '150px' } },
       cell: info => {
         const row = info.row.original;
         const nazev = info.getValue();
@@ -1101,21 +1592,56 @@ export default function MajetekOverviewPage() {
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
+    columnHelper.accessor('usek_zkr', {
+      header: 'Úsek',
+      enableSorting: true,
+      size: 55,
+      meta: { style: { width: '55px', minWidth: '45px', maxWidth: '65px' } },
+      aggregationFn: () => null,
+      aggregatedCell: () => ''
+    }),
+    columnHelper.display({
+      id: 'objednatel_schvalovatel',
+      header: 'Objednatel / Schvalovatel',
+      enableSorting: false,
+      size: 140,
+      meta: { style: { width: '140px', minWidth: '120px', maxWidth: '160px' } },
+      cell: info => {
+        if (info.row.getIsGrouped()) return null;
+        const row = info.row.original;
+        const isInvoice = row.source_type === 'INVOICE';
+        const line1 = row.objednatel_zkr || '';
+        const line2 = row.schvalovatel_zkr || '';
+        if (!line1 && !line2) return null;
+        return (
+          <div style={{ lineHeight: '1.3', fontSize: '0.8rem' }}>
+            {line1 && <div style={{ color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={isInvoice ? 'Přidal fakturu' : 'Objednatel'}>{line1}</div>}
+            {line2 && <div style={{ color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={isInvoice ? 'Věcná správnost' : 'Schvalovatel (příkazce)'}>{line2}</div>}
+          </div>
+        );
+      }
+    }),
+    columnHelper.accessor('objednatel_zkr', {
+      header: 'Objednatel',
+      enableSorting: true,
+      size: 120,
+      meta: { style: { width: '120px', minWidth: '100px', maxWidth: '150px' } },
+      aggregationFn: () => null,
+      aggregatedCell: () => ''
+    }),
+    columnHelper.accessor('schvalovatel_zkr', {
+      header: 'Schvalovatel',
+      enableSorting: true,
+      size: 120,
+      meta: { style: { width: '120px', minWidth: '100px', maxWidth: '150px' } },
+      aggregationFn: () => null,
+      aggregatedCell: () => ''
+    }),
     columnHelper.accessor('strediska_nazvy', {
       header: 'Střediska',
       enableSorting: true,
-      aggregationFn: () => null,
-      aggregatedCell: () => ''
-    }),
-    columnHelper.accessor('umisteni_majetku', {
-      header: 'FA umístění',
-      enableSorting: true,
-      aggregationFn: () => null,
-      aggregatedCell: () => ''
-    }),
-    columnHelper.accessor('rok', {
-      header: 'Rok',
-      enableSorting: true,
+      size: 130,
+      meta: { style: { width: '130px', minWidth: '100px', maxWidth: '160px' } },
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
@@ -1123,6 +1649,8 @@ export default function MajetekOverviewPage() {
       id: 'max_cena_s_dph',
       header: 'Max cena s DPH',
       enableSorting: true,
+      size: 110,
+      meta: { style: { width: '110px', minWidth: '90px', maxWidth: '120px', textAlign: 'right' } },
       cell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
@@ -1137,8 +1665,10 @@ export default function MajetekOverviewPage() {
     }),
     columnHelper.accessor(row => Number(row.polozky_celkova_cena_s_dph || 0), {
       id: 'polozky_celkova_cena_s_dph',
-      header: 'Součet položek (s DPH)',
+      header: 'POL částka',
       enableSorting: true,
+      size: 100,
+      meta: { style: { width: '100px', minWidth: '85px', maxWidth: '115px', textAlign: 'right' } },
       cell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
@@ -1148,29 +1678,15 @@ export default function MajetekOverviewPage() {
       aggregatedCell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
-        </span>
-      )
-    }),
-    columnHelper.accessor(row => Number(row.pocet_faktur || 0), {
-      id: 'pocet_faktur',
-      header: 'Faktury (ks)',
-      enableSorting: true,
-      aggregationFn: 'sum',
-      cell: info => (
-        <span style={{ display: 'block', textAlign: 'center' }}>
-          {info.getValue()}
-        </span>
-      ),
-      aggregatedCell: info => (
-        <span style={{ display: 'block', textAlign: 'center' }}>
-          {info.getValue()}
         </span>
       )
     }),
     columnHelper.accessor(row => Number(row.faktury_celkova_castka_s_dph || 0), {
       id: 'faktury_celkova_castka_s_dph',
-      header: 'Faktury (s DPH)',
+      header: 'FA částka',
       enableSorting: true,
+      size: 100,
+      meta: { style: { width: '100px', minWidth: '85px', maxWidth: '115px', textAlign: 'right' } },
       cell: info => (
         <span style={{ display: 'block', textAlign: 'right' }}>
           {formatCurrency(info.getValue())}
@@ -1182,8 +1698,21 @@ export default function MajetekOverviewPage() {
           {formatCurrency(info.getValue())}
         </span>
       )
+    }),
+    columnHelper.display({
+      id: 'prilohy',
+      header: 'Přílohy',
+      enableSorting: false,
+      size: 72,
+      meta: { style: { width: '72px', minWidth: '60px', maxWidth: '80px', textAlign: 'center', verticalAlign: 'middle' } },
+      cell: info => {
+        if (info.row.getIsGrouped()) return null;
+        const row = info.row.original;
+        const count = Number(row.pocet_priloh ?? 0);
+        return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>{renderAttachBadge(row.id, 'order-combined', count, null, row.attachment_color || null)}</div>;
+      }
     })
-  ], [columnHelper, handleEditOrder]);
+  ], [columnHelper, handleEditOrder, renderAttachBadge]);
 
   const table = useReactTable({
     data: pagedTableData,
@@ -1191,7 +1720,11 @@ export default function MajetekOverviewPage() {
     state: {
       grouping: groupFields,
       expanded,
-      sorting
+      sorting,
+      columnVisibility: {
+        objednatel_zkr: groupFields.includes('objednatel_zkr'),
+        schvalovatel_zkr: groupFields.includes('schvalovatel_zkr')
+      }
     },
     autoResetPageIndex: false,
     onGroupingChange: setGroupFields,
@@ -1431,11 +1964,14 @@ export default function MajetekOverviewPage() {
           </TitleSection>
 
           <HeaderActions>
-            <PeriodSelector value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading}>
-              {periodOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </PeriodSelector>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>Období:</span>
+              <PeriodSelector value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading}>
+                {periodOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </PeriodSelector>
+            </div>
             <ReloadButton
               onClick={() => fetchData(1)}
               disabled={loading}
@@ -1621,10 +2157,10 @@ export default function MajetekOverviewPage() {
                           <th
                             key={header.id}
                             onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-                            style={{ cursor: header.column.getCanSort() ? 'pointer' : 'default' }}
+                            style={{ cursor: header.column.getCanSort() ? 'pointer' : 'default', ...(header.column.columnDef.meta?.style || {}) }}
                           >
                             {header.isPlaceholder ? null : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: header.column.columnDef.meta?.style?.textAlign === 'center' ? 'center' : header.column.columnDef.meta?.style?.textAlign === 'right' ? 'flex-end' : undefined }}>
                                 {flexRender(header.column.columnDef.header, header.getContext())}
                                 {header.column.getCanSort() && (
                                   <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
@@ -1669,25 +2205,63 @@ export default function MajetekOverviewPage() {
                             : 'base-row'
                         }
                       >
-                        {row.getVisibleCells().map(cell => (
-                          <td key={cell.id}>
-                            {cell.getIsGrouped() ? (
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingLeft: `${row.depth * 12}px` }}>
-                                <button
-                                  onClick={row.getToggleExpandedHandler()}
-                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                                >
-                                  <FontAwesomeIcon icon={row.getIsExpanded() ? faMinus : faPlus} />
-                                </button>
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())} ({getGroupedCount(row)})
-                              </span>
-                            ) : cell.getIsAggregated() ? (
-                              flexRender(cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell, cell.getContext())
-                            ) : cell.getIsPlaceholder() ? null : (
-                              flexRender(cell.column.columnDef.cell, cell.getContext())
-                            )}
-                          </td>
-                        ))}
+                        {(() => {
+                          const visibleCells = row.getVisibleCells();
+                          const hasVisibleGrouped = row.getIsGrouped() && visibleCells.some(c => c.getIsGrouped());
+                          return visibleCells.map((cell, cellIndex) => {
+                            if (row.getIsGrouped()) {
+                              // Viditelný grupovací sloupec (Dodavatel, Střediska, Rok, ...): TanStack ho přesunul na správnou pozici
+                              if (cell.getIsGrouped()) {
+                                return (
+                                  <td key={cell.id} style={cell.column.columnDef.meta?.style || {}}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingLeft: `${row.depth * 12}px`, whiteSpace: 'nowrap' }}>
+                                      <button
+                                        onClick={row.getToggleExpandedHandler()}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                                      >
+                                        <FontAwesomeIcon icon={row.getIsExpanded() ? faMinus : faPlus} />
+                                      </button>
+                                      {flexRender(cell.column.columnDef.cell, cell.getContext())} ({getGroupedCount(row)})
+                                    </span>
+                                  </td>
+                                );
+                              }
+                              // Skrytý grupovací sloupec (objednatel_zkr, schvalovatel_zkr): žádná viditelná buňka nemá getIsGrouped()=true
+                              // → fallback: expander zobrazit v první viditelné buňce
+                              if (!hasVisibleGrouped && cellIndex === 0) {
+                                return (
+                                  <td key={cell.id} style={cell.column.columnDef.meta?.style || {}}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingLeft: `${row.depth * 12}px`, whiteSpace: 'nowrap' }}>
+                                      <button
+                                        onClick={row.getToggleExpandedHandler()}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                                      >
+                                        <FontAwesomeIcon icon={row.getIsExpanded() ? faMinus : faPlus} />
+                                      </button>
+                                      {String(row.groupingValue ?? '(neuvedeno)')} ({getGroupedCount(row)})
+                                    </span>
+                                  </td>
+                                );
+                              }
+                              // Agregovaná data (součty cen)
+                              if (cell.getIsAggregated()) {
+                                return (
+                                  <td key={cell.id} style={cell.column.columnDef.meta?.style || {}}>
+                                    {flexRender(cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell, cell.getContext())}
+                                  </td>
+                                );
+                              }
+                              // Placeholder nebo ostatní buňky skupinového řádku: prázdné
+                              return <td key={cell.id} style={cell.column.columnDef.meta?.style || {}} />;
+                            }
+                            // Normální datový řádek
+                            return (
+                              <td key={cell.id} style={cell.column.columnDef.meta?.style || {}}>
+                                {cell.getIsPlaceholder() ? null : flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </td>
+                            );
+                          });
+                        })()}
                       </tr>
                     ))}
                   </tbody>
@@ -1710,6 +2284,20 @@ export default function MajetekOverviewPage() {
           )}
         </Card>
       </PageContainer>
+
+      {viewerAttachment && (
+        <AttachmentViewer
+          attachment={viewerAttachment}
+          closeOnOverlayClick={false}
+          onClose={() => {
+            lastViewerCloseAtRef.current = Date.now();
+            if (viewerAttachment.blobUrl?.startsWith('blob:')) {
+              window.URL.revokeObjectURL(viewerAttachment.blobUrl);
+            }
+            setViewerAttachment(null);
+          }}
+        />
+      )}
     </PageWrapper>
   );
 }

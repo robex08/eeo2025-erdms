@@ -1327,9 +1327,11 @@ function handle_order_v2_update($input, $config, $queries) {
                 !in_array('SCHVALENA', $old_workflow_array)) {
                 
                 // 🔒 VALIDACE ÚSEKU: Kontrola zda uživatel může schvalovat tuto objednávku
-                $is_admin = check_permission($current_user_id, 'ORDER_MANAGE') || 
-                           check_user_role($current_user_id, 'ADMINISTRATOR') || 
-                           check_user_role($current_user_id, 'SUPERADMIN');
+                $_approval_roles = getUserRoles($current_user_id, $db);
+                $_approval_perms = getUserOrderPermissions($current_user_id, $db);
+                $is_admin = in_array('SUPERADMIN', $_approval_roles) ||
+                           in_array('ADMINISTRATOR', $_approval_roles) ||
+                           in_array('ORDER_MANAGE', $_approval_perms);
                 
                 $is_prikazce = isset($existingOrder['prikazce_id']) && 
                               (int)$existingOrder['prikazce_id'] === (int)$current_user_id;

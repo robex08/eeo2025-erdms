@@ -2160,7 +2160,8 @@ function handle_invoices25_list($input, $config, $queries) {
             u_predana.titul_za AS fa_predana_zam_titul_za,
             szl.id AS spisovka_tracking_id,
             szl.dokument_id AS spisovka_dokument_id,
-            szl.spisovka_priloha_id AS spisovka_priloha_id
+            szl.spisovka_priloha_id AS spisovka_priloha_id,
+            (SELECT COUNT(*) FROM `" . TBL_FAKTURY_LP_CERPANI . "` lpc WHERE lpc.faktura_id = f.id) AS lp_cerpani_count
         FROM `$faktury_table` f
         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id

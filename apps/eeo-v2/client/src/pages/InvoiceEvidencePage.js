@@ -2233,8 +2233,10 @@ export default function InvoiceEvidencePage() {
     if (!user_id) return false;
     const assignedId = formData?.fa_predana_zam_id;
     if (!assignedId) return false;
+    // Zobrazit varování jen pokud věcná správnost JEŠTĚ NENÍ potvrzena
+    if (originalFormData?.vecna_spravnost_potvrzeno === 1) return false;
     return String(assignedId) !== String(user_id);
-  }, [formData?.fa_predana_zam_id, user_id]);
+  }, [formData?.fa_predana_zam_id, user_id, originalFormData?.vecna_spravnost_potvrzeno]);
 
   // � Načítání LP číselníků při mount
   useEffect(() => {
@@ -4235,6 +4237,24 @@ export default function InvoiceEvidencePage() {
                   castka: faCastka,
                   poznamka: ''
                 }];
+              }
+            }
+
+            // 🔥 ULOŽIT LP ČERPÁNÍ do DB
+            if (lpCerpaniToSave && lpCerpaniToSave.length > 0 && editingInvoiceId) {
+              const validLpCerpani = lpCerpaniToSave.filter(row => {
+                const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+                const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
+                const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
+                return hasLpId && hasLpCislo && hasCastka;
+              }).map(row => ({
+                lp_cislo: parseInt(row.lp_id, 10),
+                lp_id: parseInt(row.lp_id, 10),
+                castka: parseFloat(row.castka),
+                poznamka: row.poznamka || ''
+              }));
+              if (validLpCerpani.length > 0) {
+                await saveFakturaLPCerpani(editingInvoiceId, validLpCerpani, token, username);
               }
             }
           } catch (lpError) {
@@ -6398,7 +6418,7 @@ export default function InvoiceEvidencePage() {
                     <div style={{ flex: 1 }}>
                       {duplicateWarning.invoice && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                          {/* První řádek: FA číslo již existuje | Částka */}
+                          
                           <div style={{ 
                             display: 'grid', 
                             gridTemplateColumns: '1fr auto', 

@@ -25509,21 +25509,48 @@ function OrderForm25() {
                                                   };
 
                                                   const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
-                                                  const autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
+                                                  
+                                                  // 🔥 AUTO-FILL FALLBACK: Pokud je jen 1 LP kód a validní částka → auto-fill (stejná logika jako v save a workflow validaci)
+                                                  const faCastkaRaw = faktura.fa_castka;
+                                                  const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+                                                  const hasAutoFill = selectedLpValues.length === 1 && faCastkaValid;
+                                                  
+                                                  let autoLpRows;
+                                                  if (hasAutoFill) {
+                                                    // Jen 1 LP kód → auto-fill s plnou částkou (i 0 Kč nebo záporná - zálohy, dobropisy)
+                                                    var ref = selectedLpValues[0];
+                                                    var refId = null;
+                                                    var refCislo = '';
+                                                    if (ref && typeof ref === 'object') {
+                                                      refId = ref.id || ref.lp_id || null;
+                                                      refCislo = ref.cislo_lp || ref.kod || ref.lp_cislo || '';
+                                                    } else {
+                                                      var refStr = String(ref || '');
+                                                      if (/^\d+$/.test(refStr)) {
+                                                        refId = parseInt(refStr, 10);
+                                                      }
+                                                      refCislo = refStr;
+                                                    }
+                                                    autoLpRows = [{
+                                                      id: 'auto-lp-0',
+                                                      lp_id: refId,
+                                                      lp_cislo: refCislo,
+                                                      castka: fakturaCastka,
+                                                      poznamka: ''
+                                                    }];
+                                                  } else {
+                                                    autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
+                                                  }
                                                   const effectiveLpRows = lpCerpani.length > 0 ? lpCerpani : autoLpRows;
 
                                                   // Validace: MUSÍ být přiřazen minimálně 1 LP kód
+                                                  // ✅ Částka může být i 0 (zálohy) nebo záporná (dobropisy/vyúčtovací)
                                                   const validLpRows = (effectiveLpRows || []).filter(lp => {
                                                     const hasLpId = lp.lp_id !== null && lp.lp_id !== undefined && String(lp.lp_id).trim() !== '';
                                                     const hasLpCislo = lp.lp_cislo !== null && lp.lp_cislo !== undefined && String(lp.lp_cislo).trim() !== '';
                                                     const hasLp = hasLpId || hasLpCislo;
                                                     const hasCastka = hasCastkaValue(lp.castka);
-                                                    if (!hasLp || !hasCastka) return false;
-
-                                                    const castkaNum = parseFloat(lp.castka);
-                                                    if (castkaNum < 0) return false;
-
-                                                    return allowZeroLpAmount ? castkaNum >= 0 : castkaNum > 0;
+                                                    return hasLp && hasCastka;
                                                   });
 
                                                   if (!validLpRows || validLpRows.length === 0) {
