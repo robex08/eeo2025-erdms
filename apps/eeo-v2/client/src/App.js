@@ -980,11 +980,20 @@ function App() {
                         />
                       : <Navigate to="/access-denied" replace />
                   } />}
-                  {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
-                  {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
+                  {/* Staré routes /reports a /statistics → přesměrování na nový modul */}
+                  {isLoggedIn && <Route path="/reports" element={<Navigate to="/stats-reports" replace />} />}
+                  {isLoggedIn && <Route path="/statistics" element={<Navigate to="/stats-reports" replace />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||
-                    (hasPermission && hasPermission('BETA_TESTER'))
+                    (hasPermission && (
+                      hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
+                      hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
+                      hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE') ||
+                      hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
+                      hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
+                      hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
+                      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
+                    ))
                   ) && <Route path="/stats-reports" element={<StatsReportsPage />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||

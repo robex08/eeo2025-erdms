@@ -1745,7 +1745,7 @@ const parseOrdersResponse = (response) => {
 };
 
 /* ─── Vlastní MultiSelect filtr (V3 styl) ───────────────────────── */
-function FilterMultiSelect({ options, values, onChange, placeholder }) {
+function FilterMultiSelect({ options, values, onChange, placeholder, disabled = false }) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const wrapRef = useRef(null);
@@ -1794,18 +1794,20 @@ function FilterMultiSelect({ options, values, onChange, placeholder }) {
     <div ref={wrapRef} style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
       {/* Trigger tlačítko */}
       <div
-        onClick={() => setOpen(o => !o)}
+        onClick={() => !disabled && setOpen(o => !o)}
+        title={disabled ? 'Filtr úseků je nastaven dle vašeho oprávnění' : undefined}
         style={{
           width: '100%', padding: '0.5rem 2rem 0.5rem 0.75rem',
           border: isActive ? '2px solid #f59e0b' : '1px solid #e5e7eb',
           borderRadius: '6px', fontSize: '0.875rem',
-          background: isActive ? '#fffbeb' : '#ffffff',
-          cursor: 'pointer', display: 'flex', alignItems: 'center',
+          background: disabled ? '#f3f4f6' : (isActive ? '#fffbeb' : '#ffffff'),
+          cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', position: 'relative',
-          color: !isActive ? '#9ca3af' : '#1f2937',
+          color: disabled ? '#6b7280' : (!isActive ? '#9ca3af' : '#1f2937'),
           fontWeight: isActive ? '600' : '400',
           boxShadow: isActive ? '0 0 0 2px rgba(245,158,11,0.2)' : 'none',
-          minHeight: '38px', userSelect: 'none', boxSizing: 'border-box'
+          minHeight: '38px', userSelect: 'none', boxSizing: 'border-box',
+          opacity: disabled ? 0.7 : 1
         }}
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{triggerLabel}</span>
@@ -1872,9 +1874,9 @@ function FilterMultiSelect({ options, values, onChange, placeholder }) {
           {values.map(v => {
             const opt = options.find(o => String(o.value) === v);
             return opt ? (
-              <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#dbeafe', color: '#1d4ed8', borderRadius: '999px', padding: '0.15rem 0.5rem 0.15rem 0.65rem', fontSize: '0.74rem', fontWeight: '600' }}>
+              <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: disabled ? '#e5e7eb' : '#dbeafe', color: disabled ? '#6b7280' : '#1d4ed8', borderRadius: '3px', padding: disabled ? '0.15rem 0.65rem' : '0.15rem 0.5rem 0.15rem 0.65rem', fontSize: '0.74rem', fontWeight: '600' }}>
                 {opt.label}
-                <button type="button" onClick={() => toggle(v)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: '0.85rem', fontWeight: '700' }}>×</button>
+                {!disabled && <button type="button" onClick={() => toggle(v)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: '0.85rem', fontWeight: '700' }}>×</button>}
               </span>
             ) : null;
           })}
@@ -2064,6 +2066,20 @@ export default function StatsReportsPage() {
 
   // Viditelné taby dle oprávnění uživatele – admin vidí vše
   const isAdminUser = typeof hasAdminRole === 'function' && hasAdminRole();
+
+  // Uživatelův úsek
+  const userUsekId = user?.usek_id || userDetail?.usek_id || null;
+
+  // Má uživatel jakékoliv *_MANAGE právo? → může měnit filtr úseků
+  const canChangeUsekFilter = useMemo(() => {
+    if (isAdminUser) return true;
+    if (typeof hasPermission !== 'function') return false;
+    return hasPermission('FIN_CONTROL_MANAGE') || hasPermission('EDUCATION_MANAGE') ||
+      hasPermission('SPENDING_MANAGE') || hasPermission('REPORT_MANAGE') ||
+      hasPermission('STATISTICS_MANAGE') || hasPermission('ATTACHMENTS_MANAGE') ||
+      hasPermission('PIVOT_MANAGE') || hasPermission('ORDER_MANAGE') ||
+      hasPermission('SPENDING_VIEW_ALL');
+  }, [isAdminUser, hasPermission]);
   const visibleTabs = useMemo(() => {
     if (isAdminUser) return PAGE_TABS;
     if (typeof hasPermission !== 'function') return [];
@@ -2245,6 +2261,32 @@ export default function StatsReportsPage() {
     } catch (e) {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userKey]);
+
+  // Omezení filtru úseků pro uživatele bez *_MANAGE práv → přednastavit jejich úsek
+  // Výjimka: PTN (id=6) → předvybrat PTN + PTN-dílny (id=6,7)
+  const PTN_USEK_ID = '6';
+  const PTN_DILNY_USEK_ID = '7';
+  const userLockedUsekIds = useMemo(() => {
+    if (!userUsekId) return [];
+    if (String(userUsekId) === PTN_USEK_ID) return [PTN_USEK_ID, PTN_DILNY_USEK_ID];
+    return [String(userUsekId)];
+  }, [userUsekId]);
+
+  useEffect(() => {
+    if (canChangeUsekFilter) return; // admin nebo MANAGE → neomezovat
+    if (!userUsekId) return; // ještě nemáme info o úseku
+    const targetIds = userLockedUsekIds;
+    // Nastavit úseky uživatele do filtru (pokud tam ještě nejsou)
+    const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    setFilters(prev => {
+      if (arraysEqual(prev.usekIds, targetIds)) return prev;
+      return { ...prev, usekIds: targetIds };
+    });
+    setPendingFilters(prev => {
+      if (arraysEqual(prev.usekIds, targetIds)) return prev;
+      return { ...prev, usekIds: targetIds };
+    });
+  }, [canChangeUsekFilter, userUsekId, userLockedUsekIds]);
 
   const [notes, setNotes] = useState(() => {
     try {
@@ -2750,14 +2792,27 @@ export default function StatsReportsPage() {
     setLoadError('');
     if (progress?.start) progress.start();
     try {
+      // Postupný progress: číselníky 10%, pak 6 paralelních bloků po ~15%
+      if (progress?.setProgress) progress.setProgress(5);
       await loadLookups();
+      if (progress?.setProgress) progress.setProgress(15);
+
+      // Sledování progressu pro paralelní bloky
+      let completedTasks = 0;
+      const totalTasks = 6;
+      const trackProgress = (promise) => promise.then(result => {
+        completedTasks++;
+        if (progress?.setProgress) progress.setProgress(15 + Math.round((completedTasks / totalTasks) * 80));
+        return result;
+      });
+
       const [ordersResult, invoicesResult, contractsResult, timelineResult, orderAttachmentsResult, annualFeeAttachmentsResult] = await Promise.all([
-        loadOrders(),
-        loadInvoices(),
-        loadContracts(),
-        fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() }),
-        listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; }),
-        getAllAnnualFeeAttachments({ token, username }).catch(() => ({ success: false, data: [] }))
+        trackProgress(loadOrders()),
+        trackProgress(loadInvoices()),
+        trackProgress(loadContracts()),
+        trackProgress(fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() })),
+        trackProgress(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; })),
+        trackProgress(getAllAnnualFeeAttachments({ token, username }).catch(() => ({ success: false, data: [] })))
       ]);
       setOrders(ordersResult.data || []);
       setInvoices(invoicesResult.data || []);
@@ -2805,10 +2860,13 @@ export default function StatsReportsPage() {
   const handleLoadAttachmentsStats = useCallback(async () => {
     if (!token || !username) return;
     if (progress?.start) progress.start();
+    if (progress?.setProgress) progress.setProgress(10);
     try {
+      let attDone = 0;
+      const trackAtt = (p) => p.then(r => { attDone++; if (progress?.setProgress) progress.setProgress(10 + attDone * 40); return r; });
       const [orderAttachments, invoiceAttachments] = await Promise.all([
-        listAttachmentsV2(null, token, username),
-        listInvoiceAttachmentsV2(null, token, username)
+        trackAtt(listAttachmentsV2(null, token, username)),
+        trackAtt(listInvoiceAttachmentsV2(null, token, username))
       ]);
       console.log('📎 Order Attachments loaded:', orderAttachments?.length || 0);
       console.log('📎 Invoice Attachments loaded:', invoiceAttachments?.length || 0);
@@ -5525,7 +5583,9 @@ export default function StatsReportsPage() {
   }, [pendingFilters, filters, userKey, filterLsKey]);
 
   const handleResetFilters = useCallback(() => {
-    const cur = FILTER_DEFAULTS;
+    // Pro non-manage uživatele zachovat zamknuté úseky (PTN → PTN + PTN-dílny)
+    const lockedUsek = (!canChangeUsekFilter && userUsekId) ? userLockedUsekIds : [];
+    const cur = { ...FILTER_DEFAULTS, usekIds: lockedUsek };
     setPendingFilters(cur);
     setFilters(cur);
     setApplyTrigger(t => t + 1);
@@ -5535,7 +5595,7 @@ export default function StatsReportsPage() {
       }
     } catch (e) {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userKey, filterLsKey]);
+  }, [userKey, filterLsKey, canChangeUsekFilter, userUsekId, userLockedUsekIds]);
 
   const handleTabChange = useCallback((tabId) => {
     setActiveTab(tabId);
@@ -6696,12 +6756,13 @@ export default function StatsReportsPage() {
                 <Input type="number" value={pendingFilters.year} onChange={(event) => handleFilterChange('year', event.target.value)} />
               </FilterRow>
               <FilterRow>
-                <FieldLabel>Úsek</FieldLabel>
+                <FieldLabel>Úsek{!canChangeUsekFilter && ' (váš úsek)'}</FieldLabel>
                 <FilterMultiSelect
                   options={usekOptions}
                   values={pendingFilters.usekIds}
                   onChange={v => handleFilterChange('usekIds', v)}
                   placeholder="Všechny úseky"
+                  disabled={!canChangeUsekFilter}
                 />
               </FilterRow>
               <FilterRow>
