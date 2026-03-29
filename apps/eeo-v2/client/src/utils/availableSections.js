@@ -135,15 +135,9 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'cerpani', label: 'Čerpání' });
   }
   
-  // REPORTY - pouze pro ADMIN nebo uživatele s REPORT oprávněním
-  if (isAdmin || (hasPermission && (hasPermission('REPORT_VIEW') || hasPermission('REPORT_MANAGE') || hasPermission('REPORT_EXPORT')))) {
-    sections.push({ value: 'reports', label: 'Reporty' });
-  }
-  
-  // STATISTIKY - pouze pro ADMIN nebo uživatele se STATISTICS oprávněním
-  if (isAdmin || (hasPermission && (hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_MANAGE') || hasPermission('STATISTICS_EXPORT')))) {
-    sections.push({ value: 'statistics', label: 'Statistiky' });
-  }
+  // REPORTY a STATISTIKY - staré samostatné sekce ODSTRANĚNY
+  // Nyní vše přes nový modul "Statistika a reporty" (/stats-reports)
+  // Uživatelé s REPORT_VIEW vidí tab Reporty, se STATISTICS_VIEW vidí tab Statistiky
   
   // NASTAVENÍ APLIKACE - pouze pro ADMIN
   if (isAdmin) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
@@ -1057,6 +1057,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   const { user, token, username, userDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const navigate = useNavigate();
+  const location = useLocation();
   
   // State pro data
   const [lpData, setLpData] = useState([]);
@@ -1743,7 +1744,6 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
 
   // Expand/collapse LP řádku s lazy-load objednávek + faktur
   const toggleLPExpand = useCallback(async (lpMasterId) => {
-    console.log('🔵 [LP-Expand] KLIK! lpMasterId=', lpMasterId, 'expandedLPs=', expandedLPs[lpMasterId]);
     const isExpanding = !expandedLPs[lpMasterId];
     setExpandedLPs(prev => ({ ...prev, [lpMasterId]: isExpanding }));
     if (isExpanding && !lpExpandOrders[lpMasterId]) {
@@ -1752,15 +1752,12 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         const url = `${API_BASE_URL}order-v3/lp-expand`;
         const body = { token, username, lp_master_id: lpMasterId };
-        console.log('🔵 [LP-Expand] FETCH:', url, 'BODY:', JSON.stringify(body));
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-        console.log('🔵 [LP-Expand] RESPONSE status:', resp.status);
         const json = await resp.json();
-        console.log('🔵 [LP-Expand] RESPONSE data:', json);
         setLpExpandOrders(prev => ({ ...prev, [lpMasterId]: Array.isArray(json.data) ? json.data : [] }));
       } catch (err) {
         console.error('🔴 [LP-Expand] ERROR:', err);
@@ -2055,15 +2052,10 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         <Tbody>
           {data.map(lp => {
           const lpKey = lp.lp_master_id || lp.id;
-          // +/- jen kde jsou objednávky (admin vidí celkové, uživatel své)
-          const hasOrders = (isAdmin || isApprove || isLPManager)
-            ? (lp.pocet_objednavek > 0)
-            : (lp.pocet_obj_uzivatel > 0 || lp.pocet_objednavek > 0);
-          const canExpand = hasOrders;
-          // Počet pro zobrazení nad ikonou: admin vidí celkové objednávky, uživatel jen své
-          const expandCount = (isAdmin || isApprove || isLPManager)
-            ? (lp.pocet_objednavek || 0)
-            : (lp.pocet_obj_uzivatel || 0);
+          // +/- jen kde jsou objednávky (celkový počet - lp-expand endpoint vrací všechny)
+          const canExpand = (lp.pocet_objednavek > 0);
+          // Počet pro zobrazení nad ikonou: vždy celkový (odpovídá tomu co lp-expand vrátí)
+          const expandCount = (lp.pocet_objednavek || 0);
           return (
             <React.Fragment key={lp.id}>
             <tr style={lp.pocet_obj_uzivatel > 0 ? {
@@ -2303,7 +2295,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                           <tr style={{ borderBottom: ord.faktury?.length ? 'none' : '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc', transition: 'background-color 0.15s ease' }}>
                             <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                               <button
-                                onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: window.location.pathname } })}
+                                onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
                                 style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #93c5fd' }}
                                 title="Otevřít objednávku"
                               >
@@ -2344,7 +2336,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.75rem', fontSize: '0.75rem', color: '#92400e' }}>
                                 ↳{' '}
                                 <button
-                                  onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: window.location.pathname } })}
+                                  onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
                                   style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
                                   title="Otevřít fakturu"
                                 >
@@ -2972,10 +2964,43 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
  * Zobrazuje agregované čerpání LP kódů z pokladny včetně multi-LP položek
  */
 const CashbookLPSummary = () => {
-  const { user, userDetail } = useContext(AuthContext);
+  const { user, userDetail, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const [loading, setLoading] = useState(false);
   const [lpSummary, setLpSummary] = useState([]);
+  const [hasAssignedCashbook, setHasAssignedCashbook] = useState(false);
+
+  // Oprávnění – stejná logika jako Layout.js showCashBookButton
+  const isAdmin = typeof hasAdminRole === 'function' && hasAdminRole();
+  const isCashBookAdminOrManage = isAdmin || (typeof hasPermission === 'function' && hasPermission('CASH_BOOK_MANAGE'));
+  const hasAnyCashBookPermission = typeof hasPermission === 'function' && (
+    hasPermission('CASH_BOOK_VIEW') || hasPermission('CASH_BOOK_READ_ALL') ||
+    hasPermission('CASH_BOOK_READ_OWN') || hasPermission('CASH_BOOK_MANAGE') ||
+    hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOK_EDIT_ALL') ||
+    hasPermission('CASH_BOOK_EDIT_OWN') || hasPermission('CASH_BOOK_CREATE')
+  );
+
+  // Ověření přiřazení pokladny (pro non-admin/non-manage uživatele)
+  useEffect(() => {
+    if (isCashBookAdminOrManage) { setHasAssignedCashbook(true); return; }
+    if (!hasAnyCashBookPermission || !userDetail?.id) { setHasAssignedCashbook(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const cashbookAPI = (await import('../services/cashbookService')).default;
+        const response = await cashbookAPI.listAssignments(userDetail.id, true);
+        const assignments = Array.isArray(response?.data?.assignments)
+          ? response.data.assignments
+          : Array.isArray(response?.assignments) ? response.assignments : [];
+        const hasActive = assignments.some(a => String(a?.aktivni ?? '1') === '1');
+        if (!cancelled) setHasAssignedCashbook(hasActive);
+      } catch { if (!cancelled) setHasAssignedCashbook(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [isCashBookAdminOrManage, hasAnyCashBookPermission, userDetail?.id]);
+
+  // Viditelnost bloku: admin/manage NEBO (má oprávnění A přiřazenou pokladnu)
+  const hasCashbookAccess = isCashBookAdminOrManage || (hasAnyCashBookPermission && hasAssignedCashbook);
   
   // State pro filtr roku - s localStorage persistencí
   const currentYear = new Date().getFullYear();
@@ -2991,7 +3016,7 @@ const CashbookLPSummary = () => {
   const [collapsed, setCollapsed] = useState(false);
   
   const loadLPSummary = useCallback(async () => {
-    if (!userDetail?.id) return;
+    if (!hasCashbookAccess || !userDetail?.id) return;
     
     setLoading(true);
     try {
@@ -3026,11 +3051,13 @@ const CashbookLPSummary = () => {
     } finally {
       setLoading(false);
     }
-  }, [userDetail, selectedYear, showToast, user]);
+  }, [hasCashbookAccess, userDetail, selectedYear, showToast, user]);
   
   useEffect(() => {
     loadLPSummary();
   }, [loadLPSummary]);
+  
+  if (!hasCashbookAccess) return null;
   
   return (
     <div style={{ marginTop: '3rem' }}>

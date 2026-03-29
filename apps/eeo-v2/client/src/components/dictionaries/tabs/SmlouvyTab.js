@@ -14,7 +14,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -884,6 +884,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
 
   // State pro expand řádků smluv (lazy-load objednávek)
   const navigate = useNavigate();
+  const location = useLocation();
   const [expandedContracts, setExpandedContracts] = useState(() => {
     try {
       const saved = localStorage.getItem(`smlouvy_expanded_${user?.id || 'default'}`);
@@ -1423,27 +1424,38 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         const userInvoices = Number(row?.pocet_faktur_uzivatel || 0);
         const cerpano = Number(row?.cerpano_skutecne || 0);
         
+        // Smlouva vlastního úseku? → uživatel vidí VŠECHNA čerpání (expand vrací vše)
+        const rowUsekId = row?.usek_id ? parseInt(row.usek_id, 10) : null;
+        const rowUsekZkr = String(row?.usek_zkr || '').trim().toUpperCase();
+        const isMujUsek = isRestrictedCerpaniUser && (
+          (userUsekZkr && rowUsekZkr && userUsekZkr === rowUsekZkr) ||
+          (userUsekId && rowUsekId && Number(userUsekId) === Number(rowUsekId))
+        );
+        // Pro admin nebo smlouvu vlastního úseku zobrazit celkové počty,
+        // jinak jen uživatelovy vlastní
+        const useTotal = isAdminUser || isMujUsek;
+        
         // Logika symbolu +/– podle typu smlouvy a uživatelské role
         let canExpand, expandCount, expandTitle;
         
         if (pouzitVObjFormu === 1) {
           // Smlouva S objednávkovým formulářem → PRIMÁRNĚ objednávky, ale i faktury
-          const hasOrders = isAdminUser ? (totalOrders > 0) : (userOrders > 0);
-          const hasInvoices = isAdminUser ? (totalInvoices > 0) : (userInvoices > 0);
+          const hasOrders = useTotal ? (totalOrders > 0) : (userOrders > 0);
+          const hasInvoices = useTotal ? (totalInvoices > 0) : (userInvoices > 0);
           canExpand = hasOrders || hasInvoices || (cerpano > 0);
-          expandCount = isAdminUser ? (totalOrders + totalInvoices) : (userOrders + userInvoices);
+          expandCount = useTotal ? (totalOrders + totalInvoices) : (userOrders + userInvoices);
           expandTitle = isAdminUser 
             ? (canExpand ? 'Zobrazit objednávky a faktury' : 'Žádné čerpání')
-            : (canExpand ? 'Zobrazit vaše čerpání' : 'Nemáte žádné čerpání');
+            : (canExpand ? 'Zobrazit čerpání smlouvy' : 'Žádné čerpání');
         } else {
           // Smlouva BEZ obj. formuláře → PRIMÁRNĚ faktury, ale může mít i objednávky
-          const hasOrders = isAdminUser ? (totalOrders > 0) : (userOrders > 0);
-          const hasInvoices = isAdminUser ? (totalInvoices > 0) : (userInvoices > 0);
+          const hasOrders = useTotal ? (totalOrders > 0) : (userOrders > 0);
+          const hasInvoices = useTotal ? (totalInvoices > 0) : (userInvoices > 0);
           canExpand = hasInvoices || hasOrders || (cerpano > 0);
-          expandCount = isAdminUser ? (totalInvoices + totalOrders) : (userInvoices + userOrders);
+          expandCount = useTotal ? (totalInvoices + totalOrders) : (userInvoices + userOrders);
           expandTitle = isAdminUser 
             ? (canExpand ? 'Zobrazit faktury a objednávky' : 'Žádné čerpání')
-            : (canExpand ? 'Zobrazit vaše čerpání' : 'Nemáte žádné čerpání');
+            : (canExpand ? 'Zobrazit čerpání smlouvy' : 'Žádné čerpání');
         }
         
         const isExpanded = expandedContracts[row.id];
@@ -1733,7 +1745,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         </ActionCell>
       )
     })
-  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, expandedContracts, toggleContractExpand, isAdminUser]);
+  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
 
   const table = useReactTable({
     data: filteredSmlouvy,
@@ -2264,7 +2276,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                       <tr style={{ borderBottom: ord.faktury?.length ? 'none' : '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc', transition: 'background-color 0.15s ease' }}>
                                         <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                                           <button
-                                            onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: window.location.pathname } })}
+                                            onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
                                             style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #93c5fd' }}
                                             title="Otevřít objednávku"
                                           >
@@ -2290,7 +2302,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                           <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.75rem', fontSize: '0.75rem', color: '#92400e' }}>
                                             ↳{' '}
                                             <button
-                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: window.location.pathname } })}
+                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
                                               style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
                                               title="Otevřít fakturu"
                                             >
@@ -2338,7 +2350,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                         <tr key={fa.id || fi} style={{ borderBottom: '1px solid #f1f5f9', background: fi % 2 === 0 ? 'white' : '#faf5ff', transition: 'background-color 0.15s ease' }}>
                                           <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                                             <button
-                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, returnTo: window.location.pathname } })}
+                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, returnTo: location.pathname } })}
                                               style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
                                               title="Otevřít fakturu"
                                             >

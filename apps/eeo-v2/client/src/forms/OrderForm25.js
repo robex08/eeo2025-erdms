@@ -20096,6 +20096,44 @@ function OrderForm25() {
   // Řídí useFormController lifecycle phases: MOUNTING → LOADING_DICTIONARIES → READY
 
   if (!lifecycle.isReady) {
+    // 🚨 ERROR STATE: Chyba při načítání (např. 403 oprávnění) - zobrazit tlačítko zpět
+    if (lifecycle.phase === 'ERROR' || lifecycle.error) {
+      return (
+        <LoadingOverlay $visible={true}>
+          <div style={{ textAlign: 'center', maxWidth: '500px', padding: '2rem' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#dc2626', marginBottom: '0.75rem' }}>
+              Nepodařilo se načíst formulář
+            </div>
+            <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+              {lifecycle.error || 'Neznámá chyba při načítání objednávky'}
+            </div>
+            <button
+              onClick={() => {
+                const homepage = getDefaultHomepageSync();
+                navigate(homepage, { replace: true });
+              }}
+              style={{
+                padding: '10px 24px',
+                fontSize: '0.95rem',
+                fontWeight: 600,
+                color: '#fff',
+                background: '#3b82f6',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'background 0.2s'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = '#2563eb'}
+              onMouseOut={e => e.currentTarget.style.background = '#3b82f6'}
+            >
+              ← Zpět na seznam
+            </button>
+          </div>
+        </LoadingOverlay>
+      );
+    }
+
     return (
       <LoadingOverlay $visible={true}>
         <LoadingSpinner $visible={true} />
