@@ -1818,6 +1818,12 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
         // Permissions pro objednávky
         applyOrderV3UserPermissions($user_id, $db, $where_orders, $params_orders);
 
+        // Vyloučit zrušené, zamítnuté a smazané objednávky (vždy, bez ohledu na user filtr)
+        $where_orders[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN (?, ?, ?)";
+        $params_orders[] = 'ZRUSENA';
+        $params_orders[] = 'ZAMITNUTA';
+        $params_orders[] = 'SMAZANA';
+
         $where_orders_sql = implode(' AND ', $where_orders);
 
         // Podmínky pro FAKTURY s umístěním
@@ -1871,11 +1877,21 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1) as pocet_faktur,
                     (SELECT COALESCE(SUM(f2.fa_castka), 0) FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1) as faktury_celkova_castka_s_dph,
                     (SELECT f2.vecna_spravnost_umisteni_majetku FROM " . TBL_FAKTURY . " f2 WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.vecna_spravnost_umisteni_majetku IS NOT NULL ORDER BY f2.id DESC LIMIT 1) as umisteni_majetku,
+                    (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr WHERE pr.objednavka_id = o.id) as pocet_priloh,
                     NULL as cislo_smlouvy,
                     NULL as fa_cislo_vema,
-                    'ORDER' as source_type
+                    'ORDER' as source_type,
+                    us_ord.usek_zkr as usek_zkr,
+                    COALESCE(u_obj.prijmeni, '') as objednatel_prijmeni,
+                    COALESCE(LEFT(u_obj.jmeno, 1), '') as objednatel_jmeno_init,
+                    COALESCE(u_prik.prijmeni, '') as schvalovatel_prijmeni,
+                    COALESCE(LEFT(u_prik.jmeno, 1), '') as schvalovatel_jmeno_init
                 FROM " . TBL_OBJEDNAVKY . " o
                 LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
+                LEFT JOIN " . TBL_UZIVATELE . " uzad_ord ON uzad_ord.id = o.uzivatel_id
+                LEFT JOIN " . TBL_USEKY . " us_ord ON us_ord.id = uzad_ord.usek_id
+                LEFT JOIN " . TBL_UZIVATELE . " u_obj ON u_obj.id = COALESCE(o.objednatel_id, o.uzivatel_id)
+                LEFT JOIN " . TBL_UZIVATELE . " u_prik ON u_prik.id = o.prikazce_id
                 WHERE $where_orders_sql
                 
                 UNION ALL
@@ -1894,11 +1910,19 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     1 as pocet_faktur,
                     f.fa_castka as faktury_celkova_castka_s_dph,
                     f.vecna_spravnost_umisteni_majetku as umisteni_majetku,
+                    0 as pocet_priloh,
                     s.cislo_smlouvy,
                     f.fa_cislo_vema,
-                    'INVOICE' as source_type
+                    'INVOICE' as source_type,
+                    NULL as usek_zkr,
+                    COALESCE(u_fvyt.prijmeni, '') as objednatel_prijmeni,
+                    COALESCE(LEFT(u_fvyt.jmeno, 1), '') as objednatel_jmeno_init,
+                    COALESCE(u_fvec.prijmeni, '') as schvalovatel_prijmeni,
+                    COALESCE(LEFT(u_fvec.jmeno, 1), '') as schvalovatel_jmeno_init
                 FROM " . TBL_FAKTURY . " f
                 LEFT JOIN 25_smlouvy s ON f.smlouva_id = s.id
+                LEFT JOIN " . TBL_UZIVATELE . " u_fvyt ON u_fvyt.id = f.vytvoril_uzivatel_id
+                LEFT JOIN " . TBL_UZIVATELE . " u_fvec ON u_fvec.id = f.potvrdil_vecnou_spravnost_id
                 WHERE $where_faktury_sql
                 AND f.objednavka_id IS NULL
             ) combined
@@ -2024,6 +2048,13 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     // Pro faktury nastavit fake druh
                     $order['druh_objednavky_nazev'] = 'Faktura (samostatná)';
                     $order['druh_objednavky_atribut'] = 1; // MAJETEK atribut
+                }
+
+                // Attachment color - pro objednávky spočti barvu příloh, pro faktury šedá
+                if ($source_type === 'ORDER' && $order_id) {
+                    enrichOrderWithAttachmentStatus($db, $order);
+                } else {
+                    $order['attachment_color'] = '#cbd5e1'; // Šedá - samostatná faktura (bez příloh objednávky)
                 }
             }
             unset($order);
