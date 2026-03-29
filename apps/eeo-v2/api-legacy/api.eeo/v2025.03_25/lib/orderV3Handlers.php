@@ -3213,11 +3213,16 @@ function handle_orderV3_lp_expand($input, $config) {
         $stmt->execute([(string)$lp_master_id]);
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Pro každou objednávku načteme faktury
+        // Pro každou objednávku načteme faktury + LP rozpis
         $order_ids = array_column($orders, 'id');
         $faktury_map = [];
+        $polozky_map = [];
+        $lp_rozpis_map = []; // LP rozpis z faktur
+        
         if (!empty($order_ids)) {
             $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+            
+            // Faktury
             $sql_fa = "
                 SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_castka, f.stav, 
                        f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
@@ -3227,7 +3232,9 @@ function handle_orderV3_lp_expand($input, $config) {
             ";
             $stmt_fa = $db->prepare($sql_fa);
             $stmt_fa->execute($order_ids);
-            foreach ($stmt_fa->fetchAll(PDO::FETCH_ASSOC) as $fa) {
+            $faktury = $stmt_fa->fetchAll(PDO::FETCH_ASSOC);
+            $faktura_ids = [];
+            foreach ($faktury as $fa) {
                 $faktury_map[(int)$fa['objednavka_id']][] = [
                     'id' => (int)$fa['id'],
                     'fa_cislo_vema' => $fa['fa_cislo_vema'],
@@ -3237,6 +3244,38 @@ function handle_orderV3_lp_expand($input, $config) {
                     'fa_datum_splatnosti' => $fa['fa_datum_splatnosti'],
                     'fa_zaplacena' => (bool)$fa['fa_zaplacena']
                 ];
+                $faktura_ids[] = (int)$fa['id'];
+            }
+            
+            // LP rozpis z faktur (25a_faktury_lp_cerpani)
+            if (!empty($faktura_ids)) {
+                $fa_placeholders = implode(',', array_fill(0, count($faktura_ids), '?'));
+                $sql_lp_rozpis = "
+                    SELECT flp.faktura_id, SUM(flp.castka) as lp_castka
+                    FROM 25a_faktury_lp_cerpani flp
+                    WHERE flp.faktura_id IN ($fa_placeholders)
+                      AND flp.lp_id = ?
+                    GROUP BY flp.faktura_id
+                ";
+                $stmt_lp = $db->prepare($sql_lp_rozpis);
+                $stmt_lp->execute(array_merge($faktura_ids, [$lp_master_id]));
+                foreach ($stmt_lp->fetchAll(PDO::FETCH_ASSOC) as $lp_row) {
+                    $lp_rozpis_map[(int)$lp_row['faktura_id']] = (float)$lp_row['lp_castka'];
+                }
+            }
+            
+            // Položky objednávek s tímto LP (plánované čerpání)
+            $sql_pol = "
+                SELECT p.objednavka_id, SUM(p.cena_s_dph) as planovana_castka
+                FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
+                WHERE p.objednavka_id IN ($placeholders)
+                  AND p.lp_id = ?
+                GROUP BY p.objednavka_id
+            ";
+            $stmt_pol = $db->prepare($sql_pol);
+            $stmt_pol->execute(array_merge($order_ids, [$lp_master_id]));
+            foreach ($stmt_pol->fetchAll(PDO::FETCH_ASSOC) as $pol) {
+                $polozky_map[(int)$pol['objednavka_id']] = (float)$pol['planovana_castka'];
             }
         }
 
@@ -3244,6 +3283,39 @@ function handle_orderV3_lp_expand($input, $config) {
         $result = [];
         foreach ($orders as $ord) {
             $oid = (int)$ord['id'];
+            $faktury = $faktury_map[$oid] ?? [];
+            
+            // PRIORITA ČERPÁNÍ:
+            // 1. LP rozpis z faktur (25a_faktury_lp_cerpani)
+            // 2. Položky objednávky s LP
+            // 3. max_cena_s_dph (pokud nic není)
+            
+            $suma_lp_z_faktur = 0.0;
+            foreach ($faktury as &$fa) {
+                $fa_lp_castka = $lp_rozpis_map[(int)$fa['id']] ?? null;
+                $fa['lp_castka'] = $fa_lp_castka; // Přidáme LP částku k faktuře
+                if ($fa_lp_castka !== null) {
+                    $suma_lp_z_faktur += $fa_lp_castka;
+                }
+            }
+            unset($fa); // Ukončit referenci
+            
+            $planovana_castka_polozky = $polozky_map[$oid] ?? 0.0;
+            $suma_faktur_total = array_sum(array_column($faktury, 'fa_castka'));
+            
+            // Určit plánovanou částku LP
+            $planovana_castka_lp = 0.0;
+            if ($suma_lp_z_faktur > 0) {
+                // Priorita 1: LP rozpis z faktur
+                $planovana_castka_lp = $suma_lp_z_faktur;
+            } elseif ($planovana_castka_polozky > 0) {
+                // Priorita 2: Položky s LP
+                $planovana_castka_lp = $planovana_castka_polozky;
+            } else {
+                // Priorita 3: max_cena_s_dph (fallback)
+                $planovana_castka_lp = (float)$ord['max_cena_s_dph'];
+            }
+            
             $result[] = [
                 'id' => $oid,
                 'cislo_objednavky' => $ord['cislo_objednavky'],
@@ -3251,11 +3323,15 @@ function handle_orderV3_lp_expand($input, $config) {
                 'stav' => $ord['stav_objednavky'],
                 'dodavatel_nazev' => $ord['dodavatel_nazev'],
                 'max_cena_s_dph' => (float)$ord['max_cena_s_dph'],
+                'planovana_castka_lp' => $planovana_castka_lp,
+                'planovana_castka_polozky' => $planovana_castka_polozky,
+                'suma_lp_z_faktur' => $suma_lp_z_faktur,
                 'dt_vytvoreni' => $ord['dt_vytvoreni'],
                 'objednatel_jmeno' => $ord['objednatel_jmeno'],
-                'faktury' => $faktury_map[$oid] ?? [],
-                'pocet_faktur' => count($faktury_map[$oid] ?? []),
-                'suma_faktur' => array_sum(array_column($faktury_map[$oid] ?? [], 'fa_castka'))
+                'faktury' => $faktury,
+                'pocet_faktur' => count($faktury),
+                'suma_faktur' => $suma_faktur_total,
+                'rozdil_planovano_skutecne' => $planovana_castka_lp - $suma_lp_z_faktur
             ];
         }
 
@@ -3319,6 +3395,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
         $cislo_smlouvy = $smlouva['cislo_smlouvy'];
 
         // 1) Objednávky které mají financovani.cislo_smlouvy = cislo_smlouvy
+        // ⚠️ OPRAVA: Používat REPLACE + LIKE kvůli escaped \/ v JSON (stejný pattern jako smlouvyHandlers.php)
         $sql = "
             SELECT 
                 o.id,
@@ -3332,7 +3409,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
                 CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
-            WHERE JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = ?
+            WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
               AND o.aktivni = 1
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
             ORDER BY o.dt_vytvoreni DESC

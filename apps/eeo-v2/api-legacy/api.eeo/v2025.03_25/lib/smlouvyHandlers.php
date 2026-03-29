@@ -432,7 +432,31 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                             AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                                             AND o.objednatel_id = :current_user_id
-                                ) AS pocet_objednavek_uzivatel
+                                ) AS pocet_objednavek_uzivatel,
+                                (
+                                        SELECT COUNT(DISTINCT f.id)
+                                        FROM " . TBL_FAKTURY . " f
+                                        LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                                        WHERE (
+                                                (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
+                                                OR (o.id IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = s.cislo_smlouvy)
+                                        )
+                                            AND f.aktivni = 1
+                                            AND f.stav != 'STORNO'
+                                ) AS pocet_faktur_celkem,
+                                (
+                                        SELECT COUNT(DISTINCT f.id)
+                                        FROM " . TBL_FAKTURY . " f
+                                        LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                                        WHERE (
+                                                (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
+                                                OR (o.id IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = s.cislo_smlouvy)
+                                        )
+                                            AND f.aktivni = 1
+                                            AND f.stav != 'STORNO'
+                                            AND (f.vytvoril_uzivatel_id = :current_user_id 
+                                                 OR f.potvrdil_vecnou_spravnost_id = :current_user_id)
+                                ) AS pocet_faktur_uzivatel
             FROM " . TBL_SMLOUVY . " s
             LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
             $where_sql

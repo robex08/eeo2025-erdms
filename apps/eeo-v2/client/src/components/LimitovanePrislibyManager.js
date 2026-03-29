@@ -1850,20 +1850,26 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               </tr>
               {showThreeTypes && (
                 <>
-                  <tr>
-                    <td>Rezervováno:</td>
-                    <td>{formatAmount(lp.rezervovano)}</td>
+                  <tr title="Potvrzené faktury s věcnou správností">
+                    <td>Skutečně:</td>
+                    <td><strong>{formatAmount(lp.skutecne_cerpano)}</strong></td>
                   </tr>
-                  <tr>
-                    <td>Předpoklad:</td>
+                  <tr title="Objednávky s položkami podle LP (bez potvrzené faktury)">
+                    <td>Plánováno:</td>
                     <td>{formatAmount(lp.predpokladane_cerpani)}</td>
+                  </tr>
+                  <tr title="Objednávky ve schvalování (pesimistický odhad)">
+                    <td>Požadováno:</td>
+                    <td>{formatAmount(lp.rezervovano)}</td>
                   </tr>
                 </>
               )}
-              <tr>
-                <td>Skutečně:</td>
-                <td><strong>{formatAmount(lp.skutecne_cerpano)}</strong></td>
-              </tr>
+              {!showThreeTypes && (
+                <tr>
+                  <td>Skutečně:</td>
+                  <td><strong>{formatAmount(lp.skutecne_cerpano)}</strong></td>
+                </tr>
+              )}
               
               {/* 💡 DETAIL OBJEDNÁVEK - pokud existují */}
               {lp.objednavky_detail && lp.objednavky_detail.length > 0 && (
@@ -1955,7 +1961,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <th>Kategorie</th>
                 <th>Název účtu</th>
                 <th>Celkový limit</th>
-                <th>Moje čerpání</th>
+                <th title="Skutečně (potvrzeno) / Plánováno (odeslané obj.) / Požadováno (ve schvalování)">Moje čerpání</th>
                 <th>% z limitu</th>
                 <th>Zbývá</th>
                 <th>Objednávky</th>
@@ -1986,17 +1992,17 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     </td>
                     <td>
                       <ThreeTypeAmountContainer>
-                        <ThreeTypeAmountRow>
-                          <ThreeTypeLabel style={{ color: '#f59e0b' }}>Rezervováno:</ThreeTypeLabel>
-                          <ThreeTypeValue style={{ color: '#f59e0b' }}>{formatAmount(rezervovano)}</ThreeTypeValue>
-                        </ThreeTypeAmountRow>
-                        <ThreeTypeAmountRow>
-                          <ThreeTypeLabel style={{ color: '#3b82f6' }}>Předpoklad:</ThreeTypeLabel>
-                          <ThreeTypeValue style={{ color: '#3b82f6' }}>{formatAmount(predpoklad)}</ThreeTypeValue>
-                        </ThreeTypeAmountRow>
-                        <ThreeTypeAmountRow>
+                        <ThreeTypeAmountRow title="Potvrzené faktury s věcnou správností">
                           <ThreeTypeLabel style={{ color: '#10b981' }}>Skutečně:</ThreeTypeLabel>
                           <ThreeTypeValue style={{ color: '#10b981', fontWeight: '700' }}>{formatAmount(skutecne)}</ThreeTypeValue>
+                        </ThreeTypeAmountRow>
+                        <ThreeTypeAmountRow title="Objednávky s položkami podle LP (bez potvrzené faktury)">
+                          <ThreeTypeLabel style={{ color: '#3b82f6' }}>Plánováno:</ThreeTypeLabel>
+                          <ThreeTypeValue style={{ color: '#3b82f6' }}>{formatAmount(predpoklad)}</ThreeTypeValue>
+                        </ThreeTypeAmountRow>
+                        <ThreeTypeAmountRow title="Objednávky ve schvalování (pesimistický odhad)">
+                          <ThreeTypeLabel style={{ color: '#f59e0b' }}>Požadováno:</ThreeTypeLabel>
+                          <ThreeTypeValue style={{ color: '#f59e0b' }}>{formatAmount(rezervovano)}</ThreeTypeValue>
                         </ThreeTypeAmountRow>
                       </ThreeTypeAmountContainer>
                     </td>
@@ -2039,10 +2045,10 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
             <th>Účet</th>
             <th>Název účtu</th>
             {showUserColumn && <th>Příkazce operace</th>}
-            <th>Limit</th>
-            <th>Vyčerpáno (skutečně)</th>
-            <th>Zbývá (skutečně)</th>
-            <th>Čerpání</th>
+            <th style={{ textAlign: 'right' }}>Limit</th>
+            <th style={{ textAlign: 'right' }} title="Potvrzené faktury s věcnou správností + LP rozpis + pokladna">Vyčerpáno (skutečně)</th>
+            <th style={{ textAlign: 'right' }}>Zbývá (skutečně)</th>
+            <th title="Vizuální přehled čerpání: Skutečně (potvrzeno) / Plánováno (odeslané obj.) / Požadováno (ve schvalování)">Čerpání</th>
             <th>Stav</th>
           </tr>
         </Thead>
@@ -2141,12 +2147,16 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               </td>
               <td>
                 <ThreeTypeAmount>
-                  <MainAmount $color="#3b82f6">
+                  <MainAmount $color="#10b981" title="Potvrzené faktury s věcnou správností + LP rozpis">
                     {formatAmount(lp.skutecne_cerpano)}
                   </MainAmount>
                   <SubAmounts>
-                    <SubAmount>Požadováno: {renderAmountWithTooltip(lp.rezervovano, lp.objednavky_detail, 'rezervace')}</SubAmount>
-                    <SubAmount>Plánováno: {renderAmountWithTooltip(lp.predpokladane_cerpani, lp.objednavky_detail, 'predpoklad')}</SubAmount>
+                    <SubAmount title="Objednávky s položkami podle LP / max_cena_s_dph (bez potvrzené faktury)">
+                      Plánováno: {renderAmountWithTooltip(lp.predpokladane_cerpani, lp.objednavky_detail, 'predpoklad')}
+                    </SubAmount>
+                    <SubAmount title="Objednávky ve schvalování bez položek (pesimistický odhad)">
+                      Požadováno: {renderAmountWithTooltip(lp.rezervovano, lp.objednavky_detail, 'rezervace')}
+                    </SubAmount>
                     <SubAmount>Z pokladny: {formatAmount(lp.cerpano_pokladna || 0)}</SubAmount>
                   </SubAmounts>
                 </ThreeTypeAmount>
@@ -2261,7 +2271,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                         case 'datum': return m * (a.dt_vytvoreni || '').localeCompare(b.dt_vytvoreni || '');
                         case 'stav': return m * (a.stav || '').localeCompare(b.stav || '', 'cs');
                         case 'dodavatel': return m * (a.dodavatel_nazev || '').localeCompare(b.dodavatel_nazev || '', 'cs');
-                        case 'cena': return m * ((a.max_cena_s_dph || 0) - (b.max_cena_s_dph || 0));
+                        case 'cena': return m * ((a.planovana_castka_lp || a.max_cena_s_dph || 0) - (b.planovana_castka_lp || b.max_cena_s_dph || 0));
                         case 'faktury': return m * ((a.pocet_faktur || 0) - (b.pocet_faktur || 0));
                         default: return 0;
                       }
@@ -2283,7 +2293,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
-                          <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('cena')}>Cena s DPH{sortIcon('cena')}</th>
+                          <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('cena')}>Plánováno (LP){sortIcon('cena')}</th>
                           <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('faktury')}>Faktury{sortIcon('faktury')}</th>
                         </tr>
                       </thead>
@@ -2309,7 +2319,22 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               }}>{ord.stav || '?'}</span>
                             </td>
                             <td style={{ padding: '0.25rem 0.5rem', color: '#374151', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ord.dodavatel_nazev || '—'}</td>
-                            <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{formatAmount(ord.max_cena_s_dph || 0)}</td>
+                            <td 
+                              style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}
+                              title={(() => {
+                                const parts = [];
+                                if (ord.suma_lp_z_faktur > 0) {
+                                  parts.push(`✅ LP rozpis z faktur: ${formatAmount(ord.suma_lp_z_faktur)}`);
+                                }
+                                if (ord.planovana_castka_polozky > 0) {
+                                  parts.push(`📋 Položky s LP: ${formatAmount(ord.planovana_castka_polozky)}`);
+                                }
+                                parts.push(`💰 Celková cena obj.: ${formatAmount(ord.max_cena_s_dph || 0)}`);
+                                return parts.join('\n');
+                              })()}
+                            >
+                              {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
+                            </td>
                             <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontSize: '0.75rem', color: '#6b7280' }}>
                               {ord.pocet_faktur > 0 ? `${ord.pocet_faktur}× / ${formatAmount(ord.suma_faktur || 0)}` : '—'}
                             </td>
@@ -2334,8 +2359,22 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                   borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em'
                                 }}>{fa.stav}</span>
                               </td>
-                              <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }} colSpan={2}>
-                                {formatAmount(fa.fa_castka || 0)}
+                              <td 
+                                style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }} 
+                                colSpan={2}
+                                title={fa.lp_castka ? `LP rozpis: ${formatAmount(fa.lp_castka)}\nCelková FA: ${formatAmount(fa.fa_castka)}` : undefined}
+                              >
+                                {fa.lp_castka ? (
+                                  <>
+                                    <span style={{ color: '#16a34a', fontWeight: 700 }}>LP: {formatAmount(fa.lp_castka)}</span>
+                                    {' '}
+                                    <span style={{ fontSize: '0.65rem', color: '#78716c', fontWeight: 400 }}>
+                                      (celkem: {formatAmount(fa.fa_castka)})
+                                    </span>
+                                  </>
+                                ) : (
+                                  formatAmount(fa.fa_castka)
+                                )}
                               </td>
                               <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: '#78716c' }}>
                                 {fa.fa_datum_splatnosti ? `Splat: ${czDate(fa.fa_datum_splatnosti)}` : ''}
@@ -2383,15 +2422,15 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
             </td>
             <td>
               <ThreeTypeAmount>
-                <MainAmount $color="#3b82f6" style={{ fontWeight: '700' }}>
+                <MainAmount $color="#10b981" style={{ fontWeight: '700' }} title="Potvrzené faktury s věcnou správností + LP rozpis + pokladna">
                   {formatAmount(data.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0))}
                 </MainAmount>
                 <SubAmounts>
-                  <SubAmount style={{ fontWeight: '600' }}>
-                    Požadováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0))}
-                  </SubAmount>
-                  <SubAmount style={{ fontWeight: '600' }}>
+                  <SubAmount style={{ fontWeight: '600' }} title="Objednávky s položkami podle LP (bez potvrzené faktury)">
                     Plánováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0))}
+                  </SubAmount>
+                  <SubAmount style={{ fontWeight: '600' }} title="Objednávky ve schvalování (pesimistický odhad)">
+                    Požadováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0))}
                   </SubAmount>
                   <SubAmount style={{ fontWeight: '600' }}>
                     Z pokladny: {formatAmount(data.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0))}
@@ -2569,11 +2608,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <TrendingUp size={28} />
               </StatIcon>
               <StatContent>
-                <StatLabel $light>Skutečně vyčerpáno (fakturace + pokladna)</StatLabel>
+                <StatLabel $light title="Potvrzené faktury s věcnou správností + pokladna">Skutečně vyčerpáno (fakturace + pokladna)</StatLabel>
                 <StatValue $light style={{ marginBottom: '0.5rem' }}>{formatAmount(stats.celkove_skutecne)}</StatValue>
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-                  <div>→ Požadováno: {formatAmount(stats.celkove_rezervovano)}</div>
-                  <div>→ Plánováno: {formatAmount(stats.celkove_predpokladane)}</div>
+                  <div title="Objednávky s položkami podle LP (bez potvrzené faktury)">→ Plánováno: {formatAmount(stats.celkove_predpokladane)}</div>
+                  <div title="Objednávky ve schvalování (pesimistický odhad)">→ Požadováno: {formatAmount(stats.celkove_rezervovano)}</div>
                   <div>→ Z pokladny: {formatAmount(stats.celkove_pokladna)}</div>
                 </div>
               </StatContent>

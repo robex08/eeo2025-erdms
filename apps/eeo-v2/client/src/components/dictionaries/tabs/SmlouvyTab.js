@@ -1038,7 +1038,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
         const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
         const jeMujUsek = matchByZkr || matchById;
-        const cerpalUzivatel = Number(smlouva.pocet_objednavek_uzivatel || 0) > 0;
+        // Symbol +/- pro rozbalení a viditelnost řádku:
+        // - pouzit_v_obj_formu=1 → objednávky uživatele
+        // - pouzit_v_obj_formu=0 → faktury uživatele (vytvořil nebo potvrdil)
+        const pouzitVObjFormu = Number(smlouva.pouzit_v_obj_formu || 0);
+        const cerpalUzivatel = pouzitVObjFormu === 1 
+          ? Number(smlouva.pocet_objednavek_uzivatel || 0) > 0
+          : Number(smlouva.pocet_faktur_uzivatel || 0) > 0;
         if (!jeMujUsek && !cerpalUzivatel) {
           return false;
         }
@@ -1407,19 +1413,45 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       header: 'Číslo smlouvy',
       cell: info => {
         const row = info.row.original;
-        const pocet = Number(row?.pocet_objednavek_uzivatel || 0);
-        // +/- jen kde jsou objednávky
+        const pouzitVObjFormu = Number(row?.pouzit_v_obj_formu || 0);
+        
+        // ✅ OPRAVA: Smlouva může mít OBOJÍ - objednávky I přímé faktury!
+        // Symbol +/- zobrazit pokud má JAKÉKOLIV čerpání
         const totalOrders = Number(row?.pocet_objednavek || 0);
-        const canExpand = isAdminUser ? (totalOrders > 0) : (pocet > 0 || totalOrders > 0);
+        const userOrders = Number(row?.pocet_objednavek_uzivatel || 0);
+        const totalInvoices = Number(row?.pocet_faktur_celkem || 0);
+        const userInvoices = Number(row?.pocet_faktur_uzivatel || 0);
+        const cerpano = Number(row?.cerpano_skutecne || 0);
+        
+        // Logika symbolu +/– podle typu smlouvy a uživatelské role
+        let canExpand, expandCount, expandTitle;
+        
+        if (pouzitVObjFormu === 1) {
+          // Smlouva S objednávkovým formulářem → PRIMÁRNĚ objednávky, ale i faktury
+          const hasOrders = isAdminUser ? (totalOrders > 0) : (userOrders > 0);
+          const hasInvoices = isAdminUser ? (totalInvoices > 0) : (userInvoices > 0);
+          canExpand = hasOrders || hasInvoices || (cerpano > 0);
+          expandCount = isAdminUser ? (totalOrders + totalInvoices) : (userOrders + userInvoices);
+          expandTitle = isAdminUser 
+            ? (canExpand ? 'Zobrazit objednávky a faktury' : 'Žádné čerpání')
+            : (canExpand ? 'Zobrazit vaše čerpání' : 'Nemáte žádné čerpání');
+        } else {
+          // Smlouva BEZ obj. formuláře → PRIMÁRNĚ faktury, ale může mít i objednávky
+          const hasOrders = isAdminUser ? (totalOrders > 0) : (userOrders > 0);
+          const hasInvoices = isAdminUser ? (totalInvoices > 0) : (userInvoices > 0);
+          canExpand = hasInvoices || hasOrders || (cerpano > 0);
+          expandCount = isAdminUser ? (totalInvoices + totalOrders) : (userInvoices + userOrders);
+          expandTitle = isAdminUser 
+            ? (canExpand ? 'Zobrazit faktury a objednávky' : 'Žádné čerpání')
+            : (canExpand ? 'Zobrazit vaše čerpání' : 'Nemáte žádné čerpání');
+        }
+        
         const isExpanded = expandedContracts[row.id];
-        // Počet nad ikonou: admin vidí celkové, uživatel své
-        const expandCount = isAdminUser
-          ? totalOrders
-          : pocet;
+        
         const expandBtn = canExpand ? (
           <button
             onClick={(e) => { e.stopPropagation(); toggleContractExpand(row.id); }}
-            title={isExpanded ? 'Skrýt objednávky' : 'Zobrazit objednávky'}
+            title={isExpanded ? `Skrýt ${pouzitVObjFormu === 1 ? 'objednávky' : 'faktury'}` : expandTitle}
             style={{
               background: isExpanded ? '#fee2e2' : '#eff6ff',
               border: `1px solid ${isExpanded ? '#fca5a5' : '#93c5fd'}`,
@@ -1443,7 +1475,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         ) : (
           <button
             disabled
-            title="Žádné objednávky"
+            title={expandTitle}
             style={{
               background: '#f3f4f6',
               border: '1px solid #d1d5db',
@@ -1462,19 +1494,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
             <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>+</span>
           </button>
         );
-        if (pocet > 0) {
-          return (
-            <span style={{ display: 'flex', alignItems: 'center' }}>
-              {expandBtn}
-              <SmartTooltip
-                text={`Vaše čerpání: ${pocet} objednávek`}
-                icon="success"
-              >
-                <strong style={{ cursor: 'help', borderBottom: '2px dotted #22c55e' }}>{info.getValue()}</strong>
-              </SmartTooltip>
-            </span>
-          );
-        }
+        
         return (
           <span style={{ display: 'flex', alignItems: 'center' }}>
             {expandBtn}
@@ -2140,11 +2160,25 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                   <React.Fragment key={row.id}>
                   <TableRow
                     $isEven={index % 2 === 0}
-                    $hasUserDrawn={Number(row.original?.pocet_objednavek_uzivatel || 0) > 0}
-                    title={Number(row.original?.pocet_objednavek_uzivatel || 0) > 0
-                      ? `Vaše čerpání: ${row.original.pocet_objednavek_uzivatel} objednávek`
-                      : undefined
-                    }
+                    $hasUserDrawn={(() => {
+                      const pouzitVObjFormu = Number(row.original?.pouzit_v_obj_formu || 0);
+                      return pouzitVObjFormu === 1 
+                        ? Number(row.original?.pocet_objednavek_uzivatel || 0) > 0
+                        : Number(row.original?.pocet_faktur_uzivatel || 0) > 0;
+                    })()}
+                    title={(() => {
+                      const pouzitVObjFormu = Number(row.original?.pouzit_v_obj_formu || 0);
+                      const hasDrawn = pouzitVObjFormu === 1 
+                        ? Number(row.original?.pocet_objednavek_uzivatel || 0) > 0
+                        : Number(row.original?.pocet_faktur_uzivatel || 0) > 0;
+                      if (!hasDrawn) return undefined;
+                      
+                      if (pouzitVObjFormu === 1) {
+                        return `Vaše čerpání: ${row.original.pocet_objednavek_uzivatel} objednávek`;
+                      } else {
+                        return `Vaše čerpání: ${row.original.pocet_faktur_uzivatel} faktur`;
+                      }
+                    })()}
                   >
                     {row.getVisibleCells().map(cell => (
                       <TableCell key={cell.id}>
