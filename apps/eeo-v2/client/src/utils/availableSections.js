@@ -101,14 +101,24 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   // (hasBetaTesterPermission je definováno výše u V3 logiky)
   const hasBetaAccess = isAdmin || hasBetaTesterPermission;
   
-  // PŘEHLED MAJETKU - BETA (pouze admin/BETA_TESTER)
-  if (hasBetaAccess) {
-    sections.push({ value: 'majetek-overview', label: 'Přehled majetku (BETA)' });
+  // PŘEHLED MAJETKU - admin nebo uživatel s ASSET oprávněním
+  if (isAdmin || (hasPermission && (
+    hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
+  ))) {
+    sections.push({ value: 'majetek-overview', label: 'Přehled majetku' });
   }
   
-  // STATISTIKA A REPORTY - BETA (pouze admin/BETA_TESTER)
-  if (hasBetaAccess) {
-    sections.push({ value: 'stats-reports', label: 'Statistika a reporty (BETA)' });
+  // STATISTIKA A REPORTY - admin nebo uživatel s jakýmkoliv stats/reports oprávněním
+  if (isAdmin || (hasPermission && (
+    hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
+    hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
+    hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE') ||
+    hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
+    hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
+    hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
+    hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
+  ))) {
+    sections.push({ value: 'stats-reports', label: 'Statistika a reporty' });
   }
   
   // ČERPÁNÍ - admin NEBO uživatel s oprávněním SPENDING/LP/CONTRACT

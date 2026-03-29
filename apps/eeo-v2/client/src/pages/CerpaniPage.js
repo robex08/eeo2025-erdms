@@ -142,7 +142,7 @@ const TabContent = ({ title, description, children }) => {
   );
 };
 
-export default function CerpaniPage({ mode = 'all', contractsUnrestricted = false, lpUnrestricted = false }) {
+export default function CerpaniPage({ mode = 'all', contractsUnrestricted = false, lpUnrestricted = false, lpViewOwnOnly = false }) {
   const tabs = useMemo(() => {
     const allTabs = [
       {
@@ -159,7 +159,7 @@ export default function CerpaniPage({ mode = 'all', contractsUnrestricted = fals
         icon: faMoneyBill,
         title: 'Čerpání limitovaných příslibů',
         description: 'Sekce se připravuje.',
-        render: () => <LimitovanePrislibyManager forceFullAccess={lpUnrestricted} />
+        render: () => <LimitovanePrislibyManager forceFullAccess={lpUnrestricted} viewOwnOnly={!lpUnrestricted && lpViewOwnOnly} />
       }
     ];
 

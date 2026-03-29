@@ -57,7 +57,7 @@ Platí pouze DEV FE postup uvedený nahoře.
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální verze:** `2.36` *(aktivní verze - publikováno 19.3.2026)*
+**Aktuální verze:** `2.37` *(aktivní verze - publikováno 29.3.2026)*
 
 ## 🔄 VERSION CHECKING SYSTEM
 
