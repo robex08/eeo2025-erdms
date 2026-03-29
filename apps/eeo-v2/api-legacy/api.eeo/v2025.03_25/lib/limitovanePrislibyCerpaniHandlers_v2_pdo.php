@@ -142,30 +142,40 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             }
         }
         
-        // KROK 3: PŘEDPOKLAD - suma položek pro objednávky odeslané dodavateli (přesnější odhad)
+        // KROK 3: PŘEDPOKLAD - suma položek pro objednávky odeslané dodavat eli (přesnější odhad)
         // STAV: ODESLANA (odeslána dodavateli, potvrzena dodavatelem)
         // ✅ POUZE objednávky BEZ faktur (pokud má faktury, započítá se do skutečně)
         // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
+        // ✅ OPRAVA: Sčítá POUZE položky s tímto lp_id (ne všechny položky / počet LP)
+        // KROK 3: PŘEDPOKLAD - suma pro objednávky BEZ potvrzené věcné správnosti faktury
+        // ✅ Započítávají se objednávky:
+        //    a) bez faktury (fakt.id IS NULL)
+        //    b) s fakturou BEZ potvrzené věcné správnosti (fakt.potvrdil_vecnou_spravnost_id IS NULL)
+        // ✅ Pokud má obj. POLOŽKY s lp_id → sečti je
+        // ✅ Pokud NEMÁ položky → použij max_cena_s_dph / pocet_lp
         $sql_predpoklad = "
             SELECT 
                 obj.id,
                 obj.financovani,
-                SUM(pol.cena_s_dph) as suma_cena
+                obj.max_cena_s_dph,
+                SUM(CASE WHEN pol.lp_id = :lp_id_predpoklad THEN pol.cena_s_dph ELSE 0 END) as suma_lp_polozky,
+                SUM(pol.cena_s_dph) as suma_cena_vse
             FROM " . TBL_OBJEDNAVKY . " obj
-            INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
-            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1
+            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
+            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1 AND fakt.stav != 'STORNO'
             WHERE obj.aktivni = 1
             AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.stav_workflow_kod LIKE '%ODESLANA%'
             AND obj.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
-            AND fakt.id IS NULL
-            GROUP BY obj.id, obj.financovani
+            AND (fakt.id IS NULL OR fakt.potvrdil_vecnou_spravnost_id IS NULL)
+            GROUP BY obj.id, obj.financovani, obj.max_cena_s_dph
         ";
         
         $stmt_pred = $pdo->prepare($sql_predpoklad);
         $stmt_pred->execute([
+            'lp_id_predpoklad' => $lp_id,
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
@@ -197,20 +207,36 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             }
             
             if ($lp_match) {
-                $podil = $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
-                $predpokladane_cerpani += $podil;
+                // ✅ LOGIKA PLÁNOVÁNO:
+                // 1. Pokud má obj. POLOŽKY s tímto LP → použij je (suma_lp_polozky)
+                // 2. Pokud NEMÁ položky → použij max_cena_s_dph / pocet_lp
+                $suma_lp = (float)$row['suma_lp_polozky'];
+                if ($suma_lp > 0) {
+                    $predpokladane_cerpani += $suma_lp;
+                } else {
+                    // Fallback: objednávka nemá položky nebo položky nemají lp_id
+                    // Použij max_cena_s_dph rozdělené mezi LP kódy
+                    $max_cena = (float)$row['max_cena_s_dph'];
+                    $podil = $pocet_lp > 0 ? ($max_cena / $pocet_lp) : 0;
+                    $predpokladane_cerpani += $podil;
+                }
             }
         }
         
-        // KROK 4: SKUTEČNĚ - suma faktur pro VŠECHNY objednávky s fakturami
-        // STAVY: FAKTURACE, VECNA_SPRAVNOST, ZKONTROLOVANA, atd. (všechny stavy kde jsou faktury)
-        // ✅ Započítávají se VŠECHNY objednávky které MAJÍ faktury (bez ohledu na stav)
-        // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
+        // KROK 4: SKUTEČNĚ - suma faktur s POTVRZENOU VĚCNOU SPRÁVNOSTÍ
+        // ✅ Započítávají se POUZE faktury s potvrdil_vecnou_spravnost_id IS NOT NULL
+        // ✅ PRIMÁRNĚ bere LP rozpis z 25a_faktury_lp_cerpani, fallback na poměr
         $sql_skutecne = "
             SELECT 
                 obj.id,
                 obj.financovani,
-                SUM(fakt.fa_castka) as suma_faktur
+                SUM(fakt.fa_castka) as suma_faktur_vse,
+                COALESCE(
+                    (SELECT SUM(flp.castka)
+                     FROM 25a_faktury_lp_cerpani flp
+                     WHERE flp.faktura_id = fakt.id AND flp.lp_id = :lp_id_skutecne),
+                    0
+                ) as suma_lp_rozpis
             FROM " . TBL_OBJEDNAVKY . " obj
             INNER JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1
             WHERE obj.aktivni = 1
@@ -218,12 +244,14 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             AND obj.financovani != ''
             AND obj.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
             AND fakt.stav != 'STORNO'
+            AND fakt.potvrdil_vecnou_spravnost_id IS NOT NULL
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             GROUP BY obj.id, obj.financovani
         ";
         
         $stmt_skut = $pdo->prepare($sql_skutecne);
         $stmt_skut->execute([
+            'lp_id_skutecne' => $lp_id,
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
@@ -255,8 +283,15 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             }
             
             if ($lp_match) {
-                $podil = $pocet_lp > 0 ? ((float)$row['suma_faktur'] / $pocet_lp) : 0;
-                $fakturovano += $podil;
+                // ✅ OPRAVA: PRIORITA - LP rozpis z faktur, fallback na poměr
+                $suma_lp = (float)$row['suma_lp_rozpis'];
+                if ($suma_lp > 0) {
+                    $fakturovano += $suma_lp;
+                } else {
+                    // Fallback: pokud faktury nemají LP rozpis, použít poměr
+                    $podil = $pocet_lp > 0 ? ((float)$row['suma_faktur_vse'] / $pocet_lp) : 0;
+                    $fakturovano += $podil;
+                }
             }
         }
         
