@@ -57,19 +57,45 @@ fi
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Zjisti verzi aplikace (REACT_APP_VERSION)
+# PRIORITA:
+# 1. ENV proměnná REACT_APP_VERSION (pokud je nastavená během buildu)
+# 2. .env.production (pro production build)
+# 3. .env.development (pro dev build)
+# 4. .env (fallback)
 APP_VERSION="${REACT_APP_VERSION}"
+
 if [ -z "$APP_VERSION" ]; then
-  if [ "$BUILD_DIR" = "build-prod" ] && [ -f "../.env.production" ]; then
-    APP_VERSION=$(grep -E '^REACT_APP_VERSION=' ../.env.production | tail -n 1 | cut -d'=' -f2-)
-  elif [ -f "../.env.development" ]; then
-    APP_VERSION=$(grep -E '^REACT_APP_VERSION=' ../.env.development | tail -n 1 | cut -d'=' -f2-)
-  elif [ -f "../.env" ]; then
-    APP_VERSION=$(grep -E '^REACT_APP_VERSION=' ../.env | tail -n 1 | cut -d'=' -f2-)
+  # Zjisti absolutní cestu k client složce (parent directory scriptu)
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  CLIENT_DIR="$(dirname "$SCRIPT_DIR")"
+  
+  if [ "$BUILD_DIR" = "build-prod" ]; then
+    # Production build - čti z .env.production
+    if [ -f "$CLIENT_DIR/.env.production" ]; then
+      APP_VERSION=$(grep -E '^REACT_APP_VERSION=' "$CLIENT_DIR/.env.production" | tail -n 1 | cut -d'=' -f2-)
+      echo "🔍 Verze načtena z .env.production: $APP_VERSION"
+    fi
+  else
+    # Dev build - čti z .env.development nebo .env
+    if [ -f "$CLIENT_DIR/.env.development" ]; then
+      APP_VERSION=$(grep -E '^REACT_APP_VERSION=' "$CLIENT_DIR/.env.development" | tail -n 1 | cut -d'=' -f2-)
+      echo "🔍 Verze načtena z .env.development: $APP_VERSION"
+    elif [ -f "$CLIENT_DIR/.env" ]; then
+      APP_VERSION=$(grep -E '^REACT_APP_VERSION=' "$CLIENT_DIR/.env" | tail -n 1 | cut -d'=' -f2-)
+      echo "🔍 Verze načtena z .env: $APP_VERSION"
+    fi
   fi
+fi
+
+# Pokud stále není verze, nastav fallback
+if [ -z "$APP_VERSION" ]; then
+  APP_VERSION="unknown"
+  echo "⚠️  Warning: REACT_APP_VERSION nenalezena, použita fallback hodnota: unknown"
 fi
 
 echo "✅ Build hash: $BUILD_HASH"
 echo "⏰ Build time: $BUILD_TIME"
+echo "📌 App version: $APP_VERSION"
 
 # Vytvoř version.json
 VERSION_JSON="$BUILD_DIR/version.json"
