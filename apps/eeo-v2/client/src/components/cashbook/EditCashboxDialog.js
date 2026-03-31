@@ -405,7 +405,9 @@ const UserBottomRow = styled.div`
 
 const MainBadge = styled.span`
   padding: 0.125rem 0.5rem;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: ${props => props.$isHlavni === false
+    ? 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
+    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'};
   color: white;
   border-radius: 4px;
   font-size: 0.625rem;
@@ -414,6 +416,17 @@ const MainBadge = styled.span`
   letter-spacing: 0.02em;
   flex-shrink: 0;
   white-space: nowrap;
+  border: none;
+  cursor: ${props => props.$canClick && !props.$isToggling ? 'pointer' : 'default'};
+  opacity: ${props => props.$isToggling ? 0.6 : 1};
+  transition: filter 0.15s, transform 0.1s;
+  &:hover:not(:disabled) {
+    filter: ${props => props.$canClick ? 'brightness(1.15)' : 'none'};
+    transform: ${props => props.$canClick ? 'scale(1.05)' : 'none'};
+  }
+  &:disabled {
+    cursor: default;
+  }
 `;
 
 const UserActions = styled.div`
@@ -1249,6 +1262,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   const [confirmRemove, setConfirmRemove] = useState({ show: false, assignmentId: null, userName: '' });
   const [editingUserId, setEditingUserId] = useState(null); // ID uživatele který se edituje
   const [editValues, setEditValues] = useState({ platne_od: '', platne_do: '' }); // Editační hodnoty
+  const [togglingMainId, setTogglingMainId] = useState(null); // ID přiřazení které se toggle-uje
 
   // Hlavní useEffect - načíst vše při otevření dialogu
   useEffect(() => {
@@ -1495,6 +1509,10 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     try {
       const newStatus = currentStatus === 1 ? 0 : 1;
 
+      // Pokud měníme z hlavního na zástupce: musí existovat alespoň jeden člen
+      // (pravidlo: nelze odebrat hlavního pokud je jediný člen)
+      // Vždy lze přepnout hlavního na zástupce.
+
       // Pokud nastavujeme jako hlavní (newStatus = 1), zkontrolovat, jestli uživatel už není hlavním jinde
       if (newStatus === 1) {
         try {
@@ -1523,6 +1541,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
         }
       }
 
+      setTogglingMainId(assignmentId);
       const result = await cashbookAPI.updateUserMainStatus(assignmentId, newStatus);
 
       if (result.status === 'ok') {
@@ -1543,6 +1562,8 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     } catch (err) {
       console.error('Chyba při změně statusu:', err);
       showToast('Chyba při změně statusu uživatele', 'error');
+    } finally {
+      setTogglingMainId(null);
     }
   };
 
@@ -1754,11 +1775,40 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                             {user.uzivatel_cele_jmeno}
                             {user.username && ` (${user.username})`}
                           </UserName>
-                          {(user.je_hlavni === 1 || user.je_hlavni === '1') ? (
-                            <MainBadge>Hlavní</MainBadge>
-                          ) : (
-                            <MainBadge style={{ background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)' }}>Zástupce</MainBadge>
-                          )}
+                          {(() => {
+                            const isHlavni = user.je_hlavni === 1 || user.je_hlavni === '1';
+                            const hasHlavni = users.some(u => u.je_hlavni === 1 || u.je_hlavni === '1');
+                            const isToggling = togglingMainId === user.prirazeni_id;
+                            // Kliknutí povoleno:
+                            //  - Hlavní může vždy přepnout na zástupce
+                            //  - Zástupce se může stát hlavním pouze pokud žádný hlavní neexistuje
+                            const canClick = isHlavni || !hasHlavni;
+                            const title = isToggling
+                              ? 'Měním...'
+                              : isHlavni
+                                ? 'Kliknutím změníš na Zástupce'
+                                : canClick
+                                  ? 'Kliknutím nastaví jako Hlavní'
+                                  : 'Nejprve odeberte současného hlavního správce';
+                            return (
+                              <MainBadge
+                                as="button"
+                                $isHlavni={isHlavni}
+                                $canClick={canClick}
+                                $isToggling={isToggling}
+                                disabled={!canClick || isToggling}
+                                title={title}
+                                onClick={canClick && !isToggling ? () => handleToggleMain(
+                                  user.prirazeni_id,
+                                  isHlavni ? 1 : 0,
+                                  user.uzivatel_cele_jmeno,
+                                  user.uzivatel_id
+                                ) : undefined}
+                              >
+                                {isToggling ? '...' : isHlavni ? 'Hlavní' : 'Zástupce'}
+                              </MainBadge>
+                            );
+                          })()}
                         </UserDetails>
                       </UserInfo>
 

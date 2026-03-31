@@ -796,7 +796,7 @@ const cashbookAPI = {
   updateUserMainStatus: async (prirazeniId, jeHlavni) => {
     try {
       const auth = await getAuthData();
-      const response = await api2.post('cashbook-assignment-update', {
+      const response = await api2.post('cashbox-assignment-update', {
         ...auth,
         assignment_id: prirazeniId,
         je_hlavni: jeHlavni

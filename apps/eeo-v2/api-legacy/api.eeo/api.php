@@ -2286,26 +2286,6 @@ switch ($endpoint) {
         }
         break;
 
-    // POST /api.eeo/order-v3/lp-expand - Objednávky + faktury pro LP kód (expand v LP Manageru)
-    case 'order-v3/lp-expand':
-        if ($request_method === 'POST') {
-            handle_orderV3_lp_expand($input, $config);
-        } else {
-            http_response_code(405);
-            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
-        }
-        break;
-
-    // POST /api.eeo/order-v3/smlouva-expand - Objednávky + faktury pro smlouvu (expand ve SmlouvyTab)
-    case 'order-v3/smlouva-expand':
-        if ($request_method === 'POST') {
-            handle_orderV3_smlouva_expand($input, $config);
-        } else {
-            http_response_code(405);
-            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
-        }
-        break;
-
     // === LP (LIMITOVANÉ PŘÍSLÍBY) ===
     
     // POST /api.eeo/lp/list - Seznam aktivních LP
@@ -2534,6 +2514,28 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('success' => false, 'error' => array('code' => 'METHOD_NOT_ALLOWED', 'message' => 'Method not allowed')));
+        }
+        break;
+    
+    // === CASHBOOK OVERVIEW - PŘEHLED POKLADEN PRO STATISTIKA A REPORTY ===
+    
+    // POST /api.eeo/cashbook-overview/list - Přehled pokladních knih s agregací
+    case 'cashbook-overview/list':
+        if ($request_method === 'POST') {
+            handle_cashbook_overview_list_post($config, $input);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/cashbook-overview/entries - Detail položek knihy (pro expand)
+    case 'cashbook-overview/entries':
+        if ($request_method === 'POST') {
+            handle_cashbook_overview_entries_post($config, $input);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
 
@@ -5531,12 +5533,8 @@ switch ($endpoint) {
                 $usek_id = isset($input['usek_id']) ? (int)$input['usek_id'] : null;
                 $requesting_user_id = isset($input['requesting_user_id']) ? (int)$input['requesting_user_id'] : null;
                 $rok = isset($input['rok']) ? (int)$input['rok'] : (int)date('Y');
-                // VIEW_OWN: zobrazit pouze LP ze kterých uživatel osobně čerpal (bez všech LP úseku)
-                $view_own_only = isset($input['view_own_only']) && ($input['view_own_only'] === true || $input['view_own_only'] === 'true' || $input['view_own_only'] === 1);
                 // Flexibilní kontrola isAdmin (boolean true nebo string "true")
                 $is_admin = isset($input['isAdmin']) && ($input['isAdmin'] === true || $input['isAdmin'] === 'true' || $input['isAdmin'] === 1);
-                
-                error_log("🔵 LP/stav: usek_id=$usek_id, user_id=$user_id, requesting_user_id=$requesting_user_id, view_own_only=" . ($view_own_only?'true':'false') . ", is_admin=" . ($is_admin?'true':'false') . ", rok=$rok");
                 
                 // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE z agregované tabulky
                 // OPRAVA: Používat skutecne_cerpano (faktury) a cerpano_pokladna přímo z agregace
@@ -5546,7 +5544,6 @@ switch ($endpoint) {
                             SELECT 
                                 c.id,
                                 c.cislo_lp,
-                                (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as lp_master_id,
                                 c.kategorie,
                                 c.usek_id,
                                 c.user_id,
@@ -5569,11 +5566,6 @@ switch ($endpoint) {
                                 c.pocet_zaznamu,
                                 c.ma_navyseni,
                                 c.posledni_prepocet,
-                                (
-                                    SELECT COUNT(DISTINCT o.id)
-                                    FROM 25a_objednavky o
-                                    WHERE JSON_CONTAINS(o.financovani, CAST((SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) AS CHAR), '$.lp_kody')
-                                ) as pocet_objednavek,
                                 u.prijmeni,
                                 u.jmeno,
                                 us.usek_nazev
@@ -5599,7 +5591,6 @@ switch ($endpoint) {
                     foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
-                            'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
                             'celkovy_limit' => (float)$row['celkovy_limit'],
@@ -5617,7 +5608,6 @@ switch ($endpoint) {
                             'procento_skutecne' => (float)$row['procento_skutecne'],
                             'je_prekroceno_skutecne' => ((float)$row['zbyva_skutecne'] < 0) ? true : false,
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
-                            'pocet_objednavek' => (int)$row['pocet_objednavek'],
                             'ma_navyseni' => $row['ma_navyseni'] ? true : false,
                             'posledni_prepocet' => $row['posledni_prepocet'],
                             'usek_nazev' => $row['usek_nazev'],
@@ -5744,7 +5734,6 @@ switch ($endpoint) {
                             SELECT 
                                 c.id,
                                 c.cislo_lp,
-                                (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as lp_master_id,
                                 c.kategorie,
                                 c.celkovy_limit,
                                 (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
@@ -5763,11 +5752,6 @@ switch ($endpoint) {
                                 c.procento_predpoklad,
                                 c.pocet_zaznamu,
                                 c.ma_navyseni,
-                                (
-                                    SELECT COUNT(DISTINCT o.id)
-                                    FROM 25a_objednavky o
-                                    WHERE JSON_CONTAINS(o.financovani, CAST((SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) AS CHAR), '$.lp_kody')
-                                ) as pocet_objednavek,
                                 us.usek_nazev
                             FROM " . TBL_LP_CERPANI . " c
                             LEFT JOIN 25_useky us ON c.usek_id = us.id
@@ -5787,7 +5771,6 @@ switch ($endpoint) {
                     foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
-                            'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
                             'celkovy_limit' => (float)$row['celkovy_limit'],
@@ -5805,7 +5788,6 @@ switch ($endpoint) {
                             'procento_skutecne' => (float)$row['procento_skutecne'],
                             'je_prekroceno_skutecne' => (float)$row['zbyva_skutecne'] < 0,
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
-                            'pocet_objednavek' => (int)$row['pocet_objednavek'],
                             'ma_navyseni' => (bool)$row['ma_navyseni'],
                             'usek_nazev' => $row['usek_nazev']
                         );
@@ -5823,100 +5805,17 @@ switch ($endpoint) {
                     ));
                     
                 } elseif ($usek_id) {
-                    // REŽIM 3: LP pro úsek (+ případně VIEW_OWN filtr)
+                    // REŽIM 3: Všechna LP pro úsek + LP ze kterých uživatel čerpal (i z jiných úseků)
                     try {
-                        if ($view_own_only && $requesting_user_id) {
-                            // ===== REŽIM 3b: VIEW_OWN =====
-                            // Vrátí VŠECHNA LP vlastního úseku + LP z cizích úseků, ze kterých uživatel osobně čerpal
-                            $stmt = $pdo->prepare("
-                                SELECT DISTINCT
-                                    c.id,
-                                    c.cislo_lp,
-                                    (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as lp_master_id,
-                                    c.kategorie,
-                                    c.celkovy_limit,
-                                    c.usek_id,
-                                    (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
-                                    (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
-                                    c.rezervovano,
-                                    c.predpokladane_cerpani,
-                                    c.skutecne_cerpano,
-                                    c.cerpano_pokladna,
-                                    c.zbyva_skutecne,
-                                    c.zbyva_rezervace,
-                                    c.zbyva_predpoklad,
-                                    c.procento_skutecne,
-                                    c.procento_rezervace,
-                                    c.procento_predpoklad,
-                                    c.pocet_zaznamu,
-                                    c.ma_navyseni,
-                                    u.prijmeni,
-                                    u.jmeno,
-                                    -- Celkový počet objednávek pro tento LP 
-                                    (
-                                        SELECT COUNT(DISTINCT o2.id)
-                                        FROM 25a_objednavky o2
-                                        WHERE JSON_CONTAINS(o2.financovani, CAST((SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) AS CHAR), '$.lp_kody')
-                                    ) as pocet_objednavek,
-                                    -- Osobní čerpání uživatele z tohoto LP
-                                    (
-                                        SELECT COUNT(DISTINCT o.id)
-                                        FROM 25a_objednavky o
-                                        JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
-                                        JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
-                                        WHERE lp.cislo_lp = c.cislo_lp AND o.uzivatel_id = ?
-                                    ) AS pocet_obj_uzivatel,
-                                    (
-                                        SELECT COALESCE(SUM(f.fa_castka), 0)
-                                        FROM 25a_objednavky o
-                                        JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
-                                        JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
-                                        JOIN 25a_objednavky_faktury f ON f.objednavka_id = o.id
-                                        WHERE lp.cislo_lp = c.cislo_lp AND o.uzivatel_id = ?
-                                    ) AS cerpano_uzivatel
-                                FROM " . TBL_LP_CERPANI . " c
-                                LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                                WHERE (
-                                    -- Všechna LP vlastního úseku
-                                    c.usek_id = ?
-                                    OR
-                                    -- LP z cizích úseků, ze kterých uživatel osobně čerpal
-                                    c.cislo_lp IN (
-                                        SELECT lp.cislo_lp
-                                        FROM 25a_objednavky o
-                                        JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
-                                        JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
-                                        WHERE o.uzivatel_id = ?
-                                          AND lp.usek_id != ?
-
-                                        UNION
-
-                                        SELECT d.lp_kod
-                                        FROM 25a_pokladni_polozky_detail d
-                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
-                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
-                                        JOIN 25_limitovane_prisliby lp2 ON lp2.cislo_lp = d.lp_kod
-                                        WHERE k.uzivatel_id = ?
-                                          AND d.lp_kod IS NOT NULL
-                                          AND d.lp_kod != ''
-                                          AND lp2.usek_id != ?
-                                    )
-                                )
-                                AND c.rok = ?
-                                ORDER BY c.kategorie, c.cislo_lp
-                            ");
-                            // params: pocet_obj_uzivatel(user), cerpano_uzivatel(user), WHERE: usek_id, user, usek_id, user, usek_id, rok
-                            $stmt->execute([$requesting_user_id, $requesting_user_id, $usek_id, $requesting_user_id, $usek_id, $requesting_user_id, $usek_id, $rok]);
-                        } elseif ($requesting_user_id) {
+                        // Pokud je requesting_user_id, přidat UNION s LP ze kterých čerpal
+                        if ($requesting_user_id) {
                             // LP úseku + LP ze kterých uživatel čerpal - z agregované tabulky
                             $stmt = $pdo->prepare("
                                 SELECT DISTINCT
                                     c.id,
                                     c.cislo_lp,
-                                    (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as lp_master_id,
                                     c.kategorie,
                                     c.celkovy_limit,
-                                    c.usek_id,
                                     (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                     (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
                                     c.rezervovano,
@@ -5934,29 +5833,7 @@ switch ($endpoint) {
                                     c.pocet_zaznamu,
                                     c.ma_navyseni,
                                     u.prijmeni,
-                                    u.jmeno,
-                                    -- Celkový počet objednávek pro tento LP
-                                    (
-                                        SELECT COUNT(DISTINCT o2.id)
-                                        FROM 25a_objednavky o2
-                                        WHERE JSON_CONTAINS(o2.financovani, CAST((SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) AS CHAR), '$.lp_kody')
-                                    ) as pocet_objednavek,
-                                    -- Osobní čerpání uživatele z tohoto LP
-                                    (
-                                        SELECT COUNT(DISTINCT o.id)
-                                        FROM 25a_objednavky o
-                                        JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
-                                        JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
-                                        WHERE lp.cislo_lp = c.cislo_lp AND o.uzivatel_id = ?
-                                    ) AS pocet_obj_uzivatel,
-                                    (
-                                        SELECT COALESCE(SUM(f.fa_castka), 0)
-                                        FROM 25a_objednavky o
-                                        JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
-                                        JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
-                                        JOIN 25a_objednavky_faktury f ON f.objednavka_id = o.id
-                                        WHERE lp.cislo_lp = c.cislo_lp AND o.uzivatel_id = ?
-                                    ) AS cerpano_uzivatel
+                                    u.jmeno
                                 FROM " . TBL_LP_CERPANI . " c
                                 LEFT JOIN 25_uzivatele u ON c.user_id = u.id
                                 WHERE (c.usek_id = ? OR c.cislo_lp IN (
@@ -5981,14 +5858,13 @@ switch ($endpoint) {
                                 AND c.rok = ?
                                 ORDER BY c.kategorie, c.cislo_lp
                             ");
-                            $stmt->execute([$requesting_user_id, $requesting_user_id, $usek_id, $requesting_user_id, $requesting_user_id, $rok]);
+                            $stmt->execute([$usek_id, $requesting_user_id, $requesting_user_id, $rok]);
                         } else {
                             // Jen LP úseku (bez requesting_user_id) - z agregované tabulky
                             $stmt = $pdo->prepare("
                                 SELECT 
                                     c.id,
                                     c.cislo_lp,
-                                    (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as lp_master_id,
                                     c.kategorie,
                                     c.celkovy_limit,
                                     (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
@@ -6007,11 +5883,6 @@ switch ($endpoint) {
                                     c.procento_predpoklad,
                                     c.pocet_zaznamu,
                                     c.ma_navyseni,
-                                    (
-                                        SELECT COUNT(DISTINCT o2.id)
-                                        FROM 25a_objednavky o2
-                                        WHERE JSON_CONTAINS(o2.financovani, CAST((SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) AS CHAR), '$.lp_kody')
-                                    ) as pocet_objednavek,
                                     u.prijmeni,
                                     u.jmeno
                                 FROM " . TBL_LP_CERPANI . " c
@@ -6024,7 +5895,6 @@ switch ($endpoint) {
                         }
                         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {
-                        error_log("❌ LP/stav SQL ERROR: " . $e->getMessage());
                         http_response_code(500);
                         echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
                         break;
@@ -6034,11 +5904,9 @@ switch ($endpoint) {
                     foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
-                            'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
                             'celkovy_limit' => (float)$row['celkovy_limit'],
-                            'usek_id' => isset($row['usek_id']) ? (int)$row['usek_id'] : 0,
                             'cislo_uctu' => $row['cislo_uctu'],
                             'nazev_uctu' => $row['nazev_uctu'],
                             'rezervovano' => (float)$row['rezervovano'],
@@ -6053,9 +5921,6 @@ switch ($endpoint) {
                             'procento_skutecne' => (float)$row['procento_skutecne'],
                             'je_prekroceno_skutecne' => (float)$row['zbyva_skutecne'] < 0,
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
-                            'pocet_objednavek' => (int)$row['pocet_objednavek'],
-                            'pocet_obj_uzivatel' => isset($row['pocet_obj_uzivatel']) ? (int)$row['pocet_obj_uzivatel'] : null,
-                            'cerpano_uzivatel' => isset($row['cerpano_uzivatel']) ? (float)$row['cerpano_uzivatel'] : null,
                             'ma_navyseni' => (bool)$row['ma_navyseni'],
                             'spravce' => array(
                                 'prijmeni' => $row['prijmeni'],
