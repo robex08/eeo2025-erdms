@@ -56,17 +56,13 @@ module.exports = function override(config, env) {
           errors: true,
           warnings: false, // Skrýt warnings overlay
         },
-        // ✅ FORCE WebSocket na localhost když přistupuješ přes localhost
-        webSocketURL: {
-          hostname: process.env.WDS_SOCKET_HOST || 'localhost',
-          port: process.env.WDS_SOCKET_PORT || parseInt(process.env.PORT) || 3001,
-          protocol: 'ws',
-        },
+        // ✅ AUTO: WebSocket použije stejný host+port jako stránka → funguje na každém portu
+        webSocketURL: 'auto://0.0.0.0:0/ws',
       },
       
       // Vypnout liveReload jako fallback (používá více dat)
       liveReload: false,
-      hot: true, // Pouze HMR
+      hot: false, // HMR vypnuto — přes SSH WebSocket nefunguje spolehlivě
     };
   }
 

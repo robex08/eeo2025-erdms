@@ -997,11 +997,15 @@ function App() {
                   ) && <Route path="/stats-reports" element={<StatsReportsPage />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||
-                    (hasPermission && hasPermission('BETA_TESTER'))
+                    (hasPermission && (
+                      hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
+                    ))
                   ) && <Route path="/majetek-overview" element={<MajetekOverviewPage />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||
-                    (hasPermission && hasPermission('BETA_TESTER'))
+                    (hasPermission && (
+                      hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
+                    ))
                   ) && <Route path="/material-overview" element={<Navigate to="/majetek-overview" replace />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}

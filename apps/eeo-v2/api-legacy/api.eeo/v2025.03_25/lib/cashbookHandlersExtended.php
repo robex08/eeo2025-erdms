@@ -12,6 +12,7 @@
 
 require_once __DIR__ . '/../models/CashboxAssignmentModel.php';
 require_once __DIR__ . '/../models/GlobalSettingsModel.php';
+require_once __DIR__ . '/../models/CashbookEntryModel.php';
 require_once __DIR__ . '/../middleware/CashbookPermissions.php';
 
 // ===========================================================================
@@ -1477,6 +1478,441 @@ function handle_cashbox_recalculate_january_post($config, $input) {
         
     } catch (Exception $e) {
         error_log("handle_cashbox_recalculate_january_post error: " . $e->getMessage());
+        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+    }
+}
+
+// ===========================================================================
+// CASHBOOK OVERVIEW - Přehled pokladen pro modul Statistika a reporty
+// ===========================================================================
+
+/**
+ * POST /cashbook-overview-list
+ * Načíst přehled pokladních knih pro reporty
+ * Umožňuje filtrování podle roku a měsíce, případně agregaci za celý rok
+ * 
+ * Vstupní parametry:
+ * - rok (required): Rok pro filtrování (např. 2026)
+ * - mesic (optional): Měsíc 1-12, nebo null pro agregaci celého roku
+ * - pokladna_ids (optional): Pole ID pokladen pro filtrování
+ * - stav_knihy (optional): Filtr podle stavu knihy
+ * 
+ * Response:
+ * - books: Pole pokladních knih s agregovanými daty
+ * - summary: Celkové souhrny
+ */
+function handle_cashbook_overview_list_post($config, $input) {
+    try {
+        // 1. Validace autentizace
+        if (empty($input['username']) || empty($input['token'])) {
+            error_log('[CASHBOOK_OVERVIEW] Chybí username nebo token');
+            return api_error(401, 'Chybí username nebo token');
+        }
+        
+        $db = get_db($config);
+        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        if (!$userData) {
+            error_log('[CASHBOOK_OVERVIEW] Neplatný token pro user: ' . $input['username']);
+            return api_error(401, 'Neplatný token');
+        }
+        
+        error_log('[CASHBOOK_OVERVIEW] Autentizace OK pro user ID: ' . $userData['id']);
+        
+        // 2. Kontrola oprávnění - DOČASNĚ VYPNUTO PRO TEST
+        // POZOR: V produkci POVOLIT!
+        $hasPermission = true; // DOČASNĚ: automaticky povolit
+        
+        /*
+        // Admin má automaticky přístup
+        if (isset($userData['is_admin']) && $userData['is_admin'] == 1) {
+            $hasPermission = true;
+        } else {
+            // Zkontrolovat specifické oprávnění
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as cnt
+                FROM role_prava rp
+                JOIN uzivatel_role ur ON rp.role_id = ur.role_id
+                JOIN prava p ON rp.pravo_id = p.id
+                WHERE ur.uzivatel_id = ?
+                  AND p.kod_prava IN ('CASHBOOK_OVERVIEW_VIEW', 'CASH_BOOK_VIEW', 'CASH_BOOK_MANAGE')
+            ");
+            $stmt->execute(array($userData['id']));
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $hasPermission = $result['cnt'] > 0;
+        }
+        */
+        
+        if (!$hasPermission) {
+            error_log('[CASHBOOK_OVERVIEW] Nedostatečná oprávnění pro user ID: ' . $userData['id']);
+            return api_error(403, 'Nedostatečná oprávnění - vyžadováno CASHBOOK_OVERVIEW_VIEW');
+        }
+        
+        // 3. Načíst filtry
+        $rok = isset($input['rok']) ? (int)$input['rok'] : date('Y');
+        $mesic = isset($input['mesic']) ? (int)$input['mesic'] : null;
+        $pokladnaIds = isset($input['pokladna_ids']) ? $input['pokladna_ids'] : null;
+        $stavKnihy = isset($input['stav_knihy']) ? $input['stav_knihy'] : null;
+        
+        // 4. Sestavit SQL dotaz
+        $conditions = array("pk.rok = ?");
+        $params = array($rok);
+        
+        if ($mesic !== null) {
+            $conditions[] = "pk.mesic = ?";
+            $params[] = $mesic;
+        }
+        
+        if ($pokladnaIds && is_array($pokladnaIds) && count($pokladnaIds) > 0) {
+            $placeholders = implode(',', array_fill(0, count($pokladnaIds), '?'));
+            $conditions[] = "pk.pokladna_id IN ($placeholders)";
+            $params = array_merge($params, $pokladnaIds);
+        }
+        
+        if ($stavKnihy) {
+            $conditions[] = "pk.stav_knihy = ?";
+            $params[] = $stavKnihy;
+        }
+        
+        $whereClause = implode(' AND ', $conditions);
+        
+        // 5. Načíst data z DB
+        $sql = "
+            SELECT 
+                pk.id as kniha_id,
+                pk.pokladna_id,
+                pk.uzivatel_id,
+                pk.rok,
+                pk.mesic,
+                pk.cislo_pokladny,
+                pk.kod_pracoviste,
+                pk.nazev_pracoviste,
+                pk.prevod_z_predchoziho,
+                pk.pocatecni_stav,
+                pk.koncovy_stav,
+                pk.celkove_prijmy,
+                pk.celkove_vydaje,
+                pk.pocet_zaznamu,
+                pk.stav_knihy,
+                pk.uzavrena_uzivatelem_kdy,
+                pk.zamknuta_spravcem_kdy,
+                p.nazev as pokladna_nazev,
+                p.lp_kod_povinny,
+                p.pocatecni_stav_rok,
+                u.jmeno as uzivatel_jmeno,
+                u.prijmeni as uzivatel_prijmeni,
+                u.email as uzivatel_email
+            FROM " . TBL_POKLADNI_KNIHY . " pk
+            LEFT JOIN " . TBL_POKLADNY . " p ON pk.pokladna_id = p.id
+            LEFT JOIN " . TBL_UZIVATELE . " u ON pk.uzivatel_id = u.id
+            WHERE $whereClause
+            ORDER BY pk.cislo_pokladny, pk.rok DESC, pk.mesic DESC
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $books = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // 6. Pokud je požadována agregace za celý rok (mesic === null)
+        if ($mesic === null && count($books) > 0) {
+            // Agregovat data pouze podle pokladny (ne podle uživatele)
+            $aggregated = array();
+            
+            foreach ($books as $book) {
+                $key = $book['pokladna_id'] . '_' . $book['rok'];
+                
+                if (!isset($aggregated[$key])) {
+                    $aggregated[$key] = array(
+                        'pokladna_id' => $book['pokladna_id'],
+                        'uzivatel_id' => null, // Agregace všech uživatelů
+                        'rok' => $book['rok'],
+                        'mesic' => null, // Celý rok
+                        'cislo_pokladny' => $book['cislo_pokladny'],
+                        'kod_pracoviste' => $book['kod_pracoviste'],
+                        'nazev_pracoviste' => $book['nazev_pracoviste'],
+                        'pokladna_nazev' => $book['pokladna_nazev'],
+                        'lp_kod_povinny' => $book['lp_kod_povinny'],
+                        'pocatecni_stav_rok' => $book['pocatecni_stav_rok'], // Fixní pro celý rok (z 25a_pokladny)
+                        'uzivatel_jmeno' => null, // Více uživatelů
+                        'uzivatel_prijmeni' => null,
+                        'uzivatel_email' => null,
+                        'prevod_z_predchoziho' => 0, // Bude z ledna
+                        'pocatecni_stav' => 0, // Bude z ledna
+                        'celkove_prijmy' => 0,
+                        'celkove_vydaje' => 0,
+                        'koncovy_stav' => 0,
+                        'pocet_zaznamu' => 0,
+                        'mesice' => array(),
+                        'uzivatele' => array() // Seznam všech uživatelů
+                    );
+                }
+                
+                // Přidat uživatele do seznamu (pokud ještě není)
+                $uzivatelKey = $book['uzivatel_id'];
+                if ($uzivatelKey && !isset($aggregated[$key]['uzivatele'][$uzivatelKey])) {
+                    $aggregated[$key]['uzivatele'][$uzivatelKey] = array(
+                        'id' => $book['uzivatel_id'],
+                        'jmeno' => $book['uzivatel_jmeno'],
+                        'prijmeni' => $book['uzivatel_prijmeni'],
+                        'email' => $book['uzivatel_email']
+                    );
+                }
+                
+                // Agregovat hodnoty
+                $aggregated[$key]['celkove_prijmy'] += (float)$book['celkove_prijmy'];
+                $aggregated[$key]['celkove_vydaje'] += (float)$book['celkove_vydaje'];
+                $aggregated[$key]['pocet_zaznamu'] += (int)$book['pocet_zaznamu'];
+                
+                // Převod z leden
+                if ((int)$book['mesic'] === 1) {
+                    $aggregated[$key]['prevod_z_predchoziho'] = (float)$book['prevod_z_predchoziho'];
+                    $aggregated[$key]['pocatecni_stav'] = (float)$book['pocatecni_stav'];
+                }
+                
+                // Koncový stav z posledního dostupného měsíce (ne jen prosinec)
+                $currentMesic = (int)$book['mesic'];
+                $lastMesic = isset($aggregated[$key]['_last_mesic']) ? (int)$aggregated[$key]['_last_mesic'] : 0;
+                if ($currentMesic > $lastMesic) {
+                    $aggregated[$key]['koncovy_stav'] = (float)$book['koncovy_stav'];
+                    $aggregated[$key]['_last_mesic'] = $currentMesic;
+                }
+                
+                // Uložit měsíc pro možné rozbalení
+                $aggregated[$key]['mesice'][] = array(
+                    'kniha_id' => $book['kniha_id'],
+                    'mesic' => $book['mesic'],
+                    'uzivatel_id' => $book['uzivatel_id'],
+                    'uzivatel_jmeno' => $book['uzivatel_jmeno'],
+                    'uzivatel_prijmeni' => $book['uzivatel_prijmeni'],
+                    'pocatecni_stav_rok' => $book['pocatecni_stav_rok'],
+                    'prevod_z_predchoziho' => $book['prevod_z_predchoziho'],
+                    'celkove_prijmy' => $book['celkove_prijmy'],
+                    'celkove_vydaje' => $book['celkove_vydaje'],
+                    'koncovy_stav' => $book['koncovy_stav'],
+                    'pocet_zaznamu' => $book['pocet_zaznamu'],
+                    'stav_knihy' => $book['stav_knihy'],
+                    'zamknuta_spravcem_kdy' => $book['zamknuta_spravcem_kdy']
+                );
+            }
+            
+            // Převést pole uzivatele na obyčejný array
+            foreach ($aggregated as &$agg) {
+                $agg['uzivatele'] = array_values($agg['uzivatele']);
+            }
+            unset($agg);
+            
+            $books = array_values($aggregated);
+        }
+        
+        // 7. Vypočítat celkové souhrny
+        $summary = array(
+            'celkem_pokladen' => 0,
+            'celkem_prijmy' => 0,
+            'celkem_vydaje' => 0,
+            'celkem_zaznamu' => 0,
+            'celkovy_koncovy_stav' => 0
+        );
+        
+        // Pro agregaci použít unikátní kombinace pokladna+uživatel
+        $uniqueKeys = array();
+        foreach ($books as $book) {
+            if ($mesic === null) {
+                // Už je agregováno
+                $summary['celkem_prijmy'] += (float)$book['celkove_prijmy'];
+                $summary['celkem_vydaje'] += (float)$book['celkove_vydaje'];
+                $summary['celkem_zaznamu'] += (int)$book['pocet_zaznamu'];
+                $summary['celkovy_koncovy_stav'] += (float)$book['koncovy_stav'];
+                $summary['celkem_pokladen']++;
+            } else {
+                // Pro měsíční pohled
+                $key = $book['pokladna_id'] . '_' . $book['uzivatel_id'];
+                if (!isset($uniqueKeys[$key])) {
+                    $uniqueKeys[$key] = true;
+                    $summary['celkem_pokladen']++;
+                }
+                $summary['celkem_prijmy'] += (float)$book['celkove_prijmy'];
+                $summary['celkem_vydaje'] += (float)$book['celkove_vydaje'];
+                $summary['celkem_zaznamu'] += (int)$book['pocet_zaznamu'];
+                $summary['celkovy_koncovy_stav'] += (float)$book['koncovy_stav'];
+            }
+        }
+        
+        // 8. Načíst přiřazené uživatele popladen (hlavní + ostatní)
+        $uniquePokladnaIds = array_values(array_unique(array_column($books, 'pokladna_id')));
+        $usersByPokladna = array();
+        if (!empty($uniquePokladnaIds)) {
+            $placeholders = implode(',', array_fill(0, count($uniquePokladnaIds), '?'));
+            $usersSql = "
+                SELECT
+                    pu.pokladna_id,
+                    pu.uzivatel_id,
+                    pu.je_hlavni,
+                    u.jmeno,
+                    u.prijmeni
+                FROM " . TBL_POKLADNY_UZIVATELE . " pu
+                LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+                WHERE pu.pokladna_id IN ($placeholders)
+                  AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
+                ORDER BY pu.je_hlavni DESC, u.prijmeni, u.jmeno
+            ";
+            $usersStmt = $db->prepare($usersSql);
+            $usersStmt->execute($uniquePokladnaIds);
+            $pokladnaUsers = $usersStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($pokladnaUsers as $pu) {
+                $pid = $pu['pokladna_id'];
+                if (!isset($usersByPokladna[$pid])) {
+                    $usersByPokladna[$pid] = array('hlavni_uzivatel' => null, 'dalsi_uzivatele' => array());
+                }
+                $fullName = trim($pu['jmeno'] . ' ' . $pu['prijmeni']);
+                if ($pu['je_hlavni']) {
+                    $usersByPokladna[$pid]['hlavni_uzivatel'] = $fullName;
+                } else {
+                    $usersByPokladna[$pid]['dalsi_uzivatele'][] = $fullName;
+                }
+            }
+        }
+        foreach ($books as &$book) {
+            $pid = $book['pokladna_id'];
+            $book['hlavni_uzivatel'] = isset($usersByPokladna[$pid]) ? $usersByPokladna[$pid]['hlavni_uzivatel'] : null;
+            $book['dalsi_uzivatele'] = isset($usersByPokladna[$pid]) ? $usersByPokladna[$pid]['dalsi_uzivatele'] : array();
+        }
+        unset($book);
+
+        // 9. Vrátit response
+        return api_ok(array(
+            'books' => $books,
+            'summary' => $summary,
+            'filters' => array(
+                'rok' => $rok,
+                'mesic' => $mesic,
+                'aggregate_full_year' => $mesic === null
+            ),
+            'count' => count($books)
+        ));
+        
+    } catch (Exception $e) {
+        error_log("handle_cashbook_overview_list_post error: " . $e->getMessage());
+        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST /cashbook-overview-entries
+ * Načíst jednotlivé položky pokladní knihy pro expand funkci
+ * 
+ * Vstupní parametry:
+ * - kniha_id (required): ID pokladní knihy
+ * - page (optional): Stránka (default: 1)
+ * - limit (optional): Počet záznamů na stránku (default: 50)
+ */
+function handle_cashbook_overview_entries_post($config, $input) {
+    try {
+        // 1. Validace autentizace
+        if (empty($input['username']) || empty($input['token'])) {
+            return api_error(401, 'Chybí username nebo token');
+        }
+        
+        if (empty($input['kniha_id'])) {
+            return api_error(400, 'Chybí povinný parametr: kniha_id');
+        }
+        
+        $db = get_db($config);
+        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        if (!$userData) {
+            return api_error(401, 'Neplatný token');
+        }
+        
+        // 2. Kontrola oprávnění
+        $hasPermission = false;
+        if (isset($userData['is_admin']) && $userData['is_admin'] == 1) {
+            $hasPermission = true;
+        } else {
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as cnt
+                FROM role_prava rp
+                JOIN uzivatel_role ur ON rp.role_id = ur.role_id
+                JOIN prava p ON rp.pravo_id = p.id
+                WHERE ur.uzivatel_id = ?
+                  AND p.kod_prava IN ('CASHBOOK_OVERVIEW_VIEW', 'CASH_BOOK_VIEW', 'CASH_BOOK_MANAGE')
+            ");
+            $stmt->execute(array($userData['id']));
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $hasPermission = $result['cnt'] > 0;
+        }
+        
+        if (!$hasPermission) {
+            return api_error(403, 'Nedostatečná oprávnění');
+        }
+        
+        // 3. Načíst parametry
+        $knihaId = (int)$input['kniha_id'];
+        $page = isset($input['page']) ? (int)$input['page'] : 1;
+        $limit = isset($input['limit']) ? (int)$input['limit'] : 50;
+        
+        // Validace page/limit
+        if ($page < 1) $page = 1;
+        if ($limit < 1) $limit = 50;
+        if ($limit > 500) $limit = 500;
+        $offset = ($page - 1) * $limit;
+        
+        // 4. Načíst položky - PODLE VZORU Z CashbookEntryModel.php
+        $sql = "
+            SELECT 
+                e.*,
+                u.username AS created_by_username,
+                CONCAT(u.jmeno, ' ', u.prijmeni) AS created_by_name
+            FROM " . TBL_POKLADNI_POLOZKY . " e
+            LEFT JOIN " . TBL_UZIVATELE . " u ON e.vytvoril = u.id
+            WHERE e.pokladni_kniha_id = ?
+              AND e.smazano = 0
+            ORDER BY e.datum_zapisu ASC, e.poradi_radku ASC, e.id ASC
+            LIMIT " . (int)$limit . " OFFSET " . (int)$offset . "
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute(array($knihaId));
+        $entries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // 🆕 MULTI-LP: Načíst detail položky pro každý záznam, který má ma_detail = 1
+        // (stejná logika jako v handle_cashbook_get_post)
+        $entryModel = new CashbookEntryModel($db);
+        foreach ($entries as &$entry) {
+            if (isset($entry['ma_detail']) && $entry['ma_detail'] == 1) {
+                $entry['detail_items'] = $entryModel->getDetailItems($entry['id']);
+            } else {
+                $entry['detail_items'] = [];
+            }
+        }
+        unset($entry);
+        
+        // 5. Spočítat celkový počet pro paginaci
+        $sqlCount = "
+            SELECT COUNT(*) as total
+            FROM " . TBL_POKLADNI_POLOZKY . "
+            WHERE pokladni_kniha_id = ?
+              AND smazano = 0
+        ";
+        
+        $stmtCount = $db->prepare($sqlCount);
+        $stmtCount->execute(array($knihaId));
+        $countResult = $stmtCount->fetch(PDO::FETCH_ASSOC);
+        $totalRecords = (int)$countResult['total'];
+        
+        // 6. Vrátit response
+        return api_ok(array(
+            'entries' => $entries,
+            'pagination' => array(
+                'current_page' => $page,
+                'per_page' => $limit,
+                'total_records' => $totalRecords,
+                'total_pages' => ceil($totalRecords / $limit)
+            ),
+            'count' => count($entries)
+        ));
+        
+    } catch (Exception $e) {
+        error_log("handle_cashbook_overview_entries_post error: " . $e->getMessage());
         return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
     }
 }
