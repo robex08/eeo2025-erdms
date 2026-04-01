@@ -2365,7 +2365,17 @@ switch ($endpoint) {
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
-    
+
+    // POST /api.eeo/order-v3/smlouva-expand - Expand objednávek + faktur pro smlouvu
+    case 'order-v3/smlouva-expand':
+        if ($request_method === 'POST') {
+            handle_orderV3_smlouva_expand($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // === ORDERS V3 - KONTROLA A KOMENTÁŘE ===
     
     // POST /api.eeo/orders-v3/check - Toggle stav kontroly objednávky
