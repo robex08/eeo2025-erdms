@@ -15,6 +15,9 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
     role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
   );
+
+  // 🏠 DASHBOARD - vždy dostupný pro všechny přihlášené
+  sections.push({ value: 'dashboard', label: 'Dashboard' });
   
   // 🔒 KRITICKÉ: Načíst module visibility settings z localStorage cache
   let moduleSettings = {};

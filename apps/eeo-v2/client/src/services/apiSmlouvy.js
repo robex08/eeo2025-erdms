@@ -106,7 +106,6 @@ export async function getSmlouvyList({
     };
 
     const response = await api.post('ciselniky/smlouvy/list', payload);
-
     return checkResponse(response, 'Načítání smluv');
   } catch (error) {
     handleApiError(error, 'Chyba při načítání smluv');
@@ -284,9 +283,14 @@ export const getDruhySmluv = async ({ token, username }) => {
 
 // Fallback hodnoty pro případ selhání API (backward compatibility)
 export const DRUH_SMLOUVY_OPTIONS_FALLBACK = [
-  { value: 'SLUZBY', label: 'Smlouva o poskytování služeb' },
-  { value: 'KUPNI', label: 'Kupní smlouva' },
-  { value: 'RAMCOVA', label: 'Rámcová smlouva' }
+  { value: 'JINA',         label: 'Jiná smlouva' },
+  { value: 'SLUZBY',       label: 'Smlouva o poskytování služeb' },
+  { value: 'NAJEMNI',      label: 'Nájemní smlouva' },
+  { value: 'KUPNI',        label: 'Kupní smlouva' },
+  { value: 'RAMCOVA',      label: 'Rámcová smlouva' },
+  { value: 'DODAVATELSKA', label: 'Dodavatelská smlouva' },
+  { value: 'LICENCNI',     label: 'Licenční smlouva' },
+  { value: 'PORADENSKA',   label: 'Poradenská smlouva' }
 ];
 
 // Export pro backward compatibility (bude deprecated)
@@ -300,11 +304,11 @@ export const DRUH_SMLOUVY_OPTIONS = DRUH_SMLOUVY_OPTIONS_FALLBACK;
 // UKONCENA = smlouva vypršela (dnes > platnost_do)
 // PRERUSENA = smlouva dočasně přerušena (manuální nastavení)
 export const STAV_SMLOUVY_OPTIONS = [
-  { value: 'AKTIVNI', label: 'Platná', color: '#10b981', icon: '✅', popis: 'Smlouva je v platnosti a lze ji používat' },
-  { value: 'UKONCENA', label: 'Vypršela', color: '#dc2626', icon: '⛔', popis: 'Smlouva překročila datum konce platnosti' },
-  { value: 'PRERUSENA', label: 'Přerušena', color: '#f59e0b', icon: '⏸️', popis: 'Smlouva je dočasně pozastavena' },
-  { value: 'PRIPRAVOVANA', label: 'Připravená', color: '#f97316', icon: '⏳', popis: 'Smlouva čeká na začátek platnosti' },
-  { value: 'NEAKTIVNI', label: 'Neaktivní', color: '#6b7280', icon: '🚫', popis: 'Smlouva je deaktivována (soft delete)' }
+  { value: 'AKTIVNI',      label: 'Aktivní',     color: '#10b981', icon: '✅', popis: 'Smlouva je v platnosti a lze ji používat' },
+  { value: 'UKONCENA',    label: 'Ukončená',    color: '#dc2626', icon: '⛔', popis: 'Smlouva překročila datum konce platnosti' },
+  { value: 'PRIPRAVOVANA',label: 'Připravovaná',color: '#f97316', icon: '⏳', popis: 'Smlouva čeká na začátek platnosti (platnost_od > dnes)' },
+  { value: 'PRERUSENA',   label: 'Přerušená',   color: '#f59e0b', icon: '⏸️', popis: 'Smlouva je dočasně přerušena' },
+  { value: 'NEAKTIVNI',   label: 'Neaktivní',   color: '#6b7280', icon: '🚫', popis: 'Smlouva je deaktivována (soft delete, aktivni=0)' }
 ];
 
 // Helper funkce pro práci se stavy smluv

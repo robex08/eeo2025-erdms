@@ -22,7 +22,7 @@ import {
   faSearch, faFilter, faDownload, faCheckCircle, faTimesCircle, faBolt, faTimes,
   faChevronDown, faChevronUp, faToggleOn, faToggleOff, faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
-import { FileText } from 'lucide-react';
+import { FileText, Coins, TrendingUp, CheckCircle, AlertTriangle } from 'lucide-react';
 
 // TanStack Table
 import {
@@ -60,6 +60,7 @@ import { ToastContext } from '../../../context/ToastContext';
 // Common Components
 import { SmartTooltip } from '../../../styles/SmartTooltip';
 import DatePicker from '../../DatePicker';
+import { CustomSelect } from '../../CustomSelect';
 
 // Local Components
 import SmlouvyFormModal from './SmlouvyFormModal';
@@ -67,8 +68,111 @@ import SmlouvyDetailModal from './SmlouvyDetailModal';
 import SmlouvyImportModal from './SmlouvyImportModal';
 
 // =============================================================================
+// INVOICE STATE LABELS (české názvy stavů faktur)
+// =============================================================================
+
+const INVOICE_STATE_LABELS = {
+  ZAEVIDOVANA: 'Zaevidovaná',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  V_RESENI: 'V řešení',
+  PREDANA_PO: 'Předaná PO',
+  K_ZAPLACENI: 'K zaplacení',
+  ZAPLACENO: 'Zaplaceno',
+  DOKONCENA: 'Dokončená',
+  STORNO: 'Storno'
+};
+
+// Helper funkce pro převod kódu stavu faktury na český název
+const getInvoiceStateLabel = (code) => {
+  return INVOICE_STATE_LABELS[code] || code;
+};
+
+// Helper pro styl badge objednávky dle stavu
+// Barvy jsou identické s barvou textu čísla objednávky (link), jen s pozadím
+const getOrdStavBadge = (stav) => {
+  // ZELENÁ – dokončené/uveřejněné stavy
+  if (['Dokončená', 'DOKONCENA', 'Uveřejněná', 'UVEREJNENA'].includes(stav))
+    return { bg: '#d1fae5', color: '#059669', border: '#6ee7b7' };
+  // ORANŽOVÁ – zkontrolováno/schváleno
+  if (['Zkontrolovaná', 'ZKONTROLOVANA', 'Schválená', 'SCHVALENA'].includes(stav))
+    return { bg: '#fff7ed', color: '#ea580c', border: '#fdba74' };
+  // ČERVENÁ – zrušeno
+  if (['Zrušená', 'ZRUSENA'].includes(stav))
+    return { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' };
+  // MODRÁ – vše ostatní (Nová, Ke schválení, Odeslaná, Fakturace, Ke zveřejnění…)
+  return { bg: '#dbeafe', color: '#3b82f6', border: '#93c5fd' };
+};
+
+// Helper pro styl badge faktury dle stavu
+const getFaStavBadge = (stav) => {
+  switch (stav) {
+    case 'DOKONCENA':       return { bg: '#dcfce7', color: '#16a34a', border: '#86efac' };
+    case 'ZAPLACENO':       return { bg: '#d1fae5', color: '#059669', border: '#6ee7b7' };
+    case 'K_ZAPLACENI':     return { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' };
+    case 'PREDANA_PO':      return { bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' };
+    case 'VECNA_SPRAVNOST': return { bg: '#eff6ff', color: '#3b82f6', border: '#93c5fd' };
+    case 'V_RESENI':        return { bg: '#fef3c7', color: '#d97706', border: '#fde68a' };
+    case 'ZAEVIDOVANA':     return { bg: '#f1f5f9', color: '#64748b', border: '#d1d5db' };
+    case 'STORNO':          return { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' };
+    default:                return { bg: '#fef3c7', color: '#92400e', border: '#fde68a' };
+  }
+};
+
+// =============================================================================
 // STYLED COMPONENTS
 // =============================================================================
+
+// Stats Dashboard Components
+const StatsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+`;
+
+const StatCard = styled.div`
+  background: ${props => props.$gradient || 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'};
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+  }
+`;
+
+const StatIcon = styled.div`
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: ${props => props.$bg || 'white'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${props => props.$color || '#3b82f6'};
+  box-shadow: 0 4px 12px ${props => props.$shadow || 'rgba(59, 130, 246, 0.2)'};
+`;
+
+const StatContent = styled.div`
+  flex: 1;
+`;
+
+const StatLabel = styled.div`
+  font-size: 0.875rem;
+  color: ${props => props.$light ? 'rgba(255, 255, 255, 0.9)' : '#6b7280'};
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+`;
+
+const StatValue = styled.div`
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: ${props => props.$light ? 'white' : '#111827'};
+`;
 
 const Container = styled.div`
   padding: 1rem;
@@ -99,14 +203,16 @@ const ActionButton = styled.button`
   border: 2px solid ${props => 
     props.$variant === 'primary' ? '#3b82f6' :
     props.$variant === 'success' ? '#10b981' :
-    props.$variant === 'warning' ? '#f59e0b' : '#3b82f6'};
+    props.$variant === 'warning' ? '#f59e0b' :
+    props.$variant === 'danger' ? '#ef4444' : '#3b82f6'};
   border-radius: 8px;
   background: ${props => 
     props.$variant === 'primary' ? '#3b82f6' :
     props.$variant === 'success' ? '#10b981' :
-    props.$variant === 'warning' ? '#f59e0b' : 'white'};
+    props.$variant === 'warning' ? '#f59e0b' :
+    props.$variant === 'danger' ? '#ef4444' : 'white'};
   color: ${props => 
-    props.$variant === 'primary' || props.$variant === 'success' || props.$variant === 'warning' ? 'white' : '#3b82f6'};
+    props.$variant === 'primary' || props.$variant === 'success' || props.$variant === 'warning' || props.$variant === 'danger' ? 'white' : '#3b82f6'};
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -115,13 +221,15 @@ const ActionButton = styled.button`
     background: ${props => 
       props.$variant === 'primary' ? '#2563eb' :
       props.$variant === 'success' ? '#059669' :
-      props.$variant === 'warning' ? '#d97706' : '#eff6ff'};
+      props.$variant === 'warning' ? '#d97706' :
+      props.$variant === 'danger' ? '#dc2626' : '#eff6ff'};
     border-color: ${props => 
       props.$variant === 'primary' ? '#2563eb' :
       props.$variant === 'success' ? '#059669' :
-      props.$variant === 'warning' ? '#d97706' : '#2563eb'};
+      props.$variant === 'warning' ? '#d97706' :
+      props.$variant === 'danger' ? '#dc2626' : '#2563eb'};
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+    box-shadow: ${props => props.$variant === 'danger' ? '0 4px 12px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(59, 130, 246, 0.25)'};
   }
 
   &:disabled {
@@ -141,9 +249,17 @@ const FilterSection = styled.div`
 `;
 
 const FilterGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  overflow-x: auto;
+  padding-bottom: 4px;
+
+  & > * {
+    flex: 1 1 170px;
+    min-width: 140px;
+  }
 `;
 
 const FilterField = styled.div`
@@ -156,6 +272,22 @@ const FilterLabel = styled.label`
   font-size: 0.85rem;
   font-weight: 500;
   color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 1.25rem;
+`;
+
+const FilterLabelClear = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  transition: transform 0.15s, opacity 0.15s;
+  &:hover { opacity: 0.7; transform: scale(1.2); }
 `;
 
 const FilterSelectWithIcon = styled.div`
@@ -347,36 +479,10 @@ const ClearButton = styled.button`
   }
 `;
 
-const StatsBar = styled.div`
-  background: white;
-  padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  border: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-`;
-
 const StatItem = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-`;
-
-const StatLabel = styled.span`
-  font-size: 0.75rem;
-  color: #64748b;
-  text-transform: uppercase;
-  font-weight: 600;
-`;
-
-const StatValue = styled.span`
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: ${props => props.$color || '#1e293b'};
 `;
 
 const TableContainer = styled.div`
@@ -612,6 +718,192 @@ const ProgressText = styled.div`
   pointer-events: none;
 `;
 
+/* ─── Jezevčík bar – čerpání smlouvy ─────────────────────────────────────── */
+const JezBarOuter = styled.div`
+  position: relative;
+  width: 100%;
+  min-width: 200px;
+  height: 22px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  &:hover .jez-month-num {
+    color: rgba(148, 163, 184, 0.8) !important;
+  }
+`;
+const JezBarFill = styled.div`
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  z-index: 10;
+  transition: width 0.7s ease;
+  background: ${props => props.$color || '#10b981'};
+  width: ${props => Math.min(props.$pct || 0, 100)}%;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+  }
+`;
+
+const JezBarPlanned = styled.div`
+  position: absolute;
+  top: 0;
+  height: 100%;
+  z-index: 5;
+  transition: width 0.7s ease, left 0.7s ease;
+  opacity: 0.5;
+  background-color: ${props => props.$color || '#86efac'};
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,0.3) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255,255,255,0.3) 50%,
+    rgba(255,255,255,0.3) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 8px 8px;
+  left: ${props => props.$left || 0}%;
+  width: ${props => {
+    const maxW = 100 - (props.$left || 0);
+    return Math.min(props.$percent || 0, maxW);
+  }}%;
+`;
+
+const JezTargetLine = styled.div`
+  position: absolute;
+  top: 0; bottom: 0; width: 2px;
+  background: rgba(100, 116, 139, 0.6);
+  z-index: 30;
+  left: ${props => props.$pct || 0}%;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+`;
+const JezStatusBadge = styled.div`
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.2rem 0.45rem; border-radius: 5px;
+  font-weight: 800; font-size: 0.65rem; letter-spacing: 0.02em;
+  white-space: nowrap; border: 1px solid;
+  ${props => {
+    if (props.$level === 'critical') return 'background:#fef2f2;color:#dc2626;border-color:#fecaca;';
+    if (props.$level === 'warning')  return 'background:#fff7ed;color:#ea580c;border-color:#fed7aa;';
+    return 'background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;';
+  }}
+`;
+
+/* Hatched overlay – celá šíře baru, diagonální pruhy pro „bez stropu / nekonečné" */
+const JezBarHatch = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  opacity: 0.18;
+  background-image: repeating-linear-gradient(
+    45deg,
+    #64748b 0px,
+    #64748b 3px,
+    transparent 3px,
+    transparent 10px
+  );
+`;
+
+/* ─── Split skupiny: smlouvy se stropem / bez stropu ─────────────────────── */
+const SkupinyRow = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+`;
+
+const SkupinaCard = styled.div`
+  background: ${props => props.$bg || 'white'};
+  border: 1px solid ${props => props.$border || '#e2e8f0'};
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const SkupinaHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid ${props => props.$border || '#f1f5f9'};
+`;
+
+const SkupinaTitle = styled.span`
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: ${props => props.$color || '#475569'};
+`;
+
+const SkupinaBadge = styled.span`
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 20px;
+  background: ${props => props.$bg || '#f1f5f9'};
+  color: ${props => props.$color || '#64748b'};
+`;
+
+const SkupinaMini = styled.div`
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+`;
+
+const SkupinaMiniItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+`;
+
+const SkupinaMiniLabel = styled.span`
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+`;
+
+const SkupinaMiniValue = styled.span`
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: ${props => props.$color || '#1e293b'};
+  font-family: 'Roboto Mono', monospace;
+  letter-spacing: -0.02em;
+`;
+
+const SkupinaBarWrap = styled.div`
+  position: relative;
+  height: 10px;
+  background: #f1f5f9;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(226,232,240,0.5);
+`;
+
+const SkupinaBarFill = styled.div`
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  border-radius: 5px;
+  background: ${props => props.$color || '#10b981'};
+  width: ${props => Math.min(props.$pct || 0, 100)}%;
+  transition: width 0.6s ease;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.15);
+  }
+`;
+
 const Pagination = styled.div`
   display: flex;
   justify-content: space-between;
@@ -757,12 +1049,65 @@ const EmptyHint = styled.div`
   color: #94a3b8;
 `;
 
+// Loading Overlay Components
+const LoadingOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(248, 250, 252, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.5s ease-in-out;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+`;
+
+const LoadingSpinner = styled.div`
+  width: 64px;
+  height: 64px;
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+const LoadingMessage = styled.div`
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.3s ease-in-out;
+`;
+
+const LoadingSubtext = styled.div`
+  font-size: 0.875rem;
+  color: #64748b;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.3s ease-in-out 0.1s;
+`;
+
 // =============================================================================
 // CONSTANTS & HELPERS
 // =============================================================================
 
 const FILTERS_STORAGE_KEY = 'smlouvy_filters';
 const SHOW_FILTERS_STORAGE_KEY = 'smlouvy_showFilters';
+const SKUPINA_FILTER_STORAGE_KEY = 'smlouvy_skupinaFilter';
+
+// Práh pro rozlišení smluv "bez stropu" - částky menší než toto se považují za symbolické (bez reálného limitu)
+const MIN_CAP_THRESHOLD = 100; // Kč - smlouvy s limitem < 100 Kč (např. 1 Kč) = bez stropu
 
 // Helper funkce pro načtení filtrů z localStorage
 const loadFiltersFromStorage = () => {
@@ -805,6 +1150,25 @@ const saveShowFiltersToStorage = (show) => {
   }
 };
 
+// Helper funkce pro načtení skupinaFilter z localStorage
+const loadSkupinaFilterFromStorage = () => {
+  try {
+    const saved = localStorage.getItem(SKUPINA_FILTER_STORAGE_KEY);
+    return saved ? (saved === 'null' ? null : saved) : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+// Helper funkce pro uložení skupinaFilter do localStorage
+const saveSkupinaFilterToStorage = (value) => {
+  try {
+    localStorage.setItem(SKUPINA_FILTER_STORAGE_KEY, value === null ? 'null' : value);
+  } catch (error) {
+    console.warn('⚠️ Chyba při ukládání skupinaFilter do localStorage:', error);
+  }
+};
+
 // =============================================================================
 // KOMPONENTA
 // =============================================================================
@@ -831,16 +1195,24 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   const [showFilters, setShowFilters] = useState(() => loadShowFiltersFromStorage());
   const [filters, setFilters] = useState(() => {
     const savedFilters = loadFiltersFromStorage();
-    return savedFilters || {
-      search: '',
-      usek_id: '',
-      druh_smlouvy: '',
-      stav: '',
-      platnost_od: '',
-      platnost_do: '',
-      show_inactive: false
+    const base = savedFilters || {};
+    return {
+      search: base.search || '',
+      usek_id: Array.isArray(base.usek_id) ? base.usek_id : [],
+      druh_smlouvy: Array.isArray(base.druh_smlouvy) ? base.druh_smlouvy : [],
+      stav: base.stav || '',
+      platnost_od: base.platnost_od || '',
+      platnost_do: base.platnost_do || '',
+      show_inactive: base.show_inactive || false
     };
   });
+
+  // State pro CustomSelect (multi-select filtry)
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
+  const toggleSelect = useCallback((fieldName) => {
+    setSelectStates(prev => ({ ...prev, [fieldName]: !prev[fieldName] }));
+  }, []);
 
   // TanStack Table state
   const [sorting, setSorting] = useState([]);
@@ -854,6 +1226,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     stav: '',
     pouzit_v_obj_formu: ''
   });
+
+  // Filtr skupiny (klik na dlaždici): null = vše, 'se_stropem', 'bez_stropu'
+  const [skupinaFilter, setSkupinaFilter] = useState(() => loadSkupinaFilterFromStorage());
 
   // Pagination
   const [pageSize, setPageSize] = useState(() => {
@@ -979,12 +1354,21 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       setLoading(true);
       setError(null);
 
+      // ⚠️ usek_id a druh_smlouvy jsou multi-select (pole) → filtrují se client-side
+      // Do API posílat POUZE skalární hodnoty (string/bool), nikdy pole!
+      // show_inactive=true pokud user filtruje na NEAKTIVNI stav
+      const apiFilters = {
+        token: token,
+        username: user.username,
+        search: filters.search || '',
+        stav: filters.stav || '',
+        platnost_od: filters.platnost_od || '',
+        platnost_do: filters.platnost_do || '',
+        show_inactive: filters.show_inactive || filters.stav === 'NEAKTIVNI'
+      };
+
       const [smlouvyResult, usekyResult] = await Promise.all([
-        getSmlouvyList({
-          token: token,
-          username: user.username,
-          ...filters
-        }),
+        getSmlouvyList(apiFilters),
         getUsekyList({
           token: token,
           username: user.username,
@@ -1027,6 +1411,38 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   // LOCAL FILTERING
   // =============================================================================
 
+  // Základ pro options: smlouvy po aplikaci restriction a show_inactive (bez druh/stav/search filtrů)
+  // Tím zajistíme, že options nabízí pouze hodnoty které uživatel skutečně může vidět
+  const baseSmlouvy = useMemo(() => {
+    return smlouvy.filter(smlouva => {
+      if (isRestrictedCerpaniUser) {
+        const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
+        const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
+        const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
+        const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
+        const jeMujUsek = matchByZkr || matchById;
+        const pouzitVObjFormu = Number(smlouva.pouzit_v_obj_formu || 0);
+        const cerpalUzivatel = pouzitVObjFormu === 1
+          ? Number(smlouva.pocet_objednavek_uzivatel || 0) > 0
+          : Number(smlouva.pocet_faktur_uzivatel || 0) > 0;
+        if (!jeMujUsek && !cerpalUzivatel) return false;
+      }
+      if (!filters.show_inactive && smlouva.aktivni !== 1) return false;
+      return true;
+    });
+  }, [smlouvy, isRestrictedCerpaniUser, filters.show_inactive, userUsekId, userUsekZkr]);
+
+  // Dynamické options - pouze hodnoty které uživatel skutečně vidí
+  const availableStavOptions = useMemo(() => {
+    const stavSet = new Set(baseSmlouvy.map(s => s.stav).filter(Boolean));
+    return STAV_SMLOUVY_OPTIONS.filter(opt => stavSet.has(opt.value));
+  }, [baseSmlouvy]);
+
+  const availableDruhOptions = useMemo(() => {
+    const druhSet = new Set(baseSmlouvy.map(s => s.druh_smlouvy).filter(Boolean));
+    return DRUH_SMLOUVY_OPTIONS.filter(opt => druhSet.has(opt.value));
+  }, [baseSmlouvy]);
+
   const filteredSmlouvy = useMemo(() => {
     const result = smlouvy.filter(smlouva => {
       // 🎯 OMEZENÍ POUZE PRO MENUBAR "ČERPÁNÍ":
@@ -1052,7 +1468,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       }
 
       // Aktivní/neaktivní
-      if (!filters.show_inactive && smlouva.aktivni !== 1) {
+      // Výjimka: pokud filtrujeme přímo na stav NEAKTIVNI, zobrazit i smlouvy s aktivni=0
+      if (!filters.show_inactive && filters.stav !== 'NEAKTIVNI' && smlouva.aktivni !== 1) {
         return false;
       }
 
@@ -1068,13 +1485,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         if (!matches) return false;
       }
 
-      // Úsek
-      if (filters.usek_id && smlouva.usek_id !== parseInt(filters.usek_id)) {
+      // Úsek (multi-select - pole hodnot)
+      if (filters.usek_id.length > 0 && !filters.usek_id.map(String).includes(String(smlouva.usek_id))) {
         return false;
       }
 
-      // Druh smlouvy
-      if (filters.druh_smlouvy && smlouva.druh_smlouvy !== filters.druh_smlouvy) {
+      // Druh smlouvy (multi-select - pole hodnot)
+      if (filters.druh_smlouvy.length > 0 && !filters.druh_smlouvy.includes(smlouva.druh_smlouvy)) {
         return false;
       }
 
@@ -1132,6 +1549,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         return false;
       }
 
+      // Skupinový filtr (klik na dlaždici)
+      // Filtr "se stropem" = limit >= 100 Kč, "bez stropu" = limit < 100 Kč
+      if (skupinaFilter === 'se_stropem' && !((parseFloat(smlouva.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD)) return false;
+      if (skupinaFilter === 'bez_stropu'  &&  (parseFloat(smlouva.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD)  return false;
+
       return true;
     });
 
@@ -1157,7 +1579,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         sensitivity: 'base'
       });
     });
-  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
+  }, [smlouvy, filters, columnFilters, skupinaFilter, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
 
   // =============================================================================
   // PAGINATION - useEffects (před table)
@@ -1171,6 +1593,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       console.warn('⚠️ Chyba při ukládání pageSize:', error);
     }
   }, [pageSize]);
+
+  // Save skupinaFilter to localStorage
+  useEffect(() => {
+    saveSkupinaFilterToStorage(skupinaFilter);
+  }, [skupinaFilter]);
 
   // Reset pageIndex when filters change
   useEffect(() => {
@@ -1203,9 +1630,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     // ✅ CELKEM ČERPÁNO: Podle pravidla výše
     const celkemCerpano = smlouvyProStatistiku.reduce((sum, s) => sum + (parseFloat(s.cerpano_celkem) || 0), 0);
     
-    // ✅ CELKOVÝ LIMIT: sečíst jen smlouvy se stropem (hodnota_s_dph > 0)
-    // Smlouvy bez stropu (hodnota_s_dph = 0) mají podle pravidel zbyva/procento = NULL.
-    const smlouvySeStropem = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) > 0);
+    // ✅ CELKOVÝ LIMIT: sečíst jen smlouvy se stropem (hodnota_s_dph >= MIN_CAP_THRESHOLD)
+    // Smlouvy s limitem < 100 Kč (symbolické 1 Kč apod.) se považují za bez stropu
+    const smlouvySeStropem = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD);
     const celkemLimit = smlouvySeStropem.reduce((sum, s) => sum + (parseFloat(s.hodnota_s_dph) || 0), 0);
     // ✅ ZBÝVÁ: jen pro smlouvy se stropem; pro smlouvy bez stropu je to nedefinované
     const celkemZbyva = smlouvySeStropem.length > 0
@@ -1218,14 +1645,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
     // ℹ️ PLNĚNÍ JEN PLATNÝCH smluv (bez vypršených)
     const plneniPlatnychSmluv = platneSmlouvy.reduce((sum, s) => sum + (parseFloat(s.hodnota_plneni_s_dph) || 0), 0);
     
-    // ✅ PRŮMĚRNÉ ČERPÁNÍ: jen smlouvy se stropem (jinak by to vycházelo jako 0%)
-    const aktivniSeStropem = aktivniSmlouvy.filter(s => (parseFloat(s.hodnota_s_dph) || 0) > 0);
-    const prumerneCerpani = aktivniSeStropem.length > 0
-      ? aktivniSeStropem.reduce((sum, s) => {
-          const pocatecniStav = parseFloat(s.hodnota_s_dph) || 0;
-          const cerpano = parseFloat(s.cerpano_celkem) || 0;
-          return sum + ((cerpano / pocatecniStav) * 100);
-        }, 0) / aktivniSeStropem.length
+    // ✅ PRŮMĚRNÉ ČERPÁNÍ: celkové čerpání / celkový limit se stropem (v %)
+    // Jen pro smlouvy s reálným limitem (>= 100 Kč)
+    const prumerneCerpani = celkemLimit > 0
+      ? (celkemCerpano / celkemLimit) * 100
       : null;
 
     return {
@@ -1238,7 +1661,20 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       celkem_zbyva: celkemZbyva,
       celkem_plneni_vsech: celkemPlneniVsech,
       plneni_platnich: plneniPlatnychSmluv,
-      prumerne_cerpani: prumerneCerpani
+      prumerne_cerpani: prumerneCerpani,
+      // Mini-skupiny pro split blok
+      skupina_se_stropem: (() => {
+        const arr = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD);
+        const limit = arr.reduce((s, x) => s + (parseFloat(x.hodnota_s_dph) || 0), 0);
+        const cerpano = arr.reduce((s, x) => s + (parseFloat(x.cerpano_celkem) || 0), 0);
+        const zbyva = arr.reduce((s, x) => s + (parseFloat(x.zbyva) || 0), 0);
+        return { pocet: arr.length, limit, cerpano, zbyva, pct: limit > 0 ? (cerpano / limit) * 100 : 0 };
+      })(),
+      skupina_bez_stropu: (() => {
+        const arr = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) < MIN_CAP_THRESHOLD);
+        const cerpano = arr.reduce((s, x) => s + (parseFloat(x.cerpano_celkem) || 0), 0);
+        return { pocet: arr.length, cerpano };
+      })(),
     };
   }, [filteredSmlouvy, filters.show_inactive]);
 
@@ -1555,7 +1991,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       }
     }),
     columnHelper.accessor('hodnota_s_dph', {
-      header: 'Počáteční stav s DPH',
+      header: 'Finanční limit s DPH',
       cell: info => (
         <span style={{ color: '#1e40af', fontWeight: '600' }}>
           {formatCurrency(info.getValue())}
@@ -1573,7 +2009,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       cell: info => {
         const row = info.row.original;
         const pocatecniStav = parseFloat(row.hodnota_s_dph) || 0;
-        const hasCap = pocatecniStav > 0;
+        // Smlouva má reálný strop (>= 100 Kč) - symbolické částky jako 1 Kč = bez stropu
+        const hasCap = pocatecniStav >= MIN_CAP_THRESHOLD;
         const cerpano = parseFloat(info.getValue()) || 0;
         const backendPercent = row.procento_cerpani === null || row.procento_cerpani === undefined
           ? null
@@ -1592,13 +2029,196 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
               ? `${backendPercent.toFixed(1)}%`
               : (Number.isFinite(computedPercent) ? `${computedPercent.toFixed(1)}%` : '—'))
           : '—';
+
+        // Detekce nekonečné platnosti (rok >= 2100 → 2199, 9999 apod.)
+        const isInfinite = (() => {
+          if (!row.platnost_do) return false;
+          return new Date(row.platnost_do).getFullYear() >= 2100;
+        })();
+
+        // Cíl k datu = uplynulá část doby trvání smlouvy (null pokud nekonečná nebo bez dat)
+        const calcTargetPct = () => {
+          if (isInfinite) return null;
+          const platnostDo = row.platnost_do;
+          if (!platnostDo) return null;
+          const now = new Date();
+          const end = new Date(platnostDo);
+          if (now >= end) return 100;
+          const start = row.platnost_od ? new Date(row.platnost_od) : new Date(end.getFullYear(), 0, 1);
+          const total = end - start;
+          if (total <= 0) return 100;
+          return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
+        };
+        // targetPct: number (0-100) nebo null (nekonečná / neznámá platnost)
+        const targetPct = hasCap ? calcTargetPct() : null;
+
+        // Status barevného baru:
+        // - KRITICKÉ (červená): čerpání >= 100% limitu
+        // - POZOR (oranžová): čerpání > 130% cíle k datu (čerpáš rychleji než bys měl)
+        //   Např.: Smlouva na rok, začala před měsícem → cíl k datu ~8.3%, měl bys mít 8.3%,
+        //   ale máš 10% → 10% > 8.3% × 1.3 = 10.8%? NE → OK. Ale 12% > 10.8% → POZOR!
+        // - OK (zelená): vše v normě
+        const barLevel = percentForBar >= 100
+          ? 'critical'
+          : (targetPct !== null && percentForBar > targetPct * 1.3)
+            ? 'warning'
+            : 'ok';
+        const barColor = barLevel === 'critical' ? '#ef4444' : barLevel === 'warning' ? '#f59e0b' : '#10b981';
+
+        // Pro smlouvy bez stropu: časový progress platnosti (null pokud nekonečná)
+        const timePct = (!hasCap && !isInfinite) ? (() => {
+          const platnostDo = row.platnost_do;
+          if (!platnostDo) return null;
+          const now = new Date();
+          const end = new Date(platnostDo);
+          const start = row.platnost_od ? new Date(row.platnost_od) : null;
+          if (!start) return null;
+          if (now >= end) return 100;
+          const total = end - start;
+          if (total <= 0) return 100;
+          return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
+        })() : null;
+
+        // 12 pravidelných svislých čárek (stejný rastr jako LP)
+        const monthGrid = (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} style={{ flex: 1, borderRight: '1px solid rgba(203,213,225,0.28)' }} />
+            ))}
+          </div>
+        );
+
+        // 🆕 Textové zobrazení čerpání (jako u LP)
+        const dokonceno = parseFloat(row.cerpano_faktury_dokoncene) || 0;
+        const vProcesu = parseFloat(row.cerpano_v_procesu) || 0;
+        const volne = hasCap ? Math.max(0, pocatecniStav - (dokonceno + vProcesu)) : 0;
+
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <ProgressBar>
-              <ProgressFill $percent={percentForBar} />
-              <ProgressText $percent={percentForBar}>{percentText}</ProgressText>
-            </ProgressBar>
-            <strong>{formatCurrency(cerpano)}</strong>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '220px' }}>
+            {hasCap ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
+                    {percentText}
+                  </span>
+                  {targetPct !== null ? (
+                    <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#64748b' }}>
+                      cíl&nbsp;{targetPct}%
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                      ∞&nbsp;nekonečná
+                    </span>
+                  )}
+                </div>
+                {/* 🆕 Textové zobrazení jako u LP */}
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '12px', 
+                  marginBottom: '4px', 
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  flexWrap: 'wrap'
+                }}>
+                  {dokonceno > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ color: '#64748b' }}>Dokončeno:</span>
+                      <span style={{ color: '#10b981', fontWeight: 700 }}>
+                        {dokonceno.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
+                      </span>
+                    </div>
+                  )}
+                  {vProcesu > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ color: '#64748b' }}>V procesu:</span>
+                      <span style={{ color: '#f59e0b', fontWeight: 700 }}>
+                        {vProcesu.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
+                      </span>
+                    </div>
+                  )}
+                  {volne > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ color: '#64748b' }}>Volné:</span>
+                      <span style={{ color: '#3b82f6', fontWeight: 700 }}>
+                        {volne.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <JezBarOuter>
+                  {monthGrid}
+                  {targetPct !== null && <JezTargetLine $pct={targetPct} />}
+                  {/* Solid bar - Dokončeno (faktury DOKONCENA, ZAPLACENO) */}
+                  <JezBarFill 
+                    $pct={hasCap ? (dokonceno / pocatecniStav * 100) : 0} 
+                    $color={barColor} 
+                  />
+                  {/* Šrafovaný bar - V procesu (ostatní faktury) */}
+                  {vProcesu > 0 && hasCap && (
+                    <JezBarPlanned
+                      $left={Math.min((dokonceno / pocatecniStav * 100), 100)}
+                      $percent={vProcesu / pocatecniStav * 100}
+                      $color={barColor === '#ef4444' ? '#fca5a5' : (barColor === '#f59e0b' ? '#fcd34d' : '#86efac')}
+                    />
+                  )}
+                </JezBarOuter>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                  <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
+                  <JezStatusBadge $level={barLevel}>
+                    {barLevel === 'critical' ? '⛔ Kritické' : barLevel === 'warning' ? '⚠ Pozor' : '✓ V normě'}
+                  </JezStatusBadge>
+                </div>
+              </>
+            ) : (
+              /* Smlouva bez finančního stropu */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '200px' }}>
+                {/* Horní řádek: jen label (bez částky – ta je dole jako u stropové) */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                    {isInfinite ? '∞ bez stropu' : 'bez stropu'}
+                  </span>
+                </div>
+                {isInfinite ? (
+                  (() => {
+                    const now = new Date();
+                    const yearStart = new Date(now.getFullYear(), 0, 1);
+                    const yearEnd   = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+                    const yearPct   = Math.round(((now - yearStart) / (yearEnd - yearStart)) * 100);
+                    return (
+                      <>
+                        <JezBarOuter>
+                          {monthGrid}
+                          <JezBarHatch />
+                          <JezBarFill $pct={yearPct} $color="#64748b" />
+                        </JezBarOuter>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                          <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
+                          <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
+                            rok&nbsp;{yearPct}%
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()
+                ) : timePct !== null ? (
+                  /* Konečná platnost – časový progress bar */
+                  <>
+                    <JezBarOuter>
+                      {monthGrid}
+                      <JezBarFill $pct={timePct} $color="#64748b" />
+                    </JezBarOuter>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                      <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
+                      <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
+                        platnost&nbsp;{timePct}%&nbsp;uplynulo
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
+                )}
+              </div>
+            )}
           </div>
         );
       },
@@ -1783,8 +2403,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   const handleResetFilters = () => {
     setFilters({
       search: '',
-      usek_id: '',
-      druh_smlouvy: '',
+      usek_id: [],
+      druh_smlouvy: [],
       stav: '',
       platnost_od: '',
       platnost_do: '',
@@ -1841,7 +2461,15 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   // =============================================================================
 
   return (
-    <Container>
+    <>
+      {/* Loading Overlay - při prvním načítání */}
+      <LoadingOverlay $visible={loading && smlouvy.length === 0}>
+        <LoadingSpinner $visible={loading} />
+        <LoadingMessage $visible={loading}>Zpracovávám čerpání smluv...</LoadingMessage>
+        <LoadingSubtext $visible={loading}>Probíhá načítání a výpočet čerpání smluv z databáze...</LoadingSubtext>
+      </LoadingOverlay>
+
+      <Container>
       {/* Toolbar */}
       <ToolbarContainer>
         <SearchBox>
@@ -1864,6 +2492,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
           {showFilters ? 'Skrýt filtry' : 'Rozšířený filtr'}
         </ActionButton>
 
+        <ActionButton $variant="danger" onClick={handleResetFilters}>
+          <FontAwesomeIcon icon={faTimes} />
+          Vymazat filtry
+        </ActionButton>
+
         {!readOnly && (
           <>
             <ActionButton $variant="primary" onClick={handleCreate}>
@@ -1882,35 +2515,104 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         )}
       </ToolbarContainer>
 
+      {/* Statistické dlaždice */}
+      <StatsGrid>
+        <StatCard $gradient="linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)">
+          <StatIcon $bg="white" $color="#3b82f6" $shadow="rgba(59, 130, 246, 0.3)">
+            <Coins size={28} />
+          </StatIcon>
+          <StatContent>
+            <StatLabel $light>Celkový limit</StatLabel>
+            <StatValue $light>{statistics.celkem_limit.toLocaleString('cs-CZ')} Kč</StatValue>
+          </StatContent>
+        </StatCard>
+
+        <StatCard $gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)">
+          <StatIcon $bg="white" $color="#10b981" $shadow="rgba(16, 185, 129, 0.3)">
+            <TrendingUp size={28} />
+          </StatIcon>
+          <StatContent>
+            <StatLabel $light>Dokončeno</StatLabel>
+            <StatValue $light style={{ marginBottom: '0.5rem' }}>{statistics.celkem_cerpano.toLocaleString('cs-CZ')} Kč</StatValue>
+          </StatContent>
+        </StatCard>
+
+        <StatCard $gradient="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)">
+          <StatIcon $bg="white" $color="#f59e0b" $shadow="rgba(245, 158, 11, 0.3)">
+            <CheckCircle size={28} />
+          </StatIcon>
+          <StatContent>
+            <StatLabel $light>Zbývá</StatLabel>
+            <StatValue $light>{statistics.celkem_zbyva !== null ? statistics.celkem_zbyva.toLocaleString('cs-CZ') + ' Kč' : 'N/A'}</StatValue>
+          </StatContent>
+        </StatCard>
+
+        <StatCard $gradient="linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)">
+          <StatIcon $bg="white" $color="#8b5cf6" $shadow="rgba(139, 92, 246, 0.3)">
+            <AlertTriangle size={28} />
+          </StatIcon>
+          <StatContent>
+            <StatLabel $light>Průměrné čerpání</StatLabel>
+            <StatValue $light>{statistics.prumerne_cerpani !== null ? statistics.prumerne_cerpani.toFixed(1) + '%' : 'N/A'}</StatValue>
+          </StatContent>
+        </StatCard>
+      </StatsGrid>
+
       {/* Filters */}
       <FilterSection $visible={showFilters}>
         <FilterGrid>
           <FilterField>
-            <FilterLabel>Úsek</FilterLabel>
-            <FilterSelect
+            <FilterLabel>
+              <span>Úsek</span>
+              {filters.usek_id.length > 0 && (
+                <FilterLabelClear onClick={() => handleFilterChange('usek_id', [])} title="Zrušit filtr úseku">
+                  <FontAwesomeIcon icon={faTimes} size="xs" />
+                </FilterLabelClear>
+              )}
+            </FilterLabel>
+            <CustomSelect
               value={filters.usek_id}
-              onChange={(e) => handleFilterChange('usek_id', e.target.value)}
-            >
-              <option value="">Všechny úseky</option>
-              {useky.map(usek => (
-                <option key={usek.id} value={usek.id}>
-                  {usek.usek_zkr} - {usek.usek_nazev}
-                </option>
-              ))}
-            </FilterSelect>
+              onChange={(val) => handleFilterChange('usek_id', val)}
+              options={useky.map(u => ({ id: String(u.id), value: String(u.id), label: `${u.usek_zkr} - ${u.usek_nazev}` }))}
+              placeholder="Všechny úseky"
+              field="filter_usek_id"
+              multiple={true}
+              isClearable={false}
+              enableSearch={true}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              toggleSelect={toggleSelect}
+              getOptionLabel={(opt) => opt?.label || String(opt?.id || opt?.value || opt)}
+            />
           </FilterField>
 
           <FilterField>
-            <FilterLabel>Druh smlouvy</FilterLabel>
-            <FilterSelect
+            <FilterLabel>
+              <span>Druh smlouvy</span>
+              {filters.druh_smlouvy.length > 0 && (
+                <FilterLabelClear onClick={() => handleFilterChange('druh_smlouvy', [])} title="Zrušit filtr druhu">
+                  <FontAwesomeIcon icon={faTimes} size="xs" />
+                </FilterLabelClear>
+              )}
+            </FilterLabel>
+            <CustomSelect
               value={filters.druh_smlouvy}
-              onChange={(e) => handleFilterChange('druh_smlouvy', e.target.value)}
-            >
-              <option value="">Všechny druhy</option>
-              {DRUH_SMLOUVY_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </FilterSelect>
+              onChange={(val) => handleFilterChange('druh_smlouvy', val)}
+              options={availableDruhOptions.map(o => ({ id: o.value, value: o.value, label: o.label }))}
+              placeholder="Všechny druhy"
+              field="filter_druh_smlouvy"
+              multiple={true}
+              isClearable={false}
+              enableSearch={false}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              toggleSelect={toggleSelect}
+              getOptionLabel={(opt) => opt?.label || String(opt?.id || opt?.value || opt)}
+            />
           </FilterField>
 
           <FilterField>
@@ -1920,7 +2622,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
               onChange={(e) => handleFilterChange('stav', e.target.value)}
             >
               <option value="">Všechny stavy</option>
-              {STAV_SMLOUVY_OPTIONS.map(opt => (
+              {availableStavOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </FilterSelect>
@@ -1964,57 +2666,158 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
             </div>
           </FilterField>
 
-          <FilterField>
-            <FilterLabel style={{ marginBottom: '0.3rem' }}>&nbsp;</FilterLabel>
-            <ActionButton onClick={handleResetFilters} style={{ width: '100%', height: '46px' }}>Vymazat filtry</ActionButton>
-          </FilterField>
         </FilterGrid>
       </FilterSection>
 
-      {/* Statistics */}
-      <StatsBar>
-        <StatItem>
-          <StatLabel>Smluv celkem</StatLabel>
-          <StatValue>
-            {statistics.pocet_aktivnich}
-            {statistics.pocet_vyprsenych > 0 && (
-              <span style={{ color: '#dc2626', fontSize: '0.9em', fontWeight: 600 }}> ({statistics.pocet_vyprsenych})</span>
-            )}
-          </StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Platných smluv</StatLabel>
-          <StatValue $color="#10b981">{statistics.pocet_platnych}</StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Celkový limit</StatLabel>
-          <StatValue>{formatCurrency(statistics.celkem_limit)}</StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Celkem čerpáno</StatLabel>
-          <StatValue $color="#3b82f6">{formatCurrency(statistics.celkem_cerpano)}</StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Zbývá</StatLabel>
-          <StatValue $color="#10b981">{formatCurrency(statistics.celkem_zbyva)}</StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Plnění všech smluv</StatLabel>
-          <StatValue $color="#6b7280">{formatCurrency(statistics.celkem_plneni_vsech)}</StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Plnění platných</StatLabel>
-          <StatValue $color="#059669">{formatCurrency(statistics.plneni_platnich)}</StatValue>
-        </StatItem>
-        <StatItem>
-          <StatLabel>Průměrné čerpání</StatLabel>
-          <StatValue>
-            {statistics.prumerne_cerpani === null || statistics.prumerne_cerpani === undefined
-              ? '—'
-              : `${Number(statistics.prumerne_cerpani).toFixed(1)}%`}
-          </StatValue>
-        </StatItem>
-      </StatsBar>
+      {/* Přehled smluv: CELKEM / Se stropem / Bez stropu */}
+      {(statistics.skupina_se_stropem.pocet > 0 || statistics.skupina_bez_stropu.pocet > 0) && (
+        <SkupinyRow>
+          {/* ── CELKEM - Všechny smlouvy ── */}
+          <SkupinaCard
+            $bg={skupinaFilter === null ? '#dbeafe' : '#eff6ff'}
+            $border={skupinaFilter === null ? '#2563eb' : '#3b82f6'}
+            onClick={() => setSkupinaFilter(null)}
+            style={{ cursor: 'pointer', transition: 'all 0.15s', boxShadow: skupinaFilter === null ? '0 0 0 2px #2563eb' : 'none' }}
+            title="Kliknutím zobrazit všechny smlouvy (zrušit filtr)"
+          >
+            <SkupinaHeader $border="#dbeafe">
+              <SkupinaTitle $color="#1e40af" style={{ fontSize: '0.95rem', fontWeight: 700 }}>CELKEM</SkupinaTitle>
+              <SkupinaBadge $bg="#dbeafe" $color="#1e40af">
+                {statistics.skupina_se_stropem.pocet + statistics.skupina_bez_stropu.pocet}
+              </SkupinaBadge>
+              {skupinaFilter === null && (
+                <span style={{ marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800, color: '#2563eb', background: '#bfdbfe', borderRadius: '4px', padding: '0.15rem 0.4rem' }}>
+                  ✓ vše zobrazeno
+                </span>
+              )}
+            </SkupinaHeader>
+            <SkupinaMini>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Limit</SkupinaMiniLabel>
+                <SkupinaMiniValue $color="#1e40af">{formatCurrency(statistics.celkem_limit)}</SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Vyčerpáno</SkupinaMiniLabel>
+                <SkupinaMiniValue $color="#10b981">{formatCurrency(statistics.celkem_cerpano)}</SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Zbývá</SkupinaMiniLabel>
+                <SkupinaMiniValue $color={statistics.celkem_zbyva < 0 ? '#dc2626' : '#0f766e'}>
+                  {formatCurrency(statistics.celkem_zbyva)}
+                </SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Čerpání</SkupinaMiniLabel>
+                <SkupinaMiniValue $color={
+                  statistics.prumerne_cerpani >= 100 ? '#dc2626' :
+                  statistics.prumerne_cerpani >= 80  ? '#ea580c' : '#10b981'
+                }>
+                  {statistics.prumerne_cerpani !== null ? statistics.prumerne_cerpani.toFixed(1) + '%' : '—'}
+                </SkupinaMiniValue>
+              </SkupinaMiniItem>
+            </SkupinaMini>
+            <SkupinaBarWrap>
+              <SkupinaBarFill
+                $pct={statistics.prumerne_cerpani || 0}
+                $color={
+                  statistics.prumerne_cerpani >= 100 ? '#ef4444' :
+                  statistics.prumerne_cerpani >= 80  ? '#f59e0b' : '#10b981'
+                }
+              />
+            </SkupinaBarWrap>
+          </SkupinaCard>
+
+          {/* ── Smlouvy SE stropem ── */}
+          <SkupinaCard
+            $bg={skupinaFilter === 'se_stropem' ? '#dcfce7' : '#f0fdf4'}
+            $border={skupinaFilter === 'se_stropem' ? '#16a34a' : '#bbf7d0'}
+            onClick={() => setSkupinaFilter(f => f === 'se_stropem' ? null : 'se_stropem')}
+            style={{ cursor: 'pointer', transition: 'all 0.15s', boxShadow: skupinaFilter === 'se_stropem' ? '0 0 0 2px #16a34a' : 'none' }}
+            title="Kliknutím filtrovat seznam na smlouvy s finančním stropem"
+          >
+            <SkupinaHeader $border="#dcfce7">
+              <SkupinaTitle $color="#15803d">Smlouvy s finančním stropem</SkupinaTitle>
+              <SkupinaBadge $bg="#dcfce7" $color="#15803d">{statistics.skupina_se_stropem.pocet}</SkupinaBadge>
+              {skupinaFilter === 'se_stropem' && (
+                <span style={{ marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800, color: '#16a34a', background: '#bbf7d0', borderRadius: '4px', padding: '0.15rem 0.4rem' }}>
+                  ✓ filtrováno
+                </span>
+              )}
+            </SkupinaHeader>
+            <SkupinaMini>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Limit</SkupinaMiniLabel>
+                <SkupinaMiniValue $color="#1e40af">{formatCurrency(statistics.skupina_se_stropem.limit)}</SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Vyčerpáno</SkupinaMiniLabel>
+                <SkupinaMiniValue $color="#10b981">{formatCurrency(statistics.skupina_se_stropem.cerpano)}</SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Zbývá</SkupinaMiniLabel>
+                <SkupinaMiniValue $color={statistics.skupina_se_stropem.zbyva < 0 ? '#dc2626' : '#0f766e'}>
+                  {formatCurrency(statistics.skupina_se_stropem.zbyva)}
+                </SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Čerpání</SkupinaMiniLabel>
+                <SkupinaMiniValue $color={
+                  statistics.skupina_se_stropem.pct >= 100 ? '#dc2626' :
+                  statistics.skupina_se_stropem.pct >= 80  ? '#ea580c' : '#10b981'
+                }>
+                  {statistics.skupina_se_stropem.pct.toFixed(1)}%
+                </SkupinaMiniValue>
+              </SkupinaMiniItem>
+            </SkupinaMini>
+            <SkupinaBarWrap>
+              <SkupinaBarFill
+                $pct={statistics.skupina_se_stropem.pct}
+                $color={
+                  statistics.skupina_se_stropem.pct >= 100 ? '#ef4444' :
+                  statistics.skupina_se_stropem.pct >= 80  ? '#f59e0b' : '#10b981'
+                }
+              />
+            </SkupinaBarWrap>
+          </SkupinaCard>
+
+          {/* ── Smlouvy BEZ stropu ── */}
+          <SkupinaCard
+            $bg={skupinaFilter === 'bez_stropu' ? '#e2e8f0' : '#f8fafc'}
+            $border={skupinaFilter === 'bez_stropu' ? '#475569' : '#cbd5e1'}
+            onClick={() => setSkupinaFilter(f => f === 'bez_stropu' ? null : 'bez_stropu')}
+            style={{ cursor: 'pointer', transition: 'all 0.15s', boxShadow: skupinaFilter === 'bez_stropu' ? '0 0 0 2px #475569' : 'none' }}
+            title="Kliknutím filtrovat seznam na smlouvy bez finančního stropu"
+          >
+            <SkupinaHeader $border="#e2e8f0">
+              <SkupinaTitle $color="#475569">Smlouvy bez finančního stropu</SkupinaTitle>
+              <SkupinaBadge $bg="#e2e8f0" $color="#475569">{statistics.skupina_bez_stropu.pocet}</SkupinaBadge>
+              {skupinaFilter === 'bez_stropu' && (
+                <span style={{ marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800, color: '#475569', background: '#cbd5e1', borderRadius: '4px', padding: '0.15rem 0.4rem' }}>
+                  ✓ filtrováno
+                </span>
+              )}
+            </SkupinaHeader>
+            <SkupinaMini>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Čerpáno celkem</SkupinaMiniLabel>
+                <SkupinaMiniValue $color="#475569">{formatCurrency(statistics.skupina_bez_stropu.cerpano)}</SkupinaMiniValue>
+              </SkupinaMiniItem>
+              <SkupinaMiniItem>
+                <SkupinaMiniLabel>Limit</SkupinaMiniLabel>
+                <SkupinaMiniValue $color="#94a3b8">— bez stropu</SkupinaMiniValue>
+              </SkupinaMiniItem>
+            </SkupinaMini>
+            <SkupinaBarWrap>
+              <div style={{
+                position: 'absolute', inset: 0,
+                backgroundImage: 'repeating-linear-gradient(45deg, #94a3b8 0px, #94a3b8 2px, transparent 2px, transparent 8px)',
+                opacity: skupinaFilter === 'bez_stropu' ? 0.4 : 0.2,
+                transition: 'opacity 0.15s',
+              }} />
+            </SkupinaBarWrap>
+          </SkupinaCard>
+        </SkupinyRow>
+      )}
 
       {error && (
         <div style={{ padding: '1rem', background: '#fee2e2', color: '#dc2626', borderRadius: '8px', marginBottom: '1rem' }}>
@@ -2141,7 +2944,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                     onChange={(e) => setColumnFilters(prev => ({...prev, stav: e.target.value}))}
                   >
                     <option value="">Všechny</option>
-                    {STAV_SMLOUVY_OPTIONS.map(opt => (
+                    {availableStavOptions.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </ColumnFilterSelect>
@@ -2277,7 +3080,17 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                         <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                                           <button
                                             onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
-                                            style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #93c5fd' }}
+                                            style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              color: (ord.stav === 'Dokončená' || ord.stav === 'DOKONCENA' || ord.stav === 'Uvejřejněná' || ord.stav === 'UVEREJNENA') ? '#059669' : (ord.stav === 'Zkontrolovaná' || ord.stav === 'ZKONTROLOVANA' || ord.stav === 'Schválená' || ord.stav === 'SCHVALENA') ? '#ea580c' : (ord.stav === 'Zrušená' || ord.stav === 'ZRUSENA') ? '#dc2626' : '#3b82f6',
+                                              fontWeight: 600,
+                                              cursor: 'pointer',
+                                              padding: 0,
+                                              fontSize: 'inherit',
+                                              fontFamily: 'inherit',
+                                              borderBottom: `1px dashed ${ (ord.stav === 'Dokončená' || ord.stav === 'DOKONCENA' || ord.stav === 'Uvejřejněná' || ord.stav === 'UVEREJNENA') ? '#86efac' : (ord.stav === 'Zkontrolovaná' || ord.stav === 'ZKONTROLOVANA' || ord.stav === 'Schválená' || ord.stav === 'SCHVALENA') ? '#fdba74' : (ord.stav === 'Zrušená' || ord.stav === 'ZRUSENA') ? '#fca5a5' : '#93c5fd'}`
+                                            }}
                                             title="Otevřít objednávku"
                                           >
                                             {ord.cislo_objednavky || '—'}
@@ -2285,11 +3098,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                         </td>
                                         <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(ord.dt_vytvoreni)}</td>
                                         <td style={{ padding: '0.25rem 0.5rem' }}>
-                                          <span style={{
-                                            background: ord.stav === 'AKTIVNI' ? '#dcfce7' : ord.stav === 'FAKTURACE' ? '#dbeafe' : ord.stav === 'DOKONCENA' ? '#f0fdf4' : '#f1f5f9',
-                                            color: ord.stav === 'AKTIVNI' ? '#16a34a' : ord.stav === 'FAKTURACE' ? '#1d4ed8' : ord.stav === 'DOKONCENA' ? '#059669' : '#64748b',
-                                            borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em'
-                                          }}>{ord.stav || '?'}</span>
+                                          {(() => { const s = getOrdStavBadge(ord.stav); return (
+                                            <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em', display: 'inline-block' }}>
+                                              {ord.stav || '?'}
+                                            </span>
+                                          ); })()}
                                         </td>
                                         <td style={{ padding: '0.25rem 0.5rem', color: '#374151', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ord.dodavatel_nazev || '—'}</td>
                                         <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{czFormat(ord.max_cena_s_dph)}</td>
@@ -2303,7 +3116,17 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                             ↳{' '}
                                             <button
                                               onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
-                                              style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
+                                              style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : fa.stav === 'STORNO' ? '#dc2626' : '#7c3aed',
+                                                cursor: 'pointer',
+                                                fontWeight: 600,
+                                                padding: 0,
+                                                fontSize: 'inherit',
+                                                fontFamily: 'inherit',
+                                                borderBottom: `1px dashed ${(fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#86efac' : fa.stav === 'STORNO' ? '#fca5a5' : '#c4b5fd'}`
+                                              }}
                                               title="Otevřít fakturu"
                                             >
                                               {fa.fa_cislo_vema || '—'}
@@ -2311,11 +3134,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                           </td>
                                           <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                                           <td style={{ padding: '0.2rem 0.5rem' }}>
-                                            <span style={{
-                                              background: fa.stav === 'DOKONCENA' ? '#dcfce7' : fa.stav === 'ZAPLACENO' ? '#dbeafe' : '#fef3c7',
-                                              color: fa.stav === 'DOKONCENA' ? '#16a34a' : fa.stav === 'ZAPLACENO' ? '#1d4ed8' : '#92400e',
-                                              borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em'
-                                            }}>{fa.stav}</span>
+                                            {(() => { const s = getFaStavBadge(fa.stav); return (
+                                              <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em', display: 'inline-block' }}>
+                                                {getInvoiceStateLabel(fa.stav)}
+                                              </span>
+                                            ); })()}
                                           </td>
                                           <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }} colSpan={2}>
                                             {czFormat(fa.fa_castka)}
@@ -2351,7 +3174,17 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                           <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                                             <button
                                               onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, returnTo: location.pathname } })}
-                                              style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
+                                              style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : fa.stav === 'STORNO' ? '#dc2626' : '#7c3aed',
+                                                cursor: 'pointer',
+                                                fontWeight: 600,
+                                                padding: 0,
+                                                fontSize: 'inherit',
+                                                fontFamily: 'inherit',
+                                                borderBottom: `1px dashed ${(fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#86efac' : fa.stav === 'STORNO' ? '#fca5a5' : '#c4b5fd'}`
+                                              }}
                                               title="Otevřít fakturu"
                                             >
                                               {fa.fa_cislo_vema || '—'}
@@ -2359,11 +3192,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
                                           </td>
                                           <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                                           <td style={{ padding: '0.25rem 0.5rem' }}>
-                                            <span style={{
-                                              background: fa.stav === 'DOKONCENA' ? '#dcfce7' : fa.stav === 'ZAPLACENO' ? '#dbeafe' : '#fef3c7',
-                                              color: fa.stav === 'DOKONCENA' ? '#16a34a' : fa.stav === 'ZAPLACENO' ? '#1d4ed8' : '#92400e',
-                                              borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em'
-                                            }}>{fa.stav}</span>
+                                            {(() => { const s = getFaStavBadge(fa.stav); return (
+                                              <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em', display: 'inline-block' }}>
+                                                {getInvoiceStateLabel(fa.stav)}
+                                              </span>
+                                            ); })()}
                                           </td>
                                           <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{czFormat(fa.fa_castka)}</td>
                                           <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontSize: '0.8rem', color: '#78716c' }}>{czDate(fa.fa_datum_splatnosti)}</td>
@@ -2499,6 +3332,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
         </ConfirmDialog>
       )}
     </Container>
+    </>
   );
 };
 
