@@ -2376,6 +2376,16 @@ switch ($endpoint) {
         }
         break;
 
+    // POST /api.eeo/order-v3/lp-expand - Expand objednávek + faktur pro LP kód
+    case 'order-v3/lp-expand':
+        if ($request_method === 'POST') {
+            handle_orderV3_lp_expand($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // === ORDERS V3 - KONTROLA A KOMENTÁŘE ===
     
     // POST /api.eeo/orders-v3/check - Toggle stav kontroly objednávky
@@ -5561,6 +5571,7 @@ switch ($endpoint) {
                                 c.celkovy_limit,
                                 (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                 (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp ORDER BY id ASC LIMIT 1) as lp_master_id,
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
                                 -- Z agregované tabulky: skutecne_cerpano = faktury
@@ -5574,6 +5585,16 @@ switch ($endpoint) {
                                 c.procento_predpoklad,
                                 c.procento_skutecne,
                                 c.pocet_zaznamu,
+                                (                                    SELECT COUNT(DISTINCT o_lp.id)
+                                    FROM 25a_objednavky o_lp
+                                    WHERE o_lp.aktivni = 1
+                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                    AND EXISTS (
+                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                        WHERE lpm2.cislo_lp = c.cislo_lp
+                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    )
+                                ) as pocet_objednavek,
                                 c.ma_navyseni,
                                 c.posledni_prepocet,
                                 u.prijmeni,
@@ -5601,6 +5622,7 @@ switch ($endpoint) {
                     foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
+                            'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
                             'celkovy_limit' => (float)$row['celkovy_limit'],
@@ -5618,6 +5640,7 @@ switch ($endpoint) {
                             'procento_skutecne' => (float)$row['procento_skutecne'],
                             'je_prekroceno_skutecne' => ((float)$row['zbyva_skutecne'] < 0) ? true : false,
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
+                            'pocet_objednavek' => (int)$row['pocet_objednavek'],
                             'ma_navyseni' => $row['ma_navyseni'] ? true : false,
                             'posledni_prepocet' => $row['posledni_prepocet'],
                             'usek_nazev' => $row['usek_nazev'],
@@ -5659,6 +5682,7 @@ switch ($endpoint) {
                                 c.celkovy_limit,
                                 (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                 (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp ORDER BY id ASC LIMIT 1) as lp_master_id,
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
                                 c.skutecne_cerpano,
@@ -5670,6 +5694,16 @@ switch ($endpoint) {
                                 c.procento_predpoklad,
                                 c.procento_skutecne,
                                 c.pocet_zaznamu,
+                                (                                    SELECT COUNT(DISTINCT o_lp.id)
+                                    FROM 25a_objednavky o_lp
+                                    WHERE o_lp.aktivni = 1
+                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                    AND EXISTS (
+                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                        WHERE lpm2.cislo_lp = c.cislo_lp
+                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    )
+                                ) as pocet_objednavek,
                                 c.ma_navyseni,
                                 c.posledni_prepocet,
                                 u.prijmeni,
@@ -5698,6 +5732,7 @@ switch ($endpoint) {
                     
                     $data = array(
                         'id' => (int)$row['id'],
+                        'lp_master_id' => (int)$row['lp_master_id'],
                         'cislo_lp' => $row['cislo_lp'],
                         'kategorie' => $row['kategorie'],
                         'celkovy_limit' => (float)$row['celkovy_limit'],
@@ -5717,6 +5752,7 @@ switch ($endpoint) {
                         'je_prekroceno_predpoklad' => (float)$row['zbyva_predpoklad'] < 0,
                         'je_prekroceno_skutecne' => (float)$row['zbyva_skutecne'] < 0,
                         'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
+                        'pocet_objednavek' => (int)$row['pocet_objednavek'],
                         'ma_navyseni' => (bool)$row['ma_navyseni'],
                         'rok' => (int)$row['rok'],
                         'posledni_prepocet' => $row['posledni_prepocet'],
@@ -5748,6 +5784,7 @@ switch ($endpoint) {
                                 c.celkovy_limit,
                                 (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                 (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp ORDER BY id ASC LIMIT 1) as lp_master_id,
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
                                 -- Z agregované tabulky: skutecne_cerpano = faktury
@@ -5761,6 +5798,16 @@ switch ($endpoint) {
                                 c.procento_rezervace,
                                 c.procento_predpoklad,
                                 c.pocet_zaznamu,
+                                (                                    SELECT COUNT(DISTINCT o_lp.id)
+                                    FROM 25a_objednavky o_lp
+                                    WHERE o_lp.aktivni = 1
+                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                    AND EXISTS (
+                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                        WHERE lpm2.cislo_lp = c.cislo_lp
+                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    )
+                                ) as pocet_objednavek,
                                 c.ma_navyseni,
                                 us.usek_nazev
                             FROM " . TBL_LP_CERPANI . " c
@@ -5781,6 +5828,7 @@ switch ($endpoint) {
                     foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
+                            'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
                             'celkovy_limit' => (float)$row['celkovy_limit'],
@@ -5798,6 +5846,7 @@ switch ($endpoint) {
                             'procento_skutecne' => (float)$row['procento_skutecne'],
                             'je_prekroceno_skutecne' => (float)$row['zbyva_skutecne'] < 0,
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
+                            'pocet_objednavek' => (int)$row['pocet_objednavek'],
                             'ma_navyseni' => (bool)$row['ma_navyseni'],
                             'usek_nazev' => $row['usek_nazev']
                         );
@@ -5828,6 +5877,7 @@ switch ($endpoint) {
                                     c.celkovy_limit,
                                     (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                     (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                    (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp ORDER BY id ASC LIMIT 1) as lp_master_id,
                                     c.rezervovano,
                                     c.predpokladane_cerpani,
                                     -- Z agregované tabulky: skutecne_cerpano = faktury
@@ -5841,6 +5891,16 @@ switch ($endpoint) {
                                     c.procento_rezervace,
                                     c.procento_predpoklad,
                                     c.pocet_zaznamu,
+                                    (                                    SELECT COUNT(DISTINCT o_lp.id)
+                                    FROM 25a_objednavky o_lp
+                                    WHERE o_lp.aktivni = 1
+                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                    AND EXISTS (
+                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                        WHERE lpm2.cislo_lp = c.cislo_lp
+                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    )
+                                ) as pocet_objednavek,
                                     c.ma_navyseni,
                                     u.prijmeni,
                                     u.jmeno
@@ -5879,6 +5939,7 @@ switch ($endpoint) {
                                     c.celkovy_limit,
                                     (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                     (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                    (SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp ORDER BY id ASC LIMIT 1) as lp_master_id,
                                     c.rezervovano,
                                     c.predpokladane_cerpani,
                                     -- Z agregované tabulky: skutecne_cerpano = faktury
@@ -5892,6 +5953,16 @@ switch ($endpoint) {
                                     c.procento_rezervace,
                                     c.procento_predpoklad,
                                     c.pocet_zaznamu,
+                                    (                                    SELECT COUNT(DISTINCT o_lp.id)
+                                    FROM 25a_objednavky o_lp
+                                    WHERE o_lp.aktivni = 1
+                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                    AND EXISTS (
+                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                        WHERE lpm2.cislo_lp = c.cislo_lp
+                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    )
+                                ) as pocet_objednavek,
                                     c.ma_navyseni,
                                     u.prijmeni,
                                     u.jmeno
@@ -5914,6 +5985,7 @@ switch ($endpoint) {
                     foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
+                            'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
                             'celkovy_limit' => (float)$row['celkovy_limit'],
@@ -5931,6 +6003,7 @@ switch ($endpoint) {
                             'procento_skutecne' => (float)$row['procento_skutecne'],
                             'je_prekroceno_skutecne' => (float)$row['zbyva_skutecne'] < 0,
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
+                            'pocet_objednavek' => (int)$row['pocet_objednavek'],
                             'ma_navyseni' => (bool)$row['ma_navyseni'],
                             'spravce' => array(
                                 'prijmeni' => $row['prijmeni'],

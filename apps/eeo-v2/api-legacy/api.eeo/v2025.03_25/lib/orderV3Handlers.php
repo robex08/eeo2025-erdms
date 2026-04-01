@@ -3190,7 +3190,38 @@ function handle_orderV3_lp_expand($input, $config) {
 
         $user_id = (int)($token_data['user_id'] ?? $token_data['id'] ?? 0);
 
-        // Objednávky které mají v financovani.lp_kody tento lp_master_id
+        // lp_master_id může být buď ID z master tabulky (25_limitovane_prisliby)
+        // nebo ID z cerpani tabulky (25_limitovane_prisliby_cerpani) - FE posílá cerpani ID
+        // Nejdříve zjistíme cislo_lp ze cerpani tabulky, pak najdeme všechna master IDs
+        $stmt_cislo = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_CERPANI . " WHERE id = ? LIMIT 1");
+        $stmt_cislo->execute([$lp_master_id]);
+        $cislo_lp = $stmt_cislo->fetchColumn();
+
+        // Fallback: zkusit přímo master tabulku (pokud přijde skutečné master ID)
+        if (!$cislo_lp) {
+            $stmt_cislo2 = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = ? LIMIT 1");
+            $stmt_cislo2->execute([$lp_master_id]);
+            $cislo_lp = $stmt_cislo2->fetchColumn();
+        }
+
+        if (!$cislo_lp) {
+            echo json_encode(['status' => 'ok', 'data' => [], 'meta' => ['count' => 0]]);
+            return;
+        }
+
+        // Všechna master IDs pro tento cislo_lp (pokud má navýšení = více záznamů)
+        $stmt_ids = $db->prepare("SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = ?");
+        $stmt_ids->execute([$cislo_lp]);
+        $master_ids = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($master_ids)) {
+            echo json_encode(['status' => 'ok', 'data' => [], 'meta' => ['count' => 0]]);
+            return;
+        }
+
+        // Objednávky které mají v financovani.lp_kody některé z master IDs
+        // JSON_CONTAINS porovnává správně čísla (int), ne stringy
+        $id_conditions = implode(' OR ', array_fill(0, count($master_ids), 'JSON_CONTAINS(o.financovani, ?, \'$.lp_kody\')'));
         $sql = "
             SELECT 
                 o.id,
@@ -3204,14 +3235,18 @@ function handle_orderV3_lp_expand($input, $config) {
                 CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
-            WHERE JSON_CONTAINS(o.financovani, ?, '$.lp_kody')
+            WHERE ($id_conditions)
               AND o.aktivni = 1
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
             ORDER BY o.dt_vytvoreni DESC
         ";
         $stmt = $db->prepare($sql);
-        $stmt->execute([(string)$lp_master_id]);
+        // Předáme každé master ID jako integer (JSON_CONTAINS potřebuje číslo, ne string)
+        $stmt->execute(array_map('intval', $master_ids));
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Pro expand tlačítko potřebujeme první master_id pro LP rozpis z faktur
+        $first_lp_master_id = (int)$master_ids[0];
 
         // Pro každou objednávku načteme faktury + LP rozpis
         $order_ids = array_column($orders, 'id');
@@ -3258,7 +3293,7 @@ function handle_orderV3_lp_expand($input, $config) {
                     GROUP BY flp.faktura_id
                 ";
                 $stmt_lp = $db->prepare($sql_lp_rozpis);
-                $stmt_lp->execute(array_merge($faktura_ids, [$lp_master_id]));
+                $stmt_lp->execute(array_merge($faktura_ids, [$first_lp_master_id]));
                 foreach ($stmt_lp->fetchAll(PDO::FETCH_ASSOC) as $lp_row) {
                     $lp_rozpis_map[(int)$lp_row['faktura_id']] = (float)$lp_row['lp_castka'];
                 }
@@ -3273,7 +3308,7 @@ function handle_orderV3_lp_expand($input, $config) {
                 GROUP BY p.objednavka_id
             ";
             $stmt_pol = $db->prepare($sql_pol);
-            $stmt_pol->execute(array_merge($order_ids, [$lp_master_id]));
+            $stmt_pol->execute(array_merge($order_ids, [$first_lp_master_id]));
             foreach ($stmt_pol->fetchAll(PDO::FETCH_ASSOC) as $pol) {
                 $polozky_map[(int)$pol['objednavka_id']] = (float)$pol['planovana_castka'];
             }

@@ -2831,12 +2831,23 @@ export default function StatsReportsPage() {
     if (!token || !username) return;
     
     setCashbookLoading(true);
+    // Derive rok/mesic from global filters; fall back to whole year if unset
+    let cbRok, cbMesic = null;
+    if (filters.dateFrom) {
+      cbRok = parseInt(filters.dateFrom.substring(0, 4), 10);
+      const mFrom = parseInt(filters.dateFrom.substring(5, 7), 10);
+      const mTo = filters.dateTo ? parseInt(filters.dateTo.substring(5, 7), 10) : null;
+      const yTo = filters.dateTo ? parseInt(filters.dateTo.substring(0, 4), 10) : null;
+      if (mTo && yTo === cbRok && mTo === mFrom) cbMesic = mFrom;
+    } else {
+      cbRok = filters.year || new Date().getFullYear();
+    }
     try {
       const response = await getCashbookOverview({
         username,
         token,
-        rok: cashbookFilters.rok,
-        mesic: cashbookFilters.mesic
+        rok: cbRok,
+        mesic: cbMesic
       });
       
       if (response.status === 'ok' && response.data) {
@@ -2851,7 +2862,7 @@ export default function StatsReportsPage() {
     } finally {
       setCashbookLoading(false);
     }
-  }, [token, username, cashbookFilters.rok, cashbookFilters.mesic, showToast]);
+  }, [token, username, filters.year, filters.dateFrom, filters.dateTo, showToast]);
 
   const loadCashbookEntries = useCallback(async (knihaId) => {
     if (!token || !username || !knihaId) return;
@@ -3074,11 +3085,11 @@ export default function StatsReportsPage() {
 
   // Load cashbook data when tab is active or filters change
   useEffect(() => {
-    if (activeTab === 'cashbook' && token && username) {
+    if ((activeTab === 'cashbook' || activeTab === 'spend') && token && username) {
       setCashbookEntries({}); // Reset při změně filtru
       loadCashbookData();
     }
-  }, [activeTab, token, username, cashbookFilters.rok, cashbookFilters.mesic, loadCashbookData]);
+  }, [activeTab, token, username, filters.year, filters.dateFrom, filters.dateTo, loadCashbookData]);
 
   // Po načtení dat automaticky načíst položky všech knih (pro LP grafy)
   useEffect(() => {
@@ -8440,6 +8451,132 @@ export default function StatsReportsPage() {
                           </div>
                         );
                       })}
+                          {/* POKLADNA – inline řádek, stejný styl jako ostatní typy financování */}
+                          {cashbookBooksToRender.length > 0 && (() => {
+                            const pokladnaOpen = expandedSpendFinancing.has('__pokladna__');
+                            const totalVydaje = cashbookData?.summary?.celkem_vydaje || 0;
+                            const totalPocet = cashbookData?.summary?.celkem_zaznamu || 0;
+                            return (
+                              <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => setExpandedSpendFinancing(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has('__pokladna__')) next.delete('__pokladna__'); else next.add('__pokladna__');
+                                    return next;
+                                  })}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: pokladnaOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{pokladnaOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    Pokladna
+                                  </span>
+                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{totalPocet} op.</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(totalVydaje)}</span>
+                                </div>
+                                {pokladnaOpen && (
+                                  <TableWrapper>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <Th style={{ width: '24px', textAlign: 'center' }} />
+                                          <Th>Pokladna</Th>
+                                          <ThC>Operací</ThC>
+                                          <ThR style={{ color: '#b91c1c' }}>Výdaje</ThR>
+                                          <ThR style={{ color: '#15803d' }}>Příjmy</ThR>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {cashbookBooksToRender.map(book => {
+                                          const bookKey = `spendPok_${book.mesic ? `m_${book.kniha_id}` : `y_${book.pokladna_id}`}`;
+                                          const bookOpen = expandedSpendUseks.has(bookKey);
+                                          const bookEntries = book.mesic
+                                            ? cashbookEntries[book.kniha_id]
+                                            : (book.mesice || []).flatMap(m => cashbookEntries[m.kniha_id] || []);
+                                          const nazev = book.pokladna_nazev || `Pokladna ${book.cislo_pokladny}`;
+                                          return (
+                                            <React.Fragment key={bookKey}>
+                                              <Tr
+                                                onClick={() => {
+                                                  setExpandedSpendUseks(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(bookKey)) next.delete(bookKey);
+                                                    else {
+                                                      next.add(bookKey);
+                                                      if (book.mesic && book.kniha_id && !cashbookEntries[book.kniha_id]) loadCashbookEntries(book.kniha_id);
+                                                      else if (!book.mesic && book.mesice) book.mesice.forEach(m => { if (m.kniha_id && !cashbookEntries[m.kniha_id]) loadCashbookEntries(m.kniha_id); });
+                                                    }
+                                                    return next;
+                                                  });
+                                                }}
+                                                style={{ cursor: 'pointer', background: bookOpen ? '#f0f9ff' : undefined }}
+                                              >
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{bookOpen ? '−' : '+'}</Td>
+                                                <Td>
+                                                  {nazev}
+                                                  {book.hlavni_uzivatel && <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: '0.4rem' }}>({book.hlavni_uzivatel})</span>}
+                                                </Td>
+                                                <TdC>{book.pocet_zaznamu || 0}</TdC>
+                                                <TdR style={{ color: '#b91c1c' }}>{fmtCurrency(book.celkove_vydaje || 0)}</TdR>
+                                                <TdR style={{ color: '#15803d' }}>{fmtCurrency(book.celkove_prijmy || 0)}</TdR>
+                                              </Tr>
+                                              {bookOpen && (
+                                                <tr>
+                                                  <td colSpan={5} style={{ padding: '0.5rem 0.5rem 0.75rem 2rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    {bookEntries === undefined ? (
+                                                      <div style={{ padding: '0.5rem', fontSize: '0.8rem', color: '#a8a29e', fontStyle: 'italic' }}>Načítám položky...</div>
+                                                    ) : !Array.isArray(bookEntries) || bookEntries.length === 0 ? (
+                                                      <div style={{ padding: '0.5rem', fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>Žádné záznamy</div>
+                                                    ) : (
+                                                      <TableWrapper style={{ margin: 0 }}>
+                                                        <Table>
+                                                          <thead>
+                                                            <tr>
+                                                              <Th style={{ width: '90px' }}>Datum</Th>
+                                                              <Th style={{ width: '100px' }}>Č. dokladu</Th>
+                                                              <Th>Obsah zápisu</Th>
+                                                              <Th style={{ width: '130px' }}>Komu / Od koho</Th>
+                                                              <ThR style={{ color: '#b91c1c', width: '100px' }}>Výdaj</ThR>
+                                                              <ThR style={{ color: '#15803d', width: '100px' }}>Příjem</ThR>
+                                                              <Th style={{ width: '100px' }}>LP kód</Th>
+                                                            </tr>
+                                                          </thead>
+                                                          <tbody>
+                                                            {bookEntries.map((entry, idx) => (
+                                                              <Tr key={entry.id || idx} style={{ fontSize: '0.8rem' }}>
+                                                                <Td>{entry.datum_zapisu ? new Date(entry.datum_zapisu).toLocaleDateString('cs-CZ') : '-'}</Td>
+                                                                <Td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{entry.cislo_dokladu || '-'}</Td>
+                                                                <Td style={{ maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.obsah_zapisu || '-'}</Td>
+                                                                <Td style={{ fontSize: '0.75rem' }}>{entry.komu_od_koho || '-'}</Td>
+                                                                <TdR style={{ color: entry.castka_vydaj > 0 ? '#b91c1c' : '#94a3b8', fontWeight: entry.castka_vydaj > 0 ? '600' : 'normal' }}>
+                                                                  {entry.castka_vydaj > 0 ? fmtCurrency(entry.castka_vydaj) : '-'}
+                                                                </TdR>
+                                                                <TdR style={{ color: entry.castka_prijem > 0 ? '#15803d' : '#94a3b8', fontWeight: entry.castka_prijem > 0 ? '600' : 'normal' }}>
+                                                                  {entry.castka_prijem > 0 ? fmtCurrency(entry.castka_prijem) : '-'}
+                                                                </TdR>
+                                                                <Td style={{ fontSize: '0.75rem' }}>
+                                                                  {entry.detail_items?.length > 0
+                                                                    ? entry.detail_items.map((item, ii) => <div key={ii}>{item.lp_kod} ({fmtCurrency(item.castka)})</div>)
+                                                                    : entry.lp_kod || '-'}
+                                                                </Td>
+                                                              </Tr>
+                                                            ))}
+                                                          </tbody>
+                                                        </Table>
+                                                      </TableWrapper>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </>
                       )}
                     </div>
@@ -9315,6 +9452,176 @@ export default function StatsReportsPage() {
                                       </Table>
                                     </TableWrapper>
                                     {renderPagination('spendSmlouvy_' + group.code, pagedDetail)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+
+                {false && (
+                  <SectionCard id="section-spendByCashbook">
+                    <SectionHeader>
+                      <SectionTitle>
+                        <FontAwesomeIcon icon={faCoins} style={{ marginRight: '0.5rem', opacity: 0.7 }} />
+                        Přehled čerpání – Pokladna
+                      </SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
+                        {!cashbookLoading && cashbookBooksToRender.length > 0 && (
+                          <>
+                            <ExpandAllBtn
+                              onClick={() => {
+                                const allKeys = cashbookBooksToRender.map(b =>
+                                  `spend_${b.mesic ? `month_${b.kniha_id}` : `year_${b.pokladna_id}_${b.rok}`}`
+                                );
+                                const allExp = allKeys.every(k => expandedCashbookRows.has(k));
+                                setExpandedCashbookRows(prev => {
+                                  const next = new Set(prev);
+                                  if (allExp) { allKeys.forEach(k => next.delete(k)); }
+                                  else {
+                                    allKeys.forEach(k => next.add(k));
+                                    cashbookBooksToRender.forEach(b => {
+                                      if (b.mesic && b.kniha_id && !cashbookEntries[b.kniha_id]) loadCashbookEntries(b.kniha_id);
+                                      else if (!b.mesic && b.mesice) b.mesice.forEach(m => { if (m.kniha_id && !cashbookEntries[m.kniha_id]) loadCashbookEntries(m.kniha_id); });
+                                    });
+                                  }
+                                  return next;
+                                });
+                              }}
+                              title="Rozbalit / sbalit všechny pokladny"
+                            >
+                              <FontAwesomeIcon icon={cashbookBooksToRender.every(b => expandedCashbookRows.has(`spend_${b.mesic ? `month_${b.kniha_id}` : `year_${b.pokladna_id}_${b.rok}`}`)) ? faMinus : faPlus} />
+                              {cashbookBooksToRender.every(b => expandedCashbookRows.has(`spend_${b.mesic ? `month_${b.kniha_id}` : `year_${b.pokladna_id}_${b.rok}`}`)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                            </ExpandAllBtn>
+                            <SectionBadge $tone="warn">{cashbookBooksToRender.length} pokladen</SectionBadge>
+                          </>
+                        )}
+                      </div>
+                    </SectionHeader>
+
+                    {/* Summary: celkové výdaje */}
+                    {cashbookData?.summary && !cashbookLoading && (
+                      <div style={{ padding: '0.75rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Celkové výdaje</span>
+                          <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#b91c1c', fontFamily: 'monospace', marginTop: '0.15rem' }}>{fmtCurrency(cashbookData.summary.celkem_vydaje || 0)}</div>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Celkové příjmy</span>
+                          <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#15803d', fontFamily: 'monospace', marginTop: '0.15rem' }}>{fmtCurrency(cashbookData.summary.celkem_prijmy || 0)}</div>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Operací celkem</span>
+                          <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#475569', fontFamily: 'monospace', marginTop: '0.15rem' }}>{(cashbookData.summary.celkem_zaznamu || 0).toLocaleString('cs-CZ')}</div>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginLeft: 'auto' }}>
+                          {cashbookFilters.mesic ? `${cashbookFilters.mesic}/${cashbookFilters.rok}` : `celý rok ${cashbookFilters.rok}`}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: cashbookBooksToRender.length > 0 ? '0.75rem' : 0 }}>
+                      {cashbookLoading ? null : cashbookBooksToRender.length === 0 ? (
+                        <EmptyState>Žádná data pokladny pro zvolené období</EmptyState>
+                      ) : (
+                        <>
+                          {/* Záhlaví sloupců */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px 190px', gap: '0.75rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div />
+                            <div>Pokladna</div>
+                            <div style={{ textAlign: 'right' }}>Operací</div>
+                            <div style={{ textAlign: 'right', color: '#b91c1c' }}>Výdaje</div>
+                            <div style={{ textAlign: 'right', color: '#15803d' }}>Příjmy</div>
+                          </div>
+
+                          {cashbookBooksToRender.map(book => {
+                            const expandKey = `spend_${book.mesic ? `month_${book.kniha_id}` : `year_${book.pokladna_id}_${book.rok}`}`;
+                            const isOpen = expandedCashbookRows.has(expandKey);
+                            const bookEntries = book.mesic
+                              ? cashbookEntries[book.kniha_id]
+                              : (book.mesice || []).flatMap(m => cashbookEntries[m.kniha_id] || []);
+                            const vydaje = book.celkove_vydaje || 0;
+                            const prijmy = book.celkove_prijmy || 0;
+                            const pocet = book.pocet_zaznamu || 0;
+                            const nazev = book.pokladna_nazev || `Pokladna ${book.cislo_pokladny}`;
+
+                            return (
+                              <div key={expandKey} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div
+                                  onClick={() => {
+                                    setExpandedCashbookRows(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(expandKey)) { next.delete(expandKey); }
+                                      else {
+                                        next.add(expandKey);
+                                        if (book.mesic && book.kniha_id && !cashbookEntries[book.kniha_id]) loadCashbookEntries(book.kniha_id);
+                                        else if (!book.mesic && book.mesice) book.mesice.forEach(m => { if (m.kniha_id && !cashbookEntries[m.kniha_id]) loadCashbookEntries(m.kniha_id); });
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: isOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{isOpen ? '−' : '+'}</span>
+                                  <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {nazev}
+                                    {book.hlavni_uzivatel && <span style={{ fontWeight: '400', color: '#64748b', fontSize: '0.8rem', marginLeft: '0.5rem' }}>({book.hlavni_uzivatel})</span>}
+                                    {!book.mesic && book.mesice && <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: '0.4rem' }}>• {book.mesice.length} měs.</span>}
+                                  </span>
+                                  <SectionBadge $tone="info" style={{ textAlign: 'right', justifySelf: 'end' }}>{pocet}</SectionBadge>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#b91c1c', textAlign: 'right', fontWeight: '600' }}>−{fmtCurrency(vydaje)}</span>
+                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#15803d', textAlign: 'right', fontWeight: '600' }}>+{fmtCurrency(prijmy)}</span>
+                                </div>
+
+                                {isOpen && (
+                                  <div style={{ padding: '0.75rem 1rem 1rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                                    {bookEntries === undefined ? (
+                                      <div style={{ padding: '1rem', textAlign: 'center', color: '#a8a29e', fontSize: '0.875rem', fontStyle: 'italic' }}>Načítám položky...</div>
+                                    ) : !Array.isArray(bookEntries) || bookEntries.length === 0 ? (
+                                      <div style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem', fontStyle: 'italic' }}>Žádné záznamy</div>
+                                    ) : (
+                                      <TableWrapper style={{ margin: 0 }}>
+                                        <Table>
+                                          <thead>
+                                            <tr>
+                                              <Th style={{ width: '95px' }}>Datum</Th>
+                                              <Th style={{ width: '110px' }}>Č. dokladu</Th>
+                                              <Th>Obsah zápisu</Th>
+                                              <Th style={{ width: '140px' }}>Komu / Od koho</Th>
+                                              <ThR style={{ color: '#b91c1c', width: '110px' }}>Výdaj</ThR>
+                                              <ThR style={{ color: '#15803d', width: '110px' }}>Příjem</ThR>
+                                              <Th style={{ width: '110px' }}>LP kód</Th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {bookEntries.map((entry, idx) => (
+                                              <Tr key={entry.id || idx} style={{ fontSize: '0.8rem' }}>
+                                                <Td>{entry.datum_zapisu ? new Date(entry.datum_zapisu).toLocaleDateString('cs-CZ') : '-'}</Td>
+                                                <Td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{entry.cislo_dokladu || '-'}</Td>
+                                                <Td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.obsah_zapisu || '-'}</Td>
+                                                <Td style={{ fontSize: '0.75rem' }}>{entry.komu_od_koho || '-'}</Td>
+                                                <TdR style={{ color: entry.castka_vydaj > 0 ? '#b91c1c' : '#94a3b8', fontWeight: entry.castka_vydaj > 0 ? '600' : 'normal' }}>
+                                                  {entry.castka_vydaj > 0 ? fmtCurrency(entry.castka_vydaj) : '-'}
+                                                </TdR>
+                                                <TdR style={{ color: entry.castka_prijem > 0 ? '#15803d' : '#94a3b8', fontWeight: entry.castka_prijem > 0 ? '600' : 'normal' }}>
+                                                  {entry.castka_prijem > 0 ? fmtCurrency(entry.castka_prijem) : '-'}
+                                                </TdR>
+                                                <Td style={{ fontSize: '0.75rem' }}>
+                                                  {entry.detail_items?.length > 0
+                                                    ? entry.detail_items.map((item, ii) => <div key={ii}>{item.lp_kod} ({fmtCurrency(item.castka)})</div>)
+                                                    : entry.lp_kod || '-'}
+                                                </Td>
+                                              </Tr>
+                                            ))}
+                                          </tbody>
+                                        </Table>
+                                      </TableWrapper>
+                                    )}
                                   </div>
                                 )}
                               </div>
