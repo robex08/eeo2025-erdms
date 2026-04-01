@@ -16,7 +16,7 @@ const { DEBOUNCE_DELAY, STORAGE_PREFIX } = ORDERS_V3_CONFIG;
  * @param {number} userId - User ID pro localStorage keys
  * @returns {Object} State a setter funkce
  */
-export function useOrdersV3State(userId) {
+export function useOrdersV3State(userId, initialDashboardFilter = '') {
   // ⚠️ MIGRACE: Vyčistit staré kombinované filtry při prvním načtení
   useEffect(() => {
     if (!userId) return;
@@ -101,11 +101,19 @@ export function useOrdersV3State(userId) {
       });
       
       // Merge: default → backend → localStorage (localStorage má nejvyšší prioritu pro lokální změny)
-      return { 
+      const merged = { 
         ...getDefaultPreferences(), 
         ...(backendPreferences || {}),
         ...localStoragePrefs 
       };
+      // 🎯 Dashboard proklik - override dashboardFilters PŘED prvním renderem (bez blinku)
+      if (initialDashboardFilter) {
+        merged.dashboardFilters = {
+          ...merged.dashboardFilters,
+          filter_status: initialDashboardFilter,
+        };
+      }
+      return merged;
     } catch {
       return getDefaultPreferences();
     }

@@ -807,6 +807,7 @@ function Orders25ListV3() {
     hideProgress,
     sorting: sorting,
     globalFilter: debouncedGlobalFilter, // ✅ Použití debounced hodnoty pro API requesty
+    initialDashboardFilter: location.state?.dashboardFilter || '', // 🎯 Dashboard proklik - bez blinku
   });
 
   // ✅ VIRTUALIZATION: Automatic based na data size (declared after orders)
@@ -1101,13 +1102,10 @@ function Orders25ListV3() {
     return filters;
   }, [columnFilters, dashboardFilters, globalFilter]);
 
-  // 🎯 Effect pro nastavení filtru z Dashboard prokliku (Zobrazit vše)
+  // 🎯 Effect pro vyčištění dashboard filtru z location.state (filtr je již inicializován v useOrdersV3State)
   useEffect(() => {
     const dashboardFilter = location.state?.dashboardFilter;
     if (!dashboardFilter) return;
-
-    // Nastavit dashboard filtr
-    handleDashboardFilterChange(dashboardFilter);
 
     // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
     const { dashboardFilter: _df, ...rest } = location.state || {};

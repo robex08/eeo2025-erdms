@@ -68,7 +68,8 @@ export function useOrdersV3({
   showProgress, 
   hideProgress,
   sorting = [],
-  globalFilter = ''
+  globalFilter = '',
+  initialDashboardFilter = ''
 }) {
   const navigate = useNavigate();
   
@@ -100,7 +101,7 @@ export function useOrdersV3({
     setColumnOrder,
     expandedRows,
     setExpandedRows,
-  } = useOrdersV3State(userId);
+  } = useOrdersV3State(userId, initialDashboardFilter);
   
   // ============================================================================
   // STATE - Pagination (sync s API response)

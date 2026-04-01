@@ -1631,13 +1631,16 @@ const Invoices25List = () => {
   // Tracking které Custom Select fields byly "touched"
   const [touchedSelectFields, setTouchedSelectFields] = useState(new Set());
   
+  // 🎯 Dashboard proklik - inicializace filtru PŘED prvním renderem (bez blinku)
+  const initialDashboardFilter = location.state?.dashboardFilter || '';
+
   // Filters state pro dashboard cards
   const [filters, setFilters] = useState(savedState?.filters || {
-    filter_status: '' // 'paid', 'unpaid', 'overdue', 'without_order', 'my_invoices', 'with_note'
+    filter_status: initialDashboardFilter || '' // 'paid', 'unpaid', 'overdue', 'without_order', 'my_invoices', 'with_note'
   });
   
   // Active filter status pro vizuální označení aktivní dlaždice
-  const [activeFilterStatus, setActiveFilterStatus] = useState(savedState?.activeFilterStatus || null);
+  const [activeFilterStatus, setActiveFilterStatus] = useState(savedState?.activeFilterStatus || initialDashboardFilter || null);
   
   // 🔍 Globální vyhledávání (nový state)
   const [globalSearchTerm, setGlobalSearchTerm] = useState(savedState?.globalSearchTerm || '');
@@ -2758,15 +2761,10 @@ const Invoices25List = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadData]); // showOnlyInactive is already in loadData dependencies
 
-  // 🎯 Effect pro nastavení filtru z Dashboard prokliku (Zobrazit vše)
+  // 🎯 Effect pro vyčištění dashboard filtru z location.state (filtr je již inicializován v useState)
   useEffect(() => {
     const dashboardFilter = location.state?.dashboardFilter;
     if (!dashboardFilter) return;
-
-    // Nastavit filtr přes handleDashboardCardClick
-    setActiveFilterStatus(dashboardFilter);
-    setFilters(prev => ({ ...prev, filter_status: dashboardFilter }));
-    setCurrentPage(1);
 
     // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
     const { dashboardFilter: _df, ...rest } = location.state || {};
