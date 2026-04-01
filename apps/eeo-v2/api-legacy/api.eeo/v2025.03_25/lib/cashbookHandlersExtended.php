@@ -1519,33 +1519,43 @@ function handle_cashbook_overview_list_post($config, $input) {
         
         error_log('[CASHBOOK_OVERVIEW] Autentizace OK pro user ID: ' . $userData['id']);
         
-        // 2. Kontrola oprávnění - DOČASNĚ VYPNUTO PRO TEST
-        // POZOR: V produkci POVOLIT!
-        $hasPermission = true; // DOČASNĚ: automaticky povolit
-        
-        /*
-        // Admin má automaticky přístup
+        // 2. Kontrola oprávnění pro REPORTOVACÍ modul Stats & Reports
+        // Vyžaduje CASHBOOK_REPORTS_VIEW nebo CASHBOOK_REPORTS_MANAGE
+        // (NE CASH_BOOK_READ_OWN – to je pro běžnou práci s pokladnami)
+        $hasPermission = false;
         if (isset($userData['is_admin']) && $userData['is_admin'] == 1) {
             $hasPermission = true;
         } else {
-            // Zkontrolovat specifické oprávnění
+            // Kontrola přes nový systém práv (25_prava + 25_role_prava + 25_uzivatele_role)
             $stmt = $db->prepare("
-                SELECT COUNT(*) as cnt
-                FROM role_prava rp
-                JOIN uzivatel_role ur ON rp.role_id = ur.role_id
-                JOIN prava p ON rp.pravo_id = p.id
-                WHERE ur.uzivatel_id = ?
-                  AND p.kod_prava IN ('CASHBOOK_OVERVIEW_VIEW', 'CASH_BOOK_VIEW', 'CASH_BOOK_MANAGE')
+                SELECT COUNT(*) as count
+                FROM " . TBL_PRAVA . " p
+                WHERE p.kod_prava IN ('CASHBOOK_REPORTS_VIEW', 'CASHBOOK_REPORTS_MANAGE', 'CASHBOOK_REPORTS_EXPORT')
+                AND p.aktivni = 1
+                AND (
+                    p.id IN (
+                        -- Přímá práva uživatele (user_id > 0, role_id = -1)
+                        SELECT rp.pravo_id 
+                        FROM " . TBL_ROLE_PRAVA . " rp 
+                        WHERE rp.user_id = ? AND rp.aktivni = 1
+                    )
+                    OR p.id IN (
+                        -- Práva z rolí (user_id = -1, role_id = role.id)
+                        SELECT rp.pravo_id 
+                        FROM " . TBL_UZIVATELE_ROLE . " ur
+                        JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                        WHERE ur.uzivatel_id = ? AND rp.aktivni = 1
+                    )
+                )
             ");
-            $stmt->execute(array($userData['id']));
+            $stmt->execute(array($userData['id'], $userData['id']));
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            $hasPermission = $result['cnt'] > 0;
+            $hasPermission = $result['count'] > 0;
         }
-        */
         
         if (!$hasPermission) {
             error_log('[CASHBOOK_OVERVIEW] Nedostatečná oprávnění pro user ID: ' . $userData['id']);
-            return api_error(403, 'Nedostatečná oprávnění - vyžadováno CASHBOOK_OVERVIEW_VIEW');
+            return api_error(403, 'Nedostatečná oprávnění – vyžadováno CASHBOOK_REPORTS_VIEW nebo CASHBOOK_REPORTS_MANAGE');
         }
         
         // 3. Načíst filtry
@@ -1823,26 +1833,37 @@ function handle_cashbook_overview_entries_post($config, $input) {
             return api_error(401, 'Neplatný token');
         }
         
-        // 2. Kontrola oprávnění
+        // 2. Kontrola oprávnění pro REPORTOVACÍ modul Stats & Reports
         $hasPermission = false;
         if (isset($userData['is_admin']) && $userData['is_admin'] == 1) {
             $hasPermission = true;
         } else {
             $stmt = $db->prepare("
-                SELECT COUNT(*) as cnt
-                FROM role_prava rp
-                JOIN uzivatel_role ur ON rp.role_id = ur.role_id
-                JOIN prava p ON rp.pravo_id = p.id
-                WHERE ur.uzivatel_id = ?
-                  AND p.kod_prava IN ('CASHBOOK_OVERVIEW_VIEW', 'CASH_BOOK_VIEW', 'CASH_BOOK_MANAGE')
+                SELECT COUNT(*) as count
+                FROM " . TBL_PRAVA . " p
+                WHERE p.kod_prava IN ('CASHBOOK_REPORTS_VIEW', 'CASHBOOK_REPORTS_MANAGE', 'CASHBOOK_REPORTS_EXPORT')
+                AND p.aktivni = 1
+                AND (
+                    p.id IN (
+                        SELECT rp.pravo_id 
+                        FROM " . TBL_ROLE_PRAVA . " rp 
+                        WHERE rp.user_id = ? AND rp.aktivni = 1
+                    )
+                    OR p.id IN (
+                        SELECT rp.pravo_id 
+                        FROM " . TBL_UZIVATELE_ROLE . " ur
+                        JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                        WHERE ur.uzivatel_id = ? AND rp.aktivni = 1
+                    )
+                )
             ");
-            $stmt->execute(array($userData['id']));
+            $stmt->execute(array($userData['id'], $userData['id']));
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            $hasPermission = $result['cnt'] > 0;
+            $hasPermission = $result['count'] > 0;
         }
         
         if (!$hasPermission) {
-            return api_error(403, 'Nedostatečná oprávnění');
+            return api_error(403, 'Nedostatečná oprávnění – vyžadováno CASHBOOK_REPORTS_VIEW');
         }
         
         // 3. Načíst parametry
