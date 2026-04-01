@@ -11420,8 +11420,8 @@ export default function StatsReportsPage() {
                             <div style={{ fontSize: '0.75rem', color: '#1e3a8a', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'help' }}>Konečný stav</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e40af', fontFamily: 'monospace' }}>{fmtCurrency(s.celkovy_koncovy_stav || 0)}</div>
                           </div>
-                          <div title={`Celkový počet dokladů (řádků) ve všech pokladních knihách za ${obdobiTxt}.`} style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '0.75rem', color: '#1e3a8a', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'help' }}>Počet položek</div>
+                          <div title={`Celkový počet dokladů (operací) ve všech pokladních knihách za ${obdobiTxt}.`} style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.75rem', color: '#1e3a8a', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'help' }}>Počet operací</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#475569', fontFamily: 'monospace' }}>{(s.celkem_zaznamu || 0).toLocaleString('cs-CZ')}</div>
                           </div>
                         </div>
