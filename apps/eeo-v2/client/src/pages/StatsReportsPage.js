@@ -1816,7 +1816,7 @@ const getContractLimit = (contract) => {
 };
 
 const getContractSpent = (contract) => {
-  const spent = parseFloat(contract?.cerpano || contract?.celkem_cerpano || 0);
+  const spent = parseFloat(contract?.cerpano_celkem || contract?.cerpano || contract?.celkem_cerpano || 0);
   return Number.isNaN(spent) ? 0 : spent;
 };
 
@@ -11948,8 +11948,8 @@ export default function StatsReportsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         {/* Zobrazení aktuálního období */}
                         <SectionBadge $tone="info" style={{ fontSize: '0.85rem', fontWeight: '700', padding: '0.35rem 0.75rem' }}>
-                          {cashbookFilters.mesic 
-                            ? `${new Date(2000, cashbookFilters.mesic - 1, 1).toLocaleDateString('cs-CZ', { month: 'long' }).charAt(0).toUpperCase() + new Date(2000, cashbookFilters.mesic - 1, 1).toLocaleDateString('cs-CZ', { month: 'long' }).slice(1)} ${cashbookFilters.rok}` 
+                          {cashbookFilters.mesic
+                            ? `${['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'][cashbookFilters.mesic - 1]} ${cashbookFilters.rok}`
                             : `Celý rok ${cashbookFilters.rok}`}
                         </SectionBadge>
                         {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
@@ -12170,8 +12170,8 @@ export default function StatsReportsPage() {
                                           return (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
                                               {sorted.map((m, i) => {
-                                                const zamceno = !!m.zamknuta_spravcem_kdy;
-                                                const uzavrena = m.stav_knihy === 'uzavrena';
+                                                const zamceno = m.stav_knihy === 'zamknuta_spravcem' || !!m.zamknuta_spravcem_kdy;
+                                                const uzavrena = m.stav_knihy === 'uzavrena_uzivatelem';
                                                 const color = zamceno ? '#7c3aed' : uzavrena ? '#64748b' : '#15803d';
                                                 const bg = zamceno ? '#ede9fe' : uzavrena ? '#f1f5f9' : '#dcfce7';
                                                 const title = zamceno ? 'Zamčeno správcem' : uzavrena ? 'Uzavřeno uživatelem' : 'Aktivní (otevřeno)';
@@ -12196,12 +12196,12 @@ export default function StatsReportsPage() {
                                         }
                                         // Měsíční řádek
                                         const stav = book.stav_knihy;
-                                        const zamceno = !!book.zamknuta_spravcem_kdy;
+                                        const zamceno = stav === 'zamknuta_spravcem' || !!book.zamknuta_spravcem_kdy;
                                         return (
                                           <>
                                             {zamceno && <SectionBadge $tone="warning">Zamčeno</SectionBadge>}
                                             {!zamceno && stav === 'aktivni' && <SectionBadge $tone="success">Aktivní</SectionBadge>}
-                                            {!zamceno && stav === 'uzavrena' && <SectionBadge $tone="neutral">Uzavřená</SectionBadge>}
+                                            {!zamceno && stav === 'uzavrena_uzivatelem' && <SectionBadge $tone="neutral">Uzavřená</SectionBadge>}
                                             {!zamceno && !stav && <SectionBadge $tone="neutral">-</SectionBadge>}
                                             {book.lp_kod_povinny != null && (
                                               <div style={{ marginTop: '0.25rem' }}>
@@ -12246,7 +12246,8 @@ export default function StatsReportsPage() {
                                                         <span style={{ color: '#b91c1c' }}>−{fmtCurrency(month.celkove_vydaje)}</span>
                                                         <span style={{ color: '#1e40af', fontWeight: '600' }}>{fmtCurrency(month.koncovy_stav)}</span>
                                                         {month.stav_knihy === 'aktivni' && <SectionBadge $tone="success" style={{ fontSize: '0.75rem' }}>Aktivní</SectionBadge>}
-                                                        {month.stav_knihy === 'uzavrena' && <SectionBadge $tone="neutral" style={{ fontSize: '0.75rem' }}>Uzavřená</SectionBadge>}
+                                                        {month.stav_knihy === 'uzavrena_uzivatelem' && <SectionBadge $tone="neutral" style={{ fontSize: '0.75rem' }}>Uzavřená</SectionBadge>}
+                                                        {month.stav_knihy === 'zamknuta_spravcem' && <SectionBadge $tone="warning" style={{ fontSize: '0.75rem' }}>Zamčeno</SectionBadge>}
                                                       </div>
                                                     </div>
                                                     {/* Položky měsíce */}

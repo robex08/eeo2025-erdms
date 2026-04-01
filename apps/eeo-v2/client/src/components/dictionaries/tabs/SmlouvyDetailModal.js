@@ -19,7 +19,8 @@ import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faTimes, faEdit, faSyncAlt, faSpinner, faFileContract,
-  faBuilding, faCalendar, faMoneyBillWave, faChartLine, faExclamationTriangle, faBolt
+  faBuilding, faCalendar, faMoneyBillWave, faChartLine, faExclamationTriangle, faBolt,
+  faCheckCircle, faTimesCircle, faTriangleExclamation, faLock, faUnlock
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -209,39 +210,124 @@ const ProgressSection = styled.div`
 const ProgressTitle = styled.div`
   font-size: 0.9rem;
   color: #64748b;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
 `;
 
-const ProgressBar = styled.div`
+// ── Jezevčík progress bar styled komponenty ──────────────────────────────────
+
+const JezWrap = styled.div`
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  height: 20px;
-  background: #e2e8f0;
-  border-radius: 10px;
-  overflow: hidden;
-  position: relative;
-  margin-bottom: 0.625rem;
 `;
 
-const ProgressFill = styled.div`
-  height: 100%;
-  background: ${props => {
-    const percent = parseFloat(props.$percent) || 0;
-    if (percent >= 90) return 'linear-gradient(to right, #dc2626, #ef4444)';
-    if (percent >= 75) return 'linear-gradient(to right, #d97706, #f59e0b)';
-    if (percent >= 50) return 'linear-gradient(to right, #2563eb, #3b82f6)';
-    return 'linear-gradient(to right, #059669, #10b981)';
-  }};
-  width: ${props => Math.min(parseFloat(props.$percent) || 0, 100)}%;
-  transition: width 0.5s ease;
+const JezHeader = styled.div`
   display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 4px;
+`;
+
+const JezBarOuter = styled.div`
+  position: relative;
+  height: 24px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+
+  &:hover .jez-month-num {
+    color: rgba(148, 163, 184, 0.8) !important;
+  }
+`;
+
+const JezBarFill = styled.div`
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  z-index: 10;
+  transition: width 0.7s ease;
+  background: ${props => props.$color || '#10b981'};
+  width: ${props => Math.min(props.$percent || 0, 100)}%;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.1);
+  }
+`;
+
+const JezBarPlanned = styled.div`
+  position: absolute;
+  top: 0;
+  height: 100%;
+  z-index: 5;
+  transition: width 0.7s ease, left 0.7s ease;
+  opacity: 0.4;
+  background-color: ${props => props.$color || '#86efac'};
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,0.3) 25%, transparent 25%, transparent 50%,
+    rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.3) 75%, transparent 75%, transparent
+  );
+  background-size: 8px 8px;
+  left: ${props => Math.min(props.$left || 0, 100)}%;
+  width: ${props => {
+    const maxW = 100 - Math.min(props.$left || 0, 100);
+    return Math.min(props.$percent || 0, maxW);
+  }}%;
+`;
+
+const JezTargetLine = styled.div`
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: rgba(100,116,139,0.6);
+  z-index: 30;
+  left: ${props => props.$percent || 0}%;
+  box-shadow: 0 0 8px rgba(0,0,0,0.1);
+`;
+
+const JezLegend = styled.div`
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 600;
-  font-size: 0.85rem;
+  margin-top: 3px;
+`;
+
+const JezStatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 7px;
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid;
+  ${props => {
+    if (props.$level === 'critical') return 'background:#fef2f2;color:#dc2626;border-color:#fecaca;';
+    if (props.$level === 'warning') return 'background:#fff7ed;color:#ea580c;border-color:#fed7aa;';
+    return 'background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;';
+  }}
+`;
+
+const BezStropuBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 7px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  background: #f0f9ff;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
 `;
 
 const StatsGrid = styled.div`
@@ -524,29 +610,145 @@ const SmlouvyDetailModal = ({ smlouva, onClose, onEdit }) => {
         )}
 
         <Body>
-          {/* Progress Section */}
+          {/* Progress Section – Jezevčík */}
           <ProgressSection>
             <ProgressTitle>
-              <span>Čerpání smlouvy</span>
-              <span style={{ fontWeight: 600, fontSize: '1rem' }}>
-                {formatCurrency(smlouvaData.cerpano_celkem)} / {formatCurrency(smlouvaData.hodnota_s_dph)}
+              <span style={{ fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {smlouvaData.hodnota_s_dph > 0
+                  ? <><FontAwesomeIcon icon={faLock} style={{ fontSize: '0.75rem', color: '#64748b' }} /> Čerpání smlouvy s DPH</>
+                  : <><FontAwesomeIcon icon={faUnlock} style={{ fontSize: '0.75rem', color: '#0369a1' }} /> Smlouva bez zastropování</>
+                }
               </span>
+              {smlouvaData.hodnota_s_dph > 0 && (
+                <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace' }}>
+                  {formatCurrency(smlouvaData.cerpano_celkem)} z {formatCurrency(smlouvaData.hodnota_s_dph)}
+                </span>
+              )}
             </ProgressTitle>
-            <ProgressBar>
-              <ProgressFill $percent={smlouvaData.procento_cerpani}>
-                {parseFloat(smlouvaData.procento_cerpani || 0).toFixed(1)}%
-              </ProgressFill>
-            </ProgressBar>
-            <StatsGrid>
+
+            {smlouvaData.hodnota_s_dph > 0 ? (() => {
+              const limit = smlouvaData.hodnota_s_dph;
+              const spent = smlouvaData.cerpano_faktury_dokoncene ?? smlouvaData.cerpano_celkem ?? 0;
+              const spentPct = (spent / limit) * 100;
+
+              // "V procesu": přesná hodnota z API (faktury v procesu + obj bez faktury)
+              const inProcessAmount = smlouvaData.cerpano_v_procesu ?? 0;
+              const inProcessPct = Math.max(0, Math.min((inProcessAmount / limit) * 100, 100 - Math.min(spentPct, 100)));
+
+              // Cíl k datu – z platnosti smlouvy nebo aktuální měsíc
+              const calcTarget = () => {
+                const platnostDo = smlouvaData.platnost_do;
+                if (!platnostDo) {
+                  const m = new Date().getMonth() + 1;
+                  return Math.round((m / 12) * 100);
+                }
+                const now = new Date();
+                const end = new Date(platnostDo);
+                if (now >= end) return 100;
+                const start = smlouvaData.platnost_od ? new Date(smlouvaData.platnost_od) : new Date(end.getFullYear(), 0, 1);
+                const total = end - start;
+                if (total <= 0) return 100;
+                return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
+              };
+              const targetPct = calcTarget();
+
+              // Stav
+              const totalPct = spentPct + inProcessPct;
+              const isCritical = spentPct >= 100 || totalPct > targetPct * 2;
+              const isWarning = !isCritical && totalPct > targetPct * 1.3;
+              const level = isCritical ? 'critical' : isWarning ? 'warning' : 'ok';
+              const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+              const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+              const currentMonth = new Date().getMonth();
+
+              return (
+                <JezWrap>
+                  <JezHeader>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                      <span style={{ fontSize: '1.15rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
+                        {spentPct.toFixed(1)}%
+                      </span>
+                      <span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>
+                        Čerpáno s DPH
+                      </span>
+                      {inProcessPct > 0 && (
+                        <span style={{ fontSize: '0.55rem', fontWeight: 700, color: '#64748b' }}>
+                          + {(inProcessPct).toFixed(1)}% v procesu
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                      <span style={{ display: 'block', fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#64748b' }}>
+                        Cíl k datu
+                      </span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>{targetPct}%</span>
+                    </div>
+                  </JezHeader>
+
+                  <JezBarOuter>
+                    {/* Měsíční rastr */}
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                      {Array.from({ length: 12 }).map((_, i) => (
+                        <div key={i} style={{
+                          flex: 1,
+                          borderRight: '1px solid rgba(203,213,225,0.3)',
+                          background: i === currentMonth ? 'rgba(100,116,139,0.05)' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          <span className="jez-month-num" style={{ fontSize: '0.4rem', fontWeight: 700, color: 'transparent', transition: 'color 0.2s ease' }}>
+                            {i + 1}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <JezTargetLine $percent={targetPct} />
+                    <JezBarFill $percent={spentPct} $color={barColor} />
+                    {inProcessPct > 0 && (
+                      <JezBarPlanned $left={Math.min(spentPct, 100)} $percent={inProcessPct} $color={barColorLight} />
+                    )}
+                  </JezBarOuter>
+
+                  <JezLegend>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: barColor, display: 'inline-block' }} />
+                        <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>Faktury</span>
+                      </span>
+                      {inProcessPct > 0 && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: barColorLight, opacity: 0.7, display: 'inline-block' }} />
+                          <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                        </span>
+                      )}
+                    </div>
+                    <JezStatusBadge $level={level}>
+                      {level === 'critical'
+                        ? <><FontAwesomeIcon icon={faTimesCircle} /> Kritické</>
+                        : level === 'warning'
+                          ? <><FontAwesomeIcon icon={faTriangleExclamation} /> Pozor</>
+                          : <><FontAwesomeIcon icon={faCheckCircle} /> V normě</>
+                      }
+                    </JezStatusBadge>
+                  </JezLegend>
+                </JezWrap>
+              );
+            })() : (
+              <BezStropuBadge>
+                <FontAwesomeIcon icon={faUnlock} />
+                Tato smlouva nemá stanovený finanční limit – čerpání není zast­ropováno
+              </BezStropuBadge>
+            )}
+
+            <StatsGrid style={{ marginTop: '0.75rem' }}>
               <StatCard>
                 <StatValue $color="#3b82f6">
                   {formatCurrency(smlouvaData.cerpano_celkem)}
                 </StatValue>
-                <StatLabel>Čerpáno</StatLabel>
+                <StatLabel>Čerpáno (s DPH)</StatLabel>
               </StatCard>
               <StatCard>
-                <StatValue $color="#10b981">
-                  {formatCurrency(smlouvaData.zbyva)}
+                <StatValue $color={smlouvaData.zbyva != null && smlouvaData.zbyva < 0 ? '#dc2626' : '#10b981'}>
+                  {smlouvaData.zbyva != null ? formatCurrency(smlouvaData.zbyva) : '—'}
                 </StatValue>
                 <StatLabel>Zbývá</StatLabel>
               </StatCard>

@@ -2758,6 +2758,23 @@ const Invoices25List = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadData]); // showOnlyInactive is already in loadData dependencies
 
+  // 🎯 Effect pro nastavení filtru z Dashboard prokliku (Zobrazit vše)
+  useEffect(() => {
+    const dashboardFilter = location.state?.dashboardFilter;
+    if (!dashboardFilter) return;
+
+    // Nastavit filtr přes handleDashboardCardClick
+    setActiveFilterStatus(dashboardFilter);
+    setFilters(prev => ({ ...prev, filter_status: dashboardFilter }));
+    setCurrentPage(1);
+
+    // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
+    const { dashboardFilter: _df, ...rest } = location.state || {};
+    const newState = Object.keys(rest).length > 0 ? rest : null;
+    navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: newState });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Jen při prvním renderování
+
   // ⚠️ DEPRECATED: Načtení stavů kontrol - již se nepoužívá!
   // Backend nyní vrací check_status přímo v seznamu faktur
   // Tento useEffect ponecháno pouze pro případ toggle kontroly (refresh jedné faktury)

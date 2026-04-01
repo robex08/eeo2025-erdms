@@ -1101,6 +1101,21 @@ function Orders25ListV3() {
     return filters;
   }, [columnFilters, dashboardFilters, globalFilter]);
 
+  // 🎯 Effect pro nastavení filtru z Dashboard prokliku (Zobrazit vše)
+  useEffect(() => {
+    const dashboardFilter = location.state?.dashboardFilter;
+    if (!dashboardFilter) return;
+
+    // Nastavit dashboard filtr
+    handleDashboardFilterChange(dashboardFilter);
+
+    // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
+    const { dashboardFilter: _df, ...rest } = location.state || {};
+    const newState = Object.keys(rest).length > 0 ? rest : null;
+    navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: newState });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Jen při prvním renderování
+
   // 🎯 Effect pro highlight a scroll na objednávku po návratu z editace
   useEffect(() => {
     const orderIdFromEdit = location.state?.highlightOrderId || location.state?.orderIdFromEdit;

@@ -49,6 +49,7 @@ const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 const StatsReportsPage = lazy(() => import('./pages/StatsReportsPage'));
 const CerpaniPage = lazy(() => import('./pages/CerpaniPage'));
 const MajetekOverviewPage = lazy(() => import('./pages/MajetekOverviewPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
@@ -1019,6 +1020,7 @@ function App() {
                   ) && <Route path="/address-book" element={<AddressBookPage />} />}
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
+                  {isLoggedIn && <Route path="/dashboard" element={<DashboardPage />} />}
                   {isLoggedIn && <Route path="/help" element={<HelpPage />} />}
                   {isLoggedIn && <Route path="/about" element={<About />} />}
                   {isLoggedIn && <Route path="/change-password" element={<ChangePasswordPage />} />}

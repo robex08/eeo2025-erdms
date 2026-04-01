@@ -320,6 +320,9 @@ require_once __DIR__ . '/v2025.03_25/lib/spisovkaZpracovaniEndpoints.php';
 // MANUALS - PDF manuály a nápověda
 require_once __DIR__ . '/v2025.03_25/lib/manualsHandlers.php';
 
+// DASHBOARD - Uživatelský dashboard s widgety
+require_once __DIR__ . '/v2025.03_25/lib/dashboardHandlers.php';
+
 // === CORS PREFLIGHT HANDLER - Handle OPTIONS requests first ===
 // This allows localhost:3000 development to work properly
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -3636,6 +3639,16 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+        }
+        break;
+
+    // === DASHBOARD - Uživatelský dashboard ===
+    case 'dashboard/data':
+        if ($request_method === 'POST') {
+            handle_dashboard_data($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
 

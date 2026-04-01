@@ -10,9 +10,68 @@ import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Cale
 import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
 
+// 🇨🇿 České názvy stavů faktur
+const INVOICE_STATE_LABELS = {
+  ZAEVIDOVANA: 'Zaevidovaná',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  V_RESENI: 'V řešení',
+  PREDANA_PO: 'Předaná PO',
+  K_ZAPLACENI: 'K zaplacení',
+  ZAPLACENO: 'Zaplaceno',
+  DOKONCENA: 'Dokončená',
+  STORNO: 'Storno',
+};
+
+// Helper funkce pro převod kódu na český název
+const getInvoiceStateLabel = (code) => INVOICE_STATE_LABELS[code] || code;
+
 const spinAnimation = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+`;
+
+// Loading Overlay Components  
+const LoadingOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(248, 250, 252, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.5s ease-in-out;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+`;
+
+const LoadingSpinner = styled.div`
+  width: 64px;
+  height: 64px;
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #7c3aed;
+  border-radius: 50%;
+  animation: ${spinAnimation} 1s linear infinite;
+  margin-bottom: 1.5rem;
+`;
+
+const LoadingMessage = styled.div`
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.3s ease-in-out;
+`;
+
+const LoadingSubtext = styled.div`
+  font-size: 0.875rem;
+  color: #64748b;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.3s ease-in-out 0.1s;
 `;
 
 const Container = styled.div`
@@ -2199,11 +2258,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
           <JezevcikLegendItems>
             <JezevcikLegendItem>
               <JezevcikLegendDot $color={barColor} />
-              <JezevcikLegendText>Utraceno</JezevcikLegendText>
+              <JezevcikLegendText>Dokončeno</JezevcikLegendText>
             </JezevcikLegendItem>
             <JezevcikLegendItem>
               <JezevcikLegendDot $color={barColorLight} $opacity={0.6} />
-              <JezevcikLegendText>Rezervace</JezevcikLegendText>
+              <JezevcikLegendText>V procesu</JezevcikLegendText>
             </JezevcikLegendItem>
           </JezevcikLegendItems>
           {level === 'critical' && (
@@ -2261,7 +2320,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <th>Kategorie</th>
                 <th>Název účtu</th>
                 <th>Celkový limit</th>
-                <th title="Skutečně (potvrzeno) / Plánováno (odeslané obj.) / Požadováno (ve schvalování)">Moje čerpání</th>
+                <th title="Dokončeno (potvrzeno) / V procesu (odeslané obj. + ve schvalování)">Moje čerpání</th>
                 <th>% z limitu</th>
                 <th>Zbývá</th>
                 <th>Objednávky</th>
@@ -2293,16 +2352,12 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     <td>
                       <ThreeTypeAmountContainer>
                         <ThreeTypeAmountRow title="Potvrzené faktury s věcnou správností">
-                          <ThreeTypeLabel style={{ color: '#10b981' }}>Skutečně:</ThreeTypeLabel>
+                          <ThreeTypeLabel style={{ color: '#10b981' }}>Dokončeno:</ThreeTypeLabel>
                           <ThreeTypeValue style={{ color: '#10b981', fontWeight: '700' }}>{formatAmount(skutecne)}</ThreeTypeValue>
                         </ThreeTypeAmountRow>
-                        <ThreeTypeAmountRow title="Objednávky s položkami podle LP (bez potvrzené faktury)">
-                          <ThreeTypeLabel style={{ color: '#3b82f6' }}>Plánováno:</ThreeTypeLabel>
-                          <ThreeTypeValue style={{ color: '#3b82f6' }}>{formatAmount(predpoklad)}</ThreeTypeValue>
-                        </ThreeTypeAmountRow>
-                        <ThreeTypeAmountRow title="Objednávky ve schvalování (pesimistický odhad)">
-                          <ThreeTypeLabel style={{ color: '#f59e0b' }}>Požadováno:</ThreeTypeLabel>
-                          <ThreeTypeValue style={{ color: '#f59e0b' }}>{formatAmount(rezervovano)}</ThreeTypeValue>
+                        <ThreeTypeAmountRow title="Objednávky s položkami dle LP + objednávky ve schvalování">
+                          <ThreeTypeLabel style={{ color: '#3b82f6' }}>V procesu:</ThreeTypeLabel>
+                          <ThreeTypeValue style={{ color: '#3b82f6' }}>{formatAmount(predpoklad + rezervovano)}</ThreeTypeValue>
                         </ThreeTypeAmountRow>
                       </ThreeTypeAmountContainer>
                     </td>
@@ -2447,7 +2502,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     {formatAmount(lp.skutecne_cerpano)}
                   </MainAmount>
                   <SubAmounts>
-                    <SubAmount title="Plánováno (objednávky s položkami) + Požadováno (ve schvalování)">
+                    <SubAmount title="V procesu (objednávky s položkami) + Požadováno (ve schvalování)">
                       <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600 }}>+</span>&nbsp;{formatAmount((lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0))} v procesu
                     </SubAmount>
                     {(lp.cerpano_pokladna > 0) && (
@@ -2554,8 +2609,18 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                             <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                               <button
                                 onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
-                                style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #93c5fd' }}
-                                title="Otevřít objednávku"
+                                style={{ 
+                                  background: 'none', 
+                                  border: 'none', 
+                                  color: ord.stav === 'Dokončená' ? '#059669' : (ord.stav === 'Zkontrolovaná' ? '#ea580c' : '#3b82f6'),
+                                  fontWeight: 600, 
+                                  cursor: 'pointer', 
+                                  padding: 0, 
+                                  fontSize: 'inherit', 
+                                  fontFamily: 'inherit', 
+                                  borderBottom: `1px dashed ${ord.stav === 'Dokončená' ? '#86efac' : (ord.stav === 'Zkontrolovaná' ? '#fdba74' : '#93c5fd')}`
+                                }}
+                                title="Klikněte pro editaci objednávky"
                               >
                                 {ord.cislo_objednavky || '—'}
                               </button>
@@ -2563,8 +2628,8 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                             <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(ord.dt_vytvoreni)}</td>
                             <td style={{ padding: '0.25rem 0.5rem' }}>
                               <span style={{
-                                background: ord.stav === 'AKTIVNI' ? '#dcfce7' : ord.stav === 'FAKTURACE' ? '#dbeafe' : ord.stav === 'DOKONCENA' ? '#f0fdf4' : '#f1f5f9',
-                                color: ord.stav === 'AKTIVNI' ? '#16a34a' : ord.stav === 'FAKTURACE' ? '#1d4ed8' : ord.stav === 'DOKONCENA' ? '#059669' : '#64748b',
+                                background: ord.stav === 'Dokončená' ? '#dcfce7' : (ord.stav === 'Zkontrolovaná' ? '#fed7aa' : '#dbeafe'),
+                                color: ord.stav === 'Dokončená' ? '#059669' : (ord.stav === 'Zkontrolovaná' ? '#ea580c' : '#3b82f6'),
                                 borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em'
                               }}>{ord.stav || '?'}</span>
                             </td>
@@ -2602,7 +2667,17 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                 ↳{' '}
                                 <button
                                   onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
-                                  style={{ background: 'none', border: 'none', color: faHasLP ? '#7c3aed' : '#94a3b8', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: `1px dashed ${faHasLP ? '#c4b5fd' : '#cbd5e1'}` }}
+                                  style={{ 
+                                    background: 'none', 
+                                    border: 'none', 
+                                    color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasLP ? '#7c3aed' : '#94a3b8'), 
+                                    cursor: 'pointer', 
+                                    fontWeight: 600, 
+                                    padding: 0, 
+                                    fontSize: 'inherit', 
+                                    fontFamily: 'inherit', 
+                                    borderBottom: `1px dashed ${(fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#86efac' : (faHasLP ? '#c4b5fd' : '#cbd5e1')}` 
+                                  }}
                                   title="Otevřít fakturu"
                                 >
                                   {fa.fa_cislo_vema || '—'}
@@ -2616,11 +2691,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasLP ? '#78716c' : '#94a3b8' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                               <td style={{ padding: '0.2rem 0.5rem' }}>
                                 <span style={{
-                                  background: fa.stav === 'DOKONCENA' ? '#dcfce7' : fa.stav === 'ZAPLACENO' ? '#dbeafe' : '#fef3c7',
-                                  color: fa.stav === 'DOKONCENA' ? '#16a34a' : fa.stav === 'ZAPLACENO' ? '#1d4ed8' : '#92400e',
+                                  background: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#dcfce7' : (faHasLP ? '#f3e8ff' : '#f3f4f6'),
+                                  color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasLP ? '#7c3aed' : '#6b7280'),
                                   borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em',
                                   opacity: faHasLP ? 1 : 0.7
-                                }}>{fa.stav}</span>
+                                }}>{getInvoiceStateLabel(fa.stav)}</span>
                               </td>
                               <td
                                 style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: faHasLP ? '#92400e' : '#9ca3af' }}
@@ -2807,7 +2882,15 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   const uniqueKategorie = [...new Set(lpData.map(lp => lp.kategorie).filter(k => k))];
   
   return (
-    <Container $collapsed={isMainCollapsed}>
+    <>
+      {/* Loading Overlay - při prvním načítání */}
+      <LoadingOverlay $visible={loading && lpData.length === 0}>
+        <LoadingSpinner $visible={loading} />
+        <LoadingMessage $visible={loading}>Zpracovávám čerpání limitovaných příslibů...</LoadingMessage>
+        <LoadingSubtext $visible={loading}>Probíhá načítání a výpočet čerpání LP kódů z databáze...</LoadingSubtext>
+      </LoadingOverlay>
+
+      <Container $collapsed={isMainCollapsed}>
       <Header $collapsed={isMainCollapsed}>
         <Title>
           <TrendingUp size={24} />
@@ -2843,16 +2926,6 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
       </Header>
       
       <CollapsibleContent $collapsed={isMainCollapsed}>
-      
-      {lastUpdate && (
-        <InfoBox>
-          <Calendar size={20} />
-          <div>
-            <h4>Poslední aktualizace</h4>
-            <p>Data byla naposledy aktualizována: {lastUpdate.toLocaleString('cs-CZ')}</p>
-          </div>
-        </InfoBox>
-      )}
       
       {/* Statistiky - pro běžné uživatele (úsek) nebo adminy (celkové) */}
       <StatsGrid>
@@ -2917,11 +2990,10 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <TrendingUp size={28} />
               </StatIcon>
               <StatContent>
-                <StatLabel $light title="Potvrzené faktury s věcnou správností + pokladna">Skutečně vyčerpáno (fakturace + pokladna)</StatLabel>
+                <StatLabel $light title="Potvrzené faktury s věcnou správností + pokladna">Dokončeno (fakturace + pokladna)</StatLabel>
                 <StatValue $light style={{ marginBottom: '0.5rem' }}>{formatAmount(stats.celkove_skutecne)}</StatValue>
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-                  <div title="Objednávky s položkami podle LP (bez potvrzené faktury)">→ Plánováno: {formatAmount(stats.celkove_predpokladane)}</div>
-                  <div title="Objednávky ve schvalování (pesimistický odhad)">→ Požadováno: {formatAmount(stats.celkove_rezervovano)}</div>
+                  <div title="Objednávky s položkami dle LP + objednávky ve schvalování">→ V procesu: {formatAmount(stats.celkove_predpokladane + stats.celkove_rezervovano)}</div>
                   <div>→ Z pokladny: {formatAmount(stats.celkove_pokladna)}</div>
                 </div>
               </StatContent>
@@ -2935,7 +3007,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <StatLabel $light>Zbývá (dle čerpaného)</StatLabel>
                 <StatValue $light style={{ marginBottom: '0.5rem' }}>{formatAmount(stats.celkem_zbyva_skutecne)}</StatValue>
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-                  <div>→ K dispozici: {formatAmount(stats.celkem_zbyva_skutecne - (stats.celkove_rezervovano + stats.celkove_predpokladane))}</div>
+                  <div title="Volné prostředky po odečtení dokončeného čerpání a v procesu">→ Volné: {formatAmount(stats.celkem_zbyva_skutecne - (stats.celkove_rezervovano + stats.celkove_predpokladane))}</div>
                 </div>
               </StatContent>
             </StatCard>
@@ -2945,11 +3017,10 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <AlertTriangle size={28} />
               </StatIcon>
               <StatContent>
-                <StatLabel $light>Průměrné čerpání (skutečné)</StatLabel>
+                <StatLabel $light>Průměrné čerpání (dokončeno)</StatLabel>
                 <StatValue $light style={{ marginBottom: '0.5rem' }}>{stats.prumerne_procento_skutecne.toFixed(1)}%</StatValue>
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-                  <div>→ Rezervováno: {stats.prumerne_procento_rezervovano.toFixed(1)}%</div>
-                  <div>→ Předpoklad: {stats.prumerne_procento_predpokladane.toFixed(1)}%</div>
+                  <div title="Průměrné % v procesu (plánované objednávky + ve schvalování)">→ V procesu: {(stats.prumerne_procento_rezervovano + stats.prumerne_procento_predpokladane).toFixed(1)}%</div>
                 </div>
               </StatContent>
             </StatCard>
@@ -3273,6 +3344,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         cancelText="Zrušit"
       />
     </Container>
+    </>
   );
 };
 
