@@ -1436,7 +1436,103 @@ const Pill = styled.span`
   font-size: 0.75rem;
 `;
 
-
+// ===== SMLOUVY ČERPÁNÍ – jezevčík progress bar =====
+const SmlouvyJezWrap = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 200px;
+`;
+const SmlouvyJezHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 3px;
+  padding: 0 1px;
+`;
+const SmlouvyJezBarOuter = styled.div`
+  position: relative;
+  height: 20px;
+  width: 100%;
+  background: #f1f5f9;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  &:hover .sm-month-num {
+    color: rgba(148, 163, 184, 0.7) !important;
+  }
+`;
+const SmlouvyJezBarFill = styled.div`
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  z-index: 10;
+  transition: width 0.6s ease;
+  background: ${props => props.$color || '#10b981'};
+  width: ${props => Math.min(props.$percent || 0, 100)}%;
+`;
+const SmlouvyJezBarPlanned = styled.div`
+  position: absolute;
+  top: 0;
+  height: 100%;
+  z-index: 5;
+  opacity: 0.42;
+  background-color: ${props => props.$color || '#86efac'};
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,0.3) 25%, transparent 25%,
+    transparent 50%, rgba(255,255,255,0.3) 50%,
+    rgba(255,255,255,0.3) 75%, transparent 75%, transparent
+  );
+  background-size: 8px 8px;
+  left: ${props => props.$left || 0}%;
+  width: ${props => {
+    const maxW = 100 - (props.$left || 0);
+    return Math.min(props.$percent || 0, maxW);
+  }}%;
+`;
+const SmlouvyJezTargetLine = styled.div`
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: rgba(100, 116, 139, 0.55);
+  z-index: 30;
+  left: ${props => props.$percent || 0}%;
+`;
+const SmlouvyJezLegend = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 0 1px;
+`;
+const SmlouvyJezStatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 7px;
+  font-weight: 800;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid;
+  ${props => {
+    if (props.$level === 'critical') return `background:#fef2f2;color:#dc2626;border-color:#fecaca;`;
+    if (props.$level === 'warning') return `background:#fff7ed;color:#ea580c;border-color:#fed7aa;`;
+    return `background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;`;
+  }}
+`;
+const SmlouvySummaryRow = styled.div`
+  display: grid;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  background: linear-gradient(90deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 2px solid #cbd5e1;
+  border-radius: 0 0 12px 12px;
+  margin-top: 0.3rem;
+`;
 
 const fmtCurrency = (value) => {
   const num = Number(value || 0);
@@ -2106,6 +2202,8 @@ export default function StatsReportsPage() {
           return hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE');
         case 'pivot':
           return hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE');
+        case 'cashbook':
+          return hasPermission('CASHBOOK_REPORTS_VIEW') || hasPermission('CASHBOOK_REPORTS_MANAGE') || hasPermission('CASHBOOK_REPORTS_EXPORT');
         default:
           return false;
       }
@@ -2831,17 +2929,10 @@ export default function StatsReportsPage() {
     if (!token || !username) return;
     
     setCashbookLoading(true);
-    // Derive rok/mesic from global filters; fall back to whole year if unset
-    let cbRok, cbMesic = null;
-    if (filters.dateFrom) {
-      cbRok = parseInt(filters.dateFrom.substring(0, 4), 10);
-      const mFrom = parseInt(filters.dateFrom.substring(5, 7), 10);
-      const mTo = filters.dateTo ? parseInt(filters.dateTo.substring(5, 7), 10) : null;
-      const yTo = filters.dateTo ? parseInt(filters.dateTo.substring(0, 4), 10) : null;
-      if (mTo && yTo === cbRok && mTo === mFrom) cbMesic = mFrom;
-    } else {
-      cbRok = filters.year || new Date().getFullYear();
-    }
+    // Použít cashbookFilters (vlastní filtr tabu Přehled pokladen)
+    const cbRok = cashbookFilters.rok || new Date().getFullYear();
+    const cbMesic = cashbookFilters.mesic || null; // null = celý rok
+    
     try {
       const response = await getCashbookOverview({
         username,
@@ -2862,7 +2953,7 @@ export default function StatsReportsPage() {
     } finally {
       setCashbookLoading(false);
     }
-  }, [token, username, filters.year, filters.dateFrom, filters.dateTo, showToast]);
+  }, [token, username, cashbookFilters.rok, cashbookFilters.mesic, showToast]);
 
   const loadCashbookEntries = useCallback(async (knihaId) => {
     if (!token || !username || !knihaId) return;
@@ -3083,13 +3174,13 @@ export default function StatsReportsPage() {
     }
   }, [activeTab, orderAttachmentsStats, invoiceAttachmentsStats, ordersWithoutAttachments, invoicesWithoutAttachments, handleLoadAttachmentsTabStats, handleLoadOrdersWithoutAttachments, handleLoadInvoicesWithoutAttachments]);
 
-  // Load cashbook data when tab is active or filters change
+  // Load cashbook data when tab is active or cashbook filters change
   useEffect(() => {
     if ((activeTab === 'cashbook' || activeTab === 'spend') && token && username) {
       setCashbookEntries({}); // Reset při změně filtru
       loadCashbookData();
     }
-  }, [activeTab, token, username, filters.year, filters.dateFrom, filters.dateTo, loadCashbookData]);
+  }, [activeTab, token, username, cashbookFilters.rok, cashbookFilters.mesic, loadCashbookData]);
 
   // Po načtení dat automaticky načíst položky všech knih (pro LP grafy)
   useEffect(() => {
@@ -9364,100 +9455,304 @@ export default function StatsReportsPage() {
                         )}
                       </SearchInputWrapper>
                     </SearchBox>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {filteredSpendBySmlouvyGroups.length === 0 ? (
                         <EmptyState>Bez dat pro zvolené filtry (žádné objednávky typu Smlouva)</EmptyState>
                       ) : (
-                        <>
-                          <div style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 60px 130px 70px 75px 140px', gap: '0.75rem', padding: '0.25rem 1rem 0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <div
-                              title={filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
-                              onClick={() => {
-                                const allExp = filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code));
-                                if (allExp) { setExpandedSpendSmlouvy(new Set()); }
-                                else { setExpandedSpendSmlouvy(new Set(filteredSpendBySmlouvyGroups.map(g => g.code))); }
-                              }}
-                              style={{ cursor: 'pointer', color: '#6b7280', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
-                            >
-                              {filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? '−' : '+'}
-                            </div>
-                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'code')} style={{ cursor: 'pointer' }}>Číslo smlouvy{sortIcon('spendGrp_smlouvy', 'code')}</div>
-                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'dodavatel')} style={{ cursor: 'pointer' }}>Dodavatel{sortIcon('spendGrp_smlouvy', 'dodavatel')}</div>
-                            <div>I&#268;O</div>
-                            <div>Úsek</div>
-                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'smlouva_hodnota')} style={{ cursor: 'pointer', textAlign: 'right' }}>Poč. cena{sortIcon('spendGrp_smlouvy', 'smlouva_hodnota')}</div>
-                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'cerpani_pct')} style={{ cursor: 'pointer', textAlign: 'right' }}>Čerpání{sortIcon('spendGrp_smlouvy', 'cerpani_pct')}</div>
-                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet obj.{sortIcon('spendGrp_smlouvy', 'count')}</div>
-                            <div onClick={() => handleTableSort('spendGrp_smlouvy', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Celkem{sortIcon('spendGrp_smlouvy', 'amount')}</div>
-                          </div>
-                          {sortTableData(filteredSpendBySmlouvyGroups, 'spendGrp_smlouvy', { code: g => g.code || '', dodavatel: g => g.dodavatel || '', smlouva_hodnota: g => String(g.smlouva_hodnota || 0), cerpani_pct: g => String(g.smlouva_hodnota > 0 ? g.amount / g.smlouva_hodnota : 0), count: g => String(g.orders ? g.orders.length : g.count || 0), amount: g => String(g.amount || 0) }).map(group => {
-                            const grpOpen = expandedSpendSmlouvy.has(group.code);
-                            const pagedDetail = getPagedItems(sortTableData(group.orders, 'spendSmlouvy_' + group.code, spendOrderAcc), 'spendSmlouvy_' + group.code);
-                            const smUseky = [...new Set(group.orders.map(o => getOrdererUsekCode(o)).filter(Boolean))].slice(0, 3).join(', ') || '-';
-                            const smDodavatel = group.dodavatel || '-';
-                            const smIco = group.ico || '-';
-                            const smPct = group.smlouva_hodnota > 0 ? (group.amount / group.smlouva_hodnota * 100) : null;
-                            const smPctText = smPct !== null ? smPct.toFixed(1) + ' %' : '-';
-                            const smPctColor = smPct !== null ? (smPct > 90 ? '#dc2626' : smPct > 70 ? '#d97706' : '#059669') : '#9ca3af';
-                            return (
-                              <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                                <div
-                                  onClick={() => setExpandedSpendSmlouvy(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
-                                  style={{ display: 'grid', gridTemplateColumns: '16px 200px 1fr 110px 60px 130px 70px 75px 140px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f8fafc' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
-                                >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#6b7280', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
-                                  <span style={{ fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={group.label}>{highlightText(group.label, 'spendBySmlouvy')}</span>
-                                  <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={smDodavatel}>{highlightText(smDodavatel, 'spendBySmlouvy')}</span>
-                                  <span style={{ fontSize: '0.78rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{smIco}</span>
-                                  <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{smUseky}</span>
-                                  <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{group.smlouva_hodnota > 0 ? fmtCurrency(group.smlouva_hodnota) : '-'}</span>
-                                  <span style={{ fontSize: '0.78rem', fontWeight: '600', textAlign: 'right', color: smPctColor }}>{smPctText}</span>
-                                  <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.count} obj.</SectionBadge>
-                                  <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.amount)}</span>
+                        (() => {
+                          const DONE_FLAGS = ['DOKON', 'UZAVR', 'K_ZAPLACENI', 'UHRAD'];
+                          const currentMonthIdx = new Date().getMonth();
+                          const targetPct = Math.round(((currentMonthIdx + 1) / 12) * 100);
+                          const GRID_COLS = '22px minmax(150px,200px) 1fr 120px 155px 125px 1fr 92px';
+                          const HDR = { color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' };
+
+                          // Předpočítat stav každé skupiny
+                          const statsByCode = new Map();
+                          filteredSpendBySmlouvyGroups.forEach(group => {
+                            let skutecne = 0, vProcesu = 0;
+                            (group.orders || []).forEach(o => {
+                              const s = getOrderStatusCode(o).toUpperCase();
+                              const amt = getOrderAmount(o);
+                              if (DONE_FLAGS.some(f => s.includes(f))) skutecne += amt; else vProcesu += amt;
+                            });
+                            const limit = group.smlouva_hodnota || 0;
+                            const spentPct = limit > 0 ? (skutecne / limit) * 100 : 0;
+                            const inProcessPct = limit > 0 ? (vProcesu / limit) * 100 : 0;
+                            const totalPct = spentPct + inProcessPct;
+                            const isCritical = totalPct >= 100;
+                            const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                            const level = isCritical ? 'critical' : isWarning ? 'warning' : 'ok';
+                            const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+                            const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+                            statsByCode.set(group.code, { skutecne, vProcesu, limit, spentPct, inProcessPct, totalPct, level, barColor, barColorLight });
+                          });
+
+                          // Celkové součty
+                          let totalLimit = 0, totalSkutecne = 0, totalVProcesu = 0;
+                          statsByCode.forEach(s => { totalLimit += s.limit; totalSkutecne += s.skutecne; totalVProcesu += s.vProcesu; });
+                          const totalSpentPct = totalLimit > 0 ? (totalSkutecne / totalLimit) * 100 : 0;
+                          const totalInProcessPct = totalLimit > 0 ? (totalVProcesu / totalLimit) * 100 : 0;
+                          const totalCerpaniPct = totalSpentPct + totalInProcessPct;
+                          const totalIsCritical = totalCerpaniPct >= 100;
+                          const totalIsWarning = !totalIsCritical && totalCerpaniPct > targetPct * 1.3;
+                          const totalBarColor = totalIsCritical ? '#ef4444' : totalIsWarning ? '#f59e0b' : '#10b981';
+                          const totalBarColorLight = totalIsCritical ? '#fca5a5' : totalIsWarning ? '#fdba74' : '#86efac';
+
+                          const renderJezBar = (spentPct, inProcessPct, totalPct, barColor, barColorLight, showLegend = true) => (
+                            <SmlouvyJezWrap onClick={e => e.stopPropagation()}>
+                              <SmlouvyJezHeader>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                                  <span style={{ fontSize: '1rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>{totalPct.toFixed(1)}%</span>
+                                  <span style={{ fontSize: '0.52rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>Čerpání</span>
                                 </div>
-                                {grpOpen && (
-                                  <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-                                    <TableWrapper style={{ margin: 0 }}>
-                                      <Table>
-                                        <thead>
-                                          <tr>
-                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'ev_cislo')}>Číslo{sortIcon('spendSmlouvy_' + group.code, 'ev_cislo')}</ThSort>
-                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'dt_obj')}>Dt. obj.{sortIcon('spendSmlouvy_' + group.code, 'dt_obj')}</ThSort>
-                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'predmet')}>Předmět{sortIcon('spendSmlouvy_' + group.code, 'predmet')}</ThSort>
-                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'objednatel')}>Objednatel{sortIcon('spendSmlouvy_' + group.code, 'objednatel')}</ThSort>
-                                            <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'schvalovatel')}>Schvalovatel{sortIcon('spendSmlouvy_' + group.code, 'schvalovatel')}</ThSort>
-                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'usek')}>Úsek{sortIcon('spendSmlouvy_' + group.code, 'usek')}</ThNarrowSort>
-                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'detail_fin')}>Detail fin.{sortIcon('spendSmlouvy_' + group.code, 'detail_fin')}</ThNarrowSort>
-                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'druh')}>Druh{sortIcon('spendSmlouvy_' + group.code, 'druh')}</ThNarrowSort>
-                                            <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'stav')}>Stav{sortIcon('spendSmlouvy_' + group.code, 'stav')}</ThNarrowSort>
-                                            <ThRSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'castka')}>Částka{sortIcon('spendSmlouvy_' + group.code, 'castka')}</ThRSort>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {pagedDetail.items.map(order => (
-                                            <Tr key={order.id}>
-                                              <Td>{renderOrderLink(order, 'spendBySmlouvy')}</Td>
-                                              <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendBySmlouvy')}</Td>
-                                              <SubjectTd>{highlightText(getOrderSubject(order), 'spendBySmlouvy')}</SubjectTd>
-                                              <Td>{renderOrdererStack(order)}</Td>
-                                              <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
-                                              <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendBySmlouvy')}</TdNarrow>
-                                              <TdNarrow style={{ fontWeight: 600, color: '#1e293b' }}>{renderFinancingRefCell(order, 'spendBySmlouvy')}</TdNarrow>
-                                              <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendBySmlouvy')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
-                                              <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendBySmlouvy')}</TdNarrow>
-                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendBySmlouvy')}</TdR>
-                                            </Tr>
-                                          ))}
-                                        </tbody>
-                                      </Table>
-                                    </TableWrapper>
-                                    {renderPagination('spendSmlouvy_' + group.code, pagedDetail)}
-                                  </div>
+                                <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                                  <span style={{ display: 'block', fontSize: '0.52rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b' }}>Cíl k datu</span>
+                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>{targetPct}%</span>
+                                </div>
+                              </SmlouvyJezHeader>
+                              <SmlouvyJezBarOuter>
+                                <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                                  {Array.from({ length: 12 }).map((_, i) => (
+                                    <div key={i} style={{ flex: 1, borderRight: '1px solid rgba(203,213,225,0.3)', background: i === currentMonthIdx ? 'rgba(100,116,139,0.05)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <span className="sm-month-num" style={{ fontSize: '0.38rem', fontWeight: 700, color: 'transparent', transition: 'color 0.2s ease' }}>{i + 1}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <SmlouvyJezTargetLine $percent={targetPct} />
+                                <SmlouvyJezBarFill $percent={spentPct} $color={barColor} />
+                                {inProcessPct > 0 && (
+                                  <SmlouvyJezBarPlanned $left={Math.min(spentPct, 100)} $percent={inProcessPct} $color={barColorLight} />
                                 )}
+                              </SmlouvyJezBarOuter>
+                              {showLegend && (
+                                <SmlouvyJezLegend>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: barColor, display: 'inline-block', flexShrink: 0 }} />
+                                    <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '-0.01em', color: '#94a3b8' }}>Utraceno</span>
+                                  </span>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: barColorLight, opacity: 0.7, display: 'inline-block', flexShrink: 0 }} />
+                                    <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '-0.01em', color: '#94a3b8' }}>Rezervace</span>
+                                  </span>
+                                </SmlouvyJezLegend>
+                              )}
+                            </SmlouvyJezWrap>
+                          );
+
+                          return (
+                            <>
+                              {/* Záhlaví sloupců */}
+                              <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: '0.75rem', padding: '0.25rem 1rem', ...HDR }}>
+                                <div
+                                  title={filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                                  onClick={() => {
+                                    const allExp = filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code));
+                                    if (allExp) setExpandedSpendSmlouvy(new Set());
+                                    else setExpandedSpendSmlouvy(new Set(filteredSpendBySmlouvyGroups.map(g => g.code)));
+                                  }}
+                                  style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none' }}
+                                >
+                                  {filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? '−' : '+'}
+                                </div>
+                                <div onClick={() => handleTableSort('spendGrp_smlouvy', 'code')} style={{ cursor: 'pointer' }}>Smlouva{sortIcon('spendGrp_smlouvy', 'code')}</div>
+                                <div onClick={() => handleTableSort('spendGrp_smlouvy', 'dodavatel')} style={{ cursor: 'pointer' }}>Dodavatel{sortIcon('spendGrp_smlouvy', 'dodavatel')}</div>
+                                <div onClick={() => handleTableSort('spendGrp_smlouvy', 'smlouva_hodnota')} style={{ cursor: 'pointer', textAlign: 'right' }}>Limit{sortIcon('spendGrp_smlouvy', 'smlouva_hodnota')}</div>
+                                <div onClick={() => handleTableSort('spendGrp_smlouvy', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Vyčerpáno{sortIcon('spendGrp_smlouvy', 'amount')}</div>
+                                <div style={{ textAlign: 'right' }}>Zbývá</div>
+                                <div onClick={() => handleTableSort('spendGrp_smlouvy', 'cerpani_pct')} style={{ cursor: 'pointer' }}>Čerpání{sortIcon('spendGrp_smlouvy', 'cerpani_pct')}</div>
+                                <div onClick={() => handleTableSort('spendGrp_smlouvy', 'count')} style={{ cursor: 'pointer' }}>Stav{sortIcon('spendGrp_smlouvy', 'count')}</div>
                               </div>
-                            );
-                          })}
-                        </>
+
+                              {/* Řádky smluv */}
+                              {sortTableData(filteredSpendBySmlouvyGroups, 'spendGrp_smlouvy', { code: g => g.code || '', dodavatel: g => g.dodavatel || '', smlouva_hodnota: g => String(g.smlouva_hodnota || 0), cerpani_pct: g => String(g.smlouva_hodnota > 0 ? g.amount / g.smlouva_hodnota : 0), count: g => String(g.orders ? g.orders.length : g.count || 0), amount: g => String(g.amount || 0) }).map(group => {
+                                const gs = statsByCode.get(group.code) || { skutecne: 0, vProcesu: 0, limit: 0, spentPct: 0, inProcessPct: 0, totalPct: 0, level: 'ok', barColor: '#10b981', barColorLight: '#86efac' };
+                                const { skutecne, vProcesu, limit, spentPct, inProcessPct, totalPct: grpTotalPct, level, barColor, barColorLight } = gs;
+                                const zbyva = limit - skutecne;
+                                const volne = limit - skutecne - vProcesu;
+                                const grpOpen = expandedSpendSmlouvy.has(group.code);
+                                const smUseky = [...new Set(group.orders.map(o => getOrdererUsekCode(o)).filter(Boolean))].slice(0, 2).join(', ') || '';
+                                const smDodavatel = group.dodavatel || '-';
+                                const smIco = group.ico || '';
+                                const pagedDetail = getPagedItems(sortTableData(group.orders, 'spendSmlouvy_' + group.code, spendOrderAcc), 'spendSmlouvy_' + group.code);
+                                return (
+                                  <div key={group.code} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                    {/* Souhrnný řádek smlouvy */}
+                                    <div
+                                      onClick={() => setExpandedSpendSmlouvy(prev => { const n = new Set(prev); if (n.has(group.code)) n.delete(group.code); else n.add(group.code); return n; })}
+                                      style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: '0.75rem', alignItems: 'center', padding: '0.65rem 1rem', background: grpOpen ? '#f0f9ff' : '#fafbfc', cursor: 'pointer', userSelect: 'none' }}
+                                    >
+                                      {/* Toggle s počtem objednávek */}
+                                      <button
+                                        onClick={e => { e.stopPropagation(); setExpandedSpendSmlouvy(prev => { const n = new Set(prev); if (n.has(group.code)) n.delete(group.code); else n.add(group.code); return n; }); }}
+                                        style={{ background: grpOpen ? '#fee2e2' : '#eff6ff', border: `1px solid ${grpOpen ? '#fca5a5' : '#93c5fd'}`, borderRadius: '4px', width: '22px', cursor: 'pointer', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: grpOpen ? '#dc2626' : '#3b82f6', flexShrink: 0, padding: '1px 0', gap: 0, lineHeight: 1 }}
+                                      >
+                                        <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: grpOpen ? '#dc2626' : '#1e40af', opacity: 0.85 }}>{group.count}</span>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>{grpOpen ? '−' : '+'}</span>
+                                      </button>
+
+                                      {/* Číslo smlouvy */}
+                                      <span style={{ fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem' }} title={group.label}>{highlightText(group.label, 'spendBySmlouvy')}</span>
+
+                                      {/* Dodavatel / IČO / Úsek */}
+                                      <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={smDodavatel}>{highlightText(smDodavatel, 'spendBySmlouvy')}</div>
+                                        {(smIco || smUseky) && (
+                                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1px' }}>
+                                            {smIco && <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace' }}>{smIco}</span>}
+                                            {smUseky && <span style={{ fontSize: '0.65rem', color: '#64748b' }}>{smUseky}</span>}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Limit */}
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: '#475569', whiteSpace: 'nowrap' }}>
+                                          {limit > 0 ? fmtCurrency(limit) : <span style={{ color: '#94a3b8' }}>—</span>}
+                                        </div>
+                                      </div>
+
+                                      {/* Vyčerpáno */}
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtCurrency(skutecne)}</div>
+                                        {vProcesu > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>+ {fmtCurrency(vProcesu)} v procesu</div>}
+                                      </div>
+
+                                      {/* Zbývá */}
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: zbyva < 0 ? '#ef4444' : '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                          {limit > 0 ? fmtCurrency(zbyva) : <span style={{ color: '#94a3b8' }}>—</span>}
+                                        </div>
+                                        {vProcesu > 0 && limit > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>→ Volné: {fmtCurrency(volne)}</div>}
+                                      </div>
+
+                                      {/* Čerpání – jezevčík bar */}
+                                      {limit > 0
+                                        ? renderJezBar(spentPct, inProcessPct, grpTotalPct, barColor, barColorLight)
+                                        : <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>
+                                      }
+
+                                      {/* Stav */}
+                                      {limit > 0 ? (
+                                        <SmlouvyJezStatusBadge $level={level}>
+                                          {level === 'critical'
+                                            ? <><FontAwesomeIcon icon={faTriangleExclamation} /> Kritické</>
+                                            : level === 'warning'
+                                              ? <><FontAwesomeIcon icon={faTriangleExclamation} /> Pozor</>
+                                              : <><FontAwesomeIcon icon={faCheckCircle} /> V normě</>
+                                          }
+                                        </SmlouvyJezStatusBadge>
+                                      ) : (
+                                        <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>
+                                      )}
+                                    </div>
+
+                                    {/* Rozbalený detail – tabulka objednávek */}
+                                    {grpOpen && (
+                                      <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                                        <TableWrapper style={{ margin: 0 }}>
+                                          <Table>
+                                            <thead>
+                                              <tr>
+                                                <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'ev_cislo')}>Číslo{sortIcon('spendSmlouvy_' + group.code, 'ev_cislo')}</ThSort>
+                                                <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'dt_obj')}>Dt. obj.{sortIcon('spendSmlouvy_' + group.code, 'dt_obj')}</ThSort>
+                                                <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'predmet')}>Předmět{sortIcon('spendSmlouvy_' + group.code, 'predmet')}</ThSort>
+                                                <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'objednatel')}>Objednatel{sortIcon('spendSmlouvy_' + group.code, 'objednatel')}</ThSort>
+                                                <ThSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'schvalovatel')}>Schvalovatel{sortIcon('spendSmlouvy_' + group.code, 'schvalovatel')}</ThSort>
+                                                <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'usek')}>Úsek{sortIcon('spendSmlouvy_' + group.code, 'usek')}</ThNarrowSort>
+                                                <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'detail_fin')}>Detail fin.{sortIcon('spendSmlouvy_' + group.code, 'detail_fin')}</ThNarrowSort>
+                                                <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'druh')}>Druh{sortIcon('spendSmlouvy_' + group.code, 'druh')}</ThNarrowSort>
+                                                <ThNarrowSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'stav')}>Stav{sortIcon('spendSmlouvy_' + group.code, 'stav')}</ThNarrowSort>
+                                                <ThRSort onClick={() => handleTableSort('spendSmlouvy_' + group.code, 'castka')}>Částka{sortIcon('spendSmlouvy_' + group.code, 'castka')}</ThRSort>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {pagedDetail.items.map(order => (
+                                                <Tr key={order.id}>
+                                                  <Td>{renderOrderLink(order, 'spendBySmlouvy')}</Td>
+                                                  <Td>{highlightText(formatDateCz(getOrderDate(order)), 'spendBySmlouvy')}</Td>
+                                                  <SubjectTd>{highlightText(getOrderSubject(order), 'spendBySmlouvy')}</SubjectTd>
+                                                  <Td>{renderOrdererStack(order)}</Td>
+                                                  <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                                  <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', 'spendBySmlouvy')}</TdNarrow>
+                                                  <TdNarrow style={{ fontWeight: 600, color: '#1e293b' }}>{renderFinancingRefCell(order, 'spendBySmlouvy')}</TdNarrow>
+                                                  <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendBySmlouvy')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                  <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendBySmlouvy')}</TdNarrow>
+                                                  <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendBySmlouvy')}</TdR>
+                                                </Tr>
+                                              ))}
+                                            </tbody>
+                                          </Table>
+                                        </TableWrapper>
+                                        {renderPagination('spendSmlouvy_' + group.code, pagedDetail)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+
+                              {/* Souhrnný řádek celkem */}
+                              {filteredSpendBySmlouvyGroups.length > 1 && (
+                                <SmlouvySummaryRow style={{ gridTemplateColumns: GRID_COLS }}>
+                                  <span />
+                                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Celkem ({filteredSpendBySmlouvyGroups.length} smluv)
+                                  </div>
+                                  <span />
+                                  {/* Limit celkem */}
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, fontFamily: 'monospace', color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtCurrency(totalLimit)}</div>
+                                  </div>
+                                  {/* Vyčerpáno celkem */}
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtCurrency(totalSkutecne)}</div>
+                                    {totalVProcesu > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>+ {fmtCurrency(totalVProcesu)} v procesu</div>}
+                                  </div>
+                                  {/* Zbývá celkem */}
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: (totalLimit - totalSkutecne) < 0 ? '#ef4444' : '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                      {totalLimit > 0 ? fmtCurrency(totalLimit - totalSkutecne) : '—'}
+                                    </div>
+                                    {totalVProcesu > 0 && totalLimit > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>→ Volné: {fmtCurrency(totalLimit - totalSkutecne - totalVProcesu)}</div>}
+                                  </div>
+                                  {/* Celkový bar */}
+                                  {totalLimit > 0
+                                    ? (() => {
+                                        const totalVolne = totalLimit - totalSkutecne - totalVProcesu;
+                                        return (
+                                          <SmlouvyJezWrap>
+                                            <SmlouvyJezHeader>
+                                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                                                <span style={{ fontSize: '1rem', fontWeight: 800, color: totalBarColor, letterSpacing: '-0.02em' }}>{totalCerpaniPct.toFixed(1)}%</span>
+                                                <span style={{ fontSize: '0.52rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>celkové čerpání</span>
+                                              </div>
+                                              <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                                                <span style={{ display: 'block', fontSize: '0.52rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>VOLNÉ PROSTŘEDKY</span>
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#16a34a', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtCurrency(totalVolne)}</span>
+                                              </div>
+                                            </SmlouvyJezHeader>
+                                            <SmlouvyJezBarOuter>
+                                              <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                                                {Array.from({ length: 12 }).map((_, i) => (
+                                                  <div key={i} style={{ flex: 1, borderRight: '1px solid rgba(203,213,225,0.3)', background: i === currentMonthIdx ? 'rgba(100,116,139,0.05)' : 'transparent' }} />
+                                                ))}
+                                              </div>
+                                              <SmlouvyJezTargetLine $percent={targetPct} />
+                                              <SmlouvyJezBarFill $percent={totalSpentPct} $color={totalBarColor} />
+                                              {totalInProcessPct > 0 && (
+                                                <SmlouvyJezBarPlanned $left={Math.min(totalSpentPct, 100)} $percent={totalInProcessPct} $color={totalBarColorLight} />
+                                              )}
+                                            </SmlouvyJezBarOuter>
+                                          </SmlouvyJezWrap>
+                                        );
+                                      })()
+                                    : <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>
+                                  }
+                                  <span />
+                                </SmlouvySummaryRow>
+                              )}
+                            </>
+                          );
+                        })()
                       )}
                     </div>
                   </SectionCard>
@@ -11650,7 +11945,15 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-cashbookOverview">
                     <SectionHeader>
                       <SectionTitle><FontAwesomeIcon icon={faCoins} style={{ marginRight: '0.5rem', opacity: 0.7 }} />Přehled pokladen</SectionTitle>
-                      {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {/* Zobrazení aktuálního období */}
+                        <SectionBadge $tone="info" style={{ fontSize: '0.85rem', fontWeight: '700', padding: '0.35rem 0.75rem' }}>
+                          {cashbookFilters.mesic 
+                            ? `${new Date(2000, cashbookFilters.mesic - 1, 1).toLocaleDateString('cs-CZ', { month: 'long' }).charAt(0).toUpperCase() + new Date(2000, cashbookFilters.mesic - 1, 1).toLocaleDateString('cs-CZ', { month: 'long' }).slice(1)} ${cashbookFilters.rok}` 
+                            : `Celý rok ${cashbookFilters.rok}`}
+                        </SectionBadge>
+                        {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
+                      </div>
                     </SectionHeader>
                     
                     {/* Filtry: Měsíc (rok se bere z globálního filtru) */}
