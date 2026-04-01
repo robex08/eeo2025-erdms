@@ -899,6 +899,200 @@ const LPProgressLimit = styled.span`
   color: #9ca3af;
 `;
 
+// ===== JEZEVČÍK PROGRESS BAR (inspirováno designem finanční kontroly) =====
+
+const JezevcikWrap = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 240px;
+`;
+
+const JezevcikHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 4px;
+  padding: 0 2px;
+`;
+
+const JezevcikPercent = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+`;
+
+const JezevcikPercentValue = styled.span`
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: ${props => props.$color || '#1e293b'};
+`;
+
+const JezevcikPercentLabel = styled.span`
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+`;
+
+const JezevcikTarget = styled.div`
+  text-align: right;
+  line-height: 1.2;
+`;
+
+const JezevcikTargetLabel = styled.span`
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+`;
+
+const JezevcikTargetValue = styled.span`
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #64748b;
+`;
+
+const JezevcikBarOuter = styled.div`
+  position: relative;
+  height: 22px;
+  width: 100%;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+
+  &:hover .jez-month-num {
+    color: rgba(148, 163, 184, 0.8) !important;
+  }
+`;
+
+const JezevcikBarFill = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: 10;
+  transition: width 0.7s ease;
+  background: ${props => props.$color || '#10b981'};
+  width: ${props => Math.min(props.$percent || 0, 100)}%;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+  }
+`;
+
+const JezevcikBarPlanned = styled.div`
+  position: absolute;
+  top: 0;
+  height: 100%;
+  z-index: 5;
+  transition: width 0.7s ease, left 0.7s ease;
+  opacity: 0.4;
+  background-color: ${props => props.$color || '#86efac'};
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,0.3) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255,255,255,0.3) 50%,
+    rgba(255,255,255,0.3) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 8px 8px;
+  left: ${props => props.$left || 0}%;
+  width: ${props => {
+    const maxW = 100 - (props.$left || 0);
+    return Math.min(props.$percent || 0, maxW);
+  }}%;
+`;
+
+const JezevcikTargetLine = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(100, 116, 139, 0.6);
+  z-index: 30;
+  left: ${props => props.$percent || 0}%;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+`;
+
+const JezevcikLegend = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 3px;
+  padding: 0 2px;
+`;
+
+const JezevcikLegendItems = styled.div`
+  display: flex;
+  gap: 10px;
+  align-items: center;
+`;
+
+const JezevcikLegendItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 3px;
+`;
+
+const JezevcikLegendDot = styled.div`
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: ${props => props.$color || '#10b981'};
+  opacity: ${props => props.$opacity || 1};
+`;
+
+const JezevcikLegendText = styled.span`
+  font-size: 0.5rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  color: #94a3b8;
+`;
+
+const JezevcikStatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid;
+
+  ${props => {
+    if (props.$level === 'critical') return `
+      background: #fef2f2;
+      color: #dc2626;
+      border-color: #fecaca;
+    `;
+    if (props.$level === 'warning') return `
+      background: #fff7ed;
+      color: #ea580c;
+      border-color: #fed7aa;
+    `;
+    return `
+      background: #f0fdf4;
+      color: #16a34a;
+      border-color: #bbf7d0;
+    `;
+  }}
+`;
+
 // Tooltip komponenty
 const TooltipContainer = styled.div`
   position: relative;
@@ -1914,6 +2108,115 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     );
   };
   
+  // ===== JEZEVČÍK PROGRESS BAR =====
+  // Výpočet stavu jezevčíka (sdíleno mezi barem a stavovým badge)
+  const getJezevcikState = useCallback((lp) => {
+    const limit = lp.vyse_financniho_kryti || 0;
+    if (limit === 0) return { spentPct: 0, plannedPct: 0, totalPct: 0, targetPct: 0, level: 'ok', barColor: '#10b981', barColorLight: '#86efac' };
+    
+    const skutecne = lp.skutecne_cerpano || 0;
+    const planned = (lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0);
+    
+    const spentPct = (skutecne / limit) * 100;
+    const plannedPct = (planned / limit) * 100;
+    const totalPct = spentPct + plannedPct;
+    
+    // Cíl k datu = kolik % by mělo být vyčerpáno k aktuálnímu měsíci
+    const currentMonth = new Date().getMonth(); // 0-based
+    const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
+    
+    // Status: V NORMĚ / POZOR / KRITICKÉ
+    const isCritical = totalPct > targetPct * 2 || lp.procento_skutecne >= 100;
+    const isWarning = !isCritical && totalPct > targetPct * 1.3;
+    const level = isCritical ? 'critical' : isWarning ? 'warning' : 'ok';
+    
+    const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+    const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+    
+    return { spentPct, plannedPct, totalPct, targetPct, level, barColor, barColorLight, currentMonth };
+  }, []);
+  
+  const renderJezevcikBar = useCallback((lp) => {
+    const limit = lp.vyse_financniho_kryti || 0;
+    if (limit === 0) return <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>;
+    
+    const { spentPct, plannedPct, totalPct, targetPct, level, barColor, barColorLight, currentMonth } = getJezevcikState(lp);
+    
+    return (
+      <JezevcikWrap>
+        <JezevcikHeader>
+          <JezevcikPercent>
+            <JezevcikPercentValue $color={barColor}>
+              {totalPct.toFixed(1)}%
+            </JezevcikPercentValue>
+            <JezevcikPercentLabel>Čerpání</JezevcikPercentLabel>
+          </JezevcikPercent>
+          <JezevcikTarget>
+            <JezevcikTargetLabel>Cíl k datu</JezevcikTargetLabel>
+            <JezevcikTargetValue>{targetPct}%</JezevcikTargetValue>
+          </JezevcikTarget>
+        </JezevcikHeader>
+        
+        <JezevcikBarOuter>
+          {/* Měsíční rastr */}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  flex: 1,
+                  borderRight: '1px solid rgba(203, 213, 225, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: i === currentMonth ? 'rgba(100, 116, 139, 0.05)' : 'transparent'
+                }}
+              >
+                <span className="jez-month-num" style={{ fontSize: '0.4rem', fontWeight: 700, color: 'transparent', transition: 'color 0.2s ease' }}>
+                  {i + 1}
+                </span>
+              </div>
+            ))}
+          </div>
+          
+          {/* Cílová ryska */}
+          <JezevcikTargetLine $percent={targetPct} />
+          
+          {/* Hlavní bar: Skutečně vyčerpáno (solid) */}
+          <JezevcikBarFill $percent={spentPct} $color={barColor} />
+          
+          {/* Sekundární bar: Plánováno + Požadováno (šrafovaný) */}
+          {plannedPct > 0 && (
+            <JezevcikBarPlanned
+              $left={Math.min(spentPct, 100)}
+              $percent={plannedPct}
+              $color={barColorLight}
+            />
+          )}
+        </JezevcikBarOuter>
+        
+        <JezevcikLegend>
+          <JezevcikLegendItems>
+            <JezevcikLegendItem>
+              <JezevcikLegendDot $color={barColor} />
+              <JezevcikLegendText>Utraceno</JezevcikLegendText>
+            </JezevcikLegendItem>
+            <JezevcikLegendItem>
+              <JezevcikLegendDot $color={barColorLight} $opacity={0.6} />
+              <JezevcikLegendText>Rezervace</JezevcikLegendText>
+            </JezevcikLegendItem>
+          </JezevcikLegendItems>
+          {level === 'critical' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#ef4444' }}>
+              <AlertTriangle size={10} />
+              <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase' }}>Kritické přečerpání</span>
+            </div>
+          )}
+        </JezevcikLegend>
+      </JezevcikWrap>
+    );
+  }, [getJezevcikState]);
+
   // Toggle sekce (s ukládáním do localStorage)
   const toggleSection = (key) => {
     setCollapsedSections(prev => {
@@ -2003,13 +2306,14 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                         </ThreeTypeAmountRow>
                       </ThreeTypeAmountContainer>
                     </td>
-                    <td style={{ minWidth: '180px' }}>
-                      <ProgressBar>
-                        <ProgressFill $percent={procento} />
-                        <ProgressText $percent={procento}>
-                          {procento.toFixed(1)}%
-                        </ProgressText>
-                      </ProgressBar>
+                    <td style={{ minWidth: '240px' }}>
+                      {renderJezevcikBar({
+                        vyse_financniho_kryti: limit,
+                        skutecne_cerpano: skutecne,
+                        predpokladane_cerpani: predpoklad,
+                        rezervovano: rezervovano,
+                        procento_skutecne: procento
+                      })}
                     </td>
                     <td>
                       <Amount $color={zbyva < 0 ? '#ef4444' : '#10b981'}>
@@ -2043,9 +2347,9 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
             <th>Název účtu</th>
             {showUserColumn && <th>Příkazce operace</th>}
             <th style={{ textAlign: 'right' }}>Limit</th>
-            <th style={{ textAlign: 'right' }} title="Potvrzené faktury s věcnou správností + LP rozpis + pokladna">Vyčerpáno (skutečně)</th>
-            <th style={{ textAlign: 'right' }}>Zbývá (skutečně)</th>
-            <th title="Vizuální přehled čerpání: Skutečně (potvrzeno) / Plánováno (odeslané obj.) / Požadováno (ve schvalování)">Čerpání</th>
+            <th style={{ textAlign: 'right' }} title="Potvrzené faktury + LP rozpis + pokladna">Vyčerpáno</th>
+            <th style={{ textAlign: 'right' }}>Zbývá</th>
+            <th style={{ minWidth: '280px' }} title="Skutečně utraceno + v procesu (plánováno + požadováno) vs. roční cíl">Čerpání</th>
             <th>Stav</th>
           </tr>
         </Thead>
@@ -2139,17 +2443,16 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               </td>
               <td>
                 <ThreeTypeAmount>
-                  <MainAmount $color="#10b981" title="Potvrzené faktury s věcnou správností + LP rozpis">
+                  <MainAmount $color="#10b981" title="Potvrzené faktury + LP rozpis + pokladna">
                     {formatAmount(lp.skutecne_cerpano)}
                   </MainAmount>
                   <SubAmounts>
-                    <SubAmount title="Objednávky s položkami podle LP / max_cena_s_dph (bez potvrzené faktury)">
-                      Plánováno: {renderAmountWithTooltip(lp.predpokladane_cerpani, lp.objednavky_detail, 'predpoklad')}
+                    <SubAmount title="Plánováno (objednávky s položkami) + Požadováno (ve schvalování)">
+                      <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600 }}>+</span>&nbsp;{formatAmount((lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0))} v procesu
                     </SubAmount>
-                    <SubAmount title="Objednávky ve schvalování bez položek (pesimistický odhad)">
-                      Požadováno: {renderAmountWithTooltip(lp.rezervovano, lp.objednavky_detail, 'rezervace')}
-                    </SubAmount>
-                    <SubAmount>Z pokladny: {formatAmount(lp.cerpano_pokladna || 0)}</SubAmount>
+                    {(lp.cerpano_pokladna > 0) && (
+                      <SubAmount title="Čerpáno z pokladny">Pokladna: {formatAmount(lp.cerpano_pokladna)}</SubAmount>
+                    )}
                   </SubAmounts>
                 </ThreeTypeAmount>
               </td>
@@ -2159,73 +2462,28 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     {formatAmount(lp.zbyva_skutecne)}
                   </MainAmount>
                   <SubAmounts>
-                    <SubAmount>K dispozici: {formatAmount((lp.zbyva_skutecne || 0) - ((lp.rezervovano || 0) + (lp.predpokladane_cerpani || 0)))}</SubAmount>
+                    <SubAmount title="Po odečtení plánovaných a požadovaných">Volné: {formatAmount((lp.zbyva_skutecne || 0) - ((lp.rezervovano || 0) + (lp.predpokladane_cerpani || 0)))}</SubAmount>
                   </SubAmounts>
                 </ThreeTypeAmount>
               </td>
-              <td style={{ minWidth: '180px' }}>
-                <ProgressBar title={lp.pocet_obj_uzivatel > 0 ? `Vaše osobní čerpání: ${lp.pocet_obj_uzivatel} objednávek / ${formatAmount(lp.cerpano_uzivatel || 0)}` : undefined}>
-                  <ProgressFill $percent={lp.procento_skutecne} />
-                  <ProgressText $percent={lp.procento_skutecne}>
-                    {lp.procento_skutecne.toFixed(1)}%
-                  </ProgressText>
-                </ProgressBar>
-                {/* Měsíční grid - roční plán čerpání */}
-                {(() => {
-                  const currentMonth = new Date().getMonth();
-                  const planedPct = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
-                  const isUnderPlan = lp.procento_skutecne <= planedPct;
-                  const romanNumerals = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
-                  return (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', marginBottom: '2px' }}>
-                        <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Roční plán:</span>
-                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
-                          {lp.procento_skutecne.toFixed(0)}% / {planedPct}%
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', width: '100%', gap: '1px', background: '#f1f5f9', borderRadius: '3px', padding: '2px' }}>
-                        {Array.from({ length: 12 }).map((_, mi) => {
-                          const isCurrentMonth = mi === currentMonth;
-                          const isPast = mi < currentMonth;
-                          const bg = isCurrentMonth ? (isUnderPlan ? '#22c55e' : '#ef4444') : isPast ? '#94a3b8' : '#e2e8f0';
-                          const textColor = isCurrentMonth ? '#fff' : isPast ? '#1e293b' : '#94a3b8';
-                          const planPct = Math.floor(((mi + 1) / 12.0) * 100.0);
-                          return (
-                            <div key={mi} style={{
-                              flex: 1, background: bg, borderRadius: '2px',
-                              border: isCurrentMonth ? '1.5px solid #0f172a' : 'none',
-                              minHeight: '22px', position: 'relative',
-                              paddingBottom: '1px'
-                            }} title={`${romanNumerals[mi]}: plán ${planPct}%`}>
-                              <div style={{ position: 'absolute', top: '1px', right: '2px', fontSize: '0.45rem', fontWeight: 500, opacity: 0.7, color: textColor }}>
-                                {romanNumerals[mi]}
-                              </div>
-                              <div style={{ position: 'absolute', bottom: '1px', left: 0, right: 0, textAlign: 'center', fontSize: '0.5rem', fontWeight: 700, color: textColor }}>
-                                {planPct}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  );
-                })()}
+              <td style={{ minWidth: '280px' }}>
+                {renderJezevcikBar(lp)}
               </td>
               <td>
-                <StatusBadge $status={
-                  lp.procento_skutecne >= 100 ? 'danger' : 
-                  lp.procento_skutecne >= 80 ? 'warning' : 
-                  'ok'
-                }>
-                  {lp.procento_skutecne >= 100 ? (
-                    <><XCircle size={14} /> Překročeno</>
-                  ) : lp.procento_skutecne >= 80 ? (
-                    <><AlertTriangle size={14} /> Varování</>
-                  ) : (
-                    <><CheckCircle size={14} /> OK</>
-                  )}
-                </StatusBadge>
+                {(() => {
+                  const jState = getJezevcikState(lp);
+                  return (
+                    <JezevcikStatusBadge $level={jState.level}>
+                      {jState.level === 'critical' ? (
+                        <><XCircle size={14} /> Kritické</>
+                      ) : jState.level === 'warning' ? (
+                        <><AlertTriangle size={14} /> Pozor</>
+                      ) : (
+                        <><CheckCircle size={14} /> V normě</>
+                      )}
+                    </JezevcikStatusBadge>
+                  );
+                })()}
               </td>
             </tr>
             {expandedLPs[lpKey] && (
@@ -2292,7 +2550,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                       <tbody>
                         {paged.map((ord, oi) => (
                           <React.Fragment key={ord.id || oi}>
-                          <tr style={{ borderBottom: ord.faktury?.length ? 'none' : '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc', transition: 'background-color 0.15s ease' }}>
+                          <tr style={{ borderBottom: ord.faktury?.length ? 'none' : '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc', transition: 'background-color 0.15s ease', borderLeft: ord.suma_lp_z_faktur > 0 ? '3px solid #10b981' : ord.planovana_castka_polozky > 0 ? '3px solid #f59e0b' : '3px solid #d1d5db' }}>
                             <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
                               <button
                                 onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
@@ -2331,32 +2589,45 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               {ord.pocet_faktur > 0 ? `${ord.pocet_faktur}× / ${formatAmount(ord.suma_faktur || 0)}` : '—'}
                             </td>
                           </tr>
-                          {ord.faktury?.length > 0 && ord.faktury.map((fa, fi) => (
-                            <tr key={`fa-${fa.id}`} style={{ background: '#fffbeb', borderBottom: fi === ord.faktury.length - 1 ? '1px solid #f1f5f9' : '1px dashed #fde68a' }}>
-                              <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.75rem', fontSize: '0.75rem', color: '#92400e' }}>
+                          {ord.faktury?.length > 0 && ord.faktury.map((fa, fi) => {
+                            const faHasLP = fa.lp_castka != null && fa.lp_castka > 0;
+                            return (
+                            <tr key={`fa-${fa.id}`} style={{
+                              background: faHasLP ? '#fffbeb' : '#f1f5f9',
+                              opacity: faHasLP ? 1 : 0.65,
+                              borderBottom: fi === ord.faktury.length - 1 ? '1px solid #e2e8f0' : (faHasLP ? '1px dashed #fde68a' : '1px dashed #e2e8f0'),
+                              borderLeft: faHasLP ? '3px solid #16a34a' : '3px solid #9ca3af'
+                            }}>
+                              <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.5rem', fontSize: '0.75rem', color: faHasLP ? '#92400e' : '#64748b' }}>
                                 ↳{' '}
                                 <button
                                   onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
-                                  style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: '1px dashed #c4b5fd' }}
+                                  style={{ background: 'none', border: 'none', color: faHasLP ? '#7c3aed' : '#94a3b8', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 'inherit', fontFamily: 'inherit', borderBottom: `1px dashed ${faHasLP ? '#c4b5fd' : '#cbd5e1'}` }}
                                   title="Otevřít fakturu"
                                 >
                                   {fa.fa_cislo_vema || '—'}
                                 </button>
+                                {!faHasLP && (
+                                  <span style={{ marginLeft: '0.4rem', background: '#e2e8f0', color: '#64748b', borderRadius: '3px', padding: '1px 4px', fontSize: '0.6rem', fontWeight: 600, verticalAlign: 'middle' }} title="Faktura nemá evidovaný LP rozpis na toto LP – může patřit jinému LP">
+                                    ∅ LP
+                                  </span>
+                                )}
                               </td>
-                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c' }}>{czDate(fa.fa_datum_vystaveni)}</td>
+                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasLP ? '#78716c' : '#94a3b8' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                               <td style={{ padding: '0.2rem 0.5rem' }}>
                                 <span style={{
                                   background: fa.stav === 'DOKONCENA' ? '#dcfce7' : fa.stav === 'ZAPLACENO' ? '#dbeafe' : '#fef3c7',
                                   color: fa.stav === 'DOKONCENA' ? '#16a34a' : fa.stav === 'ZAPLACENO' ? '#1d4ed8' : '#92400e',
-                                  borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em'
+                                  borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em',
+                                  opacity: faHasLP ? 1 : 0.7
                                 }}>{fa.stav}</span>
                               </td>
-                              <td 
-                                style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }} 
+                              <td
+                                style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: faHasLP ? '#92400e' : '#9ca3af' }}
                                 colSpan={2}
-                                title={fa.lp_castka ? `LP rozpis: ${formatAmount(fa.lp_castka)}\nCelková FA: ${formatAmount(fa.fa_castka)}` : undefined}
+                                title={faHasLP ? `LP rozpis: ${formatAmount(fa.lp_castka)}\nCelková FA: ${formatAmount(fa.fa_castka)}` : `Celková FA: ${formatAmount(fa.fa_castka)}\nBez LP rozpisu na toto LP`}
                               >
-                                {fa.lp_castka ? (
+                                {faHasLP ? (
                                   <>
                                     <span style={{ color: '#16a34a', fontWeight: 700 }}>LP: {formatAmount(fa.lp_castka)}</span>
                                     {' '}
@@ -2365,14 +2636,15 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                     </span>
                                   </>
                                 ) : (
-                                  formatAmount(fa.fa_castka)
+                                  <span style={{ textDecoration: 'line-through', color: '#9ca3af' }}>{formatAmount(fa.fa_castka)}</span>
                                 )}
                               </td>
-                              <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: '#78716c' }}>
+                              <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: faHasLP ? '#78716c' : '#94a3b8' }}>
                                 {fa.fa_datum_splatnosti ? `Splat: ${czDate(fa.fa_datum_splatnosti)}` : ''}
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                           </React.Fragment>
                         ))}
                       </tbody>
@@ -2413,49 +2685,94 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               </Amount>
             </td>
             <td>
-              <ThreeTypeAmount>
-                <MainAmount $color="#10b981" style={{ fontWeight: '700' }} title="Potvrzené faktury s věcnou správností + LP rozpis + pokladna">
-                  {formatAmount(data.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0))}
-                </MainAmount>
-                <SubAmounts>
-                  <SubAmount style={{ fontWeight: '600' }} title="Objednávky s položkami podle LP (bez potvrzené faktury)">
-                    Plánováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0))}
-                  </SubAmount>
-                  <SubAmount style={{ fontWeight: '600' }} title="Objednávky ve schvalování (pesimistický odhad)">
-                    Požadováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0))}
-                  </SubAmount>
-                  <SubAmount style={{ fontWeight: '600' }}>
-                    Z pokladny: {formatAmount(data.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0))}
-                  </SubAmount>
-                </SubAmounts>
-              </ThreeTypeAmount>
+              {(() => {
+                const totalSkutecne = data.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0);
+                const totalProces = data.reduce((sum, lp) => sum + ((lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0)), 0);
+                const totalPokladna = data.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0);
+                return (
+                  <ThreeTypeAmount>
+                    <MainAmount $color="#10b981" style={{ fontWeight: '700' }}>
+                      {formatAmount(totalSkutecne)}
+                    </MainAmount>
+                    <SubAmounts>
+                      <SubAmount style={{ fontWeight: '600' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600 }}>+</span>&nbsp;{formatAmount(totalProces)} v procesu
+                      </SubAmount>
+                      {totalPokladna > 0 && (
+                        <SubAmount style={{ fontWeight: '600' }}>Pokladna: {formatAmount(totalPokladna)}</SubAmount>
+                      )}
+                    </SubAmounts>
+                  </ThreeTypeAmount>
+                );
+              })()}
             </td>
             <td>
-              <ThreeTypeAmount>
-                <MainAmount 
-                  $color={data.reduce((sum, lp) => sum + (lp.zbyva_skutecne || 0), 0) < 0 ? '#ef4444' : '#10b981'}
-                  style={{ fontWeight: '700' }}
-                >
-                  {formatAmount(data.reduce((sum, lp) => sum + (lp.zbyva_skutecne || 0), 0))}
-                </MainAmount>
-                <SubAmounts>
-                  <SubAmount style={{ fontWeight: '600' }}>
-                    K dispozici: {formatAmount(data.reduce((sum, lp) => sum + ((lp.zbyva_skutecne || 0) - ((lp.rezervovano || 0) + (lp.predpokladane_cerpani || 0))), 0))}
-                  </SubAmount>
-                </SubAmounts>
-              </ThreeTypeAmount>
+              {(() => {
+                const totalZbyva = data.reduce((sum, lp) => sum + (lp.zbyva_skutecne || 0), 0);
+                const totalVolne = data.reduce((sum, lp) => sum + ((lp.zbyva_skutecne || 0) - ((lp.rezervovano || 0) + (lp.predpokladane_cerpani || 0))), 0);
+                return (
+                  <ThreeTypeAmount>
+                    <MainAmount $color={totalZbyva < 0 ? '#ef4444' : '#10b981'} style={{ fontWeight: '700' }}>
+                      {formatAmount(totalZbyva)}
+                    </MainAmount>
+                    <SubAmounts>
+                      <SubAmount style={{ fontWeight: '600' }}>Volné: {formatAmount(totalVolne)}</SubAmount>
+                    </SubAmounts>
+                  </ThreeTypeAmount>
+                );
+              })()}
             </td>
-            <td>
-              <div style={{ fontWeight: '600', color: '#6b7280', fontSize: '0.9rem' }}>
-                {(() => {
-                  const totalLimit = data.reduce((sum, lp) => sum + (lp.vyse_financniho_kryti || 0), 0);
-                  const totalCerpano = data.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0);
-                  const percent = totalLimit > 0 ? (totalCerpano / totalLimit * 100) : 0;
-                  return `Průměr: ${percent.toFixed(1)}%`;
-                })()}
-              </div>
+            <td colSpan="2">
+              {(() => {
+                const totalLimit = data.reduce((sum, lp) => sum + (lp.vyse_financniho_kryti || 0), 0);
+                const totalSkutecne = data.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0);
+                const totalProces = data.reduce((sum, lp) => sum + ((lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0)), 0);
+                const spentPct = totalLimit > 0 ? (totalSkutecne / totalLimit * 100) : 0;
+                const plannedPct = totalLimit > 0 ? (totalProces / totalLimit * 100) : 0;
+                const totalPct = spentPct + plannedPct;
+                const currentMonth = new Date().getMonth();
+                const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
+                const isCritical = totalPct > targetPct * 2 || spentPct >= 100;
+                const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+                const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+                const totalZbyva = totalLimit - totalSkutecne;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '3px' }}>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
+                          {spentPct.toFixed(1)}%
+                        </span>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>
+                          celkové čerpání
+                        </span>
+                      </div>
+                      <div style={{ position: 'relative', height: '18px', background: '#e2e8f0', borderRadius: '5px', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${Math.min(spentPct, 100)}%`, background: barColor, transition: 'width 0.7s ease' }} />
+                        {plannedPct > 0 && (
+                          <div style={{
+                            position: 'absolute', top: 0, height: '100%',
+                            left: `${Math.min(spentPct, 100)}%`,
+                            width: `${Math.min(plannedPct, 100 - Math.min(spentPct, 100))}%`,
+                            background: barColorLight, opacity: 0.5,
+                            backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.3) 50%, rgba(255,255,255,.3) 75%, transparent 75%, transparent)',
+                            backgroundSize: '8px 8px'
+                          }} />
+                        )}
+                        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '2px', background: 'rgba(100,116,139,0.6)', left: `${targetPct}%`, zIndex: 10 }} />
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: '120px' }}>
+                      <div style={{ fontSize: '0.6rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Volné prostředky</div>
+                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: totalZbyva < 0 ? '#ef4444' : '#10b981', letterSpacing: '-0.02em' }}>
+                        {formatAmount(totalZbyva)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </td>
-            <td></td>
           </tr>
         </Tfoot>
       </Table>

@@ -97,8 +97,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.aktivni = 1
             AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
-            AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
-            AND obj.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+            AND obj.stav_objednavky IN ('Ke schválení', 'Schválená')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             AND fakt.id IS NULL
             AND pol.id IS NULL
@@ -166,8 +165,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.aktivni = 1
             AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
-            AND obj.stav_workflow_kod LIKE '%ODESLANA%'
-            AND obj.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+            AND obj.stav_objednavky NOT IN ('Ke schválení', 'Schválená', 'Nová', 'Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná', 'Rozpracovaná')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             AND (fakt.id IS NULL OR fakt.potvrdil_vecnou_spravnost_id IS NULL)
             GROUP BY obj.id, obj.financovani, obj.max_cena_s_dph

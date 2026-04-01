@@ -1,0 +1,244 @@
+import React, { useState } from 'react';
+import { 
+  CheckCircle2, 
+  AlertCircle, 
+  TrendingUp, 
+  TrendingDown,
+  Wallet, 
+  Plus,
+  Calendar,
+  AlertTriangle,
+  ChevronRight,
+  Info
+} from 'lucide-react';
+
+const App = () => {
+  const [budgets, setBudgets] = useState([
+    {
+      id: 1,
+      name: "Provozní náklady IT",
+      limit: 4000000,
+      spent: 843434,
+      planned: 108172,
+      requested: 4000,
+      pettyCash: 2002,
+      targetPercent: 25,
+      trend: 'up'
+    },
+    {
+      id: 2,
+      name: "Marketing a Promo",
+      limit: 170000,
+      spent: 80043,
+      planned: 54997,
+      requested: 0,
+      pettyCash: 500,
+      targetPercent: 25,
+      trend: 'up'
+    },
+    {
+      id: 3,
+      name: "Nákup Hardware",
+      limit: 2100000,
+      spent: 420015,
+      planned: 397280,
+      requested: 159500,
+      pettyCash: 2390,
+      targetPercent: 25,
+      trend: 'down'
+    },
+    {
+      id: 4,
+      name: "Vzdělávání",
+      limit: 450000,
+      spent: 16605,
+      planned: 2420,
+      requested: 8000,
+      pettyCash: 0,
+      targetPercent: 25,
+      trend: 'stable'
+    }
+  ]);
+
+  const totalLimit = budgets.reduce((acc, b) => acc + b.limit, 0);
+  const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0);
+
+  return (
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8 font-sans text-slate-900">
+      <div className="max-w-[1400px] mx-auto">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-800">FINANČNÍ KONTROLA</h1>
+            <div className="flex items-center gap-2 text-slate-400">
+              <Calendar size={14} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Kvartál Q1 / 2024</span>
+            </div>
+          </div>
+          <button className="bg-blue-600 text-white p-2 rounded-lg shadow-lg hover:bg-blue-700 transition-all">
+            <Plus size={20} />
+          </button>
+        </div>
+
+        {/* Mřížka rozpočtů - Široké řádky */}
+        <div className="space-y-3">
+          {budgets.map((budget) => {
+            const spentPercent = (budget.spent / budget.limit) * 100;
+            const plannedPercent = (budget.planned / budget.limit) * 100;
+            const totalCommittedPercent = spentPercent + plannedPercent;
+            const isCritical = totalCommittedPercent > budget.targetPercent + 10;
+            const isWarning = totalCommittedPercent > budget.targetPercent;
+
+            return (
+              <div key={budget.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden">
+                <div className="p-4 flex flex-col lg:flex-row items-center gap-6">
+                  
+                  {/* Levá část: Identifikace a Limit (Kratší) */}
+                  <div className="w-full lg:w-48 shrink-0">
+                    <h3 className="text-sm font-black text-slate-800 truncate" title={budget.name}>{budget.name}</h3>
+                    <p className="text-[11px] font-mono font-bold text-slate-400 mt-1">{budget.limit.toLocaleString()} Kč</p>
+                  </div>
+
+                  {/* Střední část: Detailní čísla (Kompaktní) */}
+                  <div className="w-full lg:w-64 shrink-0 flex flex-col gap-1 border-l border-slate-100 pl-4">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">Vyčerpáno</span>
+                      <span className={`text-sm font-black ${isCritical ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {budget.spent.toLocaleString()} Kč
+                      </span>
+                    </div>
+                    <div className="text-[9px] text-slate-400 font-medium flex flex-wrap gap-x-3 gap-y-1">
+                      <span>→ Plán: {budget.planned.toLocaleString()} Kč</span>
+                      <span>→ Rez: {budget.requested.toLocaleString()} Kč</span>
+                    </div>
+                  </div>
+
+                  {/* PRAVÁ ČÁST: "JEZEVČÍK" PROGRESS BAR (Dominantní šířka) */}
+                  <div className="flex-1 w-full">
+                    <div className="flex justify-between items-end mb-1.5 px-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className={`text-lg font-black tracking-tighter ${isCritical ? 'text-red-600' : isWarning ? 'text-orange-500' : 'text-slate-800'}`}>
+                          {totalCommittedPercent.toFixed(1)}%
+                        </span>
+                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Čerpání</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block leading-none">Cíl k datu</span>
+                        <span className="text-[11px] font-bold text-slate-500">{budget.targetPercent}%</span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar Container - Nízký a velmi dlouhý */}
+                    <div className="relative h-6 w-full bg-slate-100 rounded-lg overflow-hidden border border-slate-200/50 group/bar">
+                      
+                      {/* Měsíční rastr (Roční plán) - šedé linky dělící bar na 12 měsíců */}
+                      <div className="absolute inset-0 flex z-20 pointer-events-none">
+                        {Array.from({ length: 12 }).map((_, i) => (
+                          <div 
+                            key={i} 
+                            className={`flex-1 border-r border-slate-300/30 flex items-center justify-center relative ${i === 2 ? 'bg-slate-400/5' : ''}`}
+                          >
+                            <span className="text-[7px] font-bold text-slate-300 opacity-0 group-hover/bar:opacity-100 transition-opacity">
+                              {i + 1}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Cílová ryska */}
+                      <div 
+                        className="absolute top-0 bottom-0 w-0.5 bg-slate-400/60 z-30 shadow-[0_0_8px_rgba(0,0,0,0.1)]" 
+                        style={{ left: `${budget.targetPercent}%` }}
+                      ></div>
+
+                      {/* Hlavní Bar: Realita (Sytý) */}
+                      <div 
+                        className={`absolute top-0 left-0 h-full z-10 transition-all duration-700 shadow-inner ${
+                          isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${spentPercent}%` }}
+                      >
+                         <div className="absolute inset-0 bg-white/10"></div>
+                      </div>
+
+                      {/* Sekundární Bar: Plán/Rezervace (Šrafovaný) */}
+                      <div 
+                        className={`absolute top-0 h-full transition-all duration-700 opacity-40 z-0 ${
+                          isCritical ? 'bg-red-300' : isWarning ? 'bg-orange-300' : 'bg-emerald-300'
+                        }`}
+                        style={{ 
+                          left: `${spentPercent}%`, 
+                          width: `${plannedPercent}%`,
+                          backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.3) 50%, rgba(255,255,255,.3) 75%, transparent 75%, transparent)',
+                          backgroundSize: '8px 8px'
+                        }}
+                      ></div>
+                    </div>
+                    
+                    {/* Legenda pod barem */}
+                    <div className="flex justify-between mt-1 px-1">
+                      <div className="flex gap-4 items-center">
+                        <div className="flex items-center gap-1">
+                          <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Realita</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className={`w-1.5 h-1.5 rounded-full opacity-40 ${isCritical ? 'bg-red-300' : isWarning ? 'bg-orange-300' : 'bg-emerald-300'}`}></div>
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Plánováno</span>
+                        </div>
+                      </div>
+                      {isCritical && (
+                        <div className="flex items-center gap-1 text-red-500">
+                          <AlertTriangle size={10} />
+                          <span className="text-[8px] font-black uppercase">Nad limitem období</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status tlačítko */}
+                  <div className="w-full lg:w-24 flex justify-end shrink-0">
+                    <div className={`px-3 py-1.5 rounded-lg border font-black text-[10px] flex items-center gap-2 shadow-sm ${
+                      isCritical ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                    }`}>
+                      {isCritical ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
+                      {isCritical ? 'KO' : 'OK'}
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Celkový součet (Patička) */}
+        <div className="mt-6 bg-slate-800 rounded-xl p-5 text-white flex items-center justify-between shadow-xl">
+           <div className="flex gap-10">
+              <div>
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Celkový limit</p>
+                 <p className="text-xl font-bold tracking-tight">{totalLimit.toLocaleString()} Kč</p>
+              </div>
+              <div className="border-l border-slate-700 pl-10">
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Skutečně zbývá</p>
+                 <p className="text-xl font-bold tracking-tight text-emerald-400">{(totalLimit - totalSpent).toLocaleString()} Kč</p>
+              </div>
+           </div>
+           <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Průměrné čerpání</p>
+                <p className="text-xl font-black text-blue-400">{((totalSpent / totalLimit) * 100).toFixed(1)}%</p>
+              </div>
+              <div className="h-10 w-10 bg-slate-700 rounded-lg flex items-center justify-center text-slate-400 hover:text-white cursor-pointer transition-colors">
+                 <Info size={20} />
+              </div>
+           </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+export default App;
