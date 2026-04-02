@@ -107,11 +107,21 @@ export function useOrdersV3State(userId, initialDashboardFilter = '') {
         ...localStoragePrefs 
       };
       // 🎯 Dashboard proklik - override dashboardFilters PŘED prvním renderem (bez blinku)
+      // + vymazat columnFilters aby se nepřekrývaly se zvoleným filtrem
       if (initialDashboardFilter) {
         merged.dashboardFilters = {
-          ...merged.dashboardFilters,
+          ...getDefaultPreferences().dashboardFilters,
           filter_status: initialDashboardFilter,
         };
+        merged.columnFilters = {};
+        
+        // 💾 ULOŽIT dashboard filter IHNED do localStorage pro perzistenci po reloadu
+        try {
+          const storageKey = `${STORAGE_PREFIX}_dashboardFilters_${userId}`;
+          localStorage.setItem(storageKey, JSON.stringify(merged.dashboardFilters));
+        } catch (err) {
+          console.warn('Failed to save dashboard filter:', err);
+        }
       }
       return merged;
     } catch {

@@ -145,7 +145,7 @@ const layoutStyle = css`
   min-height: 100vh;
   height: 100vh;
   position: relative;
-  overflow: hidden; /* vnější stránka bez scrollbaru – scroll uvnitř Content */
+  overflow: hidden;
 `;
 const Header = styled.header(({ theme }) => {
   // Detekce dev prostředí z URL
@@ -263,14 +263,14 @@ const MenuDropdownWrapper = styled.div`
 const MenuDropdownButton = styled.button`
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: 0.35em;
   background: transparent;
   border: none;
   color: ${({theme}) => theme.colors.primary};
-  font-size: 1.05em;
-  line-height: 1.5;
-  min-height: 2.8em;
-  padding: 0.4em 0.85em;
+  font-size: 1.02em;
+  line-height: 1.4;
+  min-height: 2.4em;
+  padding: 0.35em 0.7em;
   border-radius: 0.8em;
   transition: all 0.22s ease;
   cursor: pointer;
@@ -310,8 +310,8 @@ const MenuDropdownButton = styled.button`
   }
   
   .svg-inline--fa {
-    font-size: 1.35em;
-    margin-right: 0.35em;
+    font-size: 1.15em;
+    margin-right: 0.25em;
     transition: transform 0.2s ease;
     filter: drop-shadow(0 2px 4px rgba(32,45,101,0.10));
   }
@@ -392,13 +392,13 @@ const MenuLinkLeft = styled(Link, {
 })(({ $active, $noHoverUnderline, theme }) => `
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: 0.35em;
   text-decoration: none !important;
   color: ${theme.colors.primary};
-  font-size: 1.05em;
-  line-height: 1.5;
-  min-height: 2.8em;
-  padding: 0.4em 0.85em;
+  font-size: 1.02em;
+  line-height: 1.4;
+  min-height: 2.4em;
+  padding: 0.35em 0.7em;
   border-radius: 0.8em;
   transition: all 0.22s ease;
   box-shadow: 0 1px 4px rgba(34,197,94,0.04);
@@ -412,8 +412,8 @@ const MenuLinkLeft = styled(Link, {
   }
 
   .svg-inline--fa:not([data-force-white='true']), svg:not([data-force-white='true']) {
-    font-size: 1.35em !important;
-    margin-right: 0.35em !important;
+    font-size: 1.15em !important;
+    margin-right: 0.25em !important;
     color: inherit !important;
     filter: drop-shadow(0 2px 4px rgba(32,45,101,0.10));
     transition: inherit !important;
@@ -990,10 +990,10 @@ const Content = styled.main(({ theme, $formView, $unauth }) => {
     left: 0;
     right: 0;
     bottom: var(--app-footer-height, 54px);
-    overflow-y: ${$formView ? 'auto' : 'visible'};
+    overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    padding: 1em 0 0 0;
+    padding: 1em 0 ${$formView ? '2em' : '0'} 0;
     background: ${$formView ? theme.colors.gray100 : theme.colors.surfaceAlt};
     display:flex;
     flex-direction:column;
@@ -3282,8 +3282,8 @@ const Layout = ({ children }) => {
           )}
           <MenuLeft ref={menuLeftRef}>
             <SmartTooltip content="Dashboard" position="bottom">
-              <MenuLinkLeft to="/dashboard" style={{ fontSize: '1.1em', padding: '0.4em 0.35em 0.4em 0.85em' }}>
-                <FontAwesomeIcon icon={faHome} style={{ marginRight: 0 }} />
+              <MenuLinkLeft to="/dashboard" style={{ fontSize: '1.02em', padding: '0.35em 0.55em' }}>
+                <FontAwesomeIcon icon={faHome} style={{ marginRight: 0, fontSize: '1.05em' }} />
               </MenuLinkLeft>
             </SmartTooltip>
             { hasPermission && (

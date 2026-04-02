@@ -1090,11 +1090,16 @@ function Orders25ListV3() {
           'rozpracovane_stavy': ['SCHVALENA', 'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'K_UVEREJNENI_DO_REGISTRU', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'CEKA_SE', 'NEUVEREJNIT'],
         };
 
-        const mappedStatus = dashboardStatusMap[statusKey];
-        if (mappedStatus) {
-          filters.stav = Array.isArray(mappedStatus) ? mappedStatus : [mappedStatus];
+        // 🎯 Speciální boolean filtry (fakturace_prodleni apod.)
+        if (statusKey === 'fakturace_prodleni') {
+          filters.fakturace_prodleni = true;
         } else {
-          filters.stav = [String(statusKey).toUpperCase()];
+          const mappedStatus = dashboardStatusMap[statusKey];
+          if (mappedStatus) {
+            filters.stav = Array.isArray(mappedStatus) ? mappedStatus : [mappedStatus];
+          } else {
+            filters.stav = [String(statusKey).toUpperCase()];
+          }
         }
       }
     }
@@ -1102,13 +1107,16 @@ function Orders25ListV3() {
     return filters;
   }, [columnFilters, dashboardFilters, globalFilter]);
 
-  // 🎯 Effect pro vyčištění dashboard filtru z location.state (filtr je již inicializován v useOrdersV3State)
+  // 🎯 Effect pro vyčištění dashboard filtru z location.state
+  // POZNÁMKA: Filtr je nastaven přímo v useOrdersV3State (initialDashboardFilter v initial state),
+  // takže ho NEMUSÍME volat znovu přes handleDashboardFilterChange (ta má toggle logiku a přepnula by ho zpět!).
+  // Tento efekt pouze čistí location.state, aby se filtr neaplikoval znovu při refreshi.
   useEffect(() => {
     const dashboardFilter = location.state?.dashboardFilter;
     if (!dashboardFilter) return;
 
     // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
-    const { dashboardFilter: _df, ...rest } = location.state || {};
+    const { dashboardFilter: _df, clearFilters: _cf, ...rest } = location.state || {};
     const newState = Object.keys(rest).length > 0 ? rest : null;
     navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: newState });
     // eslint-disable-next-line react-hooks/exhaustive-deps

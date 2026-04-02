@@ -1043,6 +1043,17 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_params[] = $user_id;
         }
         
+        // 🎯 DASHBOARD FILTR: Fakturace v prodlení
+        // Objednávky ve stavech POTVRZENA/FAKTURACE/VECNA_SPRAVNOST, které čekají na akci > 7 dní
+        if (!empty($filters['fakturace_prodleni']) && $filters['fakturace_prodleni'] === true) {
+            $where_conditions[] = "(
+                JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                    IN ('POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST')
+                AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 7
+            )";
+            error_log("[OrderV3 FILTER] ✅ Aplikuji FAKTURACE_PRODLENI filter (dashboard)");
+        }
+        
         // ========================================================================
         // ❌ DUPLIKÁTNÍ LP FILTR ODSTRANĚN (řádky 854-871)
         // Důvod: LP kódy jsou uloženy v JSON poli o.financovani.lp_kody (hlavička objednávky),
@@ -2211,6 +2222,14 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'VECNA_SPRAVNOST' THEN 1 
                 ELSE 0 
             END) as vecna_spravnost,
+            -- FAKTURACE V PRODLENÍ (>7 dní ve stavech POTVRZENA/FAKTURACE/VECNA_SPRAVNOST)
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')))
+                        IN ('POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST')
+                    AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 7
+                THEN 1 
+                ELSE 0 
+            END) as fakturace_prodleni,
             -- ZKONTROLOVANÉ
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZKONTROLOVANA' THEN 1 
@@ -2391,7 +2410,7 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
     $counter_fields = array(
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana',
         'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
-        'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena',
+        'fakturace', 'vecna_spravnost', 'fakturace_prodleni', 'zkontrolovana', 'dokoncena', 'zrusena',
         'smazana', 'withInvoices', 'withAttachments', 'withoutObjAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
         'withComments', 'withMyComments'
     );
@@ -2470,6 +2489,14 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'VECNA_SPRAVNOST' THEN 1 
                 ELSE 0 
             END) as vecna_spravnost,
+            -- FAKTURACE V PRODLENÍ (>7 dní ve stavech POTVRZENA/FAKTURACE/VECNA_SPRAVNOST)
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')))
+                        IN ('POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST')
+                    AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 7
+                THEN 1 
+                ELSE 0 
+            END) as fakturace_prodleni,
             -- ZKONTROLOVANÉ
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZKONTROLOVANA' THEN 1 
@@ -2673,7 +2700,7 @@ function getOrderStats($db, $year, $user_id = 0, $filtered_where_sql = null, $fi
     $counter_fields = array(
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana', 
         'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
-        'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena', 
+        'fakturace', 'vecna_spravnost', 'fakturace_prodleni', 'zkontrolovana', 'dokoncena', 'zrusena', 
         'smazana', 'withInvoices', 'withAttachments', 'withoutObjAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
         'withComments', 'withMyComments'
     );

@@ -137,6 +137,9 @@ function handle_dashboard_data($input, $config, $queries) {
         // === SMLOUVY - KRITICKÝ STAV (dle úseku uživatele) ===
         $result['smlouvy_critical'] = _dashboard_get_smlouvy_critical($db, $user_id, $is_admin, $usek_id);
 
+        // === LP - KRITICKÝ STAV (dle úseku uživatele) ===
+        $result['lp_critical'] = _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id);
+
         // === KOMENTÁŘE K OBJEDNÁVKÁM (kde je uživatel účastník) ===
         $result['order_comments_recent'] = _dashboard_get_order_comments_recent($db, $user_id, $days);
 
@@ -233,10 +236,18 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ZAMITNUTA' THEN 1 ELSE 0 END) as zamitnuta,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ROZPRACOVANA' THEN 1 ELSE 0 END) as rozpracovana,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) IN ('ODESLANA', 'ODESLANA_DODAVATELI') THEN 1 ELSE 0 END) as odeslana,
-            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'POTVRZENA' THEN 1 ELSE 0 END) as potvrzena_dodavatelem,
-            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT' THEN 1 ELSE 0 END) as ke_zverejneni,
-            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNENA' THEN 1 ELSE 0 END) as uverejnena,
+            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'POTVRZENA' THEN 1 ELSE 0 END) as potvrzena,
+            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'FAKTURACE' THEN 1 ELSE 0 END) as fakturace,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'VECNA_SPRAVNOST' THEN 1 ELSE 0 END) as vecna_spravnost,
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                        IN ('POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST')
+                    AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 7
+                THEN 1 ELSE 0 
+            END) as fakturace_prodleni,
+            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ZKONTROLOVANA' THEN 1 ELSE 0 END) as zkontrolovana,
+            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT' THEN 1 ELSE 0 END) as k_uverejneni_do_registru,
+            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNENA' THEN 1 ELSE 0 END) as uverejnena,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'DOKONCENA' THEN 1 ELSE 0 END) as dokoncena,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ZRUSENA' THEN 1 ELSE 0 END) as zrusena,
             COALESCE(SUM(o.max_cena_s_dph), 0) as celkova_castka
@@ -459,7 +470,7 @@ function _dashboard_get_orders_published($db, $days) {
 function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
     $alerts = [];
 
-    // 1. Objednávky v prodlení (>7 dní bez akce)
+    // 1. Objednávky v prodlení - ve fázi fakturace (POTVRZENA až VECNA_SPRAVNOST), bez akce >7 dní
     $where_user = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ? OR o.prikazce_id = ?)";
     $params = $is_admin ? [] : [$user_id, $user_id, $user_id];
 
@@ -467,8 +478,8 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
         SELECT COUNT(*) as count
         FROM `" . TBL_OBJEDNAVKY . "` o
         WHERE o.aktivni = 1
-          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) 
-              NOT IN ('DOKONCENA', 'ZRUSENA', 'SMAZANA')
+          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+              IN ('POTVRZENA', 'FAKTURACE', 'VECNA_SPRAVNOST')
           AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 7
           {$where_user}
     ");
@@ -479,7 +490,7 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
             'type' => 'warning',
             'icon' => 'clock',
             'title' => 'Objednávky v prodlení',
-            'message' => $row['count'] . ' objednávek čeká na akci déle než 7 dní',
+            'message' => $row['count'] . ' objednávek ve fakturaci čeká na akci déle než 7 dní',
             'count' => (int)$row['count'],
             'link' => '/orders25-list-v3'
         ];
@@ -691,6 +702,86 @@ function _dashboard_get_smlouvy_critical($db, $user_id, $is_admin, $usek_id) {
           END ASC,
           s.platnost_do ASC
         LIMIT 15
+    ");
+    $stmt->execute($params);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    return [
+        'items' => $items,
+        'stats' => $stats
+    ];
+}
+
+/**
+ * Přehled LP v kritickém stavu (blíží se vyčerpání nebo už překročené)
+ * @param PDO $db Database connection
+ * @param int $user_id Current user ID
+ * @param bool $is_admin Je admin?
+ * @param int|null $usek_id ID úseku uživatele
+ * @return array LP critical stats
+ */
+function _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id) {
+    $where_usek = "";
+    $params = [date('Y')]; // Aktuální rok
+
+    // Admin vidí všechny, ostatní jen svůj úsek
+    if (!$is_admin && $usek_id) {
+        $where_usek = "AND c.usek_id = ?";
+        $params[] = $usek_id;
+    } elseif (!$is_admin && !$usek_id) {
+        return ['items' => [], 'stats' => ['celkem_aktivnich' => 0, 'stredni' => 0, 'vysoke' => 0, 'kriticke' => 0, 'prekrocene' => 0, 'celkem_limit' => 0, 'celkem_cerpano' => 0]];
+    }
+
+    // 1. Stats - celkový přehled LP pro aktuální rok
+    $stmt_stats = $db->prepare("
+        SELECT 
+            COUNT(*) as celkem_aktivnich,
+            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50 AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) < 0.75 THEN 1 ELSE 0 END) as stredni,
+            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.75 AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) < 0.90 THEN 1 ELSE 0 END) as vysoke,
+            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.90 AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) < 1.0 THEN 1 ELSE 0 END) as kriticke,
+            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 1 ELSE 0 END) as prekrocene,
+            COALESCE(SUM(c.celkovy_limit), 0) as celkem_limit,
+            COALESCE(SUM(c.skutecne_cerpano), 0) as celkem_cerpano
+        FROM `" . TBL_LIMITOVANE_PRISLIBY_CERPANI . "` c
+        WHERE c.rok = ?
+          AND c.celkovy_limit > 0
+          {$where_usek}
+    ");
+    $stmt_stats->execute($params);
+    $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+
+    // 2. Konkrétní kritické LP (blíží se vyčerpání >= 50%)
+    $stmt = $db->prepare("
+        SELECT c.id, c.cislo_lp, c.rok,
+               c.celkovy_limit, c.skutecne_cerpano, c.zbyva_skutecne,
+               IFNULL(u.usek_nazev, '') as usek_nazev,
+               IFNULL(u.usek_zkr, '') as usek_zkr,
+               CONCAT(IFNULL(uz.jmeno, ''), ' ', IFNULL(uz.prijmeni, '')) as spravce_jmeno,
+               ROUND((c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) * 100, 2) as procento_cerpani,
+               CASE
+                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 'PREKROCENO'
+                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.90 THEN 'CERPANI_KRITICKE'
+                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.75 THEN 'CERPANI_VYSOKE'
+                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50 THEN 'CERPANI_STREDNI'
+                   ELSE 'WARNING'
+               END as typ_kriticky
+        FROM `" . TBL_LIMITOVANE_PRISLIBY_CERPANI . "` c
+        LEFT JOIN `" . TBL_USEKY . "` u ON c.usek_id = u.id
+        LEFT JOIN `" . TBL_UZIVATELE . "` uz ON c.user_id = uz.id
+        WHERE c.rok = ?
+          AND c.celkovy_limit > 0
+          AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50
+          {$where_usek}
+        ORDER BY 
+          CASE
+              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 0
+              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.90 THEN 1
+              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.75 THEN 2
+              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50 THEN 3
+              ELSE 4
+          END ASC,
+          (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) DESC
+        LIMIT 20
     ");
     $stmt->execute($params);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
