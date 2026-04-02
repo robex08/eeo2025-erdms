@@ -1173,7 +1173,7 @@ const saveSkupinaFilterToStorage = (value) => {
 // KOMPONENTA
 // =============================================================================
 
-const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => {
+const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initialFilter = '' }) => {
   const { user, token, userDetail, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
@@ -1217,7 +1217,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
   // TanStack Table state
   const [sorting, setSorting] = useState([]);
   const [columnFilters, setColumnFilters] = useState({
-    cislo_smlouvy: '',
+    cislo_smlouvy: initialFilter || '',
     nazev_firmy: '',
     ico: '',
     nazev_smlouvy: '',
@@ -2409,6 +2409,16 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false }) => 
       platnost_od: '',
       platnost_do: '',
       show_inactive: false
+    });
+    setColumnFilters({
+      cislo_smlouvy: '',
+      nazev_firmy: '',
+      ico: '',
+      nazev_smlouvy: '',
+      usek_zkr: '',
+      druh_smlouvy: '',
+      stav: '',
+      pouzit_v_obj_formu: ''
     });
   };
 

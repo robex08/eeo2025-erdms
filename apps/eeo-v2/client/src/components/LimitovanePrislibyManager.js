@@ -6,7 +6,7 @@ import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import ConfirmDialog from './ConfirmDialog';
 import { CustomSelect } from './CustomSelect';
-import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter, X } from 'lucide-react';
+import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter, X, Search } from 'lucide-react';
 import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
 
@@ -1306,7 +1306,7 @@ const getLPColor = (lp) => {
  * - LP Manager: spravovaná LP
  * - Basic User: pouze osobní čerpání
  */
-const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = false }) => {
+const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = false, initialFilter = '' }) => {
   const { user, token, username, userDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const navigate = useNavigate();
@@ -1323,6 +1323,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   const [filterUsek, setFilterUsek] = useState([]);
   const [filterUser, setFilterUser] = useState([]);
   const [filterKategorie, setFilterKategorie] = useState([]);
+  const [filterText, setFilterText] = useState(initialFilter || '');
   
   // CustomSelect states (pro vyhledávání a dropdown)
   const [selectStates, setSelectStates] = useState({});
@@ -1930,6 +1931,13 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   
   // Filtrování dat - MULTI-SELECT logika
   const filteredData = lpData.filter(lp => {
+    // Textový filtr - hledání v cislo_lp a nazev_uctu
+    if (filterText) {
+      const search = filterText.toLowerCase();
+      const matchCislo = (lp.cislo_lp || '').toLowerCase().includes(search);
+      const matchNazev = (lp.nazev_uctu || '').toLowerCase().includes(search);
+      if (!matchCislo && !matchNazev) return false;
+    }
     // Filtr úseku - pokud je pole prázdné, zobraz vše
     if (filterUsek.length > 0 && !filterUsek.includes(lp.usek_nazev)) return false;
     // Filtr správce - pokud je pole prázdné, zobraz vše
@@ -3031,6 +3039,32 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
       {/* Filtry - Custom multi-select s vyhledáváním */}
       {isAdmin && (
         <FilterBar>
+          {/* Textové vyhledávání LP */}
+          <FilterWrapper>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <Search size={16} />
+                Hledat LP
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                $visible={filterText.length > 0}
+                onClick={() => setFilterText('')}
+                title="Vymazat"
+              >
+                <X size={12} />
+              </FilterClearButton>
+            </FilterLabel>
+            <FilterSelect
+              as="input"
+              type="text"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Číslo LP, název účtu..."
+              style={{ maxWidth: '220px' }}
+            />
+          </FilterWrapper>
+
           {/* Filtr roku - PRVNÍ NA ŘÁDKU */}
           <FilterWrapper>
             <FilterLabel>
@@ -3188,6 +3222,37 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               enableSearch={uniqueKategorie.length > 5}
             />
           </FilterWrapper>
+
+          {/* Smazat všechny filtry */}
+          {(filterText || filterUsek.length > 0 || filterUser.length > 0 || filterKategorie.length > 0) && (
+            <FilterWrapper style={{ alignSelf: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterText('');
+                  setFilterUsek([]);
+                  setFilterUser([]);
+                  setFilterKategorie([]);
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  border: '1px solid #fca5a5',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <X size={14} /> Smazat filtry
+              </button>
+            </FilterWrapper>
+          )}
         </FilterBar>
       )}
       

@@ -402,6 +402,9 @@ export function useOrdersV3({
         activeFilters.s_komentari = true;
       } else if (statusKey === 's_mymi_komentari') {
         activeFilters.s_mymi_komentari = true;
+      } else if (statusKey === 'fakturace_prodleni') {
+        // 🎯 DASHBOARD FILTR: Objednávky ve fakturaci > 7 dní (POTVRZENA/FAKTURACE/VECNA_SPRAVNOST)
+        activeFilters.fakturace_prodleni = true;
       } else {
         // ✅ STAVOVÉ FILTRY - Mapování Dashboard klíčů na workflow kódy
         // Dashboard posílá lowercase: 'nova', 'ke_schvaleni', 'schvalena', ...
@@ -438,15 +441,13 @@ export function useOrdersV3({
     }
     
     // ✅ Volání optimalizované API funkce s cache a deduplication
-    // console.log('📤 API Request payload:', {
-    //   token,
-    //   username,
-    //   page: currentPage,
-    //   per_page: itemsPerPage,
-    //   period: selectedPeriod,
-    //   filters: activeFilters,
-    //   sorting: sorting,
-    // });
+    console.log('📤 [OrdersV3] API Request payload:', {
+      page: currentPage,
+      per_page: itemsPerPage,
+      period: selectedPeriod,
+      filters: activeFilters,
+      sorting: sorting,
+    });
     
     return fetchData({
       token,
@@ -602,12 +603,23 @@ export function useOrdersV3({
     
     // Reset všech typů sloupcových filtrů na default z config
     const emptyFilters = { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.columnFilters };
+    const emptyDashboardFilters = { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.dashboardFilters };
     
     updatePreferences({
       columnFilters: emptyFilters,
-      dashboardFilters: { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.dashboardFilters },
+      dashboardFilters: emptyDashboardFilters,
       expandedRows: {},
     });
+    
+    // 💾 OKAMŽITĚ smazat dashboard filter z localStorage (bez debounce)
+    // aby se po reloadu neuložil starý filtr
+    if (userId) {
+      try {
+        localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(emptyDashboardFilters));
+      } catch (err) {
+        console.warn('Failed to clear dashboard filters from localStorage:', err);
+      }
+    }
     
     // ✅ Clear cache při resetů filtrů
     clearCache();
@@ -618,7 +630,7 @@ export function useOrdersV3({
     // Reset na první stránku
     setCurrentPage(1);
     
-  }, [updatePreferences, clearCache]);
+  }, [userId, updatePreferences, clearCache]);
   
   // ============================================================================
   // FUNKCE - Pagination

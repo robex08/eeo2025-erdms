@@ -83,6 +83,13 @@ export async function listOrdersV3({
   }
 
   const responseData = await response.json();
+  console.log('📥 [OrdersV3] API Response:', {
+    status: responseData.status,
+    orders_count: responseData.data?.orders?.length,
+    pagination: responseData.data?.pagination,
+    stats: responseData.data?.stats,
+    filters_applied: filters
+  });
   return responseData;
 }
 

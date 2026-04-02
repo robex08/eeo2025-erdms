@@ -25,6 +25,7 @@ import {
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
   faFileContract, faComments
 } from '@fortawesome/free-solid-svg-icons';
+import { SmartTooltip } from '../styles/SmartTooltip';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -47,6 +48,7 @@ const WIDGET_REGISTRY = {
   chart_timeline:      { title: 'Objednávky v čase',       icon: faChartBar,           color: '#0891b2', roles: ['all'] },
   top_suppliers:       { title: 'Top dodavatelé',           icon: faTruck,              color: '#b45309', roles: ['all'] },
   smlouvy_critical:    { title: 'Smlouvy - kritický stav',  icon: faFileContract,       color: '#dc2626', roles: ['all'] },
+  lp_critical:         { title: 'LP - kritický stav',       icon: faMoneyBillWave,      color: '#dc2626', roles: ['all'] },
   order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1', roles: ['all'] },
   invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', roles: ['invoice', 'approver'] }
 };
@@ -74,24 +76,33 @@ const shimmer = keyframes`
 // ============================================================================
 
 const PageWrapper = styled.div`
-  padding: 1.25rem 1.5rem 2rem;
+  padding: 0 1.5rem 4rem;
   width: 100%;
   box-sizing: border-box;
-  min-height: calc(100vh - 200px);
 `;
 
 const PageHeader = styled.div`
-  display: flex;
+  position: sticky;
+  top: -1em;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-  padding: 1rem 1.25rem;
+  gap: 1rem;
+  margin-bottom: 0;
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+  padding: 1.25rem 1.5rem;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  border-radius: 0;
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.35);
   color: white;
+  
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 0.75rem;
+  }
 `;
 
 const PageTitle = styled.h1`
@@ -139,33 +150,139 @@ const HeaderIconBtn = styled.button`
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
-  /* tooltip */
-  &::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: -30px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e293b;
-    color: white;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
-  }
-  &:hover::after { opacity: 1; }
 `;
 
 const RefreshBtn = HeaderIconBtn;
 const ConfigBtn = HeaderIconBtn;
 
+// 🔄 Auto-refresh toggle switch
+const AutoRefreshToggle = styled.label`
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  cursor: pointer;
+
+  input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  span {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 26px;
+    transition: all 0.3s;
+    backdrop-filter: blur(8px);
+
+    &:before {
+      content: '';
+      position: absolute;
+      height: 18px;
+      width: 18px;
+      left: 2px;
+      bottom: 2px;
+      background: white;
+      border-radius: 50%;
+      transition: all 0.3s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+  }
+
+  input:checked + span {
+    background: rgba(34, 197, 94, 0.6);
+    border-color: rgba(34, 197, 94, 0.8);
+  }
+
+  input:checked + span:before {
+    transform: translateX(22px);
+  }
+
+  &:hover span {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+  }
+
+  input:checked:hover + span {
+    background: rgba(34, 197, 94, 0.7);
+  }
+`;
+
+// 🎯 RYCHLÉ ROLE-BASED DLAZDICE (v headeru)
+const QuickTiles = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+`;
+
+const QuickTile = styled.button`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 10px;
+  color: white;
+  font-size: 1.65rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(8px);
+  
+  &:hover {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
+const QuickTileIcon = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: inherit;
+  line-height: 1;
+`;
+
+const QuickTileCount = styled.span`
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 0.35rem;
+  background: #ef4444;
+  border: 2.5px solid white;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+`;
+
 const DashGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 1.25rem;
+  margin-top: 1.5rem;
   @media (max-width: 768px) { grid-template-columns: 1fr; }
   @media (min-width: 768px) and (max-width: 1199px) { grid-template-columns: repeat(2, 1fr); }
   @media (min-width: 1200px) and (max-width: 1599px) { grid-template-columns: repeat(3, 1fr); }
@@ -248,13 +365,13 @@ const WidgetBody = styled.div`
 
 const StatRow = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
   gap: 0.75rem;
 `;
 
 const StatBox = styled.div`
   text-align: center;
-  padding: 0.75rem 0.5rem;
+  padding: 0.75rem 0.65rem;
   border-radius: 10px;
   background: ${p => p.$bg || '#f8f9fa'};
   cursor: ${p => p.$clickable ? 'pointer' : 'default'};
@@ -362,7 +479,30 @@ const AlertItem = styled.div`
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
-  &:hover { transform: translateX(3px); }
+  
+  &:hover { 
+    transform: translateX(3px); 
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+  }
+  
+  &:hover .alert-arrow { 
+    opacity: 1; 
+    transform: translateX(2px); 
+  }
+  
+  &:active {
+    transform: scale(0.98) translateX(1px);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.05);
+    background: ${p => {
+      const bg = p.$bg || '#fffbeb';
+      // Tmavší o 5% při kliknutí
+      if (bg === '#fffbeb') return '#fef3c7';
+      if (bg === '#fee2e2') return '#fecaca';
+      if (bg === '#dbeafe') return '#bfdbfe';
+      return bg;
+    }};
+  }
+  
   &:last-child { margin-bottom: 0; }
 `;
 
@@ -713,10 +853,12 @@ function OrderStatsWidget({ stats, navigate }) {
     { key: 'schvalena', label: 'Schváleno', value: stats.schvalena, color: '#166534', bg: '#dcfce7', filter: 'schvalena' },
     { key: 'rozpracovana', label: 'Rozpracované', value: stats.rozpracovana, color: '#b45309', bg: '#fef3c7', filter: 'rozpracovana' },
     { key: 'odeslana', label: 'Odeslané', value: stats.odeslana, color: '#0284c7', bg: '#e0f2fe', filter: 'odeslana' },
-    { key: 'potvrzena_dodavatelem', label: 'Dodavatel', value: stats.potvrzena_dodavatelem, color: '#7c3aed', bg: '#ede9fe', filter: 'potvrzena' },
-    { key: 'ke_zverejneni', label: 'Ke zveřejnění', value: stats.ke_zverejneni, color: '#ea580c', bg: '#fff7ed', filter: 'k_uverejneni' },
-    { key: 'uverejnena', label: 'Zveřejněné', value: stats.uverejnena, color: '#059669', bg: '#ecfdf5', filter: 'uverejnena' },
+    { key: 'potvrzena', label: 'Potvrzené', value: stats.potvrzena, color: '#7c3aed', bg: '#ede9fe', filter: 'potvrzena' },
+    { key: 'fakturace', label: 'Fakturace', value: stats.fakturace, color: '#06b6d4', bg: '#cffafe', filter: 'fakturace' },
     { key: 'vecna_spravnost', label: 'Věcná spr.', value: stats.vecna_spravnost, color: '#be185d', bg: '#fce7f3', filter: 'vecna_spravnost' },
+    { key: 'zkontrolovana', label: 'Zkontrolováno', value: stats.zkontrolovana, color: '#16a34a', bg: '#dcfce7', filter: 'zkontrolovana' },
+    { key: 'k_uverejneni_do_registru', label: 'Ke zveřejnění', value: stats.k_uverejneni_do_registru, color: '#ea580c', bg: '#fff7ed', filter: 'k_uverejneni_do_registru' },
+    { key: 'uverejnena', label: 'Zveřejněné', value: stats.uverejnena, color: '#059669', bg: '#ecfdf5', filter: 'uverejnena' },
     { key: 'dokoncena', label: 'Dokončené', value: stats.dokoncena, color: '#059669', bg: '#d1fae5', filter: 'dokoncena' }
   ];
 
@@ -790,7 +932,7 @@ function InvoiceListWidget({ invoices, navigate, filterPreset }) {
         return (
           <ListItem key={f.id} onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: f.id, orderIdForLoad: f.objednavka_id || null, returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <ListItemTitle>{f.fa_cislo || `FA #${f.id}`}</ListItemTitle>
+              <ListItemTitle><span style={{ color: '#6b7280' }}>FA VS:</span> <strong>{f.fa_cislo || `#${f.id}`}</strong></ListItemTitle>
               <ListItemSub>{f.fa_dodavatel_nazev}{vazba}</ListItemSub>
               {metaInfo && <ListItemMeta>{metaInfo}</ListItemMeta>}
             </ListItemLeft>
@@ -835,7 +977,7 @@ function InvoiceOverdueWidget({ invoices, navigate, filterPreset }) {
         return (
           <ListItem key={f.id} onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: f.id, orderIdForLoad: f.objednavka_id || null, returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <ListItemTitle>{f.fa_cislo || `FA #${f.id}`}</ListItemTitle>
+              <ListItemTitle><span style={{ color: '#6b7280' }}>FA VS:</span> <strong>{f.fa_cislo || `#${f.id}`}</strong></ListItemTitle>
               <ListItemSub>{f.fa_dodavatel_nazev} — spl. {formatDate(f.fa_datum_splatnosti)}</ListItemSub>
               {metaInfo && <ListItemMeta>{metaInfo}</ListItemMeta>}
             </ListItemLeft>
@@ -882,7 +1024,17 @@ function AlertsWidget({ alerts, navigate }) {
         <AlertItem
           key={i}
           $bg={getAlertBg(a.type)}
-          onClick={() => a.link && navigate(a.link)}
+          onClick={() => {
+            if (!a.link) return;
+            const filterMap = {
+              'Objednávky v prodlení':  { link: '/orders25-list-v3',  state: { dashboardFilter: 'fakturace_prodleni', clearFilters: true } },
+              'Nepotvrzené faktury':    { link: '/invoices25-list',   state: { dashboardFilter: 'unpaid',              clearFilters: true } },
+              'Faktury po splatnosti':  { link: '/invoices25-list',   state: { dashboardFilter: 'overdue',             clearFilters: true } },
+            };
+            const preset = filterMap[a.title];
+            if (preset) navigate(preset.link, { state: preset.state });
+            else navigate(a.link);
+          }}
           onMouseEnter={e => handleTipEnter(e, alertInfoMap[a.title])}
           onMouseLeave={handleTipLeave}
         >
@@ -893,9 +1045,12 @@ function AlertsWidget({ alerts, navigate }) {
             <AlertTitle>{a.title}</AlertTitle>
             <AlertMsg>{a.message}</AlertMsg>
           </AlertText>
-          <WidgetBadge $bg={getAlertBg(a.type)} $color={getAlertColor(a.type)}>
-            {a.count}
-          </WidgetBadge>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <WidgetBadge $bg={getAlertBg(a.type)} $color={getAlertColor(a.type)}>
+              {a.count}
+            </WidgetBadge>
+            <span className="alert-arrow" style={{ opacity: 0, transition: 'all 0.2s', color: getAlertColor(a.type), fontSize: '0.8rem' }}>→</span>
+          </div>
         </AlertItem>
       ))}
       {tip.show && ReactDOM.createPortal(
@@ -1135,7 +1290,7 @@ function SmlouvyCriticalWidget({ smlouvy, navigate }) {
         }
 
         return (
-          <ListItem key={s.id} onClick={() => navigate(`/smlouvy?detail=${s.id}`, { state: { returnTo: '/dashboard' } })}>
+          <ListItem key={s.id} onClick={() => navigate('/cerpani', { state: { returnTo: '/dashboard', tab: 'contracts', filterText: s.cislo_smlouvy || '' } })}>
             <ListItemLeft>
               <ListItemTitle>{s.cislo_smlouvy || `SML #${s.id}`}</ListItemTitle>
               <ListItemSub>{s.nazev_smlouvy}</ListItemSub>
@@ -1145,6 +1300,88 @@ function SmlouvyCriticalWidget({ smlouvy, navigate }) {
                 {s.hodnota_s_dph > 0 ? ` | ${formatCurrency(s.cerpano_celkem || 0)} / ${formatCurrency(s.hodnota_s_dph)}` : ''}
               </ListItemMeta>
               {s.hodnota_s_dph > 0 && (
+                <ProgressBarMini $pct={pct}><div /></ProgressBarMini>
+              )}
+            </ListItemLeft>
+            <ListItemRight style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+              {tags}
+            </ListItemRight>
+          </ListItem>
+        );
+      })}
+    </WidgetBody>
+  );
+}
+
+// ============================================================================
+// LP CRITICAL WIDGET
+// ============================================================================
+
+function LPCriticalWidget({ lpData, navigate }) {
+  const data = lpData || {};
+  const items = data.items || [];
+  const stats = data.stats || {};
+
+  if (items.length === 0 && !stats.celkem_aktivnich) {
+    return <WidgetBody><EmptyState>Žádné LP v kritickém stavu</EmptyState></WidgetBody>;
+  }
+
+  return (
+    <WidgetBody>
+      {stats.celkem_aktivnich > 0 && (
+        <SmlouvyStatsRow>
+          <SmlouvyStatChip $bg="#dbeafe" $color="#1d4ed8">
+            Aktivních: {stats.celkem_aktivnich}
+          </SmlouvyStatChip>
+          {parseInt(stats.stredni) > 0 && (
+            <SmlouvyStatChip $bg="#dbeafe" $color="#17a2b8">
+              Střední (50-74%): {stats.stredni}
+            </SmlouvyStatChip>
+          )}
+          {parseInt(stats.vysoke) > 0 && (
+            <SmlouvyStatChip $bg="#fef3c7" $color="#ffc107">
+              Vysoké (75-89%): {stats.vysoke}
+            </SmlouvyStatChip>
+          )}
+          {parseInt(stats.kriticke) > 0 && (
+            <SmlouvyStatChip $bg="#fed7aa" $color="#fd7e14">
+              Kritické (90-99%): {stats.kriticke}
+            </SmlouvyStatChip>
+          )}
+          {parseInt(stats.prekrocene) > 0 && (
+            <SmlouvyStatChip $bg="#fee2e2" $color="#dc2626">
+              Překročeno (≥100%): {stats.prekrocene}
+            </SmlouvyStatChip>
+          )}
+        </SmlouvyStatsRow>
+      )}
+      {items.length === 0 ? (
+        <EmptyState>Žádné LP k zobrazení</EmptyState>
+      ) : items.map(lp => {
+        const pct = parseFloat(lp.procento_cerpani) || 0;
+        const tags = [];
+        
+        if (lp.typ_kriticky === 'PREKROCENO') {
+          tags.push(<CriticalTag key="p" $type="UKONCENA">⚠️ {pct}% překročeno!</CriticalTag>);
+        } else if (lp.typ_kriticky === 'CERPANI_KRITICKE') {
+          tags.push(<CriticalTag key="k" $type="UKONCENA">🔴 {pct}% kritické</CriticalTag>);
+        } else if (lp.typ_kriticky === 'CERPANI_VYSOKE') {
+          tags.push(<CriticalTag key="v" $type="CERPANI">🟡 {pct}% vysoké</CriticalTag>);
+        } else if (lp.typ_kriticky === 'CERPANI_STREDNI') {
+          tags.push(<CriticalTag key="s" $type="BRZY_KONCI">🔵 {pct}% střední</CriticalTag>);
+        }
+
+        return (
+          <ListItem key={lp.id} onClick={() => navigate('/cerpani', { state: { returnTo: '/dashboard', tab: 'lp', filterText: lp.cislo_lp || '' } })}>
+            <ListItemLeft>
+              <ListItemTitle>{lp.cislo_lp || `LP #${lp.id}`}</ListItemTitle>
+              <ListItemSub>{lp.usek_nazev || ''}</ListItemSub>
+              <ListItemMeta>
+                {lp.spravce_jmeno ? `Správce: ${lp.spravce_jmeno.trim()}` : ''}
+                {lp.spravce_jmeno && lp.celkovy_limit > 0 ? ' | ' : ''}
+                {lp.celkovy_limit > 0 ? `${formatCurrency(lp.skutecne_cerpano || 0)} / ${formatCurrency(lp.celkovy_limit)}` : ''}
+              </ListItemMeta>
+              {lp.celkovy_limit > 0 && (
                 <ProgressBarMini $pct={pct}><div /></ProgressBarMini>
               )}
             </ListItemLeft>
@@ -1362,6 +1599,12 @@ export default function DashboardPage() {
   const [configOpen, setConfigOpen] = useState(false);
   const [visibleTiles, setVisibleTiles] = useState(DEFAULT_TILES);
   const [allTiles, setAllTiles] = useState(DEFAULT_TILES);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_auto_refresh');
+      return saved === 'true';
+    } catch { return false; }
+  });
 
   const username = user?.username;
 
@@ -1438,6 +1681,27 @@ export default function DashboardPage() {
     fetchData();
   }, [fetchData]);
 
+  // Auto-refresh každých 5 minut (pokud je zapnutý)
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
+
+    const interval = setInterval(() => {
+      console.log('🔄 Dashboard auto-refresh (5 min)');
+      fetchData();
+    }, 5 * 60 * 1000); // 5 minut
+
+    return () => clearInterval(interval);
+  }, [autoRefreshEnabled, fetchData]);
+
+  // Uložit stav auto-refresh do localStorage
+  const handleToggleAutoRefresh = useCallback((e) => {
+    const enabled = e.target.checked;
+    setAutoRefreshEnabled(enabled);
+    try {
+      localStorage.setItem('dashboard_auto_refresh', enabled.toString());
+    } catch { /* ignore */ }
+  }, []);
+
   const handleToggleTile = (tileId) => {
     setVisibleTiles(prev => {
       const next = prev.includes(tileId) ? prev.filter(t => t !== tileId) : [...prev, tileId];
@@ -1453,6 +1717,85 @@ export default function DashboardPage() {
     setAllTiles(merged);
     saveConfig(merged, visibleTiles);
   };
+
+  // 🎯 Get quick tiles based on user roles
+  const getQuickTiles = useMemo(() => {
+    if (!userDetail?.roles || !data?.orders_stats) return [];
+
+    const roles = userDetail.roles.map(r => r.kod_role);
+    const stats = data.orders_stats;
+    const isAdmin = hasAdminRole();
+    const tiles = [];
+
+    // Emoji ikony pro stavy
+    const icons = {
+      'rozpracovana': '📝',
+      'ke_schvaleni': '📋',
+      'schvalena': '✅',
+      'vecna_spravnost': '🔍',
+      'zkontrolovana': '✔️',
+      'dokoncena': '🏁',
+      'fakturace': '💰',
+      'k_uverejneni_do_registru': '🌐'
+    };
+
+    // Admin vidí všechny
+    if (isAdmin) {
+      tiles.push(
+        { label: 'Ke schválení', count: stats.ke_schvaleni || 0, filter: 'ke_schvaleni', icon: icons.ke_schvaleni },
+        { label: 'Schválené', count: stats.schvalena || 0, filter: 'schvalena', icon: icons.schvalena },
+        { label: 'Rozpracované', count: stats.rozpracovana || 0, filter: 'rozpracovana', icon: icons.rozpracovana },
+        { label: 'Věcná správnost', count: stats.vecna_spravnost || 0, filter: 'vecna_spravnost', icon: icons.vecna_spravnost },
+        { label: 'Zkontrolováno', count: stats.zkontrolovana || 0, filter: 'zkontrolovana', icon: icons.zkontrolovana },
+        { label: 'Dokončeno', count: stats.dokoncena || 0, filter: 'dokoncena', icon: icons.dokoncena },
+        { label: 'Fakturace', count: stats.fakturace || 0, filter: 'fakturace', icon: icons.fakturace },
+        { label: 'Ke zveřejnění', count: stats.k_uverejneni_do_registru || 0, filter: 'k_uverejneni_do_registru', icon: icons.k_uverejneni_do_registru }
+      );
+      return tiles;
+    }
+
+    // THP/PES/VRCHNI/PRIMAR role: rozpracovana, schvalena, vecna_spravnost
+    if (roles.includes('THP') || roles.includes('PES') || roles.includes('VRCHNI') || roles.includes('PRIMAR')) {
+      tiles.push(
+        { label: 'Schválené', count: stats.schvalena || 0, filter: 'schvalena', icon: icons.schvalena },
+        { label: 'Rozpracované', count: stats.rozpracovana || 0, filter: 'rozpracovana', icon: icons.rozpracovana },
+        { label: 'Věcná správnost', count: stats.vecna_spravnost || 0, filter: 'vecna_spravnost', icon: icons.vecna_spravnost }
+      );
+    }
+
+    // Příkazce: ke_schvaleni, zkontrolovana
+    if (roles.includes('PRIKAZCE')) {
+      tiles.push(
+        { label: 'Ke schválení', count: stats.ke_schvaleni || 0, filter: 'ke_schvaleni', icon: icons.ke_schvaleni },
+        { label: 'Zkontrolováno', count: stats.zkontrolovana || 0, filter: 'zkontrolovana', icon: icons.zkontrolovana }
+      );
+    }
+
+    // Správce rozpočtu: ke_schvaleni, zkontrolovana, dokoncena
+    if (roles.includes('SPRAVCE_ROZPOCTU')) {
+      tiles.push(
+        { label: 'Ke schválení', count: stats.ke_schvaleni || 0, filter: 'ke_schvaleni', icon: icons.ke_schvaleni },
+        { label: 'Zkontrolováno', count: stats.zkontrolovana || 0, filter: 'zkontrolovana', icon: icons.zkontrolovana },
+        { label: 'Dokončeno', count: stats.dokoncena || 0, filter: 'dokoncena', icon: icons.dokoncena }
+      );
+    }
+
+    // Hlavní účetní, účetní: fakturace, k_uverejneni_do_registru
+    if (roles.includes('HLAVNI_UCETNI') || roles.includes('UCETNI')) {
+      tiles.push(
+        { label: 'Fakturace', count: stats.fakturace || 0, filter: 'fakturace', icon: icons.fakturace },
+        { label: 'Ke zveřejnění', count: stats.k_uverejneni_do_registru || 0, filter: 'k_uverejneni_do_registru', icon: icons.k_uverejneni_do_registru }
+      );
+    }
+
+    // Remove duplicates (pokud má uživatel více rolí)
+    const seen = new Set();
+    return tiles.filter(t => {
+      if (seen.has(t.filter)) return false;
+      seen.add(t.filter);
+      return true;
+    });
+  }, [userDetail, data?.orders_stats, hasAdminRole]);
 
   // Render individual widget
   const renderWidget = (tileId, index) => {
@@ -1518,6 +1861,10 @@ export default function DashboardPage() {
       case 'smlouvy_critical':
         content = <SmlouvyCriticalWidget smlouvy={data?.smlouvy_critical} navigate={navigate} />;
         badgeCount = data?.smlouvy_critical?.items?.length;
+        break;
+      case 'lp_critical':
+        content = <LPCriticalWidget lpData={data?.lp_critical} navigate={navigate} />;
+        badgeCount = data?.lp_critical?.items?.length;
         break;
       case 'order_comments':
         content = <OrderCommentsWidget comments={data?.order_comments_recent} navigate={navigate} />;
@@ -1598,13 +1945,57 @@ export default function DashboardPage() {
         <PageTitle>
           <FontAwesomeIcon icon={faHome} /> Dashboard
         </PageTitle>
+        
+        {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE */}
+        {getQuickTiles.length > 0 && (
+          <QuickTiles>
+            {getQuickTiles.map((tile, idx) => (
+              <SmartTooltip
+                key={idx}
+                text={`${tile.label}${tile.count > 0 ? ` (${tile.count})` : ''}`}
+                icon="none"
+                preferredPosition="bottom"
+              >
+                <QuickTile
+                  onClick={() => {
+                    navigate('/orders25-list-v3', {
+                      state: { dashboardFilter: tile.filter, clearFilters: true }
+                    });
+                  }}
+                >
+                  <QuickTileIcon>{tile.icon}</QuickTileIcon>
+                  {tile.count > 0 && <QuickTileCount>{tile.count}</QuickTileCount>}
+                </QuickTile>
+              </SmartTooltip>
+            ))}
+          </QuickTiles>
+        )}
+        
         <HeaderActions>
-          <RefreshBtn onClick={fetchData} disabled={loading} $spinning={loading} data-tooltip="Obnovit dashboard">
-            <FontAwesomeIcon icon={faSync} />
-          </RefreshBtn>
-          <ConfigBtn onClick={() => setConfigOpen(true)} data-tooltip="Přizpůsobit">
-            <FontAwesomeIcon icon={faCog} />
-          </ConfigBtn>
+          <SmartTooltip 
+            text={autoRefreshEnabled ? "Automatické obnovení každých 5 minut (zapnuto)" : "Automatické obnovení vypnuto"}
+            icon="none" 
+            preferredPosition="bottom"
+          >
+            <AutoRefreshToggle>
+              <input 
+                type="checkbox" 
+                checked={autoRefreshEnabled} 
+                onChange={handleToggleAutoRefresh}
+              />
+              <span></span>
+            </AutoRefreshToggle>
+          </SmartTooltip>
+          <SmartTooltip text="Obnovit dashboard" icon="none" preferredPosition="bottom">
+            <RefreshBtn onClick={fetchData} disabled={loading} $spinning={loading}>
+              <FontAwesomeIcon icon={faSync} />
+            </RefreshBtn>
+          </SmartTooltip>
+          <SmartTooltip text="Přizpůsobit" icon="none" preferredPosition="bottom">
+            <ConfigBtn onClick={() => setConfigOpen(true)}>
+              <FontAwesomeIcon icon={faCog} />
+            </ConfigBtn>
+          </SmartTooltip>
         </HeaderActions>
       </PageHeader>
 
@@ -1622,6 +2013,7 @@ export default function DashboardPage() {
           onClose={() => setConfigOpen(false)}
         />
       )}
+      <div style={{ height: '2rem' }} />
     </PageWrapper>
   );
 }

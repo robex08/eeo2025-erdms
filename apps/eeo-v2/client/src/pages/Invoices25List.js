@@ -1586,7 +1586,8 @@ const Invoices25List = () => {
     }
   };
 
-  const savedState = loadFromLS();
+  // 🎯 Pokud přichází z dashboardu s clearFilters, ignorujeme uložené filtry
+  const savedState = location.state?.clearFilters ? null : loadFromLS();
 
   // State
   const [invoices, setInvoices] = useState([]);
@@ -2761,13 +2762,22 @@ const Invoices25List = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadData]); // showOnlyInactive is already in loadData dependencies
 
-  // 🎯 Effect pro vyčištění dashboard filtru z location.state (filtr je již inicializován v useState)
+  // 🎯 Effect pro aplikaci + vyčištění dashboard filtru z location.state
   useEffect(() => {
     const dashboardFilter = location.state?.dashboardFilter;
     if (!dashboardFilter) return;
 
+    // Explicitně nastavit filtr (přepíše cokoliv z localStorage)
+    setFilters({ filter_status: dashboardFilter });
+    setActiveFilterStatus(dashboardFilter);
+    if (location.state?.clearFilters) {
+      setColumnFilters({});
+      setDebouncedColumnFilters({});
+      setGlobalSearchTerm('');
+    }
+
     // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
-    const { dashboardFilter: _df, ...rest } = location.state || {};
+    const { dashboardFilter: _df, clearFilters: _cf, ...rest } = location.state || {};
     const newState = Object.keys(rest).length > 0 ? rest : null;
     navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: newState });
     // eslint-disable-next-line react-hooks/exhaustive-deps

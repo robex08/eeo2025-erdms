@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMoneyBill, faFileContract, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
@@ -143,6 +144,11 @@ const TabContent = ({ title, description, children }) => {
 };
 
 export default function CerpaniPage({ mode = 'all', contractsUnrestricted = false, lpUnrestricted = false, lpViewOwnOnly = false }) {
+  const location = useLocation();
+  const dashboardFilter = location.state?.filterText || '';
+  const dashboardTab = location.state?.tab || null;
+  const appliedRef = useRef(false);
+
   const tabs = useMemo(() => {
     const allTabs = [
       {
@@ -151,7 +157,7 @@ export default function CerpaniPage({ mode = 'all', contractsUnrestricted = fals
         icon: faFileContract,
         title: 'Čerpání smluv',
         description: 'Sekce se připravuje.',
-        render: () => <SmlouvyTab readOnly forceUnrestrictedReadOnly={contractsUnrestricted} />
+        render: (initFilter) => <SmlouvyTab readOnly forceUnrestrictedReadOnly={contractsUnrestricted} initialFilter={initFilter} />
       },
       {
         id: 'limited-promises',
@@ -159,7 +165,7 @@ export default function CerpaniPage({ mode = 'all', contractsUnrestricted = fals
         icon: faMoneyBill,
         title: 'Čerpání limitovaných příslibů',
         description: 'Sekce se připravuje.',
-        render: () => <LimitovanePrislibyManager forceFullAccess={lpUnrestricted} viewOwnOnly={!lpUnrestricted && lpViewOwnOnly} />
+        render: (initFilter) => <LimitovanePrislibyManager forceFullAccess={lpUnrestricted} viewOwnOnly={!lpUnrestricted && lpViewOwnOnly} initialFilter={initFilter} />
       }
     ];
 
@@ -175,12 +181,23 @@ export default function CerpaniPage({ mode = 'all', contractsUnrestricted = fals
   }, [mode, contractsUnrestricted, lpUnrestricted]);
 
   const [activeTab, setActiveTab] = useState(() => {
+    if (dashboardTab === 'lp') return 'limited-promises';
+    if (dashboardTab === 'contracts') return 'contracts';
     try {
       return localStorage.getItem('cerpani_active_tab') || tabs[0].id;
     } catch {
       return tabs[0].id;
     }
   });
+
+  // Přepnout tab podle dashboard state
+  useEffect(() => {
+    if (dashboardTab && !appliedRef.current) {
+      appliedRef.current = true;
+      if (dashboardTab === 'lp') setActiveTab('limited-promises');
+      else if (dashboardTab === 'contracts') setActiveTab('contracts');
+    }
+  }, [dashboardTab]);
 
   useEffect(() => {
     if (!tabs.some((tab) => tab.id === activeTab)) {
@@ -230,7 +247,7 @@ export default function CerpaniPage({ mode = 'all', contractsUnrestricted = fals
         )}
 
         <TabContent title={active.title} description={active.description}>
-          {active.render ? active.render() : null}
+          {active.render ? active.render(dashboardFilter) : null}
         </TabContent>
       </PageContainer>
     </PageWrapper>

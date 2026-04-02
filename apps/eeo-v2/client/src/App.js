@@ -268,7 +268,8 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
               'annual-fees': '/annual-fees', // Roční poplatky (BETA)
               'invoices25-list': '/invoices25-list',
               'users': '/users',
-              'help': '/help' // Nápověda a manuály
+              'help': '/help', // Nápověda a manuály
+              'dashboard': '/dashboard' // Nový dashboard
             };
             
             const targetSection = userSettings.vychozi_sekce_po_prihlaseni;

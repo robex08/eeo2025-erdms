@@ -1038,6 +1038,22 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         }
         
         if ($stmt->execute()) {
+            // Automatický přepočet čerpání smlouvy po uložení
+            $cislo_smlouvy_prepocet = isset($input['cislo_smlouvy']) ? $input['cislo_smlouvy'] : null;
+            if (!$cislo_smlouvy_prepocet) {
+                $sql_cislo = "SELECT cislo_smlouvy FROM " . TBL_SMLOUVY . " WHERE id = :id";
+                $stmt_cislo = $db->prepare($sql_cislo);
+                $stmt_cislo->bindValue(':id', $id, PDO::PARAM_INT);
+                $stmt_cislo->execute();
+                $row_cislo = $stmt_cislo->fetch(PDO::FETCH_ASSOC);
+                if ($row_cislo) {
+                    $cislo_smlouvy_prepocet = $row_cislo['cislo_smlouvy'];
+                }
+            }
+            if ($cislo_smlouvy_prepocet) {
+                prepocetCerpaniSmlouvyAuto($cislo_smlouvy_prepocet);
+            }
+
             echo json_encode(array(
                 'status' => 'ok',
                 'message' => 'Smlouva byla uspesne aktualizovana',

@@ -294,6 +294,7 @@ const STATUS_COLORS = {
   CEKA_SE: { light: '#fef3c7', dark: '#f59e0b', bg: '#fffbeb' },
   FAKTURACE: { light: '#ddd6fe', dark: '#7c3aed', bg: '#f5f3ff' },
   VECNA_SPRAVNOST: { light: '#d1fae5', dark: '#10b981', bg: '#ecfdf5' },
+  FAKTURACE_PRODLENI: { light: '#fed7aa', dark: '#dc2626', bg: '#fef2f2' },
   ZKONTROLOVANA: { light: '#bfdbfe', dark: '#3b82f6', bg: '#dbeafe' },
   DOKONCENA: { light: '#d1fae5', dark: '#059669', bg: '#ecfdf5' },
   ZRUSENA: { light: '#fecaca', dark: '#dc2626', bg: '#fef2f2' },
@@ -925,6 +926,21 @@ const OrdersDashboardV3Full = ({
               </StatIcon>
             </StatHeader>
             <StatLabel>Věcná správnost</StatLabel>
+          </StatCard>
+        )}
+
+        {shouldShowTile(displayStats.fakturace_prodleni || 0) && (
+          <StatCard
+            $color={STATUS_COLORS.FAKTURACE_PRODLENI.dark}
+            $clickable
+            $isActive={activeStatus === 'fakturace_prodleni'}
+            onClick={() => onStatusClick?.('fakturace_prodleni')}
+          >
+            <StatHeader>
+              <StatValue>{displayStats.fakturace_prodleni || 0}</StatValue>
+              <StatIcon $color={STATUS_COLORS.FAKTURACE_PRODLENI.dark}>⚠️</StatIcon>
+            </StatHeader>
+            <StatLabel>Fakturace v prodlení (&gt;7d)</StatLabel>
           </StatCard>
         )}
 
