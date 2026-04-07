@@ -29,3 +29,35 @@ export async function getDashboardData({ token, username, days = 7 }) {
 
   return response.data;
 }
+
+/**
+ * Admin: Načtení matice role → DASHBOARD_* práva
+ */
+export async function getWidgetPermissions({ token, username }) {
+  const response = await api2.post('dashboard/admin/widget-permissions', { token, username });
+  return response.data;
+}
+
+/**
+ * Admin: Uložení matice role → DASHBOARD_* práva
+ */
+export async function saveWidgetPermissions({ token, username, assignments }) {
+  const response = await api2.post('dashboard/admin/save-widget-permissions', { token, username, assignments });
+  return response.data;
+}
+
+/**
+ * Admin: Načtení DASHBOARD_* práv pro konkrétního uživatele
+ */
+export async function getUserWidgetPermissions({ token, username, target_user_id }) {
+  const response = await api2.post('dashboard/admin/user-widget-permissions', { token, username, target_user_id });
+  return response.data;
+}
+
+/**
+ * Admin: Uložení přímých DASHBOARD_* práv pro uživatele
+ */
+export async function saveUserWidgetPermissions({ token, username, target_user_id, direct_permissions }) {
+  const response = await api2.post('dashboard/admin/save-user-widget-permissions', { token, username, target_user_id, direct_permissions });
+  return response.data;
+}
