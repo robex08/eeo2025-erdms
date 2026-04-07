@@ -3652,6 +3652,42 @@ switch ($endpoint) {
         }
         break;
 
+    case 'dashboard/admin/widget-permissions':
+        if ($request_method === 'POST') {
+            handle_dashboard_admin_get_widget_permissions($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'dashboard/admin/save-widget-permissions':
+        if ($request_method === 'POST') {
+            handle_dashboard_admin_save_widget_permissions($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'dashboard/admin/user-widget-permissions':
+        if ($request_method === 'POST') {
+            handle_dashboard_admin_get_user_widget_permissions($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'dashboard/admin/save-user-widget-permissions':
+        if ($request_method === 'POST') {
+            handle_dashboard_admin_save_user_widget_permissions($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     default:
         // === ORDER V2 - DYNAMIC ENDPOINTS ===
         

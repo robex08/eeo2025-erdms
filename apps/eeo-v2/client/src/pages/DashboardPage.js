@@ -904,6 +904,14 @@ function OrderListWidget({ orders, title, navigate, filterPreset }) {
             <ListItemRight>
               <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
               <Badge $bg={sb.bg} $color={sb.color}>{stav}</Badge>
+              {o.dni_od_vytvoreni !== undefined && (
+                <Badge 
+                  $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 3 ? '#fef3c7' : '#dbeafe')}
+                  $color={o.dni_od_vytvoreni > 7 ? '#dc2626' : (o.dni_od_vytvoreni > 3 ? '#b45309' : '#1d4ed8')}
+                >
+                  {o.dni_od_vytvoreni === 0 ? 'dnes' : `před ${o.dni_od_vytvoreni} d`}
+                </Badge>
+              )}
             </ListItemRight>
           </ListItem>
         );
