@@ -26,6 +26,7 @@ import {
   faFileContract, faComments
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
+import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -34,23 +35,23 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 // ============================================================================
 
 const WIDGET_REGISTRY = {
-  welcome:             { title: 'Přehled',                 icon: faHome,               color: '#1d4ed8', roles: ['all'] },
-  orders_stats:        { title: 'Statistiky objednávek',   icon: faChartBar,           color: '#1d4ed8', roles: ['all'] },
-  my_orders:           { title: 'Moje objednávky',         icon: faShoppingCart,        color: '#2563eb', roles: ['all'] },
-  my_invoices:         { title: 'Faktury k potvrzení',     icon: faFileInvoiceDollar,  color: '#7c3aed', roles: ['invoice'] },
-  orders_approval:     { title: 'Ke schválení',            icon: faGavel,              color: '#dc2626', roles: ['approver'] },
-  invoices_overdue:    { title: 'Faktury po splatnosti',   icon: faExclamationCircle,  color: '#dc2626', roles: ['approver', 'invoice'] },
-  invoices_due_soon:   { title: 'Faktury blížící se spl.', icon: faCalendarAlt,        color: '#f97316', roles: ['approver', 'invoice'] },
-  orders_registry:     { title: 'Ke zveřejnění (VZ)',      icon: faGlobe,              color: '#059669', roles: ['registry'] },
-  orders_published:    { title: 'Zveřejněné objednávky',   icon: faCheckCircle,        color: '#10b981', roles: ['registry'] },
-  alerts:              { title: 'Upozornění',              icon: faExclamationTriangle,color: '#f59e0b', roles: ['all'] },
-  notifications:       { title: 'Notifikace',              icon: faBell,               color: '#6366f1', roles: ['all'] },
-  chart_timeline:      { title: 'Objednávky v čase',       icon: faChartBar,           color: '#0891b2', roles: ['all'] },
-  top_suppliers:       { title: 'Top dodavatelé',           icon: faTruck,              color: '#b45309', roles: ['all'] },
-  smlouvy_critical:    { title: 'Smlouvy - kritický stav',  icon: faFileContract,       color: '#dc2626', roles: ['all'] },
-  lp_critical:         { title: 'LP - kritický stav',       icon: faMoneyBillWave,      color: '#dc2626', roles: ['all'] },
-  order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1', roles: ['all'] },
-  invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', roles: ['invoice', 'approver'] }
+  welcome:             { title: 'Přehled',                 icon: faHome,               color: '#1d4ed8' },
+  orders_stats:        { title: 'Statistiky objednávek',   icon: faChartBar,           color: '#1d4ed8', requires: 'DASHBOARD_ORDERS_STATS' },
+  my_orders:           { title: 'Moje objednávky',         icon: faShoppingCart,        color: '#2563eb' },
+  my_invoices:         { title: 'Faktury k potvrzení',     icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_CONFIRM' },
+  orders_approval:     { title: 'Ke schválení',            icon: faGavel,              color: '#dc2626', requires: 'DASHBOARD_ORDERS_APPROVE' },
+  invoices_overdue:    { title: 'Faktury po splatnosti',   icon: faExclamationCircle,  color: '#dc2626', requires: 'DASHBOARD_INVOICES_OVERDUE' },
+  invoices_due_soon:   { title: 'Faktury blížící se spl.', icon: faCalendarAlt,        color: '#f97316', requires: 'DASHBOARD_INVOICES_DUE_SOON' },
+  orders_registry:     { title: 'Ke zveřejnění (VZ)',      icon: faGlobe,              color: '#059669', requires: 'DASHBOARD_ORDERS_REGISTRY' },
+  orders_published:    { title: 'Zveřejněné objednávky',   icon: faCheckCircle,        color: '#10b981', requires: 'DASHBOARD_ORDERS_PUBLISHED' },
+  alerts:              { title: 'Upozornění',              icon: faExclamationTriangle,color: '#f59e0b' },
+  notifications:       { title: 'Notifikace',              icon: faBell,               color: '#6366f1' },
+  chart_timeline:      { title: 'Objednávky v čase',       icon: faChartBar,           color: '#0891b2', requires: 'DASHBOARD_CHART_TIMELINE' },
+  top_suppliers:       { title: 'Top dodavatelé',           icon: faTruck,              color: '#b45309', requires: 'DASHBOARD_TOP_SUPPLIERS' },
+  smlouvy_critical:    { title: 'Smlouvy - kritický stav',  icon: faFileContract,       color: '#dc2626', requires: 'DASHBOARD_SPENDING_CONTRACTS' },
+  lp_critical:         { title: 'LP - kritický stav',       icon: faMoneyBillWave,      color: '#dc2626', requires: 'DASHBOARD_SPENDING_LP' },
+  order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1' },
+  invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' }
 };
 
 const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
@@ -1605,6 +1606,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [visibleTiles, setVisibleTiles] = useState(DEFAULT_TILES);
   const [allTiles, setAllTiles] = useState(DEFAULT_TILES);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
@@ -1616,24 +1618,22 @@ export default function DashboardPage() {
 
   const username = user?.username;
 
-  // Determine available widgets based on roles
+  // Determine available widgets based on DASHBOARD_* capabilities from API
   const availableWidgets = useMemo(() => {
     const isAdmin = hasAdminRole();
-    const perms = userPermissions || [];
-    const hasInvoice = perms.includes('INVOICE_MANAGE') || perms.includes('INVOICE_MATERIAL_CHECK') || perms.includes('FIN_CONTROL_MANAGE') || isAdmin;
-    const hasApprover = perms.includes('ORDER_APPROVE') || perms.includes('ORDER_APPROVE_ALL') || isAdmin;
-    const hasRegistry = perms.includes('ORDER_REGISTRY_MANAGE') || isAdmin;
+    const caps = data?.dashboard_capabilities || [];
 
     return Object.entries(WIDGET_REGISTRY)
       .filter(([, cfg]) => {
-        if (cfg.roles.includes('all')) return true;
-        if (cfg.roles.includes('invoice') && hasInvoice) return true;
-        if (cfg.roles.includes('approver') && hasApprover) return true;
-        if (cfg.roles.includes('registry') && hasRegistry) return true;
-        return false;
+        // Widgety bez 'requires' → viditelné vždy
+        if (!cfg.requires) return true;
+        // Admin vidí vše
+        if (isAdmin) return true;
+        // Kontrola DASHBOARD_* capability
+        return caps.includes(cfg.requires);
       })
       .map(([id]) => id);
-  }, [userPermissions, hasAdminRole]);
+  }, [data?.dashboard_capabilities, hasAdminRole]);
 
   // Load dashboard config from user settings + merge new widgets
   useEffect(() => {
@@ -2004,6 +2004,13 @@ export default function DashboardPage() {
               <FontAwesomeIcon icon={faCog} />
             </ConfigBtn>
           </SmartTooltip>
+          {hasAdminRole() && (
+            <SmartTooltip text="Správa oprávnění widgetů" icon="none" preferredPosition="bottom">
+              <ConfigBtn onClick={() => setPermissionsOpen(true)} style={{ color: '#7c3aed' }}>
+                <FontAwesomeIcon icon={faUserShield} />
+              </ConfigBtn>
+            </SmartTooltip>
+          )}
         </HeaderActions>
       </PageHeader>
 
@@ -2019,6 +2026,14 @@ export default function DashboardPage() {
           onToggle={handleToggleTile}
           onReorder={handleReorder}
           onClose={() => setConfigOpen(false)}
+        />
+      )}
+      {permissionsOpen && (
+        <DashboardPermissionsModal
+          token={token}
+          username={username}
+          onClose={() => setPermissionsOpen(false)}
+          onSaved={() => { setPermissionsOpen(false); fetchData(); }}
         />
       )}
       <div style={{ height: '2rem' }} />
