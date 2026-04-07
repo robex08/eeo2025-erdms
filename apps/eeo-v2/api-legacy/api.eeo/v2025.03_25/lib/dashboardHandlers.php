@@ -71,8 +71,10 @@ function handle_dashboard_data($input, $config, $queries) {
         $user_info = _dashboard_get_user_info($db, $user_id);
 
         // === DASHBOARD CAPABILITIES (nový systém – z DASHBOARD_* práv) ===
+        // $permissions je pole asociativních polí [{kod_prava: "...", popis: "..."}, ...]
+        $perm_codes = array_column($permissions, 'kod_prava');
         $dashboard_caps = [];
-        foreach ($permissions as $p) {
+        foreach ($perm_codes as $p) {
             if (strpos($p, 'DASHBOARD_') === 0) {
                 $dashboard_caps[] = $p;
             }
@@ -88,7 +90,7 @@ function handle_dashboard_data($input, $config, $queries) {
         $has_invoice_check = $has_cap('DASHBOARD_INVOICES_CONFIRM');
         $has_spending = $has_cap('DASHBOARD_SPENDING_CONTRACTS') || $has_cap('DASHBOARD_SPENDING_LP');
         $has_registry = $has_cap('DASHBOARD_ORDERS_REGISTRY') || $has_cap('DASHBOARD_ORDERS_PUBLISHED');
-        $has_order_read = in_array('ORDER_READ_ALL', $permissions) || in_array('ORDER_VIEW_ALL', $permissions) || in_array('ORDER_MANAGE', $permissions) || $is_admin;
+        $has_order_read = in_array('ORDER_READ_ALL', $perm_codes) || in_array('ORDER_VIEW_ALL', $perm_codes) || in_array('ORDER_MANAGE', $perm_codes) || $is_admin;
 
         $date_from = date('Y-m-d', strtotime("-{$days} days"));
         $date_to = date('Y-m-d');
@@ -109,7 +111,7 @@ function handle_dashboard_data($input, $config, $queries) {
         // === STATISTIKY OBJEDNÁVEK ===
         $usek_id = $user_info['usek_id'] ?? null;
         if ($has_cap('DASHBOARD_ORDERS_STATS')) {
-            $result['orders_stats'] = _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $permissions, $usek_id);
+            $result['orders_stats'] = _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $perm_codes, $usek_id);
         }
 
         // === MOJE OBJEDNÁVKY K AKCI ===
@@ -146,7 +148,7 @@ function handle_dashboard_data($input, $config, $queries) {
         }
 
         // === UPOZORNĚNÍ - prodlení ===
-        $result['alerts'] = _dashboard_get_alerts($db, $user_id, $is_admin, $permissions);
+        $result['alerts'] = _dashboard_get_alerts($db, $user_id, $is_admin, $perm_codes);
 
         // === NEPŘEČTENÉ NOTIFIKACE ===
         $result['notifications_unread'] = _dashboard_get_notifications_unread($db, $user_id, 5);
