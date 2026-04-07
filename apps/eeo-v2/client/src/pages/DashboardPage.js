@@ -23,7 +23,8 @@ import {
   faTruck, faGavel, faGlobe, faUserShield, faCog, faArrowRight,
   faSync, faEye, faEyeSlash, faGripVertical, faTimes,
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
-  faFileContract, faComments
+  faFileContract, faComments, faHourglassHalf, faFileInvoice,
+  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
@@ -51,7 +52,8 @@ const WIDGET_REGISTRY = {
   smlouvy_critical:    { title: 'Smlouvy - kritický stav',  icon: faFileContract,       color: '#dc2626', requires: 'DASHBOARD_SPENDING_CONTRACTS' },
   lp_critical:         { title: 'LP - kritický stav',       icon: faMoneyBillWave,      color: '#dc2626', requires: 'DASHBOARD_SPENDING_LP' },
   order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1' },
-  invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' }
+  invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' },
+  annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' }
 };
 
 const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
@@ -283,11 +285,71 @@ const DashGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 1.25rem;
-  margin-top: 1.5rem;
+  margin-top: 1.25rem;
   @media (max-width: 768px) { grid-template-columns: 1fr; }
   @media (min-width: 768px) and (max-width: 1199px) { grid-template-columns: repeat(2, 1fr); }
   @media (min-width: 1200px) and (max-width: 1599px) { grid-template-columns: repeat(3, 1fr); }
   @media (min-width: 1600px) { grid-template-columns: repeat(4, 1fr); }
+`;
+
+// === FOCUS ALERTS BANNER ===
+const FocusBannerWrap = styled.div`
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #fefce8 0%, #fff7ed 50%, #fef2f2 100%);
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+`;
+
+const FocusBannerHeader = styled.div`
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.78rem; font-weight: 700; color: #92400e;
+  border-bottom: 1px solid rgba(253,230,138,0.5);
+  background: rgba(255,255,255,0.4);
+`;
+
+const FocusBannerBody = styled.div`
+  display: flex; gap: 0.75rem; padding: 0.6rem 1rem;
+  overflow-x: auto; overflow-y: hidden;
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 2px; }
+  scrollbar-width: thin;
+  scrollbar-color: #fbbf24 transparent;
+`;
+
+const FocusCard = styled.div`
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid ${p => p.$severity === 'danger' ? '#fca5a5' : '#fde68a'};
+  background: ${p => p.$severity === 'danger' ? '#fef2f2' : '#fffbeb'};
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 200px; max-width: 360px;
+  &:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,0.08); }
+`;
+
+const FocusIcon = styled.div`
+  width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem;
+  background: ${p => p.$severity === 'danger' ? '#fee2e2' : '#fef3c7'};
+  color: ${p => p.$severity === 'danger' ? '#dc2626' : '#d97706'};
+  flex-shrink: 0;
+`;
+
+const FocusText = styled.span`
+  font-size: 0.78rem; font-weight: 500; color: #1f2937;
+  line-height: 1.3;
+`;
+
+const FocusCount = styled.span`
+  font-size: 0.85rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: ${p => p.$severity === 'danger' ? '#dc2626' : '#d97706'};
+  flex-shrink: 0;
 `;
 
 const WidgetCard = styled.div`
@@ -624,6 +686,78 @@ const WelcomeDate = styled.div`
   margin-top: 0.3rem;
 `;
 
+const WelcomeNameday = styled.div`
+  font-size: 0.8rem;
+  color: #7c3aed;
+  margin-top: 0.25rem;
+  svg { margin-right: 0.3rem; }
+`;
+
+const WelcomeDivider = styled.hr`
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 0.75rem 0 0.6rem;
+`;
+
+const NewsSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+`;
+
+const NewsSectionTitle = styled.div`
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: ${theme.colors.gray500};
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.1rem;
+`;
+
+const NewsItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: ${p => p.$bg || '#f0fdf4'};
+  cursor: pointer;
+  transition: opacity 0.15s;
+  &:hover { opacity: 0.8; }
+`;
+
+const NewsIcon = styled.span`
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${p => p.$color || '#10b981'}20;
+  color: ${p => p.$color || '#10b981'};
+  font-size: 0.65rem;
+  flex-shrink: 0;
+`;
+
+const NewsText = styled.span`
+  font-size: 0.75rem;
+  color: #374151;
+  flex: 1;
+`;
+
+const NewsCount = styled.span`
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: ${p => p.$color || '#10b981'};
+`;
+
+const NewsEmpty = styled.div`
+  font-size: 0.75rem;
+  color: ${theme.colors.gray400};
+  font-style: italic;
+  padding: 0.25rem 0;
+`;
+
 const LoadingSkeleton = styled.div`
   height: ${p => p.$h || '200px'};
   border-radius: 14px;
@@ -646,10 +780,9 @@ const ConfigOverlay = styled.div`
 const ConfigPanel = styled.div`
   background: white;
   border-radius: 16px;
-  width: 520px;
-  max-width: 95vw;
-  max-height: 80vh;
-  overflow: auto;
+  width: min(95vw, 780px);
+  max-height: 70vh;
+  display: flex; flex-direction: column;
   box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 `;
 
@@ -679,16 +812,26 @@ const ConfigCloseBtn = styled.button`
 `;
 
 const ConfigBody = styled.div`
-  padding: 1rem 1.5rem 1.5rem;
+  padding: 0.75rem 1.25rem 1.25rem;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+  @media (max-width: 600px) { grid-template-columns: 1fr; }
+  &::-webkit-scrollbar { width: 5px; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 `;
 
 const ConfigItem = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.65rem 0.5rem;
+  gap: 0.6rem;
+  padding: 0.5rem 0.5rem;
   border-radius: 8px;
-  border-bottom: 1px solid ${theme.colors.gray100};
+  border: 1px solid ${theme.colors.gray100};
   cursor: grab;
   transition: background 0.15s;
   &:hover { background: ${theme.colors.gray100}; }
@@ -813,7 +956,7 @@ const getStatusBadge = (stav) => {
 // WIDGET COMPONENTS
 // ============================================================================
 
-function WelcomeWidget({ user, rolesDetected }) {
+function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, navigate }) {
   const roleLabels = [];
   if (rolesDetected?.is_admin) roleLabels.push('Administrátor');
   if (rolesDetected?.has_order_approve) roleLabels.push('Příkazce');
@@ -823,6 +966,19 @@ function WelcomeWidget({ user, rolesDetected }) {
 
   const today = new Date();
   const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
+
+  const NEWS_ICON_MAP = {
+    'shopping-cart': { icon: faShoppingCart, color: '#2563eb', bg: '#dbeafe' },
+    'gavel': { icon: faGavel, color: '#dc2626', bg: '#fef2f2' },
+    'check-circle': { icon: faCheckCircle, color: '#059669', bg: '#ecfdf5' },
+    'check-double': { icon: faCheckCircle, color: '#10b981', bg: '#d1fae5' },
+    'file-invoice': { icon: faFileInvoice, color: '#0284c7', bg: '#e0f2fe' },
+    'exclamation-triangle': { icon: faExclamationTriangle, color: '#f59e0b', bg: '#fffbeb' },
+  };
+
+  // Nový formát: {items: [...], since_formatted: '6.4. 14:30'}
+  const newsItems = newsSinceLogin?.items || (Array.isArray(newsSinceLogin) ? newsSinceLogin : []);
+  const sinceFormatted = newsSinceLogin?.since_formatted || '';
 
   return (
     <WidgetBody $noScroll>
@@ -839,8 +995,43 @@ function WelcomeWidget({ user, rolesDetected }) {
           <WelcomeDate>
             {dayNames[today.getDay()]}, {today.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long', year: 'numeric' })}
           </WelcomeDate>
+          {nameday && (
+            <WelcomeNameday>
+              <FontAwesomeIcon icon={faGift} />
+              Svátek má <strong>{nameday}</strong>
+            </WelcomeNameday>
+          )}
         </WelcomeInfo>
       </WelcomeRow>
+
+      {/* Poslední aktivity */}
+      <WelcomeDivider />
+      <NewsSection>
+        <NewsSectionTitle>
+          <FontAwesomeIcon icon={faClock} style={{ marginRight: '0.3rem' }} />
+          Poslední aktivity {sinceFormatted ? `(od ${sinceFormatted})` : ''}
+        </NewsSectionTitle>
+        {newsItems.length > 0 ? (
+          newsItems.map((item, i) => {
+            const cfg = NEWS_ICON_MAP[item.icon] || { icon: faInfoCircle, color: '#6b7280', bg: '#f3f4f6' };
+            return (
+              <NewsItem key={i} $bg={cfg.bg} onClick={() => {
+                if (item.link) {
+                  navigate(item.link, item.filter ? { state: { dashboardFilter: item.filter, clearFilters: true } } : undefined);
+                }
+              }}>
+                <NewsIcon $color={cfg.color}>
+                  <FontAwesomeIcon icon={cfg.icon} />
+                </NewsIcon>
+                <NewsText>{item.text}</NewsText>
+                <NewsCount $color={cfg.color}>{item.count}</NewsCount>
+              </NewsItem>
+            );
+          })
+        ) : (
+          <NewsEmpty>Žádné nové aktivity</NewsEmpty>
+        )}
+      </NewsSection>
     </WidgetBody>
   );
 }
@@ -1501,6 +1692,83 @@ function InvoiceStatsWidget({ stats, navigate }) {
 }
 
 // ============================================================================
+// ANNUAL FEES DUE WIDGET
+// ============================================================================
+
+function AnnualFeesDueWidget({ feesData, navigate }) {
+  const data = feesData || {};
+  const items = data.items || [];
+  const stats = data.stats || {};
+
+  if (items.length === 0 && !parseInt(stats.celkem)) {
+    return <WidgetBody><EmptyState>Žádné roční poplatky</EmptyState></WidgetBody>;
+  }
+
+  return (
+    <WidgetBody>
+      <SmlouvyStatsRow>
+        {parseInt(stats.celkem) > 0 && (
+          <SmlouvyStatChip $bg="#dbeafe" $color="#1d4ed8">
+            Celkem: {stats.celkem}
+          </SmlouvyStatChip>
+        )}
+        {parseInt(stats.po_splatnosti) > 0 && (
+          <SmlouvyStatChip $bg="#fee2e2" $color="#dc2626" onClick={() => navigate('/annual-fees', { state: { filterStav: '_PO_SPLATNOSTI' } })} style={{ cursor: 'pointer' }}>
+            Po splatnosti: {stats.po_splatnosti}
+          </SmlouvyStatChip>
+        )}
+        {parseInt(stats.blizi_se) > 0 && (
+          <SmlouvyStatChip $bg="#fef3c7" $color="#b45309" onClick={() => navigate('/annual-fees', { state: { filterStav: '_BLIZI_SE_SPLATNOST' } })} style={{ cursor: 'pointer' }}>
+            Blíží se spl. (30d): {stats.blizi_se}
+          </SmlouvyStatChip>
+        )}
+      </SmlouvyStatsRow>
+
+      {(parseFloat(stats.castka_po_splatnosti) > 0 || parseFloat(stats.castka_blizi_se) > 0) && (
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
+          {parseFloat(stats.castka_po_splatnosti) > 0 && (
+            <span style={{ color: '#dc2626' }}>
+              Dluh: <strong>{formatCurrency(stats.castka_po_splatnosti)}</strong>
+            </span>
+          )}
+          {parseFloat(stats.castka_blizi_se) > 0 && (
+            <span style={{ color: '#b45309' }}>
+              K úhradě (30d): <strong>{formatCurrency(stats.castka_blizi_se)}</strong>
+            </span>
+          )}
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <EmptyState>Žádné poplatky k řešení</EmptyState>
+      ) : items.map(item => {
+        const dniDo = parseInt(item.dni_do_splatnosti, 10);
+        const isOverdue = item.typ === 'PO_SPLATNOSTI';
+        const splatnostDate = item.datum_splatnosti ? new Date(item.datum_splatnosti).toLocaleDateString('cs-CZ') : '';
+
+        return (
+          <ListItem key={`${item.id}-${item.polozka_id}`} onClick={() => navigate('/annual-fees', { state: { returnTo: '/dashboard', highlightId: item.id, filterStav: isOverdue ? '_PO_SPLATNOSTI' : '_BLIZI_SE_SPLATNOST' } })}>
+            <ListItemLeft>
+              <ListItemTitle>{item.nazev || item.druh || `Poplatek #${item.id}`}</ListItemTitle>
+              <ListItemSub>
+                {item.dodavatel_nazev || ''}{item.dodavatel_nazev ? ' · ' : ''}
+                Rok {item.rok} · Spl. {splatnostDate}
+              </ListItemSub>
+            </ListItemLeft>
+            <ListItemRight style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+              <Amount $color={isOverdue ? '#dc2626' : '#b45309'}>{formatCurrency(item.polozka_castka)}</Amount>
+              <CriticalTag $type={isOverdue ? 'UKONCENA' : 'BRZY_KONCI'}>
+                {isOverdue ? `${Math.abs(dniDo)} dní po spl.` : (dniDo === 0 ? 'Dnes' : `za ${dniDo} dní`)}
+              </CriticalTag>
+            </ListItemRight>
+          </ListItem>
+        );
+      })}
+    </WidgetBody>
+  );
+}
+
+// ============================================================================
 // CONFIG MODAL
 // ============================================================================
 
@@ -1591,6 +1859,53 @@ function DashboardConfigModal({ tiles, visibleTiles, onToggle, onReorder, onClos
         </ConfigBody>
       </ConfigPanel>
     </ConfigOverlay>
+  );
+}
+
+// ============================================================================
+// FOCUS ALERTS BANNER
+// ============================================================================
+
+const FOCUS_ICON_MAP = {
+  'hourglass-half': faHourglassHalf,
+  'gavel': faGavel,
+  'file-invoice': faFileInvoice,
+  'exclamation-triangle': faExclamationTriangle,
+  'chart-line': faChartLine,
+  'coins': faCoins,
+  'calendar-check': faCalendarCheck,
+};
+
+function FocusAlertsBanner({ items, navigate: nav }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <FocusBannerWrap>
+      <FocusBannerHeader>
+        <FontAwesomeIcon icon={faBullhorn} />
+        Na co se zaměřit
+      </FocusBannerHeader>
+      <FocusBannerBody>
+        {items.map((item, idx) => (
+          <FocusCard
+            key={idx}
+            $severity={item.severity}
+            onClick={() => {
+              if (!item.link) return;
+              const state = {};
+              if (item.linkTab) state.tab = item.linkTab;
+              if (item.linkFilterStav) state.filterStav = item.linkFilterStav;
+              nav(item.link, Object.keys(state).length > 0 ? { state } : undefined);
+            }}
+          >
+            <FocusIcon $severity={item.severity}>
+              <FontAwesomeIcon icon={FOCUS_ICON_MAP[item.icon] || faExclamationCircle} />
+            </FocusIcon>
+            <FocusText>{item.text}</FocusText>
+            <FocusCount $severity={item.severity}>{item.count}</FocusCount>
+          </FocusCard>
+        ))}
+      </FocusBannerBody>
+    </FocusBannerWrap>
   );
 }
 
@@ -1728,9 +2043,9 @@ export default function DashboardPage() {
 
   // 🎯 Get quick tiles based on user roles
   const getQuickTiles = useMemo(() => {
-    if (!userDetail?.roles || !data?.orders_stats) return [];
+    if (!data?.orders_stats) return [];
 
-    const roles = userDetail.roles.map(r => r.kod_role);
+    const roles = (userDetail?.roles || []).map(r => r.kod_role);
     const stats = data.orders_stats;
     const isAdmin = hasAdminRole();
     const tiles = [];
@@ -1744,8 +2059,13 @@ export default function DashboardPage() {
       'zkontrolovana': '✔️',
       'dokoncena': '🏁',
       'fakturace': '💰',
-      'k_uverejneni_do_registru': '🌐'
+      'k_uverejneni_do_registru': '🌐',
+      'odeslana': '📤'
     };
+
+    // Helper: role check (podporuje THP_PES, PRIKAZCE_OPERACE atd.)
+    const hasRole = (r) => roles.some(k => k === r || k.startsWith(r + '_') || k.startsWith(r));
+    const hasAnyRole = (...rs) => rs.some(r => hasRole(r));
 
     // Admin vidí všechny
     if (isAdmin) {
@@ -1762,36 +2082,47 @@ export default function DashboardPage() {
       return tiles;
     }
 
-    // THP/PES/VRCHNI/PRIMAR role: rozpracovana, schvalena, vecna_spravnost
-    if (roles.includes('THP') || roles.includes('PES') || roles.includes('VRCHNI') || roles.includes('PRIMAR')) {
-      tiles.push(
-        { label: 'Schválené', count: stats.schvalena || 0, filter: 'schvalena', icon: icons.schvalena },
-        { label: 'Rozpracované', count: stats.rozpracovana || 0, filter: 'rozpracovana', icon: icons.rozpracovana },
-        { label: 'Věcná správnost', count: stats.vecna_spravnost || 0, filter: 'vecna_spravnost', icon: icons.vecna_spravnost }
-      );
-    }
+    // == Běžný uživatel (THP, PES, VRCHNI, PRIMAR, VEDOUCI, REFERENT, ...) ==
+    // Každý uživatel vidí minimálně: Ke schválení, Schválené, Rozpracované
+    tiles.push(
+      { label: 'Ke schválení', count: stats.ke_schvaleni || 0, filter: 'ke_schvaleni', icon: icons.ke_schvaleni },
+      { label: 'Schválené', count: stats.schvalena || 0, filter: 'schvalena', icon: icons.schvalena },
+      { label: 'Rozpracované', count: stats.rozpracovana || 0, filter: 'rozpracovana', icon: icons.rozpracovana }
+    );
 
-    // Příkazce: ke_schvaleni, zkontrolovana
-    if (roles.includes('PRIKAZCE')) {
+    // Příkazce/Náměstek/Primář/Ředitel/Vedoucí: + Zkontrolováno
+    if (hasAnyRole('PRIKAZCE', 'NAMESTEK', 'PRIMAR', 'REDITEL', 'VEDOUCI')) {
       tiles.push(
-        { label: 'Ke schválení', count: stats.ke_schvaleni || 0, filter: 'ke_schvaleni', icon: icons.ke_schvaleni },
         { label: 'Zkontrolováno', count: stats.zkontrolovana || 0, filter: 'zkontrolovana', icon: icons.zkontrolovana }
       );
     }
 
-    // Správce rozpočtu: ke_schvaleni, zkontrolovana, dokoncena
-    if (roles.includes('SPRAVCE_ROZPOCTU')) {
+    // Vrchní/THP/PES: + Věcná správnost  
+    if (hasAnyRole('THP', 'PES', 'VRCHNI', 'REFERENT')) {
       tiles.push(
-        { label: 'Ke schválení', count: stats.ke_schvaleni || 0, filter: 'ke_schvaleni', icon: icons.ke_schvaleni },
+        { label: 'Věcná správnost', count: stats.vecna_spravnost || 0, filter: 'vecna_spravnost', icon: icons.vecna_spravnost }
+      );
+    }
+
+    // Správce rozpočtu/Rozpočtář: + Zkontrolováno, Dokončeno
+    if (hasAnyRole('SPRAVCE_ROZPOCTU', 'ROZPOCTAR')) {
+      tiles.push(
         { label: 'Zkontrolováno', count: stats.zkontrolovana || 0, filter: 'zkontrolovana', icon: icons.zkontrolovana },
         { label: 'Dokončeno', count: stats.dokoncena || 0, filter: 'dokoncena', icon: icons.dokoncena }
       );
     }
 
-    // Hlavní účetní, účetní: fakturace, k_uverejneni_do_registru
-    if (roles.includes('HLAVNI_UCETNI') || roles.includes('UCETNI')) {
+    // Hlavní účetní, účetní: + Fakturace, Ke zveřejnění
+    if (hasAnyRole('HLAVNI_UCETNI', 'UCETNI')) {
       tiles.push(
         { label: 'Fakturace', count: stats.fakturace || 0, filter: 'fakturace', icon: icons.fakturace },
+        { label: 'Ke zveřejnění', count: stats.k_uverejneni_do_registru || 0, filter: 'k_uverejneni_do_registru', icon: icons.k_uverejneni_do_registru }
+      );
+    }
+
+    // Veřejné zakázky: + Ke zveřejnění
+    if (hasAnyRole('VEREJNE_ZAKAZKY')) {
+      tiles.push(
         { label: 'Ke zveřejnění', count: stats.k_uverejneni_do_registru || 0, filter: 'k_uverejneni_do_registru', icon: icons.k_uverejneni_do_registru }
       );
     }
@@ -1819,7 +2150,7 @@ export default function DashboardPage() {
 
     switch (tileId) {
       case 'welcome':
-        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} />;
+        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} navigate={navigate} />;
         break;
       case 'orders_stats':
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
@@ -1880,6 +2211,10 @@ export default function DashboardPage() {
         break;
       case 'invoices_stats':
         content = <InvoiceStatsWidget stats={data?.invoices_stats} navigate={navigate} />;
+        break;
+      case 'annual_fees_due':
+        content = <AnnualFeesDueWidget feesData={data?.annual_fees_due} navigate={navigate} />;
+        badgeCount = (data?.annual_fees_due?.stats?.po_splatnosti || 0) + (data?.annual_fees_due?.stats?.blizi_se || 0);
         break;
       default:
         return null;
@@ -2013,6 +2348,8 @@ export default function DashboardPage() {
           )}
         </HeaderActions>
       </PageHeader>
+
+      <FocusAlertsBanner items={data?.focus_alerts} navigate={navigate} />
 
       <DashGrid>
         {orderedTiles.map((tileId, idx) => renderWidget(tileId, idx))}

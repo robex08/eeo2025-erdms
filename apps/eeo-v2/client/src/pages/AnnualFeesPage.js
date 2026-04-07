@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import styled from '@emotion/styled';
@@ -1403,6 +1404,8 @@ const HiddenFileInput = styled.input`
 function AnnualFeesPage() {
   const { token, username, userDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // 🔐 KONTROLA OPRÁVNĚNÍ
   // Pravidla:
@@ -1499,19 +1502,21 @@ function AnnualFeesPage() {
   
   const [showNewRow, setShowNewRow] = useState(false);
   
-  // 💾 Inicializace filtrů z localStorage
+  // 💾 Inicializace filtrů z localStorage (nebo z dashboard prokliku)
   const [filters, setFilters] = useState(() => {
+    // 🎯 Dashboard proklik — override stav filtru
+    const dashboardStav = location.state?.filterStav;
+
     try {
       const saved = localStorage.getItem('annualFees_filters');
       if (saved) {
         const parsedFilters = JSON.parse(saved);
-        // Vždy použij aktuální rok jako výchozí, pokud není nastavený
         return {
-          rok: parsedFilters.rok || new Date().getFullYear(),
+          rok: dashboardStav ? 'all' : (parsedFilters.rok || new Date().getFullYear()),
           druh: parsedFilters.druh || 'all',
           platba: parsedFilters.platba || 'all',
-          stav: parsedFilters.stav || 'all',
-          smlouva: parsedFilters.smlouva || ''
+          stav: dashboardStav || parsedFilters.stav || 'all',
+          smlouva: dashboardStav ? '' : (parsedFilters.smlouva || '')
         };
       }
     } catch (error) {
@@ -1521,10 +1526,10 @@ function AnnualFeesPage() {
     
     // Výchozí hodnoty
     return {
-      rok: new Date().getFullYear(),
+      rok: dashboardStav ? 'all' : new Date().getFullYear(),
       druh: 'all',
       platba: 'all',
-      stav: 'all',
+      stav: dashboardStav || 'all',
       smlouva: ''
     };
   });
@@ -1541,6 +1546,16 @@ function AnnualFeesPage() {
     }
   });
   const debouncedFulltext = useDebounce(fulltextSearch, 500);
+
+  // 🎯 Vyčištění location.state po dashboard prokliku (aby se filtr neaplikoval znovu při refreshi)
+  useEffect(() => {
+    if (location.state?.filterStav) {
+      const { filterStav: _fs, ...rest } = location.state;
+      const newState = Object.keys(rest).length > 0 ? rest : null;
+      navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: newState });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // Číselníky
   const [druhy, setDruhy] = useState([]);
@@ -2118,7 +2133,7 @@ function AnnualFeesPage() {
         token,
         username,
         filters: {
-          rok: filters.rok,
+          rok: filters.rok !== 'all' ? filters.rok : undefined,
           druh: filters.druh !== 'all' ? filters.druh : undefined,
           platba: filters.platba !== 'all' ? filters.platba : undefined,
           stav: filters.stav !== 'all' ? filters.stav : undefined,
@@ -3625,6 +3640,7 @@ function AnnualFeesPage() {
             value={filters.rok} 
             onChange={(e) => handleFilterChange('rok', e.target.value)}
           >
+            <option key="all" value="all">Vše</option>
             <option key="2026" value="2026">2026</option>
             <option key="2025" value="2025">2025</option>
             <option key="2024" value="2024">2024</option>

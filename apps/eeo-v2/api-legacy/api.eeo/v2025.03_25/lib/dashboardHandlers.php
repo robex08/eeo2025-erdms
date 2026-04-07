@@ -108,11 +108,19 @@ function handle_dashboard_data($input, $config, $queries) {
             ]
         ];
 
+        // === SVÁTEK (nameday) ===
+        $namedays = cz_get_namedays_list();
+        $today_key = date('j.n.');
+        $result['nameday'] = $namedays[$today_key] ?? null;
+
+        // === CO NOVÉHO OD POSLEDNÍHO PŘIHLÁŠENÍ ===
+        $last_login = $user_info['dt_posledni_prihlaseni'] ?? null;
+        $result['news_since_login'] = _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, $last_login, $usek_id ?? null);
+
         // === STATISTIKY OBJEDNÁVEK ===
+        // Vždy načíst – potřebné pro QuickTiles v hlavičce (widget zobrazení řídí frontend dle DASHBOARD_ORDERS_STATS)
         $usek_id = $user_info['usek_id'] ?? null;
-        if ($has_cap('DASHBOARD_ORDERS_STATS')) {
-            $result['orders_stats'] = _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $perm_codes, $usek_id);
-        }
+        $result['orders_stats'] = _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $perm_codes, $usek_id);
 
         // === MOJE OBJEDNÁVKY K AKCI ===
         $result['my_orders_pending'] = _dashboard_get_my_orders_pending($db, $user_id, $days);
@@ -150,6 +158,9 @@ function handle_dashboard_data($input, $config, $queries) {
         // === UPOZORNĚNÍ - prodlení ===
         $result['alerts'] = _dashboard_get_alerts($db, $user_id, $is_admin, $perm_codes);
 
+        // === FOCUS ALERTS – personalizované kritické zprávy pod welcome card ===
+        $result['focus_alerts'] = _dashboard_get_focus_alerts($db, $user_id, $is_admin, $perm_codes, $has_cap, $usek_id);
+
         // === NEPŘEČTENÉ NOTIFIKACE ===
         $result['notifications_unread'] = _dashboard_get_notifications_unread($db, $user_id, 5);
 
@@ -171,6 +182,11 @@ function handle_dashboard_data($input, $config, $queries) {
         // === LP - KRITICKÝ STAV (dle úseku uživatele) ===
         if ($has_cap('DASHBOARD_SPENDING_LP')) {
             $result['lp_critical'] = _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id);
+        }
+
+        // === ROČNÍ POPLATKY - SPLATNOST ===
+        if ($has_cap('DASHBOARD_ANNUAL_FEES')) {
+            $result['annual_fees_due'] = _dashboard_get_annual_fees_due($db);
         }
 
         // === KOMENTÁŘE K OBJEDNÁVKÁM (kde je uživatel účastník) ===
@@ -208,7 +224,7 @@ function handle_dashboard_data($input, $config, $queries) {
 function _dashboard_get_user_info($db, $user_id) {
     $stmt = $db->prepare("
         SELECT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.telefon,
-               u.pozice_id, u.usek_id,
+               u.pozice_id, u.usek_id, u.dt_posledni_prihlaseni,
                IFNULL(p.nazev_pozice, '') as pozice,
                IFNULL(us.usek_nazev, '') as usek_nazev,
                IFNULL(us.usek_zkr, '') as usek_zkr
@@ -604,6 +620,396 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
     }
 
     return $alerts;
+}
+
+/**
+ * Focus alerts – personalizované kritické zprávy pod welcome card
+ * Běžní uživatelé: dlouho nevyřízené objednávky
+ * Vyšší role: vyčerpání smluv/LP, neschválené, nezaplacené
+ */
+function _dashboard_get_focus_alerts($db, $user_id, $is_admin, $permissions, $has_cap, $usek_id) {
+    $items = [];
+
+    // --- 1. Moje objednávky bez akce > 14 dní (VŠICHNI) ---
+    $stmt = $db->prepare("
+        SELECT COUNT(*) as cnt
+        FROM `" . TBL_OBJEDNAVKY . "` o
+        WHERE o.aktivni = 1 AND o.id != 1
+          AND (o.uzivatel_id = ? OR o.objednatel_id = ?)
+          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+              NOT IN ('DOKONCENA', 'STORNO', 'ZAMITNUTA')
+          AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 14
+    ");
+    $stmt->execute([$user_id, $user_id]);
+    $cnt = (int)$stmt->fetchColumn();
+    if ($cnt > 0) {
+        $items[] = [
+            'severity' => 'warning',
+            'icon' => 'hourglass-half',
+            'text' => "Máte {$cnt} " . ($cnt === 1 ? 'objednávku' : ($cnt < 5 ? 'objednávky' : 'objednávek')) . " bez akce déle než 14 dní",
+            'link' => '/orders25-list-v3',
+            'count' => $cnt
+        ];
+    }
+
+    // --- 2. Ke schválení > 14 dní (pro příkazce vždy, admin vidí vše) ---
+    {
+        $where_u = $is_admin ? "" : "AND o.prikazce_id = ?";
+        $params = $is_admin ? [] : [$user_id];
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                  IN ('ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI')
+              AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 14
+              {$where_u}
+        ");
+        $stmt->execute($params);
+        $cnt2 = (int)$stmt->fetchColumn();
+        if ($cnt2 > 0) {
+            $items[] = [
+                'severity' => 'danger',
+                'icon' => 'gavel',
+                'text' => "{$cnt2} " . ($cnt2 === 1 ? 'objednávka čeká' : ($cnt2 < 5 ? 'objednávky čekají' : 'objednávek čeká')) . " na Vaše schválení déle než 14 dní",
+                'link' => '/orders25-list-v3',
+                'count' => $cnt2
+            ];
+        }
+    }
+
+    // --- 3. Nepotvrzené faktury > 5 dní ---
+    if ($has_cap('DASHBOARD_INVOICES_CONFIRM') || $is_admin) {
+        $where_f = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
+        $params_f = $is_admin ? [] : [$user_id, $user_id];
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_FAKTURY . "` f
+            WHERE f.aktivni = 1
+              AND f.stav IN ('ZAEVIDOVANA', 'VECNA_SPRAVNOST')
+              AND DATEDIFF(CURDATE(), f.dt_vytvoreni) > 5
+              {$where_f}
+        ");
+        $stmt->execute($params_f);
+        $cnt3 = (int)$stmt->fetchColumn();
+        if ($cnt3 > 0) {
+            $items[] = [
+                'severity' => 'danger',
+                'icon' => 'file-invoice',
+                'text' => "{$cnt3} " . ($cnt3 === 1 ? 'faktura čeká' : ($cnt3 < 5 ? 'faktury čekají' : 'faktur čeká')) . " na potvrzení déle než 5 dní",
+                'link' => '/invoices25-list',
+                'count' => $cnt3
+            ];
+        }
+    }
+
+    // --- 4. Faktury po splatnosti (nezaplaceno) ---
+    if ($has_cap('DASHBOARD_INVOICES_OVERDUE') || $is_admin) {
+        $where_f2 = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
+        $params_f2 = $is_admin ? [] : [$user_id, $user_id];
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_FAKTURY . "` f
+            WHERE f.aktivni = 1
+              AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO')
+              AND f.fa_datum_splatnosti < CURDATE()
+              {$where_f2}
+        ");
+        $stmt->execute($params_f2);
+        $cnt4 = (int)$stmt->fetchColumn();
+        if ($cnt4 > 0) {
+            $items[] = [
+                'severity' => 'danger',
+                'icon' => 'exclamation-triangle',
+                'text' => "{$cnt4} " . ($cnt4 === 1 ? 'faktura je' : ($cnt4 < 5 ? 'faktury jsou' : 'faktur je')) . " po splatnosti",
+                'link' => '/invoices25-list',
+                'count' => $cnt4
+            ];
+        }
+    }
+
+    // --- 5. Kritické čerpání smluv (>90%) ---
+    if ($has_cap('DASHBOARD_SPENDING_CONTRACTS') || $is_admin) {
+        $where_s = ($is_admin || !$usek_id) ? "" : "AND s.usek_id = ?";
+        $params_s = ($is_admin || !$usek_id) ? [] : [$usek_id];
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_SMLOUVY . "` s
+            WHERE s.aktivni = 1
+              AND s.procento_cerpani >= 90
+              AND (s.platnost_do IS NULL OR CURDATE() <= s.platnost_do)
+              {$where_s}
+        ");
+        $stmt->execute($params_s);
+        $cnt5 = (int)$stmt->fetchColumn();
+        if ($cnt5 > 0) {
+            $items[] = [
+                'severity' => 'warning',
+                'icon' => 'chart-line',
+                'text' => "{$cnt5} " . ($cnt5 === 1 ? 'smlouva má' : ($cnt5 < 5 ? 'smlouvy mají' : 'smluv má')) . " vyčerpáno přes 90 % rozpočtu",
+                'link' => '/cerpani',
+                'linkTab' => 'contracts',
+                'count' => $cnt5
+            ];
+        }
+    }
+
+    // --- 6. Kritické LP přísliby (>90%) ---
+    if ($has_cap('DASHBOARD_SPENDING_LP') || $is_admin) {
+        $where_lp = ($is_admin || !$usek_id) ? "" : "AND c.usek_id = ?";
+        $params_lp = [date('Y')];
+        if (!$is_admin && $usek_id) {
+            $params_lp[] = $usek_id;
+        }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_LIMITOVANE_PRISLIBY_CERPANI . "` c
+            WHERE c.rok = ?
+              AND c.celkovy_limit > 0
+              AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.9
+              {$where_lp}
+        ");
+        $stmt->execute($params_lp);
+        $cnt6 = (int)$stmt->fetchColumn();
+        if ($cnt6 > 0) {
+            $items[] = [
+                'severity' => 'warning',
+                'icon' => 'coins',
+                'text' => "{$cnt6} " . ($cnt6 === 1 ? 'LP příslib má' : ($cnt6 < 5 ? 'LP přísliby mají' : 'LP příslibů má')) . " vyčerpáno přes 90 %",
+                'link' => '/cerpani',
+                'linkTab' => 'limited-promises',
+                'count' => $cnt6
+            ];
+        }
+    }
+
+    // --- 7. Roční poplatky po splatnosti ---
+    if ($has_cap('DASHBOARD_ANNUAL_FEES') || $is_admin) {
+        $stmt = $db->query("
+            SELECT COUNT(*) as cnt,
+                   COALESCE(SUM(rpp.castka), 0) as castka
+            FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+            JOIN `" . TBL_ROCNI_POPLATKY . "` rp ON rp.id = rpp.rocni_poplatek_id AND rp.aktivni = 1
+            WHERE rpp.aktivni = 1
+              AND rpp.stav != 'ZAPLACENO'
+              AND rpp.datum_splatnosti < CURDATE()
+        ");
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cnt7 = (int)($row['cnt'] ?? 0);
+        if ($cnt7 > 0) {
+            $items[] = [
+                'severity' => 'danger',
+                'icon' => 'calendar-check',
+                'text' => "{$cnt7} " . ($cnt7 === 1 ? 'položka ročního poplatku je' : ($cnt7 < 5 ? 'položky ročních poplatků jsou' : 'položek ročních poplatků je')) . " po splatnosti",
+                'link' => '/annual-fees',
+                'linkFilterStav' => '_PO_SPLATNOSTI',
+                'count' => $cnt7
+            ];
+        }
+    }
+
+    // --- 8. Roční poplatky blížící se splatnosti (do 10 dní) ---
+    if ($has_cap('DASHBOARD_ANNUAL_FEES') || $is_admin) {
+        $stmt = $db->query("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+            JOIN `" . TBL_ROCNI_POPLATKY . "` rp ON rp.id = rpp.rocni_poplatek_id AND rp.aktivni = 1
+            WHERE rpp.aktivni = 1
+              AND rpp.stav != 'ZAPLACENO'
+              AND rpp.datum_splatnosti >= CURDATE()
+              AND rpp.datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)
+        ");
+        $cnt8 = (int)$stmt->fetchColumn();
+        if ($cnt8 > 0) {
+            $items[] = [
+                'severity' => 'warning',
+                'icon' => 'calendar-check',
+                'text' => "{$cnt8} " . ($cnt8 === 1 ? 'položce ročního poplatku se blíží' : ($cnt8 < 5 ? 'položkám ročních poplatků se blíží' : 'položkám ročních poplatků se blíží')) . " splatnost (do 10 dní)",
+                'link' => '/annual-fees',
+                'count' => $cnt8
+            ];
+        }
+    }
+
+    // Sort by severity (danger first, then warning)
+    usort($items, function($a, $b) {
+        $order = ['danger' => 0, 'warning' => 1, 'info' => 2];
+        return ($order[$a['severity']] ?? 9) - ($order[$b['severity']] ?? 9);
+    });
+
+    return $items;
+}
+
+/**
+ * Co nového od posledního přihlášení
+ * Vrací souhrn nových událostí (objednávky, faktury) od dt_posledni_prihlaseni
+ */
+function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, $last_login, $usek_id) {
+    $news = [];
+
+    // Období: od posledního přihlášení, včetně dneška
+    $today = date('Y-m-d 00:00:00');
+    $since = $last_login ?: $today;
+
+    // 1. Nově vytvořené objednávky (kde je uživatel objednatel/garant)
+    {
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
+              AND o.dt_vytvoreni >= ?
+        ");
+        $stmt->execute([$user_id, $user_id, $since]);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $news[] = [
+                'icon' => 'shopping-cart',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'nová objednávka vytvořena' : ($cnt < 5 ? 'nové objednávky vytvořeny' : 'nových objednávek vytvořeno')),
+                'link' => '/orders25-list-v3',
+                'filter' => 'ke_schvaleni',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // 2. Objednávky čekající ke schválení (AKČNÍ – bez časového filtru, ukazuje aktuální stav)
+    {
+        $where_u = $is_admin ? "" : "AND (o.prikazce_id = ?)";
+        $params = [];
+        if (!$is_admin) { $params[] = $user_id; }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                  IN ('ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI')
+              {$where_u}
+        ");
+        $stmt->execute($params);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $news[] = [
+                'icon' => 'gavel',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka čeká' : ($cnt < 5 ? 'objednávky čekají' : 'objednávek čeká')) . " ke schválení",
+                'link' => '/orders25-list-v3',
+                'filter' => 'ke_schvaleni',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // 3. Schválené objednávky
+    {
+        $where_u = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.prikazce_id = ?)";
+        $params = [$since];
+        if (!$is_admin) { $params[] = $user_id; $params[] = $user_id; }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                  = 'SCHVALENA'
+              AND o.dt_aktualizace >= ?
+              {$where_u}
+        ");
+        $stmt->execute($params);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $news[] = [
+                'icon' => 'check-circle',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka schválena' : ($cnt < 5 ? 'objednávky schváleny' : 'objednávek schváleno')),
+                'link' => '/orders25-list-v3',
+                'filter' => 'schvalena',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // 4. Zamítnuté objednávky
+    {
+        $where_u = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.prikazce_id = ?)";
+        $params = [$since];
+        if (!$is_admin) { $params[] = $user_id; $params[] = $user_id; }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                  = 'ZAMITNUTA'
+              AND o.dt_aktualizace >= ?
+              {$where_u}
+        ");
+        $stmt->execute($params);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $news[] = [
+                'icon' => 'exclamation-triangle',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka zamítnuta' : ($cnt < 5 ? 'objednávky zamítnuty' : 'objednávek zamítnuto')),
+                'link' => '/orders25-list-v3',
+                'filter' => 'zamitnuta',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // 5. Faktury čekající na potvrzení (AKČNÍ – bez časového filtru)
+    {
+        $where_f = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
+        $params_f = [];
+        if (!$is_admin) { $params_f[] = $user_id; $params_f[] = $user_id; }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_FAKTURY . "` f
+            WHERE f.aktivni = 1
+              AND f.stav IN ('ZAEVIDOVANA', 'VECNA_SPRAVNOST')
+              {$where_f}
+        ");
+        $stmt->execute($params_f);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $news[] = [
+                'icon' => 'file-invoice',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'faktura čeká' : ($cnt < 5 ? 'faktury čekají' : 'faktur čeká')) . " na potvrzení",
+                'link' => '/invoices25-list',
+                'filter' => 'my_invoices',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // 6. Dokončené objednávky
+    {
+        $where_u = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)";
+        $params = [$since];
+        if (!$is_admin) { $params[] = $user_id; $params[] = $user_id; }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+                  = 'DOKONCENA'
+              AND o.dt_aktualizace >= ?
+              {$where_u}
+        ");
+        $stmt->execute($params);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $news[] = [
+                'icon' => 'check-double',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka dokončena' : ($cnt < 5 ? 'objednávky dokončeny' : 'objednávek dokončeno')),
+                'link' => '/orders25-list-v3',
+                'filter' => 'dokoncena',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // Formát data pro UI
+    $since_dt = new DateTime($since);
+    $since_formatted = $since_dt->format('j.n. H:i');
+
+    return ['items' => $news, 'since' => $since, 'since_formatted' => $since_formatted];
 }
 
 /**
@@ -1217,4 +1623,77 @@ function handle_dashboard_admin_save_user_widget_permissions($input, $config) {
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
     }
+}
+
+// ============================================================================
+// ROČNÍ POPLATKY - SPLATNOST (dashboard widget)
+// ============================================================================
+
+/**
+ * Vrací roční poplatky s položkami po splatnosti nebo blížícími se splatností.
+ * stats: celkový přehled + items: konkrétní záznamy
+ */
+function _dashboard_get_annual_fees_due($db) {
+    // Statistiky
+    $stmt = $db->query("
+        SELECT
+            (SELECT COUNT(DISTINCT rp.id) FROM `" . TBL_ROCNI_POPLATKY . "` rp WHERE rp.aktivni = 1) as celkem,
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+                JOIN `" . TBL_ROCNI_POPLATKY . "` rp2 ON rp2.id = rpp.rocni_poplatek_id AND rp2.aktivni = 1
+                WHERE rpp.aktivni = 1 AND rpp.stav != 'ZAPLACENO' AND rpp.datum_splatnosti < CURDATE()
+            ) as po_splatnosti,
+            (SELECT COUNT(*) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+                JOIN `" . TBL_ROCNI_POPLATKY . "` rp3 ON rp3.id = rpp.rocni_poplatek_id AND rp3.aktivni = 1
+                WHERE rpp.aktivni = 1 AND rpp.stav != 'ZAPLACENO'
+                  AND rpp.datum_splatnosti >= CURDATE()
+                  AND rpp.datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+            ) as blizi_se,
+            (SELECT COALESCE(SUM(rpp.castka), 0) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+                JOIN `" . TBL_ROCNI_POPLATKY . "` rp4 ON rp4.id = rpp.rocni_poplatek_id AND rp4.aktivni = 1
+                WHERE rpp.aktivni = 1 AND rpp.stav != 'ZAPLACENO' AND rpp.datum_splatnosti < CURDATE()
+            ) as castka_po_splatnosti,
+            (SELECT COALESCE(SUM(rpp.castka), 0) FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+                JOIN `" . TBL_ROCNI_POPLATKY . "` rp5 ON rp5.id = rpp.rocni_poplatek_id AND rp5.aktivni = 1
+                WHERE rpp.aktivni = 1 AND rpp.stav != 'ZAPLACENO'
+                  AND rpp.datum_splatnosti >= CURDATE()
+                  AND rpp.datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+            ) as castka_blizi_se
+    ");
+    $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Konkrétní položky: po splatnosti + blížící se (max 15)
+    $stmt2 = $db->query("
+        SELECT rp.id, rp.nazev, rp.druh, rp.rok, rp.celkova_castka, rp.zaplaceno_celkem, rp.zbyva_zaplatit,
+               rp.rozsirujici_data,
+               rpp.id as polozka_id, rpp.datum_splatnosti, rpp.castka as polozka_castka, rpp.stav as polozka_stav,
+               DATEDIFF(rpp.datum_splatnosti, CURDATE()) as dni_do_splatnosti,
+               CASE
+                 WHEN rpp.datum_splatnosti < CURDATE() THEN 'PO_SPLATNOSTI'
+                 ELSE 'BLIZI_SE'
+               END as typ
+        FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+        JOIN `" . TBL_ROCNI_POPLATKY . "` rp ON rp.id = rpp.rocni_poplatek_id AND rp.aktivni = 1
+        WHERE rpp.aktivni = 1
+          AND rpp.stav != 'ZAPLACENO'
+          AND rpp.datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+        ORDER BY rpp.datum_splatnosti ASC
+        LIMIT 15
+    ");
+    $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+    // Dekódovat dodavatel_nazev z rozsirujici_data JSON
+    foreach ($items as &$item) {
+        $item['dodavatel_nazev'] = '';
+        if (!empty($item['rozsirujici_data'])) {
+            $ext = json_decode($item['rozsirujici_data'], true);
+            $item['dodavatel_nazev'] = $ext['dodavatel_nazev'] ?? '';
+        }
+        unset($item['rozsirujici_data']);
+    }
+    unset($item);
+
+    return [
+        'stats' => $stats,
+        'items' => $items
+    ];
 }

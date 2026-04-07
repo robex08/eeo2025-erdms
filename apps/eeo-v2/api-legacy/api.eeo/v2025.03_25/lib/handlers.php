@@ -543,6 +543,21 @@ function handle_login($input, $config, $queries) {
             return;
         }
 
+        // Uložit předchozí přihlášení (dt_posledni_aktivita) do dt_posledni_prihlaseni
+        // a aktualizovat dt_posledni_aktivita na NOW() – PŘED keepalive
+        try {
+            $stmtLogin = $db->prepare("
+                UPDATE " . TBL_UZIVATELE . " 
+                SET dt_posledni_prihlaseni = dt_posledni_aktivita,
+                    dt_posledni_aktivita = NOW()
+                WHERE id = :id
+            ");
+            $stmtLogin->bindParam(':id', $user['id'], PDO::PARAM_INT);
+            $stmtLogin->execute();
+        } catch (Exception $e) {
+            // non-fatal – login pokračuje i při chybě
+        }
+
         $token = base64_encode($user['username'] . '|' . time());
         unset($user['password_hash']);
         $user['token'] = $token;

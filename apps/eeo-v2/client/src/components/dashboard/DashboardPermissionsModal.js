@@ -15,7 +15,7 @@ import {
   getUserWidgetPermissions,
   saveUserWidgetPermissions
 } from '../../services/apiDashboard';
-import { api2 } from '../../services/api2auth';
+import { fetchAllUsers } from '../../services/api2auth';
 
 // ============================================================================
 // STYLED
@@ -29,15 +29,15 @@ const Overlay = styled.div`
 
 const Panel = styled.div`
   background: #fff; border-radius: 12px;
-  width: min(95vw, 900px); max-height: 90vh;
+  width: min(95vw, 900px); max-height: min(80vh, 620px);
   display: flex; flex-direction: column;
   box-shadow: 0 25px 50px rgba(0,0,0,0.25);
 `;
 
 const Header = styled.div`
   display: flex; align-items: center; justify-content: space-between;
-  padding: 1rem 1.5rem; border-bottom: 1px solid #e5e7eb;
-  h2 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; }
+  padding: 0.7rem 1.5rem; border-bottom: 1px solid #e5e7eb;
+  h2 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
 `;
 
 const CloseBtn = styled.button`
@@ -57,12 +57,18 @@ const Tab = styled.button`
 `;
 
 const Body = styled.div`
-  flex: 1; overflow-y: auto; padding: 1rem 1.5rem;
+  flex: 1; overflow-y: auto; padding: 0.75rem 1.5rem;
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 `;
 
 const Footer = styled.div`
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0.75rem 1.5rem; border-top: 1px solid #e5e7eb;
+  padding: 0.5rem 1.5rem; border-top: 1px solid #e5e7eb;
   background: #f9fafb; border-radius: 0 0 12px 12px;
 `;
 
@@ -100,6 +106,12 @@ const WidgetHeader = styled.div`
 
 const WidgetTitle = styled.span`
   font-weight: 600; font-size: 0.85rem; color: #1f2937;
+`;
+
+const PermCode = styled.code`
+  font-size: 0.68rem; color: #7c3aed; background: #f5f3ff;
+  padding: 0.1rem 0.4rem; border-radius: 4px; font-family: monospace;
+  border: 1px solid #ede9fe; margin-left: 0.4rem;
 `;
 
 const RoleCount = styled.span`
@@ -213,6 +225,7 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
   const [expandedWidgets, setExpandedWidgets] = useState({});
 
   // User tab state
+  const [allUsers, setAllUsers] = useState(null); // cached full list
   const [userSearch, setUserSearch] = useState('');
   const [userResults, setUserResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -273,25 +286,26 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
     }
   }, [token, username, assignments, onSaved]);
 
-  // Search users
+  // Search users – load full list once, then filter locally
   const searchUsers = useCallback(async (q) => {
     if (!q || q.length < 2) { setUserResults([]); return; }
     try {
-      const res = await api2.post('ciselniky/uzivatele/search', { token, username, query: q, limit: 20 });
-      setUserResults(res.data?.data || res.data?.results || []);
+      let users = allUsers;
+      if (!users) {
+        users = await fetchAllUsers({ token, username });
+        setAllUsers(users);
+      }
+      const lq = q.toLowerCase();
+      const filtered = users.filter(u => {
+        const name = `${u.jmeno || ''} ${u.prijmeni || ''} ${u.username || ''}`.toLowerCase();
+        return name.includes(lq);
+      }).slice(0, 20);
+      setUserResults(filtered);
     } catch (e) {
-      // Fallback – load all users and filter locally
-      try {
-        const res = await api2.post('ciselniky/uzivatele/list', { token, username });
-        const all = res.data?.data || res.data?.results || [];
-        const filtered = all.filter(u => {
-          const name = `${u.jmeno || ''} ${u.prijmeni || ''} ${u.username || ''}`.toLowerCase();
-          return name.includes(q.toLowerCase());
-        }).slice(0, 20);
-        setUserResults(filtered);
-      } catch { setUserResults([]); }
+      console.error('Error searching users:', e);
+      setUserResults([]);
     }
-  }, [token, username]);
+  }, [token, username, allUsers]);
 
   useEffect(() => {
     const timer = setTimeout(() => searchUsers(userSearch), 300);
@@ -389,6 +403,7 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
                     <WidgetHeader onClick={() => toggleExpand(p.kod_prava)}>
                       <div>
                         <WidgetTitle>{label}</WidgetTitle>
+                        <PermCode>{p.kod_prava}</PermCode>
                         <RoleCount>({assignedRoles.length} rolí)</RoleCount>
                       </div>
                       <FontAwesomeIcon icon={isExpanded ? faChevronUp : faChevronDown} style={{ color: '#9ca3af', fontSize: '0.8rem' }} />
@@ -467,7 +482,7 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
                             checked={isDirect}
                             onChange={() => toggleUserPerm(p.kod_prava)}
                           />
-                          <PermLabel>{label}</PermLabel>
+                          <PermLabel>{label} <PermCode>{p.kod_prava}</PermCode></PermLabel>
                           {isInherited && <PermSource $type="inherited">z role</PermSource>}
                           {isDirect && <PermSource $type="direct">přímé právo</PermSource>}
                           {!isActive && <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>neaktivní</span>}
