@@ -16,16 +16,15 @@ import { api2 } from './api2auth';
  * @param {number} [params.days=7] - Časový horizont v dnech
  * @returns {Promise<Object>} - Dashboard data
  */
-export async function getDashboardData({ token, username, days = 7 }) {
+export async function getDashboardData({ token, username, days = 7, cashbook_month = null }) {
   if (!token || !username) {
     throw new Error('Missing required parameters: token or username');
   }
 
-  const response = await api2.post('dashboard/data', {
-    token,
-    username,
-    days
-  });
+  const payload = { token, username, days };
+  if (cashbook_month !== null) payload.cashbook_month = cashbook_month;
+
+  const response = await api2.post('dashboard/data', payload);
 
   return response.data;
 }

@@ -1867,9 +1867,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           (userUsekZkr && rowUsekZkr && userUsekZkr === rowUsekZkr) ||
           (userUsekId && rowUsekId && Number(userUsekId) === Number(rowUsekId))
         );
-        // Pro admin nebo smlouvu vlastního úseku zobrazit celkové počty,
-        // jinak jen uživatelovy vlastní
-        const useTotal = isAdminUser || isMujUsek;
+        // Pro admin, smlouvu vlastního úseku nebo uživatele s neomezeným přístupem
+        // (forceUnrestrictedReadOnly=true, CONTRACT_VIEW_ALL) zobrazit celkové počty.
+        // Jinak jen uživatelovy vlastní.
+        const useTotal = isAdminUser || isMujUsek || forceUnrestrictedReadOnly;
         
         // Logika symbolu +/– podle typu smlouvy a uživatelské role
         let canExpand, expandCount, expandTitle;
@@ -2365,7 +2366,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         </ActionCell>
       )
     })
-  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
+  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, forceUnrestrictedReadOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
 
   const table = useReactTable({
     data: filteredSmlouvy,

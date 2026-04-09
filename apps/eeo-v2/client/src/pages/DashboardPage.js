@@ -53,7 +53,8 @@ const WIDGET_REGISTRY = {
   lp_critical:         { title: 'LP - kritický stav',       icon: faMoneyBillWave,      color: '#dc2626', requires: 'DASHBOARD_SPENDING_LP' },
   order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1' },
   invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' },
-  annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' }
+  annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' },
+  cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true }
 };
 
 const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
@@ -292,6 +293,24 @@ const DashGrid = styled.div`
   @media (min-width: 1600px) { grid-template-columns: repeat(4, 1fr); }
 `;
 
+// BETA badge pro widgety ve vývoji
+const BetaBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  color: #fff;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+  line-height: 1.4;
+  box-shadow: 0 1px 4px rgba(124,58,237,0.3);
+`;
+
 // === FOCUS ALERTS BANNER ===
 const FocusBannerWrap = styled.div`
   margin-top: 1rem;
@@ -310,9 +329,42 @@ const FocusBannerHeader = styled.div`
   background: rgba(255,255,255,0.4);
 `;
 
+const FocusBannerBodyWrap = styled.div`
+  position: relative;
+  display: flex;
+  align-items: stretch;
+`;
+
+const FocusBannerScrollBtn = styled.button`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  border: none;
+  background: linear-gradient(${p => p.$dir === 'left'
+    ? '90deg, rgba(254,252,232,0.97) 60%, transparent 100%)'
+    : '270deg, rgba(255,247,237,0.97) 60%, transparent 100%)'
+  });
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  ${p => p.$dir === 'left' ? 'left: 0;' : 'right: 0;'}
+  color: #b45309;
+  font-size: 0.9rem;
+  font-weight: 900;
+  padding: 0;
+  ${FocusBannerWrap}:hover & { opacity: 1; }
+  &:hover { opacity: 1 !important; color: #92400e; }
+`;
+
 const FocusBannerBody = styled.div`
   display: flex; gap: 0.75rem; padding: 0.6rem 1rem;
   overflow-x: auto; overflow-y: hidden;
+  flex: 1;
   &::-webkit-scrollbar { height: 4px; }
   &::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 2px; }
   scrollbar-width: thin;
@@ -1393,6 +1445,223 @@ function RegistryWidget({ ordersForRegistry, ordersPublished, navigate, filterPr
 }
 
 // ============================================================================
+// CASHBOOK SUMMARY WIDGET
+// ============================================================================
+
+const CbGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+`;
+
+const CbStatBox = styled.div`
+  background: ${p => p.$bg || '#f8fafc'};
+  border: 1px solid ${p => p.$border || '#e2e8f0'};
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  text-align: center;
+`;
+
+const CbStatVal = styled.div`
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: ${p => p.$color || '#1e293b'};
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const CbStatLabel = styled.div`
+  font-size: 0.62rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+`;
+
+const CbPokladnaCard = styled.div`
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.5rem;
+  background: #fff;
+  &:last-child { margin-bottom: 0; }
+`;
+
+const CbPokladnaHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+`;
+
+const CbPokladnaName = styled.div`
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1e293b;
+`;
+
+const CbStavBadge = styled.span`
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  ${p => p.$stav === 'aktivni'
+    ? 'background: #dcfce7; color: #16a34a;'
+    : p.$stav === 'uzavrena_uzivatelem'
+    ? 'background: #fef3c7; color: #b45309;'
+    : 'background: #fee2e2; color: #dc2626;'}
+`;
+
+const CbPokladnaMeta = styled.div`
+  font-size: 0.68rem;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+`;
+
+const CbPokladnaGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.3rem;
+`;
+
+const CbMiniStat = styled.div`
+  background: ${p => p.$bg || '#f8fafc'};
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  text-align: center;
+`;
+
+const CbMiniVal = styled.div`
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: ${p => p.$color || '#1e293b'};
+`;
+
+const CbMiniLabel = styled.div`
+  font-size: 0.6rem;
+  color: #94a3b8;
+`;
+
+function CashbookSummaryWidget({ cbData, navigate }) {
+  const d = cbData || {};
+  const pokladny = d.pokladny || [];
+  const souhrn = d.souhrn || null;
+  const isAdminView = d.is_admin_view || false;
+  const mesicNazev = d.mesic_nazev || '';
+  const rok = d.rok || '';
+
+  const fmt = (val) => {
+    const n = parseFloat(val) || 0;
+    return new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 2 }).format(n);
+  };
+
+  const stavLabel = (s) => {
+    if (s === 'aktivni') return 'Aktivní';
+    if (s === 'uzavrena_uzivatelem') return 'Uzavřená';
+    if (s === 'zamknuta_spravcem') return 'Zamčená';
+    return s || '—';
+  };
+
+  if (pokladny.length === 0) {
+    return (
+      <WidgetBody>
+        <EmptyState>Žádná pokladní kniha pro {mesicNazev} {rok}</EmptyState>
+      </WidgetBody>
+    );
+  }
+
+  return (
+    <WidgetBody>
+      {/* Souhrn – admin nebo více pokladen */}
+      {souhrn && (
+        <>
+          <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.5rem', fontWeight: 600 }}>
+            {mesicNazev} {rok} – celkový přehled ({souhrn.pocet_pokladen} {souhrn.pocet_pokladen === 1 ? 'pokladna' : souhrn.pocet_pokladen < 5 ? 'pokladny' : 'pokladen'})
+          </div>
+          <CbGrid>
+            <CbStatBox $bg="#f0fdf4" $border="#bbf7d0">
+              <CbStatVal $color="#16a34a">{fmt(souhrn.celkovy_stav)}</CbStatVal>
+              <CbStatLabel>Celkový stav</CbStatLabel>
+            </CbStatBox>
+            <CbStatBox $bg="#eff6ff" $border="#bfdbfe">
+              <CbStatVal $color="#2563eb">{fmt(souhrn.prijmy_mesic)}</CbStatVal>
+              <CbStatLabel>Příjmy ({mesicNazev})</CbStatLabel>
+            </CbStatBox>
+            <CbStatBox $bg="#fff7ed" $border="#fed7aa">
+              <CbStatVal $color="#ea580c">{fmt(souhrn.vydaje_mesic)}</CbStatVal>
+              <CbStatLabel>Výdaje ({mesicNazev})</CbStatLabel>
+            </CbStatBox>
+            {isAdminView && (
+              <CbStatBox>
+                <CbStatVal>{souhrn.pocet_polozek ?? 0}</CbStatVal>
+                <CbStatLabel>Položek celkem</CbStatLabel>
+              </CbStatBox>
+            )}
+            {isAdminView && souhrn.aktivnich_knih !== undefined && (
+              <CbStatBox>
+                <CbStatVal $color="#16a34a">{souhrn.aktivnich_knih}</CbStatVal>
+                <CbStatLabel>Aktivních knih</CbStatLabel>
+              </CbStatBox>
+            )}
+            {isAdminView && souhrn.uzavrenych_knih > 0 && (
+              <CbStatBox $bg="#fef9c3" $border="#fde68a">
+                <CbStatVal $color="#b45309">{souhrn.uzavrenych_knih}</CbStatVal>
+                <CbStatLabel>Uzavřených/zam.</CbStatLabel>
+              </CbStatBox>
+            )}
+          </CbGrid>
+        </>
+      )}
+
+      {/* Jednotlivé pokladny */}
+      {pokladny.map((pk) => (
+        <CbPokladnaCard key={pk.kniha_id || pk.pokladna_id}>
+          <CbPokladnaHeader>
+            <CbPokladnaName>
+              {pk.cislo_pokladny ? `#${pk.cislo_pokladny} ` : ''}{pk.pokladna_nazev || `Pokladna ${pk.pokladna_id}`}
+            </CbPokladnaName>
+            <CbStavBadge $stav={pk.stav_knihy}>{stavLabel(pk.stav_knihy)}</CbStavBadge>
+          </CbPokladnaHeader>
+          {pk.nazev_pracoviste && (
+            <CbPokladnaMeta>{pk.nazev_pracoviste}</CbPokladnaMeta>
+          )}
+          <CbPokladnaGrid>
+            <CbMiniStat $bg="#f0fdf4">
+              <CbMiniVal $color="#16a34a">{fmt(pk.koncovy_stav)}</CbMiniVal>
+              <CbMiniLabel>Aktuální stav</CbMiniLabel>
+            </CbMiniStat>
+            <CbMiniStat $bg="#eff6ff">
+              <CbMiniVal $color="#2563eb">{fmt(pk.prijmy)}</CbMiniVal>
+              <CbMiniLabel>Příjmy ({mesicNazev})</CbMiniLabel>
+            </CbMiniStat>
+            <CbMiniStat $bg="#fff7ed">
+              <CbMiniVal $color="#ea580c">{fmt(pk.vydaje)}</CbMiniVal>
+              <CbMiniLabel>Výdaje ({mesicNazev})</CbMiniLabel>
+            </CbMiniStat>
+          </CbPokladnaGrid>
+          <div style={{ fontSize: '0.64rem', color: '#94a3b8', marginTop: '0.35rem', textAlign: 'right' }}>
+            {pk.pocet_polozek ?? 0} položek | Počáteční stav: {fmt(pk.pocatecni_stav)}
+          </div>
+        </CbPokladnaCard>
+      ))}
+
+      <div style={{ marginTop: '0.75rem', textAlign: 'right' }}>
+        <button
+          onClick={() => navigate('/cash-book')}
+          style={{ background: 'none', border: 'none', color: '#059669', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: 0 }}
+        >
+          Přejít do pokladny →
+        </button>
+      </div>
+    </WidgetBody>
+  );
+}
+
+// ============================================================================
 // SMLOUVY CRITICAL WIDGET
 // ============================================================================
 
@@ -1877,34 +2146,51 @@ const FOCUS_ICON_MAP = {
 };
 
 function FocusAlertsBanner({ items, navigate: nav }) {
+  const scrollRef = React.useRef(null);
+
   if (!items || items.length === 0) return null;
+
+  const scrollBy = (dir) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({ left: dir === 'left' ? -260 : 260, behavior: 'smooth' });
+    }
+  };
+
   return (
     <FocusBannerWrap>
       <FocusBannerHeader>
         <FontAwesomeIcon icon={faBullhorn} />
         Na co se zaměřit
       </FocusBannerHeader>
-      <FocusBannerBody>
-        {items.map((item, idx) => (
-          <FocusCard
-            key={idx}
-            $severity={item.severity}
-            onClick={() => {
-              if (!item.link) return;
-              const state = {};
-              if (item.linkTab) state.tab = item.linkTab;
-              if (item.linkFilterStav) state.filterStav = item.linkFilterStav;
-              nav(item.link, Object.keys(state).length > 0 ? { state } : undefined);
-            }}
-          >
-            <FocusIcon $severity={item.severity}>
-              <FontAwesomeIcon icon={FOCUS_ICON_MAP[item.icon] || faExclamationCircle} />
-            </FocusIcon>
-            <FocusText>{item.text}</FocusText>
-            <FocusCount $severity={item.severity}>{item.count}</FocusCount>
-          </FocusCard>
-        ))}
-      </FocusBannerBody>
+      <FocusBannerBodyWrap>
+        <FocusBannerScrollBtn $dir="left" onClick={() => scrollBy('left')} title="Posunout vlevo">
+          &#8249;
+        </FocusBannerScrollBtn>
+        <FocusBannerBody ref={scrollRef}>
+          {items.map((item, idx) => (
+            <FocusCard
+              key={idx}
+              $severity={item.severity}
+              onClick={() => {
+                if (!item.link) return;
+                const state = {};
+                if (item.linkTab) state.tab = item.linkTab;
+                if (item.linkFilterStav) state.filterStav = item.linkFilterStav;
+                nav(item.link, Object.keys(state).length > 0 ? { state } : undefined);
+              }}
+            >
+              <FocusIcon $severity={item.severity}>
+                <FontAwesomeIcon icon={FOCUS_ICON_MAP[item.icon] || faExclamationCircle} />
+              </FocusIcon>
+              <FocusText>{item.text}</FocusText>
+              <FocusCount $severity={item.severity}>{item.count}</FocusCount>
+            </FocusCard>
+          ))}
+        </FocusBannerBody>
+        <FocusBannerScrollBtn $dir="right" onClick={() => scrollBy('right')} title="Posunout vpravo">
+          &#8250;
+        </FocusBannerScrollBtn>
+      </FocusBannerBodyWrap>
     </FocusBannerWrap>
   );
 }
@@ -1924,6 +2210,7 @@ export default function DashboardPage() {
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [visibleTiles, setVisibleTiles] = useState(DEFAULT_TILES);
   const [allTiles, setAllTiles] = useState(DEFAULT_TILES);
+  const [cashbookMonth, setCashbookMonth] = useState(new Date().getMonth() + 1);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
     try {
       const saved = localStorage.getItem('dashboard_auto_refresh');
@@ -1987,7 +2274,7 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await getDashboardData({ token, username, days: 7 });
+      const result = await getDashboardData({ token, username, days: 7, cashbook_month: cashbookMonth });
       if (result.status === 'success') {
         setData(result.data);
       } else {
@@ -1998,7 +2285,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, username]);
+  }, [token, username, cashbookMonth]);
 
   useEffect(() => {
     fetchData();
@@ -2147,6 +2434,7 @@ export default function DashboardPage() {
 
     let content = null;
     let badgeCount = null;
+    let headerExtra = null;
 
     switch (tileId) {
       case 'welcome':
@@ -2216,6 +2504,27 @@ export default function DashboardPage() {
         content = <AnnualFeesDueWidget feesData={data?.annual_fees_due} navigate={navigate} />;
         badgeCount = (data?.annual_fees_due?.stats?.po_splatnosti || 0) + (data?.annual_fees_due?.stats?.blizi_se || 0);
         break;
+      case 'cashbook_summary': {
+        const cbMonthNames = ['Leden','\u00danor','B\u0159ezen','Duben','Kv\u011bten','\u010cerven','\u010cervenec','Srpen','Z\u00e1\u0159\u00ed','\u0158\u00edjen','Listopad','Prosinec'];
+        const cbCurrentYear = new Date().getFullYear();
+        content = <CashbookSummaryWidget cbData={data?.cashbook_summary} navigate={navigate} />;
+        headerExtra = (
+          <select
+            value={cashbookMonth}
+            onChange={e => setCashbookMonth(Number(e.target.value))}
+            style={{
+              fontSize: '0.72rem', fontWeight: 600, border: '1px solid #d1fae5',
+              borderRadius: '6px', padding: '0.2rem 0.45rem', color: '#059669',
+              background: '#f0fdf4', cursor: 'pointer', outline: 'none'
+            }}
+          >
+            {cbMonthNames.map((nm, i) => (
+              <option key={i + 1} value={i + 1}>{nm} {cbCurrentYear}</option>
+            ))}
+          </select>
+        );
+        break;
+      }
       default:
         return null;
     }
@@ -2229,11 +2538,14 @@ export default function DashboardPage() {
             </WidgetIcon>
             {cfg.title}
           </WidgetTitle>
-          {badgeCount > 0 && (
-            <WidgetBadge $bg={cfg.color + '18'} $color={cfg.color}>
-              {badgeCount}
-            </WidgetBadge>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {headerExtra}
+            {badgeCount > 0 && (
+              <WidgetBadge $bg={cfg.color + '18'} $color={cfg.color}>
+                {badgeCount}
+              </WidgetBadge>
+            )}
+          </div>
         </WidgetHeader>
         {content}
       </WidgetCard>
@@ -2246,7 +2558,7 @@ export default function DashboardPage() {
       <PageWrapper>
         <PageHeader>
           <PageTitle>
-            <FontAwesomeIcon icon={faHome} /> Dashboard
+            <FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge>
           </PageTitle>
         </PageHeader>
         <DashGrid>
@@ -2260,7 +2572,7 @@ export default function DashboardPage() {
     return (
       <PageWrapper>
         <PageHeader>
-          <PageTitle><FontAwesomeIcon icon={faHome} /> Dashboard</PageTitle>
+          <PageTitle><FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge></PageTitle>
         </PageHeader>
         <WidgetCard $accent="#dc2626">
           <WidgetHeader>
@@ -2286,7 +2598,7 @@ export default function DashboardPage() {
     <PageWrapper>
       <PageHeader>
         <PageTitle>
-          <FontAwesomeIcon icon={faHome} /> Dashboard
+          <FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge>
         </PageTitle>
         
         {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE */}
