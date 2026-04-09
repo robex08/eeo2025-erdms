@@ -1798,6 +1798,127 @@ const ApprovalLPRow = styled.div`
 `;
 
 // ============================================================================
+// JEZEVČÍK PROGRESS BAR - pro Roční plán čerpání v Approval dialogu
+// ============================================================================
+
+const ApprJezWrap = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-top: 0.5rem;
+`;
+
+const ApprJezHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 4px;
+  padding: 0 2px;
+`;
+
+const ApprJezPercentValue = styled.span`
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: ${props => props.$color || '#1e293b'};
+`;
+
+const ApprJezPercentLabel = styled.span`
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+  margin-left: 4px;
+`;
+
+const ApprJezTargetLabel = styled.span`
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+`;
+
+const ApprJezTargetValue = styled.span`
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #64748b;
+`;
+
+const ApprJezBarOuter = styled.div`
+  position: relative;
+  height: 22px;
+  width: 100%;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+`;
+
+const ApprJezBarFill = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: 10;
+  transition: width 0.5s ease;
+  background: ${props => props.$color || '#10b981'};
+  width: ${props => Math.min(props.$percent || 0, 100)}%;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+  }
+`;
+
+const ApprJezBarPlanned = styled.div`
+  position: absolute;
+  top: 0;
+  height: 100%;
+  z-index: 5;
+  opacity: 0.45;
+  background-color: ${props => props.$color || '#86efac'};
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,0.3) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255,255,255,0.3) 50%,
+    rgba(255,255,255,0.3) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 8px 8px;
+  left: ${props => props.$left || 0}%;
+  width: ${props => {
+    const maxW = 100 - (props.$left || 0);
+    return Math.min(props.$percent || 0, maxW);
+  }}%;
+`;
+
+const ApprJezTargetLine = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(100, 116, 139, 0.55);
+  z-index: 30;
+  left: ${props => props.$percent || 0}%;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+`;
+
+const ApprJezLegend = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 3px;
+  padding: 0 2px;
+`;
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
@@ -5178,25 +5299,6 @@ const OrdersTableV3 = ({
                     return (
                     <>
                       <ApprovalSectionTitle>💰 Limitované přísliby</ApprovalSectionTitle>
-                      {maxCena > 0 && lpKody.length > 0 && (
-                        <div style={{
-                          background: '#ecfdf5',
-                          border: '1px solid #6ee7b7',
-                          borderRadius: '6px',
-                          padding: '0.5rem 0.75rem',
-                          marginBottom: '0.75rem',
-                          fontSize: '0.8125rem',
-                          color: '#047857',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem'
-                        }}>
-                          <span style={{ fontSize: '1rem' }}>ℹ️</span>
-                          <span>
-                            Čerpání zahrnuje simulaci schválení této objednávky (+{maxCena.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)
-                          </span>
-                        </div>
-                      )}
                       {(() => {
                         const pocetLP = lpKody.length || 1;
                         const castkaProKazdyLP = maxCena / pocetLP; // Rovnoměrné rozdělení pro jednoduchost
@@ -5239,122 +5341,100 @@ const OrdersTableV3 = ({
                                   <strong>{lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow>
-                                  <span>Čerpáno (předpokl.):</span>
+                                  <span>V procesu:</span>
                                   <strong>
                                     {cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                     {jsmeVLpKodech && castkaProKazdyLP > 0 && (
-                                      <span style={{ 
-                                        fontSize: '0.75rem', 
-                                        color: '#10b981', 
-                                        fontWeight: 600,
-                                        marginLeft: '0.5rem',
-                                        background: '#d1fae5',
-                                        padding: '2px 6px',
-                                        borderRadius: '3px',
-                                        border: '1px solid #6ee7b7'
-                                      }}>
+                                      <span
+                                        title={`Vč. této objednávky (+${castkaProKazdyLP.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
+                                        style={{ 
+                                          fontSize: '0.75rem', 
+                                          color: '#10b981', 
+                                          fontWeight: 600,
+                                          marginLeft: '0.5rem',
+                                          background: '#d1fae5',
+                                          padding: '2px 6px',
+                                          borderRadius: '3px',
+                                          border: '1px solid #6ee7b7',
+                                          cursor: 'help'
+                                        }}>
                                         +{castkaProKazdyLP.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                       </span>
                                     )}
                                   </strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow $highlight>
-                                  <span>Zbývá (předpokl.):</span>
+                                  <span>Volné:</span>
                                   <strong style={{ color: (hodnotaLP - simulovaneCerpani) < 0 ? '#dc2626' : '#059669' }}>
                                     {(hodnotaLP - simulovaneCerpani).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                   </strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow>
-                                  <span>Čerpáno (skutečně):</span>
+                                  <span>Dokončeno:</span>
                                   <strong>{cerpanoSkutecne.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
                                 </ApprovalLPRow>
                                 
-                                {/* Roční plán čerpání - progress bar */}
+                                {/* Roční plán čerpání - Jezevčík progress bar */}
                                 {hodnotaLP > 0 && (() => {
                                   const currentMonth = new Date().getMonth();
                                   const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
-                                  const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
-                                  const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
-                                  
-                                  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-                                  
+                                  const targetPct = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                  const spentPct = hodnotaLP > 0 ? Math.min((cerpanoSkutecne / hodnotaLP) * 100, 100) : 0;
+                                  const plannedRaw = simulovaneCerpani - cerpanoSkutecne;
+                                  const plannedPct = hodnotaLP > 0 && plannedRaw > 0 ? Math.min((plannedRaw / hodnotaLP) * 100, 100 - spentPct) : 0;
+                                  const totalPct = hodnotaLP > 0 ? Math.min((simulovaneCerpani / hodnotaLP) * 100, 999) : 0;
+                                  const isCritical = totalPct > targetPct * 2 || totalPct >= 100;
+                                  const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                  const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+                                  const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+
                                   return (
-                                    <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
-                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
-                                          {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
-                                        </span>
-                                      </div>
-                                      <div style={{
-                                        display: 'flex',
-                                        width: '100%',
-                                        minHeight: '36px',
-                                        gap: '2px',
-                                        background: '#f1f5f9',
-                                        borderRadius: '4px',
-                                        padding: '3px',
-                                        position: 'relative'
-                                      }}>
-                                        {Array.from({ length: 12 }).map((_, monthIndex) => {
-                                          const isCurrentMonth = monthIndex === currentMonth;
-                                          const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
-                                          
-                                          let bgColor;
-                                          if (isCurrentMonth) {
-                                            bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
-                                          } else if (monthIndex < currentMonth) {
-                                            bgColor = '#94a3b8';
-                                          } else {
-                                            bgColor = '#e2e8f0';
-                                          }
-                                          
-                                          const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
-                                          
-                                          return (
-                                            <div
-                                              key={monthIndex}
-                                              style={{
+                                    <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.5rem', paddingBottom: '0.25rem', borderTop: '1px solid #f1f5f9', marginTop: '0.25rem' }}>
+                                      <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '4px' }}>Roční plán čerpání</span>
+                                      <ApprJezWrap>
+                                        <ApprJezHeader>
+                                          <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                                            <ApprJezPercentValue $color={barColor}>{totalPct.toFixed(1)}%</ApprJezPercentValue>
+                                            <ApprJezPercentLabel>Čerpání</ApprJezPercentLabel>
+                                          </div>
+                                          <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                                            <ApprJezTargetLabel>Cíl k datu</ApprJezTargetLabel>
+                                            <ApprJezTargetValue>{targetPct}% ({currentMonthName})</ApprJezTargetValue>
+                                          </div>
+                                        </ApprJezHeader>
+                                        <ApprJezBarOuter title={`Čerpání: ${totalPct.toFixed(1)}% / Cíl: ${targetPct}%`}>
+                                          {/* Měsíční rastr */}
+                                          <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                                            {Array.from({ length: 12 }).map((_, i) => (
+                                              <div key={i} style={{
                                                 flex: 1,
-                                                background: bgColor,
-                                                borderRadius: '3px',
-                                                position: 'relative',
-                                                border: isCurrentMonth ? '2px solid #0f172a' : 'none',
-                                                minHeight: '30px',
-                                                paddingLeft: '1px',
-                                                paddingRight: '1px'
-                                              }}
-                                              title={`${percentCerpani}% / ${planedPercent}%`}
-                                            >
-                                              <div style={{
-                                                position: 'absolute',
-                                                top: '2px',
-                                                right: '3px',
-                                                fontSize: '0.5rem',
-                                                fontWeight: 500,
-                                                opacity: 0.6,
-                                                color: textColor,
-                                                zIndex: 10
-                                              }}>
-                                                {romanNumerals[monthIndex]}
-                                              </div>
-                                              
-                                              <div style={{ 
-                                                position: 'absolute',
-                                                bottom: '0px',
-                                                left: '0',
-                                                right: '0',
-                                                textAlign: 'center',
-                                                fontSize: '0.65rem', 
-                                                fontWeight: 700,
-                                                color: textColor
-                                              }}>
-                                                {planedPercent}
-                                              </div>
+                                                borderRight: '1px solid rgba(203,213,225,0.3)',
+                                                background: i === currentMonth ? 'rgba(100,116,139,0.05)' : 'transparent'
+                                              }} />
+                                            ))}
+                                          </div>
+                                          <ApprJezTargetLine $percent={targetPct} />
+                                          <ApprJezBarFill $percent={spentPct} $color={barColor} />
+                                          {plannedPct > 0 && (
+                                            <ApprJezBarPlanned $left={Math.min(spentPct, 100)} $percent={plannedPct} $color={barColorLight} />
+                                          )}
+                                        </ApprJezBarOuter>
+                                        <ApprJezLegend>
+                                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColor }} />
+                                              <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>Dokončeno</span>
                                             </div>
-                                          );
-                                        })}
-                                      </div>
+                                            {plannedPct > 0 && (
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColorLight, opacity: 0.7 }} />
+                                                <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          {isCritical && <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#ef4444' }}>⚠ Kritické přečerpání</span>}
+                                        </ApprJezLegend>
+                                      </ApprJezWrap>
                                     </ApprovalLPRow>
                                   );
                                 })()}
@@ -5421,122 +5501,100 @@ const OrdersTableV3 = ({
                                 <strong>{parseFloat(smlouvaInfo.hodnota).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
                               </ApprovalLPRow>
                               <ApprovalLPRow>
-                                <span>Čerpáno (požad.):</span>
+                                <span>V procesu:</span>
                                 <strong>
                                   {cerpanoPozadovano.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                   {maxCenaSmlouva > 0 && (
-                                    <span style={{ 
-                                      fontSize: '0.75rem', 
-                                      color: '#10b981', 
-                                      fontWeight: 600,
-                                      marginLeft: '0.5rem',
-                                      background: '#d1fae5',
-                                      padding: '2px 6px',
-                                      borderRadius: '3px',
-                                      border: '1px solid #6ee7b7'
-                                    }}>
+                                    <span
+                                      title={`Vč. této objednávky (+${maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
+                                      style={{ 
+                                        fontSize: '0.75rem', 
+                                        color: '#10b981', 
+                                        fontWeight: 600,
+                                        marginLeft: '0.5rem',
+                                        background: '#d1fae5',
+                                        padding: '2px 6px',
+                                        borderRadius: '3px',
+                                        border: '1px solid #6ee7b7',
+                                        cursor: 'help'
+                                      }}>
                                       +{maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                     </span>
                                   )}
                                 </strong>
                               </ApprovalLPRow>
                               <ApprovalLPRow $highlight>
-                                <span>Zbývá (požad.):</span>
+                                <span>Volné:</span>
                                 <strong style={{ color: (hodnotaSmlouvy - simulovaneCerpaniSmlouva) < 0 ? '#dc2626' : '#059669' }}>
                                   {(hodnotaSmlouvy - simulovaneCerpaniSmlouva).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                 </strong>
                               </ApprovalLPRow>
                               <ApprovalLPRow>
-                                <span>Čerpáno (skut.):</span>
+                                <span>Dokončeno:</span>
                                 <strong>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
                               </ApprovalLPRow>
                               
-                              {/* Roční plán čerpání - progress bar */}
+                              {/* Roční plán čerpání - Jezevčík progress bar */}
                               {hodnotaSmlouvy > 0 && (() => {
-                                const currentMonth = new Date().getMonth(); // 0-11
+                                const currentMonth = new Date().getMonth();
                                 const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
-                                const planedPercentForCurrentMonth = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
-                                const isUnderPlan = percentCerpani <= planedPercentForCurrentMonth;
-                                
-                                const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-                                
+                                const targetPct = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                const cerpanoSkutecneSmlouva = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
+                                const spentPct = hodnotaSmlouvy > 0 ? Math.min((cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100, 100) : 0;
+                                const plannedRaw = simulovaneCerpaniSmlouva - cerpanoSkutecneSmlouva;
+                                const plannedPct = hodnotaSmlouvy > 0 && plannedRaw > 0 ? Math.min((plannedRaw / hodnotaSmlouvy) * 100, 100 - spentPct) : 0;
+                                const totalPct = hodnotaSmlouvy > 0 ? Math.min((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100, 999) : 0;
+                                const isCritical = totalPct > targetPct * 2 || totalPct >= 100;
+                                const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+                                const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+
                                 return (
-                                  <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem' }}>
-                                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Roční plán čerpání:</span>
-                                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isUnderPlan ? '#059669' : '#dc2626' }}>
-                                        {percentCerpani}% / {planedPercentForCurrentMonth}% ({currentMonthName})
-                                      </span>
-                                    </div>
-                                    <div style={{
-                                      display: 'flex',
-                                      width: '100%',
-                                      minHeight: '36px',
-                                      gap: '2px',
-                                      background: '#f1f5f9',
-                                      borderRadius: '4px',
-                                      padding: '3px',
-                                      position: 'relative'
-                                    }}>
-                                      {Array.from({ length: 12 }).map((_, monthIndex) => {
-                                        const isCurrentMonth = monthIndex === currentMonth;
-                                        const planedPercent = Math.floor(((monthIndex + 1) / 12.0) * 100.0);
-                                        
-                                        let bgColor;
-                                        if (isCurrentMonth) {
-                                          bgColor = isUnderPlan ? '#22c55e' : '#ef4444';
-                                        } else if (monthIndex < currentMonth) {
-                                          bgColor = '#94a3b8';
-                                        } else {
-                                          bgColor = '#e2e8f0';
-                                        }
-                                        
-                                        const textColor = isCurrentMonth ? '#ffffff' : (monthIndex < currentMonth ? '#1e293b' : '#64748b');
-                                        
-                                        return (
-                                          <div
-                                            key={monthIndex}
-                                            style={{
+                                  <ApprovalLPRow style={{ flexDirection: 'column', alignItems: 'flex-start', paddingTop: '0.5rem', paddingBottom: '0.25rem', borderTop: '1px solid #f1f5f9', marginTop: '0.25rem' }}>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '4px' }}>Roční plán čerpání</span>
+                                    <ApprJezWrap>
+                                      <ApprJezHeader>
+                                        <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                                          <ApprJezPercentValue $color={barColor}>{totalPct.toFixed(1)}%</ApprJezPercentValue>
+                                          <ApprJezPercentLabel>Čerpání</ApprJezPercentLabel>
+                                        </div>
+                                        <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                                          <ApprJezTargetLabel>Cíl k datu</ApprJezTargetLabel>
+                                          <ApprJezTargetValue>{targetPct}% ({currentMonthName})</ApprJezTargetValue>
+                                        </div>
+                                      </ApprJezHeader>
+                                      <ApprJezBarOuter title={`Čerpání: ${totalPct.toFixed(1)}% / Cíl: ${targetPct}%`}>
+                                        <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                                          {Array.from({ length: 12 }).map((_, i) => (
+                                            <div key={i} style={{
                                               flex: 1,
-                                              background: bgColor,
-                                              borderRadius: '3px',
-                                              position: 'relative',
-                                              border: isCurrentMonth ? '2px solid #0f172a' : 'none',
-                                              minHeight: '30px',
-                                              paddingLeft: '1px',
-                                              paddingRight: '1px'
-                                            }}
-                                            title={`${percentCerpani}% / ${planedPercent}%`}
-                                          >
-                                            <div style={{
-                                              position: 'absolute',
-                                              top: '2px',
-                                              right: '3px',
-                                              fontSize: '0.5rem',
-                                              fontWeight: 500,
-                                              opacity: 0.6,
-                                              color: textColor,
-                                              zIndex: 10
-                                            }}>
-                                              {romanNumerals[monthIndex]}
-                                            </div>
-                                            
-                                            <div style={{ 
-                                              position: 'absolute',
-                                              bottom: '0px',
-                                              left: '0',
-                                              right: '0',
-                                              textAlign: 'center',
-                                              fontSize: '0.65rem', 
-                                              fontWeight: 700,
-                                              color: textColor
-                                            }}>
-                                              {planedPercent}
-                                            </div>
+                                              borderRight: '1px solid rgba(203,213,225,0.3)',
+                                              background: i === currentMonth ? 'rgba(100,116,139,0.05)' : 'transparent'
+                                            }} />
+                                          ))}
+                                        </div>
+                                        <ApprJezTargetLine $percent={targetPct} />
+                                        <ApprJezBarFill $percent={spentPct} $color={barColor} />
+                                        {plannedPct > 0 && (
+                                          <ApprJezBarPlanned $left={Math.min(spentPct, 100)} $percent={plannedPct} $color={barColorLight} />
+                                        )}
+                                      </ApprJezBarOuter>
+                                      <ApprJezLegend>
+                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColor }} />
+                                            <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>Dokončeno</span>
                                           </div>
-                                        );
-                                      })}
-                                    </div>
+                                          {plannedPct > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColorLight, opacity: 0.7 }} />
+                                              <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {isCritical && <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#ef4444' }}>⚠ Kritické přečerpání</span>}
+                                      </ApprJezLegend>
+                                    </ApprJezWrap>
                                   </ApprovalLPRow>
                                 );
                               })()}

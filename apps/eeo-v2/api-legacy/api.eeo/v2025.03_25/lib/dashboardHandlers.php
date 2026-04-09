@@ -79,6 +79,23 @@ function handle_dashboard_data($input, $config, $queries) {
                 $dashboard_caps[] = $p;
             }
         }
+        // === CASHBOOK PŘÍSTUP - dynamicky přidat DASHBOARD_CASH_BOOK ===
+        $cash_perm_codes_list = ['CASH_BOOK_MANAGE', 'CASH_BOOK_READ_ALL', 'CASH_BOOK_READ_OWN',
+                                 'CASH_BOOK_EDIT_ALL', 'CASH_BOOK_EDIT_OWN',
+                                 'CASH_BOOK_EXPORT_ALL', 'CASH_BOOK_EXPORT_OWN'];
+        $has_cashbook_perm = $is_admin || !empty(array_intersect($perm_codes, $cash_perm_codes_list));
+        if ($has_cashbook_perm) {
+            if ($is_admin) {
+                $dashboard_caps[] = 'DASHBOARD_CASH_BOOK';
+            } else {
+                $stmt_cbk = $db->prepare("SELECT COUNT(*) FROM `" . TBL_POKLADNY_UZIVATELE . "` WHERE uzivatel_id = ? AND (platne_do IS NULL OR platne_do >= CURDATE())");
+                $stmt_cbk->execute([$user_id]);
+                if ((int)$stmt_cbk->fetchColumn() > 0) {
+                    $dashboard_caps[] = 'DASHBOARD_CASH_BOOK';
+                }
+            }
+        }
+
         // Admin vidí vše
         $has_cap = function($cap) use ($dashboard_caps, $is_admin) {
             return $is_admin || in_array($cap, $dashboard_caps);
@@ -187,6 +204,13 @@ function handle_dashboard_data($input, $config, $queries) {
         // === ROČNÍ POPLATKY - SPLATNOST ===
         if ($has_cap('DASHBOARD_ANNUAL_FEES')) {
             $result['annual_fees_due'] = _dashboard_get_annual_fees_due($db);
+        }
+
+        // === POKLADNA - PŘEHLED (aktuální nebo vybraný měsíc) ===
+        if ($has_cap('DASHBOARD_CASH_BOOK')) {
+            $cashbook_month = isset($input['cashbook_month']) ? (int)$input['cashbook_month'] : (int)date('n');
+            if ($cashbook_month < 1 || $cashbook_month > 12) $cashbook_month = (int)date('n');
+            $result['cashbook_summary'] = _dashboard_get_cashbook_summary($db, $user_id, $is_admin, $perm_codes, $cashbook_month);
         }
 
         // === KOMENTÁŘE K OBJEDNÁVKÁM (kde je uživatel účastník) ===
@@ -1696,4 +1720,150 @@ function _dashboard_get_annual_fees_due($db) {
         'stats' => $stats,
         'items' => $items
     ];
+}
+
+/**
+ * Přehled pokladny/pokladen pro dashboard widget
+ * Admin: agregát přes všechny pokladny
+ * Běžný uživatel: jeho přiřazené pokladny
+ */
+function _dashboard_get_cashbook_summary($db, $user_id, $is_admin, $perm_codes, $mesic = null) {
+    $rok = (int)date('Y');
+    $mesic = ($mesic !== null && $mesic >= 1 && $mesic <= 12) ? (int)$mesic : (int)date('n');
+    $mesic_nazvy = ['', 'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
+                        'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'];
+
+    $has_read_all = $is_admin
+        || in_array('CASH_BOOK_MANAGE', $perm_codes)
+        || in_array('CASH_BOOK_READ_ALL', $perm_codes)
+        || in_array('CASH_BOOK_EDIT_ALL', $perm_codes);
+
+    if ($has_read_all) {
+        // === ADMIN / SPRÁVCE: Agregát přes všechny aktivní pokladny ===
+
+        // Souhrnné statistiky aktuálního měsíce
+        $stmt = $db->prepare("
+            SELECT
+                COUNT(DISTINCT pk.pokladna_id) as pocet_pokladen,
+                COALESCE(SUM(pk.koncovy_stav), 0) as celkovy_stav,
+                COALESCE(SUM(pk.celkove_prijmy), 0) as prijmy_mesic,
+                COALESCE(SUM(pk.celkove_vydaje), 0) as vydaje_mesic,
+                COALESCE(SUM(pk.pocet_zaznamu), 0) as pocet_polozek,
+                SUM(CASE WHEN pk.stav_knihy = 'aktivni' THEN 1 ELSE 0 END) as aktivnich_knih,
+                SUM(CASE WHEN pk.stav_knihy != 'aktivni' THEN 1 ELSE 0 END) as uzavrenych_knih
+            FROM `" . TBL_POKLADNI_KNIHY . "` pk
+            INNER JOIN `" . TBL_POKLADNY . "` p ON p.id = pk.pokladna_id AND p.aktivni = 1
+            WHERE pk.rok = ? AND pk.mesic = ?
+        ");
+        $stmt->execute([$rok, $mesic]);
+        $souhrn_row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $souhrn = [
+            'pocet_pokladen'  => (int)($souhrn_row['pocet_pokladen'] ?? 0),
+            'celkovy_stav'    => (float)($souhrn_row['celkovy_stav'] ?? 0),
+            'prijmy_mesic'    => (float)($souhrn_row['prijmy_mesic'] ?? 0),
+            'vydaje_mesic'    => (float)($souhrn_row['vydaje_mesic'] ?? 0),
+            'pocet_polozek'   => (int)($souhrn_row['pocet_polozek'] ?? 0),
+            'aktivnich_knih'  => (int)($souhrn_row['aktivnich_knih'] ?? 0),
+            'uzavrenych_knih' => (int)($souhrn_row['uzavrenych_knih'] ?? 0),
+        ];
+
+        // Detail každé pokladny
+        $stmt2 = $db->prepare("
+            SELECT
+                pk.id as kniha_id,
+                pk.pokladna_id,
+                p.nazev as pokladna_nazev,
+                p.cislo_pokladny,
+                p.nazev_pracoviste,
+                pk.pocatecni_stav,
+                pk.koncovy_stav,
+                pk.celkove_prijmy as prijmy,
+                pk.celkove_vydaje as vydaje,
+                pk.pocet_zaznamu as pocet_polozek,
+                pk.stav_knihy
+            FROM `" . TBL_POKLADNI_KNIHY . "` pk
+            INNER JOIN `" . TBL_POKLADNY . "` p ON p.id = pk.pokladna_id AND p.aktivni = 1
+            WHERE pk.rok = ? AND pk.mesic = ?
+            ORDER BY p.cislo_pokladny ASC
+        ");
+        $stmt2->execute([$rok, $mesic]);
+        $pokladny = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'is_admin_view' => true,
+            'rok'   => $rok,
+            'mesic' => $mesic,
+            'mesic_nazev' => $mesic_nazvy[$mesic] ?? '',
+            'souhrn'  => $souhrn,
+            'pokladny' => $pokladny
+        ];
+
+    } else {
+        // === BĚŽNÝ UŽIVATEL: Jeho přiřazené pokladny ===
+
+        // Zjistit ID přiřazených pokladen
+        $stmt = $db->prepare("
+            SELECT DISTINCT pu.pokladna_id
+            FROM `" . TBL_POKLADNY_UZIVATELE . "` pu
+            WHERE pu.uzivatel_id = ?
+              AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
+        ");
+        $stmt->execute([$user_id]);
+        $pokladna_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($pokladna_ids)) {
+            return [
+                'is_admin_view' => false,
+                'rok' => $rok, 'mesic' => $mesic, 'mesic_nazev' => $mesic_nazvy[$mesic] ?? '',
+                'pokladny' => [], 'souhrn' => null
+            ];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($pokladna_ids), '?'));
+        $params = array_merge([$rok, $mesic], $pokladna_ids);
+
+        $stmt2 = $db->prepare("
+            SELECT
+                pk.id as kniha_id,
+                pk.pokladna_id,
+                p.nazev as pokladna_nazev,
+                p.cislo_pokladny,
+                p.nazev_pracoviste,
+                pk.pocatecni_stav,
+                pk.koncovy_stav,
+                pk.celkove_prijmy as prijmy,
+                pk.celkove_vydaje as vydaje,
+                pk.pocet_zaznamu as pocet_polozek,
+                pk.stav_knihy
+            FROM `" . TBL_POKLADNI_KNIHY . "` pk
+            INNER JOIN `" . TBL_POKLADNY . "` p ON p.id = pk.pokladna_id AND p.aktivni = 1
+            WHERE pk.rok = ? AND pk.mesic = ?
+              AND pk.pokladna_id IN ({$placeholders})
+            ORDER BY p.cislo_pokladny ASC
+        ");
+        $stmt2->execute($params);
+        $pokladny = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+        // Souhrn (zobrazit jen pokud má více pokladen)
+        $souhrn = null;
+        if (count($pokladny) > 1) {
+            $souhrn = [
+                'pocet_pokladen' => count($pokladny),
+                'celkovy_stav'   => array_sum(array_column($pokladny, 'koncovy_stav')),
+                'prijmy_mesic'   => array_sum(array_column($pokladny, 'prijmy')),
+                'vydaje_mesic'   => array_sum(array_column($pokladny, 'vydaje')),
+                'pocet_polozek'  => array_sum(array_column($pokladny, 'pocet_polozek')),
+            ];
+        }
+
+        return [
+            'is_admin_view' => false,
+            'rok'   => $rok,
+            'mesic' => $mesic,
+            'mesic_nazev' => $mesic_nazvy[$mesic] ?? '',
+            'pokladny' => $pokladny,
+            'souhrn'   => $souhrn
+        ];
+    }
 }

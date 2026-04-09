@@ -1764,13 +1764,17 @@ function handle_invoices25_list($input, $config, $queries) {
         }
         
         // Filtr: cislo_objednavky (částečná shoda - LIKE)
-        // ⚠️ UNIVERSAL: Hledá v čísle objednávky NEBO v čísle smlouvy!
+        // ⚠️ UNIVERSAL: Hledá v čísle objednávky, čísle smlouvy, názvu dodavatele i IČO!
         if (isset($filters['cislo_objednavky']) && trim($filters['cislo_objednavky']) !== '') {
             $search_obj_sml = strtolower(trim($filters['cislo_objednavky']));
-            $where_conditions[] = '(LOWER(o.cislo_objednavky) LIKE ? OR LOWER(sm.cislo_smlouvy) LIKE ?)';
+            $where_conditions[] = '(LOWER(o.cislo_objednavky) LIKE ? OR LOWER(sm.cislo_smlouvy) LIKE ? OR LOWER(o.dodavatel_nazev) LIKE ? OR LOWER(sm.nazev_firmy) LIKE ? OR o.dodavatel_ico LIKE ? OR sm.ico LIKE ?)';
             $params[] = '%' . $search_obj_sml . '%';
             $params[] = '%' . $search_obj_sml . '%';
-            error_log("Invoices25 LIST: Applying cislo_objednavky filter (OBJ + SML) = '$search_obj_sml'");
+            $params[] = '%' . $search_obj_sml . '%';
+            $params[] = '%' . $search_obj_sml . '%';
+            $params[] = '%' . $search_obj_sml . '%';
+            $params[] = '%' . $search_obj_sml . '%';
+            error_log("Invoices25 LIST: Applying cislo_objednavky filter (OBJ + SML + dodavatel) = '$search_obj_sml'");
         }
         
         // Filtr: filter_datum_vystaveni (přesná shoda na den)

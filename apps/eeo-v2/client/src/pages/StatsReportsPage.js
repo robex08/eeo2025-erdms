@@ -294,6 +294,7 @@ const PageWrapper = styled.div`
     linear-gradient(160deg, #f8fafc 0%, #eef2ff 45%, #f1f5f9 100%);
   color: #0f172a;
   padding: 2.5rem 1.5rem 3.5rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   opacity: ${props => props.$isInitialized ? 1 : 0};
   transition: opacity 0.4s ease-in-out;
 `;
@@ -1441,7 +1442,7 @@ const SmlouvyJezWrap = styled.div`
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-width: 200px;
+  min-width: 0;
 `;
 const SmlouvyJezHeader = styled.div`
   display: flex;
@@ -1528,6 +1529,8 @@ const SmlouvySummaryRow = styled.div`
   gap: 0.75rem;
   align-items: center;
   padding: 0.65rem 1rem;
+  width: 100%;
+  box-sizing: border-box;
   background: linear-gradient(90deg, #f8fafc 0%, #f1f5f9 100%);
   border-top: 2px solid #cbd5e1;
   border-radius: 0 0 12px 12px;
@@ -5839,6 +5842,444 @@ export default function StatsReportsPage() {
     URL.revokeObjectURL(url);
   }, [pivotTable, pivotRowNodes, pivotConfig, pivotTextLabelMap, pivotMetricLabelMap, formatMetric, formatMetricForKey]);
 
+  // ─── CSV Export: sdílené utility ────────────────────────────────────────────
+  const downloadCsv = useCallback((headers, rows, filename) => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map(r => r.map(esc).join(';')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // Převede objednávku na standardní CSV řádek (sdílený sloupce)
+  const orderToCsvRow = useCallback((order) => {
+    const invs = invoicesByOrderId[String(order?.id)] || [];
+    return {
+      ev_cislo:     order?.ev_cislo || order?.cislo_objednavky || '',
+      fa_vs:        invs.map(i => i.cislo_faktury).join(' | '),
+      dt_obj:       formatDateCz(getOrderDate(order)),
+      predmet:      getOrderSubject(order),
+      objednatel:   getOrdererName(order),
+      schvalovatel: getSchvalovatelName(order),
+      usek:         getOrdererUsekCode(order) || '',
+      financovani:  getOrderFinancingLabel(order),
+      detail_fin:   getOrderFinancingRef(order),
+      druh:         getOrderTypeLabel(order),
+      stav:         getOrderStatusLabel(order),
+      castka:       getOrderAmount(order),
+      fa_castka:    invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0),
+      stav_fa:      invs.map(inv => getInvoiceStatusLabel(inv)).join(' | '),
+    };
+  }, [invoicesByOrderId, getOrderDate, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getOrderAmount, getInvoiceStatusLabel]);
+
+  // ─── Export: Faktury vyšší než schválená objednávka ─────────────────────────
+  const handleExportCsv_ordersOverLimit = useCallback(() => {
+    const fkFilter = o => {
+      const stav = fkStavMapRef.current[`ordersOverLimit_${o.id}_0`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('ordersOverLimit');
+    const filtered = controlSections.ordersOverLimit
+      .filter(fkFilter)
+      .filter(o => !query || searchInVisibleColumns(o, query, 'ordersOverLimit'));
+    const headers = ['Ev.číslo obj.','Fa VS','Dt. obj.','Objednatel','Schvalovatel','Věcná správnost','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Max cena DPH (Kč)','Částka FA DPH (Kč)'];
+    const rows = filtered.map(order => {
+      const invs = invoicesByOrderId[String(order.id)] || [];
+      const r = orderToCsvRow(order);
+      return [r.ev_cislo, r.fa_vs, r.dt_obj, r.objednatel, r.schvalovatel, order.potvrdil_vecnou_spravnost_zkracene || '', r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, getOrderLimit(order), invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0)];
+    });
+    downloadCsv(headers, rows, `faktury-vyssi-nez-objednavka-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.ordersOverLimit, invoicesByOrderId, orderToCsvRow, getOrderLimit, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Objednávka vytvořená po doručení faktury ───────────────────────
+  const handleExportCsv_ordersAfterInvoice = useCallback(() => {
+    const fkFilter = item => {
+      const stav = fkStavMapRef.current[`ordersAfterInvoice_${item.order?.id}_${item.invoice?.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('ordersAfterInvoice');
+    const filtered = controlSections.ordersAfterInvoice
+      .filter(fkFilter)
+      .filter(({ order }) => !query || searchInVisibleColumns(order, query, 'ordersAfterInvoice'));
+    const headers = ['Ev.číslo obj.','Fa VS','Fa doručena','Obj vytvořena','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','FA částka (Kč)'];
+    const rows = filtered.map(({ order, invoice }) => {
+      const r = orderToCsvRow(order);
+      return [r.ev_cislo, invoice.cislo_faktury || '', formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, getInvoiceStatusLabel(invoice), getInvoiceAmount(invoice)];
+    });
+    downloadCsv(headers, rows, `objednavka-po-fakture-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.ordersAfterInvoice, orderToCsvRow, getInvoiceStatusLabel, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Objednávky s fakturami bez příloh ───────────────────────────────
+  const handleExportCsv_ordersInvoicesWithoutAttachments = useCallback(() => {
+    const fkFilter = o => {
+      const stav = fkStavMapRef.current[`ordersInvoicesWithoutAttachments_${o.id}_0`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('ordersInvoicesWithoutAttachments');
+    const filtered = controlSections.ordersInvoicesWithoutAttachments
+      .filter(fkFilter)
+      .filter(o => !query || searchInVisibleColumns(o, query, 'ordersInvoicesWithoutAttachments'));
+    const headers = ['Objednávka','Fa VS','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav OBJ','Stav FA','Příl. OBJ','Příl. FA','FA částka (Kč)'];
+    const rows = filtered.map(order => {
+      const invs = invoicesByOrderId[String(order.id)] || [];
+      const r = orderToCsvRow(order);
+      return [r.ev_cislo, r.fa_vs, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0, invs.map(inv => inv.pocet_priloh ?? inv.prilohy?.length ?? 0).join(' | '), r.fa_castka];
+    });
+    downloadCsv(headers, rows, `objednavky-faktury-bez-prilohy-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.ordersInvoicesWithoutAttachments, invoicesByOrderId, orderToCsvRow, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Faktury bez přílohy ────────────────────────────────────────────
+  const handleExportCsv_invoicesWithoutAttachments = useCallback(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`invoicesWithoutAttachments_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('invoicesWithoutAttachments');
+    const filtered = controlSections.invoicesWithoutAttachments
+      .filter(fkFilter)
+      .filter(inv => !query || searchInVisibleColumns(inv, query, 'invoicesWithoutAttachments'));
+    const headers = ['Fa VS','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
+    const rows = filtered.map(invoice => {
+      const order = ordersById.get(String(invoice.objednavka_id)) || null;
+      return [
+        invoice.cislo_faktury || '',
+        formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
+        invoice.vytvoril_uzivatel_zkracene || '',
+        invoice.fa_predana_zam_jmeno_cele || '',
+        order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || ''),
+        order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || ''),
+        order ? getOrderFinancingLabel(order) : '',
+        order ? getOrderFinancingRef(order) : '',
+        order ? getOrderTypeLabel(order) : '',
+        order ? getOrderStatusLabel(order) : '',
+        getInvoiceStatusLabel(invoice),
+        order ? (order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0) : '',
+        invoice.pocet_priloh ?? invoice.prilohy?.length ?? 0,
+        getInvoiceAmount(invoice),
+      ];
+    });
+    downloadCsv(headers, rows, `faktury-bez-prilohy-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.invoicesWithoutAttachments, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Faktury po splatnosti ──────────────────────────────────────────
+  const handleExportCsv_overdueInvoices = useCallback(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`overdueInvoices_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('overdueInvoices');
+    const filtered = controlSections.overdueInvoices
+      .filter(fkFilter)
+      .filter(inv => !query || searchInVisibleColumns(inv, query, 'overdueInvoices'));
+    const headers = ['Fa VS','Doručena','Splatnost','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
+    const rows = filtered.map(invoice => {
+      const order = ordersById.get(String(invoice.objednavka_id)) || null;
+      return [
+        invoice.cislo_faktury || '',
+        formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
+        formatDateCz(invoice.datum_splatnosti),
+        invoice.vytvoril_uzivatel_zkracene || '',
+        invoice.fa_predana_zam_jmeno_cele || '',
+        order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || ''),
+        order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || ''),
+        order ? getOrderFinancingLabel(order) : '',
+        order ? getOrderFinancingRef(order) : '',
+        order ? getOrderTypeLabel(order) : '',
+        order ? getOrderStatusLabel(order) : '',
+        getInvoiceStatusLabel(invoice),
+        order ? (order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0) : '',
+        invoice.pocet_priloh ?? invoice.prilohy?.length ?? 0,
+        getInvoiceAmount(invoice),
+      ];
+    });
+    downloadCsv(headers, rows, `faktury-po-splatnosti-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.overdueInvoices, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Zrušené a zamítnuté objednávky ─────────────────────────────────
+  const handleExportCsv_cancelledOrders = useCallback(() => {
+    const query = getSearchQuery('cancelledOrders');
+    const filtered = query
+      ? controlSections.cancelledOrders.filter(o => searchInVisibleColumns(o, query, 'cancelledOrders'))
+      : controlSections.cancelledOrders;
+    const headers = ['Objednávka','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Počet FA'];
+    const rows = filtered.map(order => {
+      const r = orderToCsvRow(order);
+      return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, (invoicesByOrderId[String(order.id)] || []).length];
+    });
+    downloadCsv(headers, rows, `zrusene-objednavky-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.cancelledOrders, invoicesByOrderId, orderToCsvRow, downloadCsv, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Vzdělávání lékařské ────────────────────────────────────────────
+  const handleExportCsv_vzdelLekarsky = useCallback(() => {
+    const query = getSearchQuery('vzdelLekarsky');
+    const lekarskyFiltered = query
+      ? vzdelSections.lekarsky.filter(o => searchInVisibleColumns(o, query, 'vzdelLekarsky'))
+      : vzdelSections.lekarsky;
+    const headers = ['Objednávka','Fa VS','Doručena','Splatnost','Zaevidoval','Předána','Stav FA','Úsek','Financování','Detail fin.','Druh','Částka celk. (Kč)','Stav obj.'];
+    const rows = lekarskyFiltered.flatMap(order => {
+      const invs = invoicesByOrderId[String(order.id)] || [];
+      const faSum = invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
+      const pol = getOrderPlannedAmount(order) || 0;
+      const mx = getOrderLimit(order) || 0;
+      const castkaCelk = faSum > 0 ? faSum : pol > 0 ? pol : mx;
+      if (invs.length === 0) {
+        return [[order.ev_cislo || '', '', '', '', '', '', '', getOrdererUsekCode(order) || '', getOrderFinancingLabel(order), getOrderFinancingRef(order), getOrderTypeLabel(order), castkaCelk, getOrderStatusLabel(order)]];
+      }
+      return invs.map(inv => [
+        order.ev_cislo || '',
+        inv.cislo_faktury || '',
+        formatDateCz(inv.datum_doruceni || inv.datum_vystaveni),
+        formatDateCz(inv.datum_splatnosti),
+        inv.vytvoril_uzivatel_zkracene || '',
+        inv.fa_predana_zam_jmeno_cele || '',
+        getInvoiceStatusLabel(inv),
+        getOrdererUsekCode(order) || '',
+        getOrderFinancingLabel(order),
+        getOrderFinancingRef(order),
+        getOrderTypeLabel(order),
+        castkaCelk,
+        getOrderStatusLabel(order),
+      ]);
+    });
+    downloadCsv(headers, rows, `vzdelavani-lekarsky-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [vzdelSections.lekarsky, invoicesByOrderId, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getOrderPlannedAmount, getOrderLimit, downloadCsv, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Školení nelékařské ─────────────────────────────────────────────
+  const handleExportCsv_vzdelNelekarsky = useCallback(() => {
+    const headers = ['Úsek','Financování','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Druh','Stav','Částka (Kč)'];
+    const rows = [];
+    vzdelNelByUsekFin.forEach(group => {
+      Object.values(group.financing || {}).forEach(fin => {
+        fin.orders.forEach(order => {
+          const r = orderToCsvRow(order);
+          rows.push([group.label, fin.label, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.druh, r.stav, r.castka]);
+        });
+      });
+    });
+    downloadCsv(headers, rows, `skoleni-nelekarsky-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [vzdelNelByUsekFin, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Vzdělávání dle střediska ──────────────────────────────────────
+  const handleExportCsv_vzdelByUsek = useCallback(() => {
+    const headers = ['Typ','Středisko','Úsek','Objednávka','Doručena','Stav FA','Financování','Detail fin.','Druh','Stav obj.','Částka (Kč)'];
+    const rows = [];
+    vzdelByTypStredisko.forEach(typ => {
+      typ.strediska.forEach(stredisko => {
+        Object.values(stredisko.byUsek || {}).forEach(usek => {
+          usek.orders.forEach(order => {
+            const invs = invoicesByOrderId[String(order.id)] || [];
+            const firstInv = invs[0];
+            const faSum = invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
+            const castkaCelk = faSum > 0 ? faSum : getOrderPlannedAmount(order) > 0 ? getOrderPlannedAmount(order) : getOrderLimit(order);
+            rows.push([
+              typ.label, stredisko.label, usek.label,
+              order.ev_cislo || '',
+              formatDateCz(firstInv?.datum_doruceni || firstInv?.datum_vystaveni),
+              firstInv ? getInvoiceStatusLabel(firstInv) : '',
+              getOrderFinancingLabel(order), getOrderFinancingRef(order),
+              getOrderTypeLabel(order), getOrderStatusLabel(order), castkaCelk,
+            ]);
+          });
+        });
+      });
+    });
+    downloadCsv(headers, rows, `vzdelavani-dle-strediska-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [vzdelByTypStredisko, invoicesByOrderId, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getOrderPlannedAmount, getOrderLimit, downloadCsv]);
+
+  // ─── Export: Čerpání – Financování → Úsek ──────────────────────────────────
+  const handleExportCsv_spendByFinancingUsek = useCallback(() => {
+    const headers = ['Financování','Úsek','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Detail fin.','Druh','Stav','Částka (Kč)'];
+    const rows = [];
+    spendByFinancingGroups.forEach(group => {
+      Object.values(group.useky || {}).forEach(usek => {
+        usek.orders.forEach(order => {
+          const r = orderToCsvRow(order);
+          rows.push([group.label, usek.label, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.detail_fin, r.druh, r.stav, r.castka]);
+        });
+      });
+    });
+    downloadCsv(headers, rows, `cerpani-financovani-usek-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [spendByFinancingGroups, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Čerpání – Úsek → Financování ──────────────────────────────────
+  const handleExportCsv_spendByUsekFinancing = useCallback(() => {
+    const headers = ['Úsek','Financování','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Detail fin.','Druh','Stav','Částka (Kč)'];
+    const rows = [];
+    spendByUsekGroups.forEach(group => {
+      Object.values(group.financing || {}).forEach(fin => {
+        fin.orders.forEach(order => {
+          const r = orderToCsvRow(order);
+          rows.push([group.label, fin.label, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.detail_fin, r.druh, r.stav, r.castka]);
+        });
+      });
+    });
+    downloadCsv(headers, rows, `cerpani-usek-financovani-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [spendByUsekGroups, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Čerpání – Druh → Financování ──────────────────────────────────
+  const handleExportCsv_spendByDruhFinancing = useCallback(() => {
+    const headers = ['Druh','Financování','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Detail fin.','Úsek','Stav','Částka (Kč)'];
+    const rows = [];
+    spendByDruhGroups.forEach(group => {
+      Object.values(group.financing || {}).forEach(fin => {
+        fin.orders.forEach(order => {
+          const r = orderToCsvRow(order);
+          rows.push([group.label, fin.label, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.detail_fin, r.usek, r.stav, r.castka]);
+        });
+      });
+    });
+    downloadCsv(headers, rows, `cerpani-druh-financovani-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [spendByDruhGroups, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Čerpání – Financování → Úsek → Druh ────────────────────────────
+  const handleExportCsv_spendByFinancingUsekDruh = useCallback(() => {
+    const headers = ['Financování','Úsek','Druh','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Detail fin.','Stav','Částka (Kč)'];
+    const rows = [];
+    spendByFinancingUsekDruhGroups.forEach(group => {
+      Object.values(group.useky || {}).forEach(usek => {
+        Object.values(usek.druhy || {}).forEach(druh => {
+          druh.orders.forEach(order => {
+            const r = orderToCsvRow(order);
+            rows.push([group.label, usek.label, druh.label, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.detail_fin, r.stav, r.castka]);
+          });
+        });
+      });
+    });
+    downloadCsv(headers, rows, `cerpani-financovani-usek-druh-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [spendByFinancingUsekDruhGroups, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Čerpání LP – podle LP kódu ────────────────────────────────────
+  const handleExportCsv_spendByLpKod = useCallback(() => {
+    const headers = ['LP kód','LP limit (Kč)','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav','Částka (Kč)'];
+    const rows = [];
+    spendByLpKodGroups.forEach(group => {
+      group.orders.forEach(order => {
+        const r = orderToCsvRow(order);
+        rows.push([group.label, group.lp_limit ?? '', r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.castka]);
+      });
+    });
+    downloadCsv(headers, rows, `cerpani-lp-kod-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [spendByLpKodGroups, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Čerpání ze Smluv ────────────────────────────────────────────────
+  const handleExportCsv_spendBySmlouvy = useCallback(() => {
+    const headers = ['Číslo smlouvy','Dodavatel','IČO','Hodnota smlouvy (Kč)','Čerpáno celkem (Kč)','Počet obj.','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Úsek','Stav','Částka obj. (Kč)'];
+    const rows = [];
+    spendBySmlouvyGroups.forEach(group => {
+      group.orders.forEach(order => {
+        const r = orderToCsvRow(order);
+        rows.push([group.label, group.dodavatel || '', group.ico || '', group.smlouva_hodnota ?? '', group.amount, group.count, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.usek, r.stav, r.castka]);
+      });
+    });
+    downloadCsv(headers, rows, `cerpani-smlouvy-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [spendBySmlouvyGroups, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Dodavatelé → Financování → Objednávky ─────────────────────────
+  const handleExportCsv_topSuppliers = useCallback(() => {
+    const headers = ['Dodavatel','IČO','Financování','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Úsek','Detail fin.','Druh','Stav','Částka (Kč)'];
+    const rows = [];
+    reportSections.topSuppliers.forEach(group => {
+      Object.values(group.financovani || {}).forEach(fin => {
+        fin.orders.forEach(order => {
+          const r = orderToCsvRow(order);
+          rows.push([group.label, group.ico || '', fin.label, r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.usek, r.detail_fin, r.druh, r.stav, r.castka]);
+        });
+      });
+    });
+    downloadCsv(headers, rows, `dodavatele-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [reportSections.topSuppliers, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Objednávky bez faktury 2+ měsíce ───────────────────────────────
+  const handleExportCsv_ordersWithoutInvoice = useCallback(() => {
+    const headers = ['Objednávka','Dt. obj.','Předmět','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Částka (Kč)','Stav obj.'];
+    const rows = reportSections.ordersWithoutInvoice.map(order => {
+      const r = orderToCsvRow(order);
+      return [r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.castka, r.stav];
+    });
+    downloadCsv(headers, rows, `objednavky-bez-faktury-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [reportSections.ordersWithoutInvoice, orderToCsvRow, downloadCsv]);
+
+  // ─── Export: Objednávky s fakturou, nedokončené ─────────────────────────────
+  const handleExportCsv_ordersWithInvoiceNotDone = useCallback(() => {
+    const query = getSearchQuery('ordersWithInvoiceNotDone');
+    const filtered = query
+      ? reportSections.ordersWithInvoiceNotDone.filter(o => searchInVisibleColumns(o, query, 'ordersWithInvoiceNotDone'))
+      : reportSections.ordersWithInvoiceNotDone;
+    const headers = ['Objednávka','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','VS faktur','Druh','Částka (Kč)','Stav obj.','Stav FA'];
+    const rows = filtered.map(order => {
+      const r = orderToCsvRow(order);
+      return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.fa_vs, r.druh, r.castka, r.stav, r.stav_fa];
+    });
+    downloadCsv(headers, rows, `objednavky-nedokoncene-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [reportSections.ordersWithInvoiceNotDone, orderToCsvRow, downloadCsv, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Objednávky LP bez rozkladu na LP ────────────────────────────────
+  const handleExportCsv_ordersWithMissingLpCerpani = useCallback(() => {
+    const query = getSearchQuery('ordersWithMissingLpCerpani');
+    const filtered = query
+      ? reportSections.ordersWithMissingLpCerpani.filter(o => searchInVisibleColumns(o, query, 'ordersWithMissingLpCerpani'))
+      : reportSections.ordersWithMissingLpCerpani;
+    const headers = ['Objednávka','Dt. obj.','Objednatel','Schvalovatel','Úsek','LP kódy','Faktury s věc. správností','Druh','FA částka (Kč)','Částka pol. (Kč)','Max DPH (Kč)','Stav obj.'];
+    const rows = filtered.map(order => {
+      const invs = invoicesByOrderId[String(order.id)] || [];
+      const r = orderToCsvRow(order);
+      const faWithVS = invs.filter(inv => inv.potvrdil_vecnou_spravnost_id || inv.potvrdil_vecnou_spravnost_zkracene).map(inv => inv.cislo_faktury || String(inv.id)).join(' | ');
+      return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.detail_fin, faWithVS, r.druh, r.fa_castka, getOrderPlannedAmount(order), getOrderLimit(order), r.stav];
+    });
+    downloadCsv(headers, rows, `lp-bez-rozkladu-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [reportSections.ordersWithMissingLpCerpani, invoicesByOrderId, orderToCsvRow, getOrderPlannedAmount, getOrderLimit, downloadCsv, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Přehled příloh ──────────────────────────────────────────────────
+  const handleExportCsv_invoiceAttachmentsList = useCallback(() => {
+    const headers = ['Soubor','Velikost (B)','Typ přílohy','Zdroj (OBJ/FA/RP)','Objednávka / RP','Faktura','Dodavatel','Druh'];
+    const rows = allAttachmentsCombined.map(att => [
+      att.original_name || att.original_filename || att.originalni_nazev_souboru || att.nazev_souboru || '',
+      att.velikost_souboru_b || att.velikost_b || att.velikost || 0,
+      att.typ_prilohy || att.type || att.attachment_type || '',
+      att.attachmentSource || '',
+      att.cislo_objednavky || att.order_number || '',
+      att.cislo_faktury || att.invoice_number || '',
+      att.dodavatel || '',
+      att.druh_objednavky_label || '',
+    ]);
+    downloadCsv(headers, rows, `prilohy-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [allAttachmentsCombined, downloadCsv]);
+
+  // ─── Export: Přehled pokladen ────────────────────────────────────────────────
+  const handleExportCsv_cashbookOverview = useCallback(() => {
+    const headers = ['Pokladna','Č. pokladny','Rok','Měsíc','Počáteční stav (Kč)','Převod z předch. (Kč)','Příjmy (Kč)','Výdaje (Kč)','Konečný stav (Kč)','Počet operací'];
+    const rows = [];
+    (cashbookBooksToRender || []).forEach(book => {
+      rows.push([
+        book.pokladna_nazev || '',
+        book.cislo_pokladny || '',
+        book.rok || '',
+        book.mesic || '(celý rok)',
+        book.pocatecni_stav_rok ?? '',
+        book.prevod_z_predchoziho ?? '',
+        book.celkove_prijmy ?? '',
+        book.celkove_vydaje ?? '',
+        book.koncovy_stav ?? '',
+        book.pocet_zaznamu ?? '',
+      ]);
+    });
+    downloadCsv(headers, rows, `prehled-pokladen-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [cashbookBooksToRender, downloadCsv]);
+
   const handleFilterChange = (key, value) => {
     setPendingFilters(prev => ({ ...prev, [key]: value }));
   };
@@ -7172,6 +7613,7 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Faktury vyšší než schválená objednávka</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_ordersOverLimit} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="danger">{pagedOrdersOverLimit.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.ordersOverLimitFA)}</SectionBadge>
                     </div>
@@ -7258,6 +7700,7 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávka vytvořená po doručení faktury</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_ordersAfterInvoice} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{pagedOrdersAfterInvoice.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.ordersAfterInvoiceFA)}</SectionBadge>
                     </div>
@@ -7364,6 +7807,7 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávky s fakturami bez příloh</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_ordersInvoicesWithoutAttachments} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{pagedOrdersInvoicesWithoutAttachments.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.ordersInvoicesWithoutAttachmentsFA)}</SectionBadge>
                     </div>
@@ -7477,6 +7921,7 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Faktury bez přílohy</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_invoicesWithoutAttachments} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{pagedInvoicesWithoutAttachments.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.invoicesWithoutAttachmentsFA)}</SectionBadge>
                     </div>
@@ -7606,6 +8051,7 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Faktury po splatnosti 14+ dní</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_overdueInvoices} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="danger">{pagedOverdueInvoices.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.overdueInvoicesFA)}</SectionBadge>
                     </div>
@@ -7736,7 +8182,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-cancelledOrders">
                   <SectionHeader>
                     <SectionTitle>Zrušené a zamítnuté objednávky</SectionTitle>
-                    <SectionBadge $tone="danger">{pagedCancelledOrders.total}</SectionBadge>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_cancelledOrders} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                      <SectionBadge $tone="danger">{pagedCancelledOrders.total}</SectionBadge>
+                    </div>
                   </SectionHeader>
                   <SearchBox>
                     <SearchInputWrapper>
@@ -7867,6 +8316,7 @@ export default function StatsReportsPage() {
                     <SectionHeader>
                       <SectionTitle>Vzdělávání – kurzy zdravotnické a lékařské</SectionTitle>
                       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <button onClick={handleExportCsv_vzdelLekarsky} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                         <SectionBadge $tone="warn">{vzdelSections.lekarsky.length}</SectionBadge>
                         <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(vzdelLekarskyTotal)}</SectionBadge>
                       </div>
@@ -7963,6 +8413,7 @@ export default function StatsReportsPage() {
                         <SectionBadge $tone="warn">{vzdelSections.nelekarsky.length} obj.</SectionBadge>
                         <SectionBadge $tone="info">{vzdelNelByUsekFin.length} úseků</SectionBadge>
                         <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(vzdelNelekarskyTotal)}</SectionBadge>
+                        <button onClick={handleExportCsv_vzdelNelekarsky} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -8186,6 +8637,7 @@ export default function StatsReportsPage() {
                         <SectionBadge $tone="warn">{vzdelByTypStredisko.reduce((s, t) => s + t.totalCount, 0)} obj.</SectionBadge>
                         <SectionBadge $tone="info">{vzdelByTypStredisko.reduce((s, t) => s + t.strediska.length, 0)} středisek</SectionBadge>
                         <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(vzdelLekarskyTotal + vzdelNelekarskyTotal)}</SectionBadge>
+                        <button onClick={handleExportCsv_vzdelByUsek} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -8376,6 +8828,7 @@ export default function StatsReportsPage() {
                           {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{filteredSpendByFinancingGroups.length} typů</SectionBadge>
+                        <button onClick={handleExportCsv_spendByFinancingUsek} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -8692,6 +9145,7 @@ export default function StatsReportsPage() {
                           {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{filteredSpendByUsekGroups.length} úseků</SectionBadge>
+                        <button onClick={handleExportCsv_spendByUsekFinancing} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -8871,6 +9325,7 @@ export default function StatsReportsPage() {
                           {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{filteredSpendByDruhGroups.length} druhů</SectionBadge>
+                        <button onClick={handleExportCsv_spendByDruhFinancing} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -9050,6 +9505,7 @@ export default function StatsReportsPage() {
                           {filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{filteredSpendByFinancingUsekDruhGroups.length} typů financování</SectionBadge>
+                        <button onClick={handleExportCsv_spendByFinancingUsekDruh} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -9279,6 +9735,7 @@ export default function StatsReportsPage() {
                           {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{filteredSpendByLpKodGroups.length} LP kódů</SectionBadge>
+                        <button onClick={handleExportCsv_spendByLpKod} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -9437,6 +9894,7 @@ export default function StatsReportsPage() {
                           {filteredSpendBySmlouvyGroups.length > 0 && filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{filteredSpendBySmlouvyGroups.length} smluv</SectionBadge>
+                        <button onClick={handleExportCsv_spendBySmlouvy} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -9463,7 +9921,7 @@ export default function StatsReportsPage() {
                           const DONE_FLAGS = ['DOKON', 'UZAVR', 'K_ZAPLACENI', 'UHRAD'];
                           const currentMonthIdx = new Date().getMonth();
                           const targetPct = Math.round(((currentMonthIdx + 1) / 12) * 100);
-                          const GRID_COLS = '22px minmax(150px,200px) 1fr 120px 155px 125px 1fr 92px';
+                          const GRID_COLS = '22px 155px 1fr 52px 115px 145px 130px 190px 84px';
                           const HDR = { color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' };
 
                           // Předpočítat stav každé skupiny
@@ -9542,7 +10000,7 @@ export default function StatsReportsPage() {
                           return (
                             <>
                               {/* Záhlaví sloupců */}
-                              <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: '0.75rem', padding: '0.25rem 1rem', ...HDR }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: '0.75rem', padding: '0.25rem 1rem', width: '100%', boxSizing: 'border-box', ...HDR }}>
                                 <div
                                   title={filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? 'Sbalit vše' : 'Rozbalit vše'}
                                   onClick={() => {
@@ -9556,6 +10014,7 @@ export default function StatsReportsPage() {
                                 </div>
                                 <div onClick={() => handleTableSort('spendGrp_smlouvy', 'code')} style={{ cursor: 'pointer' }}>Smlouva{sortIcon('spendGrp_smlouvy', 'code')}</div>
                                 <div onClick={() => handleTableSort('spendGrp_smlouvy', 'dodavatel')} style={{ cursor: 'pointer' }}>Dodavatel{sortIcon('spendGrp_smlouvy', 'dodavatel')}</div>
+                                <div style={{ textAlign: 'center' }}>Úsek</div>
                                 <div onClick={() => handleTableSort('spendGrp_smlouvy', 'smlouva_hodnota')} style={{ cursor: 'pointer', textAlign: 'right' }}>Limit{sortIcon('spendGrp_smlouvy', 'smlouva_hodnota')}</div>
                                 <div onClick={() => handleTableSort('spendGrp_smlouvy', 'amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>Vyčerpáno{sortIcon('spendGrp_smlouvy', 'amount')}</div>
                                 <div style={{ textAlign: 'right' }}>Zbývá</div>
@@ -9579,7 +10038,7 @@ export default function StatsReportsPage() {
                                     {/* Souhrnný řádek smlouvy */}
                                     <div
                                       onClick={() => setExpandedSpendSmlouvy(prev => { const n = new Set(prev); if (n.has(group.code)) n.delete(group.code); else n.add(group.code); return n; })}
-                                      style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: '0.75rem', alignItems: 'center', padding: '0.65rem 1rem', background: grpOpen ? '#f0f9ff' : '#fafbfc', cursor: 'pointer', userSelect: 'none' }}
+                                      style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: '0.75rem', alignItems: 'center', padding: '0.65rem 1rem', width: '100%', boxSizing: 'border-box', background: grpOpen ? '#f0f9ff' : '#fafbfc', cursor: 'pointer', userSelect: 'none' }}
                                     >
                                       {/* Toggle s počtem objednávek */}
                                       <button
@@ -9591,38 +10050,44 @@ export default function StatsReportsPage() {
                                       </button>
 
                                       {/* Číslo smlouvy */}
-                                      <span style={{ fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem' }} title={group.label}>{highlightText(group.label, 'spendBySmlouvy')}</span>
+                                      <span style={{ fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', fontFamily: "'Roboto Condensed', Roboto, sans-serif" }} title={group.label}>{highlightText(group.label, 'spendBySmlouvy')}</span>
 
-                                      {/* Dodavatel / IČO / Úsek */}
+                                      {/* Dodavatel / IČO */}
                                       <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={smDodavatel}>{highlightText(smDodavatel, 'spendBySmlouvy')}</div>
-                                        {(smIco || smUseky) && (
-                                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1px' }}>
-                                            {smIco && <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace' }}>{smIco}</span>}
-                                            {smUseky && <span style={{ fontSize: '0.65rem', color: '#64748b' }}>{smUseky}</span>}
+                                        <div style={{ fontSize: '0.8rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Roboto Condensed', Roboto, sans-serif", fontWeight: 500 }} title={smDodavatel}>{highlightText(smDodavatel, 'spendBySmlouvy')}</div>
+                                        {smIco && (
+                                          <div style={{ marginTop: '1px' }}>
+                                            <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace' }}>{smIco}</span>
                                           </div>
                                         )}
                                       </div>
 
+                                      {/* Úsek */}
+                                      <div style={{ textAlign: 'center' }}>
+                                        {smUseky ? (
+                                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', background: '#e2e8f0', borderRadius: '4px', padding: '1px 5px', whiteSpace: 'nowrap', display: 'inline-block', fontFamily: "'Roboto Condensed', Roboto, sans-serif" }}>{smUseky}</span>
+                                        ) : <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>—</span>}
+                                      </div>
+
                                       {/* Limit */}
                                       <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: '#475569', whiteSpace: 'nowrap' }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 600, fontFamily: "'Roboto Condensed', Roboto, sans-serif", color: '#475569', whiteSpace: 'nowrap' }}>
                                           {limit > 0 ? fmtCurrency(limit) : <span style={{ color: '#94a3b8' }}>—</span>}
                                         </div>
                                       </div>
 
                                       {/* Vyčerpáno */}
                                       <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtCurrency(skutecne)}</div>
-                                        {vProcesu > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>+ {fmtCurrency(vProcesu)} v procesu</div>}
+                                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#10b981', fontFamily: "'Roboto Condensed', Roboto, sans-serif", whiteSpace: 'nowrap' }}>{fmtCurrency(skutecne)}</div>
+                                        {vProcesu > 0 && <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap', fontFamily: "'Roboto Condensed', Roboto, sans-serif" }}>+ {fmtCurrency(vProcesu)} v procesu</div>}
                                       </div>
 
                                       {/* Zbývá */}
                                       <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: zbyva < 0 ? '#ef4444' : '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: zbyva < 0 ? '#ef4444' : '#10b981', fontFamily: "'Roboto Condensed', Roboto, sans-serif", whiteSpace: 'nowrap' }}>
                                           {limit > 0 ? fmtCurrency(zbyva) : <span style={{ color: '#94a3b8' }}>—</span>}
                                         </div>
-                                        {vProcesu > 0 && limit > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>→ Volné: {fmtCurrency(volne)}</div>}
+                                        {vProcesu > 0 && limit > 0 && <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap', fontFamily: "'Roboto Condensed', Roboto, sans-serif" }}>→ Volné: {fmtCurrency(volne)}</div>}
                                       </div>
 
                                       {/* Čerpání – jezevčík bar */}
@@ -9698,21 +10163,22 @@ export default function StatsReportsPage() {
                                     Celkem ({filteredSpendBySmlouvyGroups.length} smluv)
                                   </div>
                                   <span />
+                                  <span />
                                   {/* Limit celkem */}
                                   <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, fontFamily: 'monospace', color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtCurrency(totalLimit)}</div>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, fontFamily: "'Roboto Condensed', Roboto, sans-serif", color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtCurrency(totalLimit)}</div>
                                   </div>
                                   {/* Vyčerpáno celkem */}
                                   <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtCurrency(totalSkutecne)}</div>
-                                    {totalVProcesu > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>+ {fmtCurrency(totalVProcesu)} v procesu</div>}
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', fontFamily: "'Roboto Condensed', Roboto, sans-serif", whiteSpace: 'nowrap' }}>{fmtCurrency(totalSkutecne)}</div>
+                                    {totalVProcesu > 0 && <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap', fontFamily: "'Roboto Condensed', Roboto, sans-serif" }}>+ {fmtCurrency(totalVProcesu)} v procesu</div>}
                                   </div>
                                   {/* Zbývá celkem */}
                                   <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: (totalLimit - totalSkutecne) < 0 ? '#ef4444' : '#10b981', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: (totalLimit - totalSkutecne) < 0 ? '#ef4444' : '#10b981', fontFamily: "'Roboto Condensed', Roboto, sans-serif", whiteSpace: 'nowrap' }}>
                                       {totalLimit > 0 ? fmtCurrency(totalLimit - totalSkutecne) : '—'}
                                     </div>
-                                    {totalVProcesu > 0 && totalLimit > 0 && <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>→ Volné: {fmtCurrency(totalLimit - totalSkutecne - totalVProcesu)}</div>}
+                                    {totalVProcesu > 0 && totalLimit > 0 && <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap', fontFamily: "'Roboto Condensed', Roboto, sans-serif" }}>→ Volné: {fmtCurrency(totalLimit - totalSkutecne - totalVProcesu)}</div>}
                                   </div>
                                   {/* Celkový bar */}
                                   {totalLimit > 0
@@ -9727,7 +10193,7 @@ export default function StatsReportsPage() {
                                               </div>
                                               <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
                                                 <span style={{ display: 'block', fontSize: '0.52rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>VOLNÉ PROSTŘEDKY</span>
-                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#16a34a', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtCurrency(totalVolne)}</span>
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#16a34a', fontFamily: "'Roboto Condensed', Roboto, sans-serif", whiteSpace: 'nowrap' }}>{fmtCurrency(totalVolne)}</span>
                                               </div>
                                             </SmlouvyJezHeader>
                                             <SmlouvyJezBarOuter>
@@ -10460,6 +10926,7 @@ export default function StatsReportsPage() {
                           {reportSections.topSuppliers.length > 0 && reportSections.topSuppliers.every(function(g) { return expandedTopSuppDod.has(g.code); }) ? 'Sbalit vše' : 'Rozbalit vše'}
                         </ExpandAllBtn>
                         <SectionBadge $tone="warn">{reportSections.topSuppliers.length} dodavatelů</SectionBadge>
+                        <button onClick={handleExportCsv_topSuppliers} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox>
@@ -10677,7 +11144,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-ordersWithoutInvoice">
                   <SectionHeader>
                     <SectionTitle>Objednávky bez faktury 2+ měsíce (schváleno+)</SectionTitle>
-                    <SectionBadge $tone="warn">{reportSections.ordersWithoutInvoice.length}</SectionBadge>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_ordersWithoutInvoice} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                      <SectionBadge $tone="warn">{reportSections.ordersWithoutInvoice.length}</SectionBadge>
+                    </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <SearchInputWrapper style={{ flex: 1 }}>
@@ -10767,7 +11237,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-ordersWithInvoiceNotDone">
                   <SectionHeader>
                     <SectionTitle>Objednávky s fakturou, nedokončené (mimo vzdělávání)</SectionTitle>
-                    <SectionBadge $tone="warn">{reportSections.ordersWithInvoiceNotDone.length}</SectionBadge>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_ordersWithInvoiceNotDone} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                      <SectionBadge $tone="warn">{reportSections.ordersWithInvoiceNotDone.length}</SectionBadge>
+                    </div>
                   </SectionHeader>
                   <SearchBox>
                     <SearchInputWrapper>
@@ -10848,7 +11321,10 @@ export default function StatsReportsPage() {
                   <SectionCard id="section-ordersWithMissingLpCerpani">
                   <SectionHeader>
                     <SectionTitle>Objednávky financované z LP s fakturou bez rozkladu na LP</SectionTitle>
-                    <SectionBadge $tone="danger">{reportSections.ordersWithMissingLpCerpani.length}</SectionBadge>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button onClick={handleExportCsv_ordersWithMissingLpCerpani} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                      <SectionBadge $tone="danger">{reportSections.ordersWithMissingLpCerpani.length}</SectionBadge>
+                    </div>
                   </SectionHeader>
                   <SearchBox>
                     <SearchInputWrapper>
@@ -11205,6 +11681,7 @@ export default function StatsReportsPage() {
                         <SectionBadge $tone="warn" style={{ fontSize: '0.72rem' }}>FA: {allInvoiceAttachments.length}</SectionBadge>
                         <SectionBadge $tone="success" style={{ fontSize: '0.72rem' }}>RP: {annualFeeAttachments.length}</SectionBadge>
                         <SectionBadge $tone="info">{allAttachmentsCombined.length} celkem</SectionBadge>
+                        <button onClick={handleExportCsv_invoiceAttachmentsList} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                         <SectionBadge $tone="success" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
                           💾 {(() => {
                             const totalBytes = allAttachmentsCombined.reduce((sum, att) => sum + (att.velikost_souboru_b || att.velikost_b || att.velikost || 0), 0);
@@ -11952,6 +12429,7 @@ export default function StatsReportsPage() {
                             ? `${['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'][cashbookFilters.mesic - 1]} ${cashbookFilters.rok}`
                             : `Celý rok ${cashbookFilters.rok}`}
                         </SectionBadge>
+                        <button onClick={handleExportCsv_cashbookOverview} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                         {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
                       </div>
                     </SectionHeader>

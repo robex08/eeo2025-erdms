@@ -4256,10 +4256,10 @@ const Invoices25List = () => {
                       <input
                         type="text"
                         className="filter-input"
-                        placeholder="Obj./Smlouva..."
+                        placeholder="Obj./Sml./Dodavatel..."
                         value={columnFilters.cislo_objednavky || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
-                        title="Hledá v číslech objednávek i smluv"
+                        title="Hledá v číslech objednávek, smluv, názvu dodavatele i IČO"
                       />
                       {columnFilters.cislo_objednavky && (
                         <button
@@ -7620,10 +7620,10 @@ const Invoices25List = () => {
                       <input
                         type="text"
                         className="filter-input"
-                        placeholder="Obj./Smlouva..."
+                        placeholder="Obj./Sml./Dodavatel..."
                         value={columnFilters.cislo_objednavky || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
-                        title="Hledá v číslech objednávek i smluv"
+                        title="Hledá v číslech objednávek, smluv, názvu dodavatele i IČO"
                       />
                       {columnFilters.cislo_objednavky && (
                         <button

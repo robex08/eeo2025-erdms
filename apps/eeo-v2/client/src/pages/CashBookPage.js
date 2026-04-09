@@ -2138,50 +2138,61 @@ const CashBookPage = () => {
 
   // 🆕 Funkce pro načtení posledních P a V čísel z předchozího měsíce
   const getLastDocumentNumbersFromPreviousMonth = useCallback(async () => {
-    if (!mainAssignment?.uzivatel_id) {
+    if (!mainAssignment?.pokladna_id) {
       return { lastP: 0, lastV: 0 };
     }
 
-    const userId = mainAssignment.uzivatel_id;
-    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const pokladnaId = mainAssignment.pokladna_id;
 
-    try {
-      // Najít knihu pro předchozí měsíc
-      const booksResult = await cashbookAPI.listBooks(userId, prevYear, prevMonth);
+    // Prohledat zpět přes maximálně 12 měsíců (celý rok)
+    // Hledáme první neprázdný měsíc, abychom našli správné poslední číslo v sekvenci
+    for (let offset = 1; offset <= 12; offset++) {
+      let checkMonth = currentMonth - offset;
+      let checkYear = currentYear;
 
-      if (booksResult.status !== 'ok' || !booksResult.data?.books || booksResult.data.books.length === 0) {
-        return { lastP: 0, lastV: 0 };
+      while (checkMonth <= 0) {
+        checkMonth += 12;
+        checkYear--;
       }
 
-      const prevBook = booksResult.data.books[0]; // První kniha pro ten měsíc
+      try {
+        // Načíst knihu pro danou pokladnu a měsíc (nehledáme podle userId; číslování je per pokladna)
+        const booksResult = await cashbookAPI.listBooksForCashbox(pokladnaId, checkYear, checkMonth);
 
-      // Načíst entries z té knihy
-      const bookResult = await cashbookAPI.getBook(prevBook.id, false);
+        if (booksResult.status !== 'ok' || !booksResult.data?.books?.length) continue;
 
-      if (bookResult.status === 'ok' && bookResult.data?.entries?.length > 0) {
-        const entries = bookResult.data.entries;
+        const prevBook = booksResult.data.books[0];
 
-        // Najít nejvyšší P číslo (z DB pole cislo_dokladu)
-        const pNumbers = entries
-          .filter(e => e.cislo_dokladu?.startsWith('P'))
-          .map(e => parseInt(e.cislo_dokladu.substring(1)) || 0);
-        const lastP = pNumbers.length > 0 ? Math.max(...pNumbers) : 0;
+        // Načíst položky z té knihy
+        const bookResult = await cashbookAPI.getBook(prevBook.id, false);
 
-        // Najít nejvyšší V číslo
-        const vNumbers = entries
-          .filter(e => e.cislo_dokladu?.startsWith('V'))
-          .map(e => parseInt(e.cislo_dokladu.substring(1)) || 0);
-        const lastV = vNumbers.length > 0 ? Math.max(...vNumbers) : 0;
+        if (bookResult.status === 'ok' && bookResult.data?.entries?.length > 0) {
+          const entries = bookResult.data.entries;
 
-        return { lastP, lastV };
+          // Najít nejvyšší P číslo (z DB pole cislo_dokladu)
+          const pNumbers = entries
+            .filter(e => e.cislo_dokladu?.startsWith('P'))
+            .map(e => parseInt(e.cislo_dokladu.substring(1)) || 0);
+          const lastP = pNumbers.length > 0 ? Math.max(...pNumbers) : 0;
+
+          // Najít nejvyšší V číslo
+          const vNumbers = entries
+            .filter(e => e.cislo_dokladu?.startsWith('V'))
+            .map(e => parseInt(e.cislo_dokladu.substring(1)) || 0);
+          const lastV = vNumbers.length > 0 ? Math.max(...vNumbers) : 0;
+
+          // Pokud jsme našli neprázdné číslování, vrátíme ho
+          if (lastP > 0 || lastV > 0) {
+            return { lastP, lastV };
+          }
+        }
+      } catch (error) {
+        // Pokračovat na předchozí měsíc
+        continue;
       }
-
-      return { lastP: 0, lastV: 0 };
-    } catch (error) {
-      console.error('❌ Chyba při načítání čísel z předchozího měsíce:', error);
-      return { lastP: 0, lastV: 0 };
     }
+
+    return { lastP: 0, lastV: 0 };
   }, [mainAssignment, currentMonth, currentYear]);
 
   // Formátování českých korun
@@ -3092,13 +3103,12 @@ const CashBookPage = () => {
           // Update existující entry
           const updateResult = await cashbookAPI.updateEntry(updatedEntry.db_id, payload);
 
-          // ✅ Pokud se změnil typ (typeChanged), použít číslo z frontendu, ne z backendu
+          // ✅ Vždy použít číslo dokladu z backendu (backend přečísluje celou pokladnu)
           if (updateResult.status === 'ok') {
             setCashBookEntries(prev => prev.map(e =>
               e.id === id ? {
                 ...e,
-                // Pokud byl změněn typ, použít nové číslo z frontendu, jinak použít číslo z backendu
-                documentNumber: typeChanged ? documentNumber : (updateResult.data?.entry?.cislo_dokladu || e.documentNumber),
+                documentNumber: updateResult.data?.entry?.cislo_dokladu || e.documentNumber,
                 sync_status: 'synced',
                 changed: false,
                 last_synced_at: new Date().toISOString()
@@ -3111,12 +3121,12 @@ const CashBookPage = () => {
 
           if (result.status === 'ok' && result.data?.entry) {
             // Aktualizovat s DB ID a číslem dokladu
-            // ✅ Pokud jsme vygenerovali číslo na frontendu (typeChanged), použít to, jinak číslo z backendu
+            // ✅ Vždy použít číslo dokladu z backendu - backend má správné číslo v sekvenci (per rok × pokladna)
             setCashBookEntries(prev => prev.map(e =>
               e.id === id ? {
                 ...e,
                 db_id: result.data.entry.id,
-                documentNumber: typeChanged ? documentNumber : (result.data.entry.cislo_dokladu || documentNumber),
+                documentNumber: result.data.entry.cislo_dokladu || documentNumber,
                 sync_status: 'synced',
                 changed: false,
                 last_synced_at: new Date().toISOString()

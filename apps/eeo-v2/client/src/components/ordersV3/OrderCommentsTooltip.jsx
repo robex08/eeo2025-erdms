@@ -1439,7 +1439,8 @@ const OrderCommentsTooltip = ({
                                 <ReplyText>{highlightText(reply.obsah)}</ReplyText>
                               )}
                               <div style={{ marginTop: '0.5rem' }}>
-                                <ReplyButton 
+                                <ReplyButton
+                                  type="button"
                                   onClick={() => setReplyToComment({ 
                                     id: getTopLevelParent(reply.parent_comment_id), 
                                     author: reply.autor_jmeno 
@@ -1449,7 +1450,6 @@ const OrderCommentsTooltip = ({
                                   <FontAwesomeIcon icon={faReply} />
                                   Odpovědět
                                 </ReplyButton>
-                                  type="button"
                               </div>
                             </ReplyItem>
                           );

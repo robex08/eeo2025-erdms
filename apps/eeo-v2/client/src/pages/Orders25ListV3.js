@@ -62,6 +62,7 @@ import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
 import { findOrderPageV3 } from '../services/apiOrdersV3';
 import { fetchCiselniky } from '../services/api2auth';
+import { getInvoicesByOrder25 } from '../services/api25invoices';
 
 // Custom hooks
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
@@ -77,6 +78,7 @@ import VirtualizedOrdersTable from '../components/ordersV3/VirtualizedOrdersTabl
 import { OrderContextMenu } from '../components/OrderContextMenu';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import ConfirmDialog from '../components/ConfirmDialog';
+import InvoiceListPopup from '../components/InvoiceListPopup';
 import { exportCsv } from '../utils/format';
 import { isValidConcept, hasDraftChanges } from '../utils/draftUtils.js';
 import draftManager from '../services/DraftManager';
@@ -895,6 +897,12 @@ function Orders25ListV3() {
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
 
+  // 🧾 State pro popup výběru faktury (když má objednávka již přiřazené faktury)
+  const [invoicePopupVisible, setInvoicePopupVisible] = useState(false);
+  const [invoicePopupOrder, setInvoicePopupOrder] = useState(null);
+  const [invoicePopupInvoices, setInvoicePopupInvoices] = useState([]);
+  const [invoicePopupLoading, setInvoicePopupLoading] = useState(false);
+
   // 🆕 State pro potvrzení zavření rozpracované objednávky při vytváření nové
   const [showNewOrderConfirmDialog, setShowNewOrderConfirmDialog] = useState(false);
 
@@ -1677,22 +1685,78 @@ function Orders25ListV3() {
         return;
       }
     
-      // 🎯 Získat číslo objednávky pro prefill v našeptávači
+      // 🎯 Získat číslo objednávky pro prefill vašeptávači
       const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
       
-      // Navigace do modulu faktur s číslem objednávky v searchTerm
-      navigate('/invoice-evidence', { 
-        state: { 
-          prefillSearchTerm: orderNumber,
-          orderIdForLoad: order.id
-        } 
-      });
+      // 🔍 Pokud má objednávka faktury, zobraz popup se seznamem
+      const invoiceCount = order.pocet_faktur || 0;
+      
+      if (invoiceCount > 0) {
+        // Otevři popup a načti faktury
+        setInvoicePopupOrder(order);
+        setInvoicePopupVisible(true);
+        setInvoicePopupLoading(true);
+        setInvoicePopupInvoices([]);
+        
+        try {
+          const invoices = await getInvoicesByOrder25({
+            token,
+            username,
+            objednavka_id: order.id
+          });
+          setInvoicePopupInvoices(invoices || []);
+        } catch (error) {
+          console.error('Chyba při načítání faktur:', error);
+          showToast('Nepodařilo se načíst faktury objednávky', { type: 'error' });
+          setInvoicePopupInvoices([]);
+        } finally {
+          setInvoicePopupLoading(false);
+        }
+      } else {
+        // Navigace do modulu faktur s číslem objednávky v searchTerm
+        navigate('/invoice-evidence', { 
+          state: { 
+            prefillSearchTerm: orderNumber,
+            orderIdForLoad: order.id
+          } 
+        });
+      }
       
     } catch (error) {
       console.error('❌ Chyba při kontrole dostupnosti objednávky:', error);
       showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
     }
   };
+
+  // Handlery pro popup se seznamem faktur objednávky
+  const handleCloseInvoicePopup = useCallback(() => {
+    setInvoicePopupVisible(false);
+    setInvoicePopupOrder(null);
+    setInvoicePopupInvoices([]);
+  }, []);
+
+  const handleEditInvoiceFromPopup = useCallback((invoice) => {
+    setInvoicePopupVisible(false);
+    navigate('/invoice-evidence', {
+      state: {
+        editInvoiceId: invoice.id,
+        orderIdForLoad: invoicePopupOrder?.id
+      }
+    });
+  }, [navigate, invoicePopupOrder]);
+
+  const handleAddInvoiceFromPopup = useCallback(() => {
+    const orderNumber = invoicePopupOrder?.cislo_objednavky ||
+                       invoicePopupOrder?.evidencni_cislo ||
+                       `#${invoicePopupOrder?.id}`;
+    setInvoicePopupVisible(false);
+    navigate('/invoice-evidence', {
+      state: {
+        prefillSearchTerm: orderNumber,
+        orderIdForLoad: invoicePopupOrder?.id
+      }
+    });
+  }, [navigate, invoicePopupOrder]);
 
   // Handler pro export DOCX
   const handleExportOrder = async (order) => {
@@ -2810,6 +2874,18 @@ function Orders25ListV3() {
           )}
         </ConfirmDialog>,
         document.body
+      )}
+
+      {/* Popup se seznamem faktur přiřazených k objednávce */}
+      {invoicePopupVisible && (
+        <InvoiceListPopup
+          invoices={invoicePopupInvoices}
+          order={invoicePopupOrder}
+          loading={invoicePopupLoading}
+          onClose={handleCloseInvoicePopup}
+          onEditInvoice={handleEditInvoiceFromPopup}
+          onAddInvoice={handleAddInvoiceFromPopup}
+        />
       )}
     </Container>
     </>
