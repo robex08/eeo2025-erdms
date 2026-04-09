@@ -4,7 +4,8 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { AuthContext } from '../context/AuthContext';
-import { getDashboardData } from '../services/apiDashboard';
+import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline } from '../services/apiDashboard';
+import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
 import { theme } from '../theme/theme';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
@@ -24,7 +25,7 @@ import {
   faSync, faEye, faEyeSlash, faGripVertical, faTimes,
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
   faFileContract, faComments, faHourglassHalf, faFileInvoice,
-  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck
+  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
@@ -43,18 +44,19 @@ const WIDGET_REGISTRY = {
   orders_approval:     { title: 'Ke schválení',            icon: faGavel,              color: '#dc2626', requires: 'DASHBOARD_ORDERS_APPROVE' },
   invoices_overdue:    { title: 'Faktury po splatnosti',   icon: faExclamationCircle,  color: '#dc2626', requires: 'DASHBOARD_INVOICES_OVERDUE' },
   invoices_due_soon:   { title: 'Faktury blížící se spl.', icon: faCalendarAlt,        color: '#f97316', requires: 'DASHBOARD_INVOICES_DUE_SOON' },
-  orders_registry:     { title: 'Ke zveřejnění (VZ)',      icon: faGlobe,              color: '#059669', requires: 'DASHBOARD_ORDERS_REGISTRY' },
-  orders_published:    { title: 'Zveřejněné objednávky',   icon: faCheckCircle,        color: '#10b981', requires: 'DASHBOARD_ORDERS_PUBLISHED' },
+  orders_registry:     { title: 'Registr – ke zveřejnění',            icon: faGlobe,              color: '#059669', requires: 'DASHBOARD_ORDERS_REGISTRY' },
+  orders_published:    { title: 'Registr – zveřejněné objednávky',    icon: faCheckCircle,        color: '#10b981', requires: 'DASHBOARD_ORDERS_PUBLISHED' },
   alerts:              { title: 'Upozornění',              icon: faExclamationTriangle,color: '#f59e0b' },
   notifications:       { title: 'Notifikace',              icon: faBell,               color: '#6366f1' },
   chart_timeline:      { title: 'Objednávky v čase',       icon: faChartBar,           color: '#0891b2', requires: 'DASHBOARD_CHART_TIMELINE' },
   top_suppliers:       { title: 'Top dodavatelé',           icon: faTruck,              color: '#b45309', requires: 'DASHBOARD_TOP_SUPPLIERS' },
   smlouvy_critical:    { title: 'Smlouvy - kritický stav',  icon: faFileContract,       color: '#dc2626', requires: 'DASHBOARD_SPENDING_CONTRACTS' },
-  lp_critical:         { title: 'LP - kritický stav',       icon: faMoneyBillWave,      color: '#dc2626', requires: 'DASHBOARD_SPENDING_LP' },
+  lp_critical:         { title: 'Limitované příslíby - stav čerpání', icon: faMoneyBillWave, color: '#dc2626', requires: 'DASHBOARD_SPENDING_LP' },
   order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1' },
   invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' },
   annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' },
-  cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true }
+  cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true },
+  active_users_admin:  { title: 'Dashboard uživatelů',         icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
 };
 
 const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
@@ -73,6 +75,11 @@ const fadeInUp = keyframes`
 const shimmer = keyframes`
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+`;
+
+const spinAnim = keyframes`
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 `;
 
 // ============================================================================
@@ -305,10 +312,12 @@ const BetaBadge = styled.span`
   color: #fff;
   border-radius: 4px;
   padding: 0.1rem 0.35rem;
-  margin-left: 0.4rem;
-  vertical-align: middle;
+  margin-left: 0.2rem;
   line-height: 1.4;
   box-shadow: 0 1px 4px rgba(124,58,237,0.3);
+  position: relative;
+  top: -0.6em;
+  vertical-align: baseline;
 `;
 
 // === FOCUS ALERTS BANNER ===
@@ -317,52 +326,78 @@ const FocusBannerWrap = styled.div`
   background: linear-gradient(135deg, #fefce8 0%, #fff7ed 50%, #fef2f2 100%);
   border: 1px solid #fde68a;
   border-radius: 12px;
-  overflow: hidden;
   box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 `;
 
 const FocusBannerHeader = styled.div`
-  display: flex; align-items: center; gap: 0.5rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
   padding: 0.5rem 1rem;
   font-size: 0.78rem; font-weight: 700; color: #92400e;
+  font-stretch: condensed; letter-spacing: -0.01em;
   border-bottom: 1px solid rgba(253,230,138,0.5);
   background: rgba(255,255,255,0.4);
 `;
 
 const FocusBannerBodyWrap = styled.div`
   position: relative;
-  display: flex;
-  align-items: stretch;
 `;
 
-const FocusBannerScrollBtn = styled.button`
+const FocusBannerScrollBtnLeft = styled.button`
   position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 2;
+  left: 6px;
+  top: calc(50% - 5px);
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s;
+  color: #92400e;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
+  ${FocusBannerWrap}:hover & { opacity: 1; }
+  &:hover { opacity: 1 !important; background: rgba(255,255,255,1); }
+`;
+
+const FocusBannerScrollBtnRight = styled.button`
+  position: absolute;
+  right: 6px;
+  top: calc(50% - 5px);
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   border: none;
-  background: linear-gradient(${p => p.$dir === 'left'
-    ? '90deg, rgba(254,252,232,0.97) 60%, transparent 100%)'
-    : '270deg, rgba(255,247,237,0.97) 60%, transparent 100%)'
-  });
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s;
-  ${p => p.$dir === 'left' ? 'left: 0;' : 'right: 0;'}
-  color: #b45309;
-  font-size: 0.9rem;
-  font-weight: 900;
+  transition: opacity 0.18s;
+  color: #92400e;
   padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
   ${FocusBannerWrap}:hover & { opacity: 1; }
-  &:hover { opacity: 1 !important; color: #92400e; }
+  &:hover { opacity: 1 !important; background: rgba(255,255,255,1); }
 `;
 
 const FocusBannerBody = styled.div`
-  display: flex; gap: 0.75rem; padding: 0.6rem 1rem;
+  display: flex; gap: 0.75rem; padding: 0.6rem 2.25rem;
   overflow-x: auto; overflow-y: hidden;
   flex: 1;
   &::-webkit-scrollbar { height: 4px; }
@@ -396,10 +431,12 @@ const FocusIcon = styled.div`
 const FocusText = styled.span`
   font-size: 0.78rem; font-weight: 500; color: #1f2937;
   line-height: 1.3;
+  font-stretch: condensed; letter-spacing: -0.015em;
 `;
 
 const FocusCount = styled.span`
   font-size: 0.85rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  font-stretch: condensed;
   color: ${p => p.$severity === 'danger' ? '#dc2626' : '#d97706'};
   flex-shrink: 0;
 `;
@@ -432,6 +469,8 @@ const WidgetTitle = styled.h3`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-stretch: normal;
+  letter-spacing: normal;
 `;
 
 const WidgetIcon = styled.span`
@@ -455,10 +494,39 @@ const WidgetBadge = styled.span`
   border-radius: 999px;
 `;
 
+const CbLoadGate = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  min-height: 120px;
+`;
+
+const CbLoadRing = styled.span`
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3.5px solid #d1fae5;
+  border-top-color: #059669;
+  animation: ${spinAnim} 0.75s linear infinite;
+`;
+
+const CbLoadLabel = styled.span`
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+`;
+
 const WidgetBody = styled.div`
   padding: 0.5rem 1.25rem 1.25rem;
   max-height: ${p => p.$noScroll ? 'none' : '280px'};
   overflow-y: ${p => p.$noScroll ? 'visible' : 'auto'};
+  font-stretch: condensed;
+  letter-spacing: -0.015em;
   
   /* Custom scrollbar */
   &::-webkit-scrollbar {
@@ -990,13 +1058,35 @@ const getNotifColor = (priorita) => {
 const STATUS_COLORS = {
   NOVA: { bg: '#dbeafe', color: '#1d4ed8' },
   KE_SCHVALENI: { bg: '#fee2e2', color: '#dc2626' },
+  ODESLANA_KE_SCHVALENI: { bg: '#fee2e2', color: '#dc2626' },
   SCHVALENA: { bg: '#dcfce7', color: '#166534' },
   ZAMITNUTA: { bg: '#e5e7eb', color: '#6b7280' },
   ROZPRACOVANA: { bg: '#fef3c7', color: '#b45309' },
   ODESLANA: { bg: '#e0f2fe', color: '#0284c7' },
+  ODESLANA_DODAVATELI: { bg: '#e0f2fe', color: '#0284c7' },
+  POTVRZENA: { bg: '#ede9fe', color: '#7c3aed' },
+  FAKTURACE: { bg: '#fef9c3', color: '#a16207' },
   VECNA_SPRAVNOST: { bg: '#fce7f3', color: '#be185d' },
+  UVEREJNIT: { bg: '#dcfce7', color: '#15803d' },
   DOKONCENA: { bg: '#d1fae5', color: '#059669' },
   ZRUSENA: { bg: '#f3f4f6', color: '#9ca3af' }
+};
+
+const STATUS_LABELS = {
+  NOVA: 'Nová',
+  KE_SCHVALENI: 'Ke schválení',
+  ODESLANA_KE_SCHVALENI: 'Ke schválení',
+  SCHVALENA: 'Schválená',
+  ZAMITNUTA: 'Zamítnutá',
+  ROZPRACOVANA: 'Rozpracovaná',
+  ODESLANA: 'Odeslaná dodavateli',
+  ODESLANA_DODAVATELI: 'Odeslaná dodavateli',
+  POTVRZENA: 'Potvrzená dodavatelem',
+  FAKTURACE: 'Fakturace',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  UVEREJNIT: 'Ke zveřejnění',
+  DOKONCENA: 'Dokončená',
+  ZRUSENA: 'Zrušená'
 };
 
 const getStatusBadge = (stav) => {
@@ -1004,9 +1094,143 @@ const getStatusBadge = (stav) => {
   return s;
 };
 
+const getStatusLabel = (stav) => STATUS_LABELS[stav] || stav;
+
 // ============================================================================
 // WIDGET COMPONENTS
 // ============================================================================
+
+// ── SUPERADMIN: Aktivní uživatelé ──────────────────────────────────────────
+function ActiveUsersAdminWidget({ data, navigate }) {
+  const items = data?.items || [];
+
+  const formatAgo = (dt) => {
+    if (!dt) return '–';
+    const diff = Math.floor((Date.now() - new Date(dt).getTime()) / 1000);
+    if (diff < 60) return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    return `${Math.floor(diff / 3600)}h`;
+  };
+
+  const MODULE_LABELS = {
+    '/orders25-list-v3': 'Objednávky',
+    '/invoices': 'Faktury',
+    '/invoices25': 'Faktury',
+    '/dashboard': 'Dashboard',
+    '/users': 'Správa uživatelů',
+    '/smlouvy': 'Smlouvy',
+    '/lp': 'LP',
+    '/reports': 'Reporty',
+    '/cashbook': 'Pokladna',
+  };
+
+  const getModuleLabel = (modul, cesta) => {
+    if (!modul && !cesta) return null;
+    const path = cesta || modul || '';
+    for (const [key, val] of Object.entries(MODULE_LABELS)) {
+      if (path.includes(key)) return val;
+    }
+    return modul || path.split('/').filter(Boolean).pop() || null;
+  };
+
+  const ROLE_BADGES = {
+    SUPERADMIN:        { label: 'SA',  title: 'Superadmin – plný přístup k systému',             color: '#dc2626' },
+    ADMINISTRATOR:     { label: 'ADM', title: 'Administrátor – správa uživatelů a nastavení',      color: '#7c3aed' },
+    UCETNI:            { label: 'ÚČT', title: 'Účetní – správa a zpracování faktur',               color: '#0891b2' },
+    HLAVNI_UCETNI:     { label: 'HÚ',  title: 'Hlavní účetní – vedoucí účetního oddělení',         color: '#0891b2' },
+    PRIKAZCE_OPERACE:  { label: 'PŘO', title: 'Příkazce operace – schvalování objednávek',         color: '#059669' },
+    PRIKAZCE:          { label: 'PŘ',  title: 'Příkazce – schvalování objednávek',                 color: '#059669' },
+    SPRAVCE_ROZPOCTU:  { label: 'SR',  title: 'Správce rozpočtu – kontrola a správa rozpočtu',    color: '#b45309' },
+    KONTROLOR_FAKTUR:  { label: 'KF',  title: 'Kontrolor faktur – věcná správnost faktur',         color: '#6366f1' },
+    ROZPOCTAR:         { label: 'RZP', title: 'Rozpočtář – tvorba a správa rozpočtu',              color: '#b45309' },
+    VEDOUCI:           { label: 'VED', title: 'Vedoucí – vedoucí pracovník',                       color: '#0f766e' },
+    NAMESTEK:          { label: 'NÁM', title: 'Náměstek – náměstek vedoucího',                     color: '#0f766e' },
+    REDITEL:           { label: 'ŘED', title: 'Ředitel – ředitel organizace',                      color: '#0f766e' },
+    VEREJNE_ZAKAZKY:   { label: 'VZ',  title: 'Veřejné zakázky – správa veřejných zakázek',       color: '#7c3aed' },
+  };
+
+  if (items.length === 0) {
+    return (
+      <WidgetBody>
+        <EmptyState>
+          <FontAwesomeIcon icon={faUsers} style={{ fontSize: '2rem', color: '#94a3b8', marginBottom: '0.5rem' }} />
+          <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Žádní aktivní uživatelé (posledních 5 min)</div>
+        </EmptyState>
+      </WidgetBody>
+    );
+  }
+
+  return (
+    <WidgetBody style={{ padding: 0 }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+          <thead>
+            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Uživatel</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Úsek / Pozice</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Modul</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>IP adresa</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Objednal</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Schválil</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Ke schválení</th>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Aktivita</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((u, i) => {
+              const modulLabel = getModuleLabel(u.modul, u.cesta);
+              const isPrikazce = (u.role_kody || []).some(r => r.startsWith('PRIKAZCE') || r === 'SPRAVCE_ROZPOCTU');
+              return (
+                <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                  <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.cele_jmeno}</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>({u.username})</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                      {(u.role_kody || []).filter(r => ROLE_BADGES[r]).map(r => (
+                        <span key={r} title={ROLE_BADGES[r].title} style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.05rem 0.3rem', borderRadius: 4, background: ROLE_BADGES[r].color + '1a', color: ROLE_BADGES[r].color, border: `1px solid ${ROLE_BADGES[r].color}40`, cursor: 'help' }}>
+                          {ROLE_BADGES[r].label}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', color: '#475569', whiteSpace: 'nowrap' }}>
+                    {u.usek_zkr && <span style={{ fontWeight: 600 }}>{u.usek_zkr}</span>}
+                    {u.pozice && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{u.pozice}</div>}
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
+                    {modulLabel
+                      ? <span style={{ padding: '0.15rem 0.45rem', borderRadius: 6, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600, fontSize: '0.75rem' }}>{modulLabel}</span>
+                      : <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontFamily: 'monospace', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                    {u.ip_adresa || <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: u.pocet_objednavek_objednatel > 0 ? '#1d4ed8' : '#94a3b8' }}>
+                    {u.pocet_objednavek_objednatel}
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: isPrikazce ? 600 : 400, color: isPrikazce && u.pocet_schvalenych > 0 ? '#059669' : '#94a3b8' }}>
+                    {isPrikazce ? u.pocet_schvalenych : '–'}
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
+                    {isPrikazce
+                      ? <span style={{ fontWeight: 600, color: u.pocet_ke_schvaleni > 0 ? '#dc2626' : '#94a3b8' }}>{u.pocet_ke_schvaleni}</span>
+                      : <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#64748b', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                    {formatAgo(u.dt_posledni_aktivita)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </WidgetBody>
+  );
+}
 
 function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, navigate }) {
   const roleLabels = [];
@@ -1125,6 +1349,75 @@ function OrderStatsWidget({ stats, navigate }) {
   );
 }
 
+function MyOrdersWidget({ myOrdersData, navigate }) {
+  const objednatel = myOrdersData?.objednatel || [];
+  const garant     = myOrdersData?.garant     || [];
+  const prikazce   = myOrdersData?.prikazce   || [];
+  const hasPrikazce = myOrdersData?.has_prikazce_role || false;
+
+  const total = objednatel.length + garant.length + prikazce.length;
+  if (total === 0) {
+    return <WidgetBody><EmptyState>Žádné objednávky</EmptyState></WidgetBody>;
+  }
+
+  const renderOrder = (o) => {
+    const stav = o.aktualni_stav || '';
+    const sb = getStatusBadge(stav);
+    const prikazceJmeno = o.prikazce_jmeno ? `${o.prikazce_jmeno} ${o.prikazce_prijmeni || ''}`.trim() : '';
+    return (
+      <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
+        <ListItemLeft>
+          <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+          <ListItemSub>{o.predmet}</ListItemSub>
+          {prikazceJmeno && <ListItemMeta>Přík: {prikazceJmeno}</ListItemMeta>}
+        </ListItemLeft>
+        <ListItemRight>
+          <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
+          <Badge $bg={sb.bg} $color={sb.color}>{getStatusLabel(stav)}</Badge>
+        </ListItemRight>
+      </ListItem>
+    );
+  };
+
+  const SectionDivider = ({ label }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.5rem 0 0.25rem', opacity: 0.7 }}>
+      <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+      <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </span>
+      <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+    </div>
+  );
+
+  return (
+    <WidgetBody>
+      {objednatel.length > 0 && (
+        <>
+          <SectionDivider label="Objednatel" />
+          {objednatel.map(renderOrder)}
+        </>
+      )}
+      {garant.length > 0 && (
+        <>
+          <SectionDivider label="Garant" />
+          {garant.map(renderOrder)}
+        </>
+      )}
+      {hasPrikazce && prikazce.length > 0 && (
+        <>
+          <SectionDivider label="Příkazce / Schvalovatel" />
+          {prikazce.map(renderOrder)}
+        </>
+      )}
+      <ViewAllLink>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'moje_objednavky' } })}>
+          Zobrazit vše <FontAwesomeIcon icon={faArrowRight} />
+        </button>
+      </ViewAllLink>
+    </WidgetBody>
+  );
+}
+
 function OrderListWidget({ orders, title, navigate, filterPreset }) {
   if (!orders || orders.length === 0) {
     return <WidgetBody><EmptyState>Žádné objednávky</EmptyState></WidgetBody>;
@@ -1147,7 +1440,7 @@ function OrderListWidget({ orders, title, navigate, filterPreset }) {
             </ListItemLeft>
             <ListItemRight>
               <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
-              <Badge $bg={sb.bg} $color={sb.color}>{stav}</Badge>
+              <Badge $bg={sb.bg} $color={sb.color}>{getStatusLabel(stav)}</Badge>
               {o.dni_od_vytvoreni !== undefined && (
                 <Badge 
                   $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 3 ? '#fef3c7' : '#dbeafe')}
@@ -1254,11 +1547,13 @@ function AlertsWidget({ alerts, navigate }) {
   const alertIconMap = {
     'clock': faClock,
     'exclamation-triangle': faExclamationTriangle,
-    'exclamation-circle': faExclamationCircle
+    'exclamation-circle': faExclamationCircle,
+    'globe': faGlobe
   };
 
   const alertInfoMap = {
     'Objednávky v prodlení': 'Objednávky, u kterých nedošlo\nk žádné akci déle než 7 dní.\nZkontrolujte stav a posuňte\nje v procesu dál.',
+    'Ke zveřejnění – prodlení': 'Objednávky čekající na zveřejnění\nv registru smluv déle než 2 dny.\nZveřejnění je ze zákona povinné\ndo stanoveného termínu.',
     'Nepotvrzené faktury': 'Faktury čekající na potvrzení\nvěcné správnosti déle než 7 dní.\nBez potvrzení nelze fakturu\nzpracovat k proplacení.',
     'Faktury po splatnosti': 'Faktury, u kterých již uplynulo\ndatum splatnosti. Hrozí penále\na sankce za pozdní úhradu.'
   };
@@ -1279,9 +1574,10 @@ function AlertsWidget({ alerts, navigate }) {
           onClick={() => {
             if (!a.link) return;
             const filterMap = {
-              'Objednávky v prodlení':  { link: '/orders25-list-v3',  state: { dashboardFilter: 'fakturace_prodleni', clearFilters: true } },
-              'Nepotvrzené faktury':    { link: '/invoices25-list',   state: { dashboardFilter: 'unpaid',              clearFilters: true } },
-              'Faktury po splatnosti':  { link: '/invoices25-list',   state: { dashboardFilter: 'overdue',             clearFilters: true } },
+              'Objednávky v prodlení':    { link: '/orders25-list-v3',  state: { dashboardFilter: 'fakturace_prodleni',       clearFilters: true } },
+              'Ke zveřejnění – prodlení': { link: '/orders25-list-v3',  state: { dashboardFilter: 'k_uverejneni_do_registru', clearFilters: true } },
+              'Nepotvrzené faktury':      { link: '/invoices25-list',   state: { dashboardFilter: 'unpaid',                   clearFilters: true } },
+              'Faktury po splatnosti':    { link: '/invoices25-list',   state: { dashboardFilter: 'overdue',                  clearFilters: true } },
             };
             const preset = filterMap[a.title];
             if (preset) navigate(preset.link, { state: preset.state });
@@ -1344,10 +1640,23 @@ function NotificationsWidget({ notifications, navigate }) {
   );
 }
 
-function ChartTimelineWidget({ data }) {
+function ChartTimelineWidget({ data, loading }) {
+  if (loading) {
+    return (
+      <WidgetBody>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, gap: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
+          <span style={{ display: 'inline-block', width: 18, height: 18, border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8', borderRadius: '50%', animation: 'dashSpin 0.8s linear infinite' }} />
+          Načítám graf…
+        </div>
+      </WidgetBody>
+    );
+  }
   if (!data || data.length === 0) {
     return <WidgetBody><EmptyState>Nedostatek dat pro graf</EmptyState></WidgetBody>;
   }
+
+  const totalCastka = data.reduce((acc, d) => acc + (parseFloat(d.castka) || 0), 0);
+  const totalPocet = data.reduce((acc, d) => acc + (parseInt(d.pocet) || 0), 0);
 
   const chartData = {
     labels: data.map(d => {
@@ -1368,7 +1677,21 @@ function ChartTimelineWidget({ data }) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw} obj.` } } },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const idx = ctx.dataIndex;
+            const castka = parseFloat(data[idx]?.castka) || 0;
+            return [
+              `${ctx.raw} obj.`,
+              formatCurrency(castka)
+            ];
+          }
+        }
+      }
+    },
     scales: {
       y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f1f5f9' } },
       x: { grid: { display: false } }
@@ -1379,6 +1702,10 @@ function ChartTimelineWidget({ data }) {
     <WidgetBody $noScroll>
       <div style={{ height: 200 }}>
         <Bar data={chartData} options={options} />
+      </div>
+      <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
+        <span>Celkem: <strong style={{ color: '#1d4ed8' }}>{totalPocet} obj.</strong></span>
+        <span>Hodnota: <strong style={{ color: '#1d4ed8' }}>{formatCurrency(totalCastka)}</strong></span>
       </div>
     </WidgetBody>
   );
@@ -1416,30 +1743,92 @@ function TopSuppliersWidget({ suppliers }) {
   );
 }
 
-function RegistryWidget({ ordersForRegistry, ordersPublished, navigate, filterPreset }) {
+function RegistryWidget({ ordersForRegistry, navigate }) {
+  if (!ordersForRegistry || ordersForRegistry.length === 0) {
+    return (
+      <WidgetBody>
+        <EmptyState>Žádné objednávky ke zveřejnění</EmptyState>
+      </WidgetBody>
+    );
+  }
   return (
     <WidgetBody>
-      {(!ordersForRegistry || ordersForRegistry.length === 0) ? (
-        <EmptyState>Žádné objednávky ke zveřejnění</EmptyState>
-      ) : (
-        <>
-          {ordersForRegistry.map(o => {
-            const objednavatel = o.objednavatel_jmeno ? `${o.objednavatel_jmeno} ${o.objednavatel_prijmeni || ''}`.trim() : '';
-            return (
-              <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
-                <ListItemLeft>
-                  <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
-                  <ListItemSub>{o.predmet}</ListItemSub>
-                  {objednavatel && <ListItemMeta>Obj: {objednavatel}</ListItemMeta>}
-                </ListItemLeft>
-                <ListItemRight>
-                  <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
-                </ListItemRight>
-              </ListItem>
-            );
-          })}
-        </>
+      {ordersForRegistry.map(o => {
+        const dni = parseInt(o.dni_cekani) || 0;
+        const isLate = dni > 3;
+        const objednavatel = o.objednavatel_jmeno ? `${o.objednavatel_jmeno} ${o.objednavatel_prijmeni || ''}`.trim() : '';
+        return (
+          <ListItem
+            key={o.id}
+            style={isLate ? { background: '#fff7ed' } : {}}
+            onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}
+          >
+            <ListItemLeft>
+              <ListItemTitle style={isLate ? { color: '#c2410c' } : {}}>
+                {isLate && (
+                  <span style={{ marginRight: '0.3rem', fontSize: '0.8rem', color: '#f97316' }}>⚠</span>
+                )}
+                {o.cislo_objednavky || `#${o.id}`}
+              </ListItemTitle>
+              <ListItemSub>{o.predmet}</ListItemSub>
+              {objednavatel && <ListItemMeta>Obj: {objednavatel}</ListItemMeta>}
+            </ListItemLeft>
+            <ListItemRight>
+              <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
+              <Badge $bg={isLate ? '#fee2e2' : '#ecfdf5'} $color={isLate ? '#dc2626' : '#059669'}>
+                {isLate ? `${dni} d` : (dni === 0 ? 'dnes' : `${dni} d`)}
+              </Badge>
+            </ListItemRight>
+          </ListItem>
+        );
+      })}
+      <ViewAllLink>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'k_uverejneni_do_registru' } })}>
+          Přejít na objednávky <FontAwesomeIcon icon={faArrowRight} />
+        </button>
+      </ViewAllLink>
+    </WidgetBody>
+  );
+}
+
+function OrdersPublishedWidget({ publishedData, navigate }) {
+  const items = publishedData?.items || [];
+  const isFallback = publishedData?.is_fallback || false;
+  if (!items || items.length === 0) {
+    return (
+      <WidgetBody>
+        <EmptyState>Žádné zveřejněné objednávky</EmptyState>
+      </WidgetBody>
+    );
+  }
+  return (
+    <WidgetBody>
+      {isFallback && (
+        <div style={{ fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', padding: '0.35rem 0.6rem', borderRadius: '6px', marginBottom: '0.5rem' }}>
+          Za posledních 7 dní žádné záznamy — zobrazeny poslední záznamy roku
+        </div>
       )}
+      {items.map(o => {
+        const objednavatel = o.objednavatel_jmeno ? `${o.objednavatel_jmeno} ${o.objednavatel_prijmeni || ''}`.trim() : '';
+        return (
+          <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
+            <ListItemLeft>
+              <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+              <ListItemSub>{o.predmet}</ListItemSub>
+              {objednavatel && <ListItemMeta>Obj: {objednavatel} · zveř. {formatDate(o.dt_zverejneni)}</ListItemMeta>}
+            </ListItemLeft>
+            <ListItemRight>
+              <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
+              <Badge $bg="#dcfce7" $color="#16a34a">zveřejněno</Badge>
+            </ListItemRight>
+          </ListItem>
+        );
+      })}
+      <ViewAllLink>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'uverejnena' } })}>
+          Zobrazit vše <FontAwesomeIcon icon={faArrowRight} />
+        </button>
+      </ViewAllLink>
     </WidgetBody>
   );
 }
@@ -1546,7 +1935,7 @@ const CbMiniLabel = styled.div`
   color: #94a3b8;
 `;
 
-function CashbookSummaryWidget({ cbData, navigate }) {
+function CashbookSummaryWidget({ cbData, navigate, loading }) {
   const d = cbData || {};
   const pokladny = d.pokladny || [];
   const souhrn = d.souhrn || null;
@@ -1565,6 +1954,17 @@ function CashbookSummaryWidget({ cbData, navigate }) {
     if (s === 'zamknuta_spravcem') return 'Zamčená';
     return s || '—';
   };
+
+  if (loading) {
+    return (
+      <WidgetBody $noScroll>
+        <CbLoadGate>
+          <CbLoadRing />
+          <CbLoadLabel>Načítám data pokladny…</CbLoadLabel>
+        </CbLoadGate>
+      </WidgetBody>
+    );
+  }
 
   if (pokladny.length === 0) {
     return (
@@ -1753,9 +2153,9 @@ function SmlouvyCriticalWidget({ smlouvy, navigate }) {
           tags.push(<CriticalTag key="c" $type="CERPANI">{pct}% čerpáno</CriticalTag>);
         }
         if (s.typ_kriticky === 'KONCI_BRZY') {
-          tags.push(<CriticalTag key="t" $type="UKONCENA">{dnu > 0 ? `${dnu} dní` : 'Dnes končí'}</CriticalTag>);
+          tags.push(<CriticalTag key="t" $type="UKONCENA">{dnu > 0 ? `zbývá ${dnu} dní` : 'Dnes končí'}</CriticalTag>);
         } else if (s.typ_kriticky === 'KONCI_DO_MESICE') {
-          tags.push(<CriticalTag key="t" $type="BRZY_KONCI">{dnu} dní</CriticalTag>);
+          tags.push(<CriticalTag key="t" $type="BRZY_KONCI">zbývá {dnu} dní</CriticalTag>);
         }
 
         return (
@@ -1792,7 +2192,7 @@ function LPCriticalWidget({ lpData, navigate }) {
   const stats = data.stats || {};
 
   if (items.length === 0 && !stats.celkem_aktivnich) {
-    return <WidgetBody><EmptyState>Žádné LP v kritickém stavu</EmptyState></WidgetBody>;
+    return <WidgetBody><EmptyState>Žádné limitované příslíby v kritickém stavu</EmptyState></WidgetBody>;
   }
 
   return (
@@ -1825,7 +2225,7 @@ function LPCriticalWidget({ lpData, navigate }) {
         </SmlouvyStatsRow>
       )}
       {items.length === 0 ? (
-        <EmptyState>Žádné LP k zobrazení</EmptyState>
+        <EmptyState>Žádné limitované příslíby k zobrazení</EmptyState>
       ) : items.map(lp => {
         const pct = parseFloat(lp.procento_cerpani) || 0;
         const tags = [];
@@ -1843,7 +2243,7 @@ function LPCriticalWidget({ lpData, navigate }) {
         return (
           <ListItem key={lp.id} onClick={() => navigate('/cerpani', { state: { returnTo: '/dashboard', tab: 'lp', filterText: lp.cislo_lp || '' } })}>
             <ListItemLeft>
-              <ListItemTitle>{lp.cislo_lp || `LP #${lp.id}`}</ListItemTitle>
+              <ListItemTitle>{lp.cislo_lp || `LP příslib #${lp.id}`}</ListItemTitle>
               <ListItemSub>{lp.usek_nazev || ''}</ListItemSub>
               <ListItemMeta>
                 {lp.spravce_jmeno ? `Správce: ${lp.spravce_jmeno.trim()}` : ''}
@@ -1951,7 +2351,7 @@ function InvoiceStatsWidget({ stats, navigate }) {
           Celkem: <strong style={{ color: theme.colors.primary }}>{formatCurrency(stats.celkova_castka)}</strong>
           {parseFloat(stats.castka_po_splatnosti) > 0 && (
             <span style={{ color: '#dc2626', marginLeft: '0.75rem' }}>
-              Po splatnosti: <strong>{formatCurrency(stats.castka_po_splatnosti)}</strong>
+              Z toho po splatnosti: <strong>{formatCurrency(stats.castka_po_splatnosti)}</strong>
             </span>
           )}
         </div>
@@ -2145,10 +2545,11 @@ const FOCUS_ICON_MAP = {
   'calendar-check': faCalendarCheck,
 };
 
-function FocusAlertsBanner({ items, navigate: nav }) {
+function FocusAlertsBanner({ items, navigate: nav, lastRefreshed }) {
   const scrollRef = React.useRef(null);
 
-  if (!items || items.length === 0) return null;
+  const hasItems = items && items.length > 0;
+  if (!hasItems && !lastRefreshed) return null;
 
   const scrollBy = (dir) => {
     if (scrollRef.current) {
@@ -2156,16 +2557,44 @@ function FocusAlertsBanner({ items, navigate: nav }) {
     }
   };
 
+  if (!hasItems) {
+    // Pouze datum aktualizace, bez alertů
+    return (
+      <FocusBannerWrap>
+        <FocusBannerHeader>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+            <FontAwesomeIcon icon={faBullhorn} />
+            Na co se zaměřit
+          </span>
+          {lastRefreshed && (
+            <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#92400e', opacity: 0.75, whiteSpace: 'nowrap' }}
+              title="Datum a čas posledního načtení dat dashboardu">
+              Aktualizováno: {lastRefreshed.toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
+        </FocusBannerHeader>
+      </FocusBannerWrap>
+    );
+  }
+
   return (
     <FocusBannerWrap>
       <FocusBannerHeader>
-        <FontAwesomeIcon icon={faBullhorn} />
-        Na co se zaměřit
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+          <FontAwesomeIcon icon={faBullhorn} />
+          Na co se zaměřit
+        </span>
+        {lastRefreshed && (
+          <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#92400e', opacity: 0.7, whiteSpace: 'nowrap' }}
+            title="Datum a čas posledního načtení dat dashboardu">
+            Aktualizováno: {lastRefreshed.toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        )}
       </FocusBannerHeader>
       <FocusBannerBodyWrap>
-        <FocusBannerScrollBtn $dir="left" onClick={() => scrollBy('left')} title="Posunout vlevo">
-          &#8249;
-        </FocusBannerScrollBtn>
+        <FocusBannerScrollBtnLeft onClick={() => scrollBy('left')} title="Posunout vlevo">
+          <span>&#8249;</span>
+        </FocusBannerScrollBtnLeft>
         <FocusBannerBody ref={scrollRef}>
           {items.map((item, idx) => (
             <FocusCard
@@ -2187,9 +2616,9 @@ function FocusAlertsBanner({ items, navigate: nav }) {
             </FocusCard>
           ))}
         </FocusBannerBody>
-        <FocusBannerScrollBtn $dir="right" onClick={() => scrollBy('right')} title="Posunout vpravo">
-          &#8250;
-        </FocusBannerScrollBtn>
+        <FocusBannerScrollBtnRight onClick={() => scrollBy('right')} title="Posunout vpravo">
+          <span>&#8250;</span>
+        </FocusBannerScrollBtnRight>
       </FocusBannerBodyWrap>
     </FocusBannerWrap>
   );
@@ -2211,22 +2640,52 @@ export default function DashboardPage() {
   const [visibleTiles, setVisibleTiles] = useState(DEFAULT_TILES);
   const [allTiles, setAllTiles] = useState(DEFAULT_TILES);
   const [cashbookMonth, setCashbookMonth] = useState(new Date().getMonth() + 1);
+  const [cashbookData, setCashbookData] = useState(null);
+  const [cashbookLoading, setCashbookLoading] = useState(false);
+  const [activeUsersData, setActiveUsersData] = useState(null);
+  const activeUsersRef = useRef(null);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
     try {
       const saved = localStorage.getItem('dashboard_auto_refresh');
       return saved === 'true';
     } catch { return false; }
   });
+  const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [chartTimelineDays, setChartTimelineDays] = useState(() => {
+    try { return parseInt(localStorage.getItem('dashboard_chart_days') || '30', 10); } catch { return 30; }
+  });
+  const [chartTimelineData, setChartTimelineData] = useState(null);
+  const [chartTimelineLoading, setChartTimelineLoading] = useState(false);
 
   const username = user?.username;
+
+  // SUPERADMIN check
+  const isSuperAdmin = useMemo(() => {
+    return (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
+  }, [userDetail]);
+
+  // Auto-refresh aktivních uživatelů každých 30s (pouze SUPERADMIN)
+  useEffect(() => {
+    if (!isSuperAdmin || !token || !username) return;
+    const fetchActive = async () => {
+      const d = await getActiveUsersAdmin({ token, username });
+      if (d) setActiveUsersData(d);
+    };
+    fetchActive();
+    const iv = setInterval(fetchActive, 30000);
+    return () => clearInterval(iv);
+  }, [isSuperAdmin, token, username]);
 
   // Determine available widgets based on DASHBOARD_* capabilities from API
   const availableWidgets = useMemo(() => {
     const isAdmin = hasAdminRole();
     const caps = data?.dashboard_capabilities || [];
+    const superAdmin = (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
 
     return Object.entries(WIDGET_REGISTRY)
       .filter(([, cfg]) => {
+        // Widget pouze pro SUPERADMIN
+        if (cfg.requiresSuperAdmin) return superAdmin;
         // Widgety bez 'requires' → viditelné vždy
         if (!cfg.requires) return true;
         // Admin vidí vše
@@ -2235,69 +2694,125 @@ export default function DashboardPage() {
         return caps.includes(cfg.requires);
       })
       .map(([id]) => id);
-  }, [data?.dashboard_capabilities, hasAdminRole]);
+  }, [data?.dashboard_capabilities, hasAdminRole, userDetail]);
 
-  // Load dashboard config from user settings + merge new widgets
+  // Pomocná funkce: aplikuje uložený dashboard config (tiles + visible) s merge nových widgetů
+  const applyDashboardConfig = useCallback((savedTiles, savedVisible) => {
+    const newWidgets = DEFAULT_TILES.filter(t => !savedTiles.includes(t));
+    if (newWidgets.length > 0) {
+      const merged = [...savedTiles, ...newWidgets];
+      const mergedVisible = [...savedVisible, ...newWidgets];
+      setAllTiles(merged);
+      setVisibleTiles(mergedVisible);
+      return { tiles: merged, visible: mergedVisible };
+    } else {
+      setAllTiles(savedTiles);
+      setVisibleTiles(savedVisible);
+      return { tiles: savedTiles, visible: savedVisible };
+    }
+  }, []);
+
+  // Load dashboard config: 1) rychlá cache z localStorage, 2) pak načti z DB a aktualizuj
   useEffect(() => {
+    if (!user?.id || !token || !username) return;
+
+    const lsKey = `dashboard_config_${user.id}`;
+
+    // Krok 1: Okamžitě aplikuj localStorage cache (bez čekání na API)
     try {
-      const savedConfig = localStorage.getItem(`dashboard_config_${user?.id || 'default'}`);
+      const savedConfig = localStorage.getItem(lsKey);
       if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
-        const savedTiles = parsed.tiles || [];
-        const savedVisible = parsed.visible || [];
-        // Merge new widgets that don't exist in saved config
-        const newWidgets = DEFAULT_TILES.filter(t => !savedTiles.includes(t));
-        if (newWidgets.length > 0) {
-          const merged = [...savedTiles, ...newWidgets];
-          const mergedVisible = [...savedVisible, ...newWidgets];
-          setAllTiles(merged);
-          setVisibleTiles(mergedVisible);
-          localStorage.setItem(`dashboard_config_${user?.id || 'default'}`, JSON.stringify({ tiles: merged, visible: mergedVisible }));
-        } else {
-          setAllTiles(savedTiles);
-          setVisibleTiles(savedVisible);
-        }
+        applyDashboardConfig(parsed.tiles || [], parsed.visible || []);
       }
     } catch (e) { /* ignore */ }
-  }, [user?.id]);
 
-  // Save config
+    // Krok 2: Načti z DB (server-side) a aktualizuj pokud se liší
+    fetchUserSettings({ token, username, userId: user.id })
+      .then(settings => {
+        const dbConfig = settings?.dashboard_layout;
+        if (dbConfig && dbConfig.tiles && dbConfig.visible) {
+          const result = applyDashboardConfig(dbConfig.tiles, dbConfig.visible);
+          // Aktualizuj localStorage cache z DB
+          try {
+            localStorage.setItem(lsKey, JSON.stringify(result));
+          } catch (e) { /* ignore */ }
+        }
+      })
+      .catch(() => { /* fallback na localStorage – ok */ });
+  }, [user?.id, token, username, applyDashboardConfig]);
+
+  // Save config: okamžitě do localStorage + async do DB
   const saveConfig = useCallback((tiles, visible) => {
+    const lsKey = `dashboard_config_${user?.id || 'default'}`;
     try {
-      localStorage.setItem(`dashboard_config_${user?.id || 'default'}`, JSON.stringify({ tiles, visible }));
+      localStorage.setItem(lsKey, JSON.stringify({ tiles, visible }));
     } catch (e) { /* ignore */ }
-  }, [user?.id]);
 
-  // Fetch data
-  const fetchData = useCallback(async () => {
+    // Uložit do DB přes userSettings – načteme aktuální settings a patchneme dashboard_layout
+    if (!token || !username || !user?.id) return;
+    fetchUserSettings({ token, username, userId: user.id })
+      .then(currentSettings => {
+        const merged = { ...currentSettings, dashboard_layout: { tiles, visible } };
+        return saveUserSettings({ token, username, userId: user.id, nastaveni: merged });
+      })
+      .catch(err => {
+        console.error('[Dashboard] Chyba při ukládání layoutu do DB:', err);
+      });
+  }, [token, username, user?.id]);
+
+  // Fetch data (silent = tichý refresh bez loading spinneru / blikání)
+  const fetchData = useCallback(async (silent = false) => {
     if (!token || !username) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
-      const result = await getDashboardData({ token, username, days: 7, cashbook_month: cashbookMonth });
+      const result = await getDashboardData({ token, username, days: 7 });
       if (result.status === 'success') {
         setData(result.data);
+        setCashbookData(result.data?.cashbook_summary ?? null);
+        setLastRefreshed(new Date());
       } else {
         setError(result.message || 'Chyba při načítání dat');
       }
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Chyba při načítání dashboardu');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [token, username, cashbookMonth]);
+  }, [token, username]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Auto-refresh každých 5 minut (pokud je zapnutý)
+  // Fetch only cashbook data (bez reloadu celého dashboardu)
+  const fetchCashbook = useCallback(async () => {
+    if (!token || !username) return;
+    setCashbookLoading(true);
+    try {
+      const result = await getCashbookSummary({ token, username, cashbook_month: cashbookMonth });
+      if (result.status === 'success') {
+        setCashbookData(result.data ?? null);
+      }
+    } catch (err) {
+      console.error('Chyba při načítání pokladny:', err);
+    } finally {
+      setCashbookLoading(false);
+    }
+  }, [token, username, cashbookMonth]);
+
+  useEffect(() => {
+    if (cashbookMonth && token && username) fetchCashbook();
+  }, [cashbookMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh každých 5 minut (pokud je zapnutý) – tichý, bez blikání
   useEffect(() => {
     if (!autoRefreshEnabled) return;
 
     const interval = setInterval(() => {
-      console.log('🔄 Dashboard auto-refresh (5 min)');
-      fetchData();
+      console.log('🔄 Dashboard auto-refresh (5 min) - silent');
+      fetchData(true);
     }, 5 * 60 * 1000); // 5 minut
 
     return () => clearInterval(interval);
@@ -2310,6 +2825,33 @@ export default function DashboardPage() {
     try {
       localStorage.setItem('dashboard_auto_refresh', enabled.toString());
     } catch { /* ignore */ }
+  }, []);
+
+  // Fetch chart timeline (separátní endpoint, tichý reload)
+  const fetchChartTimeline = useCallback(async (days) => {
+    if (!token || !username) return;
+    setChartTimelineLoading(true);
+    try {
+      const result = await getDashboardChartTimeline({ token, username, chart_days: days });
+      if (result.status === 'success') {
+        setChartTimelineData(result.data);
+      }
+    } catch (err) {
+      console.error('Chyba při načítání grafu timeline:', err);
+    } finally {
+      setChartTimelineLoading(false);
+    }
+  }, [token, username]);
+
+  // Reaguj na změnu periody grafu
+  useEffect(() => {
+    if (!token || !username) return;
+    fetchChartTimeline(chartTimelineDays);
+  }, [chartTimelineDays, fetchChartTimeline]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChartDaysChange = useCallback((days) => {
+    setChartTimelineDays(days);
+    try { localStorage.setItem('dashboard_chart_days', String(days)); } catch { /* ignore */ }
   }, []);
 
   const handleToggleTile = (tileId) => {
@@ -2425,12 +2967,13 @@ export default function DashboardPage() {
 
   // Render individual widget
   const renderWidget = (tileId, index) => {
-    if (!visibleTiles.includes(tileId)) return null;
-    if (!availableWidgets.includes(tileId)) return null;
     const cfg = WIDGET_REGISTRY[tileId];
     if (!cfg) return null;
+    if (!availableWidgets.includes(tileId)) return null;
+    // alwaysOn widgety (např. active_users_admin) ignorují visibleTiles
+    if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) return null;
 
-    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers';
+    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'active_users_admin';
 
     let content = null;
     let badgeCount = null;
@@ -2444,8 +2987,10 @@ export default function DashboardPage() {
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
         break;
       case 'my_orders':
-        content = <OrderListWidget orders={data?.my_orders_pending} navigate={navigate} filterPreset="moje_objednavky" />;
-        badgeCount = data?.my_orders_pending?.length;
+        content = <MyOrdersWidget myOrdersData={data?.my_orders_pending} navigate={navigate} />;
+        badgeCount = (data?.my_orders_pending?.objednatel?.length || 0)
+                   + (data?.my_orders_pending?.garant?.length || 0)
+                   + (data?.my_orders_pending?.prikazce?.length || 0);
         break;
       case 'my_invoices':
         content = <InvoiceListWidget invoices={data?.my_invoices_pending} navigate={navigate} filterPreset="vecna_spravnost" />;
@@ -2464,12 +3009,12 @@ export default function DashboardPage() {
         badgeCount = data?.invoices_due_soon?.length;
         break;
       case 'orders_registry':
-        content = <RegistryWidget ordersForRegistry={data?.orders_for_registry} ordersPublished={data?.orders_published_recent} navigate={navigate} filterPreset="k_uverejneni_do_registru" />;
+        content = <RegistryWidget ordersForRegistry={data?.orders_for_registry} navigate={navigate} />;
         badgeCount = data?.orders_for_registry?.length;
         break;
       case 'orders_published':
-        content = <OrderListWidget orders={data?.orders_published_recent} navigate={navigate} filterPreset="uverejnena" />;
-        badgeCount = data?.orders_published_recent?.length;
+        content = <OrdersPublishedWidget publishedData={data?.orders_published_recent} navigate={navigate} />;
+        badgeCount = data?.orders_published_recent?.items?.length;
         break;
       case 'alerts':
         content = <AlertsWidget alerts={data?.alerts} navigate={navigate} />;
@@ -2480,7 +3025,31 @@ export default function DashboardPage() {
         badgeCount = data?.notifications_unread?.length;
         break;
       case 'chart_timeline':
-        content = <ChartTimelineWidget data={data?.chart_orders_timeline} />;
+        content = <ChartTimelineWidget data={chartTimelineData ?? data?.chart_orders_timeline} loading={chartTimelineLoading} />;
+        headerExtra = (
+          <div style={{ display: 'flex', gap: '0.25rem' }}>
+            {[7, 14, 30].map(d => (
+              <button
+                key={d}
+                onClick={() => handleChartDaysChange(d)}
+                style={{
+                  fontSize: '0.7rem',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid',
+                  cursor: 'pointer',
+                  fontWeight: chartTimelineDays === d ? 700 : 400,
+                  background: chartTimelineDays === d ? '#1d4ed8' : 'transparent',
+                  color: chartTimelineDays === d ? '#fff' : '#1d4ed8',
+                  borderColor: '#1d4ed8',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {d === 7 ? 'Týden' : d === 14 ? '14 dní' : 'Měsíc'}
+              </button>
+            ))}
+          </div>
+        );
         break;
       case 'top_suppliers':
         content = <TopSuppliersWidget suppliers={data?.top_suppliers} />;
@@ -2507,7 +3076,7 @@ export default function DashboardPage() {
       case 'cashbook_summary': {
         const cbMonthNames = ['Leden','\u00danor','B\u0159ezen','Duben','Kv\u011bten','\u010cerven','\u010cervenec','Srpen','Z\u00e1\u0159\u00ed','\u0158\u00edjen','Listopad','Prosinec'];
         const cbCurrentYear = new Date().getFullYear();
-        content = <CashbookSummaryWidget cbData={data?.cashbook_summary} navigate={navigate} />;
+        content = <CashbookSummaryWidget cbData={cashbookData} navigate={navigate} loading={cashbookLoading} />;
         headerExtra = (
           <select
             value={cashbookMonth}
@@ -2525,12 +3094,18 @@ export default function DashboardPage() {
         );
         break;
       }
+      case 'active_users_admin':
+        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} />;
+        badgeCount = activeUsersData?.count || 0;
+        break;
       default:
         return null;
     }
 
     return (
-      <WidgetCard key={tileId} $accent={cfg.color} $index={index} $span2={isSpan2}>
+      <WidgetCard key={tileId} $accent={cfg.color} $index={index} $span2={isSpan2}
+        ref={tileId === 'active_users_admin' ? activeUsersRef : undefined}
+      >
         <WidgetHeader>
           <WidgetTitle>
             <WidgetIcon $bg={cfg.color + '18'} $color={cfg.color}>
@@ -2551,6 +3126,13 @@ export default function DashboardPage() {
       </WidgetCard>
     );
   };
+
+  // Order tiles: active_users_admin vždy poslední (alwaysLast), ostatní dle uložené konfigurace
+  const orderedTiles = useMemo(() => {
+    const base = allTiles.filter(t => availableWidgets.includes(t) && t !== 'active_users_admin');
+    if (isSuperAdmin) return [...base, 'active_users_admin'];
+    return base;
+  }, [allTiles, availableWidgets, isSuperAdmin]);
 
   // Render
   if (loading) {
@@ -2591,9 +3173,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Order tiles: priority sections first (Správce rozpočtu → Příkazce → Účetní → VZ → Běžný)
-  const orderedTiles = allTiles.filter(t => availableWidgets.includes(t));
-
   return (
     <PageWrapper>
       <PageHeader>
@@ -2602,8 +3181,24 @@ export default function DashboardPage() {
         </PageTitle>
         
         {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE */}
-        {getQuickTiles.length > 0 && (
+        {(isSuperAdmin || getQuickTiles.length > 0) && (
           <QuickTiles>
+            {/* Superadmin: aktivní uživatelé jako první */}
+            {isSuperAdmin && (
+              <SmartTooltip
+                text={`Aktivní uživatelé${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
+                icon="none"
+                preferredPosition="bottom"
+              >
+                <QuickTile
+                  onClick={() => activeUsersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  style={{ background: activeUsersData?.count > 0 ? 'rgba(29,78,216,0.15)' : undefined }}
+                >
+                  <QuickTileIcon><FontAwesomeIcon icon={faUsers} /></QuickTileIcon>
+                  {activeUsersData?.count > 0 && <QuickTileCount>{activeUsersData.count}</QuickTileCount>}
+                </QuickTile>
+              </SmartTooltip>
+            )}
             {getQuickTiles.map((tile, idx) => (
               <SmartTooltip
                 key={idx}
@@ -2661,7 +3256,7 @@ export default function DashboardPage() {
         </HeaderActions>
       </PageHeader>
 
-      <FocusAlertsBanner items={data?.focus_alerts} navigate={navigate} />
+      <FocusAlertsBanner items={data?.focus_alerts} navigate={navigate} lastRefreshed={lastRefreshed} />
 
       <DashGrid>
         {orderedTiles.map((tileId, idx) => renderWidget(tileId, idx))}

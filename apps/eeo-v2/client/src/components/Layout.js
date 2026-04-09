@@ -239,6 +239,7 @@ const LiveDateTime = React.memo(() => {
 // (Removed unused Menu styled component)
 const MenuLeft = styled.div`
   display: flex;
+  align-items: center;
   gap: 0.25em; /* tighter spacing between items */
   flex: 1;
   padding: 0.25em 0.5em; /* sníženo pro fit do 48px nav výšky */
@@ -250,6 +251,7 @@ const MenuLeft = styled.div`
 `;
 const MenuRight = styled.div`
   display: flex;
+  align-items: center;
   gap: 10px; /* tighter spacing */
   justify-content: flex-end;
   min-width: 0; /* avoid forcing extra width */
@@ -511,7 +513,7 @@ const NewOrderLink = styled(Link)`
   background: #166534;
   color: #fff; /* BÍLÝ text i ikony současně */
   border-radius: 999px;
-  padding: 0.25em 1.05em 0.25em 0.9em; /* sníženo top/bottom o 0.1em */
+  padding: 0.70em 1.15em 0.70em 1em;
   font-size: 0.95em;
   font-weight: 600;
   box-shadow: 0 3px 10px -2px rgba(0,0,0,0.35), 0 0 0 1px rgba(22, 101, 52, 0.5) inset;
@@ -581,10 +583,10 @@ const NewOrderLink = styled(Link)`
 
 // Styled link pro Pokladna - modrá/finanční barva
 const CashBookLink = styled(Link)`
-  background: #1e40af; /* tmavě modrá */
+  background: #1e40af;
   color: #fff;
   border-radius: 999px;
-  padding: 0.25em 1.05em 0.25em 0.9em;
+  padding: 0.70em 1.15em 0.70em 1em;
   font-size: 0.95em;
   font-weight: 600;
   box-shadow: 0 3px 10px -2px rgba(30,64,175,0.45), 0 0 0 1px rgba(37,99,235,0.5) inset;
@@ -624,10 +626,10 @@ const CashBookLink = styled(Link)`
 
 // Styled link pro Zaevidovat fakturu - stejná modrá jako na Invoices25List (#3b82f6)
 const InvoiceCreateLink = styled(Link)`
-  background: #3b82f6; /* světle modrá */
+  background: #3b82f6;
   color: #fff;
   border-radius: 999px;
-  padding: 0.25em 1.05em 0.25em 0.9em;
+  padding: 0.70em 1.15em 0.70em 1em;
   font-size: 0.95em;
   font-weight: 600;
   box-shadow: 0 3px 10px -2px rgba(59,130,246,0.45), 0 0 0 1px rgba(59,130,246,0.5) inset;
@@ -3654,26 +3656,29 @@ const Layout = ({ children }) => {
                   style={{
                     background: betaMenuOpen 
                       ? 'linear-gradient(90deg, transparent 0 33.333%, rgba(59,130,246,0.25) 33.333% 100%)'
-                      : 'transparent'
+                      : 'transparent',
+                    padding: '0',
+                    minHeight: 'auto'
                   }}
                 >
                   <span style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.4rem',
-                    padding: '0.25rem 0.6rem',
+                    padding: '0.70em 1.15em 0.70em 1em',
                     background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                     color: 'white',
-                    fontSize: '0.85rem',
-                    fontWeight: '700',
-                    borderRadius: '10px',
-                    boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
-                    letterSpacing: '0.5px'
+                    fontSize: '0.95em',
+                    fontWeight: '600',
+                    borderRadius: '999px',
+                    boxShadow: '0 3px 10px -2px rgba(59,130,246,0.45), 0 0 0 1px rgba(59,130,246,0.5) inset',
+                    letterSpacing: '0.01em',
+                    lineHeight: '1.1'
                   }}>
-                    <FontAwesomeIcon icon={faFlask} style={{ fontSize: '0.9rem' }} />
+                    <FontAwesomeIcon icon={faFlask} style={{ fontSize: '1em' }} />
                     BETA
                   </span>
-                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
+                  <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.3em', fontWeight: 'bold'}}>
                     {betaMenuOpen ? '▴' : '▾'}
                   </span>
                 </MenuDropdownButton>
