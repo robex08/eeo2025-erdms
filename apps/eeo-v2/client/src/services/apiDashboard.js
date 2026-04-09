@@ -30,6 +30,39 @@ export async function getDashboardData({ token, username, days = 7, cashbook_mon
 }
 
 /**
+ * Načtení jen cashbook summary (bez full dashboard reload)
+ */
+export async function getCashbookSummary({ token, username, cashbook_month }) {
+  const response = await api2.post('dashboard/cashbook-summary', { token, username, cashbook_month });
+  return response.data;
+}
+
+/**
+ * Načtení aktivních uživatelů pro SUPERADMIN dashboard widget
+ * Auto-refresh každých 30s
+ */
+export async function getActiveUsersAdmin({ token, username }) {
+  try {
+    const response = await api2.post('dashboard/active-users', { token, username });
+    return response.data.status === 'success' ? response.data.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Načtení jen chart timeline dat (bez full dashboard reload)
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {number} params.chart_days - 7, 14 nebo 30
+ */
+export async function getDashboardChartTimeline({ token, username, chart_days = 30 }) {
+  const response = await api2.post('dashboard/chart-timeline', { token, username, chart_days });
+  return response.data;
+}
+
+/**
  * Admin: Načtení matice role → DASHBOARD_* práva
  */
 export async function getWidgetPermissions({ token, username }) {

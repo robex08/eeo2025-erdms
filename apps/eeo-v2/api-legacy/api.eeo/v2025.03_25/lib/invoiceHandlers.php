@@ -2089,7 +2089,7 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_useky` us_obj ON u_obj.usek_id = us_obj.id
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
-        LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
+        LEFT JOIN (SELECT DISTINCT faktura_id, MIN(id) as id FROM `25_spisovka_zpracovani_log` GROUP BY faktura_id) szl ON f.id = szl.faktura_id
         WHERE $where_sql";
         
         $stats_stmt = $db->prepare($stats_sql);

@@ -66,6 +66,7 @@ function handle_dashboard_data($input, $config, $queries) {
         $is_admin = !empty($token_data['is_admin']);
         $roles = $token_data['roles'] ?? [];
         $permissions = $token_data['permissions'] ?? [];
+        $is_superadmin = in_array('SUPERADMIN', $roles);
 
         // Načtení detailu uživatele
         $user_info = _dashboard_get_user_info($db, $user_id);
@@ -104,6 +105,14 @@ function handle_dashboard_data($input, $config, $queries) {
         // Zpětná kompatibilita – staré flagy pro SQL dotazy uvnitř widgetů
         $has_order_approve = $has_cap('DASHBOARD_ORDERS_APPROVE');
         $has_invoice_manage = $has_cap('DASHBOARD_INVOICES_OVERDUE') || $has_cap('DASHBOARD_INVOICES_DUE_SOON');
+
+        // ✅ Invoice admin flag – zrcadlí invoiceHandlers.php logiku (zahrnuje UCETNI, HLAVNI_UCETNI, KONTROLOR_FAKTUR)
+        // BUG FIX: $has_invoice_manage používal DASHBOARD_* caps, ne skutečné INVOICE_MANAGE oprávnění
+        $is_invoice_admin = $is_admin
+            || in_array('UCETNI', $roles)
+            || in_array('HLAVNI_UCETNI', $roles)
+            || in_array('KONTROLOR_FAKTUR', $roles)
+            || in_array('INVOICE_MANAGE', $perm_codes);
         $has_invoice_check = $has_cap('DASHBOARD_INVOICES_CONFIRM');
         $has_spending = $has_cap('DASHBOARD_SPENDING_CONTRACTS') || $has_cap('DASHBOARD_SPENDING_LP');
         $has_registry = $has_cap('DASHBOARD_ORDERS_REGISTRY') || $has_cap('DASHBOARD_ORDERS_PUBLISHED');
@@ -140,11 +149,11 @@ function handle_dashboard_data($input, $config, $queries) {
         $result['orders_stats'] = _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $perm_codes, $usek_id);
 
         // === MOJE OBJEDNÁVKY K AKCI ===
-        $result['my_orders_pending'] = _dashboard_get_my_orders_pending($db, $user_id, $days);
+        $result['my_orders_pending'] = _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve);
 
         // === FAKTURY K VĚCNÉ KONTROLE ===
         if ($has_cap('DASHBOARD_INVOICES_CONFIRM')) {
-            $result['my_invoices_pending'] = _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days);
+            $result['my_invoices_pending'] = _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days, $usek_id);
         }
 
         // === OBJEDNÁVKY KE SCHVÁLENÍ (příkazce) ===
@@ -154,12 +163,12 @@ function handle_dashboard_data($input, $config, $queries) {
 
         // === FAKTURY PO SPLATNOSTI ===
         if ($has_cap('DASHBOARD_INVOICES_OVERDUE')) {
-            $result['invoices_overdue'] = _dashboard_get_invoices_overdue($db, $user_id, $is_admin);
+            $result['invoices_overdue'] = _dashboard_get_invoices_overdue($db, $user_id, $is_admin, $usek_id);
         }
 
         // === FAKTURY BLÍŽÍCÍ SE SPLATNOSTI ===
         if ($has_cap('DASHBOARD_INVOICES_DUE_SOON')) {
-            $result['invoices_due_soon'] = _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days);
+            $result['invoices_due_soon'] = _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days, $usek_id);
         }
 
         // === REGISTR VZ - objednávky ke zveřejnění ===
@@ -218,7 +227,12 @@ function handle_dashboard_data($input, $config, $queries) {
 
         // === STATISTIKY FAKTUR ===
         if ($has_cap('DASHBOARD_INVOICES_STATS')) {
-            $result['invoices_stats'] = _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_manage);
+            $result['invoices_stats'] = _dashboard_get_invoice_stats($db, $user_id, $is_invoice_admin, $is_invoice_admin, $usek_id);
+        }
+
+        // === AKTIVNÍ UŽIVATELÉ (pouze SUPERADMIN, vždy posledni blok) ===
+        if ($is_superadmin) {
+            $result['active_users_admin'] = _dashboard_get_active_users($db);
         }
 
         http_response_code(200);
@@ -277,33 +291,26 @@ function _dashboard_get_user_info($db, $user_id) {
 
 /**
  * Statistiky objednávek - počty dle stavů
+ * Používá stejnou logiku oprávnění jako OrderV3 (applyOrderV3UserPermissions).
+ * Parametry $is_admin, $has_order_read, $permissions, $usek_id jsou zachovány
+ * kvůli zpětné kompatibilitě volání, ale oprávnění řeší applyOrderV3UserPermissions.
  */
 function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $permissions, $usek_id = null) {
     $where_parts = ["o.aktivni = 1", "o.id != 1"];
     $params = [];
 
-    // Rok filtr - aktuální rok
-    $where_parts[] = "YEAR(o.dt_vytvoreni) = YEAR(CURDATE())";
+    // Rok filtr - stejný jako OrderV3 (dt_objednavky = datum objednávky)
+    $where_parts[] = "YEAR(o.dt_objednavky) = YEAR(CURDATE())";
 
-    // Pokud není admin/read_all, filtruj dle účasti uživatele + úseku
-    if (!$is_admin && !$has_order_read) {
-        $user_conditions = ["o.objednatel_id = ?", "o.garant_uzivatel_id = ?", "o.prikazce_id = ?", "o.schvalovatel_id = ?"];
-        $params = array_merge($params, [$user_id, $user_id, $user_id, $user_id]);
-
-        // Příkazce vidí i objednávky svého úseku
-        if ($usek_id && (in_array('ORDER_APPROVE', $permissions) || in_array('ORDER_APPROVE_ALL', $permissions))) {
-            $user_conditions[] = "o.usek_id = ?";
-            $params[] = $usek_id;
-        }
-
-        $where_parts[] = "(" . implode(' OR ', $user_conditions) . ")";
-    }
+    // Oprávnění uživatele - shodně s OrderV3 (12 polí + hierarchie + úsek/podřízení)
+    applyOrderV3UserPermissions($user_id, $db, $where_parts, $params);
 
     $where_sql = implode(' AND ', $where_parts);
     $sql = "
         SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'NOVA' THEN 1 ELSE 0 END) as nove,
+            -- NOVA je vždy první stav v poli ($[0]) - stejná logika jako OrderV3
+            SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = 'NOVA' THEN 1 ELSE 0 END) as nove,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) IN ('ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI') THEN 1 ELSE 0 END) as ke_schvaleni,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'SCHVALENA' THEN 1 ELSE 0 END) as schvalena,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ZAMITNUTA' THEN 1 ELSE 0 END) as zamitnuta,
@@ -340,7 +347,16 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
             END) as uverejnena,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'DOKONCENA' THEN 1 ELSE 0 END) as dokoncena,
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ZRUSENA' THEN 1 ELSE 0 END) as zrusena,
-            COALESCE(SUM(o.max_cena_s_dph), 0) as celkova_castka
+            -- Celková částka: stejná priorita jako OrderV3 (faktury > položky > max_cena_s_dph)
+            COALESCE(SUM(
+                CASE
+                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                    WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id) > 0
+                    THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id)
+                    ELSE COALESCE(o.max_cena_s_dph, 0)
+                END
+            ), 0) as celkova_castka
         FROM `" . TBL_OBJEDNAVKY . "` o
         WHERE {$where_sql}
     ";
@@ -352,8 +368,10 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
 /**
  * Moje objednávky čekající na akci
  */
-function _dashboard_get_my_orders_pending($db, $user_id, $days) {
-    $stmt = $db->prepare("
+function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve = false) {
+    $active_states = "('NOVA', 'ROZPRACOVANA', 'SCHVALENA', 'VECNA_SPRAVNOST', 'ODESLANA', 'ODESLANA_DODAVATELI', 'ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI')";
+
+    $select = "
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
                o.stav_objednavky, o.dt_vytvoreni,
                JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) as aktualni_stav,
@@ -364,23 +382,128 @@ function _dashboard_get_my_orders_pending($db, $user_id, $days) {
         LEFT JOIN `" . TBL_UZIVATELE . "` u_prik ON u_prik.id = o.prikazce_id
         WHERE o.aktivni = 1
           AND o.id != 1
-          AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
-          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) 
-              IN ('NOVA', 'ROZPRACOVANA', 'SCHVALENA', 'VECNA_SPRAVNOST', 'ODESLANA', 'ODESLANA_DODAVATELI')
-          AND o.dt_vytvoreni >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-        ORDER BY o.dt_vytvoreni DESC
-        LIMIT 10
+          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
+              IN {$active_states}
+    ";
+
+    // 1. Jsem objednatel
+    $stmt1 = $db->prepare($select . "
+          AND (o.objednatel_id = ? OR (o.objednatel_id IS NULL AND o.uzivatel_id = ?))
+        ORDER BY o.dt_vytvoreni DESC LIMIT 15");
+    $stmt1->execute([$user_id, $user_id]);
+    $objednatel = $stmt1->fetchAll(PDO::FETCH_ASSOC);
+
+    // 2. Jsem garant (vyloučit objednávky kde jsem objednatel)
+    $objednatel_ids = array_column($objednatel, 'id');
+    $exclude_garant = '';
+    if (!empty($objednatel_ids)) {
+        $ph = implode(',', array_map('intval', $objednatel_ids));
+        $exclude_garant = "AND o.id NOT IN ($ph)";
+    }
+    $stmt2 = $db->prepare($select . "
+          AND o.garant_uzivatel_id = ?
+          {$exclude_garant}
+        ORDER BY o.dt_vytvoreni DESC LIMIT 15");
+    $stmt2->execute([$user_id]);
+    $garant = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+    // 3. Jsem příkazce nebo schvalovatel (pouze pokud mám toto právo)
+    $prikazce = [];
+    if ($has_order_approve) {
+        $all_ids = array_merge($objednatel_ids, array_column($garant, 'id'));
+        $exclude_prik = '';
+        if (!empty($all_ids)) {
+            $ph2 = implode(',', array_map('intval', $all_ids));
+            $exclude_prik = "AND o.id NOT IN ($ph2)";
+        }
+        $stmt3 = $db->prepare($select . "
+              AND (o.prikazce_id = ? OR o.schvalovatel_id = ?)
+              {$exclude_prik}
+            ORDER BY o.dt_vytvoreni DESC LIMIT 15");
+        $stmt3->execute([$user_id, $user_id]);
+        $prikazce = $stmt3->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    return [
+        'objednatel'        => $objednatel,
+        'garant'            => $garant,
+        'prikazce'          => $prikazce,
+        'has_prikazce_role' => $has_order_approve
+    ];
+}
+
+/**
+ * Helper: Sestaví WHERE podmínku a parametry pro viditelnost faktur uživatele.
+ * Logika shodná s invoiceHandlers.php handle_invoices25_list():
+ *  - admin ($is_admin) → žádné omezení
+ *  - ostatní → faktury k objednávkám kde je uživatel účastníkem (7 rolí),
+ *              přímé sloupce faktury (fa_predana_zam_id, potvrdil_vecnou_spravnost_id, vytvoril_uzivatel_id),
+ *              faktury k smlouvám úseku uživatele (pokud $usek_id)
+ * Vrací ['where' => '...', 'params' => [...]] – where je buď '' nebo "AND (...)".
+ */
+function _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id = null) {
+    if ($is_admin) {
+        return ['where' => '', 'params' => []];
+    }
+
+    $conditions = [];
+    $params = [];
+
+    // 1️⃣ Faktury k objednávkám kde je uživatel účastníkem (7 rolí)
+    $stmt_orders = $db->prepare("
+        SELECT DISTINCT o.id
+        FROM `" . TBL_OBJEDNAVKY . "` o
+        WHERE (
+            o.uzivatel_id = ?
+            OR o.garant_uzivatel_id = ?
+            OR o.objednatel_id = ?
+            OR o.schvalovatel_id = ?
+            OR o.prikazce_id = ?
+            OR o.potvrdil_vecnou_spravnost_id = ?
+            OR o.fakturant_id = ?
+        )
     ");
-    $stmt->execute([$user_id, $user_id, $days]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt_orders->execute(array_fill(0, 7, $user_id));
+    $order_ids = $stmt_orders->fetchAll(PDO::FETCH_COLUMN);
+
+    if (!empty($order_ids)) {
+        $placeholders = implode(',', array_map('intval', $order_ids));
+        $conditions[] = "f.objednavka_id IN ({$placeholders})";
+    }
+
+    // 2️⃣ Předáno k věcné kontrole
+    $conditions[] = 'f.fa_predana_zam_id = ?';
+    $params[] = $user_id;
+
+    // 3️⃣ Potvrdil věcnou správnost
+    $conditions[] = 'f.potvrdil_vecnou_spravnost_id = ?';
+    $params[] = $user_id;
+
+    // 4️⃣ Sám vytvořil fakturu
+    $conditions[] = 'f.vytvoril_uzivatel_id = ?';
+    $params[] = $user_id;
+
+    // 5️⃣ Faktury k smlouvám úseku uživatele
+    if ($usek_id) {
+        $conditions[] = '(f.smlouva_id IS NOT NULL AND f.smlouva_id > 0 AND EXISTS (SELECT 1 FROM `' . TBL_SMLOUVY . '` sm2 WHERE sm2.id = f.smlouva_id AND sm2.usek_id = ?))';
+        $params[] = (int)$usek_id;
+    }
+
+    if (empty($conditions)) {
+        // Bez přístupu – vrátíme podmínku která nevybere nic
+        return ['where' => 'AND 1=0', 'params' => []];
+    }
+
+    return ['where' => 'AND (' . implode(' OR ', $conditions) . ')', 'params' => $params];
 }
 
 /**
  * Faktury čekající na věcnou kontrolu
  */
-function _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days) {
-    $where_user = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
-    $params = $is_admin ? [] : [$user_id, $user_id];
+function _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days, $usek_id = null) {
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id);
+    $where_user = $filter['where'];
+    $params = $filter['params'];
 
     $stmt = $db->prepare("
         SELECT f.id, f.fa_cislo_vema as fa_cislo, f.fa_castka, f.fa_datum_splatnosti, f.stav,
@@ -448,9 +571,10 @@ function _dashboard_get_orders_for_approval($db, $user_id, $is_admin, $days, $us
 /**
  * Faktury po splatnosti
  */
-function _dashboard_get_invoices_overdue($db, $user_id, $is_admin) {
-    $where_user = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ? OR o.prikazce_id = ?)";
-    $params = $is_admin ? [] : [$user_id, $user_id, $user_id];
+function _dashboard_get_invoices_overdue($db, $user_id, $is_admin, $usek_id = null) {
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id);
+    $where_user = $filter['where'];
+    $params = $filter['params'];
 
     $stmt = $db->prepare("
         SELECT f.id, f.fa_cislo_vema as fa_cislo, f.fa_castka, f.fa_datum_splatnosti, f.stav,
@@ -479,9 +603,10 @@ function _dashboard_get_invoices_overdue($db, $user_id, $is_admin) {
 /**
  * Faktury blížící se ke splatnosti
  */
-function _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days) {
-    $where_user = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ? OR o.prikazce_id = ?)";
-    $params = $is_admin ? [$days] : [$user_id, $user_id, $user_id, $days];
+function _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days, $usek_id = null) {
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id);
+    $where_user = $filter['where'];
+    $params = array_merge($filter['params'], [$days]);
 
     $stmt = $db->prepare("
         SELECT f.id, f.fa_cislo_vema as fa_cislo, f.fa_castka, f.fa_datum_splatnosti, f.stav,
@@ -510,11 +635,14 @@ function _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days) {
 
 /**
  * Objednávky ke zveřejnění v registru VZ
+ * Vrací POUZE skutečně čekající na zveřejnění + počet dní čekání.
  */
 function _dashboard_get_orders_for_registry($db) {
     $stmt = $db->prepare("
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
                o.stav_objednavky, o.dt_vytvoreni,
+               o.dt_aktualizace,
+               DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) as dni_cekani,
                u_obj.jmeno as objednavatel_jmeno, u_obj.prijmeni as objednavatel_prijmeni,
                u_prik.jmeno as prikazce_jmeno, u_prik.prijmeni as prikazce_prijmeni
         FROM `" . TBL_OBJEDNAVKY . "` o
@@ -522,22 +650,30 @@ function _dashboard_get_orders_for_registry($db) {
         LEFT JOIN `" . TBL_UZIVATELE . "` u_prik ON u_prik.id = o.prikazce_id
         WHERE o.aktivni = 1
           AND o.id != 1
-          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) 
-              IN ('K_UVEREJNENI', 'CEKA_NA_UVEREJNENI')
-        ORDER BY o.dt_vytvoreni ASC
-        LIMIT 20
+          AND (
+              JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT'
+              OR " . sqlNormalizeExpression('o.zverejnit') . " = 'ano'
+              OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'ke zverejneni'
+          )
+          AND NOT (
+              (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+              OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+          )
+        ORDER BY dni_cekani DESC, o.dt_vytvoreni ASC
+        LIMIT 30
     ");
     $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 /**
- * Objednávky nedávno zveřejněné
+ * Zveřejněné objednávky - primárně posledních 7 dní, fallback na posledních 10 v roce.
+ * Vrací: { items: [...], is_fallback: bool }
  */
 function _dashboard_get_orders_published($db, $days) {
-    $stmt = $db->prepare("
+    $select = "
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
-               o.stav_objednavky, o.dt_vytvoreni,
+               o.stav_objednavky, o.dt_vytvoreni, o.dt_zverejneni,
                u_obj.jmeno as objednavatel_jmeno, u_obj.prijmeni as objednavatel_prijmeni,
                u_prik.jmeno as prikazce_jmeno, u_prik.prijmeni as prikazce_prijmeni
         FROM `" . TBL_OBJEDNAVKY . "` o
@@ -545,14 +681,35 @@ function _dashboard_get_orders_published($db, $days) {
         LEFT JOIN `" . TBL_UZIVATELE . "` u_prik ON u_prik.id = o.prikazce_id
         WHERE o.aktivni = 1
           AND o.id != 1
-          AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) 
-              = 'UVEREJNENA'
-          AND o.dt_aktualizace >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-        ORDER BY o.dt_aktualizace DESC
+          AND (
+              (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+              OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+          )
+    ";
+
+    // 1. Nejdřív zkus posledních 7 dní
+    $stmt = $db->prepare($select . "
+          AND o.dt_zverejneni >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        ORDER BY o.dt_zverejneni DESC
+        LIMIT 15
+    ");
+    $stmt->execute();
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($items)) {
+        return ['items' => $items, 'is_fallback' => false];
+    }
+
+    // 2. Fallback: posledních 10 v aktuálním roce
+    $stmt2 = $db->prepare($select . "
+          AND YEAR(o.dt_objednavky) = YEAR(CURDATE())
+        ORDER BY o.dt_zverejneni DESC
         LIMIT 10
     ");
-    $stmt->execute([$days]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt2->execute();
+    $items2 = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+    return ['items' => $items2, 'is_fallback' => true];
 }
 
 /**
@@ -588,7 +745,39 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
         ];
     }
 
-    // 2. Nepotvrzené faktury (>7 dní)
+    // 2. Objednávky ke zveřejnění (> 2 dny)
+    if ($is_admin || in_array('DASHBOARD_ORDERS_REGISTRY', $permissions)) {
+        $stmt_reg = $db->prepare("
+            SELECT COUNT(*) as count
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1
+              AND o.id != 1
+              AND (
+                  JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT'
+                  OR " . sqlNormalizeExpression('o.zverejnit') . " = 'ano'
+                  OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'ke zverejneni'
+              )
+              AND NOT (
+                  (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                  OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
+              )
+              AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 2
+        ");
+        $stmt_reg->execute();
+        $row_reg = $stmt_reg->fetch(PDO::FETCH_ASSOC);
+        if ($row_reg['count'] > 0) {
+            $alerts[] = [
+                'type' => 'warning',
+                'icon' => 'globe',
+                'title' => 'Ke zveřejnění – prodlení',
+                'message' => $row_reg['count'] . ' ' . ($row_reg['count'] === 1 ? 'objednávka čeká' : ($row_reg['count'] < 5 ? 'objednávky čekají' : 'objednávek čeká')) . ' na zveřejnění déle než 2 dny',
+                'count' => (int)$row_reg['count'],
+                'link' => '/orders25-list-v3'
+            ];
+        }
+    }
+
+    // 3. Nepotvrzené faktury (>7 dní)
     $has_invoice = in_array('INVOICE_MANAGE', $permissions) || in_array('INVOICE_MATERIAL_CHECK', $permissions) || $is_admin;
     if ($has_invoice) {
         $where_user2 = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
@@ -1075,7 +1264,23 @@ function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_rea
     $stmt = $db->prepare("
         SELECT DATE(o.dt_vytvoreni) as den, 
                COUNT(*) as pocet,
-               COALESCE(SUM(o.max_cena_s_dph), 0) as castka
+               COALESCE(SUM(
+                   CASE
+                       WHEN (SELECT COALESCE(SUM(f.fa_castka), 0)
+                             FROM `" . TBL_FAKTURY . "` f
+                             WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                       THEN (SELECT COALESCE(SUM(f.fa_castka), 0)
+                             FROM `" . TBL_FAKTURY . "` f
+                             WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                       WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0)
+                             FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p
+                             WHERE p.objednavka_id = o.id) > 0
+                       THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0)
+                             FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p
+                             WHERE p.objednavka_id = o.id)
+                       ELSE COALESCE(o.max_cena_s_dph, 0)
+                   END
+               ), 0) as castka
         FROM `" . TBL_OBJEDNAVKY . "` o
         WHERE o.aktivni = 1
           AND o.id != 1
@@ -1317,23 +1522,19 @@ function _dashboard_get_order_comments_recent($db, $user_id, $days = 7) {
 /**
  * Statistiky faktur - počty dle klíčových stavů
  */
-function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_manage) {
-    $where_user = "";
-    $params = [];
+function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_manage, $usek_id = null) {
+    // Rok filtr – shodný s modulem faktur (řádek 1672 invoiceHandlers.php)
+    $current_year = (int)date('Y');
+    $year_filter = "AND (YEAR(f.fa_datum_vystaveni) = ? OR YEAR(f.fa_datum_doruceni) = ? OR YEAR(f.fa_datum_splatnosti) = ?)";
 
-    // Rok filtr
-    $year_filter = "AND YEAR(f.dt_vytvoreni) = YEAR(CURDATE())";
-
-    // Ne-admin vidí jen faktury kde je účastník
-    if (!$is_admin && !$has_invoice_manage) {
-        $where_user = "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ? OR f.vytvoril_uzivatel_id = ?)";
-        $params = [$user_id, $user_id, $user_id];
-    }
+    // Oprávnění: admin nebo INVOICE_MANAGE vidí vše, ostatní přes rozšířenou logiku (shodnou s invoiceHandlers)
+    $effective_admin = $is_admin || $has_invoice_manage;
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $effective_admin, $usek_id);
+    $where_user = $filter['where'];
+    // Rok parametry nejdříve (odpovídají pořadí placeholderů v $year_filter), pak user-filter params
+    $params = array_merge([$current_year, $current_year, $current_year], $filter['params']);
 
     $uid = (int)$user_id;
-    // ✅ OPRAVENO: Logika musí odpovídat invoiceHandlers.php
-    // - DOKONCENA = zaplaceno/hotovo (vyloučit z po_splatnosti, nezaplaceno atd.)
-    // - Kontrola dle stav, NE dle fa_zaplacena (ta bývá neaktuální)
     $sql = "
         SELECT
             COUNT(*) as total,
@@ -1351,9 +1552,15 @@ function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_man
             SUM(CASE WHEN f.fa_poznamka IS NOT NULL AND TRIM(f.fa_poznamka) <> '' THEN 1 ELSE 0 END) as s_poznamkou,
             SUM(CASE WHEN f.vytvoril_uzivatel_id = {$uid} THEN 1 ELSE 0 END) as moje_faktury,
             COALESCE(SUM(CASE WHEN f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as castka_zaplaceno,
-            COALESCE(SUM(CASE WHEN f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as castka_po_splatnosti
+            COALESCE(SUM(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as castka_po_splatnosti
         FROM `" . TBL_FAKTURY . "` f
+        LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+        LEFT JOIN `" . TBL_SMLOUVY . "` sm ON f.smlouva_id = sm.id
         WHERE f.aktivni = 1
+          AND (
+              (f.objednavka_id IS NULL OR o.aktivni = 1)
+              AND (f.smlouva_id IS NULL OR sm.aktivni = 1)
+          )
           {$year_filter}
           {$where_user}
     ";
@@ -1865,5 +2072,288 @@ function _dashboard_get_cashbook_summary($db, $user_id, $is_admin, $perm_codes, 
             'pokladny' => $pokladny,
             'souhrn'   => $souhrn
         ];
+    }
+}
+
+// ============================================================
+// ENDPOINT: dashboard/chart-timeline
+// Vrátí pouze data grafu objednávky v čase (bez reloadu celého dashboardu)
+// POST: { token, username, chart_days: 7|14|30 }
+// ============================================================
+function handle_dashboard_chart_timeline($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    // Validace chart_days: povolené hodnoty 7, 14, 30
+    $allowed_days = [7, 14, 30];
+    $chart_days = isset($input['chart_days']) ? (int)$input['chart_days'] : 30;
+    if (!in_array($chart_days, $allowed_days)) {
+        $chart_days = 30;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $token_data = verify_token_v2($username, $token, $db);
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            return;
+        }
+
+        $user_id = (int)$token_data['id'];
+        $is_admin = !empty($token_data['is_admin']);
+        $perm_codes = array_column($token_data['permissions'] ?? [], 'kod_prava');
+        $has_order_read = in_array('ORDER_READ_ALL', $perm_codes) || in_array('ORDER_VIEW_ALL', $perm_codes) || in_array('ORDER_MANAGE', $perm_codes) || $is_admin;
+
+        $timeline = _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_read, $chart_days);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => $timeline,
+            'chart_days' => $chart_days
+        ]);
+
+    } catch (Exception $e) {
+        error_log('handle_dashboard_chart_timeline error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při načítání grafu']);
+    }
+}
+
+// ============================================================
+// ENDPOINT: dashboard/cashbook-summary
+// Vrátí pouze cashbook summary (bez reloadu celého dashboardu)
+// ============================================================
+function handle_dashboard_cashbook_summary($input, $config, $queries) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    $cashbook_month = isset($input['cashbook_month']) ? (int)$input['cashbook_month'] : (int)date('n');
+    if ($cashbook_month < 1 || $cashbook_month > 12) {
+        $cashbook_month = (int)date('n');
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $token_data = verify_token_v2($username, $token, $db);
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            return;
+        }
+
+        $user_id = (int)$token_data['id'];
+        $is_admin = !empty($token_data['is_admin']);
+        $permissions = $token_data['permissions'] ?? [];
+        $perm_codes = array_column($permissions, 'kod_prava');
+
+        $cashbook_summary = _dashboard_get_cashbook_summary($db, $user_id, $is_admin, $perm_codes, $cashbook_month);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data'   => $cashbook_summary
+        ]);
+
+    } catch (Exception $e) {
+        error_log('handle_dashboard_cashbook_summary error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při zpracování: ' . $e->getMessage()]);
+    }
+}
+
+// ============================================================================
+// AKTIVNÍ UŽIVATELÉ – pouze SUPERADMIN
+// ============================================================================
+
+/**
+ * POST dashboard/active-users
+ * Vrátí aktivní uživatele s rozšířenými informacemi (pouze SUPERADMIN).
+ */
+function handle_dashboard_active_users($input, $config) {
+    $token    = $input['token']    ?? '';
+    $username = $input['username'] ?? '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) throw new Exception('Chyba připojení k databázi');
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $token_data = verify_token_v2($username, $token, $db);
+        if (!$token_data || $token_data['username'] !== $username) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            return;
+        }
+
+        $roles = $token_data['roles'] ?? [];
+        if (!in_array('SUPERADMIN', $roles)) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Přístup odepřen – pouze SUPERADMIN']);
+            return;
+        }
+
+        $data = _dashboard_get_active_users($db);
+
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'data' => $data]);
+
+    } catch (Exception $e) {
+        error_log('handle_dashboard_active_users error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při zpracování: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * Vrátí aktivní uživatele (posledních 5 minut) s rozšířenými informacemi:
+ * IP adresa, aktuální modul, počty objednávek (objednatel / schválené / ke schválení)
+ *
+ * @param PDO $db
+ * @return array
+ */
+function _dashboard_get_active_users($db) {
+    try {
+        $stmt = $db->prepare("
+            SELECT
+                u.id,
+                u.username,
+                TRIM(CONCAT(
+                    IFNULL(CONCAT(u.titul_pred, ' '), ''),
+                    u.jmeno, ' ', u.prijmeni,
+                    IFNULL(CONCAT(' ', u.titul_za), '')
+                )) AS cele_jmeno,
+                u.dt_posledni_aktivita,
+                u.aktivita_metadata,
+                IFNULL(us.usek_zkr,    '') AS usek_zkr,
+                IFNULL(us.usek_nazev,  '') AS usek_nazev,
+                IFNULL(p.nazev_pozice, '') AS pozice,
+
+                /* Počet objednávek kde je objednatel (aktuální rok) */
+                (SELECT COUNT(*)
+                 FROM `" . TBL_OBJEDNAVKY . "`
+                 WHERE uzivatel_id = u.id
+                   AND aktivni = 1
+                   AND YEAR(dt_objednavky) = YEAR(NOW())
+                ) AS pocet_objednavek_objednatel,
+
+                /* Počet schválených objednávek (příkazce nebo schvalovatel) */
+                (SELECT COUNT(*)
+                 FROM `" . TBL_OBJEDNAVKY . "`
+                 WHERE (prikazce_id = u.id OR schvalovatel_id = u.id)
+                   AND stav_objednavky IN ('SCHVALENA','ODESLANA','ODESLANA_DODAVATELI','POTVRZENA','FAKTURACE','VECNA_SPRAVNOST','UVEREJNIT','DOKONCENA')
+                   AND aktivni = 1
+                   AND YEAR(dt_objednavky) = YEAR(NOW())
+                ) AS pocet_schvalenych,
+
+                /* Počet objednávek čekajících na schválení (příkazce nebo schvalovatel) */
+                (SELECT COUNT(*)
+                 FROM `" . TBL_OBJEDNAVKY . "`
+                 WHERE (prikazce_id = u.id OR schvalovatel_id = u.id)
+                   AND stav_objednavky IN ('KE_SCHVALENI','ODESLANA_KE_SCHVALENI')
+                   AND aktivni = 1
+                ) AS pocet_ke_schvaleni,
+
+                /* Role uživatele – čárkou oddělený seznam */
+                (SELECT GROUP_CONCAT(r2.kod_role ORDER BY r2.kod_role SEPARATOR ',')
+                 FROM `" . TBL_UZIVATELE_ROLE . "` ur2
+                 JOIN `" . TBL_ROLE . "` r2 ON r2.id = ur2.role_id
+                 WHERE ur2.uzivatel_id = u.id
+                ) AS role_kody
+
+            FROM `" . TBL_UZIVATELE . "` u
+            LEFT JOIN `" . TBL_USEKY . "`  us ON u.usek_id    = us.id
+            LEFT JOIN `" . TBL_POZICE . "`  p  ON u.pozice_id  = p.id
+            WHERE u.dt_posledni_aktivita IS NOT NULL
+              AND u.dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+              AND u.aktivni = 1
+            ORDER BY u.dt_posledni_aktivita DESC
+        ");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $result = [];
+        foreach ($rows as $row) {
+            // Parsování aktivita_metadata (JSON)
+            $meta = [];
+            if (!empty($row['aktivita_metadata'])) {
+                $decoded = json_decode($row['aktivita_metadata'], true);
+                if (is_array($decoded)) {
+                    $meta = $decoded;
+                }
+            }
+
+            // Sestavení výsledku
+            $result[] = [
+                'id'                          => (int)$row['id'],
+                'username'                    => $row['username'],
+                'cele_jmeno'                  => $row['cele_jmeno'],
+                'dt_posledni_aktivita'        => $row['dt_posledni_aktivita'],
+                'usek_zkr'                    => $row['usek_zkr'],
+                'usek_nazev'                  => $row['usek_nazev'],
+                'pozice'                      => $row['pozice'],
+                'ip_adresa'                   => $meta['last_public_ip'] ?? ($meta['last_local_ip'] ?? null),
+                'ip_local'                    => $meta['last_local_ip'] ?? null,
+                'modul'                       => $meta['last_module'] ?? null,
+                'cesta'                       => $meta['last_path'] ?? null,
+                'role_kody'                   => $row['role_kody'] ? explode(',', $row['role_kody']) : [],
+                'pocet_objednavek_objednatel' => (int)$row['pocet_objednavek_objednatel'],
+                'pocet_schvalenych'           => (int)$row['pocet_schvalenych'],
+                'pocet_ke_schvaleni'          => (int)$row['pocet_ke_schvaleni'],
+            ];
+        }
+
+        return [
+            'items' => $result,
+            'count' => count($result),
+        ];
+
+    } catch (Exception $e) {
+        error_log('_dashboard_get_active_users error: ' . $e->getMessage());
+        return ['items' => [], 'count' => 0];
     }
 }
