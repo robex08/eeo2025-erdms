@@ -24,13 +24,76 @@ import {
   faTruck, faGavel, faGlobe, faUserShield, faCog, faArrowRight,
   faSync, faEye, faEyeSlash, faGripVertical, faTimes,
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
-  faFileContract, faComments, faHourglassHalf, faFileInvoice,
-  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers
+  faFileContract, faComments, faComment, faHourglassHalf, faFileInvoice,
+  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers,
+  faExpand, faCompress
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
+
+// ── Fullscreen styled komponenty ─────────────────────────────────────────────
+const ChartExpandBtn = styled.button`
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+  z-index: 2;
+  &:hover { color: #1d4ed8; background: #eff6ff; }
+`;
+
+const ChartOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+`;
+
+const ChartFullscreenBox = styled.div`
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  width: 80vw;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+  overflow: auto;
+`;
+
+// Vrátí kopii Chart.js options s většími fonty pro fullscreen panel
+const withFsFont = (opts, sz = 15) => ({
+  ...opts,
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: opts.plugins ? {
+    ...opts.plugins,
+    legend: opts.plugins.legend ? {
+      ...opts.plugins.legend,
+      labels: { ...opts.plugins.legend.labels, font: { size: sz } }
+    } : opts.plugins.legend
+  } : opts.plugins,
+  scales: opts.scales ? Object.fromEntries(
+    Object.entries(opts.scales).map(([k, v]) => [k, {
+      ...v,
+      title: v.title ? { ...v.title, font: { size: sz } } : v.title,
+      ticks: v.ticks ? { ...v.ticks, font: { size: sz - 1 } } : v.ticks
+    }])
+  ) : opts.scales
+});
 
 // ============================================================================
 // CONSTANTS
@@ -55,6 +118,8 @@ const WIDGET_REGISTRY = {
   order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1' },
   invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' },
   annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' },
+  chart_majetek:       { title: 'Majetek podle druhu',         icon: faChartBar,           color: '#0f766e', requires: 'DASHBOARD_CHART_MAJETEK' },
+  chart_fees:          { title: 'Roční poplatky - přehled',   icon: faChartBar,           color: '#7c3aed', requires: 'DASHBOARD_CHART_FEES' },
   cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true },
   rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316' },
   active_users_admin:  { title: 'Dashboard uživatelů',         icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
@@ -588,14 +653,13 @@ const ListItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.65rem 0;
-  border-bottom: 1px solid ${theme.colors.gray100};
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
   cursor: pointer;
   transition: background 0.15s;
   border-radius: 6px;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
-  &:hover { background: ${theme.colors.gray100}; }
+  background: #f8fafc;
+  &:hover { background: #edf2f7; }
   &:last-child { border-bottom: none; }
 `;
 
@@ -609,7 +673,7 @@ const ListItemLeft = styled.div`
 
 const ListItemTitle = styled.span`
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   color: ${theme.colors.primary};
   white-space: nowrap;
   overflow: hidden;
@@ -618,7 +682,8 @@ const ListItemTitle = styled.span`
 
 const ListItemSub = styled.span`
   font-size: 0.75rem;
-  color: ${theme.colors.gray500};
+  font-weight: 400;
+  color: #374151;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -626,11 +691,11 @@ const ListItemSub = styled.span`
 
 const ListItemMeta = styled.span`
   font-size: 0.68rem;
-  color: ${theme.colors.gray400 || '#9ca3af'};
+  color: #9ca3af;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-style: italic;
+  font-style: normal;
 `;
 
 const ListItemRight = styled.div`
@@ -1102,6 +1167,31 @@ const getStatusBadge = (stav) => {
 };
 
 const getStatusLabel = (stav) => STATUS_LABELS[stav] || stav;
+
+const FA_STATUS_COLORS = {
+  ZAEVIDOVANA:   { bg: '#dbeafe', color: '#1d4ed8' },
+  VECNA_SPRAVNOST: { bg: '#fce7f3', color: '#be185d' },
+  V_RESENI:      { bg: '#fef3c7', color: '#b45309' },
+  PREDANA_PO:    { bg: '#ede9fe', color: '#7c3aed' },
+  K_ZAPLACENI:   { bg: '#d1fae5', color: '#065f46' },
+  ZAPLACENO:     { bg: '#dcfce7', color: '#16a34a' },
+  DOKONCENA:     { bg: '#d1fae5', color: '#059669' },
+  STORNO:        { bg: '#f3f4f6', color: '#9ca3af' },
+};
+
+const FA_STATUS_LABELS = {
+  ZAEVIDOVANA:    'Zaevidována',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  V_RESENI:       'V řešení',
+  PREDANA_PO:     'Předána PO',
+  K_ZAPLACENI:    'K zaplacení',
+  ZAPLACENO:      'Zaplaceno',
+  DOKONCENA:      'Dokončena',
+  STORNO:         'Storno',
+};
+
+const getFaStatusBadge = (stav) => FA_STATUS_COLORS[stav] || { bg: '#f3f4f6', color: '#6b7280' };
+const getFaStatusLabel = (stav) => FA_STATUS_LABELS[stav] || stav || '—';
 
 // ============================================================================
 // WIDGET COMPONENTS
@@ -1582,21 +1672,23 @@ function OrderListWidget({ orders, title, navigate, filterPreset }) {
         return (
           <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <ListItemTitle style={{ flex: 1 }}>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+                {o.dni_od_vytvoreni !== undefined && (
+                  <Badge
+                    $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 3 ? '#fef3c7' : '#dbeafe')}
+                    $color={o.dni_od_vytvoreni > 7 ? '#dc2626' : (o.dni_od_vytvoreni > 3 ? '#b45309' : '#1d4ed8')}
+                  >
+                    {o.dni_od_vytvoreni === 0 ? 'dnes' : `před ${o.dni_od_vytvoreni} d`}
+                  </Badge>
+                )}
+              </div>
               <ListItemSub>{o.predmet}</ListItemSub>
               {metaInfo && <ListItemMeta>{metaInfo}</ListItemMeta>}
             </ListItemLeft>
             <ListItemRight>
               <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
               <Badge $bg={sb.bg} $color={sb.color}>{getStatusLabel(stav)}</Badge>
-              {o.dni_od_vytvoreni !== undefined && (
-                <Badge 
-                  $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 3 ? '#fef3c7' : '#dbeafe')}
-                  $color={o.dni_od_vytvoreni > 7 ? '#dc2626' : (o.dni_od_vytvoreni > 3 ? '#b45309' : '#1d4ed8')}
-                >
-                  {o.dni_od_vytvoreni === 0 ? 'dnes' : `před ${o.dni_od_vytvoreni} d`}
-                </Badge>
-              )}
             </ListItemRight>
           </ListItem>
         );
@@ -1625,7 +1717,17 @@ function InvoiceListWidget({ invoices, navigate, filterPreset }) {
         return (
           <ListItem key={f.id} onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: f.id, orderIdForLoad: f.objednavka_id || null, returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <ListItemTitle><span style={{ color: '#6b7280' }}>FA VS:</span> <strong>{f.fa_cislo || `#${f.id}`}</strong></ListItemTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <ListItemTitle style={{ flex: 1 }}><span style={{ color: '#6b7280', fontWeight: 400 }}>FA VS:</span> {f.fa_cislo || `#${f.id}`}</ListItemTitle>
+                <Badge
+                  $bg={f.dni_do_splatnosti < 0 ? '#fee2e2' : (f.dni_do_splatnosti < 3 ? '#fef3c7' : '#dbeafe')}
+                  $color={f.dni_do_splatnosti < 0 ? '#dc2626' : (f.dni_do_splatnosti < 3 ? '#b45309' : '#1d4ed8')}
+                >
+                  {f.dni_do_splatnosti < 0
+                    ? `${Math.abs(f.dni_do_splatnosti)} d po spl.`
+                    : (f.dni_do_splatnosti !== undefined ? `za ${f.dni_do_splatnosti} d` : '')}
+                </Badge>
+              </div>
               <ListItemSub>{f.fa_dodavatel_nazev}{vazba}</ListItemSub>
               {metaInfo && <ListItemMeta>{metaInfo}</ListItemMeta>}
             </ListItemLeft>
@@ -1633,14 +1735,7 @@ function InvoiceListWidget({ invoices, navigate, filterPreset }) {
               <Amount $color={f.dni_do_splatnosti < 0 ? '#dc2626' : (f.dni_do_splatnosti < 3 ? '#f97316' : theme.colors.primary)}>
                 {formatCurrency(f.fa_castka)}
               </Amount>
-              <Badge 
-                $bg={f.dni_do_splatnosti < 0 ? '#fee2e2' : (f.dni_do_splatnosti < 3 ? '#fef3c7' : '#dbeafe')}
-                $color={f.dni_do_splatnosti < 0 ? '#dc2626' : (f.dni_do_splatnosti < 3 ? '#b45309' : '#1d4ed8')}
-              >
-                {f.dni_do_splatnosti < 0 
-                  ? `${Math.abs(f.dni_do_splatnosti)} d po splatnosti` 
-                  : (f.dni_do_splatnosti !== undefined ? `za ${f.dni_do_splatnosti} d` : f.stav)}
-              </Badge>
+              {(() => { const fs = getFaStatusBadge(f.stav); return <Badge $bg={fs.bg} $color={fs.color}>{getFaStatusLabel(f.stav)}</Badge>; })()}
             </ListItemRight>
           </ListItem>
         );
@@ -1670,15 +1765,18 @@ function InvoiceOverdueWidget({ invoices, navigate, filterPreset }) {
         return (
           <ListItem key={f.id} onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: f.id, orderIdForLoad: f.objednavka_id || null, returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <ListItemTitle><span style={{ color: '#6b7280' }}>FA VS:</span> <strong>{f.fa_cislo || `#${f.id}`}</strong></ListItemTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <ListItemTitle style={{ flex: 1 }}><span style={{ color: '#6b7280', fontWeight: 400 }}>FA VS:</span> {f.fa_cislo || `#${f.id}`}</ListItemTitle>
+                <Badge $bg="#fee2e2" $color="#dc2626">{f.dni_po_splatnosti} d po spl.</Badge>
+              </div>
               <ListItemSub>{f.fa_dodavatel_nazev} — spl. {formatDate(f.fa_datum_splatnosti)}</ListItemSub>
               {metaInfo && <ListItemMeta>{metaInfo}</ListItemMeta>}
             </ListItemLeft>
             <ListItemRight>
               <Amount $color="#dc2626">{formatCurrency(f.fa_castka)}</Amount>
-              <Badge $bg="#fee2e2" $color="#dc2626">{f.dni_po_splatnosti} dnů po spl.</Badge>
-          </ListItemRight>
-        </ListItem>
+              {(() => { const fs = getFaStatusBadge(f.stav); return <Badge $bg={fs.bg} $color={fs.color}>{getFaStatusLabel(f.stav)}</Badge>; })()}
+            </ListItemRight>
+          </ListItem>
         );
       })}
     </WidgetBody>
@@ -1879,7 +1977,7 @@ function ChartTimelineWidget({ data, loading, groupBy = 'day', days = 30 }) {
   );
 }
 
-function TopSuppliersWidget({ suppliers }) {
+function TopSuppliersWidget({ suppliers, onExpand }) {
   if (!suppliers || suppliers.length === 0) {
     return <WidgetBody><EmptyState>Žádní dodavatelé</EmptyState></WidgetBody>;
   }
@@ -1898,14 +1996,151 @@ function TopSuppliersWidget({ suppliers }) {
     maintainAspectRatio: false,
     plugins: {
       legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
-      tooltip: { callbacks: { label: (ctx) => `${formatCurrency(ctx.raw)} (${ctx.label})` } }
+      tooltip: { callbacks: { label: (ctx) => `${formatCurrency(ctx.raw)} (${ctx.label})` } },
+      datalabels: { display: false }
     }
   };
 
   return (
     <WidgetBody $noScroll>
-      <div style={{ height: 220 }}>
+      <div style={{ height: 220, position: 'relative' }}>
+        {onExpand && (
+          <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => onExpand({ title: 'Top dodavatelé', el: <Doughnut data={chartData} options={withFsFont(options)} /> })}>
+            <FontAwesomeIcon icon={faExpand} />
+          </ChartExpandBtn>
+        )}
         <Doughnut data={chartData} options={options} />
+      </div>
+    </WidgetBody>
+  );
+}
+
+// ── Graf: Majetek podle druhu ────────────────────────────────────────────────
+function MajetekByDruhWidget({ data, onExpand }) {
+  if (!data || data.length === 0) {
+    return <WidgetBody><EmptyState>Žádná data majetku</EmptyState></WidgetBody>;
+  }
+
+  const totalCastka = data.reduce((s, d) => s + (parseFloat(d.castka_celkem) || 0), 0);
+  const totalPocet  = data.reduce((s, d) => s + (parseInt(d.pocet) || 0), 0);
+
+  const chartData = {
+    labels: data.map(d => d.druh_nazev || d.druh_kod || '?'),
+    datasets: [{
+      data: data.map(d => parseFloat(d.castka_celkem) || 0),
+      backgroundColor: CHART_COLORS.slice(0, data.length),
+      borderWidth: 0,
+    }]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const row = data[ctx.dataIndex];
+            return [`${formatCurrency(ctx.raw)}`, `${row.pocet} obj.`];
+          }
+        }
+      },
+      datalabels: { display: false }
+    }
+  };
+
+  return (
+    <WidgetBody $noScroll>
+      <div style={{ height: 210, position: 'relative' }}>
+        {onExpand && (
+          <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => onExpand({ title: 'Majetek podle druhu', el: <Doughnut data={chartData} options={withFsFont(options)} /> })}>
+            <FontAwesomeIcon icon={faExpand} />
+          </ChartExpandBtn>
+        )}
+        <Doughnut data={chartData} options={options} />
+      </div>
+      <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
+        <span>Obj. s fakturou: <strong style={{ color: '#0f766e' }}>{totalPocet}</strong></span>
+        <span>Fakturováno: <strong style={{ color: '#0f766e' }}>{formatCurrency(totalCastka)}</strong></span>
+      </div>
+    </WidgetBody>
+  );
+}
+
+// ── Graf: Roční poplatky podle druhu a platby ────────────────────────────────
+function FeesByDruhWidget({ data, navigate, onExpand }) {
+  if (!data || !data.rows || data.rows.length === 0) {
+    return <WidgetBody><EmptyState>Žádné poplatky pro rok {new Date().getFullYear()}</EmptyState></WidgetBody>;
+  }
+
+  const { rok, rows, total } = data;
+
+  // Unikátní druhy a typy platby
+  const druhy  = [...new Set(rows.map(r => r.druh))];
+  const platby = [...new Set(rows.map(r => r.platba))];
+
+  const PLATBA_COLORS = { MESICNI: '#1d4ed8', KVARTALNI: '#7c3aed', ROCNI: '#06b6d4', JINA: '#f97316' };
+  const PLATBA_LABELS = { MESICNI: 'Měsíční', KVARTALNI: 'Kvartální', ROCNI: 'Roční', JINA: 'Jiná' };
+
+  const datasets = platby.map((platba, i) => ({
+    label: PLATBA_LABELS[platba] || platba,
+    data: druhy.map(druh => {
+      const row = rows.find(r => r.druh === druh && r.platba === platba);
+      return row ? parseFloat(row.castka_celkem) || 0 : 0;
+    }),
+    backgroundColor: PLATBA_COLORS[platba] || CHART_COLORS[i],
+    borderRadius: 4,
+    borderWidth: 0,
+  }));
+
+  // Labely druhů - zkrátit
+  const druhLabels = druhy.map(d => {
+    const row = rows.find(r => r.druh === d);
+    const name = row?.druh_nazev || d;
+    return name.length > 12 ? name.substring(0, 12) + '…' : name;
+  });
+
+  const chartData = { labels: druhLabels, datasets };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.dataset.label}: ${formatCurrency(ctx.raw)}`
+        }
+      },
+      datalabels: { display: false }
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
+      y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' },
+           ticks: { callback: v => v >= 1000000 ? `${(v/1000000).toFixed(1)} M` : v >= 1000 ? `${(v/1000).toFixed(0)} k` : v } }
+    }
+  };
+
+  return (
+    <WidgetBody $noScroll>
+      <div style={{ height: 210, position: 'relative' }}>
+        {onExpand && (
+          <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => onExpand({ title: 'Roční poplatky podle druhu', el: <Bar data={chartData} options={withFsFont(options)} /> })}>
+            <FontAwesomeIcon icon={faExpand} />
+          </ChartExpandBtn>
+        )}
+        <Bar data={chartData} options={options} />
+      </div>
+      <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
+        <span>Rok: <strong style={{ color: '#7c3aed' }}>{rok}</strong></span>
+        <span>Celkem: <strong style={{ color: '#7c3aed' }}>{formatCurrency(parseFloat(total) || 0)}</strong></span>
+        <span
+          onClick={() => navigate('/annual-fees')}
+          style={{ marginLeft: 'auto', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem' }}
+        >
+          Detail →
+        </span>
       </div>
     </WidgetBody>
   );
@@ -2459,7 +2694,6 @@ function OrderCommentsWidget({ comments, navigate }) {
   }
 
   const handleOrderClick = (cisloObjednavky) => {
-    // Přejít na seznam objednávek V3 a vyfiltrovat dle čísla objednávky
     navigate('/orders25-list-v3', {
       state: {
         clearFilters: true,
@@ -2470,7 +2704,6 @@ function OrderCommentsWidget({ comments, navigate }) {
   };
 
   const handleShowAll = () => {
-    // Přejít na seznam V3 s dlaždicovým filtrem "s mými komentáři"
     navigate('/orders25-list-v3', {
       state: {
         clearFilters: true,
@@ -2481,36 +2714,60 @@ function OrderCommentsWidget({ comments, navigate }) {
 
   return (
     <WidgetBody>
-      {comments.map(c => (
-        <ListItem
-          key={c.objednavka_id}
-          onClick={() => handleOrderClick(c.cislo_objednavky || `#${c.objednavka_id}`)}
-          style={{ cursor: 'pointer' }}
-        >
-          <ListItemLeft>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ListItemTitle style={{ flex: 1 }}>
-                {c.cislo_objednavky || `#${c.objednavka_id}`}
-              </ListItemTitle>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '3px',
-                background: '#eff6ff', border: '1px solid #bfdbfe',
-                borderRadius: '10px', padding: '1px 7px',
-                fontSize: '0.72rem', fontWeight: 700, color: '#2563eb',
-                whiteSpace: 'nowrap',
-              }}>
-                💬 {c.komentaru_celkem}
-              </span>
-            </div>
-            {c.predmet && (
-              <CommentText style={{ marginTop: '2px', color: '#475569' }}>{c.predmet}</CommentText>
-            )}
-            <CommentMeta>
-              {c.posledni_autor} · {c.posledni_komentar_dt ? new Date(c.posledni_komentar_dt).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
-            </CommentMeta>
-          </ListItemLeft>
-        </ListItem>
-      ))}
+      {comments.map(c => {
+        const dni = c.dni_od_vytvoreni != null ? parseInt(c.dni_od_vytvoreni, 10) : null;
+        const dniBg = dni === null ? '#f1f5f9' : dni > 30 ? '#fee2e2' : dni > 14 ? '#fef3c7' : '#dbeafe';
+        const dniColor = dni === null ? '#64748b' : dni > 30 ? '#dc2626' : dni > 14 ? '#b45309' : '#1d4ed8';
+        const dniLabel = dni === null ? '' : dni === 0 ? 'dnes' : `před ${dni} d`;
+
+        const metaParts = [
+          c.objednatel_jmeno && c.objednatel_jmeno.trim() ? `Obj: ${c.objednatel_jmeno.trim()}` : null,
+          c.schvalovatel_jmeno && c.schvalovatel_jmeno.trim() ? `Sch: ${c.schvalovatel_jmeno.trim()}` : null,
+          c.prikazce_jmeno && c.prikazce_jmeno.trim() ? `Přík: ${c.prikazce_jmeno.trim()}` : null,
+        ].filter(Boolean).join(' · ');
+
+        return (
+          <ListItem
+            key={c.objednavka_id}
+            onClick={() => handleOrderClick(c.cislo_objednavky || `#${c.objednavka_id}`)}
+            style={{ cursor: 'pointer' }}
+          >
+            <ListItemLeft style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <ListItemTitle style={{ flex: 1, fontWeight: 700 }}>
+                  {c.cislo_objednavky || `#${c.objednavka_id}`}
+                </ListItemTitle>
+                <Badge $bg={dniBg} $color={dniColor}>{dniLabel}</Badge>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '3px',
+                  background: '#eff6ff', border: '1px solid #bfdbfe',
+                  borderRadius: '10px', padding: '1px 7px',
+                  fontSize: '0.65rem', fontWeight: 700, color: '#2563eb',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <FontAwesomeIcon icon={faComment} style={{ fontSize: '0.62rem' }} /> {c.komentaru_celkem}
+                </span>
+              </div>
+              {c.predmet && (
+                <ListItemSub style={{ marginTop: '1px', color: '#1e293b', fontWeight: 400 }}>{c.predmet}</ListItemSub>
+              )}
+              {metaParts && (
+                <ListItemMeta style={{ marginTop: '2px', fontStyle: 'normal' }}>{metaParts}</ListItemMeta>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3px' }}>
+                <CommentMeta>
+                  {c.posledni_autor} · {c.posledni_komentar_dt ? new Date(c.posledni_komentar_dt).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                </CommentMeta>
+                {c.max_cena_s_dph != null && parseFloat(c.max_cena_s_dph) > 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', marginLeft: '8px' }}>
+                    {new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(parseFloat(c.max_cena_s_dph))} Kč
+                  </span>
+                )}
+              </div>
+            </ListItemLeft>
+          </ListItem>
+        );
+      })}
       <div style={{ padding: '8px 16px', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
         <span
           onClick={handleShowAll}
@@ -2887,6 +3144,15 @@ export default function DashboardPage() {
   const [rssFeedStatuses, setRssFeedStatuses] = useState([]);
   const [rssMaxItems, setRssMaxItems] = useState(15);
 
+  // Fullscreen graf
+  const [fullscreenChart, setFullscreenChart] = useState(null);
+  useEffect(() => {
+    if (!fullscreenChart) return;
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreenChart(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [fullscreenChart]);
+
   const username = user?.username;
 
   // SUPERADMIN check
@@ -3253,7 +3519,7 @@ export default function DashboardPage() {
     // alwaysOn widgety (např. active_users_admin) ignorují visibleTiles
     if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) return null;
 
-    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'active_users_admin' || tileId === 'rss_news';
+    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'active_users_admin' || tileId === 'rss_news' || tileId === 'chart_majetek' || tileId === 'chart_fees';
 
     let content = null;
     let badgeCount = null;
@@ -3335,7 +3601,7 @@ export default function DashboardPage() {
         );
         break;
       case 'top_suppliers':
-        content = <TopSuppliersWidget suppliers={data?.top_suppliers} />;
+        content = <TopSuppliersWidget suppliers={data?.top_suppliers} onExpand={setFullscreenChart} />;
         break;
       case 'smlouvy_critical':
         content = <SmlouvyCriticalWidget smlouvy={data?.smlouvy_critical} navigate={navigate} />;
@@ -3355,6 +3621,12 @@ export default function DashboardPage() {
       case 'annual_fees_due':
         content = <AnnualFeesDueWidget feesData={data?.annual_fees_due} navigate={navigate} />;
         badgeCount = (data?.annual_fees_due?.stats?.po_splatnosti || 0) + (data?.annual_fees_due?.stats?.blizi_se || 0);
+        break;
+      case 'chart_majetek':
+        content = <MajetekByDruhWidget data={data?.chart_majetek_by_druh} onExpand={setFullscreenChart} />;
+        break;
+      case 'chart_fees':
+        content = <FeesByDruhWidget data={data?.chart_fees_by_druh} navigate={navigate} onExpand={setFullscreenChart} />;
         break;
       case 'cashbook_summary': {
         const cbMonthNames = ['Leden','\u00danor','B\u0159ezen','Duben','Kv\u011bten','\u010cerven','\u010cervenec','Srpen','Z\u00e1\u0159\u00ed','\u0158\u00edjen','Listopad','Prosinec'];
@@ -3478,6 +3750,7 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
     <PageWrapper>
       <PageHeader>
         <PageTitle>
@@ -3586,5 +3859,22 @@ export default function DashboardPage() {
       )}
       <div style={{ height: '2rem' }} />
     </PageWrapper>
+    {fullscreenChart && ReactDOM.createPortal(
+      <ChartOverlay onClick={(e) => { if (e.target === e.currentTarget) setFullscreenChart(null); }}>
+        <ChartFullscreenBox>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+            <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#1e293b' }}>{fullscreenChart.title}</span>
+            <button onClick={() => setFullscreenChart(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#64748b', padding: '0.25rem 0.5rem', borderRadius: '4px' }} title="Zavřít (ESC)">
+              <FontAwesomeIcon icon={faCompress} />
+            </button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', width: '100%', height: '100%' }}>
+            {fullscreenChart.el}
+          </div>
+        </ChartFullscreenBox>
+      </ChartOverlay>,
+      document.body
+    )}
+    </>
   );
 }
