@@ -543,12 +543,11 @@ function handle_login($input, $config, $queries) {
             return;
         }
 
-        // Uložit předchozí přihlášení (dt_posledni_aktivita) do dt_posledni_prihlaseni
-        // a aktualizovat dt_posledni_aktivita na NOW() – PŘED keepalive
+        // Uložit skutečný čas přihlášení a aktualizovat dt_posledni_aktivita
         try {
             $stmtLogin = $db->prepare("
                 UPDATE " . TBL_UZIVATELE . " 
-                SET dt_posledni_prihlaseni = dt_posledni_aktivita,
+                SET dt_posledni_prihlaseni = NOW(),
                     dt_posledni_aktivita = NOW()
                 WHERE id = :id
             ");

@@ -143,6 +143,9 @@ function handle_dashboard_data($input, $config, $queries) {
         $last_login = $user_info['dt_posledni_prihlaseni'] ?? null;
         $result['news_since_login'] = _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, $last_login, $usek_id ?? null);
 
+        // === MOJE STATISTIKY (osobní přehled přihlášeného uživatele) ===
+        $result['my_stats'] = _dashboard_get_my_stats($db, $user_id);
+
         // === STATISTIKY OBJEDNÁVEK ===
         // Vždy načíst – potřebné pro QuickTiles v hlavičce (widget zobrazení řídí frontend dle DASHBOARD_ORDERS_STATS)
         $usek_id = $user_info['usek_id'] ?? null;
@@ -189,6 +192,9 @@ function handle_dashboard_data($input, $config, $queries) {
 
         // === NEPŘEČTENÉ NOTIFIKACE ===
         $result['notifications_unread'] = _dashboard_get_notifications_unread($db, $user_id, 5);
+
+        // === NOTIFIKACE ZA 7 DNÍ (včetně přečtených) ===
+        $result['notifications_recent'] = _dashboard_get_notifications_recent($db, $user_id, 7, 15);
 
         // === GRAF: OBJEDNÁVKY V ČASE (posledních 30 dní) ===
         if ($has_cap('DASHBOARD_CHART_TIMELINE')) {
@@ -380,27 +386,33 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
  * Moje objednávky čekající na akci
  */
 function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve = false, $is_admin = false, $usek_id = null) {
-    $active_states = "('NOVA', 'ROZPRACOVANA', 'SCHVALENA', 'VECNA_SPRAVNOST', 'ODESLANA', 'ODESLANA_DODAVATELI', 'ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI')";
+    $excluded_states = "('DOKONCENA', 'ZKONTROLOVANA', 'ZRUSENA', 'ZAMITNUTA', 'STORNOVANA')";
 
     $select = "
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
                o.stav_objednavky, o.dt_vytvoreni,
                JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) as aktualni_stav,
                u_obj.jmeno as objednavatel_jmeno, u_obj.prijmeni as objednavatel_prijmeni,
-               u_prik.jmeno as prikazce_jmeno, u_prik.prijmeni as prikazce_prijmeni
+               u_gar.jmeno as garant_jmeno, u_gar.prijmeni as garant_prijmeni,
+               u_prik.jmeno as prikazce_jmeno, u_prik.prijmeni as prikazce_prijmeni,
+               u_schv.jmeno as schvalovatel_jmeno, u_schv.prijmeni as schvalovatel_prijmeni,
+               DATEDIFF(CURDATE(), o.dt_vytvoreni) as dni_od_vytvoreni
         FROM `" . TBL_OBJEDNAVKY . "` o
         LEFT JOIN `" . TBL_UZIVATELE . "` u_obj ON u_obj.id = COALESCE(o.objednatel_id, o.uzivatel_id)
+        LEFT JOIN `" . TBL_UZIVATELE . "` u_gar ON u_gar.id = o.garant_uzivatel_id
         LEFT JOIN `" . TBL_UZIVATELE . "` u_prik ON u_prik.id = o.prikazce_id
+        LEFT JOIN `" . TBL_UZIVATELE . "` u_schv ON u_schv.id = o.schvalovatel_id
         WHERE o.aktivni = 1
           AND o.id != 1
+          AND YEAR(o.dt_vytvoreni) = YEAR(CURDATE())
           AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))
-              IN {$active_states}
+              NOT IN {$excluded_states}
     ";
 
     // 1. Jsem objednatel
     $stmt1 = $db->prepare($select . "
           AND (o.objednatel_id = ? OR (o.objednatel_id IS NULL AND o.uzivatel_id = ?))
-        ORDER BY o.dt_vytvoreni DESC LIMIT 15");
+        ORDER BY o.dt_vytvoreni DESC LIMIT 25");
     $stmt1->execute([$user_id, $user_id]);
     $objednatel = $stmt1->fetchAll(PDO::FETCH_ASSOC);
 
@@ -414,7 +426,7 @@ function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_appro
     $stmt2 = $db->prepare($select . "
           AND o.garant_uzivatel_id = ?
           {$exclude_garant}
-        ORDER BY o.dt_vytvoreni DESC LIMIT 15");
+        ORDER BY o.dt_vytvoreni DESC LIMIT 25");
     $stmt2->execute([$user_id]);
     $garant = $stmt2->fetchAll(PDO::FETCH_ASSOC);
 
@@ -430,7 +442,7 @@ function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_appro
         $stmt3 = $db->prepare($select . "
               AND (o.prikazce_id = ? OR o.schvalovatel_id = ?)
               {$exclude_prik}
-            ORDER BY o.dt_vytvoreni DESC LIMIT 15");
+            ORDER BY o.dt_vytvoreni DESC LIMIT 25");
         $stmt3->execute([$user_id, $user_id]);
         $prikazce = $stmt3->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -453,7 +465,7 @@ function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_appro
         $stmt4 = $db->prepare($select . "
               AND u_obj.usek_id = ?
               {$exclude_usek}
-            ORDER BY o.dt_vytvoreni DESC LIMIT 20");
+            ORDER BY o.dt_vytvoreni DESC LIMIT 30");
         $stmt4->execute([$usek_id]);
         $usek = $stmt4->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -1091,39 +1103,23 @@ function _dashboard_get_focus_alerts($db, $user_id, $is_admin, $permissions, $ha
 }
 
 /**
- * Co nového od posledního přihlášení
- * Vrací souhrn nových událostí (objednávky, faktury) od dt_posledni_prihlaseni
+ * Co nového od posledního přihlášení — rozděleno do 2 sekcí:
+ * 1) "Vyžaduje vaši akci" — aktuální stav bez časového filtru
+ * 2) "Změny od přihlášení" — události od dt_posledni_prihlaseni
  */
 function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, $last_login, $usek_id) {
-    $news = [];
+    $action_items = [];  // Sekce 1: Vyžaduje vaši akci (bez časového filtru)
+    $changes = [];       // Sekce 2: Změny od přihlášení (s časovým filtrem)
 
     // Období: od posledního přihlášení, včetně dneška
     $today = date('Y-m-d 00:00:00');
     $since = $last_login ?: $today;
 
-    // 1. Nově vytvořené objednávky (kde je uživatel objednatel/garant)
-    {
-        $stmt = $db->prepare("
-            SELECT COUNT(*) as cnt
-            FROM `" . TBL_OBJEDNAVKY . "` o
-            WHERE o.aktivni = 1 AND o.id != 1
-              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
-              AND o.dt_vytvoreni >= ?
-        ");
-        $stmt->execute([$user_id, $user_id, $since]);
-        $cnt = (int)$stmt->fetchColumn();
-        if ($cnt > 0) {
-            $news[] = [
-                'icon' => 'shopping-cart',
-                'text' => "{$cnt} " . ($cnt === 1 ? 'nová objednávka vytvořena' : ($cnt < 5 ? 'nové objednávky vytvořeny' : 'nových objednávek vytvořeno')),
-                'link' => '/orders25-list-v3',
-                'filter' => 'ke_schvaleni',
-                'count' => $cnt
-            ];
-        }
-    }
+    // ============================================================
+    // SEKCE 1: VYŽADUJE VAŠI AKCI (bez časového filtru – aktuální stav)
+    // ============================================================
 
-    // 2. Objednávky čekající ke schválení (AKČNÍ – bez časového filtru, ukazuje aktuální stav)
+    // 1a. Objednávky čekající ke schválení
     {
         $where_u = $is_admin ? "" : "AND (o.prikazce_id = ?)";
         $params = [];
@@ -1139,7 +1135,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         $stmt->execute($params);
         $cnt = (int)$stmt->fetchColumn();
         if ($cnt > 0) {
-            $news[] = [
+            $action_items[] = [
                 'icon' => 'gavel',
                 'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka čeká' : ($cnt < 5 ? 'objednávky čekají' : 'objednávek čeká')) . " ke schválení",
                 'link' => '/orders25-list-v3',
@@ -1149,7 +1145,58 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         }
     }
 
-    // 3. Schválené objednávky
+    // 1b. Faktury čekající na potvrzení
+    {
+        $where_f = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
+        $params_f = [];
+        if (!$is_admin) { $params_f[] = $user_id; $params_f[] = $user_id; }
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_FAKTURY . "` f
+            WHERE f.aktivni = 1
+              AND f.stav IN ('ZAEVIDOVANA', 'VECNA_SPRAVNOST')
+              {$where_f}
+        ");
+        $stmt->execute($params_f);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $action_items[] = [
+                'icon' => 'file-invoice',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'faktura čeká' : ($cnt < 5 ? 'faktury čekají' : 'faktur čeká')) . " na potvrzení",
+                'link' => '/invoices25-list',
+                'filter' => 'my_invoices',
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // ============================================================
+    // SEKCE 2: ZMĚNY OD PŘIHLÁŠENÍ (s časovým filtrem od $since)
+    // ============================================================
+
+    // 2a. Nově vytvořené objednávky (kde je uživatel objednatel/garant)
+    {
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
+              AND o.dt_vytvoreni >= ?
+        ");
+        $stmt->execute([$user_id, $user_id, $since]);
+        $cnt = (int)$stmt->fetchColumn();
+        if ($cnt > 0) {
+            $changes[] = [
+                'icon' => 'shopping-cart',
+                'text' => "{$cnt} " . ($cnt === 1 ? 'nová objednávka' : ($cnt < 5 ? 'nové objednávky' : 'nových objednávek')),
+                'link' => '/orders25-list-v3',
+                'filter' => null,
+                'count' => $cnt
+            ];
+        }
+    }
+
+    // 2b. Schválené objednávky
     {
         $where_u = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.prikazce_id = ?)";
         $params = [$since];
@@ -1166,7 +1213,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         $stmt->execute($params);
         $cnt = (int)$stmt->fetchColumn();
         if ($cnt > 0) {
-            $news[] = [
+            $changes[] = [
                 'icon' => 'check-circle',
                 'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka schválena' : ($cnt < 5 ? 'objednávky schváleny' : 'objednávek schváleno')),
                 'link' => '/orders25-list-v3',
@@ -1176,7 +1223,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         }
     }
 
-    // 4. Zamítnuté objednávky
+    // 2c. Zamítnuté objednávky
     {
         $where_u = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.prikazce_id = ?)";
         $params = [$since];
@@ -1193,7 +1240,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         $stmt->execute($params);
         $cnt = (int)$stmt->fetchColumn();
         if ($cnt > 0) {
-            $news[] = [
+            $changes[] = [
                 'icon' => 'exclamation-triangle',
                 'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka zamítnuta' : ($cnt < 5 ? 'objednávky zamítnuty' : 'objednávek zamítnuto')),
                 'link' => '/orders25-list-v3',
@@ -1203,32 +1250,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         }
     }
 
-    // 5. Faktury čekající na potvrzení (AKČNÍ – bez časového filtru)
-    {
-        $where_f = $is_admin ? "" : "AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)";
-        $params_f = [];
-        if (!$is_admin) { $params_f[] = $user_id; $params_f[] = $user_id; }
-        $stmt = $db->prepare("
-            SELECT COUNT(*) as cnt
-            FROM `" . TBL_FAKTURY . "` f
-            WHERE f.aktivni = 1
-              AND f.stav IN ('ZAEVIDOVANA', 'VECNA_SPRAVNOST')
-              {$where_f}
-        ");
-        $stmt->execute($params_f);
-        $cnt = (int)$stmt->fetchColumn();
-        if ($cnt > 0) {
-            $news[] = [
-                'icon' => 'file-invoice',
-                'text' => "{$cnt} " . ($cnt === 1 ? 'faktura čeká' : ($cnt < 5 ? 'faktury čekají' : 'faktur čeká')) . " na potvrzení",
-                'link' => '/invoices25-list',
-                'filter' => 'my_invoices',
-                'count' => $cnt
-            ];
-        }
-    }
-
-    // 6. Dokončené objednávky
+    // 2d. Dokončené objednávky
     {
         $where_u = $is_admin ? "" : "AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)";
         $params = [$since];
@@ -1245,7 +1267,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
         $stmt->execute($params);
         $cnt = (int)$stmt->fetchColumn();
         if ($cnt > 0) {
-            $news[] = [
+            $changes[] = [
                 'icon' => 'check-double',
                 'text' => "{$cnt} " . ($cnt === 1 ? 'objednávka dokončena' : ($cnt < 5 ? 'objednávky dokončeny' : 'objednávek dokončeno')),
                 'link' => '/orders25-list-v3',
@@ -1259,7 +1281,115 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
     $since_dt = new DateTime($since);
     $since_formatted = $since_dt->format('j.n. H:i');
 
-    return ['items' => $news, 'since' => $since, 'since_formatted' => $since_formatted];
+    return [
+        'action_items' => $action_items,
+        'changes' => $changes,
+        'since' => $since,
+        'since_formatted' => $since_formatted
+    ];
+}
+
+/**
+ * Moje statistiky – osobní přehled přihlášeného uživatele
+ * Vrací: počty objednávek k vyřízení, faktur k potvrzení, ke zveřejnění,
+ *        částky odeslaných bez faktury a vyfakturovaných nedokončených
+ */
+function _dashboard_get_my_stats($db, $user_id) {
+    $stav_sql = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']')))";
+    $stats = [];
+
+    try {
+        // 1. Moje objednávky k vyřízení (ke schválení / rozpracované odeslané)
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ? OR o.prikazce_id = ?)
+              AND {$stav_sql} IN ('ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI', 'ROZPRACOVANA')
+        ");
+        $stmt->execute([$user_id, $user_id, $user_id]);
+        $stats['objednavky_k_vyrizeni'] = (int)$stmt->fetchColumn();
+
+        // 2. Faktury k potvrzení (kde jsem zodpovědný za věcnou správnost)
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_FAKTURY . "` f
+            WHERE f.aktivni = 1
+              AND f.stav IN ('ZAEVIDOVANA', 'VECNA_SPRAVNOST')
+              AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)
+        ");
+        $stmt->execute([$user_id, $user_id]);
+        $stats['faktury_k_potvrzeni'] = (int)$stmt->fetchColumn();
+
+        // 3. Moje objednávky ke zveřejnění do registru
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as cnt
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
+              AND (
+                  {$stav_sql} = 'UVEREJNIT'
+                  OR o.zverejnit = 'ano'
+                  OR o.stav_objednavky = 'ke zverejneni'
+              )
+              AND NOT (
+                  (o.dt_zverejneni IS NOT NULL AND o.registr_iddt IS NOT NULL)
+                  OR o.stav_objednavky = 'uverejnena v registru smluv'
+              )
+        ");
+        $stmt->execute([$user_id, $user_id]);
+        $stats['ke_zverejneni'] = (int)$stmt->fetchColumn();
+
+        // 4. Odeslané objednávky BEZ faktury – částka (max_cena_s_dph / položky)
+        $stmt = $db->prepare("
+            SELECT 
+                COUNT(*) as cnt,
+                COALESCE(SUM(
+                    CASE
+                        WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id) > 0
+                        THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id)
+                        ELSE COALESCE(o.max_cena_s_dph, 0)
+                    END
+                ), 0) as castka
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
+              AND {$stav_sql} IN ('ODESLANA', 'ODESLANA_DODAVATELI', 'POTVRZENA', 'SCHVALENA')
+              AND (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1) = 0
+        ");
+        $stmt->execute([$user_id, $user_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['odeslane_bez_faktury'] = [
+            'count' => (int)$row['cnt'],
+            'castka' => round((float)$row['castka'], 2)
+        ];
+
+        // 5. Vyfakturované ale nedokončené objednávky – částka faktur
+        $stmt = $db->prepare("
+            SELECT 
+                COUNT(*) as cnt,
+                COALESCE(SUM(
+                    (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                ), 0) as castka
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.aktivni = 1 AND o.id != 1
+              AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
+              AND {$stav_sql} NOT IN ('DOKONCENA', 'ZKONTROLOVANA', 'ZRUSENA', 'STORNOVANA', 'ZAMITNUTA')
+              AND (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+        ");
+        $stmt->execute([$user_id, $user_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['vyfakturovane_nedokoncene'] = [
+            'count' => (int)$row['cnt'],
+            'castka' => round((float)$row['castka'], 2)
+        ];
+
+    } catch (Exception $e) {
+        error_log("Dashboard my_stats error: " . $e->getMessage());
+        return ['error' => 'Chyba při načítání statistik'];
+    }
+
+    return $stats;
 }
 
 /**
@@ -1283,6 +1413,31 @@ function _dashboard_get_notifications_unread($db, $user_id, $limit) {
         LIMIT " . (int)$limit . "
     ");
     $stmt->execute([$user_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Notifikace za posledních N dní (včetně přečtených)
+ * Vrací pole s příznakem precteno pro FE styling (přečtené = zeslabené)
+ */
+function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 15) {
+    $stmt = $db->prepare("
+        SELECT n.id, n.typ, n.nadpis, n.zprava, n.priorita, n.kategorie,
+               n.objekt_typ, n.objekt_id, n.dt_created,
+               nr.precteno, nr.skryto, nr.dt_precteno
+        FROM `" . TBL_NOTIFIKACE . "` n
+        INNER JOIN `" . TBL_NOTIFIKACE_PRECTENI . "` nr 
+            ON n.id = nr.notifikace_id
+        WHERE n.aktivni = 1
+          AND nr.uzivatel_id = ?
+          AND nr.smazano = 0
+          AND nr.skryto = 0
+          AND (n.dt_expires IS NULL OR n.dt_expires > NOW())
+          AND n.dt_created >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        ORDER BY nr.precteno ASC, n.dt_created DESC
+        LIMIT " . (int)$limit . "
+    ");
+    $stmt->execute([$user_id, (int)$days]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
