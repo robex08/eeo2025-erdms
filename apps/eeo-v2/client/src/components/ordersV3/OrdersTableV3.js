@@ -2916,8 +2916,17 @@ const OrdersTableV3 = ({
       const newComment = result?.comment || result?.data?.comment || result?.data;
       const newCount = result?.comments_count;
       
-      // ✅ Aktualizovat seznam komentářů v tooltipu (fallback pro případ bez reloadu)
-      if (newComment) {
+      // ✅ Aktualizovat seznam komentářů - vždy reload ze serveru pro spolehlivost
+      if (onLoadComments) {
+        const reloadResult = await onLoadComments(commentsTooltip.orderId);
+        const commentsArray = reloadResult?.data || reloadResult?.comments || [];
+        setCommentsTooltip(prev => ({
+          ...prev,
+          comments: commentsArray,
+          commentsCount: reloadResult?.comments_count ?? (newCount ?? prev.commentsCount),
+        }));
+      } else if (newComment) {
+        // Fallback: lokální merge pokud onLoadComments není dostupný
         setCommentsTooltip(prev => ({
           ...prev,
           comments: [...prev.comments, newComment],
@@ -2938,20 +2947,6 @@ const OrdersTableV3 = ({
       setJustAddedCommentId(commentsTooltip.orderId);
       justAddedTimerRef.current = setTimeout(() => setJustAddedCommentId(null), 2500);
 
-      // ✅ Pro odpovědi vždy refrešni komentáře, aby se parent_comment_id projevil v chatu
-      if (parentCommentId && onLoadComments) {
-        const reloadResult = await onLoadComments(commentsTooltip.orderId);
-        const commentsArray = reloadResult?.data || reloadResult?.comments || [];
-        setCommentsTooltip(prev => ({
-          ...prev,
-          comments: commentsArray,
-          commentsCount: reloadResult?.comments_count || prev.commentsCount,
-        }));
-      }
-
-      // ✅ TICHÝ REŽIM: Po přidání komentáře NEinvalidovat cache ani nerefreshovat tabulku.
-      // Tooltip si upraví lokální seznam a ikona/count se upraví mutací řádku výše.
-      
       // ✅ Toast notifikace
       if (showToast) {
         showToast(parentCommentId ? 'Odpověď byla přidána' : 'Komentář byl přidán', 'success');
@@ -5905,7 +5900,7 @@ const OrdersTableV3 = ({
                     {panelData.map((o, i) => (
                       <tr key={o.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
-                          <a href={`/orders/${o.id}`} target="_blank" rel="noopener noreferrer"
+                          <a href={`${process.env.PUBLIC_URL}/order-form-25?edit=${o.id}`} target="_blank" rel="noopener noreferrer"
                             style={{ color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}
                             onMouseOver={e => e.target.style.textDecoration='underline'}
                             onMouseOut={e => e.target.style.textDecoration='none'}>

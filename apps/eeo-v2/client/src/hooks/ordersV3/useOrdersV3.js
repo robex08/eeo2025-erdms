@@ -441,14 +441,6 @@ export function useOrdersV3({
     }
     
     // ✅ Volání optimalizované API funkce s cache a deduplication
-    console.log('📤 [OrdersV3] API Request payload:', {
-      page: currentPage,
-      per_page: itemsPerPage,
-      period: selectedPeriod,
-      filters: activeFilters,
-      sorting: sorting,
-    });
-    
     return fetchData({
       token,
       username,
