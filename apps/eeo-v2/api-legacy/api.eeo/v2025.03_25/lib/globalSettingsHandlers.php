@@ -169,7 +169,13 @@ function handle_get_settings($db, $forDisplay = false) {
             'module_annual_fees_visible' => ($settings['module_annual_fees_visible'] ?? '1') === '1',
             
             // Default homepage
-            'module_default_homepage' => $settings['module_default_homepage'] ?? 'orders25-list'
+            'module_default_homepage' => $settings['module_default_homepage'] ?? 'orders25-list',
+            
+            // RSS Feed settings
+            'rss_enabled' => ($settings['rss_enabled'] ?? '0') === '1',
+            'rss_feeds' => $settings['rss_feeds'] ?? '[]',
+            'rss_max_items' => (int)($settings['rss_max_items'] ?? 10),
+            'rss_refresh_interval' => (int)($settings['rss_refresh_interval'] ?? 15)
         );
         
         http_response_code(200);
@@ -224,7 +230,12 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'module_invoices_visible' => 'module_invoices_visible',
             'module_annual_fees_visible' => 'module_annual_fees_visible',
             // Default homepage
-            'module_default_homepage' => 'module_default_homepage'
+            'module_default_homepage' => 'module_default_homepage',
+            // RSS Feed settings
+            'rss_enabled' => 'rss_enabled',
+            'rss_feeds' => 'rss_feeds',
+            'rss_max_items' => 'rss_max_items',
+            'rss_refresh_interval' => 'rss_refresh_interval'
         );
         
         $db->beginTransaction();

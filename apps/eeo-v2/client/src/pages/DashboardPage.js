@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { AuthContext } from '../context/AuthContext';
-import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline } from '../services/apiDashboard';
+import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline, getRssFeed } from '../services/apiDashboard';
 import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
 import { theme } from '../theme/theme';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -56,6 +56,7 @@ const WIDGET_REGISTRY = {
   invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' },
   annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' },
   cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true },
+  rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316' },
   active_users_admin:  { title: 'Dashboard uživatelů',         icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
 };
 
@@ -1105,6 +1106,147 @@ const getStatusLabel = (stav) => STATUS_LABELS[stav] || stav;
 // ============================================================================
 // WIDGET COMPONENTS
 // ============================================================================
+
+// ── RSS Zprávy ──────────────────────────────────────────────────────────────
+function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
+  const [hiddenFeeds, setHiddenFeeds] = useState([]);
+
+  const okFeeds = (feedStatuses || []).filter(f => f.status === 'ok');
+
+  const toggleFeed = (name) => {
+    setHiddenFeeds(prev => {
+      if (prev.includes(name)) return prev.filter(n => n !== name);
+      const wouldBeActive = okFeeds.filter(f => !prev.includes(f.name) && f.name !== name).length;
+      if (wouldBeActive < 1) return prev;
+      return [...prev, name];
+    });
+  };
+
+  // Round-robin: rovnoměrně z každého aktivního feedu, pak seřadit dle data
+  const filteredItems = useMemo(() => {
+    if (!items || items.length === 0) return [];
+    const visible = hiddenFeeds.length > 0
+      ? items.filter(it => !hiddenFeeds.includes(it.feed_name))
+      : items;
+
+    // Seskupit dle feed_name
+    const byFeed = {};
+    visible.forEach(it => {
+      const fn = it.feed_name || '_';
+      if (!byFeed[fn]) byFeed[fn] = [];
+      byFeed[fn].push(it);
+    });
+
+    const feedNames = Object.keys(byFeed);
+    if (feedNames.length <= 1) return visible.slice(0, maxItems);
+
+    // Rovnoměrné rozdělení: perFeed = ceil(maxItems / feedCount)
+    const perFeed = Math.ceil(maxItems / feedNames.length);
+    const picked = [];
+    feedNames.forEach(fn => {
+      picked.push(...byFeed[fn].slice(0, perFeed));
+    });
+
+    // Seřadit dle data a oříznout na maxItems
+    picked.sort((a, b) => {
+      const da = a.pub_date_raw ? new Date(a.pub_date_raw).getTime() : 0;
+      const db = b.pub_date_raw ? new Date(b.pub_date_raw).getTime() : 0;
+      return db - da;
+    });
+    return picked.slice(0, maxItems);
+  }, [items, hiddenFeeds, maxItems]);
+
+  if (loading && (!items || items.length === 0)) return (
+    <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.25rem'}}>
+      {[1,2,3,4,5].map(i => (
+        <div key={i} style={{display: 'flex', gap: '0.75rem', padding: '0.6rem 0.75rem', borderRadius: '8px', background: '#f9fafb', border: '1px solid #f3f4f6'}}>
+          <LoadingSkeleton $h="48px" style={{width: '64px', minWidth:'64px', borderRadius:'6px'}} />
+          <div style={{flex: 1, display:'flex', flexDirection:'column', gap:'0.35rem'}}>
+            <LoadingSkeleton $h="14px" style={{width: `${70 + (i * 5) % 25}%`, borderRadius:'4px'}} />
+            <LoadingSkeleton $h="11px" style={{width: `${85 - (i * 7) % 30}%`, borderRadius:'4px'}} />
+            <LoadingSkeleton $h="10px" style={{width: '40%', borderRadius:'4px'}} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+  if (error) return <div style={{textAlign: 'center', padding: '2rem', color: '#dc2626'}}>Nepodařilo se načíst zprávy</div>;
+  if (!items || items.length === 0) return <div style={{textAlign: 'center', padding: '2rem', color: '#6b7280'}}>Žádné zprávy</div>;
+  
+  return (
+    <div style={{display: 'flex', flexDirection: 'column'}}>
+      {feedStatuses && feedStatuses.length > 0 && (
+        <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.35rem', padding: '0.35rem 0.5rem 0.5rem', borderBottom: '1px solid #f3f4f6', marginBottom: '0.25rem'}}>
+          {feedStatuses.map((fs, i) => {
+            const isOk = fs.status === 'ok';
+            const isHidden = hiddenFeeds.includes(fs.name);
+            const isActive = isOk && !isHidden;
+            const feedItemCount = isOk ? filteredItems.filter(it => it.feed_name === fs.name).length : 0;
+            return (
+              <span key={i}
+                title={fs.error || (isHidden ? 'Klikni pro zobrazení' : 'Klikni pro skrytí') + (fs.resolved_url !== fs.url ? ` | Nalezeno: ${fs.resolved_url}` : '')}
+                onClick={isOk ? () => toggleFeed(fs.name) : undefined}
+                style={{
+                  fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 500,
+                  cursor: isOk ? 'pointer' : 'default',
+                  background: isActive ? '#dcfce7' : fs.status === 'error' ? '#fee2e2' : '#f3f4f6',
+                  color: isActive ? '#16a34a' : fs.status === 'error' ? '#dc2626' : '#9ca3af',
+                  opacity: isHidden ? 0.55 : 1,
+                  textDecoration: isHidden ? 'line-through' : 'none',
+                  transition: 'all 0.15s',
+                  userSelect: 'none',
+                }}
+              >
+                {fs.name} {isOk ? `(${feedItemCount})` : fs.status === 'disabled' ? '(vyp.)' : '✗'}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '420px', overflowY: 'auto', padding: '0.25rem'}}>
+      {filteredItems.map((item, idx) => (
+        <a
+          key={item.guid || idx}
+          href={item.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex', gap: '0.75rem', padding: '0.6rem 0.75rem',
+            borderRadius: '8px', textDecoration: 'none', color: 'inherit',
+            background: idx % 2 === 0 ? '#f9fafb' : 'white',
+            border: '1px solid #f3f4f6',
+            transition: 'all 0.15s ease'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#bfdbfe'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? '#f9fafb' : 'white'; e.currentTarget.style.borderColor = '#f3f4f6'; }}
+        >
+          {item.image_url && (
+            <img
+              src={item.image_url}
+              alt=""
+              style={{width: '64px', height: '48px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0}}
+              onError={e => { e.target.style.display = 'none'; }}
+            />
+          )}
+          <div style={{flex: 1, minWidth: 0}}>
+            <div style={{fontSize: '0.82rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'}}>
+              {item.title}
+            </div>
+            <div style={{fontSize: '0.72rem', color: '#6b7280', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'}}>
+              {item.description}
+            </div>
+            <div style={{display: 'flex', gap: '0.5rem', marginTop: '0.25rem', fontSize: '0.68rem', color: '#9ca3af'}}>
+              {item.category && <span style={{background: '#f3f4f6', padding: '0.1rem 0.4rem', borderRadius: '4px'}}>{item.category}</span>}
+              <span>{item.pub_date}</span>
+              {item.feed_name && <span style={{fontStyle: 'italic'}}>{item.feed_name}</span>}
+            </div>
+          </div>
+        </a>
+      ))}
+    </div>
+    </div>
+  );
+}
 
 // ── SUPERADMIN: Aktivní uživatelé ──────────────────────────────────────────
 function ActiveUsersAdminWidget({ data, navigate }) {
@@ -2687,6 +2829,14 @@ export default function DashboardPage() {
   const [chartTimelineGroupBy, setChartTimelineGroupBy] = useState('day');
   const [chartTimelineLoading, setChartTimelineLoading] = useState(false);
 
+  // RSS Feed state
+  const [rssItems, setRssItems] = useState([]);
+  const [rssLoading, setRssLoading] = useState(false);
+  const [rssError, setRssError] = useState(false);
+  const [rssEnabled, setRssEnabled] = useState(false);
+  const [rssFeedStatuses, setRssFeedStatuses] = useState([]);
+  const [rssMaxItems, setRssMaxItems] = useState(15);
+
   const username = user?.username;
 
   // SUPERADMIN check
@@ -2706,6 +2856,49 @@ export default function DashboardPage() {
     return () => clearInterval(iv);
   }, [isSuperAdmin, token, username]);
 
+  // RSS Feed: načtení po přihlášení + auto-refresh dle intervalu z app settings
+  const rssRefreshRef = useRef(null);
+  const rssCancelledRef = useRef(false);
+
+  const fetchRss = useCallback(async () => {
+    if (!token || !username) return;
+    setRssLoading(true);
+    try {
+      const result = await getRssFeed({ token, username, max_items: 15 });
+      if (rssCancelledRef.current) return;
+      if (result.status === 'success') {
+        setRssItems(result.data || []);
+        setRssEnabled(result.rss_enabled !== false);
+        setRssError(false);
+        setRssFeedStatuses(result.feed_statuses || []);
+        if (result.max_items) setRssMaxItems(result.max_items);
+
+        // Nastavit auto-refresh interval z backendu (minuty → ms)
+        const intervalMin = result.refresh_interval || 15;
+        if (rssRefreshRef.current) clearInterval(rssRefreshRef.current);
+        rssRefreshRef.current = setInterval(() => {
+          if (!rssCancelledRef.current) fetchRss();
+        }, intervalMin * 60 * 1000);
+      } else {
+        setRssEnabled(result.rss_enabled === true);
+        setRssItems([]);
+      }
+    } catch {
+      if (!rssCancelledRef.current) { setRssError(true); setRssItems([]); }
+    } finally {
+      if (!rssCancelledRef.current) setRssLoading(false);
+    }
+  }, [token, username]);
+
+  useEffect(() => {
+    rssCancelledRef.current = false;
+    fetchRss();
+    return () => {
+      rssCancelledRef.current = true;
+      if (rssRefreshRef.current) clearInterval(rssRefreshRef.current);
+    };
+  }, [fetchRss]);
+
   // Determine available widgets based on DASHBOARD_* capabilities from API
   const availableWidgets = useMemo(() => {
     const isAdmin = hasAdminRole();
@@ -2713,7 +2906,9 @@ export default function DashboardPage() {
     const superAdmin = (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
 
     return Object.entries(WIDGET_REGISTRY)
-      .filter(([, cfg]) => {
+      .filter(([id, cfg]) => {
+        // RSS widget: viditelný jen pokud je RSS povoleno v app settings
+        if (id === 'rss_news') return rssEnabled;
         // Widget pouze pro SUPERADMIN
         if (cfg.requiresSuperAdmin) return superAdmin;
         // Widgety bez 'requires' → viditelné vždy
@@ -2724,7 +2919,7 @@ export default function DashboardPage() {
         return caps.includes(cfg.requires);
       })
       .map(([id]) => id);
-  }, [data?.dashboard_capabilities, hasAdminRole, userDetail]);
+  }, [data?.dashboard_capabilities, hasAdminRole, userDetail, rssEnabled]);
 
   // Pomocná funkce: aplikuje uložený dashboard config (tiles + visible) s merge nových widgetů
   const applyDashboardConfig = useCallback((savedTiles, savedVisible) => {
@@ -3008,7 +3203,7 @@ export default function DashboardPage() {
     // alwaysOn widgety (např. active_users_admin) ignorují visibleTiles
     if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) return null;
 
-    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'active_users_admin';
+    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'active_users_admin' || tileId === 'rss_news';
 
     let content = null;
     let badgeCount = null;
@@ -3132,6 +3327,27 @@ export default function DashboardPage() {
         );
         break;
       }
+      case 'rss_news':
+        content = <RssNewsWidget items={rssItems} loading={rssLoading} error={rssError} feedStatuses={rssFeedStatuses} maxItems={rssMaxItems} />;
+        badgeCount = rssItems?.length || 0;
+        headerExtra = (
+          <button
+            onClick={() => fetchRss()}
+            disabled={rssLoading}
+            title="Obnovit zprávy"
+            style={{
+              background: 'none', border: 'none', cursor: rssLoading ? 'default' : 'pointer',
+              color: '#f97316', fontSize: '0.85rem', padding: '4px 6px', borderRadius: '6px',
+              opacity: rssLoading ? 0.5 : 0.7, transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center'
+            }}
+            onMouseEnter={e => { if (!rssLoading) e.currentTarget.style.opacity = '1'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = rssLoading ? '0.5' : '0.7'; }}
+          >
+            <FontAwesomeIcon icon={faSync} spin={rssLoading} />
+          </button>
+        );
+        break;
       case 'active_users_admin':
         content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} />;
         badgeCount = activeUsersData?.count || 0;
