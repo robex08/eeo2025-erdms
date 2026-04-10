@@ -205,7 +205,9 @@ const WIDGET_LABELS = {
   DASHBOARD_SPENDING_CONTRACTS:  'Čerpání smluv',
   DASHBOARD_SPENDING_LP:         'LP přísliby',
   DASHBOARD_CHART_TIMELINE:      'Graf objednávek v čase',
-  DASHBOARD_TOP_SUPPLIERS:       'Top dodavatelé'
+  DASHBOARD_TOP_SUPPLIERS:       'Top dodavatelé',
+  DASHBOARD_CHART_MAJETEK:       'Graf majetku podle druhu',
+  DASHBOARD_CHART_FEES:          'Graf ročních poplatků'
 };
 
 // ============================================================================

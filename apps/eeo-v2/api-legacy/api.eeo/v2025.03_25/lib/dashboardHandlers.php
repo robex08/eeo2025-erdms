@@ -216,6 +216,16 @@ function handle_dashboard_data($input, $config, $queries) {
             $result['annual_fees_due'] = _dashboard_get_annual_fees_due($db);
         }
 
+        // === GRAF: MAJETEK PODLE DRUHU ===
+        if ($has_cap('DASHBOARD_CHART_MAJETEK')) {
+            $result['chart_majetek_by_druh'] = _dashboard_get_majetek_by_druh($db, $user_id, $is_admin);
+        }
+
+        // === GRAF: ROČNÍ POPLATKY PODLE DRUHU A PLATBY ===
+        if ($has_cap('DASHBOARD_CHART_FEES')) {
+            $result['chart_fees_by_druh'] = _dashboard_get_fees_by_druh($db);
+        }
+
         // === POKLADNA - PŘEHLED (aktuální nebo vybraný měsíc) ===
         if ($has_cap('DASHBOARD_CASH_BOOK')) {
             $cashbook_month = isset($input['cashbook_month']) ? (int)$input['cashbook_month'] : (int)date('n');
@@ -551,6 +561,7 @@ function _dashboard_get_orders_for_approval($db, $user_id, $is_admin, $days, $us
     $stmt = $db->prepare("
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
                o.stav_objednavky, o.dt_vytvoreni,
+               JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) as aktualni_stav,
                u_obj.jmeno as objednavatel_jmeno, u_obj.prijmeni as objednavatel_prijmeni,
                u_prik.jmeno as prikazce_jmeno, u_prik.prijmeni as prikazce_prijmeni,
                DATEDIFF(CURDATE(), o.dt_vytvoreni) as dni_od_vytvoreni
@@ -1517,13 +1528,22 @@ function _dashboard_get_order_comments_recent($db, $user_id, $days = 7) {
             o.id as objednavka_id,
             o.cislo_objednavky,
             o.predmet,
+            o.max_cena_s_dph,
+            o.dt_objednavky,
+            DATEDIFF(CURDATE(), o.dt_objednavky) as dni_od_vytvoreni,
             COUNT(k.id) as komentaru_celkem,
             MAX(k.dt_vytvoreni) as posledni_komentar_dt,
             SUBSTRING_INDEX(GROUP_CONCAT(k.obsah_plain ORDER BY k.dt_vytvoreni DESC SEPARATOR '|||'), '|||', 1) as posledni_obsah,
-            SUBSTRING_INDEX(GROUP_CONCAT(CONCAT(au.jmeno, ' ', au.prijmeni) ORDER BY k.dt_vytvoreni DESC SEPARATOR '|||'), '|||', 1) as posledni_autor
+            SUBSTRING_INDEX(GROUP_CONCAT(CONCAT(au.jmeno, ' ', au.prijmeni) ORDER BY k.dt_vytvoreni DESC SEPARATOR '|||'), '|||', 1) as posledni_autor,
+            TRIM(CONCAT(COALESCE(obd.jmeno, ''), ' ', COALESCE(obd.prijmeni, ''))) as objednatel_jmeno,
+            TRIM(CONCAT(COALESCE(sch.jmeno, ''), ' ', COALESCE(sch.prijmeni, ''))) as schvalovatel_jmeno,
+            TRIM(CONCAT(COALESCE(prk.jmeno, ''), ' ', COALESCE(prk.prijmeni, ''))) as prikazce_jmeno
         FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k
         INNER JOIN `" . TBL_OBJEDNAVKY . "` o ON k.objednavka_id = o.id AND o.aktivni = 1 AND o.id != 1
         LEFT JOIN `" . TBL_UZIVATELE . "` au ON k.user_id = au.id
+        LEFT JOIN `" . TBL_UZIVATELE . "` obd ON o.objednatel_id = obd.id
+        LEFT JOIN `" . TBL_UZIVATELE . "` sch ON o.schvalovatel_id = sch.id
+        LEFT JOIN `" . TBL_UZIVATELE . "` prk ON o.prikazce_id = prk.id
         WHERE k.smazano = 0
           AND k.dt_vytvoreni >= ?
           AND (
@@ -1537,7 +1557,8 @@ function _dashboard_get_order_comments_recent($db, $user_id, $days = 7) {
               OR o.fakturant_id = ?
               OR o.potvrdil_vecnou_spravnost_id = ?
           )
-        GROUP BY o.id, o.cislo_objednavky, o.predmet
+        GROUP BY o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph, o.dt_objednavky,
+                 obd.jmeno, obd.prijmeni, sch.jmeno, sch.prijmeni, prk.jmeno, prk.prijmeni
         ORDER BY posledni_komentar_dt DESC
         LIMIT 15
     ");
@@ -1961,7 +1982,78 @@ function _dashboard_get_annual_fees_due($db) {
 }
 
 /**
- * Přehled pokladny/pokladen pro dashboard widget
+ * Graf: majetek podle druhu objednávky (Doughnut/Bar)
+ * Vrátí počet a celkovou hodnotu objednávek klasifikovaných jako MAJETEK dle druhu.
+ */
+function _dashboard_get_majetek_by_druh($db, $user_id, $is_admin) {
+    $majetek_codes = array('ELEKTRONIKA', 'FKSP', 'MAJETEK', 'NABYTEK', 'VZDELAVANI_VYBAVENI');
+    $placeholders = implode(',', array_fill(0, count($majetek_codes), '?'));
+
+    // Primárně ze skutečně fakturovaných částek (fa_castka). Objednávky bez faktur jsou ignorovány.
+    $stmt = $db->prepare("
+        SELECT
+            JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu')) AS druh_kod,
+            cs.nazev_stavu AS druh_nazev,
+            COUNT(DISTINCT o.id) AS pocet,
+            COALESCE(SUM(f.fa_castka), 0) AS castka_celkem
+        FROM `" . TBL_OBJEDNAVKY . "` o
+        INNER JOIN `" . TBL_FAKTURY . "` f
+            ON f.objednavka_id = o.id
+            AND f.aktivni = 1
+            AND f.stav NOT IN ('STORNO')
+        LEFT JOIN `" . TBL_CISELNIK_STAVY . "` cs
+            ON cs.kod_stavu = JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu'))
+            AND cs.typ_objektu = 'DRUH_OBJEDNAVKY'
+        WHERE o.aktivni = 1
+          AND o.id != 1
+          AND JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu')) IN ($placeholders)
+        GROUP BY druh_kod, druh_nazev
+        ORDER BY castka_celkem DESC
+    ");
+    $stmt->execute($majetek_codes);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Graf: roční poplatky podle druhu a typu platby
+ * Vrátí skupinová data druh × platba pro stacked bar chart.
+ */
+function _dashboard_get_fees_by_druh($db) {
+    $rok = (int)date('Y');
+
+    // Souhrn dle druhu a platby pro aktuální rok
+    $stmt = $db->prepare("
+        SELECT
+            rp.druh,
+            COALESCE(cs_druh.nazev_stavu, rp.druh) AS druh_nazev,
+            rp.platba,
+            COALESCE(cs_platba.nazev_stavu, rp.platba) AS platba_nazev,
+            COUNT(*) AS pocet,
+            COALESCE(SUM(rp.celkova_castka), 0) AS castka_celkem
+        FROM `" . TBL_ROCNI_POPLATKY . "` rp
+        LEFT JOIN `" . TBL_CISELNIK_STAVY . "` cs_druh
+            ON cs_druh.kod_stavu = rp.druh AND cs_druh.typ_objektu = 'ROCNI_POPLATEK_DRUH'
+        LEFT JOIN `" . TBL_CISELNIK_STAVY . "` cs_platba
+            ON cs_platba.kod_stavu = rp.platba AND cs_platba.typ_objektu = 'PLATBA_ROCNIHO_POPLATKU'
+        WHERE rp.aktivni = 1
+          AND rp.rok = ?
+        GROUP BY rp.druh, druh_nazev, rp.platba, platba_nazev
+        ORDER BY castka_celkem DESC
+    ");
+    $stmt->execute([$rok]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Celkový součet pro rok
+    $total = array_sum(array_column($rows, 'castka_celkem'));
+
+    return [
+        'rok'   => $rok,
+        'rows'  => $rows,
+        'total' => $total
+    ];
+}
+
+/**
  * Admin: agregát přes všechny pokladny
  * Běžný uživatel: jeho přiřazené pokladny
  */
