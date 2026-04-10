@@ -149,7 +149,7 @@ function handle_dashboard_data($input, $config, $queries) {
         $result['orders_stats'] = _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $perm_codes, $usek_id);
 
         // === MOJE OBJEDNÁVKY K AKCI ===
-        $result['my_orders_pending'] = _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve);
+        $result['my_orders_pending'] = _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve, $is_admin, $usek_id);
 
         // === FAKTURY K VĚCNÉ KONTROLE ===
         if ($has_cap('DASHBOARD_INVOICES_CONFIRM')) {
@@ -379,7 +379,7 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
 /**
  * Moje objednávky čekající na akci
  */
-function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve = false) {
+function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve = false, $is_admin = false, $usek_id = null) {
     $active_states = "('NOVA', 'ROZPRACOVANA', 'SCHVALENA', 'VECNA_SPRAVNOST', 'ODESLANA', 'ODESLANA_DODAVATELI', 'ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI')";
 
     $select = "
@@ -435,11 +435,36 @@ function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_appro
         $prikazce = $stmt3->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    // 4. Objednávky úseku (pouze SUPERADMIN / ADMINISTRATOR s přiřazeným úsekem)
+    $usek = [];
+    if ($is_admin && $usek_id) {
+        // Vyloučit objednávky kde jsem už jako objednatel/garant/příkazce
+        $all_my_ids = array_merge(
+            $objednatel_ids,
+            array_column($garant, 'id'),
+            array_column($prikazce, 'id')
+        );
+        $exclude_usek = '';
+        if (!empty($all_my_ids)) {
+            $ph3 = implode(',', array_map('intval', $all_my_ids));
+            $exclude_usek = "AND o.id NOT IN ($ph3)";
+        }
+        // Objednávky kde objednatel patří do stejného úseku
+        $stmt4 = $db->prepare($select . "
+              AND u_obj.usek_id = ?
+              {$exclude_usek}
+            ORDER BY o.dt_vytvoreni DESC LIMIT 20");
+        $stmt4->execute([$usek_id]);
+        $usek = $stmt4->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     return [
         'objednatel'        => $objednatel,
         'garant'            => $garant,
         'prikazce'          => $prikazce,
-        'has_prikazce_role' => $has_order_approve
+        'usek'              => $usek,
+        'has_prikazce_role' => $has_order_approve,
+        'is_admin'          => $is_admin
     ];
 }
 

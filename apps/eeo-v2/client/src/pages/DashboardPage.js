@@ -437,8 +437,9 @@ const FocusBannerScrollBtnLeft = styled.button`
   font-size: 1.1rem;
   font-weight: 900;
   line-height: 1;
-  ${FocusBannerWrap}:hover & { opacity: 1; }
-  &:hover { opacity: 1 !important; background: rgba(255,255,255,1); }
+  ${FocusBannerWrap}:hover & { opacity: ${props => props.$scrollable ? 1 : 0}; }
+  &:hover { opacity: ${props => props.$scrollable ? '1 !important' : 0}; background: rgba(255,255,255,1); }
+  pointer-events: ${props => props.$scrollable ? 'auto' : 'none'};
 `;
 
 const FocusBannerScrollBtnRight = styled.button`
@@ -464,8 +465,9 @@ const FocusBannerScrollBtnRight = styled.button`
   font-size: 1.1rem;
   font-weight: 900;
   line-height: 1;
-  ${FocusBannerWrap}:hover & { opacity: 1; }
-  &:hover { opacity: 1 !important; background: rgba(255,255,255,1); }
+  ${FocusBannerWrap}:hover & { opacity: ${props => props.$scrollable ? 1 : 0}; }
+  &:hover { opacity: ${props => props.$scrollable ? '1 !important' : 0}; background: rgba(255,255,255,1); }
+  pointer-events: ${props => props.$scrollable ? 'auto' : 'none'};
 `;
 
 const FocusBannerBody = styled.div`
@@ -595,7 +597,7 @@ const CbLoadLabel = styled.span`
 
 const WidgetBody = styled.div`
   padding: 0.5rem 1.25rem 1.25rem;
-  max-height: ${p => p.$noScroll ? 'none' : '280px'};
+  max-height: ${p => p.$noScroll ? 'none' : '420px'};
   overflow-y: ${p => p.$noScroll ? 'visible' : 'auto'};
   font-stretch: condensed;
   letter-spacing: -0.015em;
@@ -1591,9 +1593,11 @@ function MyOrdersWidget({ myOrdersData, navigate }) {
   const objednatel = myOrdersData?.objednatel || [];
   const garant     = myOrdersData?.garant     || [];
   const prikazce   = myOrdersData?.prikazce   || [];
+  const usek       = myOrdersData?.usek       || [];
   const hasPrikazce = myOrdersData?.has_prikazce_role || false;
+  const isAdmin    = myOrdersData?.is_admin   || false;
 
-  const total = objednatel.length + garant.length + prikazce.length;
+  const total = objednatel.length + garant.length + prikazce.length + usek.length;
   if (total === 0) {
     return <WidgetBody><EmptyState>Žádné objednávky</EmptyState></WidgetBody>;
   }
@@ -1645,6 +1649,12 @@ function MyOrdersWidget({ myOrdersData, navigate }) {
         <>
           <SectionDivider label="Příkazce / Schvalovatel" />
           {prikazce.map(renderOrder)}
+        </>
+      )}
+      {isAdmin && usek.length > 0 && (
+        <>
+          <SectionDivider label="Úsek" />
+          {usek.map(renderOrder)}
         </>
       )}
       <ViewAllLink>
@@ -3007,6 +3017,22 @@ const FOCUS_ICON_MAP = {
 
 function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) {
   const scrollRef = React.useRef(null);
+  const [isScrollable, setIsScrollable] = React.useState(false);
+
+  const checkScrollable = React.useCallback(() => {
+    if (scrollRef.current) {
+      setIsScrollable(scrollRef.current.scrollWidth > scrollRef.current.clientWidth + 5);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    checkScrollable();
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(checkScrollable);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [checkScrollable, items]);
 
   const hasItems = items && items.length > 0;
   if (!hasItems && !lastRefreshed) return null;
@@ -3054,7 +3080,7 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) 
         )}
       </FocusBannerHeader>
       <FocusBannerBodyWrap>
-        <FocusBannerScrollBtnLeft onClick={() => scrollBy('left')} title="Posunout vlevo">
+        <FocusBannerScrollBtnLeft $scrollable={isScrollable} onClick={() => scrollBy('left')} title="Posunout vlevo">
           <span>&#8249;</span>
         </FocusBannerScrollBtnLeft>
         <FocusBannerBody ref={scrollRef}>
@@ -3078,7 +3104,7 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) 
             </FocusCard>
           ))}
         </FocusBannerBody>
-        <FocusBannerScrollBtnRight onClick={() => scrollBy('right')} title="Posunout vpravo">
+        <FocusBannerScrollBtnRight $scrollable={isScrollable} onClick={() => scrollBy('right')} title="Posunout vpravo">
           <span>&#8250;</span>
         </FocusBannerScrollBtnRight>
       </FocusBannerBodyWrap>
@@ -3509,6 +3535,7 @@ export default function DashboardPage() {
     let content = null;
     let badgeCount = null;
     let headerExtra = null;
+    let titleOverride = null;
 
     switch (tileId) {
       case 'welcome':
@@ -3521,7 +3548,11 @@ export default function DashboardPage() {
         content = <MyOrdersWidget myOrdersData={data?.my_orders_pending} navigate={navigate} />;
         badgeCount = (data?.my_orders_pending?.objednatel?.length || 0)
                    + (data?.my_orders_pending?.garant?.length || 0)
-                   + (data?.my_orders_pending?.prikazce?.length || 0);
+                   + (data?.my_orders_pending?.prikazce?.length || 0)
+                   + (data?.my_orders_pending?.usek?.length || 0);
+        if (data?.my_orders_pending?.is_admin && (data?.my_orders_pending?.usek?.length || 0) > 0) {
+          titleOverride = 'Moje objednávky / úseku';
+        }
         break;
       case 'my_invoices':
         content = <InvoiceListWidget invoices={data?.my_invoices_pending} navigate={navigate} filterPreset="vecna_spravnost" />;
@@ -3720,7 +3751,7 @@ export default function DashboardPage() {
             <WidgetIcon $bg={cfg.color + '18'} $color={cfg.color}>
               <FontAwesomeIcon icon={cfg.icon} />
             </WidgetIcon>
-            {cfg.title}
+            {titleOverride || cfg.title}
           </WidgetTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {headerExtra}
