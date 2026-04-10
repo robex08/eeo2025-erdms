@@ -71,8 +71,13 @@ function handle_dohadne_polozky($input, $config) {
         TimezoneHelper::setMysqlTimezone($db);
 
         // ─── Stavové filtry ───────────────────────────────────────────────────
-        // Stavy, které NEZAHRNUJEME (objednávky jsou ukončené nebo neplatné)
-        $excluded_states = array('Zamítnutá', 'Zrušena', 'Smazaná', 'Archivovaná', 'Dokončená');
+        // Stavy, které NEZAHRNUJEME (objednávky jsou ukončené, neplatné, nebo již mají fakturu)
+        // - Věcná správnost / Zkontrolovaná: faktura je zaevidována, probíhá/proběhla věcná správnost
+        // - Ke zveřejnění / Uveřejněna: post-dokončení (smlouvy v registru)
+        $excluded_states = array(
+            'Zamítnutá', 'Zrušena', 'Smazaná', 'Archivovaná', 'Dokončená',
+            'Věcná správnost', 'Zkontrolovaná', 'Ke zveřejnění', 'Uveřejněna v registru smluv'
+        );
 
         // Pokud FE poslal stav_filter → odškrtnuté checkboxy přidáme do excluded
         if ($stav_filter !== null) {
@@ -86,16 +91,20 @@ function handle_dohadne_polozky($input, $config) {
         // Stavy "před odeslením" → částka = max_cena_s_dph / počet LP vazeb
         $pre_schvaleni_states = array('Nová', 'Rozpracovaná', 'Ke schválení', 'Schválená');
 
-        // ─── 1) LP dohadné položky ────────────────────────────────────────────
+        // ─── 1) LP dohadné položky dle čísla účtu ────────────────────────────
+        $lp_uctu_result = _dohadne_get_lp_by_uctu_data($db, $datum_od, $datum_do, $excluded_states, $pre_schvaleni_states);
+
+        // ─── 2) LP dohadné položky dle LP kódu ───────────────────────────────
         $lp_result = _dohadne_get_lp_data($db, $datum_od, $datum_do, $excluded_states, $pre_schvaleni_states);
 
-        // ─── 2) SMLOUVY dohadné položky ───────────────────────────────────────
+        // ─── 3) SMLOUVY dohadné položky ───────────────────────────────────────
         $smlouvy_result = _dohadne_get_smlouvy_data($db, $datum_od, $datum_do, $excluded_states, $pre_schvaleni_states);
 
         http_response_code(200);
         echo json_encode(array(
             'status'  => 'success',
             'data'    => array(
+                'lp_uctu' => $lp_uctu_result,
                 'lp'      => $lp_result,
                 'smlouvy' => $smlouvy_result,
             ),
@@ -110,6 +119,213 @@ function handle_dohadne_polozky($input, $config) {
         http_response_code(500);
         echo json_encode(array('status' => 'error', 'message' => 'Chyba při zpracování: ' . $e->getMessage()));
     }
+}
+
+/**
+ * Vrátí LP dohadné položky seskupené dle čísla účtu (cislo_uctu).
+ * Každý účet (např. 501) sdružuje více LP kódů (LPIT1, LPIA1, LPT1…).
+ * Používá identická stavová omezení jako _dohadne_get_lp_data().
+ */
+function _dohadne_get_lp_by_uctu_data($db, $datum_od, $datum_do, $excluded_states, $pre_schvaleni_states) {
+    $where  = array('o.aktivni = 1');
+    $params = array();
+
+    $where[] = "o.financovani LIKE '%\"typ\":\"LP\"%'";
+
+    if (!empty($excluded_states)) {
+        $placeholders = implode(',', array_fill(0, count($excluded_states), '?'));
+        $where[] = "o.stav_objednavky NOT IN ($placeholders)";
+        $params   = array_merge($params, $excluded_states);
+    }
+
+    if ($datum_od) { $where[] = 'DATE(o.dt_vytvoreni) >= ?'; $params[] = $datum_od; }
+    if ($datum_do) { $where[] = 'DATE(o.dt_vytvoreni) <= ?'; $params[] = $datum_do; }
+
+    $where_sql = implode(' AND ', $where);
+
+    $sql = "
+        SELECT
+            o.id,
+            o.cislo_objednavky,
+            o.predmet,
+            o.dodavatel_nazev,
+            o.stav_objednavky,
+            o.max_cena_s_dph,
+            o.financovani,
+            o.dt_vytvoreni,
+            o.strediska_kod,
+            o.druh_objednavky_kod,
+            u1.jmeno     AS objednatel_jmeno,
+            u1.prijmeni  AS objednatel_prijmeni,
+            u2.jmeno     AS schvalovatel_jmeno,
+            u2.prijmeni  AS schvalovatel_prijmeni,
+            u3.jmeno     AS prikazce_jmeno,
+            u3.prijmeni  AS prikazce_prijmeni,
+            COALESCE(
+                (SELECT SUM(p.cena_s_dph) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id),
+                0
+            ) AS suma_polozky
+        FROM `" . TBL_OBJEDNAVKY . "` o
+        LEFT JOIN `" . TBL_UZIVATELE . "` u1 ON u1.id = o.objednatel_id
+        LEFT JOIN `" . TBL_UZIVATELE . "` u2 ON u2.id = o.schvalovatel_id
+        LEFT JOIN `" . TBL_UZIVATELE . "` u3 ON u3.id = o.prikazce_id
+        LEFT JOIN `" . TBL_FAKTURY . "` f
+            ON f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO'
+        WHERE $where_sql
+          AND f.id IS NULL
+        ORDER BY o.dt_vytvoreni DESC
+    ";
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Předem načteme LP info (id → cislo_lp, cislo_uctu, nazev_uctu)
+    $lp_ids_needed = array();
+    foreach ($rows as $row) {
+        $fin = json_decode($row['financovani'], true);
+        if ($fin && isset($fin['lp_kody']) && is_array($fin['lp_kody'])) {
+            foreach ($fin['lp_kody'] as $lp_id) {
+                $lp_ids_needed[(int)$lp_id] = true;
+            }
+        }
+    }
+
+    $lp_info_map = array(); // lp_id → { cislo_lp, cislo_uctu, nazev_uctu }
+    if (!empty($lp_ids_needed)) {
+        $lp_ids_list = implode(',', array_map('intval', array_keys($lp_ids_needed)));
+        $lp_stmt = $db->query(
+            "SELECT id, cislo_lp, cislo_uctu, nazev_uctu FROM `" . TBL_LP_MASTER . "` WHERE id IN ($lp_ids_list)"
+        );
+        foreach ($lp_stmt->fetchAll(PDO::FETCH_ASSOC) as $lp) {
+            $lp_info_map[(int)$lp['id']] = $lp;
+        }
+    }
+
+    // Seskupit dle (cislo_uctu, nazev_uctu)
+    $groups = array(); // key = "cislo_uctu|nazev_uctu"
+    $total_castka                = 0;
+    $total_objednavek            = 0;
+    $castka_pre_schvaleni_total  = 0;
+    $castka_odeslane_total       = 0;
+
+    foreach ($rows as $row) {
+        $fin = json_decode($row['financovani'], true);
+        if (!$fin || !isset($fin['lp_kody']) || !is_array($fin['lp_kody']) || empty($fin['lp_kody'])) {
+            continue;
+        }
+
+        $lp_kody  = $fin['lp_kody'];
+        $pocet_lp = count($lp_kody);
+
+        $je_pre_schvaleni = in_array($row['stav_objednavky'], $pre_schvaleni_states);
+        $suma_polozky     = (float)$row['suma_polozky'];
+        $max_cena         = (float)$row['max_cena_s_dph'];
+
+        if ($je_pre_schvaleni) {
+            $castka_na_lp     = $pocet_lp > 0 ? round($max_cena / $pocet_lp, 2) : $max_cena;
+            $castka_objednavky = $max_cena;
+            $typ_castky       = 'pre_schvaleni';
+        } else {
+            $castka_zaklad    = $suma_polozky > 0 ? $suma_polozky : $max_cena;
+            $castka_na_lp     = $pocet_lp > 0 ? round($castka_zaklad / $pocet_lp, 2) : $castka_zaklad;
+            $castka_objednavky = $castka_zaklad;
+            $typ_castky       = 'odeslana';
+        }
+
+        // Zpracujeme každý LP kód → zjistíme jeho účet → zařadíme do skupiny
+        // Jedna objednávka může být přes více LP různých účtů → správně ji rozúčtujeme
+        foreach ($lp_kody as $lp_id) {
+            $lp_id   = (int)$lp_id;
+            $lp_info = isset($lp_info_map[$lp_id]) ? $lp_info_map[$lp_id] : null;
+
+            $cislo_uctu = $lp_info ? (string)$lp_info['cislo_uctu'] : 'Neznámý';
+            $nazev_uctu = $lp_info ? $lp_info['nazev_uctu']         : '';
+            $cislo_lp   = $lp_info ? $lp_info['cislo_lp']           : 'LP#' . $lp_id;
+            $grp_key    = $cislo_uctu . '|' . $nazev_uctu;
+
+            if (!isset($groups[$grp_key])) {
+                $groups[$grp_key] = array(
+                    'cislo_uctu'           => $cislo_uctu,
+                    'nazev_uctu'           => $nazev_uctu,
+                    'lp_kody_v_uctu'       => array(), // unikátní LP kódy v tomto účtu
+                    'pocet_objednavek'     => 0,
+                    'castka_pre_schvaleni' => 0.0,
+                    'castka_odeslane'      => 0.0,
+                    'castka_celkem'        => 0.0,
+                    'objednavky'           => array(),
+                );
+            }
+
+            // Přidat LP kód do setu účtu
+            if (!in_array($cislo_lp, $groups[$grp_key]['lp_kody_v_uctu'])) {
+                $groups[$grp_key]['lp_kody_v_uctu'][] = $cislo_lp;
+            }
+
+            if ($typ_castky === 'pre_schvaleni') {
+                $groups[$grp_key]['castka_pre_schvaleni'] += $castka_na_lp;
+                $castka_pre_schvaleni_total              += $castka_na_lp;
+            } else {
+                $groups[$grp_key]['castka_odeslane'] += $castka_na_lp;
+                $castka_odeslane_total               += $castka_na_lp;
+            }
+            $groups[$grp_key]['castka_celkem']      += $castka_na_lp;
+            $total_castka                           += $castka_na_lp;
+
+            // Přidat objednávku do skupiny (jen jednou za skupinu+objednávku)
+            $already = false;
+            foreach ($groups[$grp_key]['objednavky'] as $ex) {
+                if ($ex['id'] === (int)$row['id']) { $already = true; break; }
+            }
+            if (!$already) {
+                $groups[$grp_key]['pocet_objednavek']++;
+                $total_objednavek++;
+                $groups[$grp_key]['objednavky'][] = array(
+                    'id'                   => (int)$row['id'],
+                    'cislo_objednavky'     => $row['cislo_objednavky'],
+                    'predmet'              => $row['predmet'],
+                    'dodavatel_nazev'      => $row['dodavatel_nazev'],
+                    'stav_objednavky'      => $row['stav_objednavky'],
+                    'castka'               => $castka_na_lp,
+                    'castka_celkem'        => $castka_objednavky,
+                    'typ_castky'           => $typ_castky,
+                    'dt_vytvoreni'         => $row['dt_vytvoreni'],
+                    'strediska_kod'        => $row['strediska_kod'],
+                    'druh_objednavky_kod'  => $row['druh_objednavky_kod'],
+                    'cislo_lp'             => $cislo_lp,
+                    'objednatel_jmeno'     => $row['objednatel_jmeno'],
+                    'objednatel_prijmeni'  => $row['objednatel_prijmeni'],
+                    'schvalovatel_jmeno'   => $row['schvalovatel_jmeno'],
+                    'schvalovatel_prijmeni'=> $row['schvalovatel_prijmeni'],
+                    'prikazce_jmeno'       => $row['prikazce_jmeno'],
+                    'prikazce_prijmeni'    => $row['prikazce_prijmeni'],
+                );
+            }
+        }
+    }
+
+    // Seřadit skupiny dle cislo_uctu ASC
+    usort($groups, function($a, $b) {
+        return strnatcmp((string)$a['cislo_uctu'], (string)$b['cislo_uctu']);
+    });
+
+    // Zaokrouhlit + seřadit LP kódy v každé skupině
+    foreach ($groups as &$g) {
+        $g['castka_pre_schvaleni'] = round($g['castka_pre_schvaleni'], 2);
+        $g['castka_odeslane']      = round($g['castka_odeslane'], 2);
+        $g['castka_celkem']        = round($g['castka_celkem'], 2);
+        sort($g['lp_kody_v_uctu']);
+    }
+    unset($g);
+
+    return array(
+        'groups'               => array_values($groups),
+        'total_objednavek'     => $total_objednavek,
+        'total_uctu_skupin'    => count($groups),
+        'castka_pre_schvaleni' => round($castka_pre_schvaleni_total, 2),
+        'castka_odeslane'      => round($castka_odeslane_total, 2),
+        'castka_celkem'        => round($total_castka, 2),
+    );
 }
 
 /**
