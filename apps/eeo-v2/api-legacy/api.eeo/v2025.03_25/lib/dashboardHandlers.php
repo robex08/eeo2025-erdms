@@ -192,7 +192,8 @@ function handle_dashboard_data($input, $config, $queries) {
 
         // === GRAF: OBJEDNÁVKY V ČASE (posledních 30 dní) ===
         if ($has_cap('DASHBOARD_CHART_TIMELINE')) {
-            $result['chart_orders_timeline'] = _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_read, 30);
+            $timeline_result = _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_read, 30);
+            $result['chart_orders_timeline'] = $timeline_result['items'];
         }
 
         // === TOP DODAVATELÉ ===
@@ -1253,6 +1254,24 @@ function _dashboard_get_notifications_unread($db, $user_id, $limit) {
  * Graf: denní počty objednávek za posledních N dní
  */
 function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_read, $days) {
+    // Určení způsobu agregace podle délky periody
+    if ($days >= 181) {
+        // Rok → agregace po měsících (12 bodů)
+        $group_by    = 'month';
+        $select_den  = "DATE_FORMAT(DATE(o.dt_vytvoreni), '%Y-%m-01') as den";
+        $group_clause = "DATE_FORMAT(DATE(o.dt_vytvoreni), '%Y-%m-01')";
+    } elseif ($days >= 32) {
+        // Kvartál → agregace po týdnech (pondělí = začátek týdne)
+        $group_by    = 'week';
+        $select_den  = "DATE(DATE_SUB(DATE(o.dt_vytvoreni), INTERVAL WEEKDAY(DATE(o.dt_vytvoreni)) DAY)) as den";
+        $group_clause = "DATE(DATE_SUB(DATE(o.dt_vytvoreni), INTERVAL WEEKDAY(DATE(o.dt_vytvoreni)) DAY))";
+    } else {
+        // 7/14/30 dní → agregace po dnech
+        $group_by    = 'day';
+        $select_den  = "DATE(o.dt_vytvoreni) as den";
+        $group_clause = "DATE(o.dt_vytvoreni)";
+    }
+
     $where_user = "";
     $params = [$days];
 
@@ -1262,7 +1281,7 @@ function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_rea
     }
 
     $stmt = $db->prepare("
-        SELECT DATE(o.dt_vytvoreni) as den, 
+        SELECT {$select_den},
                COUNT(*) as pocet,
                COALESCE(SUM(
                    CASE
@@ -1286,11 +1305,12 @@ function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_rea
           AND o.id != 1
           AND o.dt_vytvoreni >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
           {$where_user}
-        GROUP BY DATE(o.dt_vytvoreni)
+        GROUP BY {$group_clause}
         ORDER BY den ASC
     ");
     $stmt->execute($params);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    return ['items' => $items, 'group_by' => $group_by];
 }
 
 /**
@@ -2096,8 +2116,8 @@ function handle_dashboard_chart_timeline($input, $config) {
         return;
     }
 
-    // Validace chart_days: povolené hodnoty 7, 14, 30
-    $allowed_days = [7, 14, 30];
+    // Validace chart_days: povolené hodnoty 7, 14, 30, 90, 365
+    $allowed_days = [7, 14, 30, 90, 365];
     $chart_days = isset($input['chart_days']) ? (int)$input['chart_days'] : 30;
     if (!in_array($chart_days, $allowed_days)) {
         $chart_days = 30;
@@ -2128,7 +2148,8 @@ function handle_dashboard_chart_timeline($input, $config) {
         http_response_code(200);
         echo json_encode([
             'status' => 'success',
-            'data' => $timeline,
+            'data' => $timeline['items'],
+            'group_by' => $timeline['group_by'],
             'chart_days' => $chart_days
         ]);
 

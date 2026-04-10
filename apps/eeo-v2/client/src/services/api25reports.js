@@ -626,3 +626,23 @@ export const exportToCSV = (data, filename = 'report.csv') => {
 };
 
 export default api25reports;
+
+/**
+ * Dohadné položky — objednávky bez faktur vázané na LP nebo Smlouvu.
+ * POST /stats/dohadne-polozky
+ */
+export const fetchDohadnePolozky = async ({ token, username, datum_od, datum_do, stav_filter }) => {
+  try {
+    const response = await api25reports.post('/stats/dohadne-polozky', {
+      token,
+      username,
+      datum_od: datum_od || undefined,
+      datum_do: datum_do || undefined,
+      stav_filter: stav_filter || undefined,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('❌ [REPORTS API] fetchDohadnePolozky error:', error);
+    throw error;
+  }
+};

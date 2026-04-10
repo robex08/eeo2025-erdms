@@ -43,7 +43,8 @@ import {
   faLock,
   faInfoCircle,
   faSpinner,
-  faPen
+  faPen,
+  faHourglassHalf
 } from '@fortawesome/free-solid-svg-icons';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -87,6 +88,7 @@ import { LPCerpaniEditor } from '../components/invoices';
 import { getStrediska25, completeOrder25 } from '../services/api25orders';
 import FkInlineCell from '../components/FkInlineCell';
 import { getCashbookOverview, getCashbookOverviewEntries } from '../services/apiCashbookOverview';
+import { fetchDohadnePolozky } from '../services/api25reports';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
 
@@ -98,7 +100,8 @@ const PAGE_TABS = [
   { id: 'stats', label: 'Statistiky', icon: faChartLine },
   { id: 'attachments', label: 'Přílohy', icon: faPaperclip },
   { id: 'pivot', label: 'Agregační tabulka - vlastní', icon: faTable },
-  { id: 'cashbook', label: 'Přehled pokladen', icon: faCoins }
+  { id: 'cashbook', label: 'Přehled pokladen', icon: faCoins },
+  { id: 'dohadne', label: 'Dohadné položky', icon: faHourglassHalf }
 ];
 
 const TAB_TONES = {
@@ -109,7 +112,8 @@ const TAB_TONES = {
   reports: { base: '#b45309', soft: '#fef3c7' },
   attachments: { base: '#7c3aed', soft: '#ede9fe' },
   pivot: { base: '#0891b2', soft: '#cffafe' },
-  cashbook: { base: '#1e40af', soft: '#dbeafe' }
+  cashbook: { base: '#1e40af', soft: '#dbeafe' },
+  dohadne: { base: '#c2410c', soft: '#ffedd5' }
 };
 
 // ─── Vzdělávání: klíčová slova pro filtrování dle Druhu objednávky ──────────
@@ -170,6 +174,10 @@ const SECTION_BLOCKS = {
   cashbook: [
     { key: 'cashbookOverview', label: 'Přehled pokladen' },
     { key: 'cashbookCharts', label: 'Grafy' }
+  ],
+  dohadne: [
+    { key: 'dohadneLp', label: 'Dohadné položky — Limitované přísliby (LP)' },
+    { key: 'dohadneSmlouvy', label: 'Dohadné položky — Smlouvy' }
   ]
 };
 
@@ -371,6 +379,7 @@ const Header = styled.header`
   flex-wrap: wrap;
   gap: 1rem;
   color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `;
 
 const HeaderTitle = styled.div`
@@ -487,6 +496,7 @@ const SummaryCard = styled.div`
   padding: 1.2rem 1.4rem;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
   border: 1px solid rgba(148, 163, 184, 0.25);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `;
 
 const SummaryLabel = styled.div`
@@ -514,7 +524,7 @@ const TabsBar = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0;
+  margin-bottom: 0.5rem;
   flex-wrap: wrap;
   position: sticky;
   top: -1em;
@@ -2265,7 +2275,12 @@ export default function StatsReportsPage() {
   const [orderAttachments, setOrderAttachments] = useState([]); // 🆕 OBJ přílohy (všechny najednou)
   const [annualFeeAttachments, setAnnualFeeAttachments] = useState([]);
   const [timelineData, setTimelineData] = useState(null);
-  const [timelineCumulative, setTimelineCumulative] = useState(true);
+  const [timelineCumulative, setTimelineCumulative] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_timeline_cumulative`);
+      return saved === null ? false : saved === 'true';
+    } catch (_) { return false; }
+  });
   const [attachmentsStats, setAttachmentsStats] = useState(null);
   // Attachments tab state
   const [orderAttachmentsStats, setOrderAttachmentsStats] = useState(null);
@@ -2328,7 +2343,59 @@ export default function StatsReportsPage() {
   const [cashbookEntries, setCashbookEntries] = useState({});
   const [cashbookSearch, setCashbookSearch] = useState('');
   const [cashbookSearchActive, setCashbookSearchActive] = useState('');
-  
+
+  // ─── Dohadné položky ──────────────────────────────────────────────────────
+  const [dohadneData, setDohadneData] = useState(null);
+  const [dohadneLoading, setDohadneLoading] = useState(false);
+  const [dohadneDatumOd, setDohadneDatumOd] = useState('');
+  const [dohadneDatumDo, setDohadneDatumDo] = useState('');
+  const dohadneDatumRef = React.useRef({ od: '', ddo: '' });
+  const setDohadneDatumy = (od, ddo) => {
+    dohadneDatumRef.current = { od, ddo };
+    setDohadneDatumOd(od);
+    setDohadneDatumDo(ddo);
+  };
+  const [expandedDohadneLp, setExpandedDohadneLp] = useState(() => new Set());
+  const [expandedDohadneSmlouvy, setExpandedDohadneSmlouvy] = useState(() => new Set());
+  const [dohadneSelectedQ, setDohadneSelectedQ] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stats_reports_dohadne_q');
+      if (saved && ['Q1','Q2','Q3','Q4','ALL'].includes(saved)) return saved;
+    } catch {}
+    // Fallback: poslední kvartál, jehož první měsíc již nastal
+    const m = new Date().getMonth() + 1;
+    if (m >= 10) return 'Q4';
+    if (m >= 7) return 'Q3';
+    if (m >= 4) return 'Q2';
+    return 'Q1';
+  });
+
+  // Filtr stavů pro dohadné položky (Set stavů, prázdný = vše)
+  const DOHADNE_STAV_CHECKBOXES = ['Ke schválení', 'Schválená', 'Rozpracovaná'];
+  const [dohadneStavFilter, setDohadneStavFilter] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stats_reports_dohadne_stavy');
+      if (saved !== null) {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch {}
+    return new Set(['Ke schválení', 'Schválená', 'Rozpracovaná']); // výchozí: vše zobrazeno
+  });
+  const dohadneStavFilterRef = React.useRef([...new Set(['Ke schválení', 'Schválená', 'Rozpracovaná'])]);
+  // Synchronizace ref s iniciálním stavem
+  React.useEffect(() => { dohadneStavFilterRef.current = [...dohadneStavFilter]; }, []); // eslint-disable-line
+  const toggleDohadneStav = (stav) => {
+    setDohadneStavFilter(prev => {
+      const next = new Set(prev);
+      next.has(stav) ? next.delete(stav) : next.add(stav);
+      const arr = [...next];
+      dohadneStavFilterRef.current = arr;
+      try { localStorage.setItem('stats_reports_dohadne_stavy', JSON.stringify(arr)); } catch {}
+      return next;
+    });
+  };
+
   // Stav třídění flat tabulek: { [tableKey]: { field, dir } }
   const [tableSorts, setTableSorts] = useState({});
   // FK stav mapa pro řazení dle FK sloupce (ref – nepotřebuje re-render)
@@ -2979,6 +3046,34 @@ export default function StatsReportsPage() {
     }
   }, [token, username]);
 
+  const loadDohadnePolozky = useCallback(async (overrideDatumOd, overrideDatumDo) => {
+    if (!token || !username) return;
+    setDohadneLoading(true);
+    try {
+      const od = overrideDatumOd !== undefined ? overrideDatumOd : dohadneDatumRef.current.od;
+      const ddo = overrideDatumDo !== undefined ? overrideDatumDo : dohadneDatumRef.current.ddo;
+      const stavFilter = dohadneStavFilterRef.current;
+      const result = await fetchDohadnePolozky({
+        token,
+        username,
+        datum_od: od || undefined,
+        datum_do: ddo || undefined,
+        stav_filter: stavFilter.length > 0 ? stavFilter : [],
+      });
+      if (result?.status === 'success') {
+        setDohadneData(result.data);
+      } else {
+        setDohadneData(null);
+        if (showToast) showToast(result?.message || 'Nepodařilo se načíst dohadné položky', 'error');
+      }
+    } catch (e) {
+      setDohadneData(null);
+      if (showToast) showToast(e?.message || 'Chyba při načítání dohadných položek', 'error');
+    } finally {
+      setDohadneLoading(false);
+    }
+  }, [token, username, showToast]);
+
   const handleLoadData = useCallback(async () => {
     if (!token || !username) return;
     setLoading(true);
@@ -3184,6 +3279,63 @@ export default function StatsReportsPage() {
       loadCashbookData();
     }
   }, [activeTab, token, username, cashbookFilters.rok, cashbookFilters.mesic, loadCashbookData]);
+
+  // Load dohadné položky when tab becomes active (initial load only)
+  useEffect(() => {
+    if (activeTab === 'dohadne' && token && username && !dohadneData && !dohadneLoading) {
+      loadDohadnePolozky();
+    }
+  }, [activeTab, token, username, dohadneData, dohadneLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Helper: spočítá datumový rozsah pro aktuální Q + rok
+  const getDohadneDateRange = useCallback((q, rok) => {
+    const QUARTERS = {
+      Q1:  [`${rok}-01-01`, `${rok}-03-31`],
+      Q2:  [`${rok}-04-01`, `${rok}-06-30`],
+      Q3:  [`${rok}-07-01`, `${rok}-09-30`],
+      Q4:  [`${rok}-10-01`, `${rok}-12-31`],
+      ALL: [`${rok}-01-01`, `${rok}-12-31`],
+    };
+    return QUARTERS[q] || [undefined, undefined];
+  }, []);
+
+  // Reload dohadné položky při změně kvartálu (pokud je tab aktivní)
+  const prevDohadneQRef = React.useRef(dohadneSelectedQ);
+  useEffect(() => {
+    if (prevDohadneQRef.current === dohadneSelectedQ) return;
+    prevDohadneQRef.current = dohadneSelectedQ;
+    if (activeTab !== 'dohadne' || !token || !username) return;
+    const rok = parseInt(filters.orderYear || new Date().getFullYear(), 10);
+    try { localStorage.setItem('stats_reports_dohadne_q', dohadneSelectedQ); } catch {}
+    const [od, ddo] = getDohadneDateRange(dohadneSelectedQ, rok);
+    setDohadneDatumy(od || '', ddo || '');
+    setDohadneData(null);
+    loadDohadnePolozky(od, ddo);
+  }, [dohadneSelectedQ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload dohadné při změně globálního roku (pokud je tab dohadne aktivní)
+  const prevDohadneYearRef = React.useRef(filters.orderYear);
+  useEffect(() => {
+    if (prevDohadneYearRef.current === filters.orderYear) return;
+    prevDohadneYearRef.current = filters.orderYear;
+    if (activeTab !== 'dohadne' || !token || !username) return;
+    const rok = parseInt(filters.orderYear || new Date().getFullYear(), 10);
+    const [od, ddo] = getDohadneDateRange(dohadneSelectedQ, rok);
+    setDohadneDatumy(od || '', ddo || '');
+    setDohadneData(null);
+    loadDohadnePolozky(od, ddo);
+  }, [filters.orderYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload dohadné při změně stav filtru (checkboxy Ke schválení/Schválená/Rozpracovaná)
+  const prevDohadneStavRef = React.useRef(JSON.stringify([...dohadneStavFilter]));
+  useEffect(() => {
+    const current = JSON.stringify([...dohadneStavFilter]);
+    if (prevDohadneStavRef.current === current) return;
+    prevDohadneStavRef.current = current;
+    if (activeTab !== 'dohadne' || !token || !username) return;
+    setDohadneData(null);
+    loadDohadnePolozky();
+  }, [dohadneStavFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Po načtení dat automaticky načíst položky všech knih (pro LP grafy)
   useEffect(() => {
@@ -6280,6 +6432,53 @@ export default function StatsReportsPage() {
     downloadCsv(headers, rows, `prehled-pokladen-${new Date().toISOString().slice(0,10)}.csv`);
   }, [cashbookBooksToRender, downloadCsv]);
 
+  // ─── Export: Dohadné položky LP ──────────────────────────────────────────────
+  const handleExportCsv_dohadneLp = useCallback(() => {
+    const groups = dohadneData?.lp?.groups || [];
+    const headers = ['LP kód', 'Název LP', 'Číslo objednávky', 'Předmět', 'Dodavatel', 'Stav objednávky', 'Typ částky', 'Částka (Kč)', 'Datum vytvoření'];
+    const rows = [];
+    groups.forEach(g => {
+      (g.objednavky || []).forEach(o => {
+        rows.push([
+          g.cislo_lp || '',
+          g.nazev_uctu || '',
+          o.cislo_objednavky || '',
+          o.predmet || '',
+          o.dodavatel_nazev || '',
+          o.stav_objednavky || '',
+          o.typ_castky === 'pre_schvaleni' ? 'před schválením' : 'odeslané',
+          o.castka ?? '',
+          o.dt_vytvoreni ? o.dt_vytvoreni.slice(0, 10) : '',
+        ]);
+      });
+    });
+    downloadCsv(headers, rows, `dohadne-lp-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [dohadneData, downloadCsv]);
+
+  // ─── Export: Dohadné položky Smlouvy ─────────────────────────────────────────
+  const handleExportCsv_dohadneSmlouvy = useCallback(() => {
+    const groups = dohadneData?.smlouvy?.groups || [];
+    const headers = ['Číslo smlouvy', 'Název smlouvy', 'Dodavatel smlouvy', 'Číslo objednávky', 'Předmět', 'Dodavatel', 'Stav objednávky', 'Typ částky', 'Částka (Kč)', 'Datum vytvoření'];
+    const rows = [];
+    groups.forEach(g => {
+      (g.objednavky || []).forEach(o => {
+        rows.push([
+          g.cislo_smlouvy || '',
+          g.nazev_smlouvy || '',
+          g.nazev_firmy || '',
+          o.cislo_objednavky || '',
+          o.predmet || '',
+          o.dodavatel_nazev || '',
+          o.stav_objednavky || '',
+          o.typ_castky === 'pre_schvaleni' ? 'před schválením' : 'odeslané',
+          o.castka ?? '',
+          o.dt_vytvoreni ? o.dt_vytvoreni.slice(0, 10) : '',
+        ]);
+      });
+    });
+    downloadCsv(headers, rows, `dohadne-smlouvy-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [dohadneData, downloadCsv]);
+
   const handleFilterChange = (key, value) => {
     setPendingFilters(prev => ({ ...prev, [key]: value }));
   };
@@ -7613,9 +7812,9 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Faktury vyšší než schválená objednávka</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_ordersOverLimit} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="danger">{pagedOrdersOverLimit.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.ordersOverLimitFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_ordersOverLimit} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -7700,9 +7899,9 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávka vytvořená po doručení faktury</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_ordersAfterInvoice} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{pagedOrdersAfterInvoice.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.ordersAfterInvoiceFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_ordersAfterInvoice} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -7807,9 +8006,9 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávky s fakturami bez příloh</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_ordersInvoicesWithoutAttachments} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{pagedOrdersInvoicesWithoutAttachments.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.ordersInvoicesWithoutAttachmentsFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_ordersInvoicesWithoutAttachments} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -7921,9 +8120,9 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Faktury bez přílohy</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_invoicesWithoutAttachments} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{pagedInvoicesWithoutAttachments.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.invoicesWithoutAttachmentsFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_invoicesWithoutAttachments} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -8051,9 +8250,9 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Faktury po splatnosti 14+ dní</SectionTitle>
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_overdueInvoices} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="danger">{pagedOverdueInvoices.total}</SectionBadge>
                       <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.overdueInvoicesFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_overdueInvoices} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -8183,8 +8382,8 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Zrušené a zamítnuté objednávky</SectionTitle>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_cancelledOrders} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="danger">{pagedCancelledOrders.total}</SectionBadge>
+                      <button onClick={handleExportCsv_cancelledOrders} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox>
@@ -8316,9 +8515,9 @@ export default function StatsReportsPage() {
                     <SectionHeader>
                       <SectionTitle>Vzdělávání – kurzy zdravotnické a lékařské</SectionTitle>
                       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <button onClick={handleExportCsv_vzdelLekarsky} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                         <SectionBadge $tone="warn">{vzdelSections.lekarsky.length}</SectionBadge>
                         <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(vzdelLekarskyTotal)}</SectionBadge>
+                        <button onClick={handleExportCsv_vzdelLekarsky} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       </div>
                     </SectionHeader>
                     <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -10522,7 +10721,11 @@ export default function StatsReportsPage() {
                       </SectionTitle>
                       <ChartToggleBtn
                         title={timelineCumulative ? 'Přepnout na denní pohled' : 'Přepnout na kumulativní pohled'}
-                        onClick={() => setTimelineCumulative(v => !v)}
+                        onClick={() => setTimelineCumulative(v => {
+                          const next = !v;
+                          try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_timeline_cumulative`, String(next)); } catch (_) {}
+                          return next;
+                        })}
                       >
                         <FontAwesomeIcon icon={timelineCumulative ? faLayerGroup : faChartLine} />
                       </ChartToggleBtn>
@@ -11145,8 +11348,8 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávky bez faktury 2+ měsíce (schváleno+)</SectionTitle>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_ordersWithoutInvoice} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{reportSections.ordersWithoutInvoice.length}</SectionBadge>
+                      <button onClick={handleExportCsv_ordersWithoutInvoice} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -11238,8 +11441,8 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávky s fakturou, nedokončené (mimo vzdělávání)</SectionTitle>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_ordersWithInvoiceNotDone} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="warn">{reportSections.ordersWithInvoiceNotDone.length}</SectionBadge>
+                      <button onClick={handleExportCsv_ordersWithInvoiceNotDone} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox>
@@ -11322,8 +11525,8 @@ export default function StatsReportsPage() {
                   <SectionHeader>
                     <SectionTitle>Objednávky financované z LP s fakturou bez rozkladu na LP</SectionTitle>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button onClick={handleExportCsv_ordersWithMissingLpCerpani} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                       <SectionBadge $tone="danger">{reportSections.ordersWithMissingLpCerpani.length}</SectionBadge>
+                      <button onClick={handleExportCsv_ordersWithMissingLpCerpani} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
                     </div>
                   </SectionHeader>
                   <SearchBox>
@@ -13041,6 +13244,380 @@ export default function StatsReportsPage() {
                     </div>
                   );
                 })()}
+              </>
+            )}
+
+            {/* ====================================================================
+                TAB: DOHADNÉ POLOŽKY — objednávky bez faktury, financované z LP/Smluv
+                ==================================================================== */}
+            {activeTab === 'dohadne' && (
+              <>
+                {/* ── Kvartální filtry ── */}
+                {(() => {
+                  const rok = parseInt(filters.orderYear || new Date().getFullYear(), 10);
+                  const now = new Date();
+                  const currentYear = now.getFullYear();
+                  const currentMonth = now.getMonth() + 1;
+                  const QUARTERS = [
+                    { key: 'Q1',  label: '1. kvartál', sub: 'Led – Bře', od: `${rok}-01-01`, ddo: `${rok}-03-31`, firstMonth: 1 },
+                    { key: 'Q2',  label: '2. kvartál', sub: 'Dub – Čvn', od: `${rok}-04-01`, ddo: `${rok}-06-30`, firstMonth: 4 },
+                    { key: 'Q3',  label: '3. kvartál', sub: 'Čvc – Zář', od: `${rok}-07-01`, ddo: `${rok}-09-30`, firstMonth: 7 },
+                    { key: 'Q4',  label: '4. kvartál', sub: 'Říj – Pro', od: `${rok}-10-01`, ddo: `${rok}-12-31`, firstMonth: 10 },
+                    { key: 'ALL', label: 'Celý rok',   sub: `Led – Pro`, od: `${rok}-01-01`, ddo: `${rok}-12-31`, firstMonth: 1 },
+                  ];
+                  const isQAvailable = (q) =>
+                    q.key === 'ALL' ||
+                    rok < currentYear ||
+                    (rok === currentYear && currentMonth >= q.firstMonth);
+                  return (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {QUARTERS.map((q, qi) => {
+                        const available = isQAvailable(q);
+                        const active = dohadneSelectedQ === q.key;
+                        const isAll = q.key === 'ALL';
+                        return (
+                          <React.Fragment key={q.key}>
+                            {isAll && <div style={{ width: '1px', height: '40px', background: '#cbd5e1', alignSelf: 'center', margin: '0 0.25rem' }} />}
+                            <button
+                              disabled={!available}
+                              onClick={() => {
+                                if (!available || active) return;
+                                setDohadneSelectedQ(q.key);
+                                setDohadneDatumy(q.od, q.ddo);
+                                setDohadneData(null);
+                                loadDohadnePolozky(q.od, q.ddo);
+                              }}
+                              style={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                padding: '0.45rem 1.1rem', borderRadius: '10px',
+                                border: active ? `2px solid ${isAll ? '#1d4ed8' : '#c2410c'}` : '1px solid #cbd5e1',
+                                background: active ? (isAll ? '#1d4ed8' : '#c2410c') : available ? '#fff' : '#f1f5f9',
+                                color: active ? '#fff' : available ? '#334155' : '#94a3b8',
+                                fontWeight: active ? 700 : 500,
+                                fontSize: '0.82rem', cursor: available ? 'pointer' : 'not-allowed',
+                                opacity: available ? 1 : 0.5, transition: 'all 0.15s',
+                                minWidth: isAll ? '100px' : '90px',
+                              }}
+                            >
+                              <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{q.label}</span>
+                              <span style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '1px' }}>{q.sub} {rok}</span>
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                      {/* ── Stavový filtr ── */}
+                      <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.75rem', alignItems: 'center', flexWrap: 'wrap', borderLeft: '1px solid #cbd5e1', paddingLeft: '0.75rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>Zobrazit i:</span>
+                        {[
+                          { stav: 'Ke schválení', color: '#b45309', bg: '#fef3c7' },
+                          { stav: 'Schválená',    color: '#065f46', bg: '#d1fae5' },
+                          { stav: 'Rozpracovaná', color: '#1e40af', bg: '#dbeafe' },
+                        ].map(({ stav, color, bg }) => {
+                          const checked = dohadneStavFilter.has(stav);
+                          return (
+                            <label key={stav} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', padding: '0.25rem 0.6rem', borderRadius: '6px', border: `1px solid ${checked ? color : '#e2e8f0'}`, background: checked ? bg : '#f8fafc', fontSize: '0.78rem', fontWeight: checked ? 700 : 400, color: checked ? color : '#64748b', transition: 'all 0.12s', userSelect: 'none' }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleDohadneStav(stav)}
+                                style={{ accentColor: color, cursor: 'pointer', width: '13px', height: '13px' }}
+                              />
+                              {stav}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── Blok 1: Limitované přísliby ── */}
+                {isBlockVisible('dohadne', 'dohadneLp') && (
+                  <SectionCard id="section-dohadneLp" style={{ marginBottom: '1.25rem' }}>
+                    <SectionHeader>
+                      <SectionTitle>
+                        <FontAwesomeIcon icon={faHourglassHalf} style={{ marginRight: '0.5rem', opacity: 0.7 }} />
+                        Dohadné položky — Limitované přísliby (LP)
+                      </SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {dohadneData?.lp && (
+                          <>
+                            <SectionBadge $tone="warn">{dohadneData.lp.total_lp_skupin ?? 0} LP skupin</SectionBadge>
+                            <SectionBadge $tone="info">{dohadneData.lp.total_objednavek ?? 0} objednávek</SectionBadge>
+                            <SectionBadge $tone="default">Před schválením: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.lp.castka_pre_schvaleni ?? 0)}</SectionBadge>
+                            <SectionBadge $tone="success">Odeslané: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.lp.castka_odeslane ?? 0)}</SectionBadge>
+                            <SectionBadge $tone="error" style={{ fontWeight: 700 }}>Celkem: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.lp.castka_celkem ?? 0)}</SectionBadge>
+                          </>
+                        )}
+                        <button onClick={handleExportCsv_dohadneLp} title="Exportovat LP dohadné do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <FontAwesomeIcon icon={faDownload} />CSV
+                        </button>
+                      </div>
+                    </SectionHeader>
+
+                    {dohadneLoading && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 2rem', gap: '1rem' }}>
+                        <div style={{ width: '40px', height: '40px', border: '3px solid #fed7aa', borderTop: '3px solid #c2410c', borderRadius: '50%', animation: 'gatespin 0.8s linear infinite' }} />
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#c2410c' }}>Načítám dohadné položky…</div>
+                        <div style={{ fontSize: '0.78rem', color: '#9ca3af' }}>Prosím čekejte, zpracovávám data z databáze.</div>
+                      </div>
+                    )}
+
+                    {dohadneData?.lp?.groups?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                        {/* Záhlaví skupin */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px 110px 110px 110px', gap: '0.5rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div
+                            title={dohadneData.lp.groups.every(g => expandedDohadneLp.has(String(g.lp_id))) ? 'Sbalit vše' : 'Rozbalit vše'}
+                            onClick={() => {
+                              const allExp = dohadneData.lp.groups.every(g => expandedDohadneLp.has(String(g.lp_id)));
+                              setExpandedDohadneLp(allExp ? new Set() : new Set(dohadneData.lp.groups.map(g => String(g.lp_id))));
+                            }}
+                            style={{ cursor: 'pointer', color: '#c2410c', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                          >
+                            {dohadneData.lp.groups.every(g => expandedDohadneLp.has(String(g.lp_id))) ? '−' : '+'}
+                          </div>
+                          <div>LP kód / Název</div>
+                          <div style={{ textAlign: 'right' }}>Počet obj.</div>
+                          <div style={{ textAlign: 'right' }}>Před schválením</div>
+                          <div style={{ textAlign: 'right' }}>Odeslané</div>
+                          <div style={{ textAlign: 'right' }}>Celkem</div>
+                        </div>
+                        {/* Skupiny */}
+                        {dohadneData.lp.groups.map(grp => {
+                          const grpKey = String(grp.lp_id);
+                          const grpOpen = expandedDohadneLp.has(grpKey);
+                          const fmtKc = (v) => new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v ?? 0);
+                          return (
+                            <div key={grpKey} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                              <div
+                                onClick={() => setExpandedDohadneLp(prev => { const next = new Set(prev); grpOpen ? next.delete(grpKey) : next.add(grpKey); return next; })}
+                                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px 110px 110px 110px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fff7ed' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                              >
+                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {grp.cislo_lp || `LP#${grp.lp_id}`}
+                                  {grp.nazev_uctu && <span style={{ fontWeight: 400, color: '#92400e', marginLeft: '0.4rem', fontSize: '0.8rem' }}>– {grp.nazev_uctu}</span>}
+                                </span>
+                                <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end', fontSize: '0.75rem' }}>{grp.pocet_objednavek} obj.</SectionBadge>
+                                <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#b45309', textAlign: 'right' }}>{fmtKc(grp.castka_pre_schvaleni)}</span>
+                                <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#059669', textAlign: 'right' }}>{fmtKc(grp.castka_odeslane)}</span>
+                                <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', fontWeight: 700, color: '#1e293b', textAlign: 'right' }}>{fmtKc(grp.castka_celkem)}</span>
+                              </div>
+                              {grpOpen && (
+                                <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc' }}>
+                                  <TableWrapper style={{ margin: 0 }}>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <ThSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'ev_cislo')}>Číslo{sortIcon(`dohadneLp_${grpKey}`, 'ev_cislo')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'dt_obj')}>Dt. vytv.{sortIcon(`dohadneLp_${grpKey}`, 'dt_obj')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'predmet')}>Předmět{sortIcon(`dohadneLp_${grpKey}`, 'predmet')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'objednatel')}>Objednatel{sortIcon(`dohadneLp_${grpKey}`, 'objednatel')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'schvalovatel')}>Schvalovatel{sortIcon(`dohadneLp_${grpKey}`, 'schvalovatel')}</ThSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'usek')}>Úsek{sortIcon(`dohadneLp_${grpKey}`, 'usek')}</ThNarrowSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'druh')}>Druh{sortIcon(`dohadneLp_${grpKey}`, 'druh')}</ThNarrowSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'stav')}>Stav{sortIcon(`dohadneLp_${grpKey}`, 'stav')}</ThNarrowSort>
+                                          <ThRSort onClick={() => handleTableSort(`dohadneLp_${grpKey}`, 'castka')}>Částka{sortIcon(`dohadneLp_${grpKey}`, 'castka')}</ThRSort>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sortTableData(grp.objednavky, `dohadneLp_${grpKey}`, {
+                                          ev_cislo:     o => o.cislo_objednavky || '',
+                                          dt_obj:       o => o.dt_vytvoreni || '',
+                                          predmet:      o => o.predmet || '',
+                                          objednatel:   o => `${o.objednatel_prijmeni || ''} ${o.objednatel_jmeno || ''}`.trim(),
+                                          schvalovatel: o => `${o.schvalovatel_prijmeni || ''} ${o.schvalovatel_jmeno || ''}`.trim() || `${o.prikazce_prijmeni || ''} ${o.prikazce_jmeno || ''}`.trim(),
+                                          usek:         o => getUsekLabel(o) || '',
+                                          druh:         o => o.druh_objednavky_kod || '',
+                                          stav:         o => o.stav_objednavky || '',
+                                          castka:       o => String(o.castka || 0),
+                                        }).map(obj => (
+                                          <Tr key={obj.id}>
+                                            <Td>{renderOrderLink(obj, null)}</Td>
+                                            <Td>{formatDateCz(obj.dt_vytvoreni)}</Td>
+                                            <SubjectTd>{obj.predmet || '—'}</SubjectTd>
+                                            <Td>
+                                              <NameStack>
+                                                {renderNameLine(buildFullName(obj.objednatel_jmeno, obj.objednatel_prijmeni))}
+                                              </NameStack>
+                                            </Td>
+                                            <Td>
+                                              <NameStack>
+                                                {renderNameLine(
+                                                  buildFullName(obj.schvalovatel_jmeno, obj.schvalovatel_prijmeni) ||
+                                                  buildFullName(obj.prikazce_jmeno, obj.prikazce_prijmeni)
+                                                )}
+                                              </NameStack>
+                                            </Td>
+                                            <TdNarrow>{getUsekLabel(obj) || '—'}</TdNarrow>
+                                            <TdNarrow>{getOrderTypeLabel(obj)}</TdNarrow>
+                                            <TdNarrow>
+                                              <span style={{ display: 'inline-block', padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, background: '#ffedd5', color: '#9a3412' }}>{obj.stav_objednavky}</span>
+                                            </TdNarrow>
+                                            <TdR style={{ fontFamily: 'monospace', fontWeight: 600, color: obj.typ_castky === 'pre_schvaleni' ? '#b45309' : '#059669' }}>{new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(obj.castka ?? 0)} Kč</TdR>
+                                          </Tr>
+                                        ))}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : dohadneData && !dohadneLoading ? (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>
+                        <FontAwesomeIcon icon={faHourglassHalf} style={{ fontSize: '2rem', opacity: 0.25, display: 'block', margin: '0 auto 0.5rem' }} />
+                        Žádné LP dohadné položky pro zvolený kvartál
+                      </div>
+                    ) : !dohadneData && !dohadneLoading ? (
+                      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>Vyberte kvartál pro zobrazení dat</div>
+                    ) : null}
+                  </SectionCard>
+                )}
+
+                {/* ── Blok 2: Smlouvy ── */}
+                {isBlockVisible('dohadne', 'dohadneSmlouvy') && (
+                  <SectionCard id="section-dohadneSmlouvy">
+                    <SectionHeader>
+                      <SectionTitle>
+                        <FontAwesomeIcon icon={faHourglassHalf} style={{ marginRight: '0.5rem', opacity: 0.7 }} />
+                        Dohadné položky — Smlouvy
+                      </SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {dohadneData?.smlouvy && (
+                          <>
+                            <SectionBadge $tone="warn">{dohadneData.smlouvy.total_smlouvy_skupin ?? dohadneData.smlouvy.total_smluv ?? 0} smluv</SectionBadge>
+                            <SectionBadge $tone="info">{dohadneData.smlouvy.total_objednavek ?? 0} objednávek</SectionBadge>
+                            <SectionBadge $tone="default">Před schválením: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.smlouvy.castka_pre_schvaleni ?? 0)}</SectionBadge>
+                            <SectionBadge $tone="success">Odeslané: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.smlouvy.castka_odeslane ?? 0)}</SectionBadge>
+                            <SectionBadge $tone="error" style={{ fontWeight: 700 }}>Celkem: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.smlouvy.castka_celkem ?? 0)}</SectionBadge>
+                          </>
+                        )}
+                        <button onClick={handleExportCsv_dohadneSmlouvy} title="Exportovat Smlouvy dohadné do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <FontAwesomeIcon icon={faDownload} />CSV
+                        </button>
+                      </div>
+                    </SectionHeader>
+
+                    {dohadneData?.smlouvy?.groups?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                        {/* Záhlaví skupin */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div
+                            title={dohadneData.smlouvy.groups.every(g => expandedDohadneSmlouvy.has(String(g.cislo_smlouvy))) ? 'Sbalit vše' : 'Rozbalit vše'}
+                            onClick={() => {
+                              const allExp = dohadneData.smlouvy.groups.every(g => expandedDohadneSmlouvy.has(String(g.cislo_smlouvy)));
+                              setExpandedDohadneSmlouvy(allExp ? new Set() : new Set(dohadneData.smlouvy.groups.map(g => String(g.cislo_smlouvy))));
+                            }}
+                            style={{ cursor: 'pointer', color: '#c2410c', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                          >
+                            {dohadneData.smlouvy.groups.every(g => expandedDohadneSmlouvy.has(String(g.cislo_smlouvy))) ? '−' : '+'}
+                          </div>
+                          <div>Číslo smlouvy</div>
+                          <div>Dodavatel smlouvy</div>
+                          <div style={{ textAlign: 'right' }}>Počet obj.</div>
+                          <div style={{ textAlign: 'right' }}>Před schválením</div>
+                          <div style={{ textAlign: 'right' }}>Odeslané</div>
+                          <div style={{ textAlign: 'right' }}>Celkem</div>
+                        </div>
+                        {/* Skupiny */}
+                        {dohadneData.smlouvy.groups.map(grp => {
+                          const grpKey = String(grp.cislo_smlouvy);
+                          const grpOpen = expandedDohadneSmlouvy.has(grpKey);
+                          const fmtKc = (v) => new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v ?? 0);
+                          return (
+                            <div key={grpKey} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                              <div
+                                onClick={() => setExpandedDohadneSmlouvy(prev => { const next = new Set(prev); grpOpen ? next.delete(grpKey) : next.add(grpKey); return next; })}
+                                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fff7ed' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                              >
+                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                <div style={{ overflow: 'hidden' }}>
+                                  <div style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.cislo_smlouvy || '—'}</div>
+                                  {grp.nazev_smlouvy && <div style={{ fontSize: '0.75rem', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.nazev_smlouvy}</div>}
+                                </div>
+                                <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.nazev_firmy || '—'}</span>
+                                <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end', fontSize: '0.75rem' }}>{grp.pocet_objednavek} obj.</SectionBadge>
+                                <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#b45309', textAlign: 'right' }}>{fmtKc(grp.castka_pre_schvaleni)}</span>
+                                <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#059669', textAlign: 'right' }}>{fmtKc(grp.castka_odeslane)}</span>
+                                <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', fontWeight: 700, color: '#1e293b', textAlign: 'right' }}>{fmtKc(grp.castka_celkem)}</span>
+                              </div>
+                              {grpOpen && (
+                                <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc' }}>
+                                  <TableWrapper style={{ margin: 0 }}>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <ThSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'ev_cislo')}>Číslo{sortIcon(`dohadneSml_${grpKey}`, 'ev_cislo')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'dt_obj')}>Dt. vytv.{sortIcon(`dohadneSml_${grpKey}`, 'dt_obj')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'predmet')}>Předmět{sortIcon(`dohadneSml_${grpKey}`, 'predmet')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'objednatel')}>Objednatel{sortIcon(`dohadneSml_${grpKey}`, 'objednatel')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'schvalovatel')}>Schvalovatel{sortIcon(`dohadneSml_${grpKey}`, 'schvalovatel')}</ThSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'usek')}>Úsek{sortIcon(`dohadneSml_${grpKey}`, 'usek')}</ThNarrowSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'druh')}>Druh{sortIcon(`dohadneSml_${grpKey}`, 'druh')}</ThNarrowSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'stav')}>Stav{sortIcon(`dohadneSml_${grpKey}`, 'stav')}</ThNarrowSort>
+                                          <ThRSort onClick={() => handleTableSort(`dohadneSml_${grpKey}`, 'castka')}>Částka{sortIcon(`dohadneSml_${grpKey}`, 'castka')}</ThRSort>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sortTableData(grp.objednavky, `dohadneSml_${grpKey}`, {
+                                          ev_cislo:     o => o.cislo_objednavky || '',
+                                          dt_obj:       o => o.dt_vytvoreni || '',
+                                          predmet:      o => o.predmet || '',
+                                          objednatel:   o => `${o.objednatel_prijmeni || ''} ${o.objednatel_jmeno || ''}`.trim(),
+                                          schvalovatel: o => `${o.schvalovatel_prijmeni || ''} ${o.schvalovatel_jmeno || ''}`.trim() || `${o.prikazce_prijmeni || ''} ${o.prikazce_jmeno || ''}`.trim(),
+                                          usek:         o => getUsekLabel(o) || '',
+                                          druh:         o => o.druh_objednavky_kod || '',
+                                          stav:         o => o.stav_objednavky || '',
+                                          castka:       o => String(o.castka || 0),
+                                        }).map(obj => (
+                                          <Tr key={obj.id}>
+                                            <Td>{renderOrderLink(obj, null)}</Td>
+                                            <Td>{formatDateCz(obj.dt_vytvoreni)}</Td>
+                                            <SubjectTd>{obj.predmet || '—'}</SubjectTd>
+                                            <Td>
+                                              <NameStack>
+                                                {renderNameLine(buildFullName(obj.objednatel_jmeno, obj.objednatel_prijmeni))}
+                                              </NameStack>
+                                            </Td>
+                                            <Td>
+                                              <NameStack>
+                                                {renderNameLine(
+                                                  buildFullName(obj.schvalovatel_jmeno, obj.schvalovatel_prijmeni) ||
+                                                  buildFullName(obj.prikazce_jmeno, obj.prikazce_prijmeni)
+                                                )}
+                                              </NameStack>
+                                            </Td>
+                                            <TdNarrow>{getUsekLabel(obj) || '—'}</TdNarrow>
+                                            <TdNarrow>{getOrderTypeLabel(obj)}</TdNarrow>
+                                            <TdNarrow>
+                                              <span style={{ display: 'inline-block', padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, background: '#ffedd5', color: '#9a3412' }}>{obj.stav_objednavky}</span>
+                                            </TdNarrow>
+                                            <TdR style={{ fontFamily: 'monospace', fontWeight: 600, color: obj.typ_castky === 'pre_schvaleni' ? '#b45309' : '#059669' }}>{new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(obj.castka ?? 0)} Kč</TdR>
+                                          </Tr>
+                                        ))}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : dohadneData && !dohadneLoading ? (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>
+                        <FontAwesomeIcon icon={faHourglassHalf} style={{ fontSize: '2rem', opacity: 0.25, display: 'block', margin: '0 auto 0.5rem' }} />
+                        Žádné smlouvy dohadné položky pro zvolený kvartál
+                      </div>
+                    ) : !dohadneData && !dohadneLoading ? (
+                      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>Vyberte kvartál pro zobrazení dat</div>
+                    ) : null}
+                  </SectionCard>
+                )}
               </>
             )}
           </Section>
