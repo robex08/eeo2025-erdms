@@ -1977,7 +1977,7 @@ function ChartTimelineWidget({ data, loading, groupBy = 'day', days = 30 }) {
   );
 }
 
-function TopSuppliersWidget({ suppliers, onExpand }) {
+function TopSuppliersWidget({ suppliers }) {
   if (!suppliers || suppliers.length === 0) {
     return <WidgetBody><EmptyState>Žádní dodavatelé</EmptyState></WidgetBody>;
   }
@@ -2003,12 +2003,7 @@ function TopSuppliersWidget({ suppliers, onExpand }) {
 
   return (
     <WidgetBody $noScroll>
-      <div style={{ height: 220, position: 'relative' }}>
-        {onExpand && (
-          <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => onExpand({ title: 'Top dodavatelé', el: <Doughnut data={chartData} options={withFsFont(options)} /> })}>
-            <FontAwesomeIcon icon={faExpand} />
-          </ChartExpandBtn>
-        )}
+      <div style={{ height: 220 }}>
         <Doughnut data={chartData} options={options} />
       </div>
     </WidgetBody>
@@ -2016,7 +2011,7 @@ function TopSuppliersWidget({ suppliers, onExpand }) {
 }
 
 // ── Graf: Majetek podle druhu ────────────────────────────────────────────────
-function MajetekByDruhWidget({ data, onExpand }) {
+function MajetekByDruhWidget({ data }) {
   if (!data || data.length === 0) {
     return <WidgetBody><EmptyState>Žádná data majetku</EmptyState></WidgetBody>;
   }
@@ -2052,12 +2047,7 @@ function MajetekByDruhWidget({ data, onExpand }) {
 
   return (
     <WidgetBody $noScroll>
-      <div style={{ height: 210, position: 'relative' }}>
-        {onExpand && (
-          <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => onExpand({ title: 'Majetek podle druhu', el: <Doughnut data={chartData} options={withFsFont(options)} /> })}>
-            <FontAwesomeIcon icon={faExpand} />
-          </ChartExpandBtn>
-        )}
+      <div style={{ height: 210 }}>
         <Doughnut data={chartData} options={options} />
       </div>
       <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
@@ -2069,7 +2059,7 @@ function MajetekByDruhWidget({ data, onExpand }) {
 }
 
 // ── Graf: Roční poplatky podle druhu a platby ────────────────────────────────
-function FeesByDruhWidget({ data, navigate, onExpand }) {
+function FeesByDruhWidget({ data, navigate }) {
   if (!data || !data.rows || data.rows.length === 0) {
     return <WidgetBody><EmptyState>Žádné poplatky pro rok {new Date().getFullYear()}</EmptyState></WidgetBody>;
   }
@@ -2124,12 +2114,7 @@ function FeesByDruhWidget({ data, navigate, onExpand }) {
 
   return (
     <WidgetBody $noScroll>
-      <div style={{ height: 210, position: 'relative' }}>
-        {onExpand && (
-          <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => onExpand({ title: 'Roční poplatky podle druhu', el: <Bar data={chartData} options={withFsFont(options)} /> })}>
-            <FontAwesomeIcon icon={faExpand} />
-          </ChartExpandBtn>
-        )}
+      <div style={{ height: 210 }}>
         <Bar data={chartData} options={options} />
       </div>
       <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
@@ -3573,7 +3558,7 @@ export default function DashboardPage() {
       case 'chart_timeline':
         content = <ChartTimelineWidget data={chartTimelineData ?? data?.chart_orders_timeline} loading={chartTimelineLoading} groupBy={chartTimelineGroupBy} days={chartTimelineDays} />;
         headerExtra = (
-          <div style={{ display: 'flex', gap: '0.25rem' }}>
+          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
             {[7, 14, 30, 90, 365].map(d => {
               const LABELS = { 7: 'Týden', 14: '14 dní', 30: 'Měsíc', 90: 'Kvartal', 365: 'Rok' };
               return (
@@ -3597,11 +3582,32 @@ export default function DashboardPage() {
                 </button>
               );
             })}
+            <button onClick={() => {
+              const td = chartTimelineData ?? data?.chart_orders_timeline;
+              if (!td || td.length === 0) return;
+              const labels = td.map(x => { const dt = new Date(x.den + 'T00:00:00'); return chartTimelineGroupBy === 'month' ? dt.toLocaleDateString('cs-CZ', { month: 'short', year: '2-digit' }) : dt.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }); });
+              const cd = { labels, datasets: [{ label: 'Počet objednávek', data: td.map(x => x.pocet), backgroundColor: 'rgba(29, 78, 216, 0.7)', borderRadius: 6, barPercentage: 0.7 }] };
+              const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => { const c = parseFloat(td[ctx.dataIndex]?.castka) || 0; return [`${ctx.raw} obj.`, formatCurrency(c)]; } } }, datalabels: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0, font: { size: 14 } }, grid: { color: '#f1f5f9' } }, x: { grid: { display: false }, ticks: { font: { size: 12 } } } } };
+              setFullscreenChart({ title: `Objednávky v čase (${chartTimelineDays} dní)`, el: <Bar data={cd} options={o} /> });
+            }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem', padding: '0.15rem 0.3rem', borderRadius: '4px', lineHeight: 1, marginLeft: '0.25rem' }} title="Celá obrazovka (ESC = zavřít)">
+              <FontAwesomeIcon icon={faExpand} />
+            </button>
           </div>
         );
         break;
       case 'top_suppliers':
-        content = <TopSuppliersWidget suppliers={data?.top_suppliers} onExpand={setFullscreenChart} />;
+        content = <TopSuppliersWidget suppliers={data?.top_suppliers} />;
+        headerExtra = (
+          <button onClick={() => {
+            const s = data?.top_suppliers;
+            if (!s || s.length === 0) return;
+            const cd = { labels: s.map(x => x.dodavatel_nazev?.substring(0, 25) || '?'), datasets: [{ data: s.map(x => parseFloat(x.celkova_castka) || 0), backgroundColor: CHART_COLORS.slice(0, s.length), borderWidth: 0 }] };
+            const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 14, font: { size: 14 } } }, tooltip: { callbacks: { label: (ctx) => `${formatCurrency(ctx.raw)} (${ctx.label})` } }, datalabels: { display: false } } };
+            setFullscreenChart({ title: 'Top dodavatelé', el: <Doughnut data={cd} options={o} /> });
+          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem', padding: '0.15rem 0.3rem', borderRadius: '4px', lineHeight: 1 }} title="Celá obrazovka (ESC = zavřít)">
+            <FontAwesomeIcon icon={faExpand} />
+          </button>
+        );
         break;
       case 'smlouvy_critical':
         content = <SmlouvyCriticalWidget smlouvy={data?.smlouvy_critical} navigate={navigate} />;
@@ -3623,10 +3629,37 @@ export default function DashboardPage() {
         badgeCount = (data?.annual_fees_due?.stats?.po_splatnosti || 0) + (data?.annual_fees_due?.stats?.blizi_se || 0);
         break;
       case 'chart_majetek':
-        content = <MajetekByDruhWidget data={data?.chart_majetek_by_druh} onExpand={setFullscreenChart} />;
+        content = <MajetekByDruhWidget data={data?.chart_majetek_by_druh} />;
+        headerExtra = (
+          <button onClick={() => {
+            const d = data?.chart_majetek_by_druh;
+            if (!d || d.length === 0) return;
+            const cd = { labels: d.map(x => x.druh_nazev || x.druh_kod || '?'), datasets: [{ data: d.map(x => parseFloat(x.castka_celkem) || 0), backgroundColor: CHART_COLORS.slice(0, d.length), borderWidth: 0 }] };
+            const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 14, font: { size: 14 } } }, tooltip: { callbacks: { label: (ctx) => { const row = d[ctx.dataIndex]; return [`${formatCurrency(ctx.raw)}`, `${row.pocet} obj.`]; } } }, datalabels: { display: false } } };
+            setFullscreenChart({ title: 'Majetek podle druhu', el: <Doughnut data={cd} options={o} /> });
+          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem', padding: '0.15rem 0.3rem', borderRadius: '4px', lineHeight: 1 }} title="Celá obrazovka (ESC = zavřít)">
+            <FontAwesomeIcon icon={faExpand} />
+          </button>
+        );
         break;
       case 'chart_fees':
-        content = <FeesByDruhWidget data={data?.chart_fees_by_druh} navigate={navigate} onExpand={setFullscreenChart} />;
+        content = <FeesByDruhWidget data={data?.chart_fees_by_druh} navigate={navigate} />;
+        headerExtra = (
+          <button onClick={() => {
+            const fd = data?.chart_fees_by_druh;
+            if (!fd || !fd.rows || fd.rows.length === 0) return;
+            const druhy = [...new Set(fd.rows.map(r => r.druh))];
+            const platby = [...new Set(fd.rows.map(r => r.platba))];
+            const PC = { MESICNI: '#1d4ed8', KVARTALNI: '#7c3aed', ROCNI: '#06b6d4', JINA: '#f97316' };
+            const PL = { MESICNI: 'Měsíční', KVARTALNI: 'Kvartální', ROCNI: 'Roční', JINA: 'Jiná' };
+            const ds = platby.map((p, i) => ({ label: PL[p] || p, data: druhy.map(dr => { const r = fd.rows.find(x => x.druh === dr && x.platba === p); return r ? parseFloat(r.castka_celkem) || 0 : 0; }), backgroundColor: PC[p] || CHART_COLORS[i], borderRadius: 4, borderWidth: 0 }));
+            const dl = druhy.map(dr => { const r = fd.rows.find(x => x.druh === dr); const n = r?.druh_nazev || dr; return n.length > 15 ? n.substring(0, 15) + '…' : n; });
+            const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 14, font: { size: 14 } } }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${formatCurrency(ctx.raw)}` } }, datalabels: { display: false } }, scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 13 } } }, y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 13 }, callback: v => v >= 1000000 ? `${(v/1000000).toFixed(1)} M` : v >= 1000 ? `${(v/1000).toFixed(0)} k` : v } } } };
+            setFullscreenChart({ title: 'Roční poplatky podle druhu', el: <Bar data={{ labels: dl, datasets: ds }} options={o} /> });
+          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem', padding: '0.15rem 0.3rem', borderRadius: '4px', lineHeight: 1 }} title="Celá obrazovka (ESC = zavřít)">
+            <FontAwesomeIcon icon={faExpand} />
+          </button>
+        );
         break;
       case 'cashbook_summary': {
         const cbMonthNames = ['Leden','\u00danor','B\u0159ezen','Duben','Kv\u011bten','\u010cerven','\u010cervenec','Srpen','Z\u00e1\u0159\u00ed','\u0158\u00edjen','Listopad','Prosinec'];
