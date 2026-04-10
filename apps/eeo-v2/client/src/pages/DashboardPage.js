@@ -2458,19 +2458,69 @@ function OrderCommentsWidget({ comments, navigate }) {
     return <WidgetBody><EmptyState>Žádné nové komentáře</EmptyState></WidgetBody>;
   }
 
+  const handleOrderClick = (cisloObjednavky) => {
+    // Přejít na seznam objednávek V3 a vyfiltrovat dle čísla objednávky
+    navigate('/orders25-list-v3', {
+      state: {
+        clearFilters: true,
+        dashboardFilter: null,
+        columnFilterCisloObj: cisloObjednavky,
+      }
+    });
+  };
+
+  const handleShowAll = () => {
+    // Přejít na seznam V3 s dlaždicovým filtrem "s mými komentáři"
+    navigate('/orders25-list-v3', {
+      state: {
+        clearFilters: true,
+        dashboardFilter: 's_mymi_komentari',
+      }
+    });
+  };
+
   return (
     <WidgetBody>
       {comments.map(c => (
-        <ListItem key={c.id} onClick={() => navigate(`/order-form-25?edit=${c.objednavka_id}`, { state: { returnTo: '/dashboard', openComments: true } })}>
+        <ListItem
+          key={c.objednavka_id}
+          onClick={() => handleOrderClick(c.cislo_objednavky || `#${c.objednavka_id}`)}
+          style={{ cursor: 'pointer' }}
+        >
           <ListItemLeft>
-            <ListItemTitle>{c.cislo_objednavky || `#${c.objednavka_id}`}</ListItemTitle>
-            <CommentText>{c.obsah_plain}</CommentText>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ListItemTitle style={{ flex: 1 }}>
+                {c.cislo_objednavky || `#${c.objednavka_id}`}
+              </ListItemTitle>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                background: '#eff6ff', border: '1px solid #bfdbfe',
+                borderRadius: '10px', padding: '1px 7px',
+                fontSize: '0.72rem', fontWeight: 700, color: '#2563eb',
+                whiteSpace: 'nowrap',
+              }}>
+                💬 {c.komentaru_celkem}
+              </span>
+            </div>
+            {c.predmet && (
+              <CommentText style={{ marginTop: '2px', color: '#475569' }}>{c.predmet}</CommentText>
+            )}
             <CommentMeta>
-              {c.autor_jmeno} · {c.dt_vytvoreni ? new Date(c.dt_vytvoreni).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+              {c.posledni_autor} · {c.posledni_komentar_dt ? new Date(c.posledni_komentar_dt).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
             </CommentMeta>
           </ListItemLeft>
         </ListItem>
       ))}
+      <div style={{ padding: '8px 16px', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
+        <span
+          onClick={handleShowAll}
+          style={{ fontSize: '0.78rem', color: '#6366f1', cursor: 'pointer', fontWeight: 600 }}
+          onMouseEnter={e => e.target.style.textDecoration = 'underline'}
+          onMouseLeave={e => e.target.style.textDecoration = 'none'}
+        >
+          Zobrazit všechny objednávky s mými komentáři →
+        </span>
+      </div>
     </WidgetBody>
   );
 }
