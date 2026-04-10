@@ -25,7 +25,7 @@ import {
   faSync, faEye, faEyeSlash, faGripVertical, faTimes,
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
   faFileContract, faComments, faComment, faHourglassHalf, faFileInvoice,
-  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers,
+  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser,
   faExpand, faCompress
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
@@ -516,6 +516,8 @@ const FocusCount = styled.span`
 `;
 
 const WidgetCard = styled.div`
+  display: flex;
+  flex-direction: column;
   background: white;
   border-radius: 14px;
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.07);
@@ -533,6 +535,7 @@ const WidgetHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem 0.6rem;
+  flex-shrink: 0;
 `;
 
 const WidgetTitle = styled.h3`
@@ -596,11 +599,23 @@ const CbLoadLabel = styled.span`
 `;
 
 const WidgetBody = styled.div`
-  padding: 0.5rem 1.25rem 1.25rem;
-  max-height: ${p => p.$noScroll ? 'none' : '420px'};
-  overflow-y: ${p => p.$noScroll ? 'visible' : 'auto'};
   font-stretch: condensed;
   letter-spacing: -0.015em;
+  ${p => p.$noScroll ? `
+    padding: 0.5rem 1.25rem 1.25rem;
+    overflow-y: visible;
+  ` : `
+    padding: 0.5rem 1.25rem 0;
+    flex: 1 1 420px;
+    min-height: 100px;
+    overflow-y: auto;
+    &::after {
+      content: '';
+      display: block;
+      height: 1.25rem;
+      flex-shrink: 0;
+    }
+  `}
   
   /* Custom scrollbar */
   &::-webkit-scrollbar {
@@ -616,6 +631,22 @@ const WidgetBody = styled.div`
   &::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
   }
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+`;
+
+const ScrollableContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.25rem;
+  &::-webkit-scrollbar { width: 5px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
 `;
@@ -1266,7 +1297,7 @@ function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
   if (!items || items.length === 0) return <div style={{textAlign: 'center', padding: '2rem', color: '#6b7280'}}>Žádné zprávy</div>;
   
   return (
-    <div style={{display: 'flex', flexDirection: 'column'}}>
+    <div style={{display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0}}>
       {feedStatuses && feedStatuses.length > 0 && (
         <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.35rem', padding: '0.35rem 0.5rem 0.5rem', borderBottom: '1px solid #f3f4f6', marginBottom: '0.25rem'}}>
           {feedStatuses.map((fs, i) => {
@@ -1295,7 +1326,7 @@ function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
           })}
         </div>
       )}
-      <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '420px', overflowY: 'auto', padding: '0.25rem'}}>
+      <ScrollableContent>
       {filteredItems.map((item, idx) => (
         <a
           key={item.guid || idx}
@@ -1312,14 +1343,33 @@ function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
           onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#bfdbfe'; }}
           onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? '#f9fafb' : 'white'; e.currentTarget.style.borderColor = '#f3f4f6'; }}
         >
-          {item.image_url && (
+          {/* Obrázek nebo placeholder s názvem feedu */}
+          {item.image_url ? (
             <img
               src={item.image_url}
               alt=""
               style={{width: '64px', height: '48px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0}}
-              onError={e => { e.target.style.display = 'none'; }}
+              onError={e => {
+                e.target.style.display = 'none';
+                e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+              }}
             />
-          )}
+          ) : null}
+          <div style={{
+            width: '64px', height: '48px', flexShrink: 0, borderRadius: '6px',
+            background: 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)',
+            display: item.image_url ? 'none' : 'flex',
+            alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+            padding: '4px', textAlign: 'center', userSelect: 'none'
+          }}>
+            <span style={{fontSize: '0.95rem', lineHeight: 1}}>📰</span>
+            <span style={{
+              fontSize: '0.45rem', fontWeight: 700, color: 'white', marginTop: '2px',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '56px'
+            }}>
+              {item.feed_name || 'RSS'}
+            </span>
+          </div>
           <div style={{flex: 1, minWidth: 0}}>
             <div style={{fontSize: '0.82rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'}}>
               {item.title}
@@ -1335,7 +1385,7 @@ function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
           </div>
         </a>
       ))}
-    </div>
+    </ScrollableContent>
     </div>
   );
 }
@@ -1472,7 +1522,7 @@ function ActiveUsersAdminWidget({ data, navigate }) {
   );
 }
 
-function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, navigate }) {
+function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, navigate }) {
   const roleLabels = [];
   if (rolesDetected?.is_admin) roleLabels.push('Administrátor');
   if (rolesDetected?.has_order_approve) roleLabels.push('Příkazce');
@@ -1492,12 +1542,15 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, navigate 
     'exclamation-triangle': { icon: faExclamationTriangle, color: '#f59e0b', bg: '#fffbeb' },
   };
 
-  // Nový formát: {items: [...], since_formatted: '6.4. 14:30'}
-  const newsItems = newsSinceLogin?.items || (Array.isArray(newsSinceLogin) ? newsSinceLogin : []);
+  // Nový formát: {action_items: [...], changes: [...], since_formatted: '6.4. 14:30'}
+  const actionItems = newsSinceLogin?.action_items || [];
+  const changeItems = newsSinceLogin?.changes || [];
+  // Zpětná kompatibilita se starým formátem (items pole)
+  const legacyItems = newsSinceLogin?.items || (Array.isArray(newsSinceLogin) ? newsSinceLogin : []);
   const sinceFormatted = newsSinceLogin?.since_formatted || '';
 
   return (
-    <WidgetBody $noScroll>
+    <WidgetBody>
       <WelcomeRow>
         <AvatarCircle>
           {getInitials(user?.jmeno, user?.prijmeni)}
@@ -1520,18 +1573,108 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, navigate 
         </WelcomeInfo>
       </WelcomeRow>
 
-      {/* Poslední aktivity */}
+      {/* Moje přehled – statistiky */}
+      {myStats && !myStats.error && (
+        <>
+          <WelcomeDivider />
+          <NewsSection>
+            <NewsSectionTitle>
+              <FontAwesomeIcon icon={faUser} style={{ marginRight: '0.3rem' }} />
+              Můj přehled
+            </NewsSectionTitle>
+            {myStats.objednavky_k_vyrizeni > 0 && (
+              <NewsItem $bg="#fef3c7" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'ke_schvaleni', clearFilters: true } })}>
+                <NewsIcon $color="#b45309"><FontAwesomeIcon icon={faShoppingCart} /></NewsIcon>
+                <NewsText>Objednávky k vyřízení</NewsText>
+                <NewsCount $color="#b45309">{myStats.objednavky_k_vyrizeni}</NewsCount>
+              </NewsItem>
+            )}
+            {myStats.faktury_k_potvrzeni > 0 && (
+              <NewsItem $bg="#e0f2fe" onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_invoices', clearFilters: true } })}>
+                <NewsIcon $color="#0284c7"><FontAwesomeIcon icon={faFileInvoice} /></NewsIcon>
+                <NewsText>Faktury k potvrzení</NewsText>
+                <NewsCount $color="#0284c7">{myStats.faktury_k_potvrzeni}</NewsCount>
+              </NewsItem>
+            )}
+            {myStats.ke_zverejneni > 0 && (
+              <NewsItem $bg="#ede9fe" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'k_uverejneni', clearFilters: true } })}>
+                <NewsIcon $color="#7c3aed"><FontAwesomeIcon icon={faGlobe} /></NewsIcon>
+                <NewsText>Ke zveřejnění do registru</NewsText>
+                <NewsCount $color="#7c3aed">{myStats.ke_zverejneni}</NewsCount>
+              </NewsItem>
+            )}
+            {myStats.odeslane_bez_faktury?.count > 0 && (
+              <NewsItem $bg="#fff7ed" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'odeslana', clearFilters: true } })}>
+                <NewsIcon $color="#c2410c"><FontAwesomeIcon icon={faCoins} /></NewsIcon>
+                <NewsText>
+                  Odeslané bez faktury
+                  <span style={{ display: 'block', fontSize: '0.65rem', color: '#9ca3af', marginTop: 1 }}>
+                    {myStats.odeslane_bez_faktury.castka?.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                  </span>
+                </NewsText>
+                <NewsCount $color="#c2410c">{myStats.odeslane_bez_faktury.count}</NewsCount>
+              </NewsItem>
+            )}
+            {myStats.vyfakturovane_nedokoncene?.count > 0 && (
+              <NewsItem $bg="#ecfdf5" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'fakturace', clearFilters: true } })}>
+                <NewsIcon $color="#059669"><FontAwesomeIcon icon={faMoneyBillWave} /></NewsIcon>
+                <NewsText>
+                  Vyfakturované, nedokončené
+                  <span style={{ display: 'block', fontSize: '0.65rem', color: '#9ca3af', marginTop: 1 }}>
+                    {myStats.vyfakturovane_nedokoncene.castka?.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                  </span>
+                </NewsText>
+                <NewsCount $color="#059669">{myStats.vyfakturovane_nedokoncene.count}</NewsCount>
+              </NewsItem>
+            )}
+            {myStats.objednavky_k_vyrizeni === 0 && myStats.faktury_k_potvrzeni === 0 && myStats.ke_zverejneni === 0 && myStats.odeslane_bez_faktury?.count === 0 && myStats.vyfakturovane_nedokoncene?.count === 0 && (
+              <NewsEmpty>Vše vyřízeno ✓</NewsEmpty>
+            )}
+          </NewsSection>
+        </>
+      )}
+
+      {/* Vyžaduje vaši akci – bez časového filtru */}
+      {actionItems.length > 0 && (
+        <>
+          <WelcomeDivider />
+          <NewsSection>
+            <NewsSectionTitle>
+              <FontAwesomeIcon icon={faExclamationCircle} style={{ marginRight: '0.3rem' }} />
+              Vyžaduje vaši akci
+            </NewsSectionTitle>
+            {actionItems.map((item, i) => {
+              const cfg = NEWS_ICON_MAP[item.icon] || { icon: faInfoCircle, color: '#6b7280', bg: '#f3f4f6' };
+              return (
+                <NewsItem key={`a${i}`} $bg={cfg.bg} onClick={() => {
+                  if (item.link) {
+                    navigate(item.link, item.filter ? { state: { dashboardFilter: item.filter, clearFilters: true } } : undefined);
+                  }
+                }}>
+                  <NewsIcon $color={cfg.color}>
+                    <FontAwesomeIcon icon={cfg.icon} />
+                  </NewsIcon>
+                  <NewsText>{item.text}</NewsText>
+                  <NewsCount $color={cfg.color}>{item.count}</NewsCount>
+                </NewsItem>
+              );
+            })}
+          </NewsSection>
+        </>
+      )}
+
+      {/* Změny od přihlášení – s časovým filtrem */}
       <WelcomeDivider />
       <NewsSection>
         <NewsSectionTitle>
           <FontAwesomeIcon icon={faClock} style={{ marginRight: '0.3rem' }} />
-          Poslední aktivity {sinceFormatted ? `(od ${sinceFormatted})` : ''}
+          Změny od přihlášení {sinceFormatted ? `(${sinceFormatted})` : ''}
         </NewsSectionTitle>
-        {newsItems.length > 0 ? (
-          newsItems.map((item, i) => {
+        {(changeItems.length > 0 || legacyItems.length > 0) ? (
+          [...changeItems, ...legacyItems].map((item, i) => {
             const cfg = NEWS_ICON_MAP[item.icon] || { icon: faInfoCircle, color: '#6b7280', bg: '#f3f4f6' };
             return (
-              <NewsItem key={i} $bg={cfg.bg} onClick={() => {
+              <NewsItem key={`c${i}`} $bg={cfg.bg} onClick={() => {
                 if (item.link) {
                   navigate(item.link, item.filter ? { state: { dashboardFilter: item.filter, clearFilters: true } } : undefined);
                 }
@@ -1545,7 +1688,7 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, navigate 
             );
           })
         ) : (
-          <NewsEmpty>Žádné nové aktivity</NewsEmpty>
+          <NewsEmpty>Žádné změny od přihlášení</NewsEmpty>
         )}
       </NewsSection>
     </WidgetBody>
@@ -1605,13 +1748,26 @@ function MyOrdersWidget({ myOrdersData, navigate }) {
   const renderOrder = (o) => {
     const stav = o.aktualni_stav || '';
     const sb = getStatusBadge(stav);
+    const objednavatel = o.objednavatel_jmeno ? `${o.objednavatel_jmeno} ${o.objednavatel_prijmeni || ''}`.trim() : '';
+    const garantJmeno = o.garant_jmeno ? `${o.garant_jmeno} ${o.garant_prijmeni || ''}`.trim() : '';
     const prikazceJmeno = o.prikazce_jmeno ? `${o.prikazce_jmeno} ${o.prikazce_prijmeni || ''}`.trim() : '';
+    const metaInfo = [objednavatel && `Obj: ${objednavatel}`, garantJmeno && `Gar: ${garantJmeno}`, prikazceJmeno && `Přík: ${prikazceJmeno}`].filter(Boolean).join(' · ');
     return (
       <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
         <ListItemLeft>
-          <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+            {o.dni_od_vytvoreni !== undefined && (
+              <Badge
+                $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 2 ? '#dbeafe' : '#dcfce7')}
+                $color={o.dni_od_vytvoreni > 7 ? '#dc2626' : (o.dni_od_vytvoreni > 2 ? '#1d4ed8' : '#16a34a')}
+              >
+                {o.dni_od_vytvoreni === 0 ? 'dnes' : (o.dni_od_vytvoreni === 1 ? 'včera' : `před ${o.dni_od_vytvoreni} d`)}
+              </Badge>
+            )}
+          </div>
           <ListItemSub>{o.predmet}</ListItemSub>
-          {prikazceJmeno && <ListItemMeta>Přík: {prikazceJmeno}</ListItemMeta>}
+          {metaInfo && <ListItemMeta>{metaInfo}</ListItemMeta>}
         </ListItemLeft>
         <ListItemRight>
           <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
@@ -1682,14 +1838,14 @@ function OrderListWidget({ orders, title, navigate, filterPreset }) {
         return (
           <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <ListItemTitle style={{ flex: 1 }}>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
                 {o.dni_od_vytvoreni !== undefined && (
                   <Badge
-                    $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 3 ? '#fef3c7' : '#dbeafe')}
-                    $color={o.dni_od_vytvoreni > 7 ? '#dc2626' : (o.dni_od_vytvoreni > 3 ? '#b45309' : '#1d4ed8')}
+                    $bg={o.dni_od_vytvoreni > 7 ? '#fee2e2' : (o.dni_od_vytvoreni > 2 ? '#dbeafe' : '#dcfce7')}
+                    $color={o.dni_od_vytvoreni > 7 ? '#dc2626' : (o.dni_od_vytvoreni > 2 ? '#1d4ed8' : '#16a34a')}
                   >
-                    {o.dni_od_vytvoreni === 0 ? 'dnes' : `před ${o.dni_od_vytvoreni} d`}
+                    {o.dni_od_vytvoreni === 0 ? 'dnes' : (o.dni_od_vytvoreni === 1 ? 'včera' : `před ${o.dni_od_vytvoreni} d`)}
                   </Badge>
                 )}
               </div>
@@ -1727,8 +1883,8 @@ function InvoiceListWidget({ invoices, navigate, filterPreset }) {
         return (
           <ListItem key={f.id} onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: f.id, orderIdForLoad: f.objednavka_id || null, returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <ListItemTitle style={{ flex: 1 }}><span style={{ color: '#6b7280', fontWeight: 400 }}>FA VS:</span> {f.fa_cislo || `#${f.id}`}</ListItemTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ListItemTitle><span style={{ color: '#6b7280', fontWeight: 400 }}>FA VS:</span> {f.fa_cislo || `#${f.id}`}</ListItemTitle>
                 <Badge
                   $bg={f.dni_do_splatnosti < 0 ? '#fee2e2' : (f.dni_do_splatnosti < 3 ? '#fef3c7' : '#dbeafe')}
                   $color={f.dni_do_splatnosti < 0 ? '#dc2626' : (f.dni_do_splatnosti < 3 ? '#b45309' : '#1d4ed8')}
@@ -1775,8 +1931,8 @@ function InvoiceOverdueWidget({ invoices, navigate, filterPreset }) {
         return (
           <ListItem key={f.id} onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: f.id, orderIdForLoad: f.objednavka_id || null, returnTo: '/dashboard' } })}>
             <ListItemLeft>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <ListItemTitle style={{ flex: 1 }}><span style={{ color: '#6b7280', fontWeight: 400 }}>FA VS:</span> {f.fa_cislo || `#${f.id}`}</ListItemTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ListItemTitle><span style={{ color: '#6b7280', fontWeight: 400 }}>FA VS:</span> {f.fa_cislo || `#${f.id}`}</ListItemTitle>
                 <Badge $bg="#fee2e2" $color="#dc2626">{f.dni_po_splatnosti} d po spl.</Badge>
               </div>
               <ListItemSub>{f.fa_dodavatel_nazev} — spl. {formatDate(f.fa_datum_splatnosti)}</ListItemSub>
@@ -1873,20 +2029,35 @@ function AlertsWidget({ alerts, navigate }) {
 
 function NotificationsWidget({ notifications, navigate }) {
   if (!notifications || notifications.length === 0) {
-    return <WidgetBody><EmptyState>Žádné nepřečtené notifikace</EmptyState></WidgetBody>;
+    return <WidgetBody><EmptyState>Žádné notifikace za posledních 7 dní</EmptyState></WidgetBody>;
   }
+
+  const unreadCount = notifications.filter(n => !n.precteno || n.precteno === '0' || n.precteno === 0).length;
 
   return (
     <WidgetBody>
-      {notifications.map(n => (
-        <NotifItem key={n.id}>
-          <NotifDot $color={getNotifColor(n.priorita)} />
-          <div style={{ flex: 1 }}>
-            <NotifText>{n.nadpis || n.zprava}</NotifText>
-            <NotifTime>{timeAgo(n.dt_created)}</NotifTime>
-          </div>
-        </NotifItem>
-      ))}
+      {unreadCount > 0 && (
+        <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.4rem', paddingBottom: '0.3rem', borderBottom: `1px solid ${theme.colors.gray100}` }}>
+          <strong style={{ color: '#1d4ed8' }}>{unreadCount}</strong> nepřečten{unreadCount === 1 ? 'á' : unreadCount < 5 ? 'é' : 'ých'}
+        </div>
+      )}
+      {notifications.map(n => {
+        const isRead = n.precteno && n.precteno !== '0' && n.precteno !== 0;
+        return (
+          <NotifItem key={n.id} style={isRead ? { opacity: 0.45 } : {}}>
+            <NotifDot $color={isRead ? '#cbd5e1' : getNotifColor(n.priorita)} />
+            <div style={{ flex: 1 }}>
+              <NotifText style={isRead ? { color: '#94a3b8', fontWeight: 400 } : { fontWeight: 500 }}>
+                {n.nadpis || n.zprava}
+              </NotifText>
+              <NotifTime>{timeAgo(n.dt_created)}{isRead ? ' · přečteno' : ''}</NotifTime>
+            </div>
+            {!isRead && (
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, marginTop: '0.4rem' }} />
+            )}
+          </NotifItem>
+        );
+      })}
       <ViewAllLink>
         <button onClick={() => navigate('/notifications')}>
           Všechny notifikace <FontAwesomeIcon icon={faArrowRight} />
@@ -1899,8 +2070,8 @@ function NotificationsWidget({ notifications, navigate }) {
 function ChartTimelineWidget({ data, loading, groupBy = 'day', days = 30 }) {
   if (loading) {
     return (
-      <WidgetBody>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, gap: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
+      <WidgetBody style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: 160, gap: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
           <span style={{ display: 'inline-block', width: 18, height: 18, border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8', borderRadius: '50%', animation: 'dashSpin 0.8s linear infinite' }} />
           Načítám graf…
         </div>
@@ -1975,8 +2146,8 @@ function ChartTimelineWidget({ data, loading, groupBy = 'day', days = 30 }) {
   };
 
   return (
-    <WidgetBody $noScroll>
-      <div style={{ height: 200 }}>
+    <WidgetBody $noScroll style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ flex: 1, minHeight: 160 }}>
         <Bar data={chartData} options={options} />
       </div>
       <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
@@ -2012,8 +2183,8 @@ function TopSuppliersWidget({ suppliers }) {
   };
 
   return (
-    <WidgetBody $noScroll>
-      <div style={{ height: 220 }}>
+    <WidgetBody $noScroll style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ flex: 1, minHeight: 180 }}>
         <Doughnut data={chartData} options={options} />
       </div>
     </WidgetBody>
@@ -2056,8 +2227,8 @@ function MajetekByDruhWidget({ data }) {
   };
 
   return (
-    <WidgetBody $noScroll>
-      <div style={{ height: 210 }}>
+    <WidgetBody $noScroll style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ flex: 1, minHeight: 170 }}>
         <Doughnut data={chartData} options={options} />
       </div>
       <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
@@ -2123,8 +2294,8 @@ function FeesByDruhWidget({ data, navigate }) {
   };
 
   return (
-    <WidgetBody $noScroll>
-      <div style={{ height: 210 }}>
+    <WidgetBody $noScroll style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ flex: 1, minHeight: 160 }}>
         <Bar data={chartData} options={options} />
       </div>
       <div style={{ display: 'flex', gap: '1.5rem', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
@@ -2629,13 +2800,13 @@ function LPCriticalWidget({ lpData, navigate }) {
         const tags = [];
         
         if (lp.typ_kriticky === 'PREKROCENO') {
-          tags.push(<CriticalTag key="p" $type="UKONCENA">⚠️ {pct}% překročeno!</CriticalTag>);
+          tags.push(<CriticalTag key="p" $type="UKONCENA" style={{ textAlign: 'right', lineHeight: 1.3 }}>⚠️ {pct}%<br/><span style={{ fontSize: '0.6rem', textTransform: 'uppercase' }}>překročeno!</span></CriticalTag>);
         } else if (lp.typ_kriticky === 'CERPANI_KRITICKE') {
-          tags.push(<CriticalTag key="k" $type="UKONCENA">🔴 {pct}% kritické</CriticalTag>);
+          tags.push(<CriticalTag key="k" $type="UKONCENA" style={{ textAlign: 'right', lineHeight: 1.3 }}>🔴 {pct}%<br/><span style={{ fontSize: '0.6rem', textTransform: 'uppercase' }}>kritické</span></CriticalTag>);
         } else if (lp.typ_kriticky === 'CERPANI_VYSOKE') {
-          tags.push(<CriticalTag key="v" $type="CERPANI">🟡 {pct}% vysoké</CriticalTag>);
+          tags.push(<CriticalTag key="v" $type="CERPANI" style={{ textAlign: 'right', lineHeight: 1.3 }}>🟡 {pct}%<br/><span style={{ fontSize: '0.6rem', textTransform: 'uppercase' }}>vysoké</span></CriticalTag>);
         } else if (lp.typ_kriticky === 'CERPANI_STREDNI') {
-          tags.push(<CriticalTag key="s" $type="BRZY_KONCI">🔵 {pct}% střední</CriticalTag>);
+          tags.push(<CriticalTag key="s" $type="BRZY_KONCI" style={{ textAlign: 'right', lineHeight: 1.3 }}>🔵 {pct}%<br/><span style={{ fontSize: '0.6rem', textTransform: 'uppercase' }}>střední</span></CriticalTag>);
         }
 
         return (
@@ -2713,7 +2884,7 @@ function OrderCommentsWidget({ comments, navigate }) {
         const dni = c.dni_od_vytvoreni != null ? parseInt(c.dni_od_vytvoreni, 10) : null;
         const dniBg = dni === null ? '#f1f5f9' : dni > 30 ? '#fee2e2' : dni > 14 ? '#fef3c7' : '#dbeafe';
         const dniColor = dni === null ? '#64748b' : dni > 30 ? '#dc2626' : dni > 14 ? '#b45309' : '#1d4ed8';
-        const dniLabel = dni === null ? '' : dni === 0 ? 'dnes' : `před ${dni} d`;
+        const dniLabel = dni === null ? '' : dni === 0 ? 'dnes' : (dni === 1 ? 'včera' : `před ${dni} d`);
 
         const metaParts = [
           c.objednatel_jmeno && c.objednatel_jmeno.trim() ? `Obj: ${c.objednatel_jmeno.trim()}` : null,
@@ -2728,8 +2899,8 @@ function OrderCommentsWidget({ comments, navigate }) {
             style={{ cursor: 'pointer' }}
           >
             <ListItemLeft style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <ListItemTitle style={{ flex: 1, fontWeight: 700 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ListItemTitle style={{ fontWeight: 700 }}>
                   {c.cislo_objednavky || `#${c.objednavka_id}`}
                 </ListItemTitle>
                 <Badge $bg={dniBg} $color={dniColor}>{dniLabel}</Badge>
@@ -2738,7 +2909,7 @@ function OrderCommentsWidget({ comments, navigate }) {
                   background: '#eff6ff', border: '1px solid #bfdbfe',
                   borderRadius: '10px', padding: '1px 7px',
                   fontSize: '0.65rem', fontWeight: 700, color: '#2563eb',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap', marginLeft: 'auto',
                 }}>
                   <FontAwesomeIcon icon={faComment} style={{ fontSize: '0.62rem' }} /> {c.komentaru_celkem}
                 </span>
@@ -3539,7 +3710,7 @@ export default function DashboardPage() {
 
     switch (tileId) {
       case 'welcome':
-        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} navigate={navigate} />;
+        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} />;
         break;
       case 'orders_stats':
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
@@ -3551,7 +3722,7 @@ export default function DashboardPage() {
                    + (data?.my_orders_pending?.prikazce?.length || 0)
                    + (data?.my_orders_pending?.usek?.length || 0);
         if (data?.my_orders_pending?.is_admin && (data?.my_orders_pending?.usek?.length || 0) > 0) {
-          titleOverride = 'Moje objednávky / úseku';
+          titleOverride = 'Moje objednávky / mého úseku';
         }
         break;
       case 'my_invoices':
@@ -3583,7 +3754,7 @@ export default function DashboardPage() {
         badgeCount = data?.alerts?.length;
         break;
       case 'notifications':
-        content = <NotificationsWidget notifications={data?.notifications_unread} navigate={navigate} />;
+        content = <NotificationsWidget notifications={data?.notifications_recent || data?.notifications_unread} navigate={navigate} />;
         badgeCount = data?.notifications_unread?.length;
         break;
       case 'chart_timeline':
