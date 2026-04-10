@@ -1279,6 +1279,20 @@ function Orders25ListV3() {
     setGlobalFilter('');    // Vymaže fulltext search
   }, [originalClearFilters, setGlobalFilter]);
 
+  // 🎯 Effect pro proklik z dashboardu "komentáře" - filtrovat dle čísla objednávky
+  useEffect(() => {
+    const cisloObj = location.state?.columnFilterCisloObj;
+    if (!cisloObj) return;
+    // Vyčistit filtry a nastavit filtr čísla objednávky
+    originalClearFilters();
+    setGlobalFilter('');
+    handleColumnFilterChange('cislo_objednavky', cisloObj);
+    // Vyčistit state
+    const { columnFilterCisloObj: _c, clearFilters: _cf, ...rest } = location.state || {};
+    navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: Object.keys(rest).length > 0 ? rest : null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Helper pro detekci jakýchkoliv aktivních filtrů (column filters nebo dashboard filter)
   const hasAnyActiveFilters = useMemo(() => {
     const isActiveFilterValue = (v) => {

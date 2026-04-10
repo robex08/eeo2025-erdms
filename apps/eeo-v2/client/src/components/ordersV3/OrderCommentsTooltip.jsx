@@ -992,14 +992,14 @@ const OrderCommentsTooltip = ({
     try {
       await onAddComment(newCommentText.trim());
       setNewCommentText('');
-      // ✅ TICHÉ: Nepřenačítat komentáře znovu.
-      // Parent (OrdersTableV3) už vloží nový komentář do lokálního seznamu.
+      // ✅ Reload komentářů ze serveru přes parent
+      if (onLoadComments) await onLoadComments();
     } catch (err) {
       console.error('Chyba při přidávání komentáře:', err);
     } finally {
       setIsSubmitting(false);
     }
-  }, [newCommentText, onAddComment]);
+  }, [newCommentText, onAddComment, onLoadComments]);
   
   // Handler pro reply
   const handleSubmitReply = useCallback(async () => {
@@ -1010,13 +1010,14 @@ const OrderCommentsTooltip = ({
       await onAddComment(replyText.trim(), replyToComment.id);
       setReplyText('');
       setReplyToComment(null);
-      // ✅ TICHÉ: Reload (pokud je potřeba kvůli parent_comment_id) řeší parent handler.
+      // ✅ Reload komentářů ze serveru přes parent
+      if (onLoadComments) await onLoadComments();
     } catch (err) {
       console.error('Chyba při přidávání odpovědi:', err);
     } finally {
       setIsSubmitting(false);
     }
-  }, [replyText, replyToComment, onAddComment]);
+  }, [replyText, replyToComment, onAddComment, onLoadComments]);
   
   // Handler pro zobrazení delete confirm
   const handleDeleteClick = useCallback((commentId, event) => {

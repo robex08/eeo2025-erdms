@@ -1510,19 +1510,25 @@ function _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id) {
 function _dashboard_get_order_comments_recent($db, $user_id, $days = 7) {
     $date_from = date('Y-m-d', strtotime("-{$days} days"));
 
+    // Načte objednávky kde jsem autor komentáře NEBO jsem zapojen do objednávky
+    // Seskupí dle objednávky, vrátí poslední komentář + počet komentářů za období
     $stmt = $db->prepare("
-        SELECT k.id, k.objednavka_id, k.obsah_plain, k.dt_vytvoreni,
-               o.cislo_objednavky, o.predmet,
-               CONCAT(au.jmeno, ' ', au.prijmeni) as autor_jmeno,
-               au.username as autor_username
+        SELECT
+            o.id as objednavka_id,
+            o.cislo_objednavky,
+            o.predmet,
+            COUNT(k.id) as komentaru_celkem,
+            MAX(k.dt_vytvoreni) as posledni_komentar_dt,
+            SUBSTRING_INDEX(GROUP_CONCAT(k.obsah_plain ORDER BY k.dt_vytvoreni DESC SEPARATOR '|||'), '|||', 1) as posledni_obsah,
+            SUBSTRING_INDEX(GROUP_CONCAT(CONCAT(au.jmeno, ' ', au.prijmeni) ORDER BY k.dt_vytvoreni DESC SEPARATOR '|||'), '|||', 1) as posledni_autor
         FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k
         INNER JOIN `" . TBL_OBJEDNAVKY . "` o ON k.objednavka_id = o.id AND o.aktivni = 1 AND o.id != 1
         LEFT JOIN `" . TBL_UZIVATELE . "` au ON k.user_id = au.id
         WHERE k.smazano = 0
           AND k.dt_vytvoreni >= ?
-          AND k.user_id != ?
           AND (
-              o.uzivatel_id = ?
+              k.user_id = ?
+              OR o.uzivatel_id = ?
               OR o.objednatel_id = ?
               OR o.garant_uzivatel_id = ?
               OR o.schvalovatel_id = ?
@@ -1531,11 +1537,13 @@ function _dashboard_get_order_comments_recent($db, $user_id, $days = 7) {
               OR o.fakturant_id = ?
               OR o.potvrdil_vecnou_spravnost_id = ?
           )
-        ORDER BY k.dt_vytvoreni DESC
-        LIMIT 20
+        GROUP BY o.id, o.cislo_objednavky, o.predmet
+        ORDER BY posledni_komentar_dt DESC
+        LIMIT 15
     ");
     $stmt->execute([
-        $date_from, $user_id,
+        $date_from,
+        $user_id,
         $user_id, $user_id, $user_id, $user_id,
         $user_id, $user_id, $user_id, $user_id
     ]);

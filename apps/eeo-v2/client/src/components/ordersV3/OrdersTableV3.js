@@ -2650,6 +2650,9 @@ const OrdersTableV3 = ({
   // 💥 State pro animaci badge po přidání komentáře
   const [justAddedCommentId, setJustAddedCommentId] = useState(null);
   const justAddedTimerRef = React.useRef(null);
+
+  // ✅ Přepisy počtu komentářů (bez mutace dat - triggerne re-render)
+  const [commentCountOverrides, setCommentCountOverrides] = useState({});
   
   // ✅ State pro reset sloupce confirm dialog
   const [resetColumnsConfirm, setResetColumnsConfirm] = useState(false);
@@ -2913,33 +2916,12 @@ const OrdersTableV3 = ({
       const result = await onAddComment(commentsTooltip.orderId, text, parentCommentId);
       
       // ✅ API vrací: {comment, comments_count}
-      const newComment = result?.comment || result?.data?.comment || result?.data;
       const newCount = result?.comments_count;
       
-      // ✅ Aktualizovat seznam komentářů - vždy reload ze serveru pro spolehlivost
-      if (onLoadComments) {
-        const reloadResult = await onLoadComments(commentsTooltip.orderId);
-        const commentsArray = reloadResult?.data || reloadResult?.comments || [];
-        setCommentsTooltip(prev => ({
-          ...prev,
-          comments: commentsArray,
-          commentsCount: reloadResult?.comments_count ?? (newCount ?? prev.commentsCount),
-        }));
-      } else if (newComment) {
-        // Fallback: lokální merge pokud onLoadComments není dostupný
-        setCommentsTooltip(prev => ({
-          ...prev,
-          comments: [...prev.comments, newComment],
-          commentsCount: newCount || (prev.commentsCount + 1),
-        }));
-      }
-      
-      // ✅ OKAMŽITÁ aktualizace ikony v tabulce - mutace data pole
+      // ✅ Aktualizovat count v commentsTooltip + ikonu v tabulce (přes state - triggerne re-render)
       if (newCount !== undefined) {
-        const orderInTable = data.find(o => o.id === commentsTooltip.orderId);
-        if (orderInTable) {
-          orderInTable.comments_count = newCount;
-        }
+        setCommentsTooltip(prev => ({ ...prev, commentsCount: newCount }));
+        setCommentCountOverrides(prev => ({ ...prev, [commentsTooltip.orderId]: newCount }));
       }
 
       // 💥 Animace badge - zvýraznit ikonu komentáře v tabulce
@@ -2969,22 +2951,14 @@ const OrdersTableV3 = ({
       const result = await onDeleteComment(commentId);
       const newCount = result.comments_count;
       
-      // ✅ Odstranit komentář ze seznamu v tooltipu
+      // ✅ Odstranit komentář ze seznamu v tooltipu + aktualizovat ikonu v tabulce
+      const updatedCount = newCount !== undefined ? newCount : Math.max(0, commentsTooltip.commentsCount - 1);
       setCommentsTooltip(prev => ({
         ...prev,
         comments: prev.comments.filter(c => c.id !== commentId),
-        commentsCount: newCount || (prev.commentsCount - 1),
+        commentsCount: updatedCount,
       }));
-      
-      // ✅ OKAMŽITÁ aktualizace ikony v tabulce - mutace data pole
-      if (newCount !== undefined) {
-        const orderInTable = data.find(o => o.id === commentsTooltip.orderId);
-        if (orderInTable) {
-          orderInTable.comments_count = newCount;
-        }
-      }
-      // ✅ TICHÝ REŽIM: Po smazání komentáře NErefreshovat tabulku ani neinvalidovat cache.
-      // Tooltip si upraví lokální seznam a ikona/count se upraví mutací řádku výše.
+      setCommentCountOverrides(prev => ({ ...prev, [commentsTooltip.orderId]: updatedCount }));
       
       // ✅ Toast notifikace
       if (showToast) {
@@ -3764,7 +3738,7 @@ const OrdersTableV3 = ({
           }
           
           // Počet komentářů
-          const commentsCount = order.comments_count || 0;
+          const commentsCount = commentCountOverrides[order.id] ?? order.comments_count ?? 0;
           const badgeText = commentsCount > 9 ? '9+' : String(commentsCount);
           
           // Šedé pozadí pokud už bylo s kontrolou pracováno (pouze pro checkbox kontroly)
@@ -5908,42 +5882,47 @@ const OrdersTableV3 = ({
                           </a>
                         </td>
                         <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                          {(() => {
+                            const oCount = commentCountOverrides[o.id] ?? o.comments_count ?? 0;
+                            return (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleOpenCommentsTooltip(
-                                { id: o.id, cislo_objednavky: o.cislo_objednavky, comments_count: o.comments_count, objednatel: o.objednatel, castka: o.castka },
+                                { id: o.id, cislo_objednavky: o.cislo_objednavky, comments_count: oCount, objednatel: o.objednatel, castka: o.castka },
                                 { current: e.currentTarget }
                               );
                             }}
                             style={{
                               background: 'none',
                               border: '1px solid',
-                              borderColor: o.comments_count > 0 ? '#3b82f6' : '#94a3b8',
+                              borderColor: oCount > 0 ? '#3b82f6' : '#94a3b8',
                               borderRadius: '4px',
                               cursor: 'pointer',
                               padding: '2px 5px',
-                              color: o.comments_count > 0 ? '#3b82f6' : '#64748b',
+                              color: oCount > 0 ? '#3b82f6' : '#64748b',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '3px',
                               transition: 'all 0.15s ease',
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.background = o.comments_count > 0 ? '#eff6ff' : '#f1f5f9';
-                              e.currentTarget.style.borderColor = o.comments_count > 0 ? '#2563eb' : '#475569';
-                              e.currentTarget.style.color = o.comments_count > 0 ? '#2563eb' : '#334155';
+                              e.currentTarget.style.background = oCount > 0 ? '#eff6ff' : '#f1f5f9';
+                              e.currentTarget.style.borderColor = oCount > 0 ? '#2563eb' : '#475569';
+                              e.currentTarget.style.color = oCount > 0 ? '#2563eb' : '#334155';
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.background = 'none';
-                              e.currentTarget.style.borderColor = o.comments_count > 0 ? '#3b82f6' : '#94a3b8';
-                              e.currentTarget.style.color = o.comments_count > 0 ? '#3b82f6' : '#64748b';
+                              e.currentTarget.style.borderColor = oCount > 0 ? '#3b82f6' : '#94a3b8';
+                              e.currentTarget.style.color = oCount > 0 ? '#3b82f6' : '#64748b';
                             }}
-                            title={o.comments_count > 0 ? `${o.comments_count} komentářů` : 'Přidat komentář'}
+                            title={oCount > 0 ? `${oCount} komentářů` : 'Přidat komentář'}
                           >
                             <FontAwesomeIcon icon={faComment} style={{ fontSize: '0.75rem' }} />
-                            {o.comments_count > 0 && <span style={{ fontSize: '0.65rem' }}>{o.comments_count}</span>}
+                            {oCount > 0 && <span style={{ fontSize: '0.65rem' }}>{oCount}</span>}
                           </button>
+                            );
+                          })()}
                         </td>
                         <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#64748b' }}>{o.dt_vytvoreni ? new Date(o.dt_vytvoreni).toLocaleDateString('cs-CZ') : '—'}</td>
                         <td style={{ padding: '6px 10px', color: '#374151' }}>{o.objednatel || '—'}</td>
