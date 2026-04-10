@@ -752,6 +752,7 @@ function getLPDetaily($db, $lp_id) {
         $stmt = $db->prepare("
             SELECT
                 lp.cislo_lp,
+                lp.cislo_uctu,
                 lp.nazev_uctu,
                 u.usek_zkr,
                 TRIM(CONCAT(COALESCE(uz.jmeno, ''), ' ', COALESCE(uz.prijmeni, ''))) AS prikazce_jmeno
@@ -897,6 +898,9 @@ function enrichOrderFinancovani($db, &$order) {
                         'id' => $lp_id,
                         'kod' => $lp['cislo_lp'],
                         'nazev' => $lp['nazev_uctu'],
+                        'cislo_uctu' => isset($lp['cislo_uctu']) ? $lp['cislo_uctu'] : null,
+                        'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
+                        'prikazce_jmeno' => isset($lp['prikazce_jmeno']) ? trim($lp['prikazce_jmeno']) : null,
                         'remaining_budget' => $budget_info ? $budget_info['zbyva_predpoklad'] : null,
                         'total_limit' => $budget_info ? $budget_info['celkovy_limit'] : null,
                         'cerpano_predpoklad' => $budget_info ? $budget_info['predpokladane_cerpani'] : null,

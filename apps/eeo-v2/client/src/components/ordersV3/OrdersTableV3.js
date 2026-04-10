@@ -1767,6 +1767,26 @@ const ApprovalLPItem = styled.div`
   }
 `;
 
+const VProcesuDrawer = styled.div`
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(980px, 90vw);
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(99,102,241,0.08);
+  border-radius: 0 0 12px 12px;
+  border-top: 2px solid #6366f1;
+  z-index: 20001;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: vProcesuSlideDown 0.2s cubic-bezier(0.16,1,0.3,1);
+  @keyframes vProcesuSlideDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+`;
+
 const ApprovalLPHeader = styled.div`
   font-size: 0.8125rem;
   font-weight: 700;
@@ -2515,6 +2535,16 @@ const OrdersTableV3 = ({
   const [approvalComment, setApprovalComment] = useState('');
   const [approvalCommentError, setApprovalCommentError] = useState('');
 
+  // State pro rozbalovací panel "V procesu" v approval dialogu
+  // klíč: `lp_${lp_id}` nebo `smlouva_${cislo_smlouvy}`, hodnota: { loading, data, error }
+  const [vProcesuPanels, setVProcesuPanels] = useState({});
+  // Aktivní popup klíč pro zobrazení jako fixed overlay mimo dialog
+  const [activeVProcesuKey, setActiveVProcesuKey] = useState(null);
+  const [activeVProcesuTitle, setActiveVProcesuTitle] = useState('');
+  const [vProcesuAnchorY, setVProcesuAnchorY] = useState(0);
+  const [vProcesuBottomLimit, setVProcesuBottomLimit] = useState(null);
+  const approvalActionsRef = useRef(null);
+
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -2608,13 +2638,18 @@ const OrdersTableV3 = ({
     isOpen: false,
     orderId: null,
     orderNumber: null,
+    orderInfo: null,
     iconRef: null,
     comments: [],
     commentsCount: 0,
-    lastComment: null, // ✅ Info o posledním komentáři pro bubble tooltip
+    lastComment: null,
     loading: false,
     error: null,
   });
+  
+  // 💥 State pro animaci badge po přidání komentáře
+  const [justAddedCommentId, setJustAddedCommentId] = useState(null);
+  const justAddedTimerRef = React.useRef(null);
   
   // ✅ State pro reset sloupce confirm dialog
   const [resetColumnsConfirm, setResetColumnsConfirm] = useState(false);
@@ -2795,6 +2830,7 @@ const OrdersTableV3 = ({
         isOpen: false,
         orderId: null,
         orderNumber: null,
+        orderInfo: null,
         iconRef: null,
         comments: [],
         commentsCount: 0,
@@ -2804,11 +2840,21 @@ const OrdersTableV3 = ({
       return;
     }
     
+    // Sestavit orderInfo
+    const objednatelName = order.objednatel_prijmeni && order.objednatel_jmeno
+      ? `${order.objednatel_prijmeni} ${order.objednatel_jmeno}`
+      : (order.objednatel_prijmeni || order.objednatel_jmeno || order.objednatel || null);
+    const orderInfo = {
+      objednatel: objednatelName,
+      castka: order.max_cena_s_dph != null ? parseFloat(order.max_cena_s_dph) : (order.castka != null ? parseFloat(order.castka) : null),
+    };
+    
     // Otevřít tooltip
     setCommentsTooltip({
       isOpen: true,
       orderId: order.id,
       orderNumber: order.cislo_objednavky || `#${order.id}`,
+      orderInfo,
       iconRef,
       comments: [],
       commentsCount: order.comments_count || 0,
@@ -2886,6 +2932,11 @@ const OrdersTableV3 = ({
           orderInTable.comments_count = newCount;
         }
       }
+
+      // 💥 Animace badge - zvýraznit ikonu komentáře v tabulce
+      if (justAddedTimerRef.current) clearTimeout(justAddedTimerRef.current);
+      setJustAddedCommentId(commentsTooltip.orderId);
+      justAddedTimerRef.current = setTimeout(() => setJustAddedCommentId(null), 2500);
 
       // ✅ Pro odpovědi vždy refrešni komentáře, aby se parent_comment_id projevil v chatu
       if (parentCommentId && onLoadComments) {
@@ -3041,6 +3092,9 @@ const OrdersTableV3 = ({
       setOrderToApprove(null);
       setApprovalComment('');
       setApprovalCommentError('');
+      setVProcesuPanels({});
+      setActiveVProcesuKey(null);
+      setVProcesuAnchorY(0);
 
       // ✅ Zobraz úspěšnou zprávu s detaily
       const actionMessages = {
@@ -3605,12 +3659,12 @@ const OrdersTableV3 = ({
           // 2. ok (dt_kontroly >= dt_modifikace) - zelená faCheckSquare
           // 3. warning (dt_kontroly < dt_modifikace) - oranžová faCheckSquare
           let checkStatus = 'unchecked';
-          let statusColor = '#cbd5e1';
+          let statusColor = canGenerateFinancialControl ? '#64748b' : '#cbd5e1';
           let statusBg = 'transparent';
-          let statusBorder = '#d1d5db';
-          let hoverBg = '#f3f4f6';
-          let hoverBorder = '#9ca3af';
-          let hoverColor = '#6b7280';
+          let statusBorder = canGenerateFinancialControl ? '#94a3b8' : '#e2e8f0';
+          let hoverBg = '#eff6ff';
+          let hoverBorder = '#3b82f6';
+          let hoverColor = '#2563eb';
           let tooltipText = 'Klikněte pro označení jako zkontrolováno';
           let tooltipIcon = 'info';
           
@@ -3842,9 +3896,10 @@ const OrdersTableV3 = ({
                     }}
                     style={{
                       background: 'transparent',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid',
+                      borderColor: commentsCount === 0 ? '#94a3b8' : (order.user_has_replied ? '#a855f7' : '#3b82f6'),
                       borderRadius: '4px',
-                      color: commentsCount === 0 ? '#cbd5e1' : (order.user_has_replied ? '#a855f7' : '#3b82f6'),
+                      color: commentsCount === 0 ? '#64748b' : (order.user_has_replied ? '#a855f7' : '#3b82f6'),
                       cursor: 'pointer',
                       padding: '0.3rem 0.4rem',
                       fontSize: '1rem',
@@ -3858,14 +3913,14 @@ const OrdersTableV3 = ({
                     }}
                     onMouseEnter={(e) => {
                       const hasReplied = order.user_has_replied;
-                      e.currentTarget.style.background = commentsCount > 0 ? (hasReplied ? '#faf5ff' : '#eff6ff') : '#f3f4f6';
-                      e.currentTarget.style.borderColor = commentsCount > 0 ? (hasReplied ? '#a855f7' : '#3b82f6') : '#9ca3af';
-                      e.currentTarget.style.color = commentsCount > 0 ? (hasReplied ? '#9333ea' : '#2563eb') : '#6b7280';
+                      e.currentTarget.style.background = commentsCount > 0 ? (hasReplied ? '#faf5ff' : '#eff6ff') : '#f1f5f9';
+                      e.currentTarget.style.borderColor = commentsCount > 0 ? (hasReplied ? '#a855f7' : '#3b82f6') : '#475569';
+                      e.currentTarget.style.color = commentsCount > 0 ? (hasReplied ? '#9333ea' : '#2563eb') : '#334155';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                      e.currentTarget.style.color = commentsCount === 0 ? '#cbd5e1' : (order.user_has_replied ? '#a855f7' : '#3b82f6');
+                      e.currentTarget.style.borderColor = commentsCount === 0 ? '#94a3b8' : (order.user_has_replied ? '#a855f7' : '#3b82f6');
+                      e.currentTarget.style.color = commentsCount === 0 ? '#64748b' : (order.user_has_replied ? '#a855f7' : '#3b82f6');
                     }}
                   >
                     <FontAwesomeIcon icon={faComment} />
@@ -5266,12 +5321,28 @@ const OrdersTableV3 = ({
                       </ApprovalCompactValue>
                     </ApprovalCompactItem>
 
-                    {orderToApprove.dt_vytvoreni && (
-                      <ApprovalCompactItem>
-                        <ApprovalCompactLabel>Vytvořeno:</ApprovalCompactLabel>
-                        <ApprovalCompactValue>{formatSmartDate(orderToApprove.dt_vytvoreni)}</ApprovalCompactValue>
-                      </ApprovalCompactItem>
-                    )}
+                    {orderToApprove.dt_vytvoreni && (() => {
+                      const daysAgo = Math.floor((Date.now() - new Date(orderToApprove.dt_vytvoreni)) / 86400000);
+                      const badgeColor = daysAgo <= 2 ? { bg: '#dcfce7', color: '#166534', border: '#86efac' }
+                        : daysAgo <= 7 ? { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' }
+                        : { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' };
+                      return (
+                        <ApprovalCompactItem>
+                          <ApprovalCompactLabel>Vytvořeno:</ApprovalCompactLabel>
+                          <ApprovalCompactValue style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {formatSmartDate(orderToApprove.dt_vytvoreni)}
+                            <span style={{
+                              fontSize: '0.72rem', fontWeight: 700, padding: '1px 7px',
+                              borderRadius: '10px', whiteSpace: 'nowrap',
+                              background: badgeColor.bg, color: badgeColor.color,
+                              border: `1px solid ${badgeColor.border}`
+                            }}>
+                              {daysAgo === 0 ? 'dnes' : daysAgo === 1 ? 'před 1 dnem' : `před ${daysAgo} dny`}
+                            </span>
+                          </ApprovalCompactValue>
+                        </ApprovalCompactItem>
+                      );
+                    })()}
                     {orderToApprove.dt_odeslani && (
                       <ApprovalCompactItem>
                         <ApprovalCompactLabel>Odesláno ke schválení:</ApprovalCompactLabel>
@@ -5353,9 +5424,66 @@ const OrdersTableV3 = ({
                                   <strong>{lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow>
-                                  <span>V procesu:</span>
+                                  <span>
+                                    V procesu
+                                    {vProcesuPanels[`lp_${lp.id}`]?.loading && <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginLeft: '4px' }}>…</span>}
+                                    {vProcesuPanels[`lp_${lp.id}`]?.data != null && (
+                                      <span style={{ fontSize: '0.65rem', fontWeight: 700, background: activeVProcesuKey === `lp_${lp.id}` ? '#6366f1' : '#e0e7ff', color: activeVProcesuKey === `lp_${lp.id}` ? '#fff' : '#4338ca', borderRadius: '8px', padding: '1px 6px', marginLeft: '4px' }}>
+                                        {vProcesuPanels[`lp_${lp.id}`].data.length}
+                                      </span>
+                                    )}:
+                                  </span>
                                   <strong>
-                                    {plannedFull.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                    {(() => {
+                                      const panelKey = `lp_${lp.id}`;
+                                      const panel = vProcesuPanels[panelKey];
+                                      const isActive = activeVProcesuKey === panelKey;
+                                      return (
+                                        <button
+                                          onClick={(e) => {
+                                            if (isActive) {
+                                              // toggle zavřít popup
+                                              setActiveVProcesuKey(null);
+                                              return;
+                                            }
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            setVProcesuAnchorY(rect.bottom + 6);
+                                            const actionsEl = approvalActionsRef.current;
+                                            setVProcesuBottomLimit(actionsEl ? actionsEl.getBoundingClientRect().top - 8 : null);
+                                            // Pokud máme data, jen otevřít popup
+                                            if (panel?.data) {
+                                              const lpTitle = [`${lp.kod} — ${lp.nazev}`, lp.cislo_uctu || null, lp.prikazce_jmeno || null, lp.usek_zkr || null].filter(Boolean).join(' | ');
+                                              setActiveVProcesuTitle(lpTitle);
+                                              setActiveVProcesuKey(panelKey);
+                                              return;
+                                            }
+                                            // Načíst data
+                                            setVProcesuPanels(prev => ({ ...prev, [panelKey]: { loading: true, data: null, error: null } }));
+                                            const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                                            fetch(`${baseURL}orders-v3/lp-v-procesu`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ token, username, lp_id: lp.id }),
+                                            })
+                                              .then(r => r.json())
+                                              .then(res => {
+                                                setVProcesuPanels(prev => ({ ...prev, [panelKey]: { loading: false, data: res.data || [], error: null } }));
+                                                const lpTitle = [`${lp.kod} — ${lp.nazev}`, lp.cislo_uctu || null, lp.prikazce_jmeno || null, lp.usek_zkr || null].filter(Boolean).join(' | ');
+                                                setActiveVProcesuTitle(lpTitle);
+                                                setActiveVProcesuKey(panelKey);
+                                              })
+                                              .catch(() => setVProcesuPanels(prev => ({ ...prev, [panelKey]: { loading: false, data: null, error: 'Chyba načítání' } })));
+                                          }}
+                                          title={isActive ? 'Zavřít přehled objednávek v procesu' : 'Zobrazit seznam objednávek v procesu'}
+                                          style={{
+                                            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                                            fontWeight: 700, fontSize: 'inherit', color: 'inherit', textDecoration: 'underline dotted',
+                                            display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                          }}>
+                                          {plannedFull.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                        </button>
+                                      );
+                                    })()}
                                     {lpKody.includes(lp.id) && maxCena > 0 && (
                                       <span
                                         title={`Tato objednávka je zahrnuta v rezervaci LP (+${(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
@@ -5483,7 +5611,8 @@ const OrdersTableV3 = ({
                         
                         if (smlouvaInfo && smlouvaInfo.hodnota) {
                           const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
-                          let cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_pozadovano) || 0;
+                          // ✅ Použít dynamicky počítané cerpano_v_procesu (jen obj v procesu bez faktury)
+                          let cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_v_procesu != null ? smlouvaInfo.cerpano_v_procesu : smlouvaInfo.cerpano_pozadovano) || 0;
                           
                           // ✅ Připočíst aktuální objednávku k simulaci
                           const simulovaneCerpaniSmlouva = cerpanoPozadovano + maxCenaSmlouva;
@@ -5517,9 +5646,61 @@ const OrdersTableV3 = ({
                                 <strong>{parseFloat(smlouvaInfo.hodnota).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
                               </ApprovalLPRow>
                               <ApprovalLPRow>
-                                <span>V procesu:</span>
+                                <span>
+                                  V procesu
+                                  {vProcesuPanels[`smlouva_${cisloSmlouvy}`]?.loading && <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginLeft: '4px' }}>…</span>}
+                                  {vProcesuPanels[`smlouva_${cisloSmlouvy}`]?.data != null && (
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, background: activeVProcesuKey === `smlouva_${cisloSmlouvy}` ? '#6366f1' : '#e0e7ff', color: activeVProcesuKey === `smlouva_${cisloSmlouvy}` ? '#fff' : '#4338ca', borderRadius: '8px', padding: '1px 6px', marginLeft: '4px' }}>
+                                      {vProcesuPanels[`smlouva_${cisloSmlouvy}`].data.length}
+                                    </span>
+                                  )}:
+                                </span>
                                 <strong>
-                                  {cerpanoPozadovano.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                  {(() => {
+                                    const panelKey = `smlouva_${cisloSmlouvy}`;
+                                    const panel = vProcesuPanels[panelKey];
+                                    const isActive = activeVProcesuKey === panelKey;
+                                    return (
+                                      <button
+                                        onClick={(e) => {
+                                          if (isActive) {
+                                            setActiveVProcesuKey(null);
+                                            return;
+                                          }
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setVProcesuAnchorY(rect.bottom + 6);
+                                          const actionsEl = approvalActionsRef.current;
+                                          setVProcesuBottomLimit(actionsEl ? actionsEl.getBoundingClientRect().top - 8 : null);
+                                          if (panel?.data) {
+                                            setActiveVProcesuTitle(`Smlouva ${cisloSmlouvy} — objednávky v procesu`);
+                                            setActiveVProcesuKey(panelKey);
+                                            return;
+                                          }
+                                          setVProcesuPanels(prev => ({ ...prev, [panelKey]: { loading: true, data: null, error: null } }));
+                                          const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                                          fetch(`${baseURL}orders-v3/smlouva-v-procesu`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ token, username, cislo_smlouvy: cisloSmlouvy }),
+                                          })
+                                            .then(r => r.json())
+                                            .then(res => {
+                                              setVProcesuPanels(prev => ({ ...prev, [panelKey]: { loading: false, data: res.data || [], error: null } }));
+                                              setActiveVProcesuTitle(`Smlouva ${cisloSmlouvy} — objednávky v procesu`);
+                                              setActiveVProcesuKey(panelKey);
+                                            })
+                                            .catch(() => setVProcesuPanels(prev => ({ ...prev, [panelKey]: { loading: false, data: null, error: 'Chyba načítání' } })));
+                                        }}
+                                        title={isActive ? 'Zavřít přehled objednávek v procesu' : 'Zobrazit seznam objednávek v procesu'}
+                                        style={{
+                                          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                                          fontWeight: 700, fontSize: 'inherit', color: 'inherit', textDecoration: 'underline dotted',
+                                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                        }}>
+                                        {cerpanoPozadovano.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                      </button>
+                                    );
+                                  })()}
                                   {maxCenaSmlouva > 0 && (
                                     <span
                                       title={`Vč. této objednávky (+${maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
@@ -5632,12 +5813,15 @@ const OrdersTableV3 = ({
               </ApprovalTwoColumnLayout>
             </ApprovalDialogContent>
 
-            <ApprovalDialogActions>
+            <ApprovalDialogActions ref={approvalActionsRef}>
               <ApprovalDialogButton onClick={() => {
                 setShowApprovalDialog(false);
                 setOrderToApprove(null);
                 setApprovalComment('');
                 setApprovalCommentError('');
+                setVProcesuPanels({});
+                setActiveVProcesuKey(null);
+                setVProcesuAnchorY(0);
               }}>
                 Storno
               </ApprovalDialogButton>
@@ -5665,6 +5849,136 @@ const OrdersTableV3 = ({
             </ApprovalDialogActions>
           </ApprovalDialog>
         </ApprovalDialogOverlay>,
+        document.body
+      )}
+
+      {/* Drawer "V procesu" - otevírá se pod řádkem V procesu */}
+      {activeVProcesuKey && vProcesuPanels[activeVProcesuKey]?.data && ReactDOM.createPortal(
+        <VProcesuDrawer style={{
+          top: vProcesuAnchorY,
+          maxHeight: vProcesuBottomLimit
+            ? `${Math.max(vProcesuBottomLimit - vProcesuAnchorY, 120)}px`
+            : `calc(100vh - ${vProcesuAnchorY}px - 80px)`
+        }}>
+          {/* Hlavička draweru */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0.6rem 1rem 0.6rem 10px',
+            borderBottom: '2px solid #c7d2fe',
+            background: '#e0e7ff',
+            flexShrink: 0,
+          }}>
+            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#3730a3' }}>
+              {activeVProcesuTitle}
+            </div>
+            <button
+              onClick={() => setActiveVProcesuKey(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.3rem', color: '#64748b', lineHeight: 1, padding: '0 4px' }}
+              title="Zavřít"
+            >×</button>
+          </div>
+          {/* Obsah */}
+          <div style={{ overflowY: 'auto', flex: 1, scrollbarWidth: 'thin', scrollbarColor: '#c7d2fe #f1f5f9' }}>
+            {(() => {
+              const panelData = vProcesuPanels[activeVProcesuKey].data;
+              if (panelData.length === 0) {
+                return (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+                    Žádné objednávky v procesu
+                  </div>
+                );
+              }
+              return (
+                <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0 }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' }}>Č. objednávky</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569', width: '36px' }}>💬</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Datum</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Objednatel</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Schvalovatel</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Stav</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' }}>Částka</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {panelData.map((o, i) => (
+                      <tr key={o.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                          <a href={`/orders/${o.id}`} target="_blank" rel="noopener noreferrer"
+                            style={{ color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}
+                            onMouseOver={e => e.target.style.textDecoration='underline'}
+                            onMouseOut={e => e.target.style.textDecoration='none'}>
+                            {o.cislo_objednavky}
+                          </a>
+                        </td>
+                        <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCommentsTooltip(
+                                { id: o.id, cislo_objednavky: o.cislo_objednavky, comments_count: o.comments_count, objednatel: o.objednatel, castka: o.castka },
+                                { current: e.currentTarget }
+                              );
+                            }}
+                            style={{
+                              background: 'none',
+                              border: '1px solid',
+                              borderColor: o.comments_count > 0 ? '#3b82f6' : '#94a3b8',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              padding: '2px 5px',
+                              color: o.comments_count > 0 ? '#3b82f6' : '#64748b',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = o.comments_count > 0 ? '#eff6ff' : '#f1f5f9';
+                              e.currentTarget.style.borderColor = o.comments_count > 0 ? '#2563eb' : '#475569';
+                              e.currentTarget.style.color = o.comments_count > 0 ? '#2563eb' : '#334155';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'none';
+                              e.currentTarget.style.borderColor = o.comments_count > 0 ? '#3b82f6' : '#94a3b8';
+                              e.currentTarget.style.color = o.comments_count > 0 ? '#3b82f6' : '#64748b';
+                            }}
+                            title={o.comments_count > 0 ? `${o.comments_count} komentářů` : 'Přidat komentář'}
+                          >
+                            <FontAwesomeIcon icon={faComment} style={{ fontSize: '0.75rem' }} />
+                            {o.comments_count > 0 && <span style={{ fontSize: '0.65rem' }}>{o.comments_count}</span>}
+                          </button>
+                        </td>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#64748b' }}>{o.dt_vytvoreni ? new Date(o.dt_vytvoreni).toLocaleDateString('cs-CZ') : '—'}</td>
+                        <td style={{ padding: '6px 10px', color: '#374151' }}>{o.objednatel || '—'}</td>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#374151' }}>{o.schvalovatel || '—'}</td>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                          <span style={{ padding: '2px 7px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 600, background: '#ffedd5', color: '#9a3412' }}>{o.stav}</span>
+                        </td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#0f172a' }}>
+                          {o.castka ? new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(o.castka) + ' Kč' : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0' }}>
+                      <td colSpan={6} style={{ padding: '6px 10px', fontWeight: 700, color: '#475569', fontSize: '0.75rem' }}>
+                        Celkem {panelData.length} {panelData.length === 1 ? 'objednávka' : panelData.length < 5 ? 'objednávky' : 'objednávek'}
+                      </td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#0f172a' }}>
+                        {new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
+                          panelData.reduce((s, o) => s + (o.castka || 0), 0)
+                        )} Kč
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
+          </div>
+        </VProcesuDrawer>,
         document.body
       )}
 
@@ -5736,11 +6050,13 @@ const OrdersTableV3 = ({
         <OrderCommentsTooltip
           orderId={commentsTooltip.orderId}
           orderNumber={commentsTooltip.orderNumber}
+          orderInfo={commentsTooltip.orderInfo}
           iconRef={commentsTooltip.iconRef}
           onClose={() => setCommentsTooltip({
             isOpen: false,
             orderId: null,
             orderNumber: null,
+            orderInfo: null,
             iconRef: null,
             comments: [],
             commentsCount: 0,
