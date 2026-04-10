@@ -82,6 +82,12 @@ const spinAnim = keyframes`
   to   { transform: rotate(360deg); }
 `;
 
+const refreshFlashAnim = keyframes`
+  0%, 100% { opacity: 0.75; }
+  20%, 60%  { opacity: 0.05; }
+  40%, 80%  { opacity: 1; }
+`;
+
 // ============================================================================
 // STYLED COMPONENTS
 // ============================================================================
@@ -1640,7 +1646,7 @@ function NotificationsWidget({ notifications, navigate }) {
   );
 }
 
-function ChartTimelineWidget({ data, loading }) {
+function ChartTimelineWidget({ data, loading, groupBy = 'day', days = 30 }) {
   if (loading) {
     return (
       <WidgetBody>
@@ -1658,11 +1664,16 @@ function ChartTimelineWidget({ data, loading }) {
   const totalCastka = data.reduce((acc, d) => acc + (parseFloat(d.castka) || 0), 0);
   const totalPocet = data.reduce((acc, d) => acc + (parseInt(d.pocet) || 0), 0);
 
+  const formatLabel = (denStr) => {
+    const dt = new Date(denStr + 'T00:00:00');
+    if (groupBy === 'month') {
+      return dt.toLocaleDateString('cs-CZ', { month: 'short', year: '2-digit' });
+    }
+    return dt.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
+  };
+
   const chartData = {
-    labels: data.map(d => {
-      const dt = new Date(d.den);
-      return dt.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
-    }),
+    labels: data.map(d => formatLabel(d.den)),
     datasets: [
       {
         label: 'Počet objednávek',
@@ -1681,6 +1692,21 @@ function ChartTimelineWidget({ data, loading }) {
       legend: { display: false },
       tooltip: {
         callbacks: {
+          title: (items) => {
+            const idx = items[0]?.dataIndex;
+            const denStr = data[idx]?.den;
+            if (!denStr) return '';
+            const dt = new Date(denStr + 'T00:00:00');
+            if (groupBy === 'month') {
+              return dt.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' });
+            }
+            if (groupBy === 'week') {
+              const end = new Date(dt);
+              end.setDate(end.getDate() + 6);
+              return `${dt.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' })} – ${end.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' })}`;
+            }
+            return dt.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric' });
+          },
           label: (ctx) => {
             const idx = ctx.dataIndex;
             const castka = parseFloat(data[idx]?.castka) || 0;
@@ -1694,7 +1720,7 @@ function ChartTimelineWidget({ data, loading }) {
     },
     scales: {
       y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f1f5f9' } },
-      x: { grid: { display: false } }
+      x: { grid: { display: false }, ticks: { maxRotation: groupBy === 'month' ? 0 : 45, font: { size: 10 } } }
     }
   };
 
@@ -2545,7 +2571,7 @@ const FOCUS_ICON_MAP = {
   'calendar-check': faCalendarCheck,
 };
 
-function FocusAlertsBanner({ items, navigate: nav, lastRefreshed }) {
+function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) {
   const scrollRef = React.useRef(null);
 
   const hasItems = items && items.length > 0;
@@ -2567,7 +2593,8 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed }) {
             Na co se zaměřit
           </span>
           {lastRefreshed && (
-            <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#92400e', opacity: 0.75, whiteSpace: 'nowrap' }}
+            <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#92400e', opacity: 0.75, whiteSpace: 'nowrap',
+              animation: isFlashing ? `${refreshFlashAnim.name} 1.5s ease-out` : 'none' }}
               title="Datum a čas posledního načtení dat dashboardu">
               Aktualizováno: {lastRefreshed.toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
@@ -2585,7 +2612,8 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed }) {
           Na co se zaměřit
         </span>
         {lastRefreshed && (
-          <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#92400e', opacity: 0.7, whiteSpace: 'nowrap' }}
+          <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#92400e', opacity: 0.75, whiteSpace: 'nowrap',
+            animation: isFlashing ? `${refreshFlashAnim.name} 1.5s ease-out` : 'none' }}
             title="Datum a čas posledního načtení dat dashboardu">
             Aktualizováno: {lastRefreshed.toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
@@ -2651,10 +2679,12 @@ export default function DashboardPage() {
     } catch { return false; }
   });
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [refreshFlash, setRefreshFlash] = useState(false);
   const [chartTimelineDays, setChartTimelineDays] = useState(() => {
     try { return parseInt(localStorage.getItem('dashboard_chart_days') || '30', 10); } catch { return 30; }
   });
   const [chartTimelineData, setChartTimelineData] = useState(null);
+  const [chartTimelineGroupBy, setChartTimelineGroupBy] = useState('day');
   const [chartTimelineLoading, setChartTimelineLoading] = useState(false);
 
   const username = user?.username;
@@ -2772,6 +2802,10 @@ export default function DashboardPage() {
         setData(result.data);
         setCashbookData(result.data?.cashbook_summary ?? null);
         setLastRefreshed(new Date());
+        if (silent) {
+          setRefreshFlash(true);
+          setTimeout(() => setRefreshFlash(false), 1600);
+        }
       } else {
         setError(result.message || 'Chyba při načítání dat');
       }
@@ -2835,6 +2869,7 @@ export default function DashboardPage() {
       const result = await getDashboardChartTimeline({ token, username, chart_days: days });
       if (result.status === 'success') {
         setChartTimelineData(result.data);
+        setChartTimelineGroupBy(result.group_by || 'day');
       }
     } catch (err) {
       console.error('Chyba při načítání grafu timeline:', err);
@@ -3025,29 +3060,32 @@ export default function DashboardPage() {
         badgeCount = data?.notifications_unread?.length;
         break;
       case 'chart_timeline':
-        content = <ChartTimelineWidget data={chartTimelineData ?? data?.chart_orders_timeline} loading={chartTimelineLoading} />;
+        content = <ChartTimelineWidget data={chartTimelineData ?? data?.chart_orders_timeline} loading={chartTimelineLoading} groupBy={chartTimelineGroupBy} days={chartTimelineDays} />;
         headerExtra = (
           <div style={{ display: 'flex', gap: '0.25rem' }}>
-            {[7, 14, 30].map(d => (
-              <button
-                key={d}
-                onClick={() => handleChartDaysChange(d)}
-                style={{
-                  fontSize: '0.7rem',
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  border: '1px solid',
-                  cursor: 'pointer',
-                  fontWeight: chartTimelineDays === d ? 700 : 400,
-                  background: chartTimelineDays === d ? '#1d4ed8' : 'transparent',
-                  color: chartTimelineDays === d ? '#fff' : '#1d4ed8',
-                  borderColor: '#1d4ed8',
-                  transition: 'all 0.15s'
-                }}
-              >
-                {d === 7 ? 'Týden' : d === 14 ? '14 dní' : 'Měsíc'}
-              </button>
-            ))}
+            {[7, 14, 30, 90, 365].map(d => {
+              const LABELS = { 7: 'Týden', 14: '14 dní', 30: 'Měsíc', 90: 'Kvartal', 365: 'Rok' };
+              return (
+                <button
+                  key={d}
+                  onClick={() => handleChartDaysChange(d)}
+                  style={{
+                    fontSize: '0.7rem',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    border: '1px solid',
+                    cursor: 'pointer',
+                    fontWeight: chartTimelineDays === d ? 700 : 400,
+                    background: chartTimelineDays === d ? '#1d4ed8' : 'transparent',
+                    color: chartTimelineDays === d ? '#fff' : '#1d4ed8',
+                    borderColor: '#1d4ed8',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {LABELS[d]}
+                </button>
+              );
+            })}
           </div>
         );
         break;
@@ -3256,7 +3294,7 @@ export default function DashboardPage() {
         </HeaderActions>
       </PageHeader>
 
-      <FocusAlertsBanner items={data?.focus_alerts} navigate={navigate} lastRefreshed={lastRefreshed} />
+      <FocusAlertsBanner items={data?.focus_alerts} navigate={navigate} lastRefreshed={lastRefreshed} isFlashing={refreshFlash} />
 
       <DashGrid>
         {orderedTiles.map((tileId, idx) => renderWidget(tileId, idx))}

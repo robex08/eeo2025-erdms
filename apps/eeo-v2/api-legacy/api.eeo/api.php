@@ -311,6 +311,9 @@ require_once __DIR__ . '/v2025.03_25/lib/searchHandlers.php';
 // REPORTS - Order V2 Reports
 require_once __DIR__ . '/v2025.03_25/lib/reportsHandlers.php';
 
+// DOHADNÉ POLOŽKY - Přehled objednávek bez faktur vázaných na LP / Smlouvu
+require_once __DIR__ . '/v2025.03_25/lib/dohadnePolozkyHandlers.php';
+
 // ORDER V3 - Optimized API for React Frontend
 require_once __DIR__ . '/v2025.03_25/lib/orderV3Handlers.php';
 
@@ -2537,6 +2540,16 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('success' => false, 'error' => array('code' => 'METHOD_NOT_ALLOWED', 'message' => 'Method not allowed')));
+        }
+        break;
+
+    // POST /api.eeo/stats/dohadne-polozky - Dohadné položky (objednávky bez faktur, LP + Smlouvy)
+    case 'stats/dohadne-polozky':
+        if ($request_method === 'POST') {
+            handle_dohadne_polozky($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
     
