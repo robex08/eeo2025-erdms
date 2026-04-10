@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCog, faBell, faEnvelope, faSitemap, faTools, 
   faToggleOn, faSave, faUndo, faExclamationTriangle,
-  faInfoCircle, faCodeBranch
+  faInfoCircle, faCodeBranch, faRss, faPlus, faTrash
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -386,7 +386,12 @@ const AppSettings = () => {
     module_invoices_visible: true,
     module_annual_fees_visible: true,
     // Default homepage
-    module_default_homepage: 'orders25-list' // 'orders25-list' nebo 'orders25-list-v3'
+    module_default_homepage: 'orders25-list', // 'orders25-list' nebo 'orders25-list-v3'
+    // RSS Feed settings
+    rss_enabled: false,
+    rss_feeds: '[]',
+    rss_max_items: 10,
+    rss_refresh_interval: 15
   });
   
   const [loading, setLoading] = useState(true);
@@ -870,6 +875,197 @@ const AppSettings = () => {
                   Pouze SUPERADMIN může aktivovat režim údržby.
                 </div>
               </WarningBox>
+            )}
+          </SettingCard>
+          
+          {/* RSS FEED NASTAVENÍ */}
+          <SettingCard>
+            <CardHeader>
+              <CardIcon style={{background: '#f9731618', color: '#f97316'}}>
+                <FontAwesomeIcon icon={faRss} />
+              </CardIcon>
+              <div>
+                <CardTitle>RSS Zprávy</CardTitle>
+                <StatusBadge $active={settings.rss_enabled}>
+                  {settings.rss_enabled ? 'Aktivní' : 'Neaktivní'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faRss} />
+                  Povolit RSS feed na dashboardu
+                </SettingLabel>
+                <SettingDescription>
+                  Zobrazí widget s novinkami z nakonfigurovaných RSS feedů na dashboardu uživatelů.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.rss_enabled}
+                onClick={() => toggleSetting('rss_enabled')}
+              >
+                <ToggleThumb $active={settings.rss_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {settings.rss_enabled && (
+              <>
+                <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                  <SettingInfo>
+                    <SettingLabel>
+                      <FontAwesomeIcon icon={faRss} />
+                      RSS Feedy
+                    </SettingLabel>
+                    <SettingDescription>
+                      Zadejte URL adresy RSS feedů, které se budou zobrazovat na dashboardu.
+                    </SettingDescription>
+                    
+                    {(() => {
+                      let feeds = [];
+                      try {
+                        feeds = JSON.parse(settings.rss_feeds || '[]');
+                      } catch { feeds = []; }
+                      if (!Array.isArray(feeds)) feeds = [];
+                      
+                      return (
+                        <div style={{marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                          {feeds.map((feed, idx) => (
+                            <div key={idx} style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'nowrap'}}>
+                              <Input
+                                type="text"
+                                value={feed.name || ''}
+                                onChange={(e) => {
+                                  const updated = [...feeds];
+                                  updated[idx] = {...updated[idx], name: e.target.value};
+                                  setSettings(prev => ({...prev, rss_feeds: JSON.stringify(updated)}));
+                                  setHasChanges(true);
+                                }}
+                                placeholder="Název feedu"
+                                style={{width: '120px', minWidth: '100px', flexShrink: 0}}
+                              />
+                              <Input
+                                type="text"
+                                value={feed.url || ''}
+                                onChange={(e) => {
+                                  const updated = [...feeds];
+                                  updated[idx] = {...updated[idx], url: e.target.value};
+                                  setSettings(prev => ({...prev, rss_feeds: JSON.stringify(updated)}));
+                                  setHasChanges(true);
+                                }}
+                                placeholder="URL RSS feedu (https://...)"
+                                style={{flex: 1, minWidth: 0}}
+                              />
+                              <div style={{display: 'flex', gap: '0.35rem', alignItems: 'center', flexShrink: 0}}>
+                                <ToggleButton
+                                  $active={feed.enabled !== false}
+                                  onClick={() => {
+                                    const updated = [...feeds];
+                                    updated[idx] = {...updated[idx], enabled: !(feed.enabled !== false)};
+                                    setSettings(prev => ({...prev, rss_feeds: JSON.stringify(updated)}));
+                                    setHasChanges(true);
+                                  }}
+                                  style={{flexShrink: 0}}
+                                >
+                                  <ToggleThumb $active={feed.enabled !== false} />
+                                </ToggleButton>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = feeds.filter((_, i) => i !== idx);
+                                    setSettings(prev => ({...prev, rss_feeds: JSON.stringify(updated)}));
+                                    setHasChanges(true);
+                                  }}
+                                  style={{
+                                    background: '#fee2e2', border: 'none', borderRadius: '6px',
+                                    width: '34px', height: '34px', cursor: 'pointer', color: '#dc2626',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0
+                                  }}
+                                  title="Odebrat feed"
+                                >
+                                  <FontAwesomeIcon icon={faTrash} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...feeds, {name: '', url: '', enabled: true}];
+                              setSettings(prev => ({...prev, rss_feeds: JSON.stringify(updated)}));
+                              setHasChanges(true);
+                            }}
+                            style={{
+                              background: '#eff6ff', border: '2px dashed #93c5fd', borderRadius: '8px',
+                              padding: '0.6rem 1rem', cursor: 'pointer', color: '#1d4ed8',
+                              fontWeight: 600, fontSize: '0.85rem',
+                              display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center'
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faPlus} /> Přidat RSS feed
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </SettingInfo>
+                </SettingRow>
+                
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                  <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    <SettingInfo>
+                      <SettingLabel>
+                        <FontAwesomeIcon icon={faInfoCircle} />
+                        Max. počet článků
+                      </SettingLabel>
+                      <SettingDescription>
+                        Maximální počet zobrazených článků na dashboardu.
+                      </SettingDescription>
+                      <Select
+                        value={settings.rss_max_items || 10}
+                        onChange={(e) => {
+                          setSettings(prev => ({...prev, rss_max_items: parseInt(e.target.value)}));
+                          setHasChanges(true);
+                        }}
+                        style={{marginTop: '0.75rem'}}
+                      >
+                        <option value={5}>5 článků</option>
+                        <option value={10}>10 článků</option>
+                        <option value={15}>15 článků</option>
+                        <option value={20}>20 článků</option>
+                      </Select>
+                    </SettingInfo>
+                  </SettingRow>
+                  
+                  <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    <SettingInfo>
+                      <SettingLabel>
+                        <FontAwesomeIcon icon={faInfoCircle} />
+                        Interval obnovení (minuty)
+                      </SettingLabel>
+                      <SettingDescription>
+                        Jak často se automaticky načítají nové články.
+                      </SettingDescription>
+                      <Select
+                        value={settings.rss_refresh_interval || 15}
+                        onChange={(e) => {
+                          setSettings(prev => ({...prev, rss_refresh_interval: parseInt(e.target.value)}));
+                          setHasChanges(true);
+                        }}
+                        style={{marginTop: '0.75rem'}}
+                      >
+                        <option value={5}>5 minut</option>
+                        <option value={10}>10 minut</option>
+                        <option value={15}>15 minut</option>
+                        <option value={30}>30 minut</option>
+                        <option value={60}>60 minut</option>
+                      </Select>
+                    </SettingInfo>
+                  </SettingRow>
+                </div>
+              </>
             )}
           </SettingCard>
           

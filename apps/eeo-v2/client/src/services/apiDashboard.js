@@ -79,6 +79,24 @@ export async function saveWidgetPermissions({ token, username, assignments }) {
 }
 
 /**
+ * Načtení RSS feed dat
+ * Volá se po přihlášení a pak dle intervalu z app settings
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {number} [params.max_items=10]
+ * @returns {Promise<Object>} - RSS data { status, data[], rss_enabled, refresh_interval, count }
+ */
+export async function getRssFeed({ token, username, max_items = 10 }) {
+  try {
+    const response = await api2.post('rss-feed', { token, username, max_items });
+    return response.data;
+  } catch {
+    return { status: 'error', data: [], rss_enabled: false, refresh_interval: 15 };
+  }
+}
+
+/**
  * Admin: Načtení DASHBOARD_* práv pro konkrétního uživatele
  */
 export async function getUserWidgetPermissions({ token, username, target_user_id }) {

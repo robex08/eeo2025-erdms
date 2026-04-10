@@ -1387,6 +1387,17 @@ switch ($endpoint) {
         }
         break;
     
+    // ==================== RSS FEED ====================
+    case 'rss-feed':
+        require_once __DIR__ . '/v2025.03_25/lib/rssHandlers.php';
+        if ($request_method === 'POST') {
+            handle_rss_feed($input, $pdo);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
     case 'hierarchy/profiles/list':
         if ($request_method === 'POST') {
             $response = handle_hierarchy_profiles_list($input, $pdo);
