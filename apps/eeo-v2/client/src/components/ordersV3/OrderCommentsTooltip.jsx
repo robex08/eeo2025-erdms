@@ -39,7 +39,7 @@ const TooltipOverlay = styled.div`
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
-  z-index: 9998;
+  z-index: 29999;
   animation: fadeIn 0.2s ease;
   
   @keyframes fadeIn {
@@ -55,7 +55,7 @@ const TooltipContainer = styled.div`
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
-  z-index: 9999;
+  z-index: 30000;
   
   /* ✅ Fullscreen nebo normální režim */
   ${props => props.$isFullscreen ? `
@@ -825,6 +825,7 @@ const OrderCommentsTooltip = ({
   isOpen,
   orderId,
   orderNumber,
+  orderInfo = null,  // { objednatel: string, castka: number }
   iconRef,
   onClose,
   comments,
@@ -837,7 +838,7 @@ const OrderCommentsTooltip = ({
   showToast = null,
   token = null,
   username = null,
-  onUpdateComments = null  // ✅ Nový callback pro optimalizaci
+  onUpdateComments = null
 }) => {
   const containerRef = useRef(null);
   const deleteButtonRef = useRef(null);
@@ -1234,6 +1235,32 @@ const OrderCommentsTooltip = ({
             <OrderNumberRow>
               <OrderNumberBadge>{orderNumber}</OrderNumberBadge>
             </OrderNumberRow>
+            {orderInfo && (orderInfo.objednatel || orderInfo.castka != null) && (
+              <div style={{
+                paddingLeft: '24px',
+                marginTop: '4px',
+                display: 'flex',
+                gap: '16px',
+                flexWrap: 'wrap',
+                fontSize: '0.78rem',
+                color: '#475569',
+              }}>
+                {orderInfo.objednatel && (
+                  <span>
+                    <span style={{ color: '#94a3b8', marginRight: '4px' }}>Objednatel:</span>
+                    <strong style={{ color: '#1e293b' }}>{orderInfo.objednatel}</strong>
+                  </span>
+                )}
+                {orderInfo.castka != null && (
+                  <span>
+                    <span style={{ color: '#94a3b8', marginRight: '4px' }}>Max. cena s DPH:</span>
+                    <strong style={{ color: '#0f172a' }}>
+                      {new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(orderInfo.castka)} Kč
+                    </strong>
+                  </span>
+                )}
+              </div>
+            )}
             {lastComment && (
               <TooltipTitleSub>
                 Poslední: {formatDate(lastComment.dt_vytvoreni)} od {lastComment.autor_jmeno || 'Neznámý'}

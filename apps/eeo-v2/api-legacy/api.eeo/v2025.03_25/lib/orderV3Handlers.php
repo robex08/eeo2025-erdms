@@ -330,6 +330,7 @@ function getLPDetailyV3($db, $lp_id) {
         $stmt = $db->prepare("
             SELECT
                 lp.cislo_lp,
+                lp.cislo_uctu,
                 lp.nazev_uctu,
                 lp.vyse_financniho_kryti,
                 u.usek_zkr,
@@ -385,6 +386,7 @@ function enrichFinancovaniV3($db, &$order) {
                 $lp_nazvy[] = array(
                     'id' => $lp_id,
                     'cislo_lp' => $lp['cislo_lp'],
+                    'cislo_uctu' => isset($lp['cislo_uctu']) ? $lp['cislo_uctu'] : null,
                     'kod' => $lp['cislo_lp'],
                     'nazev' => $lp['nazev_uctu'],
                     'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
@@ -429,9 +431,31 @@ function enrichFinancovaniV3($db, &$order) {
             }
             
             if ($smlouva) {
+                // Dynamicky spočítat cerpano_v_procesu = součet objednávek v procesu (bez fakturovaných/dokončených)
+                $v_procesu_stavy_e = ['Nová', 'Rozpracovaná', 'Ke schválení', 'Schválená', 'Odeslaná'];
+                $stav_ph_e = implode(',', array_fill(0, count($v_procesu_stavy_e), '?'));
+                $stmt_vp = $db->prepare("
+                    SELECT COALESCE(SUM(
+                        CASE WHEN o.max_cena_s_dph > 0 THEN o.max_cena_s_dph
+                             ELSE COALESCE((SELECT SUM(p.cena_s_dph) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id), 0)
+                        END
+                    ), 0) AS cerpano_v_procesu
+                    FROM `" . TBL_OBJEDNAVKY . "` o
+                    WHERE (o.cislo_smlouvy = ? OR JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = ?)
+                      AND o.aktivni = 1
+                      AND o.stav_objednavky IN ($stav_ph_e)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                      )
+                ");
+                $stmt_vp->execute(array_merge([$cislo_smlouvy, $cislo_smlouvy], $v_procesu_stavy_e));
+                $vp_row = $stmt_vp->fetch(PDO::FETCH_ASSOC);
+                $cerpano_v_procesu = $vp_row ? (float)$vp_row['cerpano_v_procesu'] : 0.0;
+
                 $order['_enriched']['smlouva_info'] = array(
                     'cislo_smlouvy' => $cislo_smlouvy,
                     'hodnota' => $smlouva['hodnota'],
+                    'cerpano_v_procesu' => $cerpano_v_procesu,
                     'cerpano_pozadovano' => $smlouva['cerpano_pozadovano'],
                     'cerpano_planovano' => $smlouva['cerpano_planovano'],
                     'cerpano_skutecne' => $smlouva['cerpano_skutecne'],
@@ -3561,6 +3585,262 @@ function handle_orderV3_smlouva_expand($input, $config) {
 
     } catch (Exception $e) {
         error_log("[OrderV3 Smlouva-Expand] Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * POST /api.eeo/orders-v3/lp-v-procesu
+ * Vrátí seznam objednávek "v procesu" pro daný LP kód (rezervovano + predpokladane, bez dokončených).
+ * POST: { token, username, lp_id }  – lp_id = ID z 25_limitovane_prisliby_cerpani nebo 25_limitovane_prisliby
+ */
+function handle_orderV3_lp_v_procesu($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token    = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $lp_id    = isset($input['lp_id']) ? (int)$input['lp_id'] : 0;
+
+    if (!$token || !$username || !$lp_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token, username nebo lp_id']);
+        return;
+    }
+
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) throw new Exception('Chyba připojení k databázi');
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // Zjistit cislo_lp — zkusit nejdříve cerpani tabulku, pak master
+        $stmt = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_CERPANI . " WHERE id = ? LIMIT 1");
+        $stmt->execute([$lp_id]);
+        $cislo_lp = $stmt->fetchColumn();
+
+        if (!$cislo_lp) {
+            $stmt = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = ? LIMIT 1");
+            $stmt->execute([$lp_id]);
+            $cislo_lp = $stmt->fetchColumn();
+        }
+
+        if (!$cislo_lp) {
+            echo json_encode(['status' => 'ok', 'data' => [], 'meta' => ['cislo_lp' => null, 'count' => 0]]);
+            return;
+        }
+
+        // Všechna master IDs pro tento cislo_lp (může mít navýšení = více záznamů)
+        $stmt = $db->prepare("SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = ?");
+        $stmt->execute([$cislo_lp]);
+        $master_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($master_ids)) {
+            echo json_encode(['status' => 'ok', 'data' => [], 'meta' => ['cislo_lp' => $cislo_lp, 'count' => 0]]);
+            return;
+        }
+
+        // Stavy "v procesu" = přispívají do rezervovano nebo predpokladane_cerpani (ne skutecne)
+        $v_procesu_stavy = ['Nová', 'Rozpracovaná', 'Ke schválení', 'Schválená', 'Odeslaná'];
+
+        // Objednávky které mají daný LP kód v financovani.lp_kody a jsou ve stavu v procesu
+        $id_conditions = implode(' OR ', array_fill(0, count($master_ids), 'JSON_CONTAINS(o.financovani, ?, \'$.lp_kody\')'));
+        $stav_placeholders = implode(',', array_fill(0, count($v_procesu_stavy), '?'));
+
+        $sql = "
+            SELECT
+                o.id,
+                o.cislo_objednavky,
+                o.predmet,
+                o.stav_objednavky,
+                o.max_cena_s_dph,
+                o.dt_vytvoreni,
+                o.dt_odeslani,
+                u1.jmeno     AS objednatel_jmeno,
+                u1.prijmeni  AS objednatel_prijmeni,
+                u2.jmeno     AS schvalovatel_jmeno,
+                u2.prijmeni  AS schvalovatel_prijmeni,
+                u3.jmeno     AS prikazce_jmeno,
+                u3.prijmeni  AS prikazce_prijmeni,
+                COALESCE(
+                    (SELECT SUM(p.cena_s_dph) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id),
+                    0
+                ) AS suma_polozky,
+                (SELECT COUNT(*) FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k WHERE k.objednavka_id = o.id AND k.smazano = 0) AS comments_count
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            LEFT JOIN `" . TBL_UZIVATELE . "` u1 ON u1.id = o.objednatel_id
+            LEFT JOIN `" . TBL_UZIVATELE . "` u2 ON u2.id = o.schvalovatel_id
+            LEFT JOIN `" . TBL_UZIVATELE . "` u3 ON u3.id = o.prikazce_id
+            WHERE ($id_conditions)
+              AND o.aktivni = 1
+              AND o.stav_objednavky IN ($stav_placeholders)
+            ORDER BY o.dt_vytvoreni DESC
+        ";
+
+        $params = array_merge(
+            array_map('intval', $master_ids),
+            $v_procesu_stavy
+        );
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $data = [];
+        foreach ($rows as $row) {
+            $castka = $row['max_cena_s_dph'] > 0
+                ? (float)$row['max_cena_s_dph']
+                : (float)$row['suma_polozky'];
+
+            $schvalovatel = trim(($row['schvalovatel_jmeno'] ?? '') . ' ' . ($row['schvalovatel_prijmeni'] ?? ''));
+            if (!$schvalovatel) {
+                $schvalovatel = trim(($row['prikazce_jmeno'] ?? '') . ' ' . ($row['prikazce_prijmeni'] ?? ''));
+            }
+
+            $data[] = [
+                'id'              => (int)$row['id'],
+                'cislo_objednavky'=> $row['cislo_objednavky'],
+                'predmet'         => $row['predmet'],
+                'stav'            => $row['stav_objednavky'],
+                'castka'          => $castka,
+                'dt_vytvoreni'    => $row['dt_vytvoreni'],
+                'dt_odeslani'     => $row['dt_odeslani'],
+                'objednatel'      => trim(($row['objednatel_jmeno'] ?? '') . ' ' . ($row['objednatel_prijmeni'] ?? '')),
+                'schvalovatel'    => $schvalovatel,
+                'comments_count'  => (int)($row['comments_count'] ?? 0),
+            ];
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data'   => $data,
+            'meta'   => ['cislo_lp' => $cislo_lp, 'count' => count($data)],
+        ]);
+
+    } catch (Exception $e) {
+        error_log("[OrderV3 LP-v-procesu] Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * POST /api.eeo/orders-v3/smlouva-v-procesu
+ * Vrátí seznam objednávek "v procesu" pro danou smlouvu (bez dokončených/fakturovaných).
+ * POST: { token, username, cislo_smlouvy }
+ */
+function handle_orderV3_smlouva_v_procesu($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token         = $input['token'] ?? '';
+    $username      = $input['username'] ?? '';
+    $cislo_smlouvy = trim($input['cislo_smlouvy'] ?? '');
+
+    if (!$token || !$username || !$cislo_smlouvy) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token, username nebo cislo_smlouvy']);
+        return;
+    }
+
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) throw new Exception('Chyba připojení k databázi');
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $v_procesu_stavy = ['Nová', 'Rozpracovaná', 'Ke schválení', 'Schválená', 'Odeslaná'];
+        $stav_placeholders = implode(',', array_fill(0, count($v_procesu_stavy), '?'));
+
+        $sql = "
+            SELECT
+                o.id,
+                o.cislo_objednavky,
+                o.predmet,
+                o.stav_objednavky,
+                o.max_cena_s_dph,
+                o.dt_vytvoreni,
+                o.dt_odeslani,
+                u1.jmeno     AS objednatel_jmeno,
+                u1.prijmeni  AS objednatel_prijmeni,
+                u2.jmeno     AS schvalovatel_jmeno,
+                u2.prijmeni  AS schvalovatel_prijmeni,
+                u3.jmeno     AS prikazce_jmeno,
+                u3.prijmeni  AS prikazce_prijmeni,
+                COALESCE(
+                    (SELECT SUM(p.cena_s_dph) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id),
+                    0
+                ) AS suma_polozky,
+                (SELECT COUNT(*) FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k WHERE k.objednavka_id = o.id AND k.smazano = 0) AS comments_count
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            LEFT JOIN `" . TBL_UZIVATELE . "` u1 ON u1.id = o.objednatel_id
+            LEFT JOIN `" . TBL_UZIVATELE . "` u2 ON u2.id = o.schvalovatel_id
+            LEFT JOIN `" . TBL_UZIVATELE . "` u3 ON u3.id = o.prikazce_id
+            WHERE (o.cislo_smlouvy = ? OR JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = ?)
+              AND o.aktivni = 1
+              AND o.stav_objednavky IN ($stav_placeholders)
+              AND NOT EXISTS (
+                  SELECT 1 FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1
+              )
+            ORDER BY o.dt_vytvoreni DESC
+        ";
+
+        $params = array_merge([$cislo_smlouvy, $cislo_smlouvy], $v_procesu_stavy);
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $data = [];
+        foreach ($rows as $row) {
+            $castka = $row['max_cena_s_dph'] > 0
+                ? (float)$row['max_cena_s_dph']
+                : (float)$row['suma_polozky'];
+
+            $schvalovatel = trim(($row['schvalovatel_jmeno'] ?? '') . ' ' . ($row['schvalovatel_prijmeni'] ?? ''));
+            if (!$schvalovatel) {
+                $schvalovatel = trim(($row['prikazce_jmeno'] ?? '') . ' ' . ($row['prikazce_prijmeni'] ?? ''));
+            }
+
+            $data[] = [
+                'id'              => (int)$row['id'],
+                'cislo_objednavky'=> $row['cislo_objednavky'],
+                'predmet'         => $row['predmet'],
+                'stav'            => $row['stav_objednavky'],
+                'castka'          => $castka,
+                'dt_vytvoreni'    => $row['dt_vytvoreni'],
+                'dt_odeslani'     => $row['dt_odeslani'],
+                'objednatel'      => trim(($row['objednatel_jmeno'] ?? '') . ' ' . ($row['objednatel_prijmeni'] ?? '')),
+                'schvalovatel'    => $schvalovatel,
+                'comments_count'  => (int)($row['comments_count'] ?? 0),
+            ];
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data'   => $data,
+            'meta'   => ['cislo_smlouvy' => $cislo_smlouvy, 'count' => count($data)],
+        ]);
+
+    } catch (Exception $e) {
+        error_log("[OrderV3 Smlouva-v-procesu] Error: " . $e->getMessage());
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
     }
