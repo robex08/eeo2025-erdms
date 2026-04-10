@@ -5265,6 +5265,19 @@ const OrdersTableV3 = ({
                         </strong>
                       </ApprovalCompactValue>
                     </ApprovalCompactItem>
+
+                    {orderToApprove.dt_vytvoreni && (
+                      <ApprovalCompactItem>
+                        <ApprovalCompactLabel>Vytvořeno:</ApprovalCompactLabel>
+                        <ApprovalCompactValue>{formatSmartDate(orderToApprove.dt_vytvoreni)}</ApprovalCompactValue>
+                      </ApprovalCompactItem>
+                    )}
+                    {orderToApprove.dt_odeslani && (
+                      <ApprovalCompactItem>
+                        <ApprovalCompactLabel>Odesláno ke schválení:</ApprovalCompactLabel>
+                        <ApprovalCompactValue>{formatSmartDate(orderToApprove.dt_odeslani)}</ApprovalCompactValue>
+                      </ApprovalCompactItem>
+                    )}
                   </ApprovalCompactList>
 
                   {/* Poznámka ke schválení - v levém sloupci */}
@@ -5300,20 +5313,19 @@ const OrdersTableV3 = ({
                     <>
                       <ApprovalSectionTitle>💰 Limitované přísliby</ApprovalSectionTitle>
                       {(() => {
-                        const pocetLP = lpKody.length || 1;
-                        const castkaProKazdyLP = maxCena / pocetLP; // Rovnoměrné rozdělení pro jednoduchost
-                        
                         if (lpInfo.length > 0) {
                           return lpInfo.map((lp, idx) => {
                             // Výpočet procenta čerpání (plánovaného)
                             const hodnotaLP = parseFloat(lp.total_limit) || 0;
-                            let cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+                            const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
                             const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
+                            // ✅ rezervovano = další objednávky čekající na schválení (vč. této - viz DB)
+                            const cerpanoRezervovano = parseFloat(lp.rezervovano) || 0;
+                            // plannedFull = celkové „v procesu“ (predpokladane + rezervovano) - stejná logika jako modul Čerpání
+                            const plannedFull = cerpanoPredpoklad + cerpanoRezervovano;
                             
-                            // ✅ Připočíst aktuální objednávku k simulaci (pokud patří k tomuto LP)
-                            const jsmeVLpKodech = lpKody.includes(lp.id);
-                            const simulovaneCerpani = jsmeVLpKodech ? cerpanoPredpoklad + castkaProKazdyLP : cerpanoPredpoklad;
-                            const percentCerpani = hodnotaLP > 0 ? Math.round((simulovaneCerpani / hodnotaLP) * 100) : 0;
+                            // ✅ percentCerpani = total (skutecne + predpokladane + rezervovano) / limit - shoduje se s modulem Čerpání
+                            const percentCerpani = hodnotaLP > 0 ? Math.round(((cerpanoSkutecne + plannedFull) / hodnotaLP) * 100) : 0;
                             const hasLimit = hodnotaLP > 0;
                             
                             return (
@@ -5343,10 +5355,10 @@ const OrdersTableV3 = ({
                                 <ApprovalLPRow>
                                   <span>V procesu:</span>
                                   <strong>
-                                    {cerpanoPredpoklad.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
-                                    {jsmeVLpKodech && castkaProKazdyLP > 0 && (
+                                    {plannedFull.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                    {lpKody.includes(lp.id) && maxCena > 0 && (
                                       <span
-                                        title={`Vč. této objednávky (+${castkaProKazdyLP.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
+                                        title={`Tato objednávka je zahrnuta v rezervaci LP (+${(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
                                         style={{ 
                                           fontSize: '0.75rem', 
                                           color: '#10b981', 
@@ -5358,15 +5370,15 @@ const OrdersTableV3 = ({
                                           border: '1px solid #6ee7b7',
                                           cursor: 'help'
                                         }}>
-                                        +{castkaProKazdyLP.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                        +{(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                       </span>
                                     )}
                                   </strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow $highlight>
                                   <span>Volné:</span>
-                                  <strong style={{ color: (hodnotaLP - simulovaneCerpani) < 0 ? '#dc2626' : '#059669' }}>
-                                    {(hodnotaLP - simulovaneCerpani).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                  <strong style={{ color: (hodnotaLP - cerpanoSkutecne - plannedFull) < 0 ? '#dc2626' : '#059669' }}>
+                                    {(hodnotaLP - cerpanoSkutecne - plannedFull).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                                   </strong>
                                 </ApprovalLPRow>
                                 <ApprovalLPRow>
@@ -5378,12 +5390,16 @@ const OrdersTableV3 = ({
                                 {hodnotaLP > 0 && (() => {
                                   const currentMonth = new Date().getMonth();
                                   const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
-                                  const targetPct = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
-                                  const spentPct = hodnotaLP > 0 ? Math.min((cerpanoSkutecne / hodnotaLP) * 100, 100) : 0;
-                                  const plannedRaw = simulovaneCerpani - cerpanoSkutecne;
-                                  const plannedPct = hodnotaLP > 0 && plannedRaw > 0 ? Math.min((plannedRaw / hodnotaLP) * 100, 100 - spentPct) : 0;
-                                  const totalPct = hodnotaLP > 0 ? Math.min((simulovaneCerpani / hodnotaLP) * 100, 999) : 0;
-                                  const isCritical = totalPct > targetPct * 2 || totalPct >= 100;
+                                  // ✅ Math.round - stejné jako LimitovanePrislibyManager
+                                  const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
+                                  // spentPct = skutečně dokončené (faktury s potv. věcnou spr.)
+                                  const spentPct = (cerpanoSkutecne / hodnotaLP) * 100;
+                                  // plannedPct = predpokladane + rezervovano (celé „v procesu“) - stejná logika jako modul Čerpání
+                                  const plannedPct = plannedFull > 0 ? Math.min((plannedFull / hodnotaLP) * 100, Math.max(0, 100 - spentPct)) : 0;
+                                  // totalPct = součet obojího - shoduje se s LimitovanePrislibyManager getJezevcikState
+                                  const totalPct = spentPct + plannedPct;
+                                  // ✅ isCritical: stejná logika jako modul Čerpání (skutecne >= 100% NEBO total > 2x cíl)
+                                  const isCritical = totalPct > targetPct * 2 || (cerpanoSkutecne / hodnotaLP) * 100 >= 100;
                                   const isWarning = !isCritical && totalPct > targetPct * 1.3;
                                   const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
                                   const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
@@ -5538,13 +5554,15 @@ const OrdersTableV3 = ({
                               {hodnotaSmlouvy > 0 && (() => {
                                 const currentMonth = new Date().getMonth();
                                 const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
-                                const targetPct = Math.floor(((currentMonth + 1) / 12.0) * 100.0);
+                                // ✅ Math.round - stejné jako LimitovanePrislibyManager
+                                const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
                                 const cerpanoSkutecneSmlouva = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
-                                const spentPct = hodnotaSmlouvy > 0 ? Math.min((cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100, 100) : 0;
+                                const spentPct = (cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100;
                                 const plannedRaw = simulovaneCerpaniSmlouva - cerpanoSkutecneSmlouva;
-                                const plannedPct = hodnotaSmlouvy > 0 && plannedRaw > 0 ? Math.min((plannedRaw / hodnotaSmlouvy) * 100, 100 - spentPct) : 0;
-                                const totalPct = hodnotaSmlouvy > 0 ? Math.min((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100, 999) : 0;
-                                const isCritical = totalPct > targetPct * 2 || totalPct >= 100;
+                                const plannedPct = plannedRaw > 0 ? Math.min((plannedRaw / hodnotaSmlouvy) * 100, Math.max(0, 100 - spentPct)) : 0;
+                                const totalPct = spentPct + plannedPct;
+                                // ✅ isCritical: skutecne >= 100% NEBO total > 2x cíl
+                                const isCritical = totalPct > targetPct * 2 || (cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100 >= 100;
                                 const isWarning = !isCritical && totalPct > targetPct * 1.3;
                                 const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
                                 const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';

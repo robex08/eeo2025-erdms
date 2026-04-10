@@ -6439,7 +6439,12 @@ export default function StatsReportsPage() {
   // ─── Export: Dohadné položky dle účtu ────────────────────────────────────────
   const handleExportCsv_dohadneLpUctu = useCallback(() => {
     const groups = dohadneData?.lp_uctu?.groups || [];
-    const headers = ['Číslo účtu', 'Název účtu', 'LP kódy', 'Číslo objednávky', 'LP kód objednávky', 'Předmět', 'Dodavatel', 'Stav objednávky', 'Typ částky', 'Částka (Kč)', 'Datum vytvoření'];
+    const headers = [
+      'Č. účtu', 'Název účtu', 'LP kódy (skupina)', 'Počet obj. (skupina)',
+      'Před schválením (skupina)', 'Odeslané (skupina)', 'Celkem (skupina)',
+      'Číslo objednávky', 'Dt. vytv.', 'Předmět', 'LP kód',
+      'Objednatel', 'Schvalovatel', 'Úsek', 'Stav', 'Částka (Kč)',
+    ];
     const rows = [];
     groups.forEach(g => {
       (g.objednavky || []).forEach(o => {
@@ -6447,14 +6452,19 @@ export default function StatsReportsPage() {
           g.cislo_uctu || '',
           g.nazev_uctu || '',
           (g.lp_kody_v_uctu || []).join(', '),
+          g.pocet_objednavek ?? '',
+          g.castka_pre_schvaleni ?? '',
+          g.castka_odeslane ?? '',
+          g.castka_celkem ?? '',
           o.cislo_objednavky || '',
-          o.cislo_lp || '',
-          o.predmet || '',
-          o.dodavatel_nazev || '',
-          o.stav_objednavky || '',
-          o.typ_castky === 'pre_schvaleni' ? 'před schválením' : 'odeslané',
-          o.castka ?? '',
           o.dt_vytvoreni ? o.dt_vytvoreni.slice(0, 10) : '',
+          o.predmet || '',
+          o.cislo_lp || '',
+          buildFullName(o.objednatel_jmeno, o.objednatel_prijmeni),
+          buildFullName(o.schvalovatel_jmeno, o.schvalovatel_prijmeni) || buildFullName(o.prikazce_jmeno, o.prikazce_prijmeni),
+          getUsekLabel(o),
+          o.stav_objednavky || '',
+          o.castka ?? '',
         ]);
       });
     });
@@ -6464,20 +6474,32 @@ export default function StatsReportsPage() {
   // ─── Export: Dohadné položky LP ──────────────────────────────────────────────
   const handleExportCsv_dohadneLp = useCallback(() => {
     const groups = dohadneData?.lp?.groups || [];
-    const headers = ['LP kód', 'Název LP', 'Číslo objednávky', 'Předmět', 'Dodavatel', 'Stav objednávky', 'Typ částky', 'Částka (Kč)', 'Datum vytvoření'];
+    const headers = [
+      'LP kód', 'Název LP', 'LP Účet', 'Počet obj. (skupina)',
+      'Před schválením (skupina)', 'Odeslané (skupina)', 'Celkem (skupina)',
+      'Číslo objednávky', 'Dt. vytv.', 'Předmět',
+      'Objednatel', 'Schvalovatel', 'Úsek', 'Druh', 'Stav', 'Částka (Kč)',
+    ];
     const rows = [];
     groups.forEach(g => {
       (g.objednavky || []).forEach(o => {
         rows.push([
           g.cislo_lp || '',
           g.nazev_uctu || '',
+          g.cislo_uctu || '',
+          g.pocet_objednavek ?? '',
+          g.castka_pre_schvaleni ?? '',
+          g.castka_odeslane ?? '',
+          g.castka_celkem ?? '',
           o.cislo_objednavky || '',
-          o.predmet || '',
-          o.dodavatel_nazev || '',
-          o.stav_objednavky || '',
-          o.typ_castky === 'pre_schvaleni' ? 'před schválením' : 'odeslané',
-          o.castka ?? '',
           o.dt_vytvoreni ? o.dt_vytvoreni.slice(0, 10) : '',
+          o.predmet || '',
+          buildFullName(o.objednatel_jmeno, o.objednatel_prijmeni),
+          buildFullName(o.schvalovatel_jmeno, o.schvalovatel_prijmeni) || buildFullName(o.prikazce_jmeno, o.prikazce_prijmeni),
+          getUsekLabel(o),
+          o.druh_objednavky_kod || '',
+          o.stav_objednavky || '',
+          o.castka ?? '',
         ]);
       });
     });
@@ -6487,7 +6509,12 @@ export default function StatsReportsPage() {
   // ─── Export: Dohadné položky Smlouvy ─────────────────────────────────────────
   const handleExportCsv_dohadneSmlouvy = useCallback(() => {
     const groups = dohadneData?.smlouvy?.groups || [];
-    const headers = ['Číslo smlouvy', 'Název smlouvy', 'Dodavatel smlouvy', 'Číslo objednávky', 'Předmět', 'Dodavatel', 'Stav objednávky', 'Typ částky', 'Částka (Kč)', 'Datum vytvoření'];
+    const headers = [
+      'Č. smlouvy', 'Název smlouvy', 'Dodavatel smlouvy', 'Počet obj. (skupina)',
+      'Před schválením (skupina)', 'Odeslané (skupina)', 'Celkem (skupina)',
+      'Číslo objednávky', 'Dt. vytv.', 'Předmět',
+      'Objednatel', 'Schvalovatel', 'Úsek', 'Druh', 'Stav', 'Částka (Kč)',
+    ];
     const rows = [];
     groups.forEach(g => {
       (g.objednavky || []).forEach(o => {
@@ -6495,13 +6522,19 @@ export default function StatsReportsPage() {
           g.cislo_smlouvy || '',
           g.nazev_smlouvy || '',
           g.nazev_firmy || '',
+          g.pocet_objednavek ?? '',
+          g.castka_pre_schvaleni ?? '',
+          g.castka_odeslane ?? '',
+          g.castka_celkem ?? '',
           o.cislo_objednavky || '',
-          o.predmet || '',
-          o.dodavatel_nazev || '',
-          o.stav_objednavky || '',
-          o.typ_castky === 'pre_schvaleni' ? 'před schválením' : 'odeslané',
-          o.castka ?? '',
           o.dt_vytvoreni ? o.dt_vytvoreni.slice(0, 10) : '',
+          o.predmet || '',
+          buildFullName(o.objednatel_jmeno, o.objednatel_prijmeni),
+          buildFullName(o.schvalovatel_jmeno, o.schvalovatel_prijmeni) || buildFullName(o.prikazce_jmeno, o.prikazce_prijmeni),
+          getUsekLabel(o),
+          o.druh_objednavky_kod || '',
+          o.stav_objednavky || '',
+          o.castka ?? '',
         ]);
       });
     });
