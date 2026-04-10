@@ -1423,7 +1423,7 @@ function _dashboard_get_notifications_unread($db, $user_id, $limit) {
 function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 15) {
     $stmt = $db->prepare("
         SELECT n.id, n.typ, n.nadpis, n.zprava, n.priorita, n.kategorie,
-               n.objekt_typ, n.objekt_id, n.dt_created,
+               n.objekt_typ, n.objekt_id, n.data_json, n.dt_created,
                nr.precteno, nr.skryto, nr.dt_precteno
         FROM `" . TBL_NOTIFIKACE . "` n
         INNER JOIN `" . TBL_NOTIFIKACE_PRECTENI . "` nr 
@@ -1438,7 +1438,25 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
         LIMIT " . (int)$limit . "
     ");
     $stmt->execute([$user_id, (int)$days]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Parsuj data_json na 'data' objekt (stejně jako v handle_notifications_list)
+    return array_map(function($notif) {
+        return [
+            'id' => (int)$notif['id'],
+            'typ' => $notif['typ'],
+            'nadpis' => $notif['nadpis'],
+            'zprava' => $notif['zprava'],
+            'priorita' => $notif['priorita'],
+            'kategorie' => $notif['kategorie'],
+            'objekt_typ' => $notif['objekt_typ'],
+            'objekt_id' => $notif['objekt_id'] ? (int)$notif['objekt_id'] : null,
+            'data' => $notif['data_json'] ? json_decode($notif['data_json'], true) : null,
+            'precteno' => $notif['precteno'],
+            'dt_precteno' => $notif['dt_precteno'],
+            'dt_created' => $notif['dt_created']
+        ];
+    }, $notifications);
 }
 
 /**
