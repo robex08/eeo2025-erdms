@@ -176,7 +176,8 @@ const SECTION_BLOCKS = {
     { key: 'cashbookCharts', label: 'Grafy' }
   ],
   dohadne: [
-    { key: 'dohadneLp', label: 'Dohadné položky — Limitované přísliby (LP)' },
+    { key: 'dohadneLpUctu', label: 'Dohadné položky — Limitované přísliby - dle LP účtu' },
+    { key: 'dohadneLp', label: 'Dohadné položky — Limitované přísliby - dle LP kódu' },
     { key: 'dohadneSmlouvy', label: 'Dohadné položky — Smlouvy' }
   ]
 };
@@ -2355,6 +2356,7 @@ export default function StatsReportsPage() {
     setDohadneDatumOd(od);
     setDohadneDatumDo(ddo);
   };
+  const [expandedDohadneLpUctu, setExpandedDohadneLpUctu] = useState(() => new Set());
   const [expandedDohadneLp, setExpandedDohadneLp] = useState(() => new Set());
   const [expandedDohadneSmlouvy, setExpandedDohadneSmlouvy] = useState(() => new Set());
   const [dohadneSelectedQ, setDohadneSelectedQ] = useState(() => {
@@ -5996,7 +5998,15 @@ export default function StatsReportsPage() {
 
   // ─── CSV Export: sdílené utility ────────────────────────────────────────────
   const downloadCsv = useCallback((headers, rows, filename) => {
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    // Čísla bez uvozovek, s locale desetinným oddělovačem (CZ = ',') — toLocaleString bere locale prohlížeče automaticky
+    const esc = (v) => {
+      if (typeof v === 'number') {
+        if (!isFinite(v)) return '';
+        return v.toLocaleString(undefined, { useGrouping: false, maximumFractionDigits: 2 });
+      }
+      const s = String(v == null ? '' : v).replace(/"/g, '""');
+      return '"' + s + '"';
+    };
     const csv = [headers, ...rows].map(r => r.map(esc).join(';')).join('\r\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -6227,30 +6237,24 @@ export default function StatsReportsPage() {
 
   // ─── Export: Vzdělávání dle střediska ──────────────────────────────────────
   const handleExportCsv_vzdelByUsek = useCallback(() => {
-    const headers = ['Typ','Středisko','Úsek','Objednávka','Doručena','Stav FA','Financování','Detail fin.','Druh','Stav obj.','Částka (Kč)'];
+    const headers = ['Typ','Středisko','Úsek','Číslo obj.','Dt. obj.','Předmět','Objednatel','Schvalovatel','Financování','Detail fin.','Druh','Stav','Částka (Kč)'];
     const rows = [];
     vzdelByTypStredisko.forEach(typ => {
       typ.strediska.forEach(stredisko => {
         Object.values(stredisko.byUsek || {}).forEach(usek => {
           usek.orders.forEach(order => {
-            const invs = invoicesByOrderId[String(order.id)] || [];
-            const firstInv = invs[0];
-            const faSum = invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
-            const castkaCelk = faSum > 0 ? faSum : getOrderPlannedAmount(order) > 0 ? getOrderPlannedAmount(order) : getOrderLimit(order);
+            const r = orderToCsvRow(order);
             rows.push([
               typ.label, stredisko.label, usek.label,
-              order.ev_cislo || '',
-              formatDateCz(firstInv?.datum_doruceni || firstInv?.datum_vystaveni),
-              firstInv ? getInvoiceStatusLabel(firstInv) : '',
-              getOrderFinancingLabel(order), getOrderFinancingRef(order),
-              getOrderTypeLabel(order), getOrderStatusLabel(order), castkaCelk,
+              r.ev_cislo, r.dt_obj, r.predmet, r.objednatel, r.schvalovatel,
+              r.financovani, r.detail_fin, r.druh, r.stav, r.castka,
             ]);
           });
         });
       });
     });
     downloadCsv(headers, rows, `vzdelavani-dle-strediska-${new Date().toISOString().slice(0,10)}.csv`);
-  }, [vzdelByTypStredisko, invoicesByOrderId, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getOrderPlannedAmount, getOrderLimit, downloadCsv]);
+  }, [vzdelByTypStredisko, orderToCsvRow, downloadCsv]);
 
   // ─── Export: Čerpání – Financování → Úsek ──────────────────────────────────
   const handleExportCsv_spendByFinancingUsek = useCallback(() => {
@@ -6431,6 +6435,31 @@ export default function StatsReportsPage() {
     });
     downloadCsv(headers, rows, `prehled-pokladen-${new Date().toISOString().slice(0,10)}.csv`);
   }, [cashbookBooksToRender, downloadCsv]);
+
+  // ─── Export: Dohadné položky dle účtu ────────────────────────────────────────
+  const handleExportCsv_dohadneLpUctu = useCallback(() => {
+    const groups = dohadneData?.lp_uctu?.groups || [];
+    const headers = ['Číslo účtu', 'Název účtu', 'LP kódy', 'Číslo objednávky', 'LP kód objednávky', 'Předmět', 'Dodavatel', 'Stav objednávky', 'Typ částky', 'Částka (Kč)', 'Datum vytvoření'];
+    const rows = [];
+    groups.forEach(g => {
+      (g.objednavky || []).forEach(o => {
+        rows.push([
+          g.cislo_uctu || '',
+          g.nazev_uctu || '',
+          (g.lp_kody_v_uctu || []).join(', '),
+          o.cislo_objednavky || '',
+          o.cislo_lp || '',
+          o.predmet || '',
+          o.dodavatel_nazev || '',
+          o.stav_objednavky || '',
+          o.typ_castky === 'pre_schvaleni' ? 'před schválením' : 'odeslané',
+          o.castka ?? '',
+          o.dt_vytvoreni ? o.dt_vytvoreni.slice(0, 10) : '',
+        ]);
+      });
+    });
+    downloadCsv(headers, rows, `dohadne-dle-uctu-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [dohadneData, downloadCsv]);
 
   // ─── Export: Dohadné položky LP ──────────────────────────────────────────────
   const handleExportCsv_dohadneLp = useCallback(() => {
@@ -8659,7 +8688,7 @@ export default function StatsReportsPage() {
                                 }}
                                 style={{ cursor: 'pointer', color: '#059669', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                               >
-                                {filtered.length > 0 && filtered.every(g => expandedVzdelNelUsek.has(g.code)) ? '−' : '+'}
+                                {filtered.length > 0 && filtered.every(g => expandedVzdelNelUsek.has(g.code)) ? '\u2212' : '+'}
                               </div>
                               <div>Úsek</div>
                               <div style={{ textAlign: 'right' }}>Počet</div>
@@ -8674,7 +8703,7 @@ export default function StatsReportsPage() {
                                     onClick={() => setExpandedVzdelNelUsek(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
                                     style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#d1fae5' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                   >
-                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: '#059669', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: '#059669', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                     <span style={{ fontWeight: '700', color: '#065f46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label || group.code, 'vzdelNelekarsky')}</span>
                                     <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                                     <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
@@ -8700,7 +8729,7 @@ export default function StatsReportsPage() {
                                                 });
                                               }}
                                             >
-                                              {finArr.length > 0 && finArr.every(fin => expandedVzdelNelFin.has(`vzdelNel_${group.code}_${fin.code}`)) ? '−' : '+'}
+                                              {finArr.length > 0 && finArr.every(fin => expandedVzdelNelFin.has(`vzdelNel_${group.code}_${fin.code}`)) ? '\u2212' : '+'}
                                             </Th>
                                             <Th>Financování</Th>
                                             <ThC>Počet</ThC>
@@ -8718,7 +8747,7 @@ export default function StatsReportsPage() {
                                                   onClick={() => setExpandedVzdelNelFin(prev => { const next = new Set(prev); if (next.has(detailKey)) next.delete(detailKey); else next.add(detailKey); return next; })}
                                                   style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
                                                 >
-                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '\u2212' : '+'}</Td>
                                                   <Td>{highlightText(fin.label, 'vzdelNelekarsky')}</Td>
                                                   <TdC>{fin.count}</TdC>
                                                   <TdR>{fmtCurrency(fin.amount)}</TdR>
@@ -8876,7 +8905,7 @@ export default function StatsReportsPage() {
                                   onClick={() => setExpandedVzdelByTyp(prev => { const n = new Set(prev); if (n.has(typGroup.key)) n.delete(typGroup.key); else n.add(typGroup.key); return n; })}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.75rem 1rem', background: typOpen ? typColor.bgOpen : typColor.bg, cursor: 'pointer', userSelect: 'none', borderBottom: typOpen ? `1px solid ${typColor.border}` : 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '800', color: typColor.icon, textAlign: 'center', lineHeight: 1 }}>{typOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '800', color: typColor.icon, textAlign: 'center', lineHeight: 1 }}>{typOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '800', color: typColor.text, fontSize: '0.9rem' }}>{typGroup.label}</span>
                                   <SectionBadge $tone={typGroup.tone} style={{ textAlign: 'right', justifySelf: 'end' }}>{typGroup.totalCount} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.85rem', fontFamily: 'monospace', color: '#1e293b', textAlign: 'right', fontWeight: '700' }}>{fmtCurrency(typGroup.totalAmount)}</span>
@@ -8893,7 +8922,7 @@ export default function StatsReportsPage() {
                                             onClick={() => setExpandedVzdelByUsek(prev => { const n = new Set(prev); if (n.has(sKey)) n.delete(sKey); else n.add(sKey); return n; })}
                                             style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.65rem 0.75rem', background: sOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none', borderBottom: sOpen ? '1px solid #bfdbfe' : 'none' }}
                                           >
-                                            <span style={{ fontSize: '0.95rem', fontWeight: '700', color: '#1d4ed8', textAlign: 'center', lineHeight: 1 }}>{sOpen ? '−' : '+'}</span>
+                                            <span style={{ fontSize: '0.95rem', fontWeight: '700', color: '#1d4ed8', textAlign: 'center', lineHeight: 1 }}>{sOpen ? '\u2212' : '+'}</span>
                                             <span style={{ fontWeight: '700', color: '#1e3a8a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.86rem' }}>🏢 {sGroup.label || sGroup.code}</span>
                                             <SectionBadge $tone="info" style={{ textAlign: 'right', justifySelf: 'end' }}>{sGroup.totalCount} obj.</SectionBadge>
                                             <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(sGroup.totalAmount)}</span>
@@ -8927,7 +8956,7 @@ export default function StatsReportsPage() {
                                                         onClick={() => setExpandedVzdelUsek(prev => { const n = new Set(prev); if (n.has(uKey)) n.delete(uKey); else n.add(uKey); return n; })}
                                                         style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0.65rem', background: uOpen ? '#f0fdf4' : '#fff', cursor: 'pointer', userSelect: 'none' }}
                                                       >
-                                                        <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#059669', textAlign: 'center', lineHeight: 1 }}>{uOpen ? '−' : '+'}</span>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#059669', textAlign: 'center', lineHeight: 1 }}>{uOpen ? '\u2212' : '+'}</span>
                                                         <span style={{ fontWeight: '600', color: '#14532d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.83rem' }}>{uGroup.label || uGroup.code}</span>
                                                         <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{uGroup.count} obj.</SectionBadge>
                                                         <span style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(uGroup.amount)}</span>
@@ -8938,14 +8967,17 @@ export default function StatsReportsPage() {
                                                             <Table>
                                                               <thead>
                                                                 <tr>
-                                                                  <ThSort style={{ minWidth: '220px', width: '220px' }} onClick={() => handleTableSort(detailKey, 'ev_cislo')}>Objednávka{sortIcon(detailKey, 'ev_cislo')}</ThSort>
-                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'dt_dorucena')}>Doručena{sortIcon(detailKey, 'dt_dorucena')}</ThSort>
-                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'stav_fa')}>Stav FA{sortIcon(detailKey, 'stav_fa')}</ThSort>
-                                                                  <ThNarrowSort onClick={() => handleTableSort(detailKey, 'financovani')}>Financování{sortIcon(detailKey, 'financovani')}</ThNarrowSort>
+                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'ev_cislo')}>Číslo{sortIcon(detailKey, 'ev_cislo')}</ThSort>
+                                                                  <ThNarrowSort onClick={() => handleTableSort(detailKey, 'dt_obj')}>Dt. obj.{sortIcon(detailKey, 'dt_obj')}</ThNarrowSort>
+                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'predmet')}>Předmět{sortIcon(detailKey, 'predmet')}</ThSort>
+                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'objednatel')}>Objednatel{sortIcon(detailKey, 'objednatel')}</ThSort>
+                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'schvalovatel')}>Schvalovatel{sortIcon(detailKey, 'schvalovatel')}</ThSort>
+                                                                  <ThNarrowSort onClick={() => handleTableSort(detailKey, 'usek')}>Úsek{sortIcon(detailKey, 'usek')}</ThNarrowSort>
+                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'financovani')}>Financování{sortIcon(detailKey, 'financovani')}</ThSort>
                                                                   <ThNarrowSort onClick={() => handleTableSort(detailKey, 'detail_fin')}>Detail fin.{sortIcon(detailKey, 'detail_fin')}</ThNarrowSort>
-                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'druh')}>Druh{sortIcon(detailKey, 'druh')}</ThSort>
-                                                                  <ThSort onClick={() => handleTableSort(detailKey, 'stav_obj')}>Stav obj.{sortIcon(detailKey, 'stav_obj')}</ThSort>
-                                                                  <ThC style={{ width: '60px' }}>Přílohy</ThC>
+                                                                  <ThNarrowSort onClick={() => handleTableSort(detailKey, 'druh')}>Druh{sortIcon(detailKey, 'druh')}</ThNarrowSort>
+                                                                  <ThNarrowSort onClick={() => handleTableSort(detailKey, 'stav')}>Stav{sortIcon(detailKey, 'stav')}</ThNarrowSort>
+                                                                  <ThC style={{ width: '70px' }}>Přílohy</ThC>
                                                                   <ThRSort onClick={() => handleTableSort(detailKey, 'castka')}>Částka{sortIcon(detailKey, 'castka')}</ThRSort>
                                                                 </tr>
                                                               </thead>
@@ -8955,30 +8987,37 @@ export default function StatsReportsPage() {
                                                                   const orderAttCnt = order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0;
                                                                   const invAttCnt = invs.reduce((s, inv) => s + (inv.pocet_priloh ?? inv.prilohy_count ?? inv.prilohy?.length ?? 0), 0);
                                                                   const invIds = invs.map(inv => inv.id).filter(Boolean);
-                                                                  const faSum = invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
-                                                                  const polozkySum = getOrderPlannedAmount(order) || 0;
-                                                                  const maxDph = getOrderLimit(order) || 0;
-                                                                  let castkaVal, castkaSrc;
-                                                                  if (faSum > 0) { castkaVal = faSum; castkaSrc = 'FA'; }
-                                                                  else if (polozkySum > 0) { castkaVal = polozkySum; castkaSrc = 'POL'; }
-                                                                  else { castkaVal = maxDph; castkaSrc = 'MAX'; }
                                                                   return (
-                                                                    <Tr key={order.id}>
-                                                                      <Td>{renderOrderLink(order, detailKey)}</Td>
-                                                                      <Td>{highlightText(formatDateCz((invoicesByOrderId[String(order.id)] || [])[0]?.datum_doruceni), detailKey)}</Td>
-                                                                      <Td>{highlightText(getInvoiceStatusLabel((invoicesByOrderId[String(order.id)] || [])[0]) || '—', detailKey)}</Td>
-                                                                      <Td>{renderFinancingLabelCell(order, detailKey)}</Td>
-                                                                      <TdNarrow>{renderFinancingRefCell(order, detailKey)}</TdNarrow>
-                                                                      <TdNarrow>{highlightText(getOrderTypeLabel(order), detailKey)}</TdNarrow>
-                                                                      <Td>{highlightText(getOrderStatusLabel(order), detailKey)}</Td>
-                                                                      <TdC>{renderAttachBadge(order.id, 'order-combined', orderAttCnt + invAttCnt, invIds, order.attachment_color)}</TdC>
-                                                                      <TdR>
-                                                                        <span style={{ position: 'relative', display: 'inline-block' }}>
-                                                                          <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>{castkaSrc}</sup>
-                                                                          {highlightText(fmtCurrency(castkaVal), detailKey)}
-                                                                        </span>
-                                                                      </TdR>
-                                                                    </Tr>
+                                                                  <Tr key={order.id}>
+                                                                    <Td>{renderOrderLink(order, detailKey)}</Td>
+                                                                    <Td>{highlightText(formatDateCz(getOrderDate(order)), detailKey)}</Td>
+                                                                    <SubjectTd>{highlightText(getOrderSubject(order), detailKey)}</SubjectTd>
+                                                                    <Td>{renderOrdererStack(order)}</Td>
+                                                                    <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                                                    <TdNarrow>{highlightText(getOrdererUsekCode(order) || '-', detailKey)}</TdNarrow>
+                                                                    <Td>{renderFinancingLabelCell(order, detailKey)}</Td>
+                                                                    <TdNarrow>{renderFinancingRefCell(order, detailKey)}</TdNarrow>
+                                                                    <TdNarrow>{highlightText(getOrderTypeLabel(order), detailKey)}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
+                                                                    <TdNarrow>{highlightText(getOrderStatusLabel(order), detailKey)}</TdNarrow>
+                                                                    <TdC>{renderAttachBadge(order.id, 'order-combined', orderAttCnt + invAttCnt, invIds, order.attachment_color)}</TdC>
+                                                                    <TdR>
+                                                                      {(() => {
+                                                                        const faSum = invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
+                                                                        const polozkySum = getOrderPlannedAmount(order) || 0;
+                                                                        const maxDph = getOrderLimit(order) || 0;
+                                                                        let val, src;
+                                                                        if (faSum > 0) { val = faSum; src = 'FA'; }
+                                                                        else if (polozkySum > 0) { val = polozkySum; src = 'POL'; }
+                                                                        else { val = maxDph; src = 'MAX'; }
+                                                                        return (
+                                                                          <span style={{ position: 'relative', display: 'inline-block' }}>
+                                                                            <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>{src}</sup>
+                                                                            {highlightText(fmtCurrency(val), detailKey)}
+                                                                          </span>
+                                                                        );
+                                                                      })()}
+                                                                    </TdR>
+                                                                  </Tr>
                                                                   );
                                                                 })}
                                                               </tbody>
@@ -9067,7 +9106,7 @@ export default function StatsReportsPage() {
                               }}
                               style={{ cursor: 'pointer', color: '#3b82f6', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                             >
-                              {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? '−' : '+'}
+                              {filteredSpendByFinancingGroups.length > 0 && filteredSpendByFinancingGroups.every(g => expandedSpendFinancing.has(g.code)) ? '\u2212' : '+'}
                             </div>
                             <div onClick={() => handleTableSort('spendGrp_fin', 'label')} style={{ cursor: 'pointer' }}>Financování{sortIcon('spendGrp_fin', 'label')}</div>
                             <div onClick={() => handleTableSort('spendGrp_fin', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_fin', 'count')}</div>
@@ -9086,7 +9125,7 @@ export default function StatsReportsPage() {
                               })}
                               style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: finOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                             >
-                              <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{finOpen ? '−' : '+'}</span>
+                              <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{finOpen ? '\u2212' : '+'}</span>
                               <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByFinancingUsek')}</span>
                               <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                               <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
@@ -9112,7 +9151,7 @@ export default function StatsReportsPage() {
                                           });
                                         }}
                                       >
-                                        {usekyArr.length > 0 && usekyArr.every(usek => expandedSpendUseks.has(`spendDetail_${group.code}_${usek.code}`)) ? '−' : '+'}
+                                        {usekyArr.length > 0 && usekyArr.every(usek => expandedSpendUseks.has(`spendDetail_${group.code}_${usek.code}`)) ? '\u2212' : '+'}
                                       </Th>
                                       <Th>Úsek</Th>
                                       <ThC>Počet</ThC>
@@ -9135,7 +9174,7 @@ export default function StatsReportsPage() {
                                             style={{ cursor: 'pointer', background: usekOpen ? '#f0f9ff' : undefined }}
                                           >
                                             <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>
-                                              {usekOpen ? '−' : '+'}
+                                              {usekOpen ? '\u2212' : '+'}
                                             </Td>
                                             <Td>{highlightText(usek.label, 'spendByFinancingUsek')}</Td>
                                             <TdC>{usek.count}</TdC>
@@ -9209,7 +9248,7 @@ export default function StatsReportsPage() {
                                   })}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: pokladnaOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{pokladnaOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{pokladnaOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     Pokladna
                                   </span>
@@ -9253,7 +9292,7 @@ export default function StatsReportsPage() {
                                                 }}
                                                 style={{ cursor: 'pointer', background: bookOpen ? '#f0f9ff' : undefined }}
                                               >
-                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{bookOpen ? '−' : '+'}</Td>
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{bookOpen ? '\u2212' : '+'}</Td>
                                                 <Td>
                                                   {nazev}
                                                   {book.hlavni_uzivatel && <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: '0.4rem' }}>({book.hlavni_uzivatel})</span>}
@@ -9383,7 +9422,7 @@ export default function StatsReportsPage() {
                               }}
                               style={{ cursor: 'pointer', color: '#16a34a', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                             >
-                              {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? '−' : '+'}
+                              {filteredSpendByUsekGroups.length > 0 && filteredSpendByUsekGroups.every(g => expandedSpendUsekF.has(g.code)) ? '\u2212' : '+'}
                             </div>
                             <div onClick={() => handleTableSort('spendGrp_usek', 'label')} style={{ cursor: 'pointer' }}>Úsek{sortIcon('spendGrp_usek', 'label')}</div>
                             <div onClick={() => handleTableSort('spendGrp_usek', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_usek', 'count')}</div>
@@ -9398,7 +9437,7 @@ export default function StatsReportsPage() {
                                   onClick={() => setExpandedSpendUsekF(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#f0fdf4' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#16a34a', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#16a34a', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#14532d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByUsekFinancing')}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
@@ -9424,7 +9463,7 @@ export default function StatsReportsPage() {
                                               });
                                             }}
                                           >
-                                            {finArr.length > 0 && finArr.every(fin => expandedSpendUsekFSub.has(`spendUFDetail_${group.code}_${fin.code}`)) ? '−' : '+'}
+                                            {finArr.length > 0 && finArr.every(fin => expandedSpendUsekFSub.has(`spendUFDetail_${group.code}_${fin.code}`)) ? '\u2212' : '+'}
                                           </Th>
                                           <Th>Financování</Th>
                                           <ThC>Počet</ThC>
@@ -9442,7 +9481,7 @@ export default function StatsReportsPage() {
                                                 onClick={() => setExpandedSpendUsekFSub(prev => { const next = new Set(prev); if (next.has(detailKey)) next.delete(detailKey); else next.add(detailKey); return next; })}
                                                 style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
                                               >
-                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '\u2212' : '+'}</Td>
                                                 <Td>{highlightText(fin.label, 'spendByUsekFinancing')}</Td>
                                                 <TdC>{fin.count}</TdC>
                                                 <TdR>{fmtCurrency(fin.amount)}</TdR>
@@ -9563,7 +9602,7 @@ export default function StatsReportsPage() {
                               }}
                               style={{ cursor: 'pointer', color: '#7c3aed', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                             >
-                              {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? '−' : '+'}
+                              {filteredSpendByDruhGroups.length > 0 && filteredSpendByDruhGroups.every(g => expandedSpendDruh.has(g.code)) ? '\u2212' : '+'}
                             </div>
                             <div onClick={() => handleTableSort('spendGrp_druh', 'label')} style={{ cursor: 'pointer' }}>Druh objednávky{sortIcon('spendGrp_druh', 'label')}</div>
                             <div onClick={() => handleTableSort('spendGrp_druh', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_druh', 'count')}</div>
@@ -9578,7 +9617,7 @@ export default function StatsReportsPage() {
                                   onClick={() => setExpandedSpendDruh(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fdf4ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#7c3aed', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#7c3aed', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#4c1d95', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByDruhFinancing')}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
@@ -9604,7 +9643,7 @@ export default function StatsReportsPage() {
                                               });
                                             }}
                                           >
-                                            {finArr.length > 0 && finArr.every(fin => expandedSpendDruhSub.has(`spendDFDetail_${group.code}_${fin.code}`)) ? '−' : '+'}
+                                            {finArr.length > 0 && finArr.every(fin => expandedSpendDruhSub.has(`spendDFDetail_${group.code}_${fin.code}`)) ? '\u2212' : '+'}
                                           </Th>
                                           <Th>Financování</Th>
                                           <ThC>Počet</ThC>
@@ -9622,7 +9661,7 @@ export default function StatsReportsPage() {
                                                 onClick={() => setExpandedSpendDruhSub(prev => { const next = new Set(prev); if (next.has(detailKey)) next.delete(detailKey); else next.add(detailKey); return next; })}
                                                 style={{ cursor: 'pointer', background: finOpen ? '#f0f9ff' : undefined }}
                                               >
-                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '\u2212' : '+'}</Td>
                                                 <Td>{highlightText(fin.label, 'spendByDruhFinancing')}</Td>
                                                 <TdC>{fin.count}</TdC>
                                                 <TdR>{fmtCurrency(fin.amount)}</TdR>
@@ -9738,7 +9777,7 @@ export default function StatsReportsPage() {
                               }}
                               style={{ cursor: 'pointer', color: '#0891b2', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                             >
-                              {filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? '−' : '+'}
+                              {filteredSpendByFinancingUsekDruhGroups.length > 0 && filteredSpendByFinancingUsekDruhGroups.every(g => expandedSpendFinDruh.has(g.code)) ? '\u2212' : '+'}
                             </div>
                             <div onClick={() => handleTableSort('spendGrp_findrud', 'label')} style={{ cursor: 'pointer' }}>Financování{sortIcon('spendGrp_findrud', 'label')}</div>
                             <div onClick={() => handleTableSort('spendGrp_findrud', 'count')} style={{ cursor: 'pointer', textAlign: 'right' }}>Počet{sortIcon('spendGrp_findrud', 'count')}</div>
@@ -9753,7 +9792,7 @@ export default function StatsReportsPage() {
                                   onClick={() => setExpandedSpendFinDruh(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#ecfeff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#0891b2', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#0891b2', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#0e4f6e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByFinancingUsekDruh')}</span>
                                   <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{group.totalCount} obj.</SectionBadge>
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
@@ -9779,7 +9818,7 @@ export default function StatsReportsPage() {
                                               });
                                             }}
                                           >
-                                            {usekyArr.length > 0 && usekyArr.every(u => expandedSpendFinDruhUsek.has(`spendFUD_${group.code}_${u.code}`)) ? '−' : '+'}
+                                            {usekyArr.length > 0 && usekyArr.every(u => expandedSpendFinDruhUsek.has(`spendFUD_${group.code}_${u.code}`)) ? '\u2212' : '+'}
                                           </Th>
                                           <Th>Úsek</Th>
                                           <ThC>Počet</ThC>
@@ -9797,7 +9836,7 @@ export default function StatsReportsPage() {
                                                 onClick={() => setExpandedSpendFinDruhUsek(prev => { const next = new Set(prev); if (next.has(usekKey)) next.delete(usekKey); else next.add(usekKey); return next; })}
                                                 style={{ cursor: 'pointer', background: usekOpen ? '#f0f9ff' : undefined }}
                                               >
-                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{usekOpen ? '−' : '+'}</Td>
+                                                <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{usekOpen ? '\u2212' : '+'}</Td>
                                                 <Td>{highlightText(usek.label, 'spendByFinancingUsekDruh')}</Td>
                                                 <TdC>{usek.count}</TdC>
                                                 <TdR>{fmtCurrency(usek.amount)}</TdR>
@@ -9825,7 +9864,7 @@ export default function StatsReportsPage() {
                                                                 });
                                                               }}
                                                             >
-                                                              {druhyArr.length > 0 && druhyArr.every(d => expandedSpendFinDruhDetail.has(`spendFUDD_${group.code}_${usek.code}_${d.code}`)) ? '−' : '+'}
+                                                              {druhyArr.length > 0 && druhyArr.every(d => expandedSpendFinDruhDetail.has(`spendFUDD_${group.code}_${usek.code}_${d.code}`)) ? '\u2212' : '+'}
                                                             </Th>
                                                             <Th>Druh objednávky</Th>
                                                             <ThC>Počet</ThC>
@@ -9843,7 +9882,7 @@ export default function StatsReportsPage() {
                                                                   onClick={() => setExpandedSpendFinDruhDetail(prev => { const next = new Set(prev); if (next.has(druhKey)) next.delete(druhKey); else next.add(druhKey); return next; })}
                                                                   style={{ cursor: 'pointer', background: druhOpen ? '#f0f9ff' : undefined }}
                                                                 >
-                                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{druhOpen ? '−' : '+'}</Td>
+                                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{druhOpen ? '\u2212' : '+'}</Td>
                                                                   <Td>{highlightText(druh.label, 'spendByFinancingUsekDruh')}</Td>
                                                                   <TdC>{druh.count}</TdC>
                                                                   <TdR>{fmtCurrency(druh.amount)}</TdR>
@@ -9973,7 +10012,7 @@ export default function StatsReportsPage() {
                               }}
                               style={{ cursor: 'pointer', color: '#d97706', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                             >
-                              {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? '−' : '+'}
+                              {filteredSpendByLpKodGroups.length > 0 && filteredSpendByLpKodGroups.every(g => expandedSpendLp.has(g.code)) ? '\u2212' : '+'}
                             </div>
                             <div onClick={() => handleTableSort('spendGrp_lp', 'code')} style={{ cursor: 'pointer' }}>LP kód{sortIcon('spendGrp_lp', 'code')}</div>
                             <div onClick={() => handleTableSort('spendGrp_lp', 'usek')} style={{ cursor: 'pointer' }}>Úsek{sortIcon('spendGrp_lp', 'usek')}</div>
@@ -10013,7 +10052,7 @@ export default function StatsReportsPage() {
                                   onClick={() => setExpandedSpendLp(prev => { const next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 75px 170px 120px 65px 140px 75px 150px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: lpOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#d97706', lineHeight: 1, textAlign: 'center' }}>{lpOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#d97706', lineHeight: 1, textAlign: 'center' }}>{lpOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: lpLabelColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(group.label, 'spendByLpKod')}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lpUseky}</span>
                                   <span style={{ fontSize: '0.78rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lpPrikazci}</span>
@@ -10209,7 +10248,7 @@ export default function StatsReportsPage() {
                                   }}
                                   style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none' }}
                                 >
-                                  {filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? '−' : '+'}
+                                  {filteredSpendBySmlouvyGroups.every(g => expandedSpendSmlouvy.has(g.code)) ? '\u2212' : '+'}
                                 </div>
                                 <div onClick={() => handleTableSort('spendGrp_smlouvy', 'code')} style={{ cursor: 'pointer' }}>Smlouva{sortIcon('spendGrp_smlouvy', 'code')}</div>
                                 <div onClick={() => handleTableSort('spendGrp_smlouvy', 'dodavatel')} style={{ cursor: 'pointer' }}>Dodavatel{sortIcon('spendGrp_smlouvy', 'dodavatel')}</div>
@@ -10245,7 +10284,7 @@ export default function StatsReportsPage() {
                                         style={{ background: grpOpen ? '#fee2e2' : '#eff6ff', border: `1px solid ${grpOpen ? '#fca5a5' : '#93c5fd'}`, borderRadius: '4px', width: '22px', cursor: 'pointer', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: grpOpen ? '#dc2626' : '#3b82f6', flexShrink: 0, padding: '1px 0', gap: 0, lineHeight: 1 }}
                                       >
                                         <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: grpOpen ? '#dc2626' : '#1e40af', opacity: 0.85 }}>{group.count}</span>
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>{grpOpen ? '−' : '+'}</span>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>{grpOpen ? '\u2212' : '+'}</span>
                                       </button>
 
                                       {/* Číslo smlouvy */}
@@ -10527,7 +10566,7 @@ export default function StatsReportsPage() {
                                   }}
                                   style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: isOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                                 >
-                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{isOpen ? '−' : '+'}</span>
+                                  <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3b82f6', lineHeight: 1, textAlign: 'center' }}>{isOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '700', color: '#1e40af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {nazev}
                                     {book.hlavni_uzivatel && <span style={{ fontWeight: '400', color: '#64748b', fontSize: '0.8rem', marginLeft: '0.5rem' }}>({book.hlavni_uzivatel})</span>}
@@ -11192,7 +11231,7 @@ export default function StatsReportsPage() {
                                 }}
                                 style={{ cursor: 'pointer', color: '#b45309', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                               >
-                                {pagedFiltered.length > 0 && pagedFiltered.every(function(g) { return expandedTopSuppDod.has(g.code); }) ? '−' : '+'}
+                                {pagedFiltered.length > 0 && pagedFiltered.every(function(g) { return expandedTopSuppDod.has(g.code); }) ? '\u2212' : '+'}
                               </div>
                               <div>Dodavatel</div>
                               <div>I&#268;O</div>
@@ -11218,7 +11257,7 @@ export default function StatsReportsPage() {
                                     onClick={() => setExpandedTopSuppDod(function(prev) { var next = new Set(prev); if (next.has(group.code)) next.delete(group.code); else next.add(group.code); return next; })}
                                     style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? bgOpen : bgClosed, cursor: 'pointer', userSelect: 'none', borderLeft: (hasContracts || noUsage) ? '4px solid ' + accentColor : 'none' }}
                                   >
-                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: accentColor, lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: accentColor, lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                     <div style={{ overflow: 'hidden', minWidth: 0 }}>
                                       <span style={{ fontWeight: '700', color: textColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{highlightText(group.label, 'topSuppliers')}{(hasContracts || noUsage) ? ' (' + group.smlouvyActive + '/' + group.smlouvyTotal + ')' : ''}</span>
                                       {group.smlouvyItems.length > 0 && (
@@ -11255,7 +11294,7 @@ export default function StatsReportsPage() {
                                                 });
                                               }}
                                             >
-                                              {finArr.length > 0 && finArr.every(function(f) { return expandedTopSuppFin.has('ts_' + group.code + '_' + f.code); }) ? '−' : '+'}
+                                              {finArr.length > 0 && finArr.every(function(f) { return expandedTopSuppFin.has('ts_' + group.code + '_' + f.code); }) ? '\u2212' : '+'}
                                             </Th>
                                             <Th>Financování</Th>
                                             <ThC>Počet</ThC>
@@ -11273,7 +11312,7 @@ export default function StatsReportsPage() {
                                                   onClick={() => setExpandedTopSuppFin(function(prev) { var next = new Set(prev); if (next.has(finKey)) next.delete(finKey); else next.add(finKey); return next; })}
                                                   style={{ cursor: 'pointer', background: finOpen ? '#f1f5f9' : undefined }}
                                                 >
-                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '−' : '+'}</Td>
+                                                  <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '0.95rem', color: '#6b7280', lineHeight: 1 }}>{finOpen ? '\u2212' : '+'}</Td>
                                                   <Td>{highlightText(fin.label, 'topSuppliers')}</Td>
                                                   <TdC>{fin.count}</TdC>
                                                   <TdR>{fmtCurrency(fin.amount)}</TdR>
@@ -11687,7 +11726,7 @@ export default function StatsReportsPage() {
                                     }}
                                     style={{ display: 'grid', gridTemplateColumns: '20px 1fr 110px', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 1rem', background: isOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none', borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}
                                   >
-                                    <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#3b82f6', textAlign: 'center', lineHeight: 1 }}>{isOpen ? '−' : '+'}</span>
+                                    <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#3b82f6', textAlign: 'center', lineHeight: 1 }}>{isOpen ? '\u2212' : '+'}</span>
                                     <span style={{ fontWeight: isOpen ? 700 : 500, color: '#1e293b', fontSize: '0.9rem' }}>{prettyAttachType(item.type)}</span>
                                     <SectionBadge $tone="info" style={{ justifySelf: 'end' }}>{item.count}</SectionBadge>
                                   </div>
@@ -11802,7 +11841,7 @@ export default function StatsReportsPage() {
                                     }}
                                     style={{ display: 'grid', gridTemplateColumns: '20px 1fr 110px', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 1rem', background: isOpen ? '#fffbeb' : '#f8fafc', cursor: 'pointer', userSelect: 'none', borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}
                                   >
-                                    <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#b45309', textAlign: 'center', lineHeight: 1 }}>{isOpen ? '−' : '+'}</span>
+                                    <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#b45309', textAlign: 'center', lineHeight: 1 }}>{isOpen ? '\u2212' : '+'}</span>
                                     <span style={{ fontWeight: isOpen ? 700 : 500, color: '#1e293b', fontSize: '0.9rem' }}>{prettyAttachType(item.type)}</span>
                                     <SectionBadge $tone="warn" style={{ justifySelf: 'end' }}>{item.count}</SectionBadge>
                                   </div>
@@ -12755,7 +12794,7 @@ export default function StatsReportsPage() {
                                 >
                                   {cashbookBooksToRender.map(b => 
                                     b.mesic ? `month_${b.kniha_id}` : `year_${b.pokladna_id}_${b.rok}`
-                                  ).every(key => expandedCashbookRows.has(key)) ? '−' : '+'}
+                                  ).every(key => expandedCashbookRows.has(key)) ? '\u2212' : '+'}
                                 </span>
                               </Th>
                               <Th>Pokladna</Th>
@@ -12819,7 +12858,7 @@ export default function StatsReportsPage() {
                                     }}
                                   >
                                     <Td style={{ textAlign: 'center', fontWeight: '700', fontSize: '1rem', color: TAB_TONES.cashbook.base }}>
-                                      {isExpanded ? '−' : '+'}
+                                      {isExpanded ? '\u2212' : '+'}
                                     </Td>
                                     <Td>
                                       <div style={{ fontWeight: '600', color: '#334155' }}>
@@ -12857,7 +12896,7 @@ export default function StatsReportsPage() {
                                                 const bg = zamceno ? '#ede9fe' : uzavrena ? '#f1f5f9' : '#dcfce7';
                                                 const title = zamceno ? 'Zamčeno správcem' : uzavrena ? 'Uzavřeno uživatelem' : 'Aktivní (otevřeno)';
                                                 const lpSuper = book.lp_kod_povinny != null
-                                                  ? <sup style={{ fontSize: '0.6em', fontWeight: '700', color: book.lp_kod_povinny ? '#b45309' : '#0369a1', marginLeft: '1px' }}>{book.lp_kod_povinny ? '+' : '−'}</sup>
+                                                  ? <sup style={{ fontSize: '0.6em', fontWeight: '700', color: book.lp_kod_povinny ? '#b45309' : '#0369a1', marginLeft: '1px' }}>{book.lp_kod_povinny ? '+' : '\u2212'}</sup>
                                                   : null;
                                                 return (
                                                   <span key={i} title={title} style={{
@@ -13331,13 +13370,162 @@ export default function StatsReportsPage() {
                   );
                 })()}
 
+                {/* ── Blok 0: Dle čísla účtu ── */}
+                {isBlockVisible('dohadne', 'dohadneLpUctu') && (
+                  <SectionCard id="section-dohadneLpUctu" style={{ marginBottom: '1.25rem' }}>
+                    <SectionHeader>
+                      <SectionTitle>
+                        <FontAwesomeIcon icon={faHourglassHalf} style={{ marginRight: '0.5rem', opacity: 0.7 }} />
+                        Dohadné položky — Limitované přísliby - dle LP účtu
+                      </SectionTitle>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {dohadneData?.lp_uctu && (
+                          <>
+                            <SectionBadge $tone="warn">{dohadneData.lp_uctu.total_uctu_skupin ?? 0} účtů</SectionBadge>
+                            <SectionBadge $tone="info">{dohadneData.lp_uctu.total_objednavek ?? 0} objednávek</SectionBadge>
+                            <SectionBadge $tone="default">Před schválením: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.lp_uctu.castka_pre_schvaleni ?? 0)}</SectionBadge>
+                            <SectionBadge $tone="success">Odeslané: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.lp_uctu.castka_odeslane ?? 0)}</SectionBadge>
+                            <SectionBadge $tone="error" style={{ fontWeight: 700 }}>Celkem: {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(dohadneData.lp_uctu.castka_celkem ?? 0)}</SectionBadge>
+                          </>
+                        )}
+                        <button onClick={handleExportCsv_dohadneLpUctu} title="Exportovat Dle účtu do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <FontAwesomeIcon icon={faDownload} />CSV
+                        </button>
+                      </div>
+                    </SectionHeader>
+
+                    {dohadneLoading && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 2rem', gap: '1rem' }}>
+                        <div style={{ width: '40px', height: '40px', border: '3px solid #fed7aa', borderTop: '3px solid #c2410c', borderRadius: '50%', animation: 'gatespin 0.8s linear infinite' }} />
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#c2410c' }}>Načítám dohadné položky…</div>
+                      </div>
+                    )}
+
+                    {dohadneData?.lp_uctu?.groups?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                        {/* Záhlaví skupin */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '20px 60px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div
+                            title={dohadneData.lp_uctu.groups.every(g => expandedDohadneLpUctu.has(g.cislo_uctu)) ? 'Sbalit vše' : 'Rozbalit vše'}
+                            onClick={() => {
+                              const allExp = dohadneData.lp_uctu.groups.every(g => expandedDohadneLpUctu.has(g.cislo_uctu));
+                              setExpandedDohadneLpUctu(allExp ? new Set() : new Set(dohadneData.lp_uctu.groups.map(g => g.cislo_uctu)));
+                            }}
+                            style={{ cursor: 'pointer', color: '#c2410c', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
+                          >
+                            {dohadneData.lp_uctu.groups.every(g => expandedDohadneLpUctu.has(g.cislo_uctu)) ? '\u2212' : '+'}
+                          </div>
+                          <div>Č. účtu</div>
+                          <div>Název účtu</div>
+                          <div>LP kódy</div>
+                          <div style={{ textAlign: 'right' }}>Počet obj.</div>
+                          <div style={{ textAlign: 'right' }}>Před schválením</div>
+                          <div style={{ textAlign: 'right' }}>Odeslané</div>
+                          <div style={{ textAlign: 'right' }}>Celkem</div>
+                        </div>
+                        {/* Skupiny */}
+                        {dohadneData.lp_uctu.groups.map(grp => {
+                          const grpKey = grp.cislo_uctu;
+                          const grpOpen = expandedDohadneLpUctu.has(grpKey);
+                          const fmtKc = (v) => new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v ?? 0);
+                          return (
+                            <div key={grpKey} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                              <div
+                                onClick={() => setExpandedDohadneLpUctu(prev => { const next = new Set(prev); grpOpen ? next.delete(grpKey) : next.add(grpKey); return next; })}
+                                style={{ display: 'grid', gridTemplateColumns: '20px 60px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fff7ed' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                              >
+                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
+                                <span style={{ fontWeight: '800', color: '#78350f', fontSize: '0.95rem' }}>{grp.cislo_uctu}</span>
+                                <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.nazev_uctu || '—'}</span>
+                                <span style={{ fontSize: '0.73rem', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {(grp.lp_kody_v_uctu || []).join(', ')}
+                                </span>
+                                <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end', fontSize: '0.75rem' }}>{grp.pocet_objednavek} obj.</SectionBadge>
+                                <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#b45309', textAlign: 'right' }}>{fmtKc(grp.castka_pre_schvaleni)}</span>
+                                <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#059669', textAlign: 'right' }}>{fmtKc(grp.castka_odeslane)}</span>
+                                <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', fontWeight: 700, color: '#1e293b', textAlign: 'right' }}>{fmtKc(grp.castka_celkem)}</span>
+                              </div>
+                              {grpOpen && (
+                                <div style={{ padding: '0.5rem 0.5rem 0.75rem 1rem', background: '#f8fafc' }}>
+                                  <TableWrapper style={{ margin: 0 }}>
+                                    <Table>
+                                      <thead>
+                                        <tr>
+                                          <ThSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'ev_cislo')}>Číslo{sortIcon(`dohadneUctu_${grpKey}`, 'ev_cislo')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'dt_obj')}>Dt. vytv.{sortIcon(`dohadneUctu_${grpKey}`, 'dt_obj')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'predmet')}>Předmět{sortIcon(`dohadneUctu_${grpKey}`, 'predmet')}</ThSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'cislo_lp')}>LP kód{sortIcon(`dohadneUctu_${grpKey}`, 'cislo_lp')}</ThNarrowSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'objednatel')}>Objednatel{sortIcon(`dohadneUctu_${grpKey}`, 'objednatel')}</ThSort>
+                                          <ThSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'schvalovatel')}>Schvalovatel{sortIcon(`dohadneUctu_${grpKey}`, 'schvalovatel')}</ThSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'usek')}>Úsek{sortIcon(`dohadneUctu_${grpKey}`, 'usek')}</ThNarrowSort>
+                                          <ThNarrowSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'stav')}>Stav{sortIcon(`dohadneUctu_${grpKey}`, 'stav')}</ThNarrowSort>
+                                          <ThRSort onClick={() => handleTableSort(`dohadneUctu_${grpKey}`, 'castka')}>Částka{sortIcon(`dohadneUctu_${grpKey}`, 'castka')}</ThRSort>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sortTableData(grp.objednavky, `dohadneUctu_${grpKey}`, {
+                                          ev_cislo:     o => o.cislo_objednavky || '',
+                                          dt_obj:       o => o.dt_vytvoreni || '',
+                                          predmet:      o => o.predmet || '',
+                                          cislo_lp:     o => o.cislo_lp || '',
+                                          objednatel:   o => `${o.objednatel_prijmeni || ''} ${o.objednatel_jmeno || ''}`.trim(),
+                                          schvalovatel: o => `${o.schvalovatel_prijmeni || ''} ${o.schvalovatel_jmeno || ''}`.trim() || `${o.prikazce_prijmeni || ''} ${o.prikazce_jmeno || ''}`.trim(),
+                                          usek:         o => getUsekLabel(o) || '',
+                                          stav:         o => o.stav_objednavky || '',
+                                          castka:       o => String(o.castka || 0),
+                                        }).map(obj => (
+                                          <Tr key={obj.id}>
+                                            <Td>{renderOrderLink(obj, null)}</Td>
+                                            <Td>{formatDateCz(obj.dt_vytvoreni)}</Td>
+                                            <SubjectTd>{obj.predmet || '—'}</SubjectTd>
+                                            <TdNarrow style={{ fontWeight: 600, color: '#78350f' }}>{obj.cislo_lp || '—'}</TdNarrow>
+                                            <Td>
+                                              <NameStack>
+                                                {renderNameLine(buildFullName(obj.objednatel_jmeno, obj.objednatel_prijmeni))}
+                                              </NameStack>
+                                            </Td>
+                                            <Td>
+                                              <NameStack>
+                                                {renderNameLine(
+                                                  buildFullName(obj.schvalovatel_jmeno, obj.schvalovatel_prijmeni) ||
+                                                  buildFullName(obj.prikazce_jmeno, obj.prikazce_prijmeni)
+                                                )}
+                                              </NameStack>
+                                            </Td>
+                                            <TdNarrow>{getUsekLabel(obj) || '—'}</TdNarrow>
+                                            <TdNarrow>
+                                              <span style={{ display: 'inline-block', padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, background: '#ffedd5', color: '#9a3412' }}>{obj.stav_objednavky}</span>
+                                            </TdNarrow>
+                                            <TdR style={{ fontFamily: 'monospace', fontWeight: 600, color: obj.typ_castky === 'pre_schvaleni' ? '#b45309' : '#059669' }}>{new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(obj.castka ?? 0)} Kč</TdR>
+                                          </Tr>
+                                        ))}
+                                      </tbody>
+                                    </Table>
+                                  </TableWrapper>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : dohadneData && !dohadneLoading ? (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>
+                        <FontAwesomeIcon icon={faHourglassHalf} style={{ fontSize: '2rem', opacity: 0.25, display: 'block', margin: '0 auto 0.5rem' }} />
+                        Žádné LP dohadné položky dle účtu pro zvolený kvartál
+                      </div>
+                    ) : !dohadneData && !dohadneLoading ? (
+                      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>Vyberte kvartál pro zobrazení dat</div>
+                    ) : null}
+                  </SectionCard>
+                )}
+
                 {/* ── Blok 1: Limitované přísliby ── */}
                 {isBlockVisible('dohadne', 'dohadneLp') && (
                   <SectionCard id="section-dohadneLp" style={{ marginBottom: '1.25rem' }}>
                     <SectionHeader>
                       <SectionTitle>
                         <FontAwesomeIcon icon={faHourglassHalf} style={{ marginRight: '0.5rem', opacity: 0.7 }} />
-                        Dohadné položky — Limitované přísliby (LP)
+                        Dohadné položky — Limitované přísliby - dle LP kódu
                       </SectionTitle>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         {dohadneData?.lp && (
@@ -13366,7 +13554,7 @@ export default function StatsReportsPage() {
                     {dohadneData?.lp?.groups?.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem 0.75rem' }}>
                         {/* Záhlaví skupin */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px 110px 110px 110px', gap: '0.5rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                           <div
                             title={dohadneData.lp.groups.every(g => expandedDohadneLp.has(String(g.lp_id))) ? 'Sbalit vše' : 'Rozbalit vše'}
                             onClick={() => {
@@ -13375,9 +13563,10 @@ export default function StatsReportsPage() {
                             }}
                             style={{ cursor: 'pointer', color: '#c2410c', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                           >
-                            {dohadneData.lp.groups.every(g => expandedDohadneLp.has(String(g.lp_id))) ? '−' : '+'}
+                            {dohadneData.lp.groups.every(g => expandedDohadneLp.has(String(g.lp_id))) ? '\u2212' : '+'}
                           </div>
                           <div>LP kód / Název</div>
+                          <div>LP Účet</div>
                           <div style={{ textAlign: 'right' }}>Počet obj.</div>
                           <div style={{ textAlign: 'right' }}>Před schválením</div>
                           <div style={{ textAlign: 'right' }}>Odeslané</div>
@@ -13392,13 +13581,14 @@ export default function StatsReportsPage() {
                             <div key={grpKey} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                               <div
                                 onClick={() => setExpandedDohadneLp(prev => { const next = new Set(prev); grpOpen ? next.delete(grpKey) : next.add(grpKey); return next; })}
-                                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 80px 110px 110px 110px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fff7ed' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+                                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fff7ed' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                               >
-                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                 <span style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {grp.cislo_lp || `LP#${grp.lp_id}`}
                                   {grp.nazev_uctu && <span style={{ fontWeight: 400, color: '#92400e', marginLeft: '0.4rem', fontSize: '0.8rem' }}>– {grp.nazev_uctu}</span>}
                                 </span>
+                                <span style={{ fontSize: '0.73rem', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.cislo_uctu || '—'}</span>
                                 <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end', fontSize: '0.75rem' }}>{grp.pocet_objednavek} obj.</SectionBadge>
                                 <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#b45309', textAlign: 'right' }}>{fmtKc(grp.castka_pre_schvaleni)}</span>
                                 <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#059669', textAlign: 'right' }}>{fmtKc(grp.castka_odeslane)}</span>
@@ -13514,7 +13704,7 @@ export default function StatsReportsPage() {
                             }}
                             style={{ cursor: 'pointer', color: '#c2410c', fontSize: '0.9rem', fontWeight: '900', textAlign: 'center', userSelect: 'none', lineHeight: 1 }}
                           >
-                            {dohadneData.smlouvy.groups.every(g => expandedDohadneSmlouvy.has(String(g.cislo_smlouvy))) ? '−' : '+'}
+                            {dohadneData.smlouvy.groups.every(g => expandedDohadneSmlouvy.has(String(g.cislo_smlouvy))) ? '\u2212' : '+'}
                           </div>
                           <div>Číslo smlouvy</div>
                           <div>Dodavatel smlouvy</div>
@@ -13534,7 +13724,7 @@ export default function StatsReportsPage() {
                                 onClick={() => setExpandedDohadneSmlouvy(prev => { const next = new Set(prev); grpOpen ? next.delete(grpKey) : next.add(grpKey); return next; })}
                                 style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 80px 110px 110px 110px', gap: '0.5rem', alignItems: 'center', padding: '0.7rem 1rem', background: grpOpen ? '#fff7ed' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
                               >
-                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '−' : '+'}</span>
+                                <span style={{ fontSize: '1rem', fontWeight: '700', color: '#c2410c', lineHeight: 1, textAlign: 'center' }}>{grpOpen ? '\u2212' : '+'}</span>
                                 <div style={{ overflow: 'hidden' }}>
                                   <div style={{ fontWeight: '700', color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.cislo_smlouvy || '—'}</div>
                                   {grp.nazev_smlouvy && <div style={{ fontSize: '0.75rem', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grp.nazev_smlouvy}</div>}
