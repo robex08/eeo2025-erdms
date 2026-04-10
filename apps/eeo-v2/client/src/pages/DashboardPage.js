@@ -2040,16 +2040,35 @@ function NotificationsWidget({ notifications, navigate }) {
     return Math.floor(diff / (1000 * 60 * 60 * 24));
   };
 
-  const handleNotifClick = (n) => {
-    // Pokud má notifikace vazbu na objednávku nebo fakturu, otevřeme detail
-    if (n.objekt_typ === 'objednavka' && n.objekt_id) {
-      navigate(`/order-form-25?edit=${n.objekt_id}`, { state: { returnTo: '/dashboard' } });
-    } else if (n.objekt_typ === 'faktura' && n.objekt_id) {
+  // ✅ SPRÁVNÁ NAVIGACE - stejně jako NotificationsPage - používá data a objekt_id
+  const handleNotificationClick = (n) => {
+    const data = n.data || {};
+    const orderId = data.order_id || n.objekt_id;
+    
+    // Notifikace objednávek - proklik na detail
+    if (n.objekt_typ && (n.objekt_typ === 'order' || n.objekt_typ === 'objednavka') && orderId) {
+      navigate(`/order-form-25?edit=${orderId}`, { state: { returnTo: '/dashboard' } });
+    }
+    // Notifikace faktur - proklik na evidenci
+    else if (n.objekt_typ && n.objekt_typ === 'faktura' && n.objekt_id) {
       navigate('/invoice-evidence', { state: { editInvoiceId: n.objekt_id, returnTo: '/dashboard' } });
-    } else {
-      // Jinak otevřeme seznam notifikací
+    }
+    // Ostatní - na seznam notifikací
+    else {
       navigate('/notifications');
     }
+  };
+
+  // ✅ Zobraz číslo objednávky/faktury z data.order_number, ne z regexu zprávy
+  const getObjectInfo = (n) => {
+    const data = n.data || {};
+    if (data.order_number) {
+      return { type: 'Obj', number: data.order_number };
+    }
+    if (data.invoice_number) {
+      return { type: 'FA', number: data.invoice_number };
+    }
+    return null;
   };
 
   return (
@@ -2062,65 +2081,53 @@ function NotificationsWidget({ notifications, navigate }) {
       {notifications.map(n => {
         const isRead = n.precteno && n.precteno !== '0' && n.precteno !== 0;
         const daysAge = getDaysAge(n.dt_created);
-        const hasLink = (n.objekt_typ === 'objednavka' || n.objekt_typ === 'faktura') && n.objekt_id;
+        const objectInfo = getObjectInfo(n);
         
         return (
           <ListItem 
-            key={n.id} 
-            onClick={() => handleNotifClick(n)}
-            style={{ 
-              opacity: isRead ? 0.5 : 1, 
-              cursor: hasLink ? 'pointer' : 'default',
-              padding: '0.6rem 0',
-              borderBottom: `1px solid ${theme.colors.gray100}`
-            }}
+            key={n.id}
+            onClick={() => handleNotificationClick(n)}
+            style={{ opacity: isRead ? 0.5 : 1 }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', width: '100%' }}>
-              <NotifDot $color={isRead ? '#cbd5e1' : getNotifColor(n.priorita)} style={{ marginTop: '0.25rem' }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', marginBottom: '0.2rem' }}>
-                  <div style={{ 
-                    fontSize: '0.82rem', 
-                    fontWeight: isRead ? 400 : 500,
-                    color: isRead ? '#94a3b8' : theme.colors.primary,
-                    lineHeight: 1.4,
-                    flex: 1,
-                    minWidth: 0
-                  }}>
-                    {n.nadpis || n.zprava}
-                  </div>
-                  {!isRead && (
-                    <span style={{ 
-                      width: 6, 
-                      height: 6, 
-                      borderRadius: '50%', 
-                      background: '#3b82f6', 
-                      flexShrink: 0 
-                    }} />
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
-                  {daysAge !== null && (
-                    <Badge
-                      $bg={daysAge > 7 ? '#fee2e2' : (daysAge > 2 ? '#dbeafe' : '#dcfce7')}
-                      $color={daysAge > 7 ? '#dc2626' : (daysAge > 2 ? '#1d4ed8' : '#16a34a')}
-                    >
-                      {daysAge === 0 ? 'dnes' : (daysAge === 1 ? 'včera' : `před ${daysAge} d`)}
-                    </Badge>
-                  )}
-                  {n.kategorie && (
-                    <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                      {n.kategorie}
-                    </span>
-                  )}
-                  {hasLink && (
-                    <span style={{ fontSize: '0.7rem', color: '#3b82f6' }}>
-                      → {n.objekt_typ === 'objednavka' ? 'Objednávka' : 'Faktura'}
-                    </span>
-                  )}
-                </div>
+            <ListItemLeft>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ListItemTitle style={{ fontWeight: isRead ? 400 : 500 }}>
+                  {n.nadpis || n.zprava}
+                </ListItemTitle>
+                {!isRead && (
+                  <span style={{ 
+                    width: 6, 
+                    height: 6, 
+                    borderRadius: '50%', 
+                    background: '#3b82f6', 
+                    flexShrink: 0 
+                  }} />
+                )}
               </div>
-            </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '0.3rem' }}>
+                {daysAge !== null && (
+                  <Badge
+                    $bg={daysAge > 7 ? '#fee2e2' : (daysAge > 2 ? '#dbeafe' : '#dcfce7')}
+                    $color={daysAge > 7 ? '#dc2626' : (daysAge > 2 ? '#1d4ed8' : '#16a34a')}
+                  >
+                    {daysAge === 0 ? 'dnes' : (daysAge === 1 ? 'včera' : `před ${daysAge} d`)}
+                  </Badge>
+                )}
+                {objectInfo && (
+                  <ListItemMeta style={{ margin: 0 }}>
+                    {objectInfo.type}: {objectInfo.number}
+                  </ListItemMeta>
+                )}
+                {n.kategorie && (
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                    {n.kategorie}
+                  </span>
+                )}
+              </div>
+            </ListItemLeft>
+            <ListItemRight>
+              <NotifDot $color={isRead ? '#cbd5e1' : getNotifColor(n.priorita)} />
+            </ListItemRight>
           </ListItem>
         );
       })}
