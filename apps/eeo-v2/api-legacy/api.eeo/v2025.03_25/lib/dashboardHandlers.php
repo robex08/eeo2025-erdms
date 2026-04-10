@@ -1442,15 +1442,16 @@ function _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id) {
     }
 
     // 1. Stats - celkový přehled LP pro aktuální rok
+    // ✅ OPRAVA: používáme TOTÁLNÍ čerpání (skutecne + predpokladane + rezervovano) jako v modulu Čerpání
     $stmt_stats = $db->prepare("
         SELECT 
             COUNT(*) as celkem_aktivnich,
-            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50 AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) < 0.75 THEN 1 ELSE 0 END) as stredni,
-            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.75 AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) < 0.90 THEN 1 ELSE 0 END) as vysoke,
-            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.90 AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) < 1.0 THEN 1 ELSE 0 END) as kriticke,
-            SUM(CASE WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 1 ELSE 0 END) as prekrocene,
+            SUM(CASE WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.50 AND ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) < 0.75 THEN 1 ELSE 0 END) as stredni,
+            SUM(CASE WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.75 AND ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) < 0.90 THEN 1 ELSE 0 END) as vysoke,
+            SUM(CASE WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.90 AND ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) < 1.0 THEN 1 ELSE 0 END) as kriticke,
+            SUM(CASE WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 1 ELSE 0 END) as prekrocene,
             COALESCE(SUM(c.celkovy_limit), 0) as celkem_limit,
-            COALESCE(SUM(c.skutecne_cerpano), 0) as celkem_cerpano
+            COALESCE(SUM(c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano), 0) as celkem_cerpano
         FROM `" . TBL_LIMITOVANE_PRISLIBY_CERPANI . "` c
         WHERE c.rok = ?
           AND c.celkovy_limit > 0
@@ -1460,18 +1461,20 @@ function _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id) {
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
 
     // 2. Konkrétní kritické LP (blíží se vyčerpání >= 50%)
+    // ✅ OPRAVA: používáme TOTÁLNÍ čerpání (skutecne + predpokladane + rezervovano) jako v modulu Čerpání
     $stmt = $db->prepare("
         SELECT c.id, c.cislo_lp, c.rok,
                c.celkovy_limit, c.skutecne_cerpano, c.zbyva_skutecne,
+               c.predpokladane_cerpani, c.rezervovano,
                IFNULL(u.usek_nazev, '') as usek_nazev,
                IFNULL(u.usek_zkr, '') as usek_zkr,
                CONCAT(IFNULL(uz.jmeno, ''), ' ', IFNULL(uz.prijmeni, '')) as spravce_jmeno,
-               ROUND((c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) * 100, 2) as procento_cerpani,
+               ROUND(((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) * 100, 2) as procento_cerpani,
                CASE
-                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 'PREKROCENO'
-                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.90 THEN 'CERPANI_KRITICKE'
-                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.75 THEN 'CERPANI_VYSOKE'
-                   WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50 THEN 'CERPANI_STREDNI'
+                   WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 'PREKROCENO'
+                   WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.90 THEN 'CERPANI_KRITICKE'
+                   WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.75 THEN 'CERPANI_VYSOKE'
+                   WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.50 THEN 'CERPANI_STREDNI'
                    ELSE 'WARNING'
                END as typ_kriticky
         FROM `" . TBL_LIMITOVANE_PRISLIBY_CERPANI . "` c
@@ -1479,17 +1482,17 @@ function _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id) {
         LEFT JOIN `" . TBL_UZIVATELE . "` uz ON c.user_id = uz.id
         WHERE c.rok = ?
           AND c.celkovy_limit > 0
-          AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50
+          AND ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.50
           {$where_usek}
         ORDER BY 
           CASE
-              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 0
-              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.90 THEN 1
-              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.75 THEN 2
-              WHEN (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.50 THEN 3
+              WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 0
+              WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.90 THEN 1
+              WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.75 THEN 2
+              WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.50 THEN 3
               ELSE 4
           END ASC,
-          (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) DESC
+          ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) DESC
         LIMIT 20
     ");
     $stmt->execute($params);
