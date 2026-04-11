@@ -563,7 +563,17 @@ class OrderV2Handler {
                         ELSE NULL
                     END as zamek_uzivatel_jmeno,
                     u_lock.email as zamek_uzivatel_email,
-                    u_lock.telefon as zamek_uzivatel_telefon
+                    u_lock.telefon as zamek_uzivatel_telefon,
+                    (SELECT COUNT(*) FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k WHERE k.objednavka_id = o.id AND k.smazano = 0) AS comments_count,
+                    (SELECT CONCAT(COALESCE(u2.jmeno, ''), ' ', COALESCE(u2.prijmeni, ''))
+                     FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k2
+                     LEFT JOIN `" . TBL_UZIVATELE . "` u2 ON k2.user_id = u2.id
+                     WHERE k2.objednavka_id = o.id AND k2.smazano = 0
+                     ORDER BY k2.id DESC LIMIT 1) AS last_comment_author,
+                    (SELECT k3.dt_vytvoreni
+                     FROM `" . TBL_OBJEDNAVKY_KOMENTARE . "` k3
+                     WHERE k3.objednavka_id = o.id AND k3.smazano = 0
+                     ORDER BY k3.id DESC LIMIT 1) AS last_comment_date
                 FROM " . $this->getOrdersTableName() . " o
                 LEFT JOIN " . $this->getUsersTableName() . " u_lock ON o.zamek_uzivatel_id = u_lock.id AND o.zamek_uzivatel_id > 0
                 WHERE o.id = :id";
@@ -621,6 +631,11 @@ class OrderV2Handler {
             unset($order['zamek_uzivatel_jmeno']);
             unset($order['zamek_uzivatel_email']);
             unset($order['zamek_uzivatel_telefon']);
+
+            // 💬 Komentáře badge - přidat do výsledku
+            $order['comments_count'] = (int)($rawOrder['comments_count'] ?? 0);
+            $order['last_comment_author'] = !empty($rawOrder['last_comment_author']) ? trim($rawOrder['last_comment_author']) : null;
+            $order['last_comment_date'] = !empty($rawOrder['last_comment_date']) ? $rawOrder['last_comment_date'] : null;
             
             return $order;
             

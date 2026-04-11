@@ -4610,7 +4610,7 @@ const OrdersTableV3 = ({
               <ActionMenuButton
                 className="export-document"
                 onClick={() => onActionClick?.('export', order)}
-                title="Generovat DOCX"
+                title="Generovat obj. formulář (DOCX)"
                 disabled={!canExportDocument(order)}
               >
                 <FontAwesomeIcon icon={faFileWord} />

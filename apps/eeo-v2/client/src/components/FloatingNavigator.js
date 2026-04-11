@@ -28,9 +28,11 @@ import {
   faBookmark,
   faExpand,
   faCompress,
-  faSave
+  faSave,
+  faComment
 } from '@fortawesome/free-solid-svg-icons';
 import TemplateDropdown from './TemplateDropdown';
+import OrderCommentsTooltip from './ordersV3/OrderCommentsTooltip';
 
 // ✅ KRITICKÉ: Kategorizace chybových klíčů do sekcí navigátoru
 // MUSÍ BÝT 100% SHODNÁ s OrderForm25.formatValidationErrors() !!!
@@ -738,7 +740,18 @@ const FloatingNavigator = ({
   editingTemplateId = null,
   editingTemplateName = '',
   matchesTemplateQuery,
-  isArchived = false
+  isArchived = false,
+  // 💬 Komentáře
+  onLoadComments = null,
+  onAddComment = null,
+  onDeleteComment = null,
+  commentsCount = 0,
+  lastCommentAuthor = null,
+  lastCommentDate = null,
+  currentUserId = null,
+  username = null,
+  showToast = null,
+  orderId = null  // null = nová objednávka → disabled
 }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isCompact, setIsCompact] = useState(false); // ✅ Nový: Kompaktní režim
@@ -747,9 +760,37 @@ const FloatingNavigator = ({
   const [position, setPosition] = useState({ x: 20, y: 150 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isTemplateDropdownOpen, setIsTemplateDropdownOpen] = useState(false); // 📋 State pro dropdown šablon
+  // 💬 Komentáře state
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsState, setCommentsState] = useState({ comments: [], loading: false, error: null });
+  const [internalCommentsCount, setInternalCommentsCount] = useState(commentsCount);
+  const commentButtonRef = useRef(null);
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
   const contentRef = useRef(null); // ✅ Ref pro scroll pozici
+
+  // 💬 Synchronizace externího commentsCount → interní state (pro badge aktualizaci po přidání)
+  useEffect(() => {
+    setInternalCommentsCount(commentsCount);
+  }, [commentsCount]);
+
+  // 💬 Načtení komentářů při otevření
+  useEffect(() => {
+    if (commentsOpen && orderId && onLoadComments) {
+      setCommentsState(prev => ({ ...prev, loading: true, error: null }));
+      onLoadComments(orderId)
+        .then(result => {
+          const arr = result.data || result.comments || [];
+          setCommentsState({ comments: arr, loading: false, error: null });
+          if (result.comments_count !== undefined) {
+            setInternalCommentsCount(result.comments_count);
+          }
+        })
+        .catch(err => {
+          setCommentsState(prev => ({ ...prev, loading: false, error: err.message }));
+        });
+    }
+  }, [commentsOpen, orderId, onLoadComments]);
 
   // Save position to localStorage
   const savePosition = useCallback((newPosition) => {
@@ -1181,6 +1222,38 @@ const FloatingNavigator = ({
     };
   }, [allSectionStates]);
 
+  // 💬 Handlery pro komentáře - interní wrappers
+  const handleAddCommentInternal = useCallback(async (text, parentCommentId = null) => {
+    if (!onAddComment || !orderId) return;
+    const result = await onAddComment(orderId, text, parentCommentId);
+    if (result?.comments_count !== undefined) {
+      setInternalCommentsCount(result.comments_count);
+    }
+    return result;
+  }, [onAddComment, orderId]);
+
+  const handleDeleteCommentInternal = useCallback(async (commentId) => {
+    if (!onDeleteComment) return;
+    const result = await onDeleteComment(commentId);
+    if (result?.comments_count !== undefined) {
+      setInternalCommentsCount(result.comments_count);
+    }
+    return result;
+  }, [onDeleteComment]);
+
+  const handleLoadCommentsInternal = useCallback(async () => {
+    if (!onLoadComments || !orderId) return;
+    const result = await onLoadComments(orderId);
+    const arr = result.data || result.comments || [];
+    setCommentsState({ comments: arr, loading: false, error: null });
+    if (result.comments_count !== undefined) {
+      setInternalCommentsCount(result.comments_count);
+    }
+  }, [onLoadComments, orderId]);
+
+  // 💬 Z-index pro komentáře: nad floating panel (99999) a nad fullscreen formulář (999999) → 1000001
+  const commentsZIndex = isFullscreen ? 1000001 : 100000;
+
   // Render section icon
   const renderSectionIcon = (section) => {
     if (section.iconType === 'lucide') {
@@ -1251,12 +1324,56 @@ const FloatingNavigator = ({
             {onGenerateDocx && (
               <ToolbarButton
                 onClick={onGenerateDocx}
-                title="Generovat DOCX ze šablony"
+                title="Generovat obj. formulář (DOCX)"
                 disabled={!canGenerateDocx}
               >
                 <FileDown size={16} />
               </ToolbarButton>
             )}
+            {/* 💬 Ikona komentářů - disabled pokud je nová objednávka (orderId === null) */}
+            <div ref={commentButtonRef} style={{ position: 'relative', display: 'inline-flex' }}>
+              <ToolbarButton
+                onClick={() => orderId ? setCommentsOpen(o => !o) : undefined}
+                title={!orderId ? 'Komentáře jsou dostupné až po uložení objednávky' : (
+                  internalCommentsCount > 0
+                    ? `${internalCommentsCount} komentář${internalCommentsCount === 1 ? '' : internalCommentsCount < 5 ? 'e' : 'ů'}${
+                        lastCommentAuthor && lastCommentDate
+                          ? `\nPoslední: ${lastCommentAuthor} (${new Date(lastCommentDate).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })})`
+                          : ''
+                      }`
+                    : 'Komentáře k objednávce'
+                )}
+                disabled={!orderId}
+                style={orderId ? {
+                  borderColor: internalCommentsCount > 0 ? '#3b82f6' : undefined,
+                  color: internalCommentsCount > 0 ? '#3b82f6' : undefined
+                } : {}}
+              >
+                <FontAwesomeIcon icon={faComment} />
+                {internalCommentsCount > 0 && orderId && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: '#ef4444',
+                    color: 'white',
+                    borderRadius: '10px',
+                    padding: '0 4px',
+                    fontSize: '0.65rem',
+                    fontWeight: '700',
+                    minWidth: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    pointerEvents: 'none'
+                  }}>
+                    {internalCommentsCount > 9 ? '9+' : String(internalCommentsCount)}
+                  </span>
+                )}
+              </ToolbarButton>
+            </div>
             {onToggleSections && (
               <ToolbarButton
                 onClick={onToggleSections}
@@ -1517,9 +1634,38 @@ const FloatingNavigator = ({
   );
 
   // Použití React Portal pro vykreslení mimo DOM hierarchii rodiče
-  return typeof document !== 'undefined'
-    ? ReactDOM.createPortal(navigatorContent, document.body)
-    : navigatorContent;
+  if (typeof document === 'undefined') return navigatorContent;
+
+  return (
+    <>
+      {ReactDOM.createPortal(navigatorContent, document.body)}
+      {commentsOpen && orderId && ReactDOM.createPortal(
+        <OrderCommentsTooltip
+          isOpen={commentsOpen}
+          orderId={orderId}
+          orderNumber={formData?.cislo_objednavky || null}
+          orderInfo={formData?.objednatel ? { objednatel: formData.objednatel, castka: formData.castka } : null}
+          iconRef={commentButtonRef}
+          onClose={() => setCommentsOpen(false)}
+          comments={commentsState.comments}
+          loading={commentsState.loading}
+          error={commentsState.error}
+          currentUserId={currentUserId}
+          onLoadComments={handleLoadCommentsInternal}
+          onAddComment={handleAddCommentInternal}
+          onDeleteComment={handleDeleteCommentInternal}
+          onUpdateComments={(updatedComments) => {
+            setCommentsState(prev => ({ ...prev, comments: updatedComments }));
+          }}
+          showToast={showToast}
+          token={token}
+          username={username}
+          zIndexBase={commentsZIndex}
+        />,
+        document.body
+      )}
+    </>
+  );
 };
 
 export default FloatingNavigator;
