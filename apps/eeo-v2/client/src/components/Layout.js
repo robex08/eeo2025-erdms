@@ -1299,13 +1299,14 @@ const NotificationBellWrapper = ({ userId }) => {
       } else if (notification.data) {
         data = notification.data;
       }
-      // � FALLBACK: Pokud má starý formát (id + mode), převeď na order_id
-      if (!data.order_id && data.id) {
-        data.order_id = data.id;
-      }
+      
+      // ✅ Extrakce order_id z různých míst
+      const orderId = data.order_id || notification.objekt_id;
 
-      if (notification.typ?.includes('order') && data.order_id) {
-        const targetOrderId = parseInt(data.order_id);
+      // ✅ OBJEDNÁVKY - proklik na detail (PRIMÁRNÍ KONTROLA: objekt_typ!)
+      // Backend posílá objekt_typ = "orders" (množné číslo!)
+      if (notification.objekt_typ && (notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'objednavka') && orderId) {
+        const targetOrderId = parseInt(orderId);
         const user_id = userDetail?.user_id;
 
         // 🎯 PŘESNĚ STEJNÝ KÓD JAKO V Orders25List.js - handleEdit()
@@ -1375,11 +1376,11 @@ const NotificationBellWrapper = ({ userId }) => {
         }
 
         // ✅ Navigace
-        navigate(`/order-form-25?edit=${data.order_id}`);
+        navigate(`/order-form-25?edit=${orderId}`);
         setDropdownVisible(false);
-      } else if (notification.typ?.includes('alarm_todo') && data.order_id) {
+      } else if (notification.typ?.includes('alarm_todo') && orderId) {
         // ⚠️ Fallback pro alarm_todo bez 'order' v typu - STEJNÝ KÓD JAKO VÝŠE
-        const targetOrderId = parseInt(data.order_id);
+        const targetOrderId = parseInt(orderId);
         const user_id = userDetail?.user_id;
 
         if (user_id) {
@@ -1438,7 +1439,11 @@ const NotificationBellWrapper = ({ userId }) => {
           }
         }
 
-        navigate(`/order-form-25?edit=${data.order_id}`);
+        navigate(`/order-form-25?edit=${orderId}`);
+        setDropdownVisible(false);
+      } else if (notification.objekt_typ && (notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'faktura') && notification.objekt_id) {
+        // ✅ FAKTURY - proklik na Invoice Evidence
+        navigate('/invoice-evidence', { state: { editInvoiceId: notification.objekt_id } });
         setDropdownVisible(false);
       }
     } catch (error) {

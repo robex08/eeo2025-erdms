@@ -100,28 +100,28 @@ const withFsFont = (opts, sz = 15) => ({
 // ============================================================================
 
 const WIDGET_REGISTRY = {
-  welcome:             { title: 'Přehled',                 icon: faHome,               color: '#1d4ed8' },
+  welcome:             { title: 'Přehled',                 icon: faHome,               color: '#1d4ed8', requires: 'DASHBOARD_WELCOME' },
   orders_stats:        { title: 'Statistiky objednávek',   icon: faChartBar,           color: '#1d4ed8', requires: 'DASHBOARD_ORDERS_STATS' },
-  my_orders:           { title: 'Moje objednávky',         icon: faShoppingCart,        color: '#2563eb' },
+  my_orders:           { title: 'Moje objednávky',         icon: faShoppingCart,        color: '#2563eb', requires: 'DASHBOARD_MY_ORDERS' },
   my_invoices:         { title: 'Faktury k potvrzení',     icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_CONFIRM' },
   orders_approval:     { title: 'Ke schválení',            icon: faGavel,              color: '#dc2626', requires: 'DASHBOARD_ORDERS_APPROVE' },
   invoices_overdue:    { title: 'Faktury po splatnosti',   icon: faExclamationCircle,  color: '#dc2626', requires: 'DASHBOARD_INVOICES_OVERDUE' },
   invoices_due_soon:   { title: 'Faktury blížící se spl.', icon: faCalendarAlt,        color: '#f97316', requires: 'DASHBOARD_INVOICES_DUE_SOON' },
   orders_registry:     { title: 'Registr – ke zveřejnění',            icon: faGlobe,              color: '#059669', requires: 'DASHBOARD_ORDERS_REGISTRY' },
   orders_published:    { title: 'Registr – zveřejněné objednávky',    icon: faCheckCircle,        color: '#10b981', requires: 'DASHBOARD_ORDERS_PUBLISHED' },
-  alerts:              { title: 'Upozornění',              icon: faExclamationTriangle,color: '#f59e0b' },
-  notifications:       { title: 'Notifikace',              icon: faBell,               color: '#6366f1' },
+  alerts:              { title: 'Upozornění',              icon: faExclamationTriangle,color: '#f59e0b', requires: 'DASHBOARD_ALERTS' },
+  notifications:       { title: 'Notifikace',              icon: faBell,               color: '#6366f1', requires: 'DASHBOARD_NOTIFICATIONS' },
   chart_timeline:      { title: 'Objednávky v čase',       icon: faChartBar,           color: '#0891b2', requires: 'DASHBOARD_CHART_TIMELINE' },
   top_suppliers:       { title: 'Top dodavatelé',           icon: faTruck,              color: '#b45309', requires: 'DASHBOARD_TOP_SUPPLIERS' },
   smlouvy_critical:    { title: 'Smlouvy - kritický stav',  icon: faFileContract,       color: '#dc2626', requires: 'DASHBOARD_SPENDING_CONTRACTS' },
   lp_critical:         { title: 'Limitované příslíby - stav čerpání', icon: faMoneyBillWave, color: '#dc2626', requires: 'DASHBOARD_SPENDING_LP' },
-  order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1' },
+  order_comments:      { title: 'Komentáře k objednávkám',  icon: faComments,           color: '#6366f1', requires: 'DASHBOARD_ORDER_COMMENTS' },
   invoices_stats:      { title: 'Statistiky faktur',         icon: faFileInvoiceDollar,  color: '#7c3aed', requires: 'DASHBOARD_INVOICES_STATS' },
   annual_fees_due:     { title: 'Roční poplatky - splatnost', icon: faCalendarCheck,      color: '#b45309', requires: 'DASHBOARD_ANNUAL_FEES' },
   chart_majetek:       { title: 'Majetek podle druhu',         icon: faChartBar,           color: '#0f766e', requires: 'DASHBOARD_CHART_MAJETEK' },
   chart_fees:          { title: 'Roční poplatky - přehled',   icon: faChartBar,           color: '#7c3aed', requires: 'DASHBOARD_CHART_FEES' },
   cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true },
-  rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316' },
+  rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316', requires: 'DASHBOARD_RSS_NEWS' },
   active_users_admin:  { title: 'Dashboard uživatelů',         icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
 };
 
@@ -485,8 +485,8 @@ const FocusCard = styled.div`
   display: flex; align-items: center; gap: 0.6rem;
   padding: 0.5rem 0.85rem;
   border-radius: 8px;
-  border: 1px solid ${p => p.$severity === 'danger' ? '#fca5a5' : '#fde68a'};
-  background: ${p => p.$severity === 'danger' ? '#fef2f2' : '#fffbeb'};
+  border: 1px solid ${p => p.$severity === 'danger' ? '#fca5a5' : p.$severity === 'info' ? '#93c5fd' : '#fde68a'};
+  background: ${p => p.$severity === 'danger' ? '#fef2f2' : p.$severity === 'info' ? '#eff6ff' : '#fffbeb'};
   cursor: pointer;
   transition: all 0.15s;
   min-width: 200px; max-width: 360px;
@@ -497,8 +497,8 @@ const FocusIcon = styled.div`
   width: 28px; height: 28px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   font-size: 0.75rem;
-  background: ${p => p.$severity === 'danger' ? '#fee2e2' : '#fef3c7'};
-  color: ${p => p.$severity === 'danger' ? '#dc2626' : '#d97706'};
+  background: ${p => p.$severity === 'danger' ? '#fee2e2' : p.$severity === 'info' ? '#dbeafe' : '#fef3c7'};
+  color: ${p => p.$severity === 'danger' ? '#dc2626' : p.$severity === 'info' ? '#2563eb' : '#d97706'};
   flex-shrink: 0;
 `;
 
@@ -511,7 +511,7 @@ const FocusText = styled.span`
 const FocusCount = styled.span`
   font-size: 0.85rem; font-weight: 800; font-variant-numeric: tabular-nums;
   font-stretch: condensed;
-  color: ${p => p.$severity === 'danger' ? '#dc2626' : '#d97706'};
+  color: ${p => p.$severity === 'danger' ? '#dc2626' : p.$severity === 'info' ? '#2563eb' : '#d97706'};
   flex-shrink: 0;
 `;
 
@@ -1582,32 +1582,33 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
               <FontAwesomeIcon icon={faUser} style={{ marginRight: '0.3rem' }} />
               Můj přehled
             </NewsSectionTitle>
+            {/* 1. Ke schválení / rozpracované */}
             {myStats.objednavky_k_vyrizeni > 0 && (
               <NewsItem $bg="#fef3c7" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'ke_schvaleni', clearFilters: true } })}>
                 <NewsIcon $color="#b45309"><FontAwesomeIcon icon={faShoppingCart} /></NewsIcon>
-                <NewsText>Objednávky k vyřízení</NewsText>
+                <NewsText>Ke schválení / rozpracované</NewsText>
                 <NewsCount $color="#b45309">{myStats.objednavky_k_vyrizeni}</NewsCount>
               </NewsItem>
             )}
-            {myStats.faktury_k_potvrzeni > 0 && (
-              <NewsItem $bg="#e0f2fe" onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_invoices', clearFilters: true } })}>
-                <NewsIcon $color="#0284c7"><FontAwesomeIcon icon={faFileInvoice} /></NewsIcon>
-                <NewsText>Faktury k potvrzení</NewsText>
-                <NewsCount $color="#0284c7">{myStats.faktury_k_potvrzeni}</NewsCount>
+            {/* 2. Schválené, ke zpracování */}
+            {myStats.schvalene_k_odeslani?.count > 0 && (
+              <NewsItem $bg="#eff6ff" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'schvalena', clearFilters: true } })}>
+                <NewsIcon $color="#2563eb"><FontAwesomeIcon icon={faCheckCircle} /></NewsIcon>
+                <NewsText>
+                  Schválené, ke zpracování
+                  <span style={{ display: 'block', fontSize: '0.65rem', color: '#9ca3af', marginTop: 1 }}>
+                    {myStats.schvalene_k_odeslani.castka?.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                  </span>
+                </NewsText>
+                <NewsCount $color="#2563eb">{myStats.schvalene_k_odeslani.count}</NewsCount>
               </NewsItem>
             )}
-            {myStats.ke_zverejneni > 0 && (
-              <NewsItem $bg="#ede9fe" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'k_uverejneni', clearFilters: true } })}>
-                <NewsIcon $color="#7c3aed"><FontAwesomeIcon icon={faGlobe} /></NewsIcon>
-                <NewsText>Ke zveřejnění do registru</NewsText>
-                <NewsCount $color="#7c3aed">{myStats.ke_zverejneni}</NewsCount>
-              </NewsItem>
-            )}
+            {/* 3. U dodavatele, čeká faktura */}
             {myStats.odeslane_bez_faktury?.count > 0 && (
               <NewsItem $bg="#fff7ed" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'odeslana', clearFilters: true } })}>
                 <NewsIcon $color="#c2410c"><FontAwesomeIcon icon={faCoins} /></NewsIcon>
                 <NewsText>
-                  Odeslané bez faktury
+                  U dodavatele, čeká faktura
                   <span style={{ display: 'block', fontSize: '0.65rem', color: '#9ca3af', marginTop: 1 }}>
                     {myStats.odeslane_bez_faktury.castka?.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
                   </span>
@@ -1615,6 +1616,23 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
                 <NewsCount $color="#c2410c">{myStats.odeslane_bez_faktury.count}</NewsCount>
               </NewsItem>
             )}
+            {/* 4. Ke zveřejnění do registru */}
+            {myStats.ke_zverejneni > 0 && (
+              <NewsItem $bg="#ede9fe" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'k_uverejneni', clearFilters: true } })}>
+                <NewsIcon $color="#7c3aed"><FontAwesomeIcon icon={faGlobe} /></NewsIcon>
+                <NewsText>Ke zveřejnění do registru</NewsText>
+                <NewsCount $color="#7c3aed">{myStats.ke_zverejneni}</NewsCount>
+              </NewsItem>
+            )}
+            {/* 5. Faktury k potvrzení */}
+            {myStats.faktury_k_potvrzeni > 0 && (
+              <NewsItem $bg="#e0f2fe" onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_invoices', clearFilters: true } })}>
+                <NewsIcon $color="#0284c7"><FontAwesomeIcon icon={faFileInvoice} /></NewsIcon>
+                <NewsText>Faktury k potvrzení</NewsText>
+                <NewsCount $color="#0284c7">{myStats.faktury_k_potvrzeni}</NewsCount>
+              </NewsItem>
+            )}
+            {/* 6. Vyfakturované, nedokončené */}
             {myStats.vyfakturovane_nedokoncene?.count > 0 && (
               <NewsItem $bg="#ecfdf5" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'fakturace', clearFilters: true } })}>
                 <NewsIcon $color="#059669"><FontAwesomeIcon icon={faMoneyBillWave} /></NewsIcon>
@@ -1627,7 +1645,7 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
                 <NewsCount $color="#059669">{myStats.vyfakturovane_nedokoncene.count}</NewsCount>
               </NewsItem>
             )}
-            {myStats.objednavky_k_vyrizeni === 0 && myStats.faktury_k_potvrzeni === 0 && myStats.ke_zverejneni === 0 && myStats.odeslane_bez_faktury?.count === 0 && myStats.vyfakturovane_nedokoncene?.count === 0 && (
+            {myStats.objednavky_k_vyrizeni === 0 && myStats.faktury_k_potvrzeni === 0 && myStats.ke_zverejneni === 0 && myStats.odeslane_bez_faktury?.count === 0 && myStats.schvalene_k_odeslani?.count === 0 && myStats.vyfakturovane_nedokoncene?.count === 0 && (
               <NewsEmpty>Vše vyřízeno ✓</NewsEmpty>
             )}
           </NewsSection>
@@ -2042,33 +2060,184 @@ function NotificationsWidget({ notifications, navigate }) {
 
   // ✅ SPRÁVNÁ NAVIGACE - stejně jako NotificationsPage - používá data a objekt_id
   const handleNotificationClick = (n) => {
+    console.log('🔔 Notifikace klik:', {
+      id: n.id,
+      typ: n.typ,
+      objekt_typ: n.objekt_typ,
+      objekt_id: n.objekt_id,
+      data: n.data,
+      nadpis: n.nadpis
+    });
+    
     const data = n.data || {};
     const orderId = data.order_id || n.objekt_id;
     
-    // Notifikace objednávek - proklik na detail
-    if (n.objekt_typ && (n.objekt_typ === 'order' || n.objekt_typ === 'objednavka') && orderId) {
+    // ✅ Notifikace objednávek - proklik na detail
+    // Backend vrací: "orders" (množné číslo!)
+    if (n.objekt_typ && (n.objekt_typ === 'orders' || n.objekt_typ === 'order' || n.objekt_typ === 'objednavka') && orderId) {
       navigate(`/order-form-25?edit=${orderId}`, { state: { returnTo: '/dashboard' } });
+      return;
     }
-    // Notifikace faktur - proklik na evidenci
-    else if (n.objekt_typ && n.objekt_typ === 'faktura' && n.objekt_id) {
+    
+    // ✅ Notifikace faktur - proklik na evidenci
+    // Backend vrací: "invoices" (množné číslo!)
+    if (n.objekt_typ && (n.objekt_typ === 'invoices' || n.objekt_typ === 'invoice' || n.objekt_typ === 'faktura') && n.objekt_id) {
       navigate('/invoice-evidence', { state: { editInvoiceId: n.objekt_id, returnTo: '/dashboard' } });
+      return;
     }
+    
     // Ostatní - na seznam notifikací
-    else {
-      navigate('/notifications');
-    }
+    navigate('/notifications');
   };
 
-  // ✅ Zobraz číslo objednávky/faktury z data.order_number, ne z regexu zprávy
-  const getObjectInfo = (n) => {
+  // ✅ Extrahuj strukturované informace pro 3-řádkový formát (jako tabulka objednávek)
+  const getNotificationDetails = (n) => {
     const data = n.data || {};
-    if (data.order_number) {
-      return { type: 'Obj', number: data.order_number };
+    const placeholders = data.placeholders || {};
+    
+    // ✅ PRIMÁRNÍ: objekt_typ z notifikace (ne placeholders!)
+    let number = null;
+    let type = null;
+    
+    if (n.objekt_typ === 'invoices') {
+      type = 'FA';
+      number = placeholders.invoice_number || placeholders.cislo_faktury;
+    } else if (n.objekt_typ === 'orders') {
+      type = 'Obj';
+      number = placeholders.order_number;
     }
-    if (data.invoice_number) {
-      return { type: 'FA', number: data.invoice_number };
+    // Fallback pokud objekt_typ chybí
+    else if (placeholders.invoice_number || placeholders.cislo_faktury) {
+      type = 'FA';
+      number = placeholders.invoice_number || placeholders.cislo_faktury;
+    } else if (placeholders.order_number) {
+      type = 'Obj';
+      number = placeholders.order_number;
     }
-    return null;
+    
+    // ✅ Typ akce - co se po uživateli chce
+    let actionType = null;
+    let actionColor = '#f59e0b'; // default oranžová
+    
+    if (n.typ) {
+      if (n.typ.includes('APPROVAL')) {
+        actionType = 'Ke schválení';
+        actionColor = '#ef4444'; // červená
+      } else if (n.typ.includes('MATERIAL_CHECK')) {
+        actionType = 'Věcná správnost';
+        actionColor = '#f59e0b'; // oranžová
+      } else if (n.typ.includes('FORMAL_CHECK')) {
+        actionType = 'Formální kontrola';
+        actionColor = '#f59e0b';
+      } else if (n.typ.includes('PAYMENT')) {
+        actionType = 'K zaplacení';
+        actionColor = '#10b981'; // zelená
+      } else if (n.typ.includes('OVERDUE')) {
+        actionType = 'Po splatnosti';
+        actionColor = '#dc2626'; // tmavě červená
+      } else if (n.typ.includes('CREATED')) {
+        actionType = 'Nová';
+        actionColor = '#3b82f6'; // modrá
+      } else if (n.typ.includes('REJECTED')) {
+        actionType = 'Zamítnuto';
+        actionColor = '#ef4444';
+      }
+    }
+    
+    // Fallback z nadpisu
+    if (!actionType && n.nadpis) {
+      if (n.nadpis.includes('schválení')) actionType = 'Ke schválení';
+      else if (n.nadpis.includes('Kontrola')) actionType = 'Kontrola';
+      else if (n.nadpis.includes('věcné správnosti')) actionType = 'Věcná správnost';
+    }
+    
+    // Řádek 2: Předmět/popis
+    let subject = placeholders.order_subject || placeholders.predmet || n.nadpis || n.zprava;
+    
+    // Řádek 3: Uživatelé (formát: "Obj: Jméno · Gar: Jméno")
+    const parts = [];
+    if (type === 'Obj') {
+      if (placeholders.objednatel_name || placeholders.creator_name) {
+        parts.push(`Obj: ${placeholders.objednatel_name || placeholders.creator_name}`);
+      }
+      if (placeholders.prikazce_name) {
+        parts.push(`Příl: ${placeholders.prikazce_name}`);
+      }
+      if (placeholders.schvalovatel_name || placeholders.approver_name) {
+        parts.push(`Schv: ${placeholders.schvalovatel_name || placeholders.approver_name}`);
+      }
+    } else if (type === 'FA') {
+      if (placeholders.vytvoril_fa_name || placeholders.creator_name) {
+        parts.push(`Vytv: ${placeholders.vytvoril_fa_name || placeholders.creator_name}`);
+      }
+      if (placeholders.predano_komu_name) {
+        parts.push(`Předáno: ${placeholders.predano_komu_name}`);
+      }
+    }
+    const usersLine = parts.length > 0 ? parts.join(' · ') : null;
+    
+    // ✅ Částka z DB (platí pro Obj i FA)
+    let amount = null;
+    if (type === 'Obj' && placeholders.order_amount_raw) {
+      amount = Number(placeholders.order_amount_raw).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' Kč';
+    } else if (type === 'FA' && placeholders.invoice_amount_raw) {
+      amount = Number(placeholders.invoice_amount_raw).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' Kč';
+    }
+    
+    // ✅ Stav objednávky nebo faktury
+    let statusText = null;
+    let statusColor = '#ca8a04'; // žlutá default
+    
+    if (type === 'Obj' && placeholders.order_status) {
+      statusText = placeholders.order_status; // už je česky z DB
+      
+      // ✅ Barvy podle orderStatusColors.js (jako v Moje obj)
+      const statusNorm = statusText.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      if (statusNorm.includes('SCHVALEN')) statusColor = '#ea580c'; // oranžová
+      else if (statusNorm.includes('KE SCHVALEN') || statusNorm.includes('ODESLAN') && statusNorm.includes('SCHVALEN')) statusColor = '#dc2626'; // červená
+      else if (statusNorm.includes('ROZPRAC')) statusColor = '#ca8a04'; // žlutá
+      else if (statusNorm.includes('ODESLAN')) statusColor = '#1d4ed8'; // modrá
+      else if (statusNorm.includes('POTVRZEN')) statusColor = '#0891b2'; // cyan
+      else if (statusNorm.includes('FAKTURAC')) statusColor = '#06b6d4'; // tyrkysová
+      else if (statusNorm.includes('DOKONCEN')) statusColor = '#16a34a'; // zelená
+      else if (statusNorm.includes('ZAMITNU') || statusNorm.includes('ZRUSEN')) statusColor = '#7c2d12'; // hnědá
+      else if (statusNorm.includes('VECN') && statusNorm.includes('SPRAVNOST')) statusColor = '#10b981'; // zelená
+      else if (statusNorm.includes('NOVA')) statusColor = '#475569'; // šedá
+      
+    } else if (type === 'FA') {
+      // Priorita: "Po splatnosti" > běžný stav
+      if (placeholders.invoice_is_overdue && placeholders.invoice_is_overdue == 1) {
+        statusText = 'Po splatnosti';
+        statusColor = '#dc2626'; // červená
+      } else if (placeholders.invoice_status) {
+        const statusMap = {
+          'ZAEVIDOVANA': { text: 'Zaevidována', color: '#475569' }, // šedá
+          'VECNA_SPRAVNOST': { text: 'Věcná správnost', color: '#10b981' }, // zelená
+          'V_RESENI': { text: 'V řešení', color: '#ca8a04' }, // žlutá
+          'PREDANA_PO': { text: 'Předána PO', color: '#1d4ed8' }, // modrá
+          'K_ZAPLACENI': { text: 'K zaplacení', color: '#ea580c' }, // oranžová
+          'ZAPLACENO': { text: 'Zaplaceno', color: '#16a34a' }, // zelená
+          'DOKONCENA': { text: 'Dokončena', color: '#16a34a' }, // zelená
+          'STORNO': { text: 'Storno', color: '#dc2626' } // červená
+        };
+        const mapped = statusMap[placeholders.invoice_status];
+        if (mapped) {
+          statusText = mapped.text;
+          statusColor = mapped.color;
+        } else {
+          statusText = placeholders.invoice_status;
+        }
+      }
+    }
+    
+    // Čas
+    const daysAge = getDaysAge(n.dt_created);
+    let timeText = '';
+    if (daysAge === 0) timeText = 'dnes';
+    else if (daysAge === 1) timeText = 'včera';
+    else if (daysAge !== null) timeText = `před ${daysAge} d`;
+    
+    return { number, type, subject, usersLine, amount, statusText, statusColor, timeText, actionType, actionColor };
   };
 
   return (
@@ -2080,54 +2249,137 @@ function NotificationsWidget({ notifications, navigate }) {
       )}
       {notifications.map(n => {
         const isRead = n.precteno && n.precteno !== '0' && n.precteno !== 0;
+        const details = getNotificationDetails(n);
         const daysAge = getDaysAge(n.dt_created);
-        const objectInfo = getObjectInfo(n);
+        
+        // Badge barva podle stáří (stejně jako v tabulce obj)
+        let dateBadgeBg = '#dcfce7'; // zelená - dnes/včera
+        let dateBadgeColor = '#16a34a';
+        if (daysAge > 7) {
+          dateBadgeBg = '#fee2e2'; // červená
+          dateBadgeColor = '#dc2626';
+        } else if (daysAge > 2) {
+          dateBadgeBg = '#dbeafe'; // modrá
+          dateBadgeColor = '#1d4ed8';
+        }
         
         return (
           <ListItem 
             key={n.id}
             onClick={() => handleNotificationClick(n)}
-            style={{ opacity: isRead ? 0.5 : 1 }}
+            style={{ 
+              opacity: isRead ? 0.6 : 1,
+              padding: '0.6rem 0.75rem',
+              borderBottom: `1px solid ${theme.colors.gray100}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '1rem'
+            }}
           >
-            <ListItemLeft>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ListItemTitle style={{ fontWeight: isRead ? 400 : 500 }}>
-                  {n.nadpis || n.zprava}
-                </ListItemTitle>
-                {!isRead && (
-                  <span style={{ 
-                    width: 6, 
-                    height: 6, 
-                    borderRadius: '50%', 
-                    background: '#3b82f6', 
-                    flexShrink: 0 
-                  }} />
+            <div style={{ flex: 1 }}>
+              {/* Řádek 1: Číslo + datum badge + typ akce */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                <span style={{ 
+                  fontSize: '0.8rem', 
+                  fontWeight: isRead ? 400 : 600,
+                  color: details.type === 'Obj' ? '#1d4ed8' : '#ca8a04'
+                }}>
+                  {details.type} {details.number}
+                </span>
+                
+                {details.timeText && (
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    backgroundColor: dateBadgeBg,
+                    color: dateBadgeColor,
+                    fontWeight: 500
+                  }}>
+                    {details.timeText}
+                  </span>
                 )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '0.3rem' }}>
-                {daysAge !== null && (
-                  <Badge
-                    $bg={daysAge > 7 ? '#fee2e2' : (daysAge > 2 ? '#dbeafe' : '#dcfce7')}
-                    $color={daysAge > 7 ? '#dc2626' : (daysAge > 2 ? '#1d4ed8' : '#16a34a')}
-                  >
-                    {daysAge === 0 ? 'dnes' : (daysAge === 1 ? 'včera' : `před ${daysAge} d`)}
-                  </Badge>
-                )}
-                {objectInfo && (
-                  <ListItemMeta style={{ margin: 0 }}>
-                    {objectInfo.type}: {objectInfo.number}
-                  </ListItemMeta>
-                )}
-                {n.kategorie && (
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                    {n.kategorie}
+                
+                {details.actionType && (
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    backgroundColor: details.actionColor + '20',
+                    color: details.actionColor,
+                    fontWeight: 500
+                  }}>
+                    {details.actionType}
                   </span>
                 )}
               </div>
-            </ListItemLeft>
-            <ListItemRight>
-              <NotifDot $color={isRead ? '#cbd5e1' : getNotifColor(n.priorita)} />
-            </ListItemRight>
+              
+              {/* Řádek 2: Předmět */}
+              <div style={{ 
+                fontSize: '0.82rem',
+                color: '#1e293b',
+                marginBottom: '0.25rem',
+                fontWeight: isRead ? 400 : 500
+              }}>
+                {details.subject}
+              </div>
+              
+              {/* Řádek 2.5: Celé znění zprávy */}
+              {n.zprava && (
+                <div style={{ 
+                  fontSize: '0.75rem',
+                  color: '#64748b',
+                  marginBottom: '0.25rem',
+                  lineHeight: 1.4
+                }}>
+                  {n.zprava}
+                </div>
+              )}
+              
+              {/* Řádek 3: Uživatelé */}
+              {details.usersLine && (
+                <div style={{ 
+                  fontSize: '0.72rem',
+                  color: '#64748b'
+                }}>
+                  {details.usersLine}
+                </div>
+              )}
+            </div>
+            
+            {/* Částka a stav vpravo */}
+            {details.amount && (
+              <div style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: '4px',
+                alignSelf: 'flex-start'
+              }}>
+                <div style={{ 
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: '#1e293b',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {details.amount}
+                </div>
+                
+                {details.statusText && (
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    backgroundColor: details.statusColor + '20',
+                    color: details.statusColor,
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {details.statusText}
+                  </span>
+                )}
+              </div>
+            )}
           </ListItem>
         );
       })}
@@ -2452,12 +2704,16 @@ function OrdersPublishedWidget({ publishedData, navigate }) {
       )}
       {items.map(o => {
         const objednavatel = o.objednavatel_jmeno ? `${o.objednavatel_jmeno} ${o.objednavatel_prijmeni || ''}`.trim() : '';
+        const zverejnil = o.zverejnil_jmeno ? `${o.zverejnil_jmeno} ${o.zverejnil_prijmeni || ''}`.trim() : '';
         return (
           <ListItem key={o.id} onClick={() => navigate(`/order-form-25?edit=${o.id}`, { state: { returnTo: '/dashboard' } })}>
             <ListItemLeft>
               <ListItemTitle>{o.cislo_objednavky || `#${o.id}`}</ListItemTitle>
               <ListItemSub>{o.predmet}</ListItemSub>
-              {objednavatel && <ListItemMeta>Obj: {objednavatel} · zveř. {formatDate(o.dt_zverejneni)}</ListItemMeta>}
+              {objednavatel && <ListItemMeta>Obj: {objednavatel} · {formatDate(o.dt_vytvoreni)}</ListItemMeta>}
+              <ListItemMeta>
+                Zveřejnil: {zverejnil || 'neuvedeno'} · {formatDate(o.dt_zverejneni)}
+              </ListItemMeta>
             </ListItemLeft>
             <ListItemRight>
               <Amount>{formatCurrency(o.celkova_cena_s_dph)}</Amount>
@@ -3288,7 +3544,7 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) 
   };
 
   if (!hasItems) {
-    // Pouze datum aktualizace, bez alertů
+    // Žádné alerty - zobrazit pozitivní zprávu
     return (
       <FocusBannerWrap>
         <FocusBannerHeader>
@@ -3304,6 +3560,10 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) 
             </span>
           )}
         </FocusBannerHeader>
+        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#16a34a', fontSize: '0.95rem', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '1.3rem' }} />
+          <span>Vše je v pořádku, žádné nevyřízené úkoly nevyžadují vaši pozornost.</span>
+        </div>
       </FocusBannerWrap>
     );
   }
@@ -3431,35 +3691,80 @@ export default function DashboardPage() {
   const rssRefreshRef = useRef(null);
   const rssCancelledRef = useRef(false);
 
-  const fetchRss = useCallback(async () => {
+  const fetchRss = useCallback(async (isBackgroundRefresh = false) => {
     if (!token || !username) return;
-    setRssLoading(true);
+    
+    const RSS_CACHE_KEY = `rss_feed_${user?.id || 'default'}`;
+    const RSS_CACHE_EXPIRY = 15 * 60 * 1000; // 15 minut
+    
+    // Načíst z cache při prvním načtení (ne při background refresh)
+    if (!isBackgroundRefresh) {
+      try {
+        const cachedStr = localStorage.getItem(RSS_CACHE_KEY);
+        if (cachedStr) {
+          const cached = JSON.parse(cachedStr);
+          if (cached && cached.data && Date.now() - (cached.timestamp || 0) < RSS_CACHE_EXPIRY) {
+            setRssItems(cached.data || []);
+            setRssFeedStatuses(cached.feed_statuses || []);
+            setRssEnabled(cached.rss_enabled !== false);
+            if (cached.max_items) setRssMaxItems(cached.max_items);
+            setRssError(false);
+            // Načteno z cache, refresh na pozadí
+            setTimeout(() => fetchRss(true), 100);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('RSS cache read error:', e);
+      }
+    }
+    
+    if (!isBackgroundRefresh) setRssLoading(true);
     try {
       const result = await getRssFeed({ token, username, max_items: 15 });
       if (rssCancelledRef.current) return;
       if (result.status === 'success') {
-        setRssItems(result.data || []);
-        setRssEnabled(result.rss_enabled !== false);
+        const items = result.data || [];
+        const feedStatuses = result.feed_statuses || [];
+        const enabled = result.rss_enabled !== false;
+        const maxItems = result.max_items || 15;
+        
+        setRssItems(items);
+        setRssEnabled(enabled);
         setRssError(false);
-        setRssFeedStatuses(result.feed_statuses || []);
-        if (result.max_items) setRssMaxItems(result.max_items);
+        setRssFeedStatuses(feedStatuses);
+        setRssMaxItems(maxItems);
+        
+        // Uložit do cache (localStorage per-user)
+        try {
+          localStorage.setItem(RSS_CACHE_KEY, JSON.stringify({
+            data: items,
+            feed_statuses: feedStatuses,
+            rss_enabled: enabled,
+            max_items: maxItems,
+            timestamp: Date.now()
+          }));
+        } catch (e) {
+          console.warn('RSS cache write error:', e);
+        }
 
         // Nastavit auto-refresh interval z backendu (minuty → ms)
         const intervalMin = result.refresh_interval || 15;
         if (rssRefreshRef.current) clearInterval(rssRefreshRef.current);
         rssRefreshRef.current = setInterval(() => {
-          if (!rssCancelledRef.current) fetchRss();
+          if (!rssCancelledRef.current) fetchRss(true);
         }, intervalMin * 60 * 1000);
       } else {
         setRssEnabled(result.rss_enabled === true);
         setRssItems([]);
       }
-    } catch {
+    } catch (err) {
+      console.error('RSS fetch error:', err);
       if (!rssCancelledRef.current) { setRssError(true); setRssItems([]); }
     } finally {
       if (!rssCancelledRef.current) setRssLoading(false);
     }
-  }, [token, username]);
+  }, [token, username, user?.id]);
 
   useEffect(() => {
     rssCancelledRef.current = false;
@@ -3478,13 +3783,13 @@ export default function DashboardPage() {
 
     return Object.entries(WIDGET_REGISTRY)
       .filter(([id, cfg]) => {
-        // RSS widget: viditelný jen pokud je RSS povoleno v app settings
-        if (id === 'rss_news') return rssEnabled;
         // Widget pouze pro SUPERADMIN
         if (cfg.requiresSuperAdmin) return superAdmin;
-        // Widgety bez 'requires' → viditelné vždy
+        // Widgety bez 'requires' → viditelné vždy (welcome)
         if (!cfg.requires) return true;
-        // Admin vidí vše
+        // RSS widget: kontrola permission + rss_enabled flag
+        if (id === 'rss_news') return rssEnabled && (isAdmin || caps.includes(cfg.requires));
+        // Admin vidí vše ostatní
         if (isAdmin) return true;
         // Kontrola DASHBOARD_* capability
         return caps.includes(cfg.requires);
@@ -3564,6 +3869,13 @@ export default function DashboardPage() {
     setError(null);
     try {
       const result = await getDashboardData({ token, username, days: 7 });
+      
+      // 🔍 DEBUG: Výpis celé raw response
+      console.log('📊 [Dashboard] RAW RESPONSE:', result);
+      console.log('📊 [Dashboard] result.data:', result.data);
+      console.log('🔔 [Dashboard] notifications_recent:', result.data?.notifications_recent);
+      console.log('🔔 [Dashboard] notifications_unread:', result.data?.notifications_unread);
+      
       if (result.status === 'success') {
         setData(result.data);
         setCashbookData(result.data?.cashbook_summary ?? null);
@@ -3937,6 +4249,11 @@ export default function DashboardPage() {
         );
         break;
       case 'cashbook_summary': {
+        // ⚠️ KRITICKÁ KONTROLA: Zobrazit POUZE pokud má přiřazenou alespoň 1 pokladnu
+        if (!cashbookData?.pokladny || cashbookData.pokladny.length === 0) {
+          return null; // Nemá přiřazenou pokladnu → NEZOBRAZIT widget
+        }
+        
         const cbMonthNames = ['Leden','\u00danor','B\u0159ezen','Duben','Kv\u011bten','\u010cerven','\u010cervenec','Srpen','Z\u00e1\u0159\u00ed','\u0158\u00edjen','Listopad','Prosinec'];
         const cbCurrentYear = new Date().getFullYear();
         content = <CashbookSummaryWidget cbData={cashbookData} navigate={navigate} loading={cashbookLoading} />;
@@ -4131,7 +4448,7 @@ export default function DashboardPage() {
               <FontAwesomeIcon icon={faCog} />
             </ConfigBtn>
           </SmartTooltip>
-          {hasAdminRole() && (
+          {isSuperAdmin && (
             <SmartTooltip text="Správa oprávnění widgetů" icon="none" preferredPosition="bottom">
               <ConfigBtn onClick={() => setPermissionsOpen(true)} style={{ color: '#7c3aed' }}>
                 <FontAwesomeIcon icon={faUserShield} />
@@ -4167,6 +4484,7 @@ export default function DashboardPage() {
       )}
       <div style={{ height: '2rem' }} />
     </PageWrapper>
+    
     {fullscreenChart && ReactDOM.createPortal(
       <ChartOverlay onClick={(e) => { if (e.target === e.currentTarget) setFullscreenChart(null); }}>
         <ChartFullscreenBox>
