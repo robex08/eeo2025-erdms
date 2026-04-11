@@ -211,6 +211,8 @@ function handle_notifications_list($input, $config, $queries) {
                     n.objekt_id,
                     n.data_json,
                     n.dt_created,
+                    n.od_uzivatele_id,
+                    CONCAT(COALESCE(u_from.jmeno, ''), ' ', COALESCE(u_from.prijmeni, '')) as from_user_name,
                     nr.precteno,
                     nr.dt_precteno,
                     nr.skryto,
@@ -219,6 +221,7 @@ function handle_notifications_list($input, $config, $queries) {
         $sql = "SELECT " . $select_columns . "
                 FROM " . TBL_NOTIFIKACE . " n
                 INNER JOIN " . TBL_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
+                LEFT JOIN `" . TBL_UZIVATELE . "` u_from ON u_from.id = n.od_uzivatele_id
                 WHERE " . implode(' AND ', $where_conditions) . "
                 ORDER BY n.dt_created DESC
                 LIMIT :limit OFFSET :offset";
@@ -250,6 +253,11 @@ function handle_notifications_list($input, $config, $queries) {
                 'dt_precteno' => $notif['dt_precteno'],
                 'dt_created' => $notif['dt_created']
             );
+            
+            // Autor notifikace
+            if (!empty($notif['from_user_name']) && trim($notif['from_user_name']) !== '') {
+                $item['from_user_name'] = trim($notif['from_user_name']);
+            }
             
             // Vždy vrátit skryto
             $item['skryto'] = $notif['skryto'] == 1;
