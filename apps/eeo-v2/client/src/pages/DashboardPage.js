@@ -33,7 +33,8 @@ import {
   faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser,
   faExpand, faCompress,
   faCloud, faWind, faTint, faThermometerHalf, faMapMarkerAlt,
-  faChevronLeft, faChevronRight, faPaperPlane, faEnvelope
+  faChevronLeft, faChevronRight, faPaperPlane, faEnvelope,
+  faClipboardList, faCubes, faInfinity, faHistory, faReceipt, faAddressBook
 } from '@fortawesome/free-solid-svg-icons';
 import { Cloud, Sun, CloudRain, CloudSnow, CloudDrizzle, Wind, Droplets, MapPin, Gauge } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
@@ -371,6 +372,15 @@ const QuickTileCount = styled.span`
   font-weight: 700;
   backdrop-filter: blur(4px);
   box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+`;
+
+const QuickTileSeparator = styled.div`
+  width: 2px;
+  height: 40px;
+  background: rgba(255,255,255,0.3);
+  border-radius: 999px;
+  margin: 0 0.25rem;
+  flex-shrink: 0;
 `;
 
 const DashGrid = styled.div`
@@ -1019,7 +1029,7 @@ const ConfigPanel = styled.div`
   background: white;
   border-radius: 16px;
   width: min(95vw, 780px);
-  max-height: 70vh;
+  max-height: 85vh;
   display: flex; flex-direction: column;
   box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 `;
@@ -1921,30 +1931,45 @@ function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh })
         </div>
 
         {/* Teplota + lucide ikona počasí */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: 'auto 0', paddingBottom: '1.1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0', paddingBottom: '0.6rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '3.75rem', fontWeight: 800, letterSpacing: '-2px', lineHeight: 1 }}>
+            <span style={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: '-1.5px', lineHeight: 1 }}>
               {Math.round(temp)}°
             </span>
-            <span style={{ fontSize: '1.05rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginTop: '0.25rem' }}>
+            <span style={{ fontSize: '0.92rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginTop: '0.2rem' }}>
               {info.text}
             </span>
-            <span style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.2rem' }}>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.15rem' }}>
               Pocitově {Math.round(apparent_temp)}°C
             </span>
           </div>
-          <WeatherIcon strokeWidth={1.2} style={{
-            width: '5rem', height: '5rem',
-            color: info.iconColor,
-            filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))',
-            flexShrink: 0
-          }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
+            <WeatherIcon strokeWidth={1.2} style={{
+              width: '3.5rem', height: '3.5rem',
+              color: info.iconColor,
+              filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))',
+            }} />
+            {precipitation != null && (
+              <span style={{
+                display: 'flex', alignItems: 'center', gap: '0.25rem',
+                fontSize: '0.7rem', fontWeight: 600,
+                color: 'rgba(255,255,255,0.8)',
+                background: 'rgba(255,255,255,0.12)',
+                borderRadius: '999px',
+                padding: '0.15rem 0.5rem',
+                backdropFilter: 'blur(4px)',
+              }}>
+                <Droplets strokeWidth={1.8} style={{ width: '0.7rem', height: '0.7rem', opacity: 0.85 }} />
+                {precipitation} mm
+              </span>
+            )}
+          </div>
         </div>
 
         {/* 4 info karty 2×2 */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.55rem',
-          paddingTop: '1rem',
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem',
+          paddingTop: '0.6rem',
           borderTop: '1px solid rgba(255,255,255,0.2)'
         }}>
           {/* Vítr */}
@@ -1995,23 +2020,38 @@ function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh })
               <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{pressure != null ? `${pressure} hPa` : '—'}</span>
             </div>
           </div>
-          {/* Srážky */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.55rem',
-            background: 'rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem',
-            borderRadius: '14px', backdropFilter: 'blur(4px)',
-            gridColumn: 'span 2'
-          }}>
-            <CloudDrizzle strokeWidth={1.5} style={{ width: '1.1rem', height: '1.1rem', opacity: 0.85, flexShrink: 0 }} />
-            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <span style={{ fontSize: '0.57rem', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, letterSpacing: '0.5px' }}>Srážky (aktuální hodina)</span>
-              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{precipitation != null ? `${precipitation} mm` : '0 mm'}</span>
-            </div>
-          </div>
         </div>
 
+        {/* 7denní předpověď */}
+        {weatherData.forecast && weatherData.forecast.length > 0 && (
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', gap: '0.2rem',
+            paddingTop: '0.6rem', marginTop: '0.5rem',
+            borderTop: '1px solid rgba(255,255,255,0.2)',
+          }}>
+            {weatherData.forecast.map((day, idx) => {
+              const dayInfo = WMO_INFO[day.weather_code] || { text: '?', Icon: Cloud, iconColor: '#e2e8f0' };
+              const DayIcon = dayInfo.Icon || Cloud;
+              const d = new Date(day.date + 'T12:00:00');
+              const dayLabel = idx === 0 ? 'Dnes' : d.toLocaleDateString('cs-CZ', { weekday: 'short' });
+              return (
+                <div key={day.date} style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.15rem',
+                  flex: 1, minWidth: 0,
+                  opacity: idx === 0 ? 1 : 0.85,
+                }}>
+                  <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'capitalize', opacity: 0.75 }}>{dayLabel}</span>
+                  <DayIcon strokeWidth={1.5} style={{ width: '1.15rem', height: '1.15rem', color: dayInfo.iconColor, flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700 }}>{day.temp_max}°</span>
+                  <span style={{ fontSize: '0.6rem', fontWeight: 500, opacity: 0.6 }}>{day.temp_min}°</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {updated_at && (
-          <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.4)', textAlign: 'right', marginTop: '0.6rem' }}>
+          <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.4)', textAlign: 'right', marginTop: '0.4rem' }}>
             Aktualizováno: {new Date(updated_at).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
@@ -4884,7 +4924,7 @@ function AnnualFeesDueWidget({ feesData, navigate }) {
 // CONFIG MODAL
 // ============================================================================
 
-function DashboardConfigModal({ tiles, visibleTiles, onToggle, onReorder, onClose, availableWidgets }) {
+function DashboardConfigModal({ tiles, visibleTiles, onToggle, onReorder, onClose, availableWidgets, quickTilesConfig, onQuickTilesChange }) {
   const [dragIdx, setDragIdx] = React.useState(null);
   const [overIdx, setOverIdx] = React.useState(null);
 
@@ -4935,6 +4975,33 @@ function DashboardConfigModal({ tiles, visibleTiles, onToggle, onReorder, onClos
           </ConfigCloseBtn>
         </ConfigHeader>
         <ConfigBody>
+          {/* Toggle posuvníky v řádku */}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', padding: '0.25rem 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <ToggleSwitch>
+                <input type="checkbox" checked={quickTilesConfig?.showStatusTiles !== false} onChange={() => onQuickTilesChange('showStatusTiles')} />
+                <span />
+              </ToggleSwitch>
+              <span style={{ fontSize: '0.8rem', color: '#334155', whiteSpace: 'nowrap' }}>Stavy objednávek</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <ToggleSwitch>
+                <input type="checkbox" checked={quickTilesConfig?.showModuleShortcuts !== false} onChange={() => onQuickTilesChange('showModuleShortcuts')} />
+                <span />
+              </ToggleSwitch>
+              <span style={{ fontSize: '0.8rem', color: '#334155', whiteSpace: 'nowrap' }}>Moduly</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <ToggleSwitch>
+                <input type="checkbox" checked={quickTilesConfig?.showNotifications !== false} onChange={() => onQuickTilesChange('showNotifications')} />
+                <span />
+              </ToggleSwitch>
+              <span style={{ fontSize: '0.8rem', color: '#334155', whiteSpace: 'nowrap' }}>Notifikace</span>
+            </div>
+          </div>
+          {/* Dělicí linka přes celou šířku */}
+          <div style={{ gridColumn: '1 / -1', height: '1px', background: '#cbd5e1', margin: '0.25rem 0 0.5rem' }} />
+          {/* Přehled karet */}
           {filteredTiles.map((tileId, idx) => {
             const w = WIDGET_REGISTRY[tileId];
             const isVisible = visibleTiles.includes(tileId);
@@ -5106,6 +5173,11 @@ export default function DashboardPage() {
   const [quickMessageUser, setQuickMessageUser] = useState(null);
   const [visibleTiles, setVisibleTiles] = useState(DEFAULT_TILES);
   const [allTiles, setAllTiles] = useState(DEFAULT_TILES);
+  const [quickTilesConfig, setQuickTilesConfig] = useState({
+    showStatusTiles: true,
+    showModuleShortcuts: true,
+    showNotifications: true,
+  });
   const [cashbookMonth, setCashbookMonth] = useState(new Date().getMonth() + 1);
   const [cashbookData, setCashbookData] = useState(null);
   const [cashbookLoading, setCashbookLoading] = useState(false);
@@ -5296,6 +5368,7 @@ export default function DashboardPage() {
       const weatherRes = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
         `&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,apparent_temperature,is_day,wind_gusts_10m,surface_pressure,precipitation` +
+        `&daily=temperature_2m_max,temperature_2m_min,weather_code` +
         `&timezone=Europe%2FPrague&wind_speed_unit=kmh`
       ).then(r => r.json());
 
@@ -5303,6 +5376,20 @@ export default function DashboardPage() {
 
       const cur = weatherRes?.current;
       if (!cur) throw new Error('Žádná data z open-meteo');
+
+      // 7-denní předpověď
+      const daily = weatherRes?.daily;
+      const forecast = [];
+      if (daily?.time) {
+        for (let i = 0; i < daily.time.length && i < 7; i++) {
+          forecast.push({
+            date: daily.time[i],
+            temp_max: Math.round(daily.temperature_2m_max[i]),
+            temp_min: Math.round(daily.temperature_2m_min[i]),
+            weather_code: daily.weather_code[i],
+          });
+        }
+      }
 
       const result = {
         temp: cur.temperature_2m,
@@ -5316,7 +5403,8 @@ export default function DashboardPage() {
         is_day: cur.is_day,
         city: 'Středočeský kraj',
         country: 'CZ',
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        forecast,
       };
 
       setWeatherData(result);
@@ -5469,6 +5557,9 @@ export default function DashboardPage() {
       if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
         applyDashboardConfig(parsed.tiles || [], parsed.visible || []);
+        if (parsed.quickTilesConfig) {
+          setQuickTilesConfig(prev => ({ ...prev, ...parsed.quickTilesConfig }));
+        }
       }
     } catch (e) { /* ignore */ }
 
@@ -5480,31 +5571,35 @@ export default function DashboardPage() {
           const result = applyDashboardConfig(dbConfig.tiles, dbConfig.visible);
           // Aktualizuj localStorage cache z DB
           try {
-            localStorage.setItem(lsKey, JSON.stringify(result));
+            localStorage.setItem(lsKey, JSON.stringify({ ...result, quickTilesConfig: dbConfig.quickTilesConfig }));
           } catch (e) { /* ignore */ }
+        }
+        if (dbConfig?.quickTilesConfig) {
+          setQuickTilesConfig(prev => ({ ...prev, ...dbConfig.quickTilesConfig }));
         }
       })
       .catch(() => { /* fallback na localStorage – ok */ });
   }, [user?.id, token, username, applyDashboardConfig]);
 
   // Save config: okamžitě do localStorage + async do DB
-  const saveConfig = useCallback((tiles, visible) => {
+  const saveConfig = useCallback((tiles, visible, qtConfig) => {
     const lsKey = `dashboard_config_${user?.id || 'default'}`;
+    const quickTilesCfg = qtConfig || quickTilesConfig;
     try {
-      localStorage.setItem(lsKey, JSON.stringify({ tiles, visible }));
+      localStorage.setItem(lsKey, JSON.stringify({ tiles, visible, quickTilesConfig: quickTilesCfg }));
     } catch (e) { /* ignore */ }
 
     // Uložit do DB přes userSettings – načteme aktuální settings a patchneme dashboard_layout
     if (!token || !username || !user?.id) return;
     fetchUserSettings({ token, username, userId: user.id })
       .then(currentSettings => {
-        const merged = { ...currentSettings, dashboard_layout: { tiles, visible } };
+        const merged = { ...currentSettings, dashboard_layout: { tiles, visible, quickTilesConfig: quickTilesCfg } };
         return saveUserSettings({ token, username, userId: user.id, nastaveni: merged });
       })
       .catch(err => {
         console.error('[Dashboard] Chyba při ukládání layoutu do DB:', err);
       });
-  }, [token, username, user?.id]);
+  }, [token, username, user?.id, quickTilesConfig]);
 
   // Fetch data (silent = tichý refresh bez loading spinneru / blikání)
   const fetchData = useCallback(async (silent = false) => {
@@ -5626,6 +5721,14 @@ export default function DashboardPage() {
     });
   };
 
+  const handleQuickTilesChange = (key) => {
+    setQuickTilesConfig(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveConfig(allTiles, visibleTiles, next);
+      return next;
+    });
+  };
+
   const handleReorder = (newOrder) => {
     // Zachovat tiles, které nejsou v availableWidgets (neviditelné) na konci
     const remaining = allTiles.filter(t => !newOrder.includes(t));
@@ -5728,6 +5831,76 @@ export default function DashboardPage() {
       return true;
     });
   }, [userDetail, data?.orders_stats, hasAdminRole]);
+
+  // 🎯 MODULE SHORTCUT TILES — ikony odkazů na moduly (dle oprávnění)
+  const getModuleShortcuts = useMemo(() => {
+    if (!data) return [];
+    const caps = data.dashboard_capabilities || [];
+    const hasCap = (c) => caps.includes(c);
+    const isAdmin = hasAdminRole();
+    const shortcuts = [];
+
+    // 1. Objednávky V3
+    if (isAdmin || hasCap('DASHBOARD_ORDERS_STATS') || hasCap('DASHBOARD_MY_ORDERS')) {
+      shortcuts.push({
+        label: 'Objednávky V3',
+        icon: faClipboardList,
+        bg: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+        route: '/orders25-list-v3',
+        count: data.orders_stats?.total || 0,
+        badgeColor: '#1e40af',
+      });
+    }
+
+    // 2. Faktury
+    if (isAdmin || hasCap('DASHBOARD_INVOICES_STATS') || hasCap('DASHBOARD_INVOICES_CONFIRM')) {
+      shortcuts.push({
+        label: 'Faktury',
+        icon: faFileInvoiceDollar,
+        bg: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+        route: '/invoices25-list',
+        count: data.invoices_stats?.total || 0,
+        badgeColor: '#6d28d9',
+      });
+    }
+
+    // 3. Roční poplatky
+    if (isAdmin || hasCap('DASHBOARD_ANNUAL_FEES')) {
+      shortcuts.push({
+        label: 'Roční poplatky',
+        icon: faReceipt,
+        bg: 'linear-gradient(135deg, #34d399 0%, #059669 100%)',
+        route: '/annual-fees',
+        count: data.annual_fees_due?.stats?.celkem || 0,
+        badgeColor: '#047857',
+      });
+    }
+
+    // 4. Majetek
+    if (isAdmin || hasCap('DASHBOARD_CHART_MAJETEK')) {
+      const majetekTotal = (data.chart_majetek_by_druh || []).reduce((sum, d) => sum + (parseInt(d.pocet) || 0), 0);
+      shortcuts.push({
+        label: 'Majetek',
+        icon: faCubes,
+        bg: 'linear-gradient(135deg, #818cf8 0%, #4f46e5 100%)',
+        route: '/majetek-overview',
+        count: majetekTotal,
+        badgeColor: '#4338ca',
+      });
+    }
+
+    // 5. Objednávky před 2026
+    shortcuts.push({
+      label: 'Objednávky (< 2026)',
+      icon: faHistory,
+      bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+      route: '/orders',
+      count: '∞',
+      badgeColor: '#b45309',
+    });
+
+    return shortcuts;
+  }, [data, hasAdminRole]);
 
   // Render individual widget
   const renderWidget = (tileId, index) => {
@@ -6123,26 +6296,10 @@ export default function DashboardPage() {
           <FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge>
         </PageTitle>
         
-        {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE */}
-        {(isSuperAdmin || getQuickTiles.length > 0) && (
+        {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE + MODULE SHORTCUTS */}
+        {(isSuperAdmin || getQuickTiles.length > 0 || getModuleShortcuts.length > 0) && (
           <QuickTiles>
-            {/* Superadmin: aktivní uživatelé jako první */}
-            {isSuperAdmin && (
-              <SmartTooltip
-                text={`Přehled aktivit uživatelů${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
-                icon="none"
-                preferredPosition="bottom"
-              >
-                <QuickTile
-                  onClick={() => activeUsersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                  style={{ background: activeUsersData?.count > 0 ? 'rgba(29,78,216,0.15)' : undefined }}
-                >
-                  <QuickTileIcon><FontAwesomeIcon icon={faUsers} /></QuickTileIcon>
-                  {activeUsersData?.count > 0 && <QuickTileCount>{activeUsersData.count}</QuickTileCount>}
-                </QuickTile>
-              </SmartTooltip>
-            )}
-            {getQuickTiles.map((tile, idx) => (
+            {quickTilesConfig.showStatusTiles && getQuickTiles.map((tile, idx) => (
               <SmartTooltip
                 key={idx}
                 text={`${tile.label}${tile.count > 0 ? ` (${tile.count})` : ''}`}
@@ -6161,6 +6318,105 @@ export default function DashboardPage() {
                 </QuickTile>
               </SmartTooltip>
             ))}
+
+            {/* Oddělovač + Superadmin uživatelé + Module shortcuts */}
+            {quickTilesConfig.showModuleShortcuts && (getModuleShortcuts.length > 0 || isSuperAdmin) && quickTilesConfig.showStatusTiles && getQuickTiles.length > 0 && (
+              <QuickTileSeparator />
+            )}
+            {/* Superadmin: aktivní uživatelé - vedle module shortcuts */}
+            {quickTilesConfig.showModuleShortcuts && isSuperAdmin && (
+              <SmartTooltip
+                text={`Přehled aktivit uživatelů${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
+                icon="none"
+                preferredPosition="bottom"
+              >
+                <QuickTile
+                  onClick={() => activeUsersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                    borderColor: 'rgba(255,255,255,0.5)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                  }}
+                >
+                  <QuickTileIcon><FontAwesomeIcon icon={faUsers} /></QuickTileIcon>
+                  {activeUsersData?.count > 0 && <QuickTileCount style={{ background: '#1e3a8a', borderColor: 'white' }}>{activeUsersData.count}</QuickTileCount>}
+                </QuickTile>
+              </SmartTooltip>
+            )}
+            {/* Kontakty - zaměstnanci + dodavatelé */}
+            {quickTilesConfig.showModuleShortcuts && (hasAdminRole() || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && (
+              <SmartTooltip
+                text={`Kontakty${data?.contacts_count?.total > 0 ? ` (${data.contacts_count.employees} zam. + ${data.contacts_count.suppliers} dod.)` : ''}`}
+                icon="none"
+                preferredPosition="bottom"
+              >
+                <QuickTile
+                  onClick={() => navigate('/contacts')}
+                  style={{
+                    background: 'linear-gradient(135deg, #06b6d4 0%, #0e7490 100%)',
+                    borderColor: 'rgba(255,255,255,0.5)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                  }}
+                >
+                  <QuickTileIcon><FontAwesomeIcon icon={faAddressBook} /></QuickTileIcon>
+                  {data?.contacts_count?.total > 0 && <QuickTileCount style={{ background: '#155e75', borderColor: 'white' }}>{data.contacts_count.total}</QuickTileCount>}
+                </QuickTile>
+              </SmartTooltip>
+            )}
+            {quickTilesConfig.showModuleShortcuts && getModuleShortcuts.map((mod, idx) => (
+              <SmartTooltip
+                key={`mod-${idx}`}
+                text={`${mod.label}${mod.count ? ` (${mod.count})` : ''}`}
+                icon="none"
+                preferredPosition="bottom"
+              >
+                <QuickTile
+                  onClick={() => navigate(mod.route)}
+                  style={{
+                    background: mod.bg,
+                    borderColor: 'rgba(255,255,255,0.5)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                  }}
+                >
+                  <QuickTileIcon><FontAwesomeIcon icon={mod.icon} /></QuickTileIcon>
+                  {mod.count != null && (
+                    <QuickTileCount style={{ background: mod.badgeColor, borderColor: 'white' }}>
+                      {mod.count}
+                    </QuickTileCount>
+                  )}
+                </QuickTile>
+              </SmartTooltip>
+            ))}
+
+            {/* Oddělovač + Zvoneček notifikací */}
+            {quickTilesConfig.showNotifications && (
+              <>
+                <QuickTileSeparator />
+                <SmartTooltip
+                  text={`Oznámení${(bgTasksContext?.unreadNotificationsCount || 0) > 0 ? ` (${bgTasksContext.unreadNotificationsCount} nepřečtených)` : ''}`}
+                  icon="none"
+                  preferredPosition="bottom"
+                >
+                  <QuickTile
+                    onClick={() => navigate('/notifications')}
+                    style={{
+                      background: (bgTasksContext?.unreadNotificationsCount || 0) > 0
+                        ? 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)'
+                        : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)',
+                      borderColor: 'rgba(255,255,255,0.5)',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                    }}
+                  >
+                    <QuickTileIcon><FontAwesomeIcon icon={faBell} /></QuickTileIcon>
+                    {(bgTasksContext?.unreadNotificationsCount || 0) > 0 && (
+                      <QuickTileCount style={{ background: '#9f1239', borderColor: 'white' }}>
+                        {bgTasksContext.unreadNotificationsCount}
+                      </QuickTileCount>
+                    )}
+                  </QuickTile>
+                </SmartTooltip>
+              </>
+            )}
           </QuickTiles>
         )}
         
@@ -6213,6 +6469,8 @@ export default function DashboardPage() {
           onToggle={handleToggleTile}
           onReorder={handleReorder}
           onClose={() => setConfigOpen(false)}
+          quickTilesConfig={quickTilesConfig}
+          onQuickTilesChange={handleQuickTilesChange}
         />
       )}
       {permissionsOpen && (
