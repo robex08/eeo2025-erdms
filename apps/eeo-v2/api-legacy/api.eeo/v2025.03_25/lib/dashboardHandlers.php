@@ -3065,3 +3065,494 @@ function _dashboard_build_invoice_v3_where($db, $user_id, $is_admin, $permission
         'params' => $params
     ];
 }
+
+// ============================================================================
+// FINANČNÍ TRHY - Proxy endpoint pro krypto + FX data
+// ============================================================================
+
+/**
+ * POST /api.eeo/dashboard/finance-markets
+ * Proxy volání na CoinGecko + Frankfurter API
+ * Vrací: BTC, ETH ceny + EUR/CZK, EUR/USD, USD/CZK kurzy
+ * Cache: 30 minut server-side (file cache)
+ */
+function handle_dashboard_finance_markets($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    // Volitelné: uživatel může poslat vlastní tickery akcií
+    $stock_tickers = $input['stock_tickers'] ?? ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+    // Volitelné: uživatel může poslat vlastní krypto IDs
+    $crypto_ids = $input['crypto_ids'] ?? ['bitcoin', 'ethereum'];
+    // Volitelné: uživatel může poslat vlastní FX páry
+    $fx_pairs = $input['fx_pairs'] ?? ['CZK', 'USD'];
+
+    // Validace vstupů
+    if (!is_array($stock_tickers)) $stock_tickers = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+    if (!is_array($crypto_ids)) $crypto_ids = ['bitcoin', 'ethereum'];
+    if (!is_array($fx_pairs)) $fx_pairs = ['CZK', 'USD'];
+
+    // Omezení na rozumný počet (prevence abuse)
+    $stock_tickers = array_slice(array_map('strtoupper', array_filter($stock_tickers, 'is_string')), 0, 15);
+    $crypto_ids = array_slice(array_map('strtolower', array_filter($crypto_ids, 'is_string')), 0, 10);
+    $fx_pairs = array_slice(array_map('strtoupper', array_filter($fx_pairs, 'is_string')), 0, 6);
+
+    // Validace tickerů - pouze alfanumerické + tečka
+    $stock_tickers = array_filter($stock_tickers, function($t) { return preg_match('/^[A-Z0-9.]{1,10}$/', $t); });
+    $crypto_ids = array_filter($crypto_ids, function($t) { return preg_match('/^[a-z0-9-]{1,30}$/', $t); });
+    $fx_pairs = array_filter($fx_pairs, function($t) { return preg_match('/^[A-Z]{3}$/', $t); });
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        $token_data = verify_token_v2($username, $token, $db);
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            return;
+        }
+
+        // Server-side cache (15 minut) - cache klíč závisí na parametrech
+        $cache_key = md5(json_encode(['c' => $crypto_ids, 's' => $stock_tickers, 'f' => $fx_pairs]));
+        $cache_dir = $_ENV['UPLOAD_ROOT_PATH'] ?? '/var/www/erdms-data/';
+        $cache_file = rtrim($cache_dir, '/') . '/cache/finance_' . $cache_key . '.json';
+        $cache_expiry = 15 * 60; // 15 minut
+
+        // Zkus načíst z cache
+        if (file_exists($cache_file)) {
+            $cache_content = file_get_contents($cache_file);
+            $cache_data = json_decode($cache_content, true);
+            if ($cache_data && isset($cache_data['timestamp']) && (time() - $cache_data['timestamp']) < $cache_expiry) {
+                http_response_code(200);
+                echo json_encode([
+                    'status' => 'success',
+                    'data' => $cache_data['data'],
+                    'cached' => true,
+                    'message' => 'Finanční data z cache'
+                ]);
+                return;
+            }
+        }
+
+        // Fetch z externích API (paralelně nelze v PHP bez curl_multi, tak sekvenčně)
+        $crypto_data = _finance_fetch_crypto($crypto_ids);
+        $fx_data = _finance_fetch_forex($fx_pairs);
+        $stock_data = !empty($stock_tickers) ? _finance_fetch_stocks($stock_tickers) : [];
+
+        $result = [
+            'crypto' => $crypto_data,
+            'forex' => $fx_data,
+            'stocks' => $stock_data,
+            'updated_at' => date('c')
+        ];
+
+        // Uložit do cache
+        $cache_dir_path = dirname($cache_file);
+        if (!is_dir($cache_dir_path)) {
+            mkdir($cache_dir_path, 0755, true);
+        }
+        file_put_contents($cache_file, json_encode([
+            'data' => $result,
+            'timestamp' => time()
+        ]), LOCK_EX);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => $result,
+            'cached' => false,
+            'message' => 'Finanční data načtena úspěšně'
+        ]);
+
+    } catch (Exception $e) {
+        error_log("📈 Finance Markets Error: " . $e->getMessage() . " | User: {$username}");
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání finančních dat: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * Fetch krypto dat z CoinGecko API (free, bez API klíče)
+ * @param array $crypto_ids - pole CoinGecko ID (např. ['bitcoin', 'ethereum', 'solana'])
+ */
+function _finance_fetch_crypto($crypto_ids = ['bitcoin', 'ethereum']) {
+    if (empty($crypto_ids)) return [];
+
+    $ids_str = implode(',', $crypto_ids);
+    $url = 'https://api.coingecko.com/api/v3/simple/price?ids=' . urlencode($ids_str) . '&vs_currencies=usd,eur,czk&include_24hr_change=true&include_market_cap=true';
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 10,
+            'header' => "Accept: application/json\r\nUser-Agent: ERDMS-Dashboard/1.0\r\n"
+        ]
+    ]);
+
+    $response = @file_get_contents($url, false, $ctx);
+    if ($response === false) {
+        error_log("📈 CoinGecko API Error: Nepodařilo se načíst data");
+        return [];
+    }
+
+    $data = json_decode($response, true);
+    if (!$data) return [];
+
+    // Mapování CoinGecko ID na lidsky čitelné symboly
+    $symbol_map = [
+        'bitcoin' => '₿', 'ethereum' => 'Ξ', 'solana' => 'SOL',
+        'ripple' => 'XRP', 'cardano' => 'ADA', 'polkadot' => 'DOT',
+        'dogecoin' => 'DOGE', 'avalanche-2' => 'AVAX', 'chainlink' => 'LINK',
+        'litecoin' => 'LTC'
+    ];
+    $name_map = [
+        'bitcoin' => 'Bitcoin', 'ethereum' => 'Ethereum', 'solana' => 'Solana',
+        'ripple' => 'XRP', 'cardano' => 'Cardano', 'polkadot' => 'Polkadot',
+        'dogecoin' => 'Dogecoin', 'avalanche-2' => 'Avalanche', 'chainlink' => 'Chainlink',
+        'litecoin' => 'Litecoin'
+    ];
+
+    $result = [];
+    foreach ($crypto_ids as $id) {
+        if (isset($data[$id])) {
+            $result[] = [
+                'id' => $id,
+                'name' => $name_map[$id] ?? ucfirst($id),
+                'symbol' => $symbol_map[$id] ?? strtoupper(substr($id, 0, 3)),
+                'price_usd' => $data[$id]['usd'] ?? null,
+                'price_eur' => $data[$id]['eur'] ?? null,
+                'price_czk' => $data[$id]['czk'] ?? null,
+                'change_24h' => $data[$id]['usd_24h_change'] ?? null,
+                'market_cap' => $data[$id]['usd_market_cap'] ?? null
+            ];
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Fetch FX kurzů z Frankfurter API (free, server-side)
+ * @param array $targets - cílové měny (např. ['CZK', 'USD'])
+ */
+function _finance_fetch_forex($targets = ['CZK', 'USD']) {
+    if (empty($targets)) return [];
+
+    $targets_str = implode(',', $targets);
+    $url = 'https://api.frankfurter.app/latest?from=EUR&to=' . urlencode($targets_str);
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 10,
+            'header' => "Accept: application/json\r\nUser-Agent: ERDMS-Dashboard/1.0\r\n"
+        ]
+    ]);
+
+    $response = @file_get_contents($url, false, $ctx);
+    if ($response === false) {
+        error_log("📈 Frankfurter API Error: Nepodařilo se načíst FX data");
+        return [];
+    }
+
+    $data = json_decode($response, true);
+    if (!$data || !isset($data['rates'])) return [];
+
+    $result = [];
+    $eur_czk = $data['rates']['CZK'] ?? null;
+    $eur_usd = $data['rates']['USD'] ?? null;
+
+    if ($eur_czk) $result[] = ['pair' => 'EUR/CZK', 'rate' => round($eur_czk, 2)];
+    if ($eur_usd) $result[] = ['pair' => 'EUR/USD', 'rate' => round($eur_usd, 4)];
+    if ($eur_czk && $eur_usd) {
+        $result[] = ['pair' => 'USD/CZK', 'rate' => round($eur_czk / $eur_usd, 2)];
+    }
+
+    return $result;
+}
+
+/**
+ * Fetch akcií z Yahoo Finance v8 quote API (free, server-side only)
+ * @param array $tickers - pole tickerů (např. ['AAPL', 'MSFT', 'TSLA'])
+ */
+function _finance_fetch_stocks($tickers) {
+    if (empty($tickers)) return [];
+
+    $symbols = implode(',', $tickers);
+    $url = 'https://query1.finance.yahoo.com/v8/finance/chart/' . urlencode($tickers[0]) . '?comparisons=' . urlencode(implode(',', array_slice($tickers, 1))) . '&range=1d&interval=1d';
+
+    // Alternativa: použít v7 quote endpoint pro více symbolů najednou
+    $url = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' . urlencode($symbols);
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 12,
+            'header' => "Accept: application/json\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n"
+        ]
+    ]);
+
+    $response = @file_get_contents($url, false, $ctx);
+    if ($response === false) {
+        error_log("📈 Yahoo Finance API Error: Nepodařilo se načíst data pro: " . $symbols);
+        // Fallback: zkusit alternativní API
+        return _finance_fetch_stocks_fallback($tickers);
+    }
+
+    $data = json_decode($response, true);
+    $quotes = $data['quoteResponse']['result'] ?? [];
+
+    if (empty($quotes)) {
+        return _finance_fetch_stocks_fallback($tickers);
+    }
+
+    $result = [];
+    foreach ($quotes as $q) {
+        $result[] = [
+            'ticker' => $q['symbol'] ?? '',
+            'name' => $q['shortName'] ?? $q['longName'] ?? $q['symbol'] ?? '',
+            'price' => $q['regularMarketPrice'] ?? null,
+            'change' => $q['regularMarketChangePercent'] ?? null,
+            'currency' => $q['currency'] ?? 'USD',
+            'market_cap' => $q['marketCap'] ?? null,
+            'exchange' => $q['exchangeTimezoneName'] ?? '',
+            'market_state' => $q['marketState'] ?? ''
+        ];
+    }
+
+    return $result;
+}
+
+/**
+ * Fallback: fetch akcií z Alpha Vantage demo nebo vracíme prázdné
+ */
+function _finance_fetch_stocks_fallback($tickers) {
+    // Zkusit stooq.com CSV API (free, bez registrace)
+    $result = [];
+    foreach (array_slice($tickers, 0, 8) as $ticker) {
+        $url = 'https://stooq.com/q/l/?s=' . urlencode(strtolower($ticker) . '.us') . '&f=sd2t2ohlcv&h&e=json';
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 8,
+                'header' => "Accept: application/json\r\nUser-Agent: ERDMS-Dashboard/1.0\r\n"
+            ]
+        ]);
+
+        $response = @file_get_contents($url, false, $ctx);
+        if ($response === false) continue;
+
+        $data = json_decode($response, true);
+        $symbols = $data['symbols'] ?? [];
+        if (!empty($symbols) && isset($symbols[0]['close'])) {
+            $s = $symbols[0];
+            $open = $s['open'] ?? 0;
+            $close = $s['close'] ?? 0;
+            $change_pct = $open > 0 ? (($close - $open) / $open * 100) : null;
+
+            $result[] = [
+                'ticker' => strtoupper($ticker),
+                'name' => strtoupper($ticker),
+                'price' => $close,
+                'change' => $change_pct ? round($change_pct, 2) : null,
+                'currency' => 'USD',
+                'market_cap' => null,
+                'exchange' => '',
+                'market_state' => ''
+            ];
+        }
+    }
+    return $result;
+}
+
+/**
+ * POST - Historická data ceny pro graf
+ * Endpoint: dashboard/finance-chart
+ * POST: {token, username, ticker, range}
+ * range: 1mo, 3mo, ytd
+ */
+function handle_dashboard_finance_chart($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $ticker = strtoupper(trim($input['ticker'] ?? ''));
+    $range = $input['range'] ?? '1mo';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    if (!$ticker || !preg_match('/^[A-Z0-9.\-]{1,10}$/', $ticker)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný ticker']);
+        return;
+    }
+
+    // Povolené rozsahy
+    $allowed_ranges = ['1mo', '3mo', 'ytd', '6mo', '1y'];
+    if (!in_array($range, $allowed_ranges)) {
+        $range = '1mo';
+    }
+
+    // Interval dle rozsahu
+    $interval_map = ['1mo' => '1d', '3mo' => '1d', 'ytd' => '1d', '6mo' => '1d', '1y' => '1wk'];
+    $interval = $interval_map[$range];
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        $token_data = verify_token_v2($username, $token, $db);
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            return;
+        }
+
+        // Cache (1 hodina pro historická data)
+        $cache_dir = $_ENV['UPLOAD_ROOT_PATH'] ?? '/var/www/erdms-data/';
+        $cache_key = md5("chart_{$ticker}_{$range}");
+        $cache_file = rtrim($cache_dir, '/') . '/cache/finance_chart_' . $cache_key . '.json';
+        $cache_expiry = 60 * 60; // 1 hodina
+
+        if (file_exists($cache_file)) {
+            $cache_content = file_get_contents($cache_file);
+            $cache_data = json_decode($cache_content, true);
+            if ($cache_data && isset($cache_data['timestamp']) && (time() - $cache_data['timestamp']) < $cache_expiry) {
+                http_response_code(200);
+                echo json_encode([
+                    'status' => 'success',
+                    'data' => $cache_data['data'],
+                    'cached' => true,
+                    'message' => 'Graf data z cache'
+                ]);
+                return;
+            }
+        }
+
+        // Fetch z Yahoo Finance v8 chart API
+        $chart_data = _finance_fetch_chart($ticker, $range, $interval);
+
+        if (empty($chart_data)) {
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'success',
+                'data' => null,
+                'message' => 'Data pro graf nejsou dostupná'
+            ]);
+            return;
+        }
+
+        // Cache uložit
+        $cache_dir_path = dirname($cache_file);
+        if (!is_dir($cache_dir_path)) {
+            mkdir($cache_dir_path, 0755, true);
+        }
+        file_put_contents($cache_file, json_encode([
+            'data' => $chart_data,
+            'timestamp' => time()
+        ]), LOCK_EX);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => $chart_data,
+            'cached' => false,
+            'message' => 'Graf data načtena'
+        ]);
+
+    } catch (Exception $e) {
+        error_log("📈 Finance Chart Error: " . $e->getMessage() . " | Ticker: {$ticker} | User: {$username}");
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání dat grafu'
+        ]);
+    }
+}
+
+/**
+ * Fetch historických cenových dat z Yahoo Finance v8 chart API
+ */
+function _finance_fetch_chart($ticker, $range = '1mo', $interval = '1d') {
+    $url = "https://query1.finance.yahoo.com/v8/finance/chart/{$ticker}?range={$range}&interval={$interval}&includePrePost=false";
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 12,
+            'header' => "Accept: application/json\r\nUser-Agent: ERDMS-Dashboard/1.0\r\n"
+        ]
+    ]);
+
+    $response = @file_get_contents($url, false, $ctx);
+    if ($response === false) {
+        error_log("📈 Yahoo Chart API Error: Nepodařilo se načíst data pro {$ticker}");
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    $result_data = $data['chart']['result'][0] ?? null;
+    if (!$result_data) return null;
+
+    $timestamps = $result_data['timestamp'] ?? [];
+    $closes = $result_data['indicators']['quote'][0]['close'] ?? [];
+    $meta = $result_data['meta'] ?? [];
+
+    if (empty($timestamps) || empty($closes)) return null;
+
+    // Sestavit pole bodů
+    $points = [];
+    for ($i = 0; $i < count($timestamps); $i++) {
+        if (isset($closes[$i]) && $closes[$i] !== null) {
+            $points[] = [
+                'date' => date('Y-m-d', $timestamps[$i]),
+                'price' => round($closes[$i], 2)
+            ];
+        }
+    }
+
+    if (empty($points)) return null;
+
+    $first_price = $points[0]['price'];
+    $last_price = $points[count($points) - 1]['price'];
+    $change_pct = $first_price > 0 ? round(($last_price - $first_price) / $first_price * 100, 2) : 0;
+
+    return [
+        'ticker' => $ticker,
+        'name' => $meta['shortName'] ?? $meta['symbol'] ?? $ticker,
+        'currency' => $meta['currency'] ?? 'USD',
+        'range' => $range,
+        'interval' => $interval,
+        'points' => $points,
+        'price_current' => $last_price,
+        'price_start' => $first_price,
+        'change_pct' => $change_pct
+    ];
+}

@@ -5,11 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { AuthContext } from '../context/AuthContext';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
-import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline, getRssFeed } from '../services/apiDashboard';
+import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline, getRssFeed, getFinanceMarkets, getFinanceChart } from '../services/apiDashboard';
 import { getAdminMessagesUnreadCount } from '../services/notificationsApi';
 import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
 import { theme } from '../theme/theme';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -17,7 +17,10 @@ import {
   Legend,
   CategoryScale,
   LinearScale,
-  BarElement
+  BarElement,
+  PointElement,
+  LineElement,
+  Filler
 } from 'chart.js';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -37,7 +40,7 @@ import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
 import SendQuickMessageModal from '../components/dashboard/SendQuickMessageModal';
 
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
 
 // ── Fullscreen styled komponenty ─────────────────────────────────────────────
 const ChartExpandBtn = styled.button`
@@ -129,6 +132,7 @@ const WIDGET_REGISTRY = {
   cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true },
   rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316', requires: 'DASHBOARD_RSS_NEWS' },
   weather:             { title: 'Počasí',                      icon: faCloud,              color: '#1e40af', requires: 'DASHBOARD_WEATHER' },
+  finance_markets:     { title: 'Finanční trhy',               icon: faChartLine,          color: '#059669', requires: 'DASHBOARD_FINANCE_MARKETS' },
   calendar:            { title: 'Kalendář',                    icon: faCalendarAlt,        color: '#0891b2', requires: 'DASHBOARD_CALENDAR' },
   active_users_admin:  { title: 'Přehled aktivit uživatelů',    icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
 };
@@ -2009,6 +2013,678 @@ function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh })
         {updated_at && (
           <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.4)', textAlign: 'right', marginTop: '0.6rem' }}>
             Aktualizováno: {new Date(updated_at).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Finanční trhy widget ─────────────────────────────────────────────────────
+
+const FINANCE_TIPS = [
+  { tip: 'Diverzifikace portfolia snižuje riziko. Nikdy nevkládejte vše do jednoho aktiva.', category: 'Strategie' },
+  { tip: 'Pravidlo 50/30/20: 50 % na potřeby, 30 % na přání, 20 % na spoření a investice.', category: 'Rozpočet' },
+  { tip: 'DCA (Dollar Cost Averaging) – pravidelné investování stejné částky minimalizuje dopad volatility.', category: 'Investice' },
+  { tip: 'Mějte finanční rezervu na 3–6 měsíců výdajů před investováním.', category: 'Spoření' },
+  { tip: 'Složené úročení je nejsilnější síla ve financích – začněte investovat co nejdříve.', category: 'Princip' },
+  { tip: 'Sledujte poměr P/E u akcií – vysoký P/E může znamenat nadhodnocení.', category: 'Akcie' },
+  { tip: 'Bitcoin má omezený supply (21 mil.) – to z něj dělá deflační aktivum.', category: 'Krypto' },
+  { tip: 'Nikdy neinvestujte peníze, které si nemůžete dovolit ztratit.', category: 'Pravidlo' },
+  { tip: 'ETF fondy nabízejí jednoduchou diverzifikaci s nízkými poplatky.', category: 'Fondy' },
+  { tip: 'Sledujte inflaci – pokud výnos investice nepřekoná inflaci, reálně ztrácíte.', category: 'Ekonomika' },
+  { tip: 'Halving Bitcoinu (cca každé 4 roky) historicky vedl k růstu ceny.', category: 'Krypto' },
+  { tip: 'Staking u Ethereum (ETH) umožňuje pasivní příjem kolem 3–5 % ročně.', category: 'Krypto' },
+];
+
+const FinanceScrollArea = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+`;
+
+const FinanceConfigScroll = styled.div`
+  position: relative;
+  padding: 1.2rem 1.3rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  overflow-y: auto;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+`;
+
+const DEFAULT_FINANCE_CONFIG = {
+  crypto_ids: ['bitcoin', 'ethereum'],
+  stock_tickers: ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'],
+  fx_pairs: ['CZK', 'USD']
+};
+
+const CRYPTO_OPTIONS = [
+  { id: 'bitcoin', name: 'Bitcoin', symbol: '₿' },
+  { id: 'ethereum', name: 'Ethereum', symbol: 'Ξ' },
+  { id: 'solana', name: 'Solana', symbol: 'SOL' },
+  { id: 'ripple', name: 'XRP', symbol: 'XRP' },
+  { id: 'cardano', name: 'Cardano', symbol: 'ADA' },
+  { id: 'polkadot', name: 'Polkadot', symbol: 'DOT' },
+  { id: 'dogecoin', name: 'Dogecoin', symbol: 'DOGE' },
+  { id: 'avalanche-2', name: 'Avalanche', symbol: 'AVAX' },
+  { id: 'chainlink', name: 'Chainlink', symbol: 'LINK' },
+  { id: 'litecoin', name: 'Litecoin', symbol: 'LTC' },
+];
+
+const FX_OPTIONS = ['CZK', 'USD', 'GBP', 'CHF', 'PLN', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'HUF'];
+
+function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, userId, token, username }) {
+  const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * FINANCE_TIPS.length));
+  const [configOpen, setConfigOpen] = useState(false);
+  const cfgKey = `finance_config_${userId || 'default'}`;
+
+  // Chart state
+  const [chartData, setChartData] = useState(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartRange, setChartRange] = useState('1mo');
+  const [chartTickerIdx, setChartTickerIdx] = useState(0);
+  const chartRotationRef = useRef(null);
+
+  const [localConfig, setLocalConfig] = useState(() => {
+    try { return { ...DEFAULT_FINANCE_CONFIG, ...JSON.parse(localStorage.getItem(cfgKey)) }; }
+    catch { return { ...DEFAULT_FINANCE_CONFIG }; }
+  });
+  const [tickerInput, setTickerInput] = useState('');
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setTipIndex(prev => (prev + 1) % FINANCE_TIPS.length);
+    }, 90000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Sestavit seznam tickerů pro graf (akcie + krypto)
+  const allChartTickers = useMemo(() => {
+    const tickers = [...(localConfig.stock_tickers || [])];
+    // CoinGecko IDs nepoužijeme přímo – mapujeme na ticker-like symboly pro Yahoo
+    const cryptoTickerMap = { bitcoin: 'BTC-USD', ethereum: 'ETH-USD', solana: 'SOL-USD', ripple: 'XRP-USD', cardano: 'ADA-USD', polkadot: 'DOT-USD', dogecoin: 'DOGE-USD', 'avalanche-2': 'AVAX-USD', chainlink: 'LINK-USD', litecoin: 'LTC-USD' };
+    (localConfig.crypto_ids || []).forEach(id => {
+      if (cryptoTickerMap[id]) tickers.push(cryptoTickerMap[id]);
+    });
+    return tickers;
+  }, [localConfig.stock_tickers, localConfig.crypto_ids]);
+
+  // Fetch chart data
+  const fetchChart = useCallback(async (ticker, range) => {
+    if (!token || !username || !ticker) return;
+    setChartLoading(true);
+    try {
+      const res = await getFinanceChart({ token, username, ticker, range });
+      if (res?.status === 'success' && res.data) {
+        setChartData(res.data);
+      } else {
+        setChartData(null);
+      }
+    } catch { setChartData(null); }
+    setChartLoading(false);
+  }, [token, username]);
+
+  // Initial chart load + rotace každých 10 minut
+  useEffect(() => {
+    if (allChartTickers.length === 0 || !token) return;
+    const idx = chartTickerIdx % allChartTickers.length;
+    fetchChart(allChartTickers[idx], chartRange);
+
+    chartRotationRef.current = setInterval(() => {
+      setChartTickerIdx(prev => {
+        const nextIdx = (prev + 1) % allChartTickers.length;
+        return nextIdx;
+      });
+    }, 10 * 60 * 1000); // 10 minut
+
+    return () => { if (chartRotationRef.current) clearInterval(chartRotationRef.current); };
+  }, [chartTickerIdx, chartRange, allChartTickers.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveConfig = (newCfg) => {
+    setLocalConfig(newCfg);
+    try { localStorage.setItem(cfgKey, JSON.stringify(newCfg)); } catch (e) { /* ignore */ }
+  };
+
+  const toggleCrypto = (id) => {
+    const next = localConfig.crypto_ids.includes(id)
+      ? localConfig.crypto_ids.filter(c => c !== id)
+      : [...localConfig.crypto_ids, id].slice(0, 10);
+    saveConfig({ ...localConfig, crypto_ids: next });
+  };
+
+  const toggleFx = (pair) => {
+    const next = localConfig.fx_pairs.includes(pair)
+      ? localConfig.fx_pairs.filter(p => p !== pair)
+      : [...localConfig.fx_pairs, pair].slice(0, 6);
+    saveConfig({ ...localConfig, fx_pairs: next });
+  };
+
+  const addTicker = () => {
+    const t = tickerInput.trim().toUpperCase();
+    if (t && !localConfig.stock_tickers.includes(t) && localConfig.stock_tickers.length < 15) {
+      saveConfig({ ...localConfig, stock_tickers: [...localConfig.stock_tickers, t] });
+      setTickerInput('');
+    }
+  };
+
+  const removeTicker = (t) => {
+    saveConfig({ ...localConfig, stock_tickers: localConfig.stock_tickers.filter(s => s !== t) });
+  };
+
+  const accentColor = '#059669';
+
+  const cardStyle = (extra = {}) => ({
+    background: '#f8fafc', padding: '0.6rem 0.75rem',
+    borderRadius: '10px',
+    border: '1px solid #e2e8f0', ...extra
+  });
+
+  if (financeLoading && !financeData) {
+    return (
+      <div style={{
+        background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', minHeight: '300px', gap: '0.75rem',
+        color: '#64748b', position: 'relative', overflow: 'hidden',
+        width: '100%', height: '100%'
+      }}>
+        <FontAwesomeIcon icon={faSync} spin style={{ fontSize: '1.8rem', color: accentColor }} />
+        <span style={{ fontWeight: 500, fontSize: '0.85rem', color: '#94a3b8' }}>Načítám finanční data…</span>
+      </div>
+    );
+  }
+
+  if (financeError || !financeData) {
+    return (
+      <div style={{
+        background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', minHeight: '300px', gap: '0.75rem',
+        color: '#94a3b8', position: 'relative', overflow: 'hidden',
+        width: '100%', height: '100%'
+      }}>
+        <FontAwesomeIcon icon={faChartLine} style={{ fontSize: '2.5rem', opacity: 0.4 }} />
+        <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>Finanční data nejsou dostupná</span>
+        <button onClick={onRefresh} style={{
+          background: accentColor, border: 'none',
+          color: '#fff', borderRadius: '999px', padding: '0.35rem 1rem',
+          fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600
+        }}>Zkusit znovu</button>
+      </div>
+    );
+  }
+
+  const { crypto, forex, stocks, updated_at: fUpdatedAt } = financeData;
+  const currentTip = FINANCE_TIPS[tipIndex];
+
+  const formatPrice = (price, currency = 'USD') => {
+    if (price == null) return '–';
+    if (currency === 'CZK') return price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+    if (currency === 'EUR') return '€' + price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatChange = (change) => {
+    if (change == null) return null;
+    const isPositive = change >= 0;
+    return (
+      <span style={{
+        fontSize: '0.66rem', fontWeight: 700,
+        color: isPositive ? '#059669' : '#dc2626',
+        background: isPositive ? '#ecfdf5' : '#fef2f2',
+        padding: '0.1rem 0.4rem', borderRadius: '6px',
+        display: 'inline-flex', alignItems: 'center', gap: '0.15rem'
+      }}>
+        {isPositive ? '▲' : '▼'} {Math.abs(change).toFixed(2)}%
+      </span>
+    );
+  };
+
+  const formatMarketCap = (cap) => {
+    if (!cap) return '';
+    if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
+    if (cap >= 1e9) return `$${(cap / 1e9).toFixed(1)}B`;
+    if (cap >= 1e6) return `$${(cap / 1e6).toFixed(0)}M`;
+    return `$${cap.toLocaleString()}`;
+  };
+
+  // ─── Config panel ────────────────────────────────────────────────────
+  if (configOpen) {
+    return (
+      <div style={{
+        background: '#fff', color: '#334155', position: 'relative', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minHeight: '300px'
+      }}>
+        <FinanceConfigScroll>
+          {/* Config header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>
+              <FontAwesomeIcon icon={faCog} style={{ marginRight: '0.4rem', color: '#94a3b8' }} />
+              Nastavení widgetu
+            </span>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button onClick={() => { setConfigOpen(false); onRefresh(); }} style={{
+                background: accentColor, border: 'none', color: '#fff',
+                borderRadius: '8px', padding: '0.3rem 0.8rem', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
+              }}>Uložit & načíst</button>
+              <button onClick={() => setConfigOpen(false)} style={{
+                background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#64748b',
+                borderRadius: '8px', padding: '0.3rem 0.6rem', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer'
+              }}>
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+            </div>
+          </div>
+
+          {/* Akcie tickery */}
+          <div>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>
+              Akcie (ticker)
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.35rem' }}>
+              {localConfig.stock_tickers.map(t => (
+                <span key={t} style={{
+                  background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.2rem 0.5rem', borderRadius: '8px',
+                  fontSize: '0.7rem', fontWeight: 700, color: '#166534', display: 'inline-flex', alignItems: 'center', gap: '0.3rem'
+                }}>
+                  {t}
+                  <span onClick={() => removeTicker(t)} style={{ cursor: 'pointer', color: '#94a3b8', fontSize: '0.6rem' }}>✕</span>
+                </span>
+              ))}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                <input
+                  value={tickerInput}
+                  onChange={e => setTickerInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g, ''))}
+                  onKeyDown={e => { if (e.key === 'Enter') addTicker(); }}
+                  placeholder="TICKER"
+                  maxLength={10}
+                  style={{
+                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                    color: '#334155', borderRadius: '6px', padding: '0.2rem 0.4rem', fontSize: '0.68rem',
+                    fontWeight: 600, width: '5rem', outline: 'none'
+                  }}
+                />
+                <button onClick={addTicker} style={{
+                  background: accentColor, border: 'none', color: '#fff', borderRadius: '6px',
+                  padding: '0.2rem 0.4rem', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer'
+                }}>+</button>
+              </span>
+            </div>
+          </div>
+
+          {/* Krypto výběr */}
+          <div>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>
+              Kryptoměny
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.3rem' }}>
+              {CRYPTO_OPTIONS.map(c => {
+                const active = localConfig.crypto_ids.includes(c.id);
+                return (
+                  <button key={c.id} onClick={() => toggleCrypto(c.id)} style={{
+                    background: active ? '#ecfdf5' : '#f8fafc',
+                    border: `1px solid ${active ? '#6ee7b7' : '#e2e8f0'}`,
+                    color: active ? '#065f46' : '#64748b', borderRadius: '8px', padding: '0.2rem 0.55rem',
+                    fontSize: '0.68rem', fontWeight: active ? 700 : 500, cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}>
+                    {c.symbol} {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Měnové páry */}
+          <div>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>
+              FX páry (z EUR)
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.3rem' }}>
+              {FX_OPTIONS.map(fx => {
+                const active = localConfig.fx_pairs.includes(fx);
+                return (
+                  <button key={fx} onClick={() => toggleFx(fx)} style={{
+                    background: active ? '#ecfdf5' : '#f8fafc',
+                    border: `1px solid ${active ? '#6ee7b7' : '#e2e8f0'}`,
+                    color: active ? '#065f46' : '#64748b', borderRadius: '8px', padding: '0.2rem 0.5rem',
+                    fontSize: '0.68rem', fontWeight: active ? 700 : 500, cursor: 'pointer'
+                  }}>
+                    EUR/{fx}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: 'auto' }}>
+            Nastavení se ukládá lokálně. Data se aktualizují každých 15 minut.
+          </div>
+        </FinanceConfigScroll>
+      </div>
+    );
+  }
+
+  // ─── Hlavní obsah widgetu (2-sloupcový layout) ────────────────────────
+  return (
+    <div style={{
+      background: '#fff', color: '#334155', position: 'relative', overflow: 'hidden',
+      userSelect: 'none', display: 'flex', flexDirection: 'column',
+      width: '100%', height: '100%', minHeight: '300px'
+    }}>
+      <div style={{ position: 'relative', padding: '1.2rem 1.3rem', display: 'flex', flexDirection: 'column', gap: '0', flex: 1 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FontAwesomeIcon icon={faChartLine} style={{ fontSize: '0.9rem', color: accentColor }} />
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', letterSpacing: '0.2px' }}>Finanční trhy</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{
+              fontSize: '0.58rem', fontWeight: 700, padding: '0.12rem 0.5rem',
+              background: '#ecfdf5', borderRadius: '999px', color: accentColor, letterSpacing: '0.5px'
+            }}>LIVE</span>
+            <button onClick={() => setConfigOpen(true)} title="Nastavení" style={{
+              background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#94a3b8',
+              borderRadius: '50%', width: '1.45rem', height: '1.45rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s'
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#64748b'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              <FontAwesomeIcon icon={faCog} style={{ fontSize: '0.55rem' }} />
+            </button>
+            <button onClick={onRefresh} title="Obnovit" style={{
+              background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#94a3b8',
+              borderRadius: '50%', width: '1.45rem', height: '1.45rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s'
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#64748b'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              <FontAwesomeIcon icon={faSync} style={{ fontSize: '0.55rem' }} />
+            </button>
+          </div>
+        </div>
+
+        {/* 2-sloupcový grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignItems: 'start' }}>
+          {/* ─── LEVÝ SLOUPEC: Krypto + Tip ─── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            {/* Krypto */}
+            {crypto && crypto.length > 0 && (
+              <>
+                <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>Kryptoměny</span>
+                {crypto.map((coin) => (
+                  <div key={coin.id} style={{
+                    ...cardStyle(), display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{
+                        width: '1.8rem', height: '1.8rem', borderRadius: '50%',
+                        background: coin.id === 'bitcoin' ? 'linear-gradient(135deg, #f7931a 0%, #ffb347 100%)' :
+                                    coin.id === 'ethereum' ? 'linear-gradient(135deg, #627eea 0%, #8c9eff 100%)' :
+                                    'linear-gradient(135deg, #6366f1 0%, #a5b4fc 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '0.65rem', fontWeight: 800, color: '#fff',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+                      }}>
+                        {coin.symbol}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>{coin.name}</span>
+                        <span style={{ fontSize: '0.56rem', color: '#94a3b8' }}>MCap: {formatMarketCap(coin.market_cap)}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{formatPrice(coin.price_usd)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <span style={{ fontSize: '0.56rem', color: '#94a3b8' }}>{formatPrice(coin.price_czk, 'CZK')}</span>
+                        {formatChange(coin.change_24h)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Finanční tipy – dynamicky dorovnání s pravým sloupcem */}
+            {(() => {
+              const cryptoCount = crypto?.length || 0;
+              const stocksCount = stocks?.length || 0;
+              const fxRows = forex?.length ? Math.ceil(forex.length / 3) + 1 : 0;
+              // Pravý sloupec má cca stocksCount + fxRows položek, levý má cryptoCount
+              // Dorovnej tipy, ale max 4 a min 1
+              const diff = (stocksCount + fxRows) - cryptoCount;
+              const tipsCount = Math.max(1, Math.min(4, diff));
+              const tips = [];
+              for (let i = 0; i < tipsCount; i++) {
+                tips.push(FINANCE_TIPS[(tipIndex + i) % FINANCE_TIPS.length]);
+              }
+              return tips.map((tip, idx) => (
+                <div key={idx} style={{
+                  ...cardStyle({ padding: '0.6rem 0.75rem', borderLeft: `3px solid ${accentColor}`, background: '#f0fdf4' })
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.2rem' }}>
+                    <FontAwesomeIcon icon={faInfoCircle} style={{ fontSize: '0.55rem', color: accentColor }} />
+                    <span style={{ fontSize: '0.52rem', fontWeight: 700, textTransform: 'uppercase', color: '#059669', letterSpacing: '0.5px' }}>
+                      {tip.category}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.68rem', lineHeight: 1.45, color: '#334155', fontWeight: 500 }}>
+                    {tip.tip}
+                  </p>
+                </div>
+              ));
+            })()}
+          </div>
+
+          {/* ─── PRAVÝ SLOUPEC: Akcie + FX ─── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', minHeight: 0 }}>
+            {/* Akcie */}
+            {stocks && stocks.length > 0 && (
+              <>
+                <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>Akcie</span>
+                <FinanceScrollArea>
+                  {stocks.map((s) => (
+                    <div key={s.ticker} style={{
+                      ...cardStyle({ padding: '0.5rem 0.7rem' }),
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>{s.ticker}</span>
+                        <span style={{ fontSize: '0.55rem', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                          {s.name}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                          {s.currency === 'CZK' ? formatPrice(s.price, 'CZK') : formatPrice(s.price)}
+                        </span>
+                        {formatChange(s.change)}
+                      </div>
+                    </div>
+                  ))}
+                </FinanceScrollArea>
+              </>
+            )}
+
+            {/* Pokud nejsou akcie, zobrazit instrukci */}
+            {(!stocks || stocks.length === 0) && (
+              <div style={{ ...cardStyle({ padding: '0.8rem' }), textAlign: 'center' }}>
+                <FontAwesomeIcon icon={faChartLine} style={{ fontSize: '1.5rem', marginBottom: '0.4rem', display: 'block', color: '#cbd5e1' }} />
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>Akcie se načítají…</span>
+                <br />
+                <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Klikněte na ⚙ pro nastavení tickerů</span>
+              </div>
+            )}
+
+            {/* FX kurzy */}
+            {forex && forex.length > 0 && (
+              <>
+                <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px', marginTop: '0.15rem' }}>Měnové kurzy</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(78px, 1fr))', gap: '0.3rem' }}>
+                  {forex.map((fx) => (
+                    <div key={fx.pair} style={{
+                      ...cardStyle({ padding: '0.4rem 0.45rem', display: 'flex', flexDirection: 'column', alignItems: 'center' })
+                    }}>
+                      <span style={{ fontSize: '0.52rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{fx.pair}</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', marginTop: '0.02rem' }}>
+                        {fx.rate?.toFixed(fx.pair.includes('CZK') || fx.pair.includes('HUF') || fx.pair.includes('JPY') ? 2 : 4)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ─── Mini-graf cenového vývoje ─── */}
+        {allChartTickers.length > 0 && (
+          <div style={{
+            marginTop: '0.7rem', background: '#f8fafc', borderRadius: '10px',
+            border: '1px solid #e2e8f0', padding: '0.65rem 0.8rem'
+          }}>
+            {/* Graf header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>
+                  {chartData?.ticker || allChartTickers[chartTickerIdx % allChartTickers.length] || '–'}
+                </span>
+                {chartData?.price_current != null && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                    {({ USD: '$', EUR: '€', GBP: '£', CZK: 'Kč', JPY: '¥' })[chartData.currency] || (chartData.currency + ' ')}
+                    {chartData.price_current.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                )}
+                {chartData && (
+                  <span style={{
+                    fontSize: '0.62rem', fontWeight: 700, padding: '0.08rem 0.35rem', borderRadius: '6px',
+                    color: chartData.change_pct >= 0 ? '#059669' : '#dc2626',
+                    background: chartData.change_pct >= 0 ? '#ecfdf5' : '#fef2f2'
+                  }}>
+                    {chartData.change_pct >= 0 ? '+' : ''}{chartData.change_pct}%
+                  </span>
+                )}
+                {chartData?.name && chartData.name !== chartData.ticker && (
+                  <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>{chartData.name}</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                {['1mo', '3mo', 'ytd'].map(r => (
+                  <button key={r} onClick={() => { setChartRange(r); }}
+                    style={{
+                      background: chartRange === r ? '#059669' : '#f1f5f9',
+                      color: chartRange === r ? '#fff' : '#64748b',
+                      border: `1px solid ${chartRange === r ? '#059669' : '#e2e8f0'}`,
+                      borderRadius: '6px', padding: '0.12rem 0.4rem', fontSize: '0.58rem',
+                      fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                  >
+                    {r === '1mo' ? '1M' : r === '3mo' ? '3M' : 'YTD'}
+                  </button>
+                ))}
+                <button onClick={() => setChartTickerIdx(prev => (prev + 1) % allChartTickers.length)}
+                  title="Další ticker" style={{
+                    background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#94a3b8',
+                    borderRadius: '6px', padding: '0.12rem 0.35rem', fontSize: '0.55rem',
+                    fontWeight: 700, cursor: 'pointer', marginLeft: '0.15rem'
+                  }}
+                >▶</button>
+              </div>
+            </div>
+
+            {/* Graf tělo */}
+            <div style={{ height: '120px', position: 'relative' }}>
+              {chartLoading && !chartData && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.72rem' }}>
+                  <FontAwesomeIcon icon={faSync} spin style={{ marginRight: '0.4rem' }} /> Načítám graf…
+                </div>
+              )}
+              {!chartLoading && !chartData && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#cbd5e1', fontSize: '0.72rem' }}>
+                  Data pro graf nejsou dostupná
+                </div>
+              )}
+              {chartData && chartData.points && (
+                <Line
+                  data={{
+                    labels: chartData.points.map(p => {
+                      const d = new Date(p.date);
+                      return `${d.getDate()}.${d.getMonth() + 1}.`;
+                    }),
+                    datasets: [{
+                      data: chartData.points.map(p => p.price),
+                      borderColor: chartData.change_pct >= 0 ? '#059669' : '#dc2626',
+                      backgroundColor: chartData.change_pct >= 0 ? 'rgba(5,150,105,0.08)' : 'rgba(220,38,38,0.08)',
+                      borderWidth: 1.5,
+                      pointRadius: 0,
+                      pointHitRadius: 8,
+                      tension: 0.3,
+                      fill: true
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        backgroundColor: '#1e293b',
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 11, weight: 'bold' },
+                        padding: 6,
+                        cornerRadius: 6,
+                        callbacks: {
+                          label: (ctx) => `$${ctx.parsed.y?.toFixed(2)}`
+                        }
+                      }
+                    },
+                    scales: {
+                      x: {
+                        display: true,
+                        grid: { display: false },
+                        ticks: { font: { size: 8 }, color: '#cbd5e1', maxTicksLimit: 6, maxRotation: 0 },
+                        border: { display: false }
+                      },
+                      y: {
+                        display: true,
+                        position: 'right',
+                        grid: { color: '#f1f5f9', lineWidth: 1 },
+                        ticks: { font: { size: 8 }, color: '#94a3b8', maxTicksLimit: 4, callback: (v) => '$' + v.toLocaleString() },
+                        border: { display: false }
+                      }
+                    },
+                    interaction: { intersect: false, mode: 'index' },
+                    animation: { duration: 400 }
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Timestamp */}
+        {fUpdatedAt && (
+          <div style={{ fontSize: '0.56rem', color: '#cbd5e1', textAlign: 'right', marginTop: '0.5rem' }}>
+            Aktualizováno: {new Date(fUpdatedAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+            {financeData?.cached && ' (cache)'}
           </div>
         )}
       </div>
@@ -4466,6 +5142,13 @@ export default function DashboardPage() {
   const weatherRefreshRef = useRef(null);
   const weatherCancelledRef = useRef(false);
 
+  // Finanční trhy state
+  const [financeData, setFinanceData] = useState(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeError, setFinanceError] = useState(false);
+  const financeRefreshRef = useRef(null);
+  const financeCancelledRef = useRef(false);
+
   // Fullscreen graf
   const [fullscreenChart, setFullscreenChart] = useState(null);
   useEffect(() => {
@@ -4664,6 +5347,77 @@ export default function DashboardPage() {
       if (weatherRefreshRef.current) clearInterval(weatherRefreshRef.current);
     };
   }, [fetchWeather]);
+
+  // ─── Finanční trhy: fetch přes backend proxy + 30min auto-refresh ───────
+  const fetchFinance = useCallback(async (isBackground = false) => {
+    if (!token || !username) return;
+
+    // Načíst uživatelský config z localStorage
+    const cfgKey = `finance_config_${user?.id || 'default'}`;
+    let userConfig = {};
+    try { userConfig = JSON.parse(localStorage.getItem(cfgKey)) || {}; } catch (e) { /* ignore */ }
+
+    const FINANCE_CACHE_KEY = `finance_data_${user?.id || 'default'}_${JSON.stringify(userConfig)}`;
+    const FINANCE_EXPIRY = 15 * 60 * 1000; // 15 minut
+
+    // Cache při prvním načtení
+    if (!isBackground) {
+      try {
+        const cached = localStorage.getItem(FINANCE_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.data && Date.now() - (parsed.timestamp || 0) < FINANCE_EXPIRY) {
+            setFinanceData(parsed.data);
+            setFinanceError(false);
+            setTimeout(() => { if (!financeCancelledRef.current) fetchFinance(true); }, 300);
+            return;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    if (!isBackground) setFinanceLoading(true);
+    try {
+      const res = await getFinanceMarkets({
+        token, username,
+        stock_tickers: userConfig.stock_tickers,
+        crypto_ids: userConfig.crypto_ids,
+        fx_pairs: userConfig.fx_pairs
+      });
+      if (financeCancelledRef.current) return;
+
+      if (res.status === 'success' && res.data) {
+        setFinanceData(res.data);
+        setFinanceError(false);
+
+        try {
+          localStorage.setItem(FINANCE_CACHE_KEY, JSON.stringify({ data: res.data, timestamp: Date.now() }));
+        } catch (e) { /* ignore */ }
+
+        // Auto-refresh 15 minut
+        if (financeRefreshRef.current) clearInterval(financeRefreshRef.current);
+        financeRefreshRef.current = setInterval(() => {
+          if (!financeCancelledRef.current) fetchFinance(true);
+        }, FINANCE_EXPIRY);
+      } else {
+        throw new Error('Backend vrátil chybu');
+      }
+    } catch (err) {
+      console.warn('Finance fetch error:', err);
+      if (!financeCancelledRef.current) setFinanceError(true);
+    } finally {
+      if (!financeCancelledRef.current) setFinanceLoading(false);
+    }
+  }, [token, username, user?.id]);
+
+  useEffect(() => {
+    financeCancelledRef.current = false;
+    fetchFinance();
+    return () => {
+      financeCancelledRef.current = true;
+      if (financeRefreshRef.current) clearInterval(financeRefreshRef.current);
+    };
+  }, [fetchFinance]);
 
   // Determine available widgets based on DASHBOARD_* capabilities from API
   const availableWidgets = useMemo(() => {
@@ -4983,7 +5737,7 @@ export default function DashboardPage() {
     // alwaysOn widgety (např. active_users_admin) ignorují visibleTiles
     if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) return null;
 
-    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'rss_news' || tileId === 'chart_majetek' || tileId === 'chart_fees';
+    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'rss_news' || tileId === 'chart_majetek' || tileId === 'chart_fees' || tileId === 'finance_markets';
     const isSpanFull = tileId === 'active_users_admin';
 
     let content = null;
@@ -5204,6 +5958,15 @@ export default function DashboardPage() {
             ref={el => { widgetRefs.current[tileId] = el; }}
           >
             <WeatherWidget weatherData={weatherData} weatherLoading={weatherLoading} weatherError={weatherError} onRefresh={() => fetchWeather(false)} />
+          </WidgetCard>
+        );
+      case 'finance_markets':
+        // Finance: renderuje celou kartu sám (span2), podobné jako Weather
+        return (
+          <WidgetCard key={tileId} $accent={cfg.color} $index={index} $span2={true} style={{ padding: 0, overflow: 'hidden', borderLeft: 'none' }}
+            ref={el => { widgetRefs.current[tileId] = el; }}
+          >
+            <FinanceWidget financeData={financeData} financeLoading={financeLoading} financeError={financeError} onRefresh={() => fetchFinance(false)} userId={user?.id} token={token} username={username} />
           </WidgetCard>
         );
       case 'calendar':
