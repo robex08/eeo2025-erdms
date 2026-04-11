@@ -3653,9 +3653,8 @@ function handle_orderV3_lp_v_procesu($input, $config) {
         }
 
         // Stavy "v procesu" = přispívají do rezervovano nebo predpokladane_cerpani (ne skutecne)
-        // Zahrnuje jen schválené a aktivně zpracovávané - NE drafty ani neschválené
-        // Věcná správnost+ se nepocitaji - tam uz existuje faktura (=skutecnost)
-        $v_procesu_stavy = ['Schválená', 'Odeslaná', 'Potvrzená', 'Fakturace', 'Ke zveřejnění'];
+        // Zahrnuje schválené a aktivně zpracovávané včetně Věcné správnosti - NE drafty ani neschválené
+        $v_procesu_stavy = ['Schválená', 'Odeslaná', 'Potvrzená', 'Fakturace', 'Ke zveřejnění', 'Věcná správnost'];
 
         // Objednávky které mají daný LP kód v financovani.lp_kody a jsou ve stavu v procesu
         $id_conditions = implode(' OR ', array_fill(0, count($master_ids), 'JSON_CONTAINS(o.financovani, ?, \'$.lp_kody\')'));

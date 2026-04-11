@@ -6,7 +6,7 @@ import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { loadAuthData } from '../utils/authStorage';
-import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send, ShoppingCart, Bell } from 'lucide-react';
+import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send, ShoppingCart, Bell, UserCheck } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
 import { fetchFreshUserDetail, fetchCiselniky, fetchAllUsers, fetchApprovers } from '../services/api2auth';
@@ -15,6 +15,7 @@ import { CustomSelect } from '../components/CustomSelect';
 import { getAvailableSections, isSectionAvailable, getFirstAvailableSection } from '../utils/availableSections';
 import ModernHelper from '../components/ModernHelper';
 import ContactManagement from '../components/ContactManagement';
+import SubstitutionTab from '../components/SubstitutionTab';
 
 const slideInUp = keyframes`
   from {
@@ -3300,6 +3301,15 @@ const ProfilePage = () => {
                 <span>Adresář dodavatelů</span>
               </TabButton>
             )}
+            {hasPermission && hasPermission('USER_SUBSTITUTE_SET') && (
+              <TabButton
+                $active={activeTab === 'substitution'}
+                onClick={() => setActiveTab('substitution')}
+              >
+                <UserCheck size={20} />
+                <span>Zastupování</span>
+              </TabButton>
+            )}
             <TabButton 
               $active={activeTab === 'settings'} 
               onClick={() => setActiveTab('settings')}
@@ -3964,6 +3974,17 @@ const ProfilePage = () => {
               </TabContent>
             );
           })()}
+
+          {/* Tab Content - Zastupování */}
+          {hasPermission && hasPermission('USER_SUBSTITUTE_SET') && (
+            <TabContent $active={activeTab === 'substitution'}>
+              <SubstitutionTab
+                token={token}
+                username={username}
+                showToast={showToast}
+              />
+            </TabContent>
+          )}
 
           {/* Tab Content - Nastavení */}
           <TabContent $active={activeTab === 'settings'}>

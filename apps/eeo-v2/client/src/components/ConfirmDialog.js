@@ -188,6 +188,7 @@ const ConfirmDialog = ({
   isOpen,
   onClose,
   onConfirm,
+  onCancel, // Volitelný custom handler pro cancel tlačítko (fallback na onClose)
   title,
   children,
   message, // Podpora pro message prop (alternativa k children)
@@ -252,9 +253,13 @@ const ConfirmDialog = ({
     e.nativeEvent.stopImmediatePropagation(); // 🔥 EXTRA OCHRANA
     
     try {
-      onClose();
+      if (onCancel) {
+        onCancel();
+      } else {
+        onClose();
+      }
     } catch (error) {
-      console.error('ConfirmDialog - Chyba v onClose:', error);
+      console.error('ConfirmDialog - Chyba v onCancel/onClose:', error);
     }
   };
 
