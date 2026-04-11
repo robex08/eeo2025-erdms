@@ -5427,7 +5427,7 @@ const OrdersTableV3 = ({
                             const lpPodil = lpKody.includes(lp.id) ? maxCena / (lpKody.length || 1) : 0;
                             // Ostatní čekající ke schválení na tomto LP
                             const keSchvaleniCastka = parseFloat(lp.ke_schvaleni_castka) || 0;
-                            const percentCerpani = hodnotaLP > 0 ? Math.round(((cerpanoSkutecne + plannedFull + lpPodil) / hodnotaLP) * 100) : 0;
+                            const percentCerpani = hodnotaLP > 0 ? Math.round(((cerpanoSkutecne + cerpanoPokladna + plannedFull + lpPodil) / hodnotaLP) * 100) : 0;
                             const hasLimit = hodnotaLP > 0;
                             // Překročení limitu LP po schválení TÉTO objednávky (S lpPodil!)
                             const lpExceeded = hodnotaLP > 0 && (hodnotaLP - cerpanoSkutecne - cerpanoPokladna - plannedFull - lpPodil) < 0;
@@ -5436,6 +5436,13 @@ const OrdersTableV3 = ({
                             // Varování: pokud by se schválily i všechny ostatní čekající, dojde k přečerpání
                             const lpWouldExceedIfAll = !lpExceeded && hodnotaLP > 0 && keSchvaleniCastka > 0 &&
                               (zbyvaPotential - keSchvaleniCastka) < 0;
+                            const { rowBarColor, rowBarColorLight } = (() => {
+                              const _t = Math.round(((new Date().getMonth() + 1) / 12) * 100);
+                              const _b = hodnotaLP > 0 ? ((cerpanoSkutecne + cerpanoPokladna + plannedFull) / hodnotaLP) * 100 : 0;
+                              const _c = _b > _t * 2 || (hodnotaLP > 0 && (cerpanoSkutecne / hodnotaLP) * 100 >= 100);
+                              const _w = !_c && _b > _t * 1.3;
+                              return { rowBarColor: _c ? '#ef4444' : _w ? '#f59e0b' : '#10b981', rowBarColorLight: _c ? '#fca5a5' : _w ? '#fdba74' : '#86efac' };
+                            })();
                             return (
                               <ApprovalLPItem key={idx}>
                                 <ApprovalLPHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5515,7 +5522,7 @@ const OrdersTableV3 = ({
                                           title={isActive ? 'Zavřít přehled objednávek v procesu' : 'Zobrazit seznam objednávek v procesu'}
                                           style={{
                                             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                                            fontWeight: 700, fontSize: 'inherit', color: 'inherit', textDecoration: 'underline dotted',
+                                            fontWeight: 700, fontSize: 'inherit', color: rowBarColorLight, textDecoration: 'underline dotted',
                                             display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                                           }}>
                                           {plannedFull.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
@@ -5556,13 +5563,13 @@ const OrdersTableV3 = ({
                                 </ApprovalLPRow>
                                 {cerpanoPokladna > 0 && (
                                 <ApprovalLPRow>
-                                  <span>Pokladna:</span>
-                                  <strong>{cerpanoPokladna.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                  <span style={{ color: '#6b7280' }}>Pokladna:</span>
+                                  <strong style={{ color: rowBarColor }}>{cerpanoPokladna.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
                                 </ApprovalLPRow>
                                 )}
                                 <ApprovalLPRow>
-                                  <span>Dokončeno:</span>
-                                  <strong>{cerpanoSkutecne.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
+                                  <span style={{ color: '#6b7280' }}>Dokončeno:</span>
+                                  <strong style={{ color: rowBarColor }}>{cerpanoSkutecne.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>
                                 </ApprovalLPRow>
                                 
                                 {/* Roční plán čerpání - Jezevčík progress bar */}
@@ -5571,12 +5578,17 @@ const OrdersTableV3 = ({
                                   const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
                                   // ✅ Math.round - stejné jako LimitovanePrislibyManager
                                   const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
-                                  // ✅ PŘESNĚ podle modulu Čerpání:
+                                  // ✅ PŘESNĚ podle modulu Čerpání + podíl schvalované objednávky:
                                   const spentPct = (cerpanoSkutecne / hodnotaLP) * 100;
                                   const plannedPct = ((plannedFull + cerpanoPokladna) / hodnotaLP) * 100;
-                                  const totalPct = spentPct + plannedPct;
-                                  const isCritical = totalPct > targetPct * 2 || (cerpanoSkutecne / hodnotaLP) * 100 >= 100;
-                                  const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                  // Podíl TÉTO schvalované objednávky v procentech
+                                  const lpPodilPct = lpKody.includes(lp.id) ? (lpPodil / hodnotaLP) * 100 : 0;
+                                  // Celkové procento včetně schvalované objednávky (zobrazeno v hlavičce)
+                                  const totalPct = spentPct + plannedPct + lpPodilPct;
+                                  // Barvy vycházejí ze stavu BEZ schvalované objednávky (stejně jako modul Čerpání)
+                                  const baseTotalPct = spentPct + plannedPct;
+                                  const isCritical = baseTotalPct > targetPct * 2 || (cerpanoSkutecne / hodnotaLP) * 100 >= 100;
+                                  const isWarning = !isCritical && baseTotalPct > targetPct * 1.3;
                                   const baseBarColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
                                   const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
                                   // lpExceeded = přečerpání v absolutní částce (použij pro červený bar!)
@@ -5615,7 +5627,21 @@ const OrdersTableV3 = ({
                                               <ApprJezBarPlanned
                                                 $left={Math.min(spentPct, 100)}
                                                 $percent={plannedWidth}
-                                                $color={lpExceeded ? '#ef4444' : barColorLight}
+                                                $color={barColorLight}
+                                              />
+                                            ) : null;
+                                          })()}
+                                          {/* SCHVALOVANÁ OBJEDNÁVKA - světlě zelená v limitu, červená při přečerpání */}
+                                          {lpPodilPct > 0 && (() => {
+                                            const afterPlanned = Math.min(spentPct, 100) + Math.min(plannedPct, Math.max(0, 100 - spentPct));
+                                            const orderWidth = lpExceeded
+                                              ? Math.max(0, 100 - afterPlanned)
+                                              : Math.min(lpPodilPct, Math.max(0, 100 - afterPlanned));
+                                            return orderWidth > 0 ? (
+                                              <ApprJezBarFill
+                                                $percent={orderWidth}
+                                                $color={lpExceeded ? '#ef4444' : '#86efac'}
+                                                style={{ left: `${afterPlanned}%`, width: `${orderWidth}%`, opacity: lpExceeded ? 1 : 0.85 }}
                                               />
                                             ) : null;
                                           })()}
@@ -5628,8 +5654,14 @@ const OrdersTableV3 = ({
                                             </div>
                                             {plannedPct > 0 && (
                                               <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: lpExceeded ? '#ef4444' : barColorLight, opacity: 0.7 }} />
+                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColorLight, opacity: 0.7 }} />
                                                 <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                              </div>
+                                            )}
+                                            {lpPodilPct > 0 && (
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: lpExceeded ? '#ef4444' : '#86efac' }} />
+                                                <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: lpExceeded ? '#ef4444' : '#059669' }}>Tato objednávka</span>
                                               </div>
                                             )}
                                           </div>
@@ -5741,6 +5773,14 @@ const OrdersTableV3 = ({
                           // Smlouvy s hodnotou ≤ 10 Kč jsou bez stropové ceny
                           const percentCerpani = hodnotaSmlouvy > 10 ? Math.round((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100) : 0;
                           const hasStropovaCena = hodnotaSmlouvy > 10;
+                          const cerpanoSkutecneSmlouvaRow = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
+                          const { smlouvaRowBarColor, smlouvaRowBarColorLight } = (() => {
+                            const _t = Math.round(((new Date().getMonth() + 1) / 12) * 100);
+                            const _b = hodnotaSmlouvy > 0 ? ((cerpanoSkutecneSmlouvaRow + cerpanoPozadovano) / hodnotaSmlouvy) * 100 : 0;
+                            const _c = _b > _t * 2 || (hodnotaSmlouvy > 0 && (cerpanoSkutecneSmlouvaRow / hodnotaSmlouvy) * 100 >= 100);
+                            const _w = !_c && _b > _t * 1.3;
+                            return { smlouvaRowBarColor: _c ? '#ef4444' : _w ? '#f59e0b' : '#10b981', smlouvaRowBarColorLight: _c ? '#fca5a5' : _w ? '#fdba74' : '#86efac' };
+                          })();
                           
                           return (
                             <ApprovalLPItem>
@@ -5818,7 +5858,7 @@ const OrdersTableV3 = ({
                                         title={isActive ? 'Zavřít přehled objednávek v procesu' : 'Zobrazit seznam objednávek v procesu'}
                                         style={{
                                           background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                                          fontWeight: 700, fontSize: 'inherit', color: 'inherit', textDecoration: 'underline dotted',
+                                          fontWeight: 700, fontSize: 'inherit', color: smlouvaRowBarColorLight, textDecoration: 'underline dotted',
                                           display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                                         }}>
                                         {cerpanoPozadovano.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
@@ -5867,8 +5907,8 @@ const OrdersTableV3 = ({
                                 );
                               })()}
                               <ApprovalLPRow>
-                                <span>Dokončeno:</span>
-                                <strong>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
+                                <span style={{ color: '#6b7280' }}>Dokončeno:</span>
+                                <strong style={{ color: smlouvaRowBarColor }}>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
                               </ApprovalLPRow>
                               
                               {/* Roční plán čerpání - Jezevčík progress bar */}
@@ -5877,14 +5917,21 @@ const OrdersTableV3 = ({
                                 const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
                                 // ✅ Math.round - stejné jako LimitovanePrislibyManager
                                 const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
-                                // ✅ PŘESNĚ podle modulu čerpání:
+                                // ✅ PŘESNĚ podle modulu čerpání + podíl schvalované objednávky:
                                 const cerpanoSkutecneSmlouva = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
+                                // cerpanoPozadovano = V procesu bez této objednávky
+                                const vProcesuBezTeto = cerpanoPozadovano;
                                 const spentPct = (cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100;
-                                const plannedPct = ((simulovaneCerpaniSmlouva - cerpanoSkutecneSmlouva) / hodnotaSmlouvy) * 100;
-                                const totalPct = spentPct + plannedPct;
+                                const plannedPct = (vProcesuBezTeto / hodnotaSmlouvy) * 100;
+                                // Podíl TÉTO schvalované objednávky v procentech
+                                const orderPodilPctS = hodnotaSmlouvy > 0 ? (maxCenaSmlouva / hodnotaSmlouvy) * 100 : 0;
+                                // Celkové procento včetně schvalované objednávky (zobrazeno v hlavičce)
+                                const totalPct = spentPct + plannedPct + orderPodilPctS;
+                                // Barvy vycházejí ze stavu BEZ schvalované objednávky (stejně jako modul Čerpání)
+                                const baseTotalPctS = spentPct + plannedPct;
                                 // ✅ isCritical: skutecne >= 100% NEBO total > 2x cíl
-                                const isCritical = totalPct > targetPct * 2 || (cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100 >= 100;
-                                const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                const isCritical = baseTotalPctS > targetPct * 2 || (cerpanoSkutecneSmlouva / hodnotaSmlouvy) * 100 >= 100;
+                                const isWarning = !isCritical && baseTotalPctS > targetPct * 1.3;
                                 const baseBarColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
                                 const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
                                 // smlouvaExceeded = přečerpání v absolutní částce (použij pro červený bar!)
@@ -5924,7 +5971,21 @@ const OrdersTableV3 = ({
                                             <ApprJezBarPlanned
                                               $left={Math.min(spentPct, 100)}
                                               $percent={plannedWidth}
-                                              $color={smlouvaExceeded ? '#ef4444' : barColorLight}
+                                              $color={barColorLight}
+                                            />
+                                          ) : null;
+                                        })()}
+                                        {/* SCHVALOVANÁ OBJEDNÁVKA - světlě zelená v limitu, červená při přečerpání */}
+                                        {orderPodilPctS > 0 && (() => {
+                                          const afterPlanned = Math.min(spentPct, 100) + Math.min(plannedPct, Math.max(0, 100 - spentPct));
+                                          const orderWidth = smlouvaExceeded
+                                            ? Math.max(0, 100 - afterPlanned)
+                                            : Math.min(orderPodilPctS, Math.max(0, 100 - afterPlanned));
+                                          return orderWidth > 0 ? (
+                                            <ApprJezBarFill
+                                              $percent={orderWidth}
+                                              $color={smlouvaExceeded ? '#ef4444' : '#86efac'}
+                                              style={{ left: `${afterPlanned}%`, width: `${orderWidth}%`, opacity: smlouvaExceeded ? 1 : 0.85 }}
                                             />
                                           ) : null;
                                         })()}
@@ -5937,8 +5998,14 @@ const OrdersTableV3 = ({
                                           </div>
                                           {plannedPct > 0 && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: smlouvaExceeded ? '#ef4444' : barColorLight, opacity: 0.7 }} />
+                                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColorLight, opacity: 0.7 }} />
                                               <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                            </div>
+                                          )}
+                                          {orderPodilPctS > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: smlouvaExceeded ? '#ef4444' : '#86efac' }} />
+                                              <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: smlouvaExceeded ? '#ef4444' : '#059669' }}>Tato objednávka</span>
                                             </div>
                                           )}
                                         </div>
