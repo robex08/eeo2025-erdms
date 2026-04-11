@@ -1351,8 +1351,9 @@ $queries['substitution_get_active'] = "
         z.zastupce_id,
         z.dt_od,
         z.dt_do,
-        z.typ_zastupovani,
+        z.opravneni,
         z.popis,
+        z.aktivni,
         zu.username as zastupovany_username,
         zu.jmeno as zastupovany_jmeno,
         zu.prijmeni as zastupovany_prijmeni,
@@ -1376,7 +1377,7 @@ $queries['substitution_get_by_user'] = "
         z.zastupce_id,
         z.dt_od,
         z.dt_do,
-        z.typ_zastupovani,
+        z.opravneni,
         z.popis,
         z.aktivni,
         zu.username as zastupovany_username,
@@ -1388,38 +1389,43 @@ $queries['substitution_get_by_user'] = "
     FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
     JOIN " . TBL_UZIVATELE . " zu ON z.zastupovany_id = zu.id
     JOIN " . TBL_UZIVATELE . " zs ON z.zastupce_id = zs.id
-    WHERE (z.zastupovany_id = :user_id OR z.zastupce_id = :user_id)
-    AND z.aktivni = 1
+    WHERE z.zastupovany_id = :user_id
     ORDER BY z.dt_od DESC
 ";
 
 $queries['substitution_create'] = "
-    INSERT INTO 25_uzivatele_zastupovani 
-    (zastupovany_id, zastupce_id, dt_od, dt_do, typ_zastupovani, popis, vytvoril_user_id, dt_vytvoreni)
-    VALUES (:zastupovany_id, :zastupce_id, :dt_od, :dt_do, :typ_zastupovani, :popis, :vytvoril_user_id, NOW())
+    INSERT INTO " . TBL_UZIVATELE_ZASTUPOVANI . "
+    (zastupovany_id, zastupce_id, dt_od, dt_do, opravneni, popis, vytvoril_user_id, dt_vytvoreni)
+    VALUES (:zastupovany_id, :zastupce_id, :dt_od, :dt_do, :opravneni, :popis, :vytvoril_user_id, NOW())
 ";
 
 $queries['substitution_update'] = "
-    UPDATE 25_uzivatele_zastupovani 
+    UPDATE " . TBL_UZIVATELE_ZASTUPOVANI . "
     SET dt_od = :dt_od,
         dt_do = :dt_do,
-        typ_zastupovani = :typ_zastupovani,
+        opravneni = :opravneni,
         popis = :popis,
         dt_aktualizace = NOW()
     WHERE id = :substitution_id
+    AND zastupovany_id = :zastupovany_id
     AND aktivni = 1
 ";
 
 $queries['substitution_deactivate'] = "
-    UPDATE 25_uzivatele_zastupovani 
+    UPDATE " . TBL_UZIVATELE_ZASTUPOVANI . "
     SET aktivni = 0, dt_aktualizace = NOW()
     WHERE id = :substitution_id
+    AND zastupovany_id = :zastupovany_id
 ";
 
 $queries['substitution_check_current'] = "
     SELECT 
+        z.id,
         z.zastupovany_id,
-        z.typ_zastupovani,
+        z.dt_od,
+        z.dt_do,
+        z.opravneni,
+        z.popis,
         zu.username as zastupovany_username,
         zu.jmeno as zastupovany_jmeno,
         zu.prijmeni as zastupovany_prijmeni
@@ -1429,6 +1435,60 @@ $queries['substitution_check_current'] = "
     AND z.aktivni = 1
     AND CURDATE() BETWEEN z.dt_od AND z.dt_do
     ORDER BY z.dt_od
+";
+
+// Všechna moje zastupování (kdo zastupuje mě) - vč. budoucích i ukončených
+$queries['substitution_my_active'] = "
+    SELECT 
+        z.id,
+        z.zastupce_id,
+        z.dt_od,
+        z.dt_do,
+        z.opravneni,
+        z.popis,
+        z.aktivni,
+        zs.username as zastupce_username,
+        zs.jmeno as zastupce_jmeno,
+        zs.prijmeni as zastupce_prijmeni,
+        zs.email as zastupce_email
+    FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+    JOIN " . TBL_UZIVATELE . " zs ON z.zastupce_id = zs.id
+    WHERE z.zastupovany_id = :zastupovany_id
+    AND z.aktivni = 1
+    ORDER BY z.dt_od DESC
+";
+
+// Kandidáti na zástupce - uživatelé s právem USER_SUBSTITUTE
+$queries['substitution_candidates'] = "
+    SELECT DISTINCT
+        u.id,
+        u.username,
+        u.jmeno,
+        u.prijmeni,
+        u.titul_pred,
+        u.titul_za,
+        u.email
+    FROM " . TBL_UZIVATELE . " u
+    WHERE u.aktivni = 1
+    AND u.id != :current_user_id
+    AND (
+        u.id IN (
+            SELECT rp.user_id FROM " . TBL_ROLE_PRAVA . " rp
+            JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+            WHERE p.kod_prava = 'USER_SUBSTITUTE'
+            AND rp.user_id > 0
+            AND rp.aktivni = 1
+        )
+        OR u.id IN (
+            SELECT ur.uzivatel_id FROM " . TBL_UZIVATELE_ROLE . " ur
+            JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id
+            JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+            WHERE p.kod_prava = 'USER_SUBSTITUTE'
+            AND rp.user_id = -1
+            AND rp.aktivni = 1
+        )
+    )
+    ORDER BY u.prijmeni, u.jmeno
 ";
 
 // ============ SCHVALOVACÍ PRAVOMOCI ============
