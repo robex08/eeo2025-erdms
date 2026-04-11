@@ -3952,11 +3952,14 @@ export default function StatsReportsPage() {
     druh:        o => getOrderTypeLabel(o) || '',
     stav:        o => getOrderStatusLabel(o) || '',
     castka:          o => String(getOrderAmount(o) || 0),
+    fa_vs:           o => (invoicesByOrderId[String(o.id)] || [])[0]?.cislo_faktury || '',
+    fa_typ:          o => (invoicesByOrderId[String(o.id)] || [])[0]?.fa_typ || '',
+    fa_stav:         o => getInvoiceStatusLabel((invoicesByOrderId[String(o.id)] || [])[0]) || '',
     fa_castka:       o => (invoicesByOrderId[String(o.id)] || []).reduce((s, inv) => s + getInvoiceAmount(inv), 0),
     castka_polozek:  o => getOrderPlannedAmount(o) || 0,
     max_dph:         o => getOrderLimit(o) || 0,
     fk_stav:     o => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`ordersWithoutInvoice_${o.id}_0`]] || '0',
-  }), [getOrderDate, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getOrderAmount, invoicesByOrderId]);
+  }), [getOrderDate, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getOrderAmount, invoicesByOrderId, getInvoiceStatusLabel]);
 
   const getOrderActualAmount = useCallback((order) => {
     const invoicesForOrder = invoicesByOrderId[String(order?.id)] || [];
@@ -4416,6 +4419,7 @@ export default function StatsReportsPage() {
     const acc = {
       ev_cislo:    o => o.ev_cislo || o.cislo_objednavky || '',
       fa_vs:       o => (invoicesByOrderId[String(o.id)] || [])[0]?.cislo_faktury || '',
+      fa_typ:      o => (invoicesByOrderId[String(o.id)] || [])[0]?.fa_typ || '',
       dt_obj:      o => getOrderDate(o) || '',
       predmet:     o => getOrderSubject(o) || '',
       limit:       o => getOrderLimit(o) ?? 0,
@@ -4446,6 +4450,7 @@ export default function StatsReportsPage() {
     const acc = {
       ev_cislo:       item => item.order?.ev_cislo || item.order?.cislo_objednavky || '',
       fa_vs:          item => item.invoice?.cislo_faktury || '',
+      fa_typ:         item => item.invoice?.fa_typ || '',
       dt_fa:          item => item.invoice?.datum_doruceni || item.invoice?.datum_vystaveni || '',
       dt_obj_created: item => getOrderDate(item.order) || '',
       objednatel:     item => getOrdererName(item.order),
@@ -4471,6 +4476,7 @@ export default function StatsReportsPage() {
     const acc = {
       ev_cislo:     o => o.ev_cislo || o.cislo_objednavky || '',
       fa_vs:        o => (invoicesByOrderId[String(o.id)] || [])[0]?.cislo_faktury || '',
+      fa_typ:       o => (invoicesByOrderId[String(o.id)] || [])[0]?.fa_typ || '',
       dt_obj:       o => getOrderDate(o) || '',
       predmet:      o => getOrderSubject(o) || '',
       objednatel:   o => getOrdererName(o),
@@ -4497,6 +4503,7 @@ export default function StatsReportsPage() {
     };
     const acc = {
       fa_vs:        inv => inv.cislo_faktury || '',
+      fa_typ:       inv => inv.fa_typ || '',
       dt_dorucena:  inv => inv.datum_doruceni || inv.datum_vystaveni || '',
       stav_fa:      inv => getInvoiceStatusLabel(inv) || '',
       ev_cislo:     inv => inv.cislo_objednavky || inv.smlouva_id || '',
@@ -4522,6 +4529,7 @@ export default function StatsReportsPage() {
     };
     const acc = {
       fa_vs:        inv => inv.cislo_faktury || '',
+      fa_typ:       inv => inv.fa_typ || '',
       dt_dorucena:  inv => inv.datum_doruceni || inv.datum_vystaveni || '',
       evidoval:     inv => inv.vytvoril_uzivatel_zkracene || '',
       predana:      inv => inv.fa_predana_zam_jmeno_cele || '',
@@ -6017,12 +6025,19 @@ export default function StatsReportsPage() {
     URL.revokeObjectURL(url);
   }, []);
 
+  // Helper: převod fa_typ kódu na český label pro CSV/zobrazení
+  const getTypFakturyLabel = useCallback((fa_typ) => {
+    const map = { BEZNA: 'Běžná', ZALOHOVA: 'Zálohová', OPRAVNA: 'Opravná', PROFORMA: 'Proforma', DOBROPIS: 'Dobropis', VYUCTOVACI: 'Vyúčtovací', JINA: 'Jiná' };
+    return map[(fa_typ || '').toUpperCase()] || fa_typ || '';
+  }, []);
+
   // Převede objednávku na standardní CSV řádek (sdílený sloupce)
   const orderToCsvRow = useCallback((order) => {
     const invs = invoicesByOrderId[String(order?.id)] || [];
     return {
       ev_cislo:     order?.ev_cislo || order?.cislo_objednavky || '',
       fa_vs:        invs.map(i => i.cislo_faktury).join(' | '),
+      fa_typ:       invs.map(i => getTypFakturyLabel(i.fa_typ)).join(' | '),
       dt_obj:       formatDateCz(getOrderDate(order)),
       predmet:      getOrderSubject(order),
       objednatel:   getOrdererName(order),
@@ -6036,7 +6051,7 @@ export default function StatsReportsPage() {
       fa_castka:    invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0),
       stav_fa:      invs.map(inv => getInvoiceStatusLabel(inv)).join(' | '),
     };
-  }, [invoicesByOrderId, getOrderDate, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getOrderAmount, getInvoiceStatusLabel]);
+  }, [invoicesByOrderId, getOrderDate, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getOrderAmount, getInvoiceStatusLabel, getTypFakturyLabel]);
 
   // ─── Export: Faktury vyšší než schválená objednávka ─────────────────────────
   const handleExportCsv_ordersOverLimit = useCallback(() => {
@@ -6050,11 +6065,11 @@ export default function StatsReportsPage() {
     const filtered = controlSections.ordersOverLimit
       .filter(fkFilter)
       .filter(o => !query || searchInVisibleColumns(o, query, 'ordersOverLimit'));
-    const headers = ['Ev.číslo obj.','Fa VS','Dt. obj.','Objednatel','Schvalovatel','Věcná správnost','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Max cena DPH (Kč)','Částka FA DPH (Kč)'];
+    const headers = ['Ev.číslo obj.','Fa VS','Typ FA','Dt. obj.','Objednatel','Schvalovatel','Věcná správnost','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Max cena DPH (Kč)','Částka FA DPH (Kč)'];
     const rows = filtered.map(order => {
       const invs = invoicesByOrderId[String(order.id)] || [];
       const r = orderToCsvRow(order);
-      return [r.ev_cislo, r.fa_vs, r.dt_obj, r.objednatel, r.schvalovatel, order.potvrdil_vecnou_spravnost_zkracene || '', r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, getOrderLimit(order), invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0)];
+      return [r.ev_cislo, r.fa_vs, r.fa_typ, r.dt_obj, r.objednatel, r.schvalovatel, order.potvrdil_vecnou_spravnost_zkracene || '', r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, getOrderLimit(order), invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0)];
     });
     downloadCsv(headers, rows, `faktury-vyssi-nez-objednavka-${new Date().toISOString().slice(0,10)}.csv`);
   }, [controlSections.ordersOverLimit, invoicesByOrderId, orderToCsvRow, getOrderLimit, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
@@ -6071,13 +6086,13 @@ export default function StatsReportsPage() {
     const filtered = controlSections.ordersAfterInvoice
       .filter(fkFilter)
       .filter(({ order }) => !query || searchInVisibleColumns(order, query, 'ordersAfterInvoice'));
-    const headers = ['Ev.číslo obj.','Fa VS','Fa doručena','Obj vytvořena','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','FA částka (Kč)'];
+    const headers = ['Ev.číslo obj.','Fa VS','Typ FA','Fa doručena','Obj vytvořena','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','FA částka (Kč)'];
     const rows = filtered.map(({ order, invoice }) => {
       const r = orderToCsvRow(order);
-      return [r.ev_cislo, invoice.cislo_faktury || '', formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, getInvoiceStatusLabel(invoice), getInvoiceAmount(invoice)];
+      return [r.ev_cislo, invoice.cislo_faktury || '', getTypFakturyLabel(invoice.fa_typ), formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, getInvoiceStatusLabel(invoice), getInvoiceAmount(invoice)];
     });
     downloadCsv(headers, rows, `objednavka-po-fakture-${new Date().toISOString().slice(0,10)}.csv`);
-  }, [controlSections.ordersAfterInvoice, orderToCsvRow, getInvoiceStatusLabel, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+  }, [controlSections.ordersAfterInvoice, orderToCsvRow, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
 
   // ─── Export: Objednávky s fakturami bez příloh ───────────────────────────────
   const handleExportCsv_ordersInvoicesWithoutAttachments = useCallback(() => {
@@ -6091,11 +6106,11 @@ export default function StatsReportsPage() {
     const filtered = controlSections.ordersInvoicesWithoutAttachments
       .filter(fkFilter)
       .filter(o => !query || searchInVisibleColumns(o, query, 'ordersInvoicesWithoutAttachments'));
-    const headers = ['Objednávka','Fa VS','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav OBJ','Stav FA','Příl. OBJ','Příl. FA','FA částka (Kč)'];
+    const headers = ['Objednávka','Fa VS','Typ FA','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav OBJ','Stav FA','Příl. OBJ','Příl. FA','FA částka (Kč)'];
     const rows = filtered.map(order => {
       const invs = invoicesByOrderId[String(order.id)] || [];
       const r = orderToCsvRow(order);
-      return [r.ev_cislo, r.fa_vs, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0, invs.map(inv => inv.pocet_priloh ?? inv.prilohy?.length ?? 0).join(' | '), r.fa_castka];
+      return [r.ev_cislo, r.fa_vs, r.fa_typ, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0, invs.map(inv => inv.pocet_priloh ?? inv.prilohy?.length ?? 0).join(' | '), r.fa_castka];
     });
     downloadCsv(headers, rows, `objednavky-faktury-bez-prilohy-${new Date().toISOString().slice(0,10)}.csv`);
   }, [controlSections.ordersInvoicesWithoutAttachments, invoicesByOrderId, orderToCsvRow, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
@@ -6112,11 +6127,12 @@ export default function StatsReportsPage() {
     const filtered = controlSections.invoicesWithoutAttachments
       .filter(fkFilter)
       .filter(inv => !query || searchInVisibleColumns(inv, query, 'invoicesWithoutAttachments'));
-    const headers = ['Fa VS','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
+    const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
     const rows = filtered.map(invoice => {
       const order = ordersById.get(String(invoice.objednavka_id)) || null;
       return [
         invoice.cislo_faktury || '',
+        getTypFakturyLabel(invoice.fa_typ),
         formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
         invoice.vytvoril_uzivatel_zkracene || '',
         invoice.fa_predana_zam_jmeno_cele || '',
@@ -6133,7 +6149,7 @@ export default function StatsReportsPage() {
       ];
     });
     downloadCsv(headers, rows, `faktury-bez-prilohy-${new Date().toISOString().slice(0,10)}.csv`);
-  }, [controlSections.invoicesWithoutAttachments, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+  }, [controlSections.invoicesWithoutAttachments, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
 
   // ─── Export: Faktury po splatnosti ──────────────────────────────────────────
   const handleExportCsv_overdueInvoices = useCallback(() => {
@@ -6147,11 +6163,12 @@ export default function StatsReportsPage() {
     const filtered = controlSections.overdueInvoices
       .filter(fkFilter)
       .filter(inv => !query || searchInVisibleColumns(inv, query, 'overdueInvoices'));
-    const headers = ['Fa VS','Doručena','Splatnost','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
+    const headers = ['Fa VS','Typ FA','Doručena','Splatnost','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
     const rows = filtered.map(invoice => {
       const order = ordersById.get(String(invoice.objednavka_id)) || null;
       return [
         invoice.cislo_faktury || '',
+        getTypFakturyLabel(invoice.fa_typ),
         formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
         formatDateCz(invoice.datum_splatnosti),
         invoice.vytvoril_uzivatel_zkracene || '',
@@ -6169,7 +6186,7 @@ export default function StatsReportsPage() {
       ];
     });
     downloadCsv(headers, rows, `faktury-po-splatnosti-${new Date().toISOString().slice(0,10)}.csv`);
-  }, [controlSections.overdueInvoices, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+  }, [controlSections.overdueInvoices, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
 
   // ─── Export: Zrušené a zamítnuté objednávky ─────────────────────────────────
   const handleExportCsv_cancelledOrders = useCallback(() => {
@@ -6191,7 +6208,7 @@ export default function StatsReportsPage() {
     const lekarskyFiltered = query
       ? vzdelSections.lekarsky.filter(o => searchInVisibleColumns(o, query, 'vzdelLekarsky'))
       : vzdelSections.lekarsky;
-    const headers = ['Objednávka','Fa VS','Doručena','Splatnost','Zaevidoval','Předána','Stav FA','Úsek','Financování','Detail fin.','Druh','Částka celk. (Kč)','Stav obj.'];
+    const headers = ['Objednávka','Fa VS','Typ FA','Doručena','Splatnost','Zaevidoval','Předána','Stav FA','Úsek','Financování','Detail fin.','Druh','Částka celk. (Kč)','Stav obj.'];
     const rows = lekarskyFiltered.flatMap(order => {
       const invs = invoicesByOrderId[String(order.id)] || [];
       const faSum = invs.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
@@ -6199,11 +6216,12 @@ export default function StatsReportsPage() {
       const mx = getOrderLimit(order) || 0;
       const castkaCelk = faSum > 0 ? faSum : pol > 0 ? pol : mx;
       if (invs.length === 0) {
-        return [[order.ev_cislo || '', '', '', '', '', '', '', getOrdererUsekCode(order) || '', getOrderFinancingLabel(order), getOrderFinancingRef(order), getOrderTypeLabel(order), castkaCelk, getOrderStatusLabel(order)]];
+        return [[order.ev_cislo || '', '', '', '', '', '', '', '', getOrdererUsekCode(order) || '', getOrderFinancingLabel(order), getOrderFinancingRef(order), getOrderTypeLabel(order), castkaCelk, getOrderStatusLabel(order)]];
       }
       return invs.map(inv => [
         order.ev_cislo || '',
         inv.cislo_faktury || '',
+        getTypFakturyLabel(inv.fa_typ),
         formatDateCz(inv.datum_doruceni || inv.datum_vystaveni),
         formatDateCz(inv.datum_splatnosti),
         inv.vytvoril_uzivatel_zkracene || '',
@@ -6218,7 +6236,7 @@ export default function StatsReportsPage() {
       ]);
     });
     downloadCsv(headers, rows, `vzdelavani-lekarsky-${new Date().toISOString().slice(0,10)}.csv`);
-  }, [vzdelSections.lekarsky, invoicesByOrderId, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getOrderPlannedAmount, getOrderLimit, downloadCsv, getSearchQuery, searchInVisibleColumns]);
+  }, [vzdelSections.lekarsky, invoicesByOrderId, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, getOrderPlannedAmount, getOrderLimit, downloadCsv, getSearchQuery, searchInVisibleColumns]);
 
   // ─── Export: Školení nelékařské ─────────────────────────────────────────────
   const handleExportCsv_vzdelNelekarsky = useCallback(() => {
@@ -6375,10 +6393,10 @@ export default function StatsReportsPage() {
     const filtered = query
       ? reportSections.ordersWithInvoiceNotDone.filter(o => searchInVisibleColumns(o, query, 'ordersWithInvoiceNotDone'))
       : reportSections.ordersWithInvoiceNotDone;
-    const headers = ['Objednávka','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','VS faktur','Druh','Částka (Kč)','Stav obj.','Stav FA'];
+    const headers = ['Objednávka','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','VS faktur','Typ FA','Druh','Částka (Kč)','Stav obj.','Stav FA'];
     const rows = filtered.map(order => {
       const r = orderToCsvRow(order);
-      return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.fa_vs, r.druh, r.castka, r.stav, r.stav_fa];
+      return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.fa_vs, r.fa_typ, r.druh, r.castka, r.stav, r.stav_fa];
     });
     downloadCsv(headers, rows, `objednavky-nedokoncene-${new Date().toISOString().slice(0,10)}.csv`);
   }, [reportSections.ordersWithInvoiceNotDone, orderToCsvRow, downloadCsv, getSearchQuery, searchInVisibleColumns]);
@@ -6594,7 +6612,8 @@ export default function StatsReportsPage() {
   const renderFaTypBadge = (fa_typ, fa_typ_nazev) => {
     if (!fa_typ) return null;
     const typ = (fa_typ || '').toUpperCase();
-    const label = fa_typ_nazev ? fa_typ_nazev.toUpperCase() : typ;
+    const czMap  = { BEZNA: 'Běžná', ZALOHOVA: 'Zálohová', DOBROPIS: 'Dobropis', OPRAVNA: 'Opravná', PROFORMA: 'Proforma', VYUCTOVACI: 'Vyúčtovací', JINA: 'Jiná' };
+    const label = fa_typ_nazev || czMap[typ] || fa_typ;
     const bgMap  = { BEZNA: '#f1f5f9', ZALOHOVA: '#dbeafe', DOBROPIS: '#dcfce7', OPRAVNA: '#fef3c7', PROFORMA: '#e0e7ff', VYUCTOVACI: '#fce7f3', JINA: '#f3f4f6' };
     const clrMap = { BEZNA: '#475569', ZALOHOVA: '#1e40af', DOBROPIS: '#166534', OPRAVNA: '#92400e', PROFORMA: '#4338ca', VYUCTOVACI: '#9d174d', JINA: '#374151' };
     return (
@@ -6607,7 +6626,7 @@ export default function StatsReportsPage() {
   // ---------- Vzdělávání – helper: buňky na úrovni jedné faktury ----------
   const renderVzdelInvCells = (inv, sectionKey) => {
     if (!inv) return (
-      <Td colSpan={7} style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>— bez faktury —</Td>
+      <Td colSpan={8} style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>— bez faktury —</Td>
     );
     const pozn = inv.fa_poznamka;
     const isLong = pozn && pozn.length > 75;
@@ -6617,7 +6636,6 @@ export default function StatsReportsPage() {
         <Td style={{ width: '220px', maxWidth: '220px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
             {renderInvoiceLink(inv, sectionKey)}
-            {inv.fa_typ && renderFaTypBadge(inv.fa_typ, inv.fa_typ_nazev)}
             {pozn && (
               <SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}>
                 <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>
@@ -6627,6 +6645,7 @@ export default function StatsReportsPage() {
             )}
           </div>
         </Td>
+        <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(inv.fa_typ, inv.fa_typ_nazev)}</Td>
         <Td>{highlightText(formatDateCz(inv.datum_doruceni || ''), sectionKey)}</Td>
         <Td>{highlightText(formatDateCz(inv.datum_splatnosti || ''), sectionKey)}</Td>
         <TdR>{highlightText(fmtCurrency(inv.castka), sectionKey)}</TdR>
@@ -6954,6 +6973,15 @@ export default function StatsReportsPage() {
                 <span key={inv.id} style={{ whiteSpace: 'nowrap', marginRight: idx < invoices.length - 1 ? '0.35em' : 0 }}>
                   {renderInvoiceLink(inv, 'ordersOverLimit')}{idx < invoices.length - 1 && <span style={{ color: '#94a3b8' }}>,</span>}
                 </span>
+              ))}
+            </div>
+          )}
+        </Td>
+        <Td style={{ width: '90px', maxWidth: '90px' }}>
+          {invoices.length === 0 ? '—' : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              {[...new Set(invoices.map(inv => inv.fa_typ))].map((typ, idx) => (
+                <span key={idx}>{renderFaTypBadge(typ, null)}</span>
               ))}
             </div>
           )}
@@ -7927,6 +7955,7 @@ export default function StatsReportsPage() {
                             <tr>
                               <ThSort style={{ minWidth: '250px', width: '250px' }} onClick={() => handleTableSort('ordersOverLimit', 'ev_cislo')}>Ev.číslo obj.{sortIcon('ordersOverLimit', 'ev_cislo')}</ThSort>
                               <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('ordersOverLimit', 'fa_vs')}>Fa VS{sortIcon('ordersOverLimit', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('ordersOverLimit', 'fa_typ')}>Typ FA{sortIcon('ordersOverLimit', 'fa_typ')}</ThSort>
                               <ThSort style={{ width: '100px', minWidth: '100px' }} onClick={() => handleTableSort('ordersOverLimit', 'dt_obj')}>Dt. obj.{sortIcon('ordersOverLimit', 'dt_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'objednatel')}>Objednatel{sortIcon('ordersOverLimit', 'objednatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersOverLimit', 'schvalovatel')}>Schvalovatel{sortIcon('ordersOverLimit', 'schvalovatel')}</ThSort>
@@ -8014,6 +8043,7 @@ export default function StatsReportsPage() {
                             <tr>
                               <ThSort style={{ minWidth: '250px', width: '250px' }} onClick={() => handleTableSort('ordersAfterInvoice', 'ev_cislo')}>Ev.číslo obj.{sortIcon('ordersAfterInvoice', 'ev_cislo')}</ThSort>
                               <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('ordersAfterInvoice', 'fa_vs')}>Fa VS{sortIcon('ordersAfterInvoice', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('ordersAfterInvoice', 'fa_typ')}>Typ FA{sortIcon('ordersAfterInvoice', 'fa_typ')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'dt_fa')}>Fa doručena{sortIcon('ordersAfterInvoice', 'dt_fa')}</ThSort>
                               
                               <ThSort onClick={() => handleTableSort('ordersAfterInvoice', 'dt_obj_created')}>Obj vytvořena{sortIcon('ordersAfterInvoice', 'dt_obj_created')}</ThSort>
@@ -8039,6 +8069,7 @@ export default function StatsReportsPage() {
                                     {renderInvoiceLink(invoice)}
                                     {(() => { const pozn = invoice.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>{highlightText(truncated, 'ordersAfterInvoice')}</div></SmartTooltip></div>); })()}
                                   </Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(invoice.fa_typ, invoice.fa_typ_nazev)}</Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'ordersAfterInvoice')}</Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersAfterInvoice')}</Td>
                                   <Td>{renderOrdererStack(order)}</Td>
@@ -8121,6 +8152,7 @@ export default function StatsReportsPage() {
                             <tr>
                               <ThSort style={{ minWidth: '250px', width: '250px' }} onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'ev_cislo')}>Objednávka{sortIcon('ordersInvoicesWithoutAttachments', 'ev_cislo')}</ThSort>
                               <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'fa_vs')}>Fa VS{sortIcon('ordersInvoicesWithoutAttachments', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'fa_typ')}>Typ FA{sortIcon('ordersInvoicesWithoutAttachments', 'fa_typ')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'dt_obj')}>Dt. obj.{sortIcon('ordersInvoicesWithoutAttachments', 'dt_obj')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'objednatel')}>Objednatel{sortIcon('ordersInvoicesWithoutAttachments', 'objednatel')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersInvoicesWithoutAttachments', 'schvalovatel')}>Schvalovatel{sortIcon('ordersInvoicesWithoutAttachments', 'schvalovatel')}</ThSort>
@@ -8148,6 +8180,11 @@ export default function StatsReportsPage() {
                                       {(() => { const pozn = inv.fa_poznamka; if (!pozn) return null; const isLong = pozn.length > 75; const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn; return (<div style={{ display: 'block', marginTop: '0.2em' }}><SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}><div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>{highlightText(truncated, 'ordersInvoicesWithoutAttachments')}</div></SmartTooltip></div>); })()}
                                     </div>
                                   ))}</Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>
+                                    {(invoicesByOrderId[String(order.id)] || []).map(inv => (
+                                      <div key={inv.id}>{renderFaTypBadge(inv.fa_typ, inv.fa_typ_nazev)}</div>
+                                    ))}
+                                  </Td>
                                   <Td>{highlightText(formatDateCz(getOrderDate(order)), 'ordersInvoicesWithoutAttachments')}</Td>
                                   <Td>{renderOrdererStack(order)}</Td>
                                   <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
@@ -8234,6 +8271,7 @@ export default function StatsReportsPage() {
                           <thead>
                             <tr>
                               <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('invoicesWithoutAttachments', 'fa_vs')}>Fa VS{sortIcon('invoicesWithoutAttachments', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('invoicesWithoutAttachments', 'fa_typ')}>Typ FA{sortIcon('invoicesWithoutAttachments', 'fa_typ')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'dt_dorucena')}>Doručena{sortIcon('invoicesWithoutAttachments', 'dt_dorucena')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'evidoval')}>Zaevidoval{sortIcon('invoicesWithoutAttachments', 'evidoval')}</ThSort>
                               <ThSort onClick={() => handleTableSort('invoicesWithoutAttachments', 'predana')}>Předána{sortIcon('invoicesWithoutAttachments', 'predana')}</ThSort>
@@ -8275,6 +8313,7 @@ export default function StatsReportsPage() {
                                       );
                                     })()}
                                   </Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(invoice.fa_typ, invoice.fa_typ_nazev)}</Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'invoicesWithoutAttachments')}</Td>
                                   <Td>
                                     {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'invoicesWithoutAttachments') : '-'}
@@ -8364,6 +8403,7 @@ export default function StatsReportsPage() {
                           <thead>
                             <tr>
                               <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('overdueInvoices', 'fa_vs')}>Fa VS{sortIcon('overdueInvoices', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('overdueInvoices', 'fa_typ')}>Typ FA{sortIcon('overdueInvoices', 'fa_typ')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'dt_dorucena')}>Doručena{sortIcon('overdueInvoices', 'dt_dorucena')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'splatnost')}>Splatnost{sortIcon('overdueInvoices', 'splatnost')}</ThSort>
                               <ThSort onClick={() => handleTableSort('overdueInvoices', 'evidoval')}>Zaevidoval{sortIcon('overdueInvoices', 'evidoval')}</ThSort>
@@ -8406,6 +8446,7 @@ export default function StatsReportsPage() {
                                       );
                                     })()}
                                   </Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(invoice.fa_typ, invoice.fa_typ_nazev)}</Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'overdueInvoices')}</Td>
                                   <Td>{highlightText(formatDateCz(invoice.datum_splatnosti), 'overdueInvoices')}</Td>
                                   <Td>
@@ -8624,6 +8665,7 @@ export default function StatsReportsPage() {
                               <tr>
                                 <ThSort style={{ minWidth: '250px', width: '250px' }} onClick={() => handleTableSort('vzdelLekarsky', 'ev_cislo')}>Objednávka{sortIcon('vzdelLekarsky', 'ev_cislo')}</ThSort>
                                 <ThSort style={{ width: '220px', maxWidth: '220px' }} onClick={() => handleTableSort('vzdelLekarsky', 'fa_vs')}>Fa VS{sortIcon('vzdelLekarsky', 'fa_vs')}</ThSort>
+                                <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('vzdelLekarsky', 'fa_typ')}>Typ FA{sortIcon('vzdelLekarsky', 'fa_typ')}</ThSort>
                                 <ThSort style={{ width: '105px', maxWidth: '105px' }} onClick={() => handleTableSort('vzdelLekarsky', 'dt_dorucena')}>Doručena{sortIcon('vzdelLekarsky', 'dt_dorucena')}</ThSort>
                                 <ThSort style={{ width: '105px', maxWidth: '105px' }} onClick={() => handleTableSort('vzdelLekarsky', 'splatnost')}>Splatnost{sortIcon('vzdelLekarsky', 'splatnost')}</ThSort>
                                 <ThRSort style={{ width: '110px', maxWidth: '110px' }} onClick={() => handleTableSort('vzdelLekarsky', 'castka')}>Částka{sortIcon('vzdelLekarsky', 'castka')}</ThRSort>
@@ -11559,11 +11601,12 @@ export default function StatsReportsPage() {
                               <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'usek')}>Úsek{sortIcon('ordersWithInvoiceNotDone', 'usek')}</ThSort>
                               <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'financovani')}>Financování{sortIcon('ordersWithInvoiceNotDone', 'financovani')}</ThSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'detail_fin')}>Detail fin.{sortIcon('ordersWithInvoiceNotDone', 'detail_fin')}</ThNarrowSort>
-                              <Th>VS faktur</Th>
+                              <ThSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'fa_vs')}>VS faktur{sortIcon('ordersWithInvoiceNotDone', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'fa_typ')}>Typ FA{sortIcon('ordersWithInvoiceNotDone', 'fa_typ')}</ThSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'druh')}>Druh{sortIcon('ordersWithInvoiceNotDone', 'druh')}</ThNarrowSort>
                               <ThRSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'castka')}>Částka{sortIcon('ordersWithInvoiceNotDone', 'castka')}</ThRSort>
                               <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'stav')}>Stav obj.{sortIcon('ordersWithInvoiceNotDone', 'stav')}</ThNarrowSort>
-                              <ThNarrow>Stav FA</ThNarrow>
+                              <ThNarrowSort onClick={() => handleTableSort('ordersWithInvoiceNotDone', 'fa_stav')}>Stav FA{sortIcon('ordersWithInvoiceNotDone', 'fa_stav')}</ThNarrowSort>
                             </tr>
                           </thead>
                           <tbody>
@@ -11577,6 +11620,7 @@ export default function StatsReportsPage() {
                                 <Td>{renderFinancingLabelCell(order, 'ordersWithInvoiceNotDone')}</Td>
                                 <TdNarrow>{renderFinancingRefCell(order, 'ordersWithInvoiceNotDone')}</TdNarrow>
                                 <Td>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id}>{renderInvoiceLink(inv)}</div>)}</Td>
+                                <Td style={{ width: '90px', maxWidth: '90px' }}>{(invoicesByOrderId[String(order.id)] || []).map(inv => <div key={inv.id}>{renderFaTypBadge(inv.fa_typ, inv.fa_typ_nazev)}</div>)}</Td>
                                 <TdNarrow>{highlightText(getOrderTypeLabel(order), 'ordersWithInvoiceNotDone')}</TdNarrow>
                                 <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'ordersWithInvoiceNotDone')}</TdR>
                                 <TdNarrow>{highlightText(getOrderStatusLabel(order), 'ordersWithInvoiceNotDone')}</TdNarrow>
