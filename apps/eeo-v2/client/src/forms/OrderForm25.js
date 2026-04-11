@@ -22392,12 +22392,17 @@ function OrderForm25() {
                                 const currentMonth = new Date().getMonth();
                                 const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
                                 const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
-                                // ✅ PŘESNĚ podle modulu čerpání:
+                                // ✅ PŘESNĚ podle modulu čerpání + podíl schvalované objednávky:
                                 const spentPct = (skutecne / limit) * 100;
                                 const plannedPct = ((predpoklad + pokladna) / limit) * 100;
-                                const totalPct = spentPct + plannedPct;
-                                const isCritical = totalPct > targetPct * 2 || (skutecne / limit) * 100 >= 100;
-                                const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                // Podíl TÉTO objednávky v procentech
+                                const orderPodilPct = limit > 0 ? (lpPodilHere / limit) * 100 : 0;
+                                // Celkové procento včetně schvalované objednávky (zobrazeno v hlavičce)
+                                const totalPct = spentPct + plannedPct + orderPodilPct;
+                                // Barvy vycházejí ze stavu BEZ schvalované objednávky (stejně jako modul čerpání)
+                                const baseTotalPct = spentPct + plannedPct;
+                                const isCritical = baseTotalPct > targetPct * 2 || (skutecne / limit) * 100 >= 100;
+                                const isWarning = !isCritical && baseTotalPct > targetPct * 1.3;
                                 const baseBarColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
                                 const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
                                 // wouldExceed = TRUE když limit < potentialTotal (použij pro červený bar!)
@@ -22410,7 +22415,14 @@ function OrderForm25() {
                                       <span style={{ color: '#6b7280' }}>Celkový limit:</span>
                                       <span style={{ fontWeight: '600', textAlign: 'right' }}>{formatCZK(limit)}</span>
                                       <span style={{ color: '#6b7280' }}>V procesu:</span>
-                                      <span style={{ textAlign: 'right' }}>{formatCZK(predpoklad)}</span>
+                                      <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', flexWrap: 'wrap', color: barColorLight }}>
+                                        {formatCZK(predpoklad)}
+                                        {lpPodilHere > 0 && (
+                                          <span title={`Tato objednávka (+${formatCZK(lpPodilHere)})`} style={{ fontSize: '0.7rem', color: wouldExceed ? '#991b1b' : '#059669', fontWeight: 700, background: wouldExceed ? '#fee2e2' : '#d1fae5', padding: '1px 5px', borderRadius: '3px', border: `1px solid ${wouldExceed ? '#fca5a5' : '#6ee7b7'}`, cursor: 'help', whiteSpace: 'nowrap' }}>
+                                            +{formatCZK(lpPodilHere)}
+                                          </span>
+                                        )}
+                                      </span>
                                       <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>
                                         {wouldExceed ? 'Přečerpáno:' : 'Volné:'}
                                       </span>
@@ -22418,9 +22430,9 @@ function OrderForm25() {
                                         {wouldExceed ? `−${formatCZK(Math.abs(zbyvaPotential)).replace(/^[−-]?/, '')}` : formatCZK(zbyvaPotential)}
                                       </span>
                                       {pokladna > 0 && <span style={{ color: '#6b7280' }}>Pokladna:</span>}
-                                      {pokladna > 0 && <span style={{ textAlign: 'right' }}>{formatCZK(pokladna)}</span>}
+                                      {pokladna > 0 && <span style={{ textAlign: 'right', color: baseBarColor }}>{formatCZK(pokladna)}</span>}
                                       <span style={{ color: '#6b7280' }}>Dokončeno:</span>
-                                      <span style={{ textAlign: 'right' }}>{formatCZK(skutecne)}</span>
+                                      <span style={{ textAlign: 'right', color: baseBarColor }}>{formatCZK(skutecne)}</span>
                                     </div>
                                     {/* Ježeček progress bar */}
                                     {limit > 0 && (
@@ -22462,12 +22474,22 @@ function OrderForm25() {
                                                 left: `${Math.min(spentPct, 100)}%`,
                                                 width: `${plannedWidth}%`,
                                                 zIndex: 5,
-                                                opacity: wouldExceed ? 1 : 0.45,
-                                                backgroundColor: wouldExceed ? '#ef4444' : barColorLight,
+                                                opacity: 0.45,
+                                                backgroundColor: barColorLight,
                                                 backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.3) 75%, transparent 75%, transparent)',
                                                 backgroundSize: '8px 8px',
                                                 transition: 'width 0.5s ease'
                                               }} />
+                                            ) : null;
+                                          })()}
+                                          {/* TATO OBJEDNÁVKA - solid bar (zelená v limitu, červená při přečerpání) */}
+                                          {orderPodilPct > 0 && (() => {
+                                            const afterPlanned = Math.min(spentPct, 100) + Math.min(plannedPct, Math.max(0, 100 - spentPct));
+                                            const orderWidth = wouldExceed
+                                              ? Math.max(0, 100 - afterPlanned)
+                                              : Math.min(orderPodilPct, Math.max(0, 100 - afterPlanned));
+                                            return orderWidth > 0 ? (
+                                              <div style={{ position: 'absolute', top: 0, height: '100%', left: `${afterPlanned}%`, width: `${orderWidth}%`, background: wouldExceed ? '#ef4444' : '#86efac', opacity: wouldExceed ? 1 : 0.85, zIndex: 8, transition: 'width 0.5s ease' }} />
                                             ) : null;
                                           })()}
                                         </div>
@@ -22480,8 +22502,14 @@ function OrderForm25() {
                                             </div>
                                             {plannedPct > 0 && (
                                               <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: wouldExceed ? '#ef4444' : barColorLight, opacity: 0.7 }} />
+                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColorLight, opacity: 0.7 }} />
                                                 <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                              </div>
+                                            )}
+                                            {orderPodilPct > 0 && (
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: wouldExceed ? '#ef4444' : '#86efac' }} />
+                                                <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: wouldExceed ? '#ef4444' : '#059669' }}>Tato objednávka</span>
                                               </div>
                                             )}
                                           </div>
@@ -22553,6 +22581,15 @@ function OrderForm25() {
                                 const isOverBudgetS = percentCompletionS > 100;
                                 const displayPercentS = Math.min(percentCompletionS, 150);
                                 const barColorS = isOverBudgetS ? '#dc2626' : percentCompletionS > 80 ? '#f59e0b' : '#10b981';
+                                const cerpanoSkutS = parseFloat(smlouvaDetail.cerpano_skutecne) || 0;
+                                const vProcesuS = cerpano - cerpanoSkutS;
+                                const { smlouvaRowBarColor, smlouvaRowBarColorLight } = (() => {
+                                  const _t = Math.round(((new Date().getMonth() + 1) / 12) * 100);
+                                  const _b = celkova > 0 ? ((cerpanoSkutS + vProcesuS) / celkova) * 100 : 0;
+                                  const _c = _b > _t * 2 || (celkova > 0 && (cerpanoSkutS / celkova) * 100 >= 100);
+                                  const _w = !_c && _b > _t * 1.3;
+                                  return { smlouvaRowBarColor: _c ? '#ef4444' : _w ? '#f59e0b' : '#10b981', smlouvaRowBarColorLight: _c ? '#fca5a5' : _w ? '#fdba74' : '#86efac' };
+                                })();
                                 return (
                                   <div style={{ marginBottom: '0.75rem' }}>
                                     <div style={{ fontWeight: '600', fontSize: '0.8125rem', color: wouldExceed ? '#dc2626' : '#1e40af', marginBottom: '0.375rem' }}>
@@ -22564,7 +22601,14 @@ function OrderForm25() {
                                         <span style={{ fontWeight: '600', textAlign: 'right' }}>{formatCZK(celkova)}</span>
                                       </>)}
                                       <span style={{ color: '#6b7280' }}>V procesu:</span>
-                                      <span style={{ textAlign: 'right' }}>{formatCZK(cerpano)}</span>
+                                      <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', flexWrap: 'wrap', color: smlouvaRowBarColorLight }}>
+                                        {formatCZK(cerpano)}
+                                        {maxCena > 0 && (
+                                          <span title={`Tato objednávka (+${formatCZK(maxCena)})`} style={{ fontSize: '0.7rem', color: wouldExceed ? '#991b1b' : '#059669', fontWeight: 700, background: wouldExceed ? '#fee2e2' : '#d1fae5', padding: '1px 5px', borderRadius: '3px', border: `1px solid ${wouldExceed ? '#fca5a5' : '#6ee7b7'}`, cursor: 'help', whiteSpace: 'nowrap' }}>
+                                            +{formatCZK(maxCena)}
+                                          </span>
+                                        )}
+                                      </span>
                                       {hasStropovaCena && (<>
                                         <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>
                                           {wouldExceed ? 'Přečerpáno:' : 'Volné:'}
@@ -22574,20 +22618,26 @@ function OrderForm25() {
                                         </span>
                                       </>)}
                                       <span style={{ color: '#6b7280' }}>Dokončeno:</span>
-                                      <span style={{ textAlign: 'right' }}>{formatCZK(parseFloat(smlouvaDetail.cerpano_skutecne || 0))}</span>
+                                      <span style={{ textAlign: 'right', color: smlouvaRowBarColor }}>{formatCZK(parseFloat(smlouvaDetail.cerpano_skutecne || 0))}</span>
                                     </div>
                                     {/* Roční plán čerpání - Ježeček progress bar */}
                                     {hasStropovaCena && celkova > 0 && (() => {
                                       const currentMonth = new Date().getMonth();
                                       const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
                                       const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
-                                      // ✅ PŘESNĚ podle modulu čerpání:
+                                      // ✅ PŘESNĚ podle modulu čerpání + podíl schvalované objednávky:
                                       const cerpanoSkutecneSmlouva = parseFloat(smlouvaDetail.cerpano_skutecne) || 0;
+                                      const vProcesuSmlouva = cerpano - cerpanoSkutecneSmlouva;
                                       const spentPct = (cerpanoSkutecneSmlouva / celkova) * 100;
-                                      const plannedPct = ((cerpano - cerpanoSkutecneSmlouva) / celkova) * 100;
-                                      const totalPct = spentPct + plannedPct;
-                                      const isCritical = totalPct > targetPct * 2 || (cerpanoSkutecneSmlouva / celkova) * 100 >= 100;
-                                      const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                      const plannedPct = (vProcesuSmlouva / celkova) * 100;
+                                      // Podíl TÉTO objednávky v procentech
+                                      const orderPodilPctSmlouva = celkova > 0 ? (maxCena / celkova) * 100 : 0;
+                                      // Celkové procento včetně schvalované objednávky (zobrazeno v hlavičce)
+                                      const totalPct = spentPct + plannedPct + orderPodilPctSmlouva;
+                                      // Barvy vycházejí ze stavu BEZ schvalované objednávky
+                                      const baseTotalPctSmlouva = spentPct + plannedPct;
+                                      const isCritical = baseTotalPctSmlouva > targetPct * 2 || (cerpanoSkutecneSmlouva / celkova) * 100 >= 100;
+                                      const isWarning = !isCritical && baseTotalPctSmlouva > targetPct * 1.3;
                                       const baseBarColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
                                       const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
                                       // wouldExceed už je definovaný výš - NEREDEFINUJ!
@@ -22637,11 +22687,21 @@ function OrderForm25() {
                                                     top: 0,
                                                     height: '100%',
                                                     width: `${plannedWidth}%`,
-                                                    background: `repeating-linear-gradient(45deg, ${wouldExceed ? '#ef4444' : barColorLight}, ${wouldExceed ? '#ef4444' : barColorLight} 6px, transparent 6px, transparent 12px)`,
-                                                    opacity: wouldExceed ? 1 : 0.45,
+                                                    background: `repeating-linear-gradient(45deg, ${barColorLight}, ${barColorLight} 6px, transparent 6px, transparent 12px)`,
+                                                    opacity: 0.45,
                                                     zIndex: 5,
                                                     transition: 'width 0.5s ease, left 0.5s ease'
                                                   }} />
+                                                ) : null;
+                                              })()}
+                                              {/* TATO OBJEDNÁVKA - solid bar (zelená v limitu, červená při přečerpání) */}
+                                              {orderPodilPctSmlouva > 0 && (() => {
+                                                const afterPlanned = Math.min(spentPct, 100) + Math.min(plannedPct, Math.max(0, 100 - spentPct));
+                                                const orderWidth = wouldExceed
+                                                  ? Math.max(0, 100 - afterPlanned)
+                                                  : Math.min(orderPodilPctSmlouva, Math.max(0, 100 - afterPlanned));
+                                                return orderWidth > 0 ? (
+                                                  <div style={{ position: 'absolute', left: `${afterPlanned}%`, top: 0, height: '100%', width: `${orderWidth}%`, background: wouldExceed ? '#ef4444' : '#86efac', opacity: wouldExceed ? 1 : 0.85, zIndex: 8, transition: 'width 0.5s ease' }} />
                                                 ) : null;
                                               })()}
                                             </div>
@@ -22653,8 +22713,14 @@ function OrderForm25() {
                                                 </div>
                                                 {plannedPct > 0 && (
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: wouldExceed ? '#ef4444' : barColorLight, opacity: 0.7 }} />
+                                                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: barColorLight, opacity: 0.7 }} />
                                                     <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                                  </div>
+                                                )}
+                                                {orderPodilPctSmlouva > 0 && (
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: wouldExceed ? '#ef4444' : '#86efac' }} />
+                                                    <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: wouldExceed ? '#ef4444' : '#059669' }}>Tato objednávka</span>
                                                   </div>
                                                 )}
                                               </div>
