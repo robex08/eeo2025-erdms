@@ -302,6 +302,53 @@ function discover_rss_url($html, $baseUrl) {
 }
 
 /**
+ * Parsuje datum z RSS feedu — zvládne i české formáty (9. 4. 2026, 12. března 2025 apod.)
+ */
+function parse_rss_date($raw) {
+    $raw = trim($raw);
+    if (empty($raw)) return '';
+
+    // Standardní formáty (RFC 2822, ISO 8601 apod.)
+    $ts = strtotime($raw);
+    if ($ts !== false && $ts > 0) {
+        // Pokud původní raw neobsahuje čas (žádná číslice:číslice), zobraz jen datum
+        if (!preg_match('/\d{1,2}:\d{2}/', $raw) && date('H:i', $ts) === '00:00') {
+            return date('d.m.Y', $ts);
+        }
+        return date('d.m.Y H:i', $ts);
+    }
+
+    // České měsíce → čísla (pro formáty jako "12. března 2025")
+    $czMonths = [
+        'ledna'=>1,'února'=>2,'března'=>3,'března'=>3,'dubna'=>4,'května'=>5,'června'=>6,
+        'července'=>7,'srpna'=>8,'září'=>9,'října'=>10,'listopadu'=>11,'prosince'=>12,
+        'leden'=>1,'únor'=>2,'březen'=>3,'duben'=>4,'květen'=>5,'červen'=>6,
+        'červenec'=>7,'srpen'=>8,'září'=>9,'říjen'=>10,'listopad'=>11,'prosinec'=>12
+    ];
+    $lower = mb_strtolower($raw, 'UTF-8');
+    foreach ($czMonths as $name => $num) {
+        if (mb_strpos($lower, $name) !== false) {
+            $lower = str_replace($name, $num . '.', $lower);
+            break;
+        }
+    }
+
+    // Český číselný formát: "9. 4. 2026" nebo "9.4.2026" (den. měsíc. rok)
+    if (preg_match('/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/', $lower, $m)) {
+        $day = (int)$m[1];
+        $month = (int)$m[2];
+        $year = (int)$m[3];
+        if (checkdate($month, $day, $year)) {
+            // Český formát nemá čas → vrátit jen datum
+            return sprintf('%02d.%02d.%04d', $day, $month, $year);
+        }
+    }
+
+    // Fallback — vrátíme raw, ať uživatel vidí alespoň původní text
+    return $raw;
+}
+
+/**
  * Parsuje RSS 2.0 nebo Atom feed XML do pole položek
  */
 function parse_feed_items($xml, $feedName, $maxItems = 10) {
@@ -367,7 +414,7 @@ function parse_feed_items($xml, $feedName, $maxItems = 10) {
                 'title' => htmlspecialchars($title, ENT_QUOTES, 'UTF-8'),
                 'description' => htmlspecialchars($shortDescription, ENT_QUOTES, 'UTF-8'),
                 'link' => filter_var($link, FILTER_VALIDATE_URL) ? $link : '',
-                'pub_date' => $pubDate ? date('d.m.Y H:i', strtotime($pubDate)) : '',
+                'pub_date' => parse_rss_date($pubDate),
                 'pub_date_raw' => $pubDate,
                 'category' => htmlspecialchars($category, ENT_QUOTES, 'UTF-8'),
                 'image_url' => filter_var($imageUrl, FILTER_VALIDATE_URL) ? $imageUrl : '',
@@ -401,7 +448,7 @@ function parse_feed_items($xml, $feedName, $maxItems = 10) {
                 'title' => htmlspecialchars($title, ENT_QUOTES, 'UTF-8'),
                 'description' => htmlspecialchars($shortDescription, ENT_QUOTES, 'UTF-8'),
                 'link' => filter_var($link, FILTER_VALIDATE_URL) ? $link : '',
-                'pub_date' => $pubDate ? date('d.m.Y H:i', strtotime($pubDate)) : '',
+                'pub_date' => parse_rss_date($pubDate),
                 'pub_date_raw' => $pubDate,
                 'category' => htmlspecialchars($category, ENT_QUOTES, 'UTF-8'),
                 'image_url' => '',

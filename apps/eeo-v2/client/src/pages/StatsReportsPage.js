@@ -981,15 +981,98 @@ const BlockCheckbox = styled.input`
   height: 16px;
 `;
 
-const TableWrapper = styled.div`
+const TableWrapperInner = styled.div`
   overflow-x: auto;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
+
+  /* Custom scrollbar */
+  &::-webkit-scrollbar { height: 8px; }
+  &::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; min-width: 40px; }
+  &::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
 `;
 
+const TableWrapperOuter = styled.div`
+  position: relative;
+`;
+
+const ScrollFade = styled.div`
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 8px;
+  width: 36px;
+  background: linear-gradient(to right, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.35s ease;
+  opacity: ${props => props.$visible ? 1 : 0};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const ScrollChevron = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(51,65,85,0.12);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  animation: pulseRight 1.8s ease-in-out infinite;
+  @keyframes pulseRight {
+    0%, 100% { transform: translateX(0); opacity: 0.7; }
+    50% { transform: translateX(3px); opacity: 1; }
+  }
+`;
+
+/* eslint-disable react/display-name */
+const TableWrapper = React.memo(({ children, style, className }) => {
+  const scrollRef = React.useRef(null);
+  const [hint, setHint] = React.useState(false);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf;
+    const check = () => {
+      raf = requestAnimationFrame(() => {
+        const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+        const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+        setHint(hasOverflow && !atEnd);
+      });
+    };
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', check);
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <TableWrapperOuter className={className}>
+      <TableWrapperInner ref={scrollRef} style={style}>{children}</TableWrapperInner>
+      <ScrollFade $visible={hint}><ScrollChevron>›</ScrollChevron></ScrollFade>
+    </TableWrapperOuter>
+  );
+});
+/* eslint-enable react/display-name */
+
 const Table = styled.table`
-  width: 100%;
-  table-layout: fixed;
+  min-width: 100%;
+  width: max-content;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: 0.88rem;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -998,6 +1081,27 @@ const Table = styled.table`
   a, button {
     font: inherit;
     letter-spacing: inherit;
+  }
+
+  /* Sticky první sloupec */
+  thead th:first-child,
+  tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+  }
+  thead th:first-child {
+    z-index: 3;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  }
+  tbody td:first-child {
+    background: #fff;
+  }
+  tbody tr:nth-of-type(even) td:first-child {
+    background: #f8fafc;
+  }
+  tbody tr:hover td:first-child {
+    background: #e8f0fe;
   }
 `;
 
@@ -1025,12 +1129,15 @@ const TbodyGroup = styled.tbody`
     border-bottom: 1px solid #f1f5f9;
     transition: background-color 0.15s ease;
   }
+  & tr td:first-child { background: #fff; }
   &:nth-of-type(even) tr {
     background-color: #f8fafc;
   }
+  &:nth-of-type(even) tr td:first-child { background: #f8fafc; }
   &:hover tr {
     background-color: #e8f0fe !important;
   }
+  &:hover tr td:first-child { background: #e8f0fe !important; }
   & tr:not(:first-child) {
     border-top: 1px dashed #c7d2fe;
   }
@@ -1045,9 +1152,11 @@ const TbodyGroupHighlighted = styled(TbodyGroup)`
   &:nth-of-type(even) tr {
     background-color: #f0fdf4;
   }
+  &:nth-of-type(even) tr td:first-child { background: #f0fdf4; }
   &:hover tr {
     background-color: #dcfce7 !important;
   }
+  &:hover tr td:first-child { background: #dcfce7 !important; }
 `;
 
 const Th = styled.th`
@@ -1061,6 +1170,8 @@ const Th = styled.th`
   letter-spacing: 0.025em;
   font-size: 0.8rem;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  position: sticky;
+  top: 0;
 `;
 
 const ThWrap = styled(Th)`
@@ -1071,17 +1182,15 @@ const ThWrap = styled(Th)`
 const Td = styled.td`
   padding: 0.6rem 0.8rem;
   border-bottom: 1px solid #f1f5f9;
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  white-space: nowrap;
 `;
 
 const SubjectTd = styled(Td)`
   white-space: normal;
   word-break: break-word;
   padding-right: 1em;
-  max-width: 260px;
-  width: 260px;
+  min-width: 180px;
+  max-width: 300px;
 `;
 
 // Úzký sloupec pro Druh objednávky
@@ -1097,9 +1206,7 @@ const ThNarrowSort = styled(ThNarrow)`
   &:hover { background-color: #e2e8f0; }
 `;
 const TdNarrow = styled(Td)`
-  max-width: 140px;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
   font-size: 0.78rem;
   line-height: 1.2;
 `;
@@ -1137,8 +1244,8 @@ const ExpandAllBtn = styled.button`
   &:hover { background: #e2e8f0; color: #1e293b; }
 `;
 
-const TdR = styled(Td)`text-align: right;`;
-const TdC = styled(Td)`text-align: center;`;
+const TdR = styled(Td)`text-align: right; white-space: nowrap;`;
+const TdC = styled(Td)`text-align: center; white-space: nowrap;`;
 
 const NameStack = styled.div`
   display: flex;

@@ -242,6 +242,11 @@ function handle_dashboard_data($input, $config, $queries) {
             $result['invoices_stats'] = _dashboard_get_invoice_stats($db, $user_id, $is_invoice_admin, $is_invoice_admin, $usek_id, $perm_codes);
         }
 
+        // === KONTAKTY - počet zaměstnanců + dodavatelů ===
+        if ($is_admin || in_array('PHONEBOOK_VIEW', $perm_codes)) {
+            $result['contacts_count'] = _dashboard_get_contacts_count($db);
+        }
+
         // === AKTIVNÍ UŽIVATELÉ (pouze SUPERADMIN, vždy posledni blok) ===
         if ($is_superadmin) {
             $result['active_users_admin'] = _dashboard_get_active_users($db);
@@ -1012,31 +1017,52 @@ function _dashboard_get_focus_alerts($db, $user_id, $is_admin, $permissions, $ha
         }
     }
 
-    // --- 6. Kritické LP přísliby (>90%) ---
+    // --- 6. Kritické LP přísliby (>=90% totální čerpání) ---
+    // ✅ OPRAVA: používáme TOTÁLNÍ čerpání (skutecne + predpokladane + rezervovano) konzistentně s modulem Čerpání
     if ($has_cap('DASHBOARD_SPENDING_LP') || $is_admin) {
         $where_lp = ($is_admin || !$usek_id) ? "" : "AND c.usek_id = ?";
         $params_lp = [date('Y')];
         if (!$is_admin && $usek_id) {
             $params_lp[] = $usek_id;
         }
+
+        // Počet LP >=90% (kritické + překročené)
         $stmt = $db->prepare("
-            SELECT COUNT(*) as cnt
+            SELECT 
+                SUM(CASE WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 0.9
+                          AND ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) < 1.0 THEN 1 ELSE 0 END) as kriticke,
+                SUM(CASE WHEN ((c.skutecne_cerpano + c.predpokladane_cerpani + c.rezervovano) / NULLIF(c.celkovy_limit, 0)) >= 1.0 THEN 1 ELSE 0 END) as prekrocene
             FROM `" . TBL_LIMITOVANE_PRISLIBY_CERPANI . "` c
             WHERE c.rok = ?
               AND c.celkovy_limit > 0
-              AND (c.skutecne_cerpano / NULLIF(c.celkovy_limit, 0)) >= 0.9
               {$where_lp}
         ");
         $stmt->execute($params_lp);
-        $cnt6 = (int)$stmt->fetchColumn();
-        if ($cnt6 > 0) {
+        $row_lp = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cnt_kriticke = (int)($row_lp['kriticke'] ?? 0);
+        $cnt_prekrocene = (int)($row_lp['prekrocene'] ?? 0);
+
+        // Alert pro PŘEČERPANÉ LP (>= 100%) - DANGER
+        if ($cnt_prekrocene > 0) {
+            $items[] = [
+                'severity' => 'danger',
+                'icon' => 'coins',
+                'text' => "{$cnt_prekrocene} " . ($cnt_prekrocene === 1 ? 'LP příslib je' : ($cnt_prekrocene < 5 ? 'LP přísliby jsou' : 'LP příslibů je')) . " přečerpáno",
+                'link' => '/cerpani',
+                'linkTab' => 'limited-promises',
+                'count' => $cnt_prekrocene
+            ];
+        }
+
+        // Alert pro KRITICKÉ LP (90-99%) - WARNING
+        if ($cnt_kriticke > 0) {
             $items[] = [
                 'severity' => 'warning',
                 'icon' => 'coins',
-                'text' => "{$cnt6} " . ($cnt6 === 1 ? 'LP příslib má' : ($cnt6 < 5 ? 'LP přísliby mají' : 'LP příslibů má')) . " vyčerpáno přes 90 %",
+                'text' => "{$cnt_kriticke} " . ($cnt_kriticke === 1 ? 'LP příslib má' : ($cnt_kriticke < 5 ? 'LP přísliby mají' : 'LP příslibů má')) . " vyčerpáno přes 90 %",
                 'link' => '/cerpani',
                 'linkTab' => 'limited-promises',
-                'count' => $cnt6
+                'count' => $cnt_kriticke
             ];
         }
     }
@@ -3555,4 +3581,31 @@ function _finance_fetch_chart($ticker, $range = '1mo', $interval = '1d') {
         'price_start' => $first_price,
         'change_pct' => $change_pct
     ];
+}
+
+/**
+ * Počet kontaktů (zaměstnanci + dodavatelé) pro dashboard shortcut
+ */
+function _dashboard_get_contacts_count($db) {
+    try {
+        $employees = 0;
+        $suppliers = 0;
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM `" . TBL_UZIVATELE . "` WHERE aktivni = 1");
+        $stmt->execute();
+        $employees = (int)$stmt->fetchColumn();
+
+        $stmt2 = $db->prepare("SELECT COUNT(*) FROM `" . TBL_DODAVATELE . "` WHERE aktivni = 1");
+        $stmt2->execute();
+        $suppliers = (int)$stmt2->fetchColumn();
+
+        return [
+            'employees' => $employees,
+            'suppliers' => $suppliers,
+            'total' => $employees + $suppliers
+        ];
+    } catch (Exception $e) {
+        error_log("Dashboard contacts_count error: " . $e->getMessage());
+        return ['employees' => 0, 'suppliers' => 0, 'total' => 0];
+    }
 }
