@@ -26,8 +26,11 @@ import {
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
   faFileContract, faComments, faComment, faHourglassHalf, faFileInvoice,
   faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser,
-  faExpand, faCompress
+  faExpand, faCompress,
+  faCloud, faWind, faTint, faThermometerHalf, faMapMarkerAlt,
+  faChevronLeft, faChevronRight
 } from '@fortawesome/free-solid-svg-icons';
+import { Cloud, Sun, CloudRain, CloudSnow, CloudDrizzle, Wind, Droplets, MapPin, Gauge } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
 
@@ -122,6 +125,8 @@ const WIDGET_REGISTRY = {
   chart_fees:          { title: 'Roční poplatky - přehled',   icon: faChartBar,           color: '#7c3aed', requires: 'DASHBOARD_CHART_FEES' },
   cashbook_summary:    { title: 'Pokladna - přehled',         icon: faCoins,              color: '#059669', requires: 'DASHBOARD_CASH_BOOK', beta: true },
   rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316', requires: 'DASHBOARD_RSS_NEWS' },
+  weather:             { title: 'Počasí',                      icon: faCloud,              color: '#1e40af', requires: 'DASHBOARD_WEATHER' },
+  calendar:            { title: 'Kalendář',                    icon: faCalendarAlt,        color: '#0891b2', requires: 'DASHBOARD_CALENDAR' },
   active_users_admin:  { title: 'Dashboard uživatelů',         icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
 };
 
@@ -1522,6 +1527,388 @@ function ActiveUsersAdminWidget({ data, navigate }) {
   );
 }
 
+// ── Počasí ──────────────────────────────────────────────────────────────────
+
+const WMO_INFO = {
+  0:  { text: 'Jasno',              Icon: Sun,          iconColor: '#fbbf24' },
+  1:  { text: 'Skoro jasno',        Icon: Sun,          iconColor: '#fde68a' },
+  2:  { text: 'Polojasno',          Icon: Cloud,        iconColor: '#e2e8f0' },
+  3:  { text: 'Zataženo',           Icon: Cloud,        iconColor: '#cbd5e1' },
+  45: { text: 'Mlha',               Icon: Cloud,        iconColor: '#94a3b8' },
+  48: { text: 'Jinovatka',          Icon: Cloud,        iconColor: '#94a3b8' },
+  51: { text: 'Slabé mrholení',     Icon: CloudDrizzle, iconColor: '#93c5fd' },
+  53: { text: 'Mrholení',           Icon: CloudDrizzle, iconColor: '#60a5fa' },
+  55: { text: 'Silné mrholení',     Icon: CloudDrizzle, iconColor: '#3b82f6' },
+  61: { text: 'Slabý déšť',         Icon: CloudRain,    iconColor: '#93c5fd' },
+  63: { text: 'Mírný déšť',         Icon: CloudRain,    iconColor: '#60a5fa' },
+  65: { text: 'Silný déšť',         Icon: CloudRain,    iconColor: '#3b82f6' },
+  71: { text: 'Slabé sněžení',      Icon: CloudSnow,    iconColor: '#bfdbfe' },
+  73: { text: 'Sněžení',            Icon: CloudSnow,    iconColor: '#dbeafe' },
+  75: { text: 'Silné sněžení',      Icon: CloudSnow,    iconColor: '#eff6ff' },
+  77: { text: 'Ledové jehličky',    Icon: CloudSnow,    iconColor: '#eff6ff' },
+  80: { text: 'Přeháňky',           Icon: CloudRain,    iconColor: '#93c5fd' },
+  81: { text: 'Silné přeháňky',     Icon: CloudRain,    iconColor: '#60a5fa' },
+  82: { text: 'Bouřkové přeháňky',  Icon: CloudRain,    iconColor: '#f59e0b' },
+  95: { text: 'Bouřka',             Icon: CloudRain,    iconColor: '#fbbf24' },
+  96: { text: 'Bouřka s krupobitím',Icon: CloudRain,    iconColor: '#fbbf24' },
+  99: { text: 'Silná bouřka',       Icon: CloudRain,    iconColor: '#f97316' },
+};
+
+function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh }) {
+  const isDay = weatherData?.is_day !== 0; // default: denní
+  const bgGradient = isDay
+    ? 'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)'
+    : 'linear-gradient(135deg, #1e293b 0%, #312e81 100%)';
+
+  if (weatherLoading && !weatherData) {
+    return (
+      <div style={{
+        background: bgGradient, borderRadius: '24px',
+        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', minHeight: '260px', gap: '0.75rem',
+        color: '#fff', position: 'relative', overflow: 'hidden',
+        width: '100%', height: '100%'
+      }}>
+        <FontAwesomeIcon icon={faSync} spin style={{ fontSize: '1.8rem', opacity: 0.8 }} />
+        <span style={{ fontWeight: 500, opacity: 0.9, fontSize: '0.9rem' }}>Načítám počasí…</span>
+      </div>
+    );
+  }
+  if (weatherError || !weatherData) {
+    return (
+      <div style={{
+        background: bgGradient, borderRadius: '24px',
+        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', minHeight: '260px', gap: '0.75rem',
+        color: 'rgba(255,255,255,0.7)', position: 'relative', overflow: 'hidden',
+        width: '100%', height: '100%'
+      }}>
+        <Cloud style={{ width: '2.5rem', height: '2.5rem', opacity: 0.6 }} />
+        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Počasí není dostupné</span>
+        <button onClick={onRefresh} style={{
+          background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)',
+          color: '#fff', borderRadius: '999px', padding: '0.35rem 1rem',
+          fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600,
+          backdropFilter: 'blur(4px)'
+        }}>Zkusit znovu</button>
+      </div>
+    );
+  }
+
+  const { temp, apparent_temp, humidity, wind_speed, wind_gusts, pressure, precipitation, weather_code, city, country, updated_at } = weatherData;
+  const info = WMO_INFO[weather_code] || { text: 'Neznámo', Icon: Cloud, iconColor: '#e2e8f0' };
+  const WeatherIcon = info.Icon || Cloud;
+
+  return (
+    <div style={{
+      background: bgGradient,
+      borderRadius: '24px',
+      boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+      color: '#fff',
+      position: 'relative',
+      overflow: 'hidden',
+      userSelect: 'none',
+      display: 'flex',
+      flexDirection: 'column',
+      width: '100%',
+      height: '100%',
+      minHeight: '260px',
+    }}>
+      {/* Dekorativní kruhy */}
+      <div style={{
+        position: 'absolute', top: '-4rem', right: '-4rem',
+        width: '10rem', height: '10rem',
+        background: 'rgba(255,255,255,0.1)', borderRadius: '50%', filter: 'blur(2rem)',
+        pointerEvents: 'none'
+      }} />
+      <div style={{
+        position: 'absolute', bottom: '-4rem', left: '-4rem',
+        width: '10rem', height: '10rem',
+        background: 'rgba(255,255,255,0.1)', borderRadius: '50%', filter: 'blur(2rem)',
+        pointerEvents: 'none'
+      }} />
+
+      <div style={{ position: 'relative', padding: '1.4rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0', flex: 1 }}>
+        {/* Hlavička */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <MapPin strokeWidth={2} style={{ width: '0.9rem', height: '0.9rem', opacity: 0.8, flexShrink: 0 }} />
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.3px' }}>
+              {city}{country ? `, ${country}` : ''}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{
+              fontSize: '0.75rem', fontWeight: 600,
+              padding: '0.2rem 0.75rem',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '999px',
+              backdropFilter: 'blur(4px)'
+            }}>Dnes</span>
+            <button onClick={onRefresh} title="Obnovit" style={{
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+              borderRadius: '50%', width: '1.6rem', height: '1.6rem',
+              cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              backdropFilter: 'blur(4px)', transition: 'background 0.15s'
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+            >
+              <FontAwesomeIcon icon={faSync} style={{ fontSize: '0.7rem' }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Teplota + lucide ikona počasí */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: 'auto 0', paddingBottom: '1.1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '3.75rem', fontWeight: 800, letterSpacing: '-2px', lineHeight: 1 }}>
+              {Math.round(temp)}°
+            </span>
+            <span style={{ fontSize: '1.05rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginTop: '0.25rem' }}>
+              {info.text}
+            </span>
+            <span style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.2rem' }}>
+              Pocitově {Math.round(apparent_temp)}°C
+            </span>
+          </div>
+          <WeatherIcon strokeWidth={1.2} style={{
+            width: '5rem', height: '5rem',
+            color: info.iconColor,
+            filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))',
+            flexShrink: 0
+          }} />
+        </div>
+
+        {/* 4 info karty 2×2 */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.55rem',
+          paddingTop: '1rem',
+          borderTop: '1px solid rgba(255,255,255,0.2)'
+        }}>
+          {/* Vítr */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.55rem',
+            background: 'rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem',
+            borderRadius: '14px', backdropFilter: 'blur(4px)'
+          }}>
+            <Wind strokeWidth={1.5} style={{ width: '1.1rem', height: '1.1rem', opacity: 0.85, flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontSize: '0.57rem', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, letterSpacing: '0.5px' }}>Vítr</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{wind_speed} km/h</span>
+            </div>
+          </div>
+          {/* Nárazy */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.55rem',
+            background: 'rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem',
+            borderRadius: '14px', backdropFilter: 'blur(4px)'
+          }}>
+            <Wind strokeWidth={2} style={{ width: '1.1rem', height: '1.1rem', opacity: 0.85, flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontSize: '0.57rem', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, letterSpacing: '0.5px' }}>Nárazy</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{wind_gusts != null ? `${wind_gusts} km/h` : '—'}</span>
+            </div>
+          </div>
+          {/* Vlhkost */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.55rem',
+            background: 'rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem',
+            borderRadius: '14px', backdropFilter: 'blur(4px)'
+          }}>
+            <Droplets strokeWidth={1.5} style={{ width: '1.1rem', height: '1.1rem', opacity: 0.85, flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontSize: '0.57rem', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, letterSpacing: '0.5px' }}>Vlhkost</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{humidity}%</span>
+            </div>
+          </div>
+          {/* Tlak */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.55rem',
+            background: 'rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem',
+            borderRadius: '14px', backdropFilter: 'blur(4px)'
+          }}>
+            <Gauge strokeWidth={1.5} style={{ width: '1.1rem', height: '1.1rem', opacity: 0.85, flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontSize: '0.57rem', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, letterSpacing: '0.5px' }}>Tlak</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{pressure != null ? `${pressure} hPa` : '—'}</span>
+            </div>
+          </div>
+          {/* Srážky */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.55rem',
+            background: 'rgba(255,255,255,0.1)', padding: '0.6rem 0.8rem',
+            borderRadius: '14px', backdropFilter: 'blur(4px)',
+            gridColumn: 'span 2'
+          }}>
+            <CloudDrizzle strokeWidth={1.5} style={{ width: '1.1rem', height: '1.1rem', opacity: 0.85, flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontSize: '0.57rem', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, letterSpacing: '0.5px' }}>Srážky (aktuální hodina)</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{precipitation != null ? `${precipitation} mm` : '0 mm'}</span>
+            </div>
+          </div>
+        </div>
+
+        {updated_at && (
+          <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.4)', textAlign: 'right', marginTop: '0.6rem' }}>
+            Aktualizováno: {new Date(updated_at).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Kalendář ─────────────────────────────────────────────────────────────────
+
+const CAL_MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+const CAL_DAYS   = ['Po','Út','St','Čt','Pá','So','Ne'];
+const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
+
+function CalendarWidget() {
+  const today = new Date();
+  const [viewYear, setViewYear]   = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
+  };
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay  = new Date(viewYear, viewMonth + 1, 0);
+  const startPad = (firstDay.getDay() + 6) % 7;
+  const blanks = Array.from({ length: startPad });
+  const days   = Array.from({ length: lastDay.getDate() }, (_, i) => i + 1);
+
+  const isToday = (d) =>
+    d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+  const isCurrentMonth = viewMonth === today.getMonth() && viewYear === today.getFullYear();
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      background: '#fff', borderRadius: '24px',
+      padding: '1.4rem 1.5rem',
+      userSelect: 'none', height: '100%'
+    }}>
+      {/* Navigace */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+        <button onClick={prevMonth} style={{
+          background: 'none', border: 'none', cursor: 'pointer', color: '#64748b',
+          padding: '0.4rem', borderRadius: '50%', fontSize: '0.9rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.12s'
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+        >
+          <FontAwesomeIcon icon={faChevronLeft} />
+        </button>
+
+        {/* Měsíc + rok jako selecty */}
+        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+          <select
+            value={viewMonth}
+            onChange={e => setViewMonth(Number(e.target.value))}
+            style={{
+              appearance: 'none', background: 'transparent', border: 'none',
+              fontWeight: 700, fontSize: '1.05rem', color: '#0f172a',
+              cursor: 'pointer', outline: 'none', padding: '0.1rem 0.2rem'
+            }}
+          >
+            {CAL_MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <select
+            value={viewYear}
+            onChange={e => setViewYear(Number(e.target.value))}
+            style={{
+              appearance: 'none', background: 'transparent', border: 'none',
+              fontWeight: 700, fontSize: '1.05rem', color: '#3b82f6',
+              cursor: 'pointer', outline: 'none', padding: '0.1rem 0.2rem'
+            }}
+          >
+            {CAL_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
+        <button onClick={nextMonth} style={{
+          background: 'none', border: 'none', cursor: 'pointer', color: '#64748b',
+          padding: '0.4rem', borderRadius: '50%', fontSize: '0.9rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.12s'
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+        >
+          <FontAwesomeIcon icon={faChevronRight} />
+        </button>
+      </div>
+
+      {/* Záhlaví dnů */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: '0.5rem' }}>
+        {CAL_DAYS.map(d => (
+          <div key={d} style={{
+            textAlign: 'center', fontSize: '0.72rem', fontWeight: 700,
+            color: '#94a3b8', paddingBottom: '0.25rem'
+          }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Mřížka dnů */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', rowGap: '0.3rem', flex: 1 }}>
+        {blanks.map((_, i) => <div key={`b${i}`} />)}
+        {days.map(d => {
+          const today_ = isToday(d);
+          return (
+            <div key={d} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <button style={{
+                width: '2rem', height: '2rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%', border: 'none', cursor: 'default',
+                fontSize: '0.82rem', fontWeight: today_ ? 700 : 500,
+                background: today_ ? '#3b82f6' : 'transparent',
+                color: today_ ? '#fff' : '#374151',
+                boxShadow: today_ ? '0 4px 12px rgba(59,130,246,0.35)' : 'none',
+                transition: 'background 0.12s, color 0.12s'
+              }}
+                onMouseEnter={e => { if (!today_) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#3b82f6'; } }}
+                onMouseLeave={e => { if (!today_) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; } }}
+              >
+                {d}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Zpět na dnešek */}
+      <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '0.75rem', paddingTop: '0.75rem', textAlign: 'center' }}>
+        <button onClick={goToToday} style={{
+          background: isCurrentMonth ? 'transparent' : 'transparent',
+          border: 'none', cursor: 'pointer',
+          color: '#3b82f6', fontSize: '0.8rem', fontWeight: 700,
+          padding: '0.3rem 1rem', borderRadius: '999px',
+          transition: 'background 0.12s',
+          opacity: isCurrentMonth ? 0.4 : 1
+        }}
+          onMouseEnter={e => { if (!isCurrentMonth) e.currentTarget.style.background = '#eff6ff'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+        >Zpět na dnešek</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Vítejte ──────────────────────────────────────────────────────────────────
 function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, navigate }) {
   const roleLabels = [];
   if (rolesDetected?.is_admin) roleLabels.push('Administrátor');
@@ -2288,29 +2675,15 @@ function NotificationsWidget({ notifications, navigate }) {
                 </span>
                 
                 {details.timeText && (
-                  <span style={{
-                    fontSize: '0.7rem',
-                    padding: '2px 6px',
-                    borderRadius: '3px',
-                    backgroundColor: dateBadgeBg,
-                    color: dateBadgeColor,
-                    fontWeight: 500
-                  }}>
+                  <Badge $bg={dateBadgeBg} $color={dateBadgeColor}>
                     {details.timeText}
-                  </span>
+                  </Badge>
                 )}
                 
                 {details.actionType && (
-                  <span style={{
-                    fontSize: '0.7rem',
-                    padding: '2px 6px',
-                    borderRadius: '3px',
-                    backgroundColor: details.actionColor + '20',
-                    color: details.actionColor,
-                    fontWeight: 500
-                  }}>
+                  <Badge $bg={details.actionColor + '20'} $color={details.actionColor}>
                     {details.actionType}
-                  </span>
+                  </Badge>
                 )}
               </div>
               
@@ -2366,17 +2739,9 @@ function NotificationsWidget({ notifications, navigate }) {
                 </div>
                 
                 {details.statusText && (
-                  <span style={{
-                    fontSize: '0.7rem',
-                    padding: '2px 6px',
-                    borderRadius: '3px',
-                    backgroundColor: details.statusColor + '20',
-                    color: details.statusColor,
-                    fontWeight: 500,
-                    whiteSpace: 'nowrap'
-                  }}>
+                  <Badge $bg={details.statusColor + '20'} $color={details.statusColor} style={{ whiteSpace: 'nowrap' }}>
                     {details.statusText}
-                  </span>
+                  </Badge>
                 )}
               </div>
             )}
@@ -3659,6 +4024,13 @@ export default function DashboardPage() {
   const [rssFeedStatuses, setRssFeedStatuses] = useState([]);
   const [rssMaxItems, setRssMaxItems] = useState(15);
 
+  // Počasí state
+  const [weatherData, setWeatherData] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState(false);
+  const weatherRefreshRef = useRef(null);
+  const weatherCancelledRef = useRef(false);
+
   // Fullscreen graf
   const [fullscreenChart, setFullscreenChart] = useState(null);
   useEffect(() => {
@@ -3774,6 +4146,89 @@ export default function DashboardPage() {
       if (rssRefreshRef.current) clearInterval(rssRefreshRef.current);
     };
   }, [fetchRss]);
+
+  // ─── Počasí: fetch + 60min auto-refresh ───────────────────────────────────
+  const fetchWeather = useCallback(async (isBackground = false) => {
+    const WEATHER_CACHE_KEY = `weather_data_${user?.id || 'default'}`;
+    const WEATHER_EXPIRY = 60 * 60 * 1000; // 60 minut
+
+    // Zkus cache při prvním načtení
+    if (!isBackground) {
+      try {
+        const cached = localStorage.getItem(WEATHER_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.data && Date.now() - (parsed.timestamp || 0) < WEATHER_EXPIRY) {
+            setWeatherData(parsed.data);
+            setWeatherError(false);
+            // Refresh na pozadí
+            setTimeout(() => { if (!weatherCancelledRef.current) fetchWeather(true); }, 200);
+            return;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    if (!isBackground) setWeatherLoading(true);
+    try {
+      // Pevné koordináty – Středočeský kraj (Kladno)
+      const LAT = 50.1479;
+      const LON = 14.1095;
+
+      const weatherRes = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+        `&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,apparent_temperature,is_day,wind_gusts_10m,surface_pressure,precipitation` +
+        `&timezone=Europe%2FPrague&wind_speed_unit=kmh`
+      ).then(r => r.json());
+
+      if (weatherCancelledRef.current) return;
+
+      const cur = weatherRes?.current;
+      if (!cur) throw new Error('Žádná data z open-meteo');
+
+      const result = {
+        temp: cur.temperature_2m,
+        apparent_temp: cur.apparent_temperature,
+        humidity: cur.relative_humidity_2m,
+        wind_speed: Math.round(cur.wind_speed_10m * 10) / 10,
+        wind_gusts: cur.wind_gusts_10m != null ? Math.round(cur.wind_gusts_10m * 10) / 10 : null,
+        pressure: cur.surface_pressure != null ? Math.round(cur.surface_pressure) : null,
+        precipitation: cur.precipitation != null ? cur.precipitation : null,
+        weather_code: cur.weather_code,
+        is_day: cur.is_day,
+        city: 'Středočeský kraj',
+        country: 'CZ',
+        updated_at: new Date().toISOString()
+      };
+
+      setWeatherData(result);
+      setWeatherError(false);
+
+      try {
+        localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ data: result, timestamp: Date.now() }));
+      } catch (e) { /* ignore */ }
+
+      // Nastavit 60min auto-refresh
+      if (weatherRefreshRef.current) clearInterval(weatherRefreshRef.current);
+      weatherRefreshRef.current = setInterval(() => {
+        if (!weatherCancelledRef.current) fetchWeather(true);
+      }, WEATHER_EXPIRY);
+
+    } catch (err) {
+      if (!weatherCancelledRef.current) setWeatherError(true);
+    } finally {
+      if (!weatherCancelledRef.current) setWeatherLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    weatherCancelledRef.current = false;
+    fetchWeather();
+    return () => {
+      weatherCancelledRef.current = true;
+      if (weatherRefreshRef.current) clearInterval(weatherRefreshRef.current);
+    };
+  }, [fetchWeather]);
 
   // Determine available widgets based on DASHBOARD_* capabilities from API
   const availableWidgets = useMemo(() => {
@@ -4298,6 +4753,16 @@ export default function DashboardPage() {
       case 'active_users_admin':
         content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} />;
         badgeCount = activeUsersData?.count || 0;
+        break;
+      case 'weather':
+        // Weather: renderuje celou kartu sám, bez WidgetHeader
+        return (
+          <WidgetCard key={tileId} $accent={cfg.color} $index={index} style={{ padding: 0, overflow: 'hidden', borderLeft: 'none' }}>
+            <WeatherWidget weatherData={weatherData} weatherLoading={weatherLoading} weatherError={weatherError} onRefresh={() => fetchWeather(false)} />
+          </WidgetCard>
+        );
+      case 'calendar':
+        content = <CalendarWidget />;
         break;
       default:
         return null;
