@@ -212,6 +212,7 @@ const WIDGET_LABELS = {
   DASHBOARD_CHART_MAJETEK:       'Graf majetku podle druhu',
   DASHBOARD_CHART_FEES:          'Graf ročních poplatků',
   DASHBOARD_WEATHER:             'Počasí',
+  DASHBOARD_FINANCE_MARKETS:     'Finanční trhy (krypto + FX)',
   DASHBOARD_CALENDAR:            'Kalendář'
 };
 

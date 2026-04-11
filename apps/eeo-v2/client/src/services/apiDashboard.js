@@ -111,3 +111,35 @@ export async function saveUserWidgetPermissions({ token, username, target_user_i
   const response = await api2.post('dashboard/admin/save-user-widget-permissions', { token, username, target_user_id, direct_permissions });
   return response.data;
 }
+
+/**
+ * Načtení finančních dat (krypto + FX kurzy + akcie) přes backend proxy
+ * Backend cachuje data na 15 minut
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {string[]} [params.stock_tickers] - tickery akcií (např. ['AAPL', 'MSFT'])
+ * @param {string[]} [params.crypto_ids] - CoinGecko IDs (např. ['bitcoin', 'ethereum'])
+ * @param {string[]} [params.fx_pairs] - cílové měny od EUR (např. ['CZK', 'USD'])
+ */
+export async function getFinanceMarkets({ token, username, stock_tickers, crypto_ids, fx_pairs }) {
+  try {
+    const payload = { token, username };
+    if (stock_tickers) payload.stock_tickers = stock_tickers;
+    if (crypto_ids) payload.crypto_ids = crypto_ids;
+    if (fx_pairs) payload.fx_pairs = fx_pairs;
+    const response = await api2.post('dashboard/finance-markets', payload);
+    return response.data;
+  } catch {
+    return { status: 'error', data: null };
+  }
+}
+
+export async function getFinanceChart({ token, username, ticker, range = '1mo' }) {
+  try {
+    const response = await api2.post('dashboard/finance-chart', { token, username, ticker, range });
+    return response.data;
+  } catch {
+    return { status: 'error', data: null };
+  }
+}

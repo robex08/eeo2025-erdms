@@ -3756,6 +3756,24 @@ switch ($endpoint) {
         }
         break;
 
+    case 'dashboard/finance-markets':
+        if ($request_method === 'POST') {
+            handle_dashboard_finance_markets($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'dashboard/finance-chart':
+        if ($request_method === 'POST') {
+            handle_dashboard_finance_chart($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     case 'dashboard/admin/widget-permissions':
         if ($request_method === 'POST') {
             handle_dashboard_admin_get_widget_permissions($input, $config);
