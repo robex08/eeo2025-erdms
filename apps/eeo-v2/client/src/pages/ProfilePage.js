@@ -506,9 +506,12 @@ const PermissionCard = styled.div`
 `;
 
 const PermissionCode = styled.div`
-  font-weight: 600;
+  font-weight: 700;
   color: #1e40af;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
+  font-stretch: condensed;
+  letter-spacing: 0.02em;
+  word-break: break-all;
   margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
@@ -518,6 +521,7 @@ const PermissionCode = styled.div`
     content: '✓';
     color: #10b981;
     font-weight: bold;
+    flex-shrink: 0;
   }
 `;
 
@@ -3301,7 +3305,7 @@ const ProfilePage = () => {
                 <span>Adresář dodavatelů</span>
               </TabButton>
             )}
-            {hasPermission && hasPermission('USER_SUBSTITUTE_SET') && (
+            {hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
               <TabButton
                 $active={activeTab === 'substitution'}
                 onClick={() => setActiveTab('substitution')}
@@ -3976,12 +3980,14 @@ const ProfilePage = () => {
           })()}
 
           {/* Tab Content - Zastupování */}
-          {hasPermission && hasPermission('USER_SUBSTITUTE_SET') && (
+          {hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
             <TabContent $active={activeTab === 'substitution'}>
               <SubstitutionTab
                 token={token}
                 username={username}
                 showToast={showToast}
+                hasPermission={hasPermission}
+                isSuperAdmin={!!(userDetail?.roles?.some(r => r.kod_role === 'SUPERADMIN'))}
               />
             </TabContent>
           )}
