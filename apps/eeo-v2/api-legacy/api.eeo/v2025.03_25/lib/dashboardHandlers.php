@@ -1572,7 +1572,6 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
         WHERE n.aktivni = 1
           AND nr.uzivatel_id = ?
           AND nr.smazano = 0
-          AND nr.skryto = 0
           AND (n.dt_expires IS NULL OR n.dt_expires > NOW())
           AND n.dt_created >= DATE_SUB(NOW(), INTERVAL ? DAY)
         ORDER BY nr.precteno ASC, n.dt_created DESC
@@ -2753,7 +2752,8 @@ function handle_dashboard_active_users($input, $config) {
             return;
         }
 
-        $data = _dashboard_get_active_users($db);
+        $period = $input['period'] ?? '5min'; // 5min | 12h | 24h | 7d
+        $data = _dashboard_get_active_users($db, $period);
 
         http_response_code(200);
         echo json_encode(['status' => 'success', 'data' => $data]);
@@ -2772,7 +2772,16 @@ function handle_dashboard_active_users($input, $config) {
  * @param PDO $db
  * @return array
  */
-function _dashboard_get_active_users($db) {
+function _dashboard_get_active_users($db, $period = '5min') {
+    // Mapování period → minuty pro SQL interval
+    $period_map = [
+        '5min' => 5,
+        '12h'  => 720,
+        '24h'  => 1440,
+        '7d'   => 10080,
+    ];
+    $minutes = $period_map[$period] ?? 5;
+
     try {
         $stmt = $db->prepare("
             SELECT
@@ -2788,6 +2797,8 @@ function _dashboard_get_active_users($db) {
                 IFNULL(us.usek_zkr,    '') AS usek_zkr,
                 IFNULL(us.usek_nazev,  '') AS usek_nazev,
                 IFNULL(p.nazev_pozice, '') AS pozice,
+                u.email,
+                u.telefon,
 
                 /* Počet objednávek kde je objednatel (aktuální rok) */
                 (SELECT COUNT(*)
@@ -2825,11 +2836,11 @@ function _dashboard_get_active_users($db) {
             LEFT JOIN `" . TBL_USEKY . "`  us ON u.usek_id    = us.id
             LEFT JOIN `" . TBL_POZICE . "`  p  ON u.pozice_id  = p.id
             WHERE u.dt_posledni_aktivita IS NOT NULL
-              AND u.dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+              AND u.dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL :minutes MINUTE)
               AND u.aktivni = 1
             ORDER BY u.dt_posledni_aktivita DESC
         ");
-        $stmt->execute();
+        $stmt->execute([':minutes' => $minutes]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $result = [];
@@ -2857,6 +2868,8 @@ function _dashboard_get_active_users($db) {
                 'modul'                       => $meta['last_module'] ?? null,
                 'cesta'                       => $meta['last_path'] ?? null,
                 'role_kody'                   => $row['role_kody'] ? explode(',', $row['role_kody']) : [],
+                'email'                       => $row['email'] ?? null,
+                'telefon'                     => $row['telefon'] ?? null,
                 'pocet_objednavek_objednatel' => (int)$row['pocet_objednavek_objednatel'],
                 'pocet_schvalenych'           => (int)$row['pocet_schvalenych'],
                 'pocet_ke_schvaleni'          => (int)$row['pocet_ke_schvaleni'],
@@ -2864,13 +2877,42 @@ function _dashboard_get_active_users($db) {
         }
 
         return [
-            'items' => $result,
-            'count' => count($result),
+            'items'  => $result,
+            'count'  => count($result),
+            'period' => $period,
+            'counts' => _dashboard_active_users_counts($db),
         ];
 
     } catch (Exception $e) {
         error_log('_dashboard_get_active_users error: ' . $e->getMessage());
-        return ['items' => [], 'count' => 0];
+        return ['items' => [], 'count' => 0, 'period' => $period, 'counts' => ['5min'=>0,'12h'=>0,'24h'=>0,'7d'=>0]];
+    }
+}
+
+/**
+ * Vrátí počty aktivních uživatelů pro všechna 4 časová okna najednou.
+ */
+function _dashboard_active_users_counts($db) {
+    try {
+        $stmt = $db->query("
+            SELECT
+                SUM(dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5    MINUTE)) AS `5min`,
+                SUM(dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 720   MINUTE)) AS `12h`,
+                SUM(dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 1440  MINUTE)) AS `24h`,
+                SUM(dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 10080 MINUTE)) AS `7d`
+            FROM `" . TBL_UZIVATELE . "`
+            WHERE dt_posledni_aktivita IS NOT NULL AND aktivni = 1
+        ");
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return [
+            '5min' => (int)($row['5min'] ?? 0),
+            '12h'  => (int)($row['12h']  ?? 0),
+            '24h'  => (int)($row['24h']  ?? 0),
+            '7d'   => (int)($row['7d']   ?? 0),
+        ];
+    } catch (Exception $e) {
+        error_log('_dashboard_active_users_counts error: ' . $e->getMessage());
+        return ['5min'=>0,'12h'=>0,'24h'=>0,'7d'=>0];
     }
 }
 

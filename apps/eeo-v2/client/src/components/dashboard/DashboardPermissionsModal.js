@@ -193,6 +193,9 @@ const PermSource = styled.span`
 // WIDGET LABELS
 // ============================================================================
 
+/** Normalizace pro vyhledávání: odstraní diakritiku, převede na lowercase */
+const norm = (s) => (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
 const WIDGET_LABELS = {
   DASHBOARD_ORDERS_STATS:        'Statistiky objednávek',
   DASHBOARD_INVOICES_CONFIRM:    'Faktury k potvrzení',
@@ -228,6 +231,9 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
   const [assignments, setAssignments] = useState({});
   const [expandedWidgets, setExpandedWidgets] = useState({});
 
+  // Role tab – vyhledávání
+  const [roleSearch, setRoleSearch] = useState('');
+
   // User tab state
   const [allUsers, setAllUsers] = useState(null); // cached full list
   const [userSearch, setUserSearch] = useState('');
@@ -238,6 +244,8 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
   const [userDirect, setUserDirect] = useState([]);
   const [userDirty, setUserDirty] = useState(false);
   const [userSaving, setUserSaving] = useState(false);
+  // User tab – vyhledávání v oprávněních
+  const [userPermSearch, setUserPermSearch] = useState('');
 
   // Load role matrix
   useEffect(() => {
@@ -371,7 +379,7 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
   const portal = document.getElementById('portal-root') || document.body;
 
   return ReactDOM.createPortal(
-    <Overlay onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <Overlay>
       <Panel onClick={e => e.stopPropagation()}>
         <Header>
           <h2>
@@ -398,41 +406,73 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
           ) : activeTab === 'roles' ? (
             /* === ROLE TAB === */
             <>
-              {prava.map(p => {
-                const label = WIDGET_LABELS[p.kod_prava] || p.popis || p.kod_prava;
-                const assignedRoles = assignments[p.kod_prava] || [];
-                const isExpanded = expandedWidgets[p.kod_prava];
-                return (
-                  <WidgetSection key={p.kod_prava}>
-                    <WidgetHeader onClick={() => toggleExpand(p.kod_prava)}>
-                      <div>
-                        <WidgetTitle>{label}</WidgetTitle>
-                        <PermCode>{p.kod_prava}</PermCode>
-                        <RoleCount>({assignedRoles.length} rolí)</RoleCount>
-                      </div>
-                      <FontAwesomeIcon icon={isExpanded ? faChevronUp : faChevronDown} style={{ color: '#9ca3af', fontSize: '0.8rem' }} />
-                    </WidgetHeader>
-                    {isExpanded && (
-                      <RolesGrid>
-                        {roles.map(r => {
-                          const checked = assignedRoles.includes(r.id);
-                          return (
-                            <RoleChip key={r.id} $checked={checked}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleRole(p.kod_prava, r.id)}
-                              />
-                              {checked && <FontAwesomeIcon icon={faCheck} style={{ fontSize: '0.65rem' }} />}
-                              {r.nazev_role}
-                            </RoleChip>
-                          );
-                        })}
-                      </RolesGrid>
-                    )}
-                  </WidgetSection>
+              <SearchBox>
+                <FontAwesomeIcon icon={faSearch} style={{ color: '#9ca3af' }} />
+                <input
+                  placeholder="Hledat widget nebo roli…"
+                  value={roleSearch}
+                  onChange={e => setRoleSearch(e.target.value)}
+                  autoFocus
+                />
+                {roleSearch && (
+                  <button
+                    onClick={() => setRoleSearch('')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, display: 'flex', alignItems: 'center' }}
+                    title="Zrušit filtr"
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                  </button>
+                )}
+              </SearchBox>
+              {(() => {
+                const lq = norm(roleSearch);
+                const filtered = !lq ? prava : prava.filter(p => {
+                  const label = WIDGET_LABELS[p.kod_prava] || p.popis || p.kod_prava;
+                  return norm(label).includes(lq) || norm(p.kod_prava).includes(lq);
+                });
+                if (filtered.length === 0) return (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af', fontSize: '0.85rem' }}>
+                    Žádný widget neodpovídá hledanému výrazu.
+                  </div>
                 );
-              })}
+                return filtered.map(p => {
+                  const label = WIDGET_LABELS[p.kod_prava] || p.popis || p.kod_prava;
+                  const assignedRoles2 = assignments[p.kod_prava] || [];
+                  const isExpanded2 = lq ? true : expandedWidgets[p.kod_prava];
+                  // filtrovat role uvnitř widgetu pokud hledám
+                  const displayedRoles = roles;
+                  return (
+                    <WidgetSection key={p.kod_prava}>
+                      <WidgetHeader onClick={() => toggleExpand(p.kod_prava)}>
+                        <div>
+                          <WidgetTitle>{label}</WidgetTitle>
+                          <PermCode>{p.kod_prava}</PermCode>
+                          <RoleCount>({assignedRoles2.length} rolí)</RoleCount>
+                        </div>
+                        <FontAwesomeIcon icon={isExpanded2 ? faChevronUp : faChevronDown} style={{ color: '#9ca3af', fontSize: '0.8rem' }} />
+                      </WidgetHeader>
+                      {isExpanded2 && (
+                        <RolesGrid>
+                          {displayedRoles.map(r => {
+                            const checked = assignedRoles2.includes(r.id);
+                            return (
+                              <RoleChip key={r.id} $checked={checked}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleRole(p.kod_prava, r.id)}
+                                />
+                                {checked && <FontAwesomeIcon icon={faCheck} style={{ fontSize: '0.65rem' }} />}
+                                {r.nazev_role}
+                              </RoleChip>
+                            );
+                          })}
+                        </RolesGrid>
+                      )}
+                    </WidgetSection>
+                  );
+                });
+              })()}
             </>
           ) : (
             /* === USER TAB === */
@@ -473,26 +513,50 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
                     </button>
                   </div>
 
+                  <SearchBox style={{ marginTop: '0.5rem' }}>
+                    <FontAwesomeIcon icon={faSearch} style={{ color: '#9ca3af' }} />
+                    <input
+                      placeholder="Filtrovat oprávnění…"
+                      value={userPermSearch}
+                      onChange={e => setUserPermSearch(e.target.value)}
+                    />
+                    {userPermSearch && (
+                      <button
+                        onClick={() => setUserPermSearch('')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, display: 'flex', alignItems: 'center' }}
+                        title="Zrušit filtr"
+                      >
+                        <FontAwesomeIcon icon={faTimes} />
+                      </button>
+                    )}
+                  </SearchBox>
                   <PermGrid>
-                    {userPrava.map(p => {
-                      const label = WIDGET_LABELS[p.kod_prava] || p.popis || p.kod_prava;
-                      const isInherited = userInherited.includes(p.kod_prava);
-                      const isDirect = userDirect.includes(p.kod_prava);
-                      const isActive = isInherited || isDirect;
-                      return (
-                        <PermRow key={p.kod_prava} $inherited={isInherited && !isDirect} $direct={isDirect}>
-                          <input
-                            type="checkbox"
-                            checked={isDirect}
-                            onChange={() => toggleUserPerm(p.kod_prava)}
-                          />
-                          <PermLabel>{label} <PermCode>{p.kod_prava}</PermCode></PermLabel>
-                          {isInherited && <PermSource $type="inherited">z role</PermSource>}
-                          {isDirect && <PermSource $type="direct">přímé právo</PermSource>}
-                          {!isActive && <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>neaktivní</span>}
-                        </PermRow>
-                      );
-                    })}
+                    {userPrava
+                      .filter(p => {
+                        if (!userPermSearch.trim()) return true;
+                        const lq = norm(userPermSearch);
+                        const label = WIDGET_LABELS[p.kod_prava] || p.popis || p.kod_prava;
+                        return norm(label).includes(lq) || norm(p.kod_prava).includes(lq);
+                      })
+                      .map(p => {
+                        const label = WIDGET_LABELS[p.kod_prava] || p.popis || p.kod_prava;
+                        const isInherited = userInherited.includes(p.kod_prava);
+                        const isDirect = userDirect.includes(p.kod_prava);
+                        const isActive = isInherited || isDirect;
+                        return (
+                          <PermRow key={p.kod_prava} $inherited={isInherited && !isDirect} $direct={isDirect}>
+                            <input
+                              type="checkbox"
+                              checked={isDirect}
+                              onChange={() => toggleUserPerm(p.kod_prava)}
+                            />
+                            <PermLabel>{label} <PermCode>{p.kod_prava}</PermCode></PermLabel>
+                            {isInherited && <PermSource $type="inherited">z role</PermSource>}
+                            {isDirect && <PermSource $type="direct">přímé právo</PermSource>}
+                            {!isActive && <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>neaktivní</span>}
+                          </PermRow>
+                        );
+                      })}
                   </PermGrid>
                 </>
               )}

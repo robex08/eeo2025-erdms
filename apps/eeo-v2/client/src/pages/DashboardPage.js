@@ -4,7 +4,9 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { AuthContext } from '../context/AuthContext';
+import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline, getRssFeed } from '../services/apiDashboard';
+import { getAdminMessagesUnreadCount } from '../services/notificationsApi';
 import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
 import { theme } from '../theme/theme';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -28,11 +30,12 @@ import {
   faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser,
   faExpand, faCompress,
   faCloud, faWind, faTint, faThermometerHalf, faMapMarkerAlt,
-  faChevronLeft, faChevronRight
+  faChevronLeft, faChevronRight, faPaperPlane, faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 import { Cloud, Sun, CloudRain, CloudSnow, CloudDrizzle, Wind, Droplets, MapPin, Gauge } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
+import SendQuickMessageModal from '../components/dashboard/SendQuickMessageModal';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -127,7 +130,7 @@ const WIDGET_REGISTRY = {
   rss_news:            { title: 'Zprávy',                      icon: faBullhorn,           color: '#f97316', requires: 'DASHBOARD_RSS_NEWS' },
   weather:             { title: 'Počasí',                      icon: faCloud,              color: '#1e40af', requires: 'DASHBOARD_WEATHER' },
   calendar:            { title: 'Kalendář',                    icon: faCalendarAlt,        color: '#0891b2', requires: 'DASHBOARD_CALENDAR' },
-  active_users_admin:  { title: 'Dashboard uživatelů',         icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
+  active_users_admin:  { title: 'Přehled aktivit uživatelů',    icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
 };
 
 const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
@@ -533,6 +536,7 @@ const WidgetCard = styled.div`
   transition: transform 0.2s, box-shadow 0.2s;
   &:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(15, 23, 42, 0.11); }
   ${p => p.$span2 && `grid-column: span 2; @media (max-width: 900px) { grid-column: span 1; }`}
+  ${p => p.$spanFull && `grid-column: 1 / -1;`}
 `;
 
 const WidgetHeader = styled.div`
@@ -1396,8 +1400,125 @@ function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
 }
 
 // ── SUPERADMIN: Aktivní uživatelé ──────────────────────────────────────────
-function ActiveUsersAdminWidget({ data, navigate }) {
-  const items = data?.items || [];
+const PERIOD_OPTIONS = [
+  { key: '5min', label: 'Online',  title: 'Aktivní posledních 5 minut', color: '#16a34a' },
+  { key: '12h',  label: '12h',     title: 'Přihlášeni za posledních 12 hodin', color: '#0891b2' },
+  { key: '24h',  label: '24h',     title: 'Přihlášeni za posledních 24 hodin', color: '#7c3aed' },
+  { key: '7d',   label: '7 dní',   title: 'Přihlášeni za posledních 7 dní',    color: '#b45309' },
+];
+
+const LS_PERIOD_KEY = 'dashboard_active_users_period';
+const LS_SORT_KEY   = 'dashboard_active_users_sort';
+
+// Cyklus sortá 3 fáze: null → asc → desc → null
+function nextSortPhase(cur, field, activeField) {
+  if (activeField !== field) return { field, dir: 'asc' };
+  if (cur === 'asc')  return { field, dir: 'desc' };
+  return { field: null, dir: null };
+}
+
+function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessageUser }) {
+  const [period, setPeriod]         = useState(() => {
+    try { return localStorage.getItem(LS_PERIOD_KEY) || '5min'; } catch { return '5min'; }
+  });
+  const [localData, setLocalData]   = useState(data);
+  const [loading, setLoading]       = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState({});  // {user_id: unread_count}
+
+  // Vlastní auto-refresh widgetu každých 30s podle aktuální periody
+  useEffect(() => {
+    let cancelled = false;
+    const fetch30 = async () => {
+      const d = await getActiveUsersAdmin({ token, username, period });
+      if (d && !cancelled) setLocalData(d);
+    };
+    fetch30();
+    const iv = setInterval(fetch30, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [token, username, period]); // re-mounts při změně periody
+
+  // ✅ Načíst počty nepřečtených zpráv pro všechny uživatele
+  useEffect(() => {
+    const fetchUnreadCounts = async () => {
+      if (!localData?.items || localData.items.length === 0) {
+        return;
+      }
+      
+      const newCounts = {};
+      await Promise.all(
+        localData.items.map(async (user) => {
+          try {
+            const count = await getAdminMessagesUnreadCount(user.id);
+            if (count > 0) {
+              newCounts[user.id] = count;
+            }
+          } catch (error) {
+            // tiché selhání - nevypisuj do konzole
+          }
+        })
+      );
+      setUnreadCounts(newCounts);
+    };
+    
+    fetchUnreadCounts();
+  }, [localData?.items]);
+
+  // Synchronizace counts z externího data (quick-tile badge) — jen counts, ne items
+  useEffect(() => {
+    if (data?.counts) {
+      setLocalData(prev => prev ? { ...prev, counts: data.counts } : data);
+    }
+  }, [data?.counts]);
+
+  const switchPeriod = useCallback(async (p) => {
+    if (p === period) return;
+    try { localStorage.setItem(LS_PERIOD_KEY, p); } catch { /* ignore */ }
+    setPeriod(p); // useEffect výše se spustí s novou periodou
+    setLoading(true);
+    try {
+      const d = await getActiveUsersAdmin({ token, username, period: p });
+      if (d) setLocalData(d);
+    } finally {
+      setLoading(false);
+    }
+  }, [period, token, username]);
+
+  // Sort state (3 fáze: null → asc → desc → null)
+  const [sort, setSort] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LS_SORT_KEY)) || { field: 'dt_posledni_aktivita', dir: 'desc' }; } catch { return { field: 'dt_posledni_aktivita', dir: 'desc' }; }
+  });
+
+  const handleSort = useCallback((field) => {
+    setSort(prev => {
+      const next = nextSortPhase(prev.dir, field, prev.field);
+      try { localStorage.setItem(LS_SORT_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const rawItems = localData?.items || [];
+  const counts   = localData?.counts || {};
+  const activePeriod = PERIOD_OPTIONS.find(o => o.key === period);
+
+  // Aplikace sortu
+  const items = useMemo(() => {
+    if (!sort.field || !sort.dir) return rawItems;
+    return [...rawItems].sort((a, b) => {
+      const sortField = sort.field === 'dt_pred' ? 'dt_posledni_aktivita' : sort.field;
+      let av = a[sortField], bv = b[sortField];
+      // datum jako číslo
+      if (sortField === 'dt_posledni_aktivita') {
+        av = av ? new Date(av).getTime() : 0;
+        bv = bv ? new Date(bv).getTime() : 0;
+      }
+      // string
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return sort.dir === 'asc' ? -1 : 1;
+      if (av > bv) return sort.dir === 'asc' ?  1 : -1;
+      return 0;
+    });
+  }, [rawItems, sort]);
 
   const formatAgo = (dt) => {
     if (!dt) return '–';
@@ -1405,6 +1526,14 @@ function ActiveUsersAdminWidget({ data, navigate }) {
     if (diff < 60) return `${diff}s`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m`;
     return `${Math.floor(diff / 3600)}h`;
+  };
+
+  const formatDateTime = (dt) => {
+    if (!dt) return '–';
+    return new Date(dt).toLocaleString('cs-CZ', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
   };
 
   const MODULE_LABELS = {
@@ -1444,44 +1573,156 @@ function ActiveUsersAdminWidget({ data, navigate }) {
     VEREJNE_ZAKAZKY:   { label: 'VZ',  title: 'Veřejné zakázky – správa veřejných zakázek',       color: '#7c3aed' },
   };
 
-  if (items.length === 0) {
+  if (items.length === 0 && !loading) {
     return (
       <WidgetBody>
+        {/* Period badges */}
+        <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
+          {PERIOD_OPTIONS.map(o => (
+            <button key={o.key} onClick={() => switchPeriod(o.key)} title={o.title} style={{
+              padding: '0.2rem 0.6rem', borderRadius: 20, border: `1.5px solid ${period === o.key ? o.color : '#e2e8f0'}`,
+              background: period === o.key ? o.color + '18' : '#f8fafc', color: period === o.key ? o.color : '#64748b',
+              fontWeight: period === o.key ? 700 : 500, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center', gap: '0.3rem'
+            }}>
+              {o.label}
+              {counts[o.key] > 0 && (
+                <span style={{ background: o.color, color: '#fff', borderRadius: 10, fontSize: '0.65rem', padding: '0 0.35rem', fontWeight: 700 }}>
+                  {counts[o.key]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <EmptyState>
           <FontAwesomeIcon icon={faUsers} style={{ fontSize: '2rem', color: '#94a3b8', marginBottom: '0.5rem' }} />
-          <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Žádní aktivní uživatelé (posledních 5 min)</div>
+          <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Žádní uživatelé ({activePeriod?.title?.toLowerCase()})</div>
         </EmptyState>
       </WidgetBody>
     );
   }
 
   return (
-    <WidgetBody style={{ padding: 0 }}>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+    <WidgetBody $noScroll style={{ padding: 0 }}>
+      {/* Period badge lišta */}
+      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', alignItems: 'center' }}>
+        {PERIOD_OPTIONS.map(o => (
+          <button key={o.key} onClick={() => switchPeriod(o.key)} title={o.title} style={{
+            padding: '0.2rem 0.6rem', borderRadius: 20, border: `1.5px solid ${period === o.key ? o.color : '#e2e8f0'}`,
+            background: period === o.key ? o.color + '18' : '#f8fafc', color: period === o.key ? o.color : '#64748b',
+            fontWeight: period === o.key ? 700 : 500, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.15s',
+            display: 'flex', alignItems: 'center', gap: '0.3rem'
+          }}>
+            {o.label}
+            <span style={{ background: counts[o.key] > 0 ? o.color : '#e2e8f0', color: counts[o.key] > 0 ? '#fff' : '#94a3b8', borderRadius: 10, fontSize: '0.65rem', padding: '0 0.35rem', fontWeight: 700, minWidth: '1rem', textAlign: 'center' }}>
+              {counts[o.key] ?? 0}
+            </span>
+          </button>
+        ))}
+        {loading && <FontAwesomeIcon icon={faSync} spin style={{ color: '#94a3b8', fontSize: '0.8rem', marginLeft: 'auto' }} />}
+      </div>
+      <style>{`
+        .dash-act-scroll { overflow-x: auto; overflow-y: auto; max-height: 520px; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+        .dash-act-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .dash-act-scroll::-webkit-scrollbar-track { background: transparent; }
+        .dash-act-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+        .dash-act-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dash-act-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFrame, sans-serif; letter-spacing: -0.01em; }
+        .dash-act-table a, .dash-act-table button { font: inherit; letter-spacing: inherit; }
+        .dash-act-th { text-align: left; padding: 0.5rem 0.35rem 0.5rem 1em; font-weight: 600; color: #334155; background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 2px solid #cbd5e1; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.025em; font-size: 0.8rem; position: sticky; top: 0; z-index: 2; }
+        .dash-act-th.sortable { cursor: pointer; user-select: none; }
+        .dash-act-th.sortable:hover { background: #e2e8f0; }
+        .dash-act-th.active { color: #1d4ed8; background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border-bottom: 2px solid #3b82f6; }
+        .dash-act-th.active:hover { background: #bfdbfe; }
+        .dash-act-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background-color 0.15s ease; }
+        .dash-act-table tbody tr:nth-of-type(even) { background-color: #f8fafc; }
+        .dash-act-table tbody tr:hover { background-color: #e8f0fe !important; }
+        .dash-act-table tbody tr.dash-act-online { background-color: #f0fdf4; }
+        .dash-act-table tbody tr.dash-act-online:hover { background-color: #dcfce7 !important; }
+        .dash-act-td { padding: 0.6rem 0.8rem; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+      `}</style>
+      <div className="dash-act-scroll">
+        <table className="dash-act-table">
           <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Uživatel</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Úsek / Pozice</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Modul</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>IP adresa</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Objednal</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Schválil</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Ke schválení</th>
-              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Aktivita</th>
+            <tr>
+              {[
+                { field: 'cele_jmeno',                  label: 'Uživatel',          align: 'left'   },
+                { field: 'usek_zkr',                    label: 'Úsek / Pozice',     align: 'left'   },
+                { field: 'pocet_objednavek_objednatel', label: 'Objednal',          align: 'center' },
+                { field: 'pocet_schvalenych',           label: 'Schválil',          align: 'center' },
+                { field: 'pocet_ke_schvaleni',          label: 'Ke schválení',      align: 'center' },
+                { field: 'email',                       label: 'E-mail',            align: 'center' },
+                { field: 'telefon',                     label: 'Telefon',           align: 'center' },
+                { field: 'modul',                       label: 'Modul',             align: 'left'   },
+                { field: 'ip_adresa',                   label: 'IP adresa',         align: 'left'   },
+                { field: 'dt_posledni_aktivita',        label: 'Poslední aktivita', align: 'right'  },
+                { field: 'dt_pred',                     label: 'Před',              align: 'center' },
+              ].map(({ field, label, align }) => {
+                const isActive = field && sort.field === field;
+                const sortSymbol = !isActive ? '⇅' : (sort.dir === 'asc' ? '↑' : '↓');
+                const cls = ['dash-act-th', field ? 'sortable' : '', isActive ? 'active' : ''].filter(Boolean).join(' ');
+                return (
+                  <th key={label} className={cls} onClick={() => field && handleSort(field)} style={{ textAlign: align }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start', width: '100%' }}>
+                      {label}
+                      {field && <span style={{ fontSize: '0.65rem', opacity: isActive ? 1 : 0.3, color: isActive ? '#2563eb' : 'inherit' }}>{sortSymbol}</span>}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {items.map((u, i) => {
               const modulLabel = getModuleLabel(u.modul, u.cesta);
               const isPrikazce = (u.role_kody || []).some(r => r.startsWith('PRIKAZCE') || r === 'SPRAVCE_ROZPOCTU');
+              const isOnline = u.dt_posledni_aktivita &&
+                (Date.now() - new Date(u.dt_posledni_aktivita).getTime()) < 5 * 60 * 1000;
               return (
-                <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
+                <tr key={u.id} className={isOnline ? 'dash-act-online' : ''}>
+                  <td className="dash-act-td">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: isOnline ? '#22c55e' : '#cbd5e1', flexShrink: 0 }} title={isOnline ? 'Online' : 'Offline'} />
                       <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.cele_jmeno}</span>
                       <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>({u.username})</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setQuickMessageUser(u); }}
+                        style={{ 
+                          marginLeft: '0.5rem', 
+                          background: 'none', 
+                          border: 'none', 
+                          cursor: 'pointer', 
+                          color: '#3b82f6', 
+                          fontSize: '0.85rem', 
+                          padding: '0.2rem 0.4rem', 
+                          borderRadius: '4px', 
+                          transition: 'all 0.15s',
+                          position: 'relative'
+                        }}
+                        title="Odeslat rychlou zprávu uživateli"
+                        onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.color = '#1d4ed8'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#3b82f6'; }}
+                      >
+                        <FontAwesomeIcon icon={faPaperPlane} />
+                        {unreadCounts[u.id] > 0 && (
+                          <span style={{
+                            position: 'absolute',
+                            top: '-6px',
+                            right: '-6px',
+                            background: '#dc2626',
+                            color: '#fff',
+                            fontSize: '0.6rem',
+                            fontWeight: '700',
+                            padding: '1px 4px',
+                            borderRadius: '8px',
+                            minWidth: '14px',
+                            textAlign: 'center',
+                            lineHeight: '1.2'
+                          }}>
+                            {unreadCounts[u.id]}
+                          </span>
+                        )}
+                      </button>
                     </div>
                     <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
                       {(u.role_kody || []).filter(r => ROLE_BADGES[r]).map(r => (
@@ -1491,30 +1732,43 @@ function ActiveUsersAdminWidget({ data, navigate }) {
                       ))}
                     </div>
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', color: '#475569', whiteSpace: 'nowrap' }}>
+                  <td className="dash-act-td" style={{ color: '#475569' }}>
                     {u.usek_zkr && <span style={{ fontWeight: 600 }}>{u.usek_zkr}</span>}
                     {u.pozice && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{u.pozice}</div>}
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
-                    {modulLabel
-                      ? <span style={{ padding: '0.15rem 0.45rem', borderRadius: 6, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600, fontSize: '0.75rem' }}>{modulLabel}</span>
-                      : <span style={{ color: '#cbd5e1' }}>–</span>}
-                  </td>
-                  <td style={{ padding: '0.5rem 0.75rem', color: '#475569', fontFamily: 'monospace', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
-                    {u.ip_adresa || <span style={{ color: '#cbd5e1' }}>–</span>}
-                  </td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: u.pocet_objednavek_objednatel > 0 ? '#1d4ed8' : '#94a3b8' }}>
+                  <td className="dash-act-td" style={{ textAlign: 'center', fontWeight: 600, color: u.pocet_objednavek_objednatel > 0 ? '#1d4ed8' : '#94a3b8' }}>
                     {u.pocet_objednavek_objednatel}
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: isPrikazce ? 600 : 400, color: isPrikazce && u.pocet_schvalenych > 0 ? '#059669' : '#94a3b8' }}>
+                  <td className="dash-act-td" style={{ textAlign: 'center', fontWeight: isPrikazce ? 600 : 400, color: isPrikazce && u.pocet_schvalenych > 0 ? '#059669' : '#94a3b8' }}>
                     {isPrikazce ? u.pocet_schvalenych : '–'}
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
+                  <td className="dash-act-td" style={{ textAlign: 'center' }}>
                     {isPrikazce
                       ? <span style={{ fontWeight: 600, color: u.pocet_ke_schvaleni > 0 ? '#dc2626' : '#94a3b8' }}>{u.pocet_ke_schvaleni}</span>
                       : <span style={{ color: '#cbd5e1' }}>–</span>}
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#64748b', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                  <td className="dash-act-td" style={{ textAlign: 'center' }}>
+                    {u.email
+                      ? <a href={`mailto:${u.email}`} onClick={e => e.stopPropagation()} style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.78rem' }} title={`Odeslat e-mail: ${u.email}`} onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }} onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}>{u.email}</a>
+                      : <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td className="dash-act-td" style={{ textAlign: 'center' }}>
+                    {u.telefon
+                      ? <a href={`tel:${u.telefon.replace(/\s/g, '')}`} onClick={e => e.stopPropagation()} style={{ color: '#0891b2', textDecoration: 'none', fontSize: '0.78rem' }} title={`Volat: ${u.telefon}`} onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }} onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}>{u.telefon}</a>
+                      : <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td className="dash-act-td">
+                    {modulLabel
+                      ? <span style={{ padding: '0.15rem 0.45rem', borderRadius: 6, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600, fontSize: '0.75rem' }}>{modulLabel}</span>
+                      : <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td className="dash-act-td" style={{ color: '#475569', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                    {u.ip_adresa || <span style={{ color: '#cbd5e1' }}>–</span>}
+                  </td>
+                  <td className="dash-act-td" style={{ textAlign: 'right', color: '#64748b', fontSize: '0.78rem' }}>
+                    {formatDateTime(u.dt_posledni_aktivita)}
+                  </td>
+                  <td className="dash-act-td" style={{ textAlign: 'center', color: '#64748b', fontFamily: 'monospace', fontSize: '0.78rem' }}>
                     {formatAgo(u.dt_posledni_aktivita)}
                   </td>
                 </tr>
@@ -2445,17 +2699,21 @@ function NotificationsWidget({ notifications, navigate }) {
     return Math.floor(diff / (1000 * 60 * 60 * 24));
   };
 
+  // ✅ Relativní čas "Před X"
+  const getTimeAgo = (dateStr) => {
+    if (!dateStr) return '';
+    const now = Date.now();
+    const created = new Date(dateStr).getTime();
+    const diff = Math.floor((now - created) / 1000); // sekundy
+
+    if (diff < 60) return 'Před ' + diff + 's';
+    if (diff < 3600) return 'Před ' + Math.floor(diff / 60) + 'm';
+    if (diff < 86400) return 'Před ' + Math.floor(diff / 3600) + 'h';
+    return 'Před ' + Math.floor(diff / 86400) + 'd';
+  };
+
   // ✅ SPRÁVNÁ NAVIGACE - stejně jako NotificationsPage - používá data a objekt_id
   const handleNotificationClick = (n) => {
-    console.log('🔔 Notifikace klik:', {
-      id: n.id,
-      typ: n.typ,
-      objekt_typ: n.objekt_typ,
-      objekt_id: n.objekt_id,
-      data: n.data,
-      nadpis: n.nadpis
-    });
-    
     const data = n.data || {};
     const orderId = data.order_id || n.objekt_id;
     
@@ -2482,6 +2740,79 @@ function NotificationsWidget({ notifications, navigate }) {
     const data = n.data || {};
     const placeholders = data.placeholders || {};
     
+    // ✅ ADMIN_MESSAGE - zprávy od administrátorů
+    if (n.typ === 'ADMIN_MESSAGE') {
+      const sender = (() => {
+        try {
+          const ph = typeof n.placeholder_data === 'string' ? JSON.parse(n.placeholder_data) : (n.placeholder_data || {});
+          return ph.sender_name || placeholders.sender_name || 'Administrátor';
+        } catch (e) {
+          return placeholders.sender_name || 'Administrátor';
+        }
+      })();
+      
+      const createdDate = n.dt_created || n.vytvoren_kdy;
+      const timeFormatted = createdDate ? new Date(createdDate).toLocaleString('cs-CZ', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : '';
+      
+      return {
+        type: 'MSG',
+        nadpis: n.nadpis || n.titulek || 'Zpráva od správce',
+        zprava: n.zprava || '',
+        sender: sender,
+        timeFormatted: timeFormatted,
+        number: null, objekt_id: null, subject: null, usersLine: null,
+        amount: null, statusText: null, statusColor: null, timeText: null,
+        actionType: null, actionColor: null
+      };
+    }
+    
+    // ✅ KOMENTÁŘE - detekce (ORDER_COMMENT_ADDED, COMMENT_REPLY, …COMMENT…)
+    const isComment = n.typ === 'ORDER_COMMENT_ADDED' || n.typ === 'COMMENT_REPLY'
+      || (n.typ && n.typ.toUpperCase().includes('COMMENT'));
+    if (isComment) {
+      const nadpis = n.nadpis || '';
+      const zprava = n.zprava || '';
+      // Číslo objednávky
+      const numMatch = (placeholders.order_number) || (() => {
+        const m = nadpis.match(/(O-[^\s,]+)/); return m ? m[1] : null;
+      })();
+      // Autor komentáře
+      const authorMatch = placeholders.action_performed_by || placeholders.comment_author || (() => {
+        const m = zprava.match(/^(.+?)\s+(přidal|odpověděl|reagoval|napsal|okomentoval)/i);
+        return m ? m[1] : null;
+      })();
+      // Text v uvozovkách
+      const quoteMatch = (() => {
+        const m = zprava.match(/["\u201e\u201c]([^"\u201d\u201c]{1,200})["\u201d\u201c]/);
+        return m ? m[1] : null;
+      })();
+      // Předmět / název objednávky v závorce
+      const subjectMatch = placeholders.order_subject || placeholders.predmet || (() => {
+        const m = zprava.match(/\(([^)]{2,80})\)/);
+        return m ? m[1] : null;
+      })();
+      // Typ akce česky
+      const actionLabel = n.typ === 'COMMENT_REPLY' ? 'Odpověď' : 'Nový komentář';
+      // Čas
+      const daysAge = getDaysAge(n.dt_created);
+      let timeText = '';
+      if (daysAge === 0) timeText = 'dnes';
+      else if (daysAge === 1) timeText = 'včera';
+      else if (daysAge !== null) timeText = `před ${daysAge} d`;
+      return {
+        type: 'KOM', number: numMatch, objekt_id: n.objekt_id,
+        commentAuthor: authorMatch, commentQuote: quoteMatch, commentSubject: subjectMatch,
+        actionType: actionLabel, actionColor: '#6366f1',
+        timeText, subject: null, usersLine: null, amount: null, statusText: null, statusColor: null,
+      };
+    }
+
     // ✅ PRIMÁRNÍ: objekt_typ z notifikace (ne placeholders!)
     let number = null;
     let type = null;
@@ -2654,22 +2985,128 @@ function NotificationsWidget({ notifications, navigate }) {
           <ListItem 
             key={n.id}
             onClick={() => handleNotificationClick(n)}
+            onMouseEnter={e => { e.currentTarget.style.background = '#edf2f7'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = isRead ? 'transparent' : 'rgba(99,102,241,0.04)'; }}
             style={{ 
-              opacity: isRead ? 0.6 : 1,
               padding: '0.6rem 0.75rem',
               borderBottom: `1px solid ${theme.colors.gray100}`,
               display: 'flex',
               justifyContent: 'space-between',
-              gap: '1rem'
+              gap: '1rem',
+              background: isRead ? 'transparent' : 'rgba(99,102,241,0.04)',
+              position: 'relative'
             }}
           >
+            {/* ── ADMIN MESSAGE ── */}
+            {details.type === 'MSG' ? (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Řádek 1: Ikona + Nadpis + relativní čas | vpravo badge "Zpráva od správce" */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.3rem' }}>
+                  <FontAwesomeIcon 
+                    icon={n.priorita === 'high' || n.priorita === 'urgent' ? faExclamationTriangle : faEnvelope} 
+                    style={{ 
+                      color: isRead ? '#94a3b8' : (n.priorita === 'high' || n.priorita === 'urgent' ? '#dc2626' : '#f59e0b'), 
+                      fontSize: '0.75rem', 
+                      flexShrink: 0 
+                    }} 
+                  />
+                  <span style={{ color: isRead ? '#64748b' : '#1e293b', fontWeight: isRead ? 500 : 700, fontSize: '0.82rem' }}>
+                    {details.nadpis}
+                  </span>
+                  <Badge $bg={dateBadgeBg} $color={dateBadgeColor} style={{ fontSize: '0.65rem' }}>
+                    {getTimeAgo(n.dt_created || n.created_at)}
+                  </Badge>
+                  <span style={{ marginLeft: 'auto' }}>
+                    <Badge $bg={isRead ? '#f1f5f9' : '#fef3c7'} $color={isRead ? '#94a3b8' : '#d97706'} style={{ fontWeight: 600 }}>
+                      Zpráva od správce
+                    </Badge>
+                  </span>
+                </div>
+                {/* Řádek 2: Obsah zprávy (zkrácená na 2 řádky) */}
+                {details.zprava && (
+                  <div style={{ 
+                    fontSize: '0.81rem', 
+                    color: isRead ? '#64748b' : '#475569', 
+                    lineHeight: 1.45,
+                    marginBottom: '0.3rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical'
+                  }}>
+                    {details.zprava}
+                  </div>
+                )}
+                {/* Řádek 3: Od: celé jméno + datum+čas */}
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                  Od: {details.sender || 'Administrátor'} • {details.timeFormatted}
+                </div>
+              </div>
+            ) : details.type === 'KOM' ? (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Řádek 1: 💬 číslo obj · [dnes] badge · label badge vpravo */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.2rem', flexWrap: 'wrap' }}>
+                  <FontAwesomeIcon icon={faComments} style={{ color: isRead ? '#94a3b8' : '#6366f1', fontSize: '0.75rem', flexShrink: 0 }} />
+                  {details.number && details.objekt_id ? (
+                    <a
+                      href={`/order-form-25?edit=${details.objekt_id}`}
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); handleNotificationClick(n); }}
+                      style={{ color: isRead ? '#64748b' : '#6366f1', textDecoration: 'none', fontWeight: isRead ? 500 : 700, fontSize: '0.82rem' }}
+                      title="Otevřít objednávku"
+                    >
+                      {details.number}
+                    </a>
+                  ) : details.number ? (
+                    <span style={{ color: isRead ? '#64748b' : '#6366f1', fontWeight: isRead ? 500 : 700, fontSize: '0.82rem' }}>{details.number}</span>
+                  ) : null}
+                  {details.timeText && (
+                    <Badge $bg={dateBadgeBg} $color={dateBadgeColor}>{details.timeText}</Badge>
+                  )}
+                  <span style={{ marginLeft: 'auto' }}>
+                    <Badge $bg={isRead ? '#f1f5f9' : '#ede9fe'} $color={isRead ? '#94a3b8' : '#6d28d9'} style={{ fontWeight: 600 }}>{details.actionType}</Badge>
+                  </span>
+                </div>
+                {/* Řádek 2: zprava přímo — autor tučně, citace kurzívou */}
+                {n.zprava && (
+                  <div style={{ fontSize: '0.81rem', color: isRead ? '#64748b' : '#1e293b', lineHeight: 1.45, marginBottom: details.commentSubject ? '0.15rem' : 0 }}>
+                    {(() => {
+                      const text = n.zprava;
+                      // Ztučni jméno autora na začátku (před slovesem)
+                      const nameMatch = text.match(/^(.+?)\s+(přidal|odpověděl|reagoval|napsal|okomentoval)/i);
+                      const authorPart = nameMatch ? nameMatch[1] : null;
+                      const rest = authorPart ? text.substring(authorPart.length) : text;
+                      // Kurzíva pro text v uvozovkách
+                      const parts = rest.split(/("[^"]*"|\u201e[^\u201c]*\u201c|\u201c[^\u201d]*\u201d|\u201e[^\u201d]*\u201d)/g);
+                      return (
+                        <>
+                          {authorPart && <strong>{authorPart}</strong>}
+                          {parts.map((p, i) =>
+                            /^["\u201e\u201c]/.test(p)
+                              ? <em key={i} style={{ fontStyle: 'italic', color: isRead ? '#94a3b8' : '#475569' }}>{p}</em>
+                              : <span key={i} style={{ color: isRead ? '#94a3b8' : '#64748b' }}>{p}</span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+                {/* Řádek 3: Název obj menším písmem */}
+                {details.commentSubject && (
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                    {details.commentSubject}
+                  </div>
+                )}
+              </div>
+            ) : (
+            /* ── OBJEDNÁVKY / FAKTURY – původní layout ────────────────── */
             <div style={{ flex: 1 }}>
               {/* Řádek 1: Číslo + datum badge + typ akce */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                 <span style={{ 
                   fontSize: '0.8rem', 
                   fontWeight: isRead ? 400 : 600,
-                  color: details.type === 'Obj' ? '#1d4ed8' : '#ca8a04'
+                  color: isRead ? '#64748b' : (details.type === 'Obj' ? '#1d4ed8' : '#ca8a04')
                 }}>
                   {details.type} {details.number}
                 </span>
@@ -2679,29 +3116,23 @@ function NotificationsWidget({ notifications, navigate }) {
                     {details.timeText}
                   </Badge>
                 )}
-                
-                {details.actionType && (
-                  <Badge $bg={details.actionColor + '20'} $color={details.actionColor}>
-                    {details.actionType}
-                  </Badge>
-                )}
               </div>
               
               {/* Řádek 2: Předmět */}
               <div style={{ 
                 fontSize: '0.82rem',
-                color: '#1e293b',
+                color: isRead ? '#64748b' : '#1e293b',
                 marginBottom: '0.25rem',
                 fontWeight: isRead ? 400 : 500
               }}>
                 {details.subject}
               </div>
               
-              {/* Řádek 2.5: Celé znění zprávy */}
-              {n.zprava && (
+              {/* Řádek 2.5: Celé znění zprávy - skryto, je redundantní s předmětem */}
+              {false && n.zprava && (
                 <div style={{ 
                   fontSize: '0.75rem',
-                  color: '#64748b',
+                  color: '#94a3b8',
                   marginBottom: '0.25rem',
                   lineHeight: 1.4
                 }}>
@@ -2719,9 +3150,10 @@ function NotificationsWidget({ notifications, navigate }) {
                 </div>
               )}
             </div>
+            )}
             
-            {/* Částka a stav vpravo */}
-            {details.amount && (
+            {/* Částka a stav vpravo - pouze pro Obj/FA */}
+            {details.type !== 'KOM' && details.amount && (
               <div style={{ 
                 display: 'flex',
                 flexDirection: 'column',
@@ -3816,7 +4248,7 @@ function DashboardConfigModal({ tiles, visibleTiles, onToggle, onReorder, onClos
   };
 
   return (
-    <ConfigOverlay onClick={onClose}>
+    <ConfigOverlay>
       <ConfigPanel onClick={e => e.stopPropagation()}>
         <ConfigHeader>
           <ConfigTitle>
@@ -3987,6 +4419,7 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) 
 
 export default function DashboardPage() {
   const { token, user, userDetail, hasPermission, hasAdminRole, userPermissions } = useContext(AuthContext);
+  const bgTasksContext = useBackgroundTasks();
   const navigate = useNavigate();
 
   const [data, setData] = useState(null);
@@ -3994,6 +4427,7 @@ export default function DashboardPage() {
   const [error, setError] = useState(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [quickMessageUser, setQuickMessageUser] = useState(null);
   const [visibleTiles, setVisibleTiles] = useState(DEFAULT_TILES);
   const [allTiles, setAllTiles] = useState(DEFAULT_TILES);
   const [cashbookMonth, setCashbookMonth] = useState(new Date().getMonth() + 1);
@@ -4001,6 +4435,7 @@ export default function DashboardPage() {
   const [cashbookLoading, setCashbookLoading] = useState(false);
   const [activeUsersData, setActiveUsersData] = useState(null);
   const activeUsersRef = useRef(null);
+  const widgetRefs = useRef({});
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
     try {
       const saved = localStorage.getItem('dashboard_auto_refresh');
@@ -4047,11 +4482,11 @@ export default function DashboardPage() {
     return (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
   }, [userDetail]);
 
-  // Auto-refresh aktivních uživatelů každých 30s (pouze SUPERADMIN)
+  // Auto-refresh aktivních uživatelů každých 30s (pouze SUPERADMIN) – jen pro quick-tile badge count
   useEffect(() => {
     if (!isSuperAdmin || !token || !username) return;
     const fetchActive = async () => {
-      const d = await getActiveUsersAdmin({ token, username });
+      const d = await getActiveUsersAdmin({ token, username, period: '5min' });
       if (d) setActiveUsersData(d);
     };
     fetchActive();
@@ -4093,13 +4528,13 @@ export default function DashboardPage() {
     
     if (!isBackgroundRefresh) setRssLoading(true);
     try {
-      const result = await getRssFeed({ token, username, max_items: 15 });
+      const result = await getRssFeed({ token, username, max_items: rssMaxItems });
       if (rssCancelledRef.current) return;
       if (result.status === 'success') {
         const items = result.data || [];
         const feedStatuses = result.feed_statuses || [];
         const enabled = result.rss_enabled !== false;
-        const maxItems = result.max_items || 15;
+        const maxItems = result.max_items || rssMaxItems;
         
         setRssItems(items);
         setRssEnabled(enabled);
@@ -4136,7 +4571,7 @@ export default function DashboardPage() {
     } finally {
       if (!rssCancelledRef.current) setRssLoading(false);
     }
-  }, [token, username, user?.id]);
+  }, [token, username, user?.id, rssMaxItems]);
 
   useEffect(() => {
     rssCancelledRef.current = false;
@@ -4325,12 +4760,6 @@ export default function DashboardPage() {
     try {
       const result = await getDashboardData({ token, username, days: 7 });
       
-      // 🔍 DEBUG: Výpis celé raw response
-      console.log('📊 [Dashboard] RAW RESPONSE:', result);
-      console.log('📊 [Dashboard] result.data:', result.data);
-      console.log('🔔 [Dashboard] notifications_recent:', result.data?.notifications_recent);
-      console.log('🔔 [Dashboard] notifications_unread:', result.data?.notifications_unread);
-      
       if (result.status === 'success') {
         setData(result.data);
         setCashbookData(result.data?.cashbook_summary ?? null);
@@ -4352,6 +4781,20 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // ✅ Registrace dashboard refresh callbacku pro automatické obnovení při nových notifikacích
+  useEffect(() => {
+    if (bgTasksContext && fetchData) {
+      bgTasksContext.registerDashboardRefreshCallback(() => {
+        fetchData(true);  // Silent refresh (bez blikání)
+      });
+    }
+    return () => {
+      if (bgTasksContext) {
+        bgTasksContext.registerDashboardRefreshCallback(null);
+      }
+    };
+  }, [bgTasksContext, fetchData]);
 
   // Fetch only cashbook data (bez reloadu celého dashboardu)
   const fetchCashbook = useCallback(async () => {
@@ -4378,7 +4821,6 @@ export default function DashboardPage() {
     if (!autoRefreshEnabled) return;
 
     const interval = setInterval(() => {
-      console.log('🔄 Dashboard auto-refresh (5 min) - silent');
       fetchData(true);
     }, 5 * 60 * 1000); // 5 minut
 
@@ -4541,7 +4983,8 @@ export default function DashboardPage() {
     // alwaysOn widgety (např. active_users_admin) ignorují visibleTiles
     if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) return null;
 
-    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'active_users_admin' || tileId === 'rss_news' || tileId === 'chart_majetek' || tileId === 'chart_fees';
+    const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'rss_news' || tileId === 'chart_majetek' || tileId === 'chart_fees';
+    const isSpanFull = tileId === 'active_users_admin';
 
     let content = null;
     let badgeCount = null;
@@ -4751,13 +5194,15 @@ export default function DashboardPage() {
         );
         break;
       case 'active_users_admin':
-        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} />;
-        badgeCount = activeUsersData?.count || 0;
+        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} token={token} username={username} setQuickMessageUser={setQuickMessageUser} />;
+        badgeCount = activeUsersData?.counts?.['5min'] ?? activeUsersData?.count ?? 0;
         break;
       case 'weather':
         // Weather: renderuje celou kartu sám, bez WidgetHeader
         return (
-          <WidgetCard key={tileId} $accent={cfg.color} $index={index} style={{ padding: 0, overflow: 'hidden', borderLeft: 'none' }}>
+          <WidgetCard key={tileId} $accent={cfg.color} $index={index} style={{ padding: 0, overflow: 'hidden', borderLeft: 'none' }}
+            ref={el => { widgetRefs.current[tileId] = el; }}
+          >
             <WeatherWidget weatherData={weatherData} weatherLoading={weatherLoading} weatherError={weatherError} onRefresh={() => fetchWeather(false)} />
           </WidgetCard>
         );
@@ -4769,8 +5214,11 @@ export default function DashboardPage() {
     }
 
     return (
-      <WidgetCard key={tileId} $accent={cfg.color} $index={index} $span2={isSpan2}
-        ref={tileId === 'active_users_admin' ? activeUsersRef : undefined}
+      <WidgetCard key={tileId} $accent={cfg.color} $index={index} $span2={isSpan2} $spanFull={isSpanFull}
+        ref={el => {
+          widgetRefs.current[tileId] = el;
+          if (tileId === 'active_users_admin') activeUsersRef.current = el;
+        }}
       >
         <WidgetHeader>
           <WidgetTitle>
@@ -4799,6 +5247,71 @@ export default function DashboardPage() {
     if (isSuperAdmin) return [...base, 'active_users_admin'];
     return base;
   }, [allTiles, availableWidgets, isSuperAdmin]);
+
+  // Dispatch dashNavItems pro floating navigator v Layout.js
+  useEffect(() => {
+    const items = orderedTiles.map(id => ({
+      key: id,
+      label: WIDGET_REGISTRY[id]?.title || id,
+    }));
+    window.dispatchEvent(new CustomEvent('dashNavItems', { detail: { items } }));
+    return () => window.dispatchEvent(new CustomEvent('dashNavItems', { detail: { items: [] } }));
+  }, [orderedTiles]);
+
+  // Scroll na widget + flash efekt (triggernuto z Layout.js)
+  useEffect(() => {
+    const doFlash = (el) => {
+      // box-shadow pulsuje vně elementu – neoříznuto overflow, nezávislé na Reactu
+      let step = 0;
+      const frames = [
+        '0 0 0 5px rgba(250,204,21,0.8)',
+        '0 0 0 2px rgba(250,204,21,0.2)',
+        '0 0 0 5px rgba(250,204,21,0.8)',
+        '0 0 0 2px rgba(250,204,21,0.2)',
+        '0 0 0 5px rgba(250,204,21,0.7)',
+        '0 0 0 0px rgba(250,204,21,0)',
+      ];
+      const origShadow = el.style.boxShadow;
+      const origTransition = el.style.transition;
+      el.style.transition = 'box-shadow 0.18s ease-in-out';
+      const tick = () => {
+        if (step >= frames.length) {
+          el.style.boxShadow = origShadow;
+          el.style.transition = origTransition;
+          return;
+        }
+        el.style.boxShadow = frames[step++];
+        setTimeout(tick, 200);
+      };
+      tick();
+    };
+
+    const handler = (e) => {
+      const el = widgetRefs.current[e.detail?.key];
+      if (!el) return;
+      const mainEl = document.querySelector('main');
+      if (!mainEl) return;
+
+      // Zjisti zda je widget viditelný v main
+      const rect = el.getBoundingClientRect();
+      const mainRect = mainEl.getBoundingClientRect();
+      const isVisible = rect.top >= mainRect.top + 20 && rect.bottom <= mainRect.bottom - 20;
+
+      if (isVisible) {
+        // Viditelný – pouze flash, bez scrollu
+        doFlash(el);
+      } else {
+        // Scrolluj a pak flashni po dokončení animace
+        const fixedBar = document.querySelector('header');
+        const headerH = fixedBar ? fixedBar.getBoundingClientRect().height : 96;
+        mainEl.scrollTo({ top: Math.max(0, el.offsetTop - headerH - 12), behavior: 'smooth' });
+        setTimeout(() => doFlash(el), 680);
+      }
+    };
+
+    window.addEventListener('dashScrollToWidget', handler);
+    return () => window.removeEventListener('dashScrollToWidget', handler);
+  }, []);
 
   // Render
   if (loading) {
@@ -4853,7 +5366,7 @@ export default function DashboardPage() {
             {/* Superadmin: aktivní uživatelé jako první */}
             {isSuperAdmin && (
               <SmartTooltip
-                text={`Aktivní uživatelé${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
+                text={`Přehled aktivit uživatelů${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
                 icon="none"
                 preferredPosition="bottom"
               >
@@ -4945,6 +5458,14 @@ export default function DashboardPage() {
           username={username}
           onClose={() => setPermissionsOpen(false)}
           onSaved={() => { setPermissionsOpen(false); fetchData(); }}
+        />
+      )}
+      {quickMessageUser && (
+        <SendQuickMessageModal
+          user={quickMessageUser}
+          onClose={() => setQuickMessageUser(null)}
+          onSuccess={() => {
+          }}
         />
       )}
       <div style={{ height: '2rem' }} />

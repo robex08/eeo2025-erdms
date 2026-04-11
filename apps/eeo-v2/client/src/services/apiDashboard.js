@@ -41,9 +41,9 @@ export async function getCashbookSummary({ token, username, cashbook_month }) {
  * Načtení aktivních uživatelů pro SUPERADMIN dashboard widget
  * Auto-refresh každých 30s
  */
-export async function getActiveUsersAdmin({ token, username }) {
+export async function getActiveUsersAdmin({ token, username, period = '5min' }) {
   try {
-    const response = await api2.post('dashboard/active-users', { token, username });
+    const response = await api2.post('dashboard/active-users', { token, username, period });
     return response.data.status === 'success' ? response.data.data : null;
   } catch {
     return null;
