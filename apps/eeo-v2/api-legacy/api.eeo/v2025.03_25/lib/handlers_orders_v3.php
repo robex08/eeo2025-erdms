@@ -1464,11 +1464,14 @@ function handle_orders_v3_update($input, $config) {
         if ($stmt->rowCount() > 0) {
             error_log("✅ [V3 ORDER UPDATE] Order #$order_id updated successfully");
             
-            // 🎯 PŘEPOČET LP A SMLUV - pouze při schválení
+            // 🎯 PŘEPOČET LP A SMLUV - při schválení i při odeslání ke schválení
             if (isset($payload['stav_workflow_kod'])) {
                 $workflow_states = json_decode($payload['stav_workflow_kod'], true);
-                if (is_array($workflow_states) && in_array('SCHVALENA', $workflow_states)) {
-                    error_log("🔄 [V3 ORDER UPDATE] Objednávka schválena - spouštím přepočet LP a smluv...");
+                $trigger_prepocet = is_array($workflow_states) && 
+                    (in_array('SCHVALENA', $workflow_states) || in_array('ODESLANA_KE_SCHVALENI', $workflow_states));
+                if ($trigger_prepocet) {
+                    $prepocet_reason = in_array('SCHVALENA', $workflow_states) ? 'schválena' : 'odeslána ke schválení';
+                    error_log("🔄 [V3 ORDER UPDATE] Objednávka $prepocet_reason - spouštím přepočet LP a smluv...");
                     
                     try {
                         // Načíst objednávku pro získání financování
