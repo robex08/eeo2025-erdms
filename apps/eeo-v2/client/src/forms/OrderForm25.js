@@ -68,6 +68,7 @@ import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/a
 import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 import { triggerNotification } from '../services/notificationsApi'; // 🆕 Org-hierarchy-aware notifications
+import { loadOrderComments, addOrderComment, deleteOrderComment } from '../services/apiOrdersV3'; // 💬 Komentáře
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
 import {
   validateWorkflowData,
@@ -17261,6 +17262,42 @@ function OrderForm25() {
     scrollToSection(targetSection, 'smooth');
   }, [scrollToSection]);
 
+  // 💬 Handlery pro komentáře v FloatingNavigator
+  const handleNaviLoadComments = useCallback(async (orderId) => {
+    if (!token || !username || !orderId) return { comments: [], comments_count: 0 };
+    try {
+      const result = await loadOrderComments({ token, username, order_id: orderId });
+      return result;
+    } catch (err) {
+      console.error('Chyba při načítání komentářů:', err);
+      return { comments: [], comments_count: 0 };
+    }
+  }, [token, username]);
+
+  const handleNaviAddComment = useCallback(async (orderId, text, parentCommentId = null) => {
+    if (!token || !username || !orderId) return null;
+    try {
+      const result = await addOrderComment({ token, username, order_id: orderId, obsah: text, parent_comment_id: parentCommentId });
+      return result;
+    } catch (err) {
+      console.error('Chyba při přidávání komentáře:', err);
+      showToast && showToast('❌ Chyba při přidání komentáře', { type: 'error' });
+      throw err;
+    }
+  }, [token, username, showToast]);
+
+  const handleNaviDeleteComment = useCallback(async (commentId) => {
+    if (!token || !username) return null;
+    try {
+      const result = await deleteOrderComment({ token, username, comment_id: commentId });
+      return result;
+    } catch (err) {
+      console.error('Chyba při mazání komentáře:', err);
+      showToast && showToast('❌ Chyba při smazání komentáře', { type: 'error' });
+      throw err;
+    }
+  }, [token, username, showToast]);
+
   // 📎 Handler pro drop souborů z FloatingNavigator
   const handleNavigatorFilesDrop = useCallback((files) => {
     if (files && files.length > 0) {
@@ -20227,6 +20264,16 @@ function OrderForm25() {
         editingTemplateName={editingTemplateName}
         matchesTemplateQuery={matchesTemplateQuery}
         isArchived={isArchived}
+        orderId={formData.id || null}
+        onLoadComments={handleNaviLoadComments}
+        onAddComment={handleNaviAddComment}
+        onDeleteComment={handleNaviDeleteComment}
+        commentsCount={formData.comments_count || 0}
+        lastCommentAuthor={formData.last_comment_author || null}
+        lastCommentDate={formData.last_comment_date || null}
+        currentUserId={user_id || null}
+        username={username}
+        showToast={showToast}
       />
 
       {/* 🎤 Indikátor hlasového nahrávání je v Layout.js - globální pro celou aplikaci */}

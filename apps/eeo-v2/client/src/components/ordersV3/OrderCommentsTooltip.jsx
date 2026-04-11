@@ -39,7 +39,7 @@ const TooltipOverlay = styled.div`
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
-  z-index: 29999;
+  z-index: ${props => (props.$zIndexBase || 29999)};
   animation: fadeIn 0.2s ease;
   
   @keyframes fadeIn {
@@ -55,7 +55,7 @@ const TooltipContainer = styled.div`
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
-  z-index: 30000;
+  z-index: ${props => (props.$zIndexBase ? props.$zIndexBase + 1 : 30000)};
   
   /* ✅ Fullscreen nebo normální režim */
   ${props => props.$isFullscreen ? `
@@ -75,7 +75,7 @@ const TooltipContainer = styled.div`
     left: ${props.$left}px;
   `}
   
-  animation: ${props => props.$isPositioned ? 'slideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'};
+  animation: ${props => (props.$isPositioned && !props.$isDragging) ? 'slideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'};\n  transition: ${props => props.$isDragging ? 'none' : 'box-shadow 0.2s ease'};\n  cursor: default;
   
   @keyframes slideIn {
     from {
@@ -108,6 +108,8 @@ const TooltipHeader = styled.div`
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
+  cursor: ${props => props.$isDragging ? 'grabbing' : 'grab'};
+  user-select: none;
 `;
 
 const TooltipTitle = styled.div`
@@ -838,7 +840,8 @@ const OrderCommentsTooltip = ({
   showToast = null,
   token = null,
   username = null,
-  onUpdateComments = null
+  onUpdateComments = null,
+  zIndexBase = null  // ✅ override z-index pro použití nad fullscreen formulářem
 }) => {
   const containerRef = useRef(null);
   const deleteButtonRef = useRef(null);
@@ -846,10 +849,52 @@ const OrderCommentsTooltip = ({
   
   const [isPositioned, setIsPositioned] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  // 🏷️ Drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Drag handlers
+  const handleHeaderMouseDown = useCallback((e) => {
+    // Ignoruj kliknutí na tlačítka v headeru
+    if (e.target.closest('button')) return;
+    if (isFullscreen) return;
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    setIsDragging(true);
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e) => {
+      const newLeft = e.clientX - dragOffsetRef.current.x;
+      const newTop = e.clientY - dragOffsetRef.current.y;
+      // Omez na viewport
+      const container = containerRef.current;
+      const w = container?.offsetWidth || 520;
+      const h = container?.offsetHeight || 400;
+      const maxLeft = window.innerWidth - w - 10;
+      const maxTop = window.innerHeight - h - 10;
+      setPosition({
+        left: Math.max(10, Math.min(newLeft, maxLeft)),
+        top: Math.max(10, Math.min(newTop, maxTop))
+      });
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
   const [newCommentText, setNewCommentText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // ✅ State pro delete confirmation s pozicí
   const [deleteConfirm, setDeleteConfirm] = useState({ id: null, position: null });
@@ -1214,20 +1259,27 @@ const OrderCommentsTooltip = ({
   
   return (
     <>
-      <TooltipOverlay onClick={onClose} />
+      {/* Overlay - pouze vizuální pozadí, NEzavírá dialog při kliknutí */}
+      <TooltipOverlay $zIndexBase={zIndexBase} />
       <TooltipContainer
         ref={containerRef}
         $top={position.top}
         $left={position.left}
         $isPositioned={isPositioned}
         $isFullscreen={isFullscreen}
+        $isDragging={isDragging}
+        $zIndexBase={zIndexBase}
         onClick={(e) => e.stopPropagation()}
         style={{ 
           visibility: isPositioned ? 'visible' : 'hidden',
           opacity: isPositioned ? 1 : 0 
         }}
       >
-        <TooltipHeader>
+        <TooltipHeader
+          $isDragging={isDragging}
+          onMouseDown={handleHeaderMouseDown}
+          title={isFullscreen ? '' : 'Přetáhnutím přesunout dialog'}
+        >
           <TooltipTitle>
             <TooltipTitleMain>
               <FontAwesomeIcon icon={faComment} />
